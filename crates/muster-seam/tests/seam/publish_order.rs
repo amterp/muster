@@ -9,11 +9,11 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     AdjustFontSize, Event, OpenWindow, Request, Response, Startup, ViewChanged, event, request,
     response,
 };
+use muster_harness::{Daemon, until};
 use prost::Message;
 
 #[test]
@@ -21,7 +21,7 @@ fn the_last_view_the_shell_is_sent_is_the_one_the_core_settled_last() {
     let _turn = muster::testing::fresh_session();
     muster::testing::set_typeable_deadline(Duration::ZERO);
 
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
     muster::ffi::muster_set_event_callback(Some(note));
     // With a run log, as every shipped build has one: its `view.region` lines are written

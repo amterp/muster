@@ -9,10 +9,9 @@
 //! Both halves need a real daemon, because the thing being asserted is whether a process is
 //! still there afterwards.
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{OpenWindow, Quitting, Request, Response, Startup, request, response};
+use muster_harness::{Daemon, until};
 use prost::Message;
-use serde_json::json;
 
 #[test]
 fn quitting_leaves_the_session_running() {
@@ -37,8 +36,8 @@ fn quitting_leaves_the_session_running() {
 
 #[test]
 fn quitting_and_closing_sessions_ends_the_daemon() {
-    // The other half, and the reason it can be offered at all: `server.stop` is a clean stop,
-    // measured - a pane's process gets a catchable SIGHUP and a moment to act, not a SIGKILL.
+    // The other half, and the reason it can be offered at all: the daemon's stop request is a
+    // clean stop - a pane's process gets a catchable SIGHUP and a moment to act, not a SIGKILL.
     let _turn = muster::testing::fresh_session();
     let daemon = open_a_window();
     assert!(answers(&daemon), "the daemon should be answering before it is asked to stop");
@@ -60,13 +59,15 @@ fn quitting_and_closing_sessions_ends_the_daemon() {
 }
 
 /// A daemon with a window open onto it, which is what makes it one this window would end.
+///
+/// The window makes the daemon's first tab itself, since an empty window asks its first local
+/// daemon for one, so the daemon holds a pane by the time this returns.
 fn open_a_window() -> Daemon {
     // Nothing here paints a pane, so none becomes typeable - an error, which opens the roster
     // and republishes. Noise rather than a finding, so it is switched off.
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
 
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "quitting", "focus": true }));
+    let daemon = Daemon::start_built();
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()

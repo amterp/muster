@@ -15,11 +15,11 @@
 
 use std::sync::Mutex;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     Event, OpenWindow, PresentationChanged, Request, Response, Startup, ToggleSidebar, event,
     request, response,
 };
+use muster_harness::{Daemon, until};
 use prost::Message;
 
 #[test]
@@ -31,7 +31,7 @@ fn putting_the_roster_away_is_remembered() {
     // this test with an assertion about the roster and no hint that a watchdog moved it.
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
 
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     muster::ffi::muster_set_event_callback(Some(note_presentation));

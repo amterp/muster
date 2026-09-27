@@ -15,14 +15,16 @@
 //! respawn tests must not run under it - a stall ask landing between their bridge deaths would
 //! be a third thing moving the number they are counting.
 
+use std::io::Write;
 use std::sync::Mutex;
 use std::sync::{atomic::AtomicUsize, atomic::Ordering};
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     BridgeExited, Event, OpenWindow, Request, Response, Startup, ViewChanged, ViewNode, event,
     request, response, view_node,
 };
+use muster_core::bridge_link::Report;
+use muster_harness::{Daemon, until};
 use prost::Message;
 
 /// Short enough that the gate does not wait out the shipped five seconds, and long enough that
@@ -38,7 +40,7 @@ fn a_pane_whose_first_bridge_never_dials_is_asked_for_another() {
     // surface that would start a bridge.
     let _turn = muster::testing::fresh_session();
     shorten_the_deadline();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let pane = open_a_window(&daemon);
     assert_eq!(restarts(&pane), Some(0), "a pane nobody has replaced is on none");
 
@@ -56,7 +58,7 @@ fn a_replacement_that_never_arrives_is_asked_for_again() {
     // end and nothing that could ask a second time.
     let _turn = muster::testing::fresh_session();
     shorten_the_deadline();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let pane = open_a_window(&daemon);
 
     // A bridge, then its death: the dial is what makes the pane typeable, so that the wait
@@ -84,13 +86,16 @@ fn shorten_the_deadline() {
     muster::testing::set_typeable_deadline(std::time::Duration::from_millis(DEADLINE_MS));
 }
 
-/// Connects to the pane's control socket the way a bridge starting would, and waits for the
-/// core to notice.
+/// Connects to the pane's link socket and says it attached, the way a bridge starting would,
+/// and waits for the core to notice.
 fn dial_a_bridge(pane: &Pane) -> std::os::unix::net::UnixStream {
-    let path = socket_of(pane).expect("the core publishes a control socket for every pane");
+    let path = socket_of(pane).expect("the core publishes a link socket for every pane");
     let before = TYPEABLE.load(Ordering::Acquire);
-    let stream = std::os::unix::net::UnixStream::connect(&path)
+    let mut stream = std::os::unix::net::UnixStream::connect(&path)
         .expect("the core is listening on the pane's socket");
+    stream
+        .write_all(Report::Attached.line().as_bytes())
+        .expect("the core reads what a bridge says");
     until(
         "the core to notice the bridge dial in",
         || TYPEABLE.load(Ordering::Acquire) > before,
@@ -109,7 +114,7 @@ fn open_a_window(daemon: &Daemon) -> Pane {
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
     until(
-        "the window to open onto a workspace",
+        "the window to open onto a pane",
         || first_pane().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -147,7 +152,7 @@ fn restarts(pane: &Pane) -> Option<u32> {
         })
 }
 
-/// Where the last published view puts this pane's control socket, which is what a bridge dials.
+/// Where the last published view puts this pane's link socket, which is what a bridge dials.
 fn socket_of(pane: &Pane) -> Option<String> {
     let view = latest_view()?;
     view.regions
@@ -160,7 +165,7 @@ fn socket_of(pane: &Pane) -> Option<String> {
 fn find_socket(node: &ViewNode, pane: &str) -> Option<String> {
     match node.node.as_ref() {
         Some(view_node::Node::Pane(found)) if found.pane_id == pane => {
-            Some(found.control_socket_path.clone())
+            Some(found.link_socket_path.clone())
         }
         Some(view_node::Node::Split(split)) => [split.first.as_deref(), split.second.as_deref()]
             .into_iter()

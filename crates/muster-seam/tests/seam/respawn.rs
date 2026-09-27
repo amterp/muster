@@ -9,15 +9,17 @@
 //! told - `bridge_restarts` on a pane is what makes it build a new surface, and building one is
 //! the only way a bridge is ever started - so a view carrying the number is the seam under test.
 
+use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     BridgeExited, Event, OpenWindow, ReattachPane, Request, Response, Startup, ViewChanged,
     ViewNode, event, request, response, view_node,
 };
+use muster_core::bridge_link::Report;
+use muster_harness::{Daemon, until};
 use prost::Message;
 
 #[test]
@@ -26,7 +28,7 @@ fn a_bridge_that_died_on_a_pane_the_daemon_still_holds_is_replaced() {
     // and nothing started another bridge. The panes stayed on screen showing a dead terminal
     // until Muster was relaunched, and every network change left another one.
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let pane = open_a_window(&daemon);
     assert_eq!(restarts(&pane), Some(0), "a pane nobody has replaced is on none");
 
@@ -47,7 +49,7 @@ fn a_surface_muster_tore_down_gets_no_replacement() {
     // the pane off screen, or is rebuilding its surface for a reason of its own. A replacement
     // here would race the bridge that is already on its way.
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let pane = open_a_window(&daemon);
 
     report_exited(&pane, true);
@@ -65,7 +67,7 @@ fn a_bridge_that_keeps_dying_is_given_up_on() {
     // bridge that cannot attach ends in a fraction of a second, so without a limit this is a
     // process every few hundred milliseconds for as long as the window is open.
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let pane = open_a_window(&daemon);
 
     for _ in 0..5 {
@@ -89,7 +91,7 @@ fn a_person_asking_gets_a_bridge_for_a_pane_the_window_gave_up_on() {
     // until the app is relaunched - and relaunching ends every agent in the window, which is
     // the cost this whole policy exists to avoid paying.
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let pane = open_a_window(&daemon);
     for _ in 0..5 {
         let dialed = dial_a_bridge(&pane);
@@ -120,12 +122,12 @@ fn asking_for_a_pane_no_machine_here_holds_is_refused() {
     // right a moment later - and a window answering "ok" would be telling a script it had
     // rescued a pane that does not exist.
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let pane = open_a_window(&daemon);
 
     let refused = answer(request::Payload::ReattachPane(ReattachPane {
         daemon_id: pane.daemon.clone(),
-        pane_id: "w9:p9".to_string(),
+        pane_id: "p9nowhere".to_string(),
     }));
 
     assert!(
@@ -134,15 +136,19 @@ fn asking_for_a_pane_no_machine_here_holds_is_refused() {
     );
 }
 
-/// Connects to the pane's control socket the way a bridge starting would, and waits for the
-/// core to notice.
+/// Connects to the pane's link socket and says it attached, the way a bridge starting would,
+/// and waits for the core to notice.
 ///
-/// The connection is what the app treats as a bridge existing, so this is how a test that
-/// starts no processes says one arrived.
+/// That report is what the app treats as a bridge existing, so this is how a test that starts
+/// no processes says one arrived.
 fn dial_a_bridge(pane: &Pane) -> UnixStream {
-    let path = socket_of(pane).expect("the core publishes a control socket for every pane");
+    let path = socket_of(pane).expect("the core publishes a link socket for every pane");
     let before = typeable_count();
-    let stream = UnixStream::connect(&path).expect("the core is listening on the pane's socket");
+    let mut stream =
+        UnixStream::connect(&path).expect("the core is listening on the pane's socket");
+    stream
+        .write_all(Report::Attached.line().as_bytes())
+        .expect("the core reads what a bridge says");
     until(
         "the core to notice the bridge dial in",
         || typeable_count() > before,
@@ -160,14 +166,14 @@ fn open_a_window(daemon: &Daemon) -> Pane {
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
-    // The socket, not just the pane. Two of these tests dial the pane's control socket, and a
+    // The socket, not just the pane. Two of these tests dial the pane's link socket, and a
     // wait that stopped at "a view names a pane" was answered by a view that had not got round
     // to naming its socket yet - so `dial_a_bridge` unwrapped a `None` about a pane that was
     // fine, once in thirty runs on a loaded machine. Waiting for what the test goes on to use
     // is the fix; whether a published view may name a pane with no socket at all is
     // `cold_start.rs`'s question, and it says no.
     until(
-        "the window to open onto a workspace with a socket its bridge can dial",
+        "the window to open onto a pane with a socket its bridge can dial",
         || first_pane().is_some_and(|pane| socket_of(&pane).is_some()),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -189,7 +195,7 @@ fn report_exited(pane: &Pane, process_alive: bool) {
     })));
 }
 
-/// Where the last published view puts this pane's control socket, which is what a bridge dials.
+/// Where the last published view puts this pane's link socket, which is what a bridge dials.
 fn socket_of(pane: &Pane) -> Option<String> {
     let view = latest_view()?;
     view.regions
@@ -202,7 +208,7 @@ fn socket_of(pane: &Pane) -> Option<String> {
 fn find_socket(node: &ViewNode, pane: &str) -> Option<String> {
     match node.node.as_ref() {
         Some(view_node::Node::Pane(found)) if found.pane_id == pane => {
-            Some(found.control_socket_path.clone()).filter(|path| !path.is_empty())
+            Some(found.link_socket_path.clone()).filter(|path| !path.is_empty())
         }
         Some(view_node::Node::Split(split)) => [split.first.as_deref(), split.second.as_deref()]
             .into_iter()

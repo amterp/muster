@@ -12,8 +12,8 @@ use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::mpsc::{self, Receiver};
 
-use herdr_harness::{Daemon, PATIENCE, until, until_some};
 use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
+use muster_harness::{Daemon, PATIENCE, until, until_some};
 use prost::Message;
 use serde_json::{Value, json};
 
@@ -32,6 +32,10 @@ fn a_caller_can_wait_on_an_agent_instead_of_polling() {
         "a plain shell is never blocked, so this wait has to run out and say so with 5: {}",
         String::from_utf8_lossy(&ran.stderr)
     );
+
+    // The daemon decides a pane's state from what runs in it and what it paints, so every
+    // gesture after this one needs an agent there to change it.
+    open.daemon.run_agent(&open.pane);
 
     a_watch_prints_each_change_as_it_happens(&open);
     a_wait_exits_when_the_agent_finishes(&open);
@@ -162,11 +166,12 @@ fn a_wait_exits_when_the_agent_finishes(open: &Open) {
     );
 }
 
-/// A pane is waited on straight after it is made, which is before the window has heard of it.
+/// A pane is waited on straight after it is made.
 ///
-/// `pane new` answers with the name as soon as the daemon has made the pane, and the daemon's
-/// event describing it reaches the window a moment later. A wait refusing that name would make
-/// `muster pane wait --pane "$(muster pane new)"` a race the caller loses.
+/// `muster pane wait --pane "$(muster pane new)"` is the line a script writes, and it asks about
+/// the pane in the same instant `pane new` names it. The window holds the daemon's description of
+/// a new pane before it answers the request that made it; a wait refusing the name would mean
+/// that order had broken, and the caller would lose a race it cannot see.
 fn a_pane_just_made_can_be_waited_on(open: &Open) {
     let made = muster(open, &["pane", "new", "--pane", &open.pane, "--down"]);
     let made = String::from_utf8_lossy(&made.stdout).trim().to_string();
@@ -185,26 +190,44 @@ struct Open {
     daemon: Daemon,
     socket: String,
     pane: String,
-    backend: String,
 }
 
 impl Open {
+    /// Tells the fake agent in the pane what to paint, through `muster pane send` as another
+    /// agent would, and waits until the window says the pane is in that state.
+    ///
+    /// Waited for here rather than left to the gesture, because the daemon takes a moment to
+    /// read a new screen, and a wait spawned in that moment would see the state before. An
+    /// agent told to go idle after working is `done` to the window, which is Muster's name for
+    /// an idle agent nobody has looked at since, so either answers that.
     fn report(&self, state: &str) {
-        self.daemon.call(
-            "pane.report_agent",
-            &json!({ "pane_id": self.backend, "agent": "probe", "source": "probe", "state": state }),
+        let sent = muster(self, &["pane", "send", "--pane", &self.pane, state, "--enter"]);
+        assert!(
+            sent.status.success(),
+            "`muster pane send` could not tell the agent to be {state}: {}",
+            String::from_utf8_lossy(&sent.stderr)
         );
+        until(
+            &format!("the window to say {} is {state}", self.pane),
+            || self.state().is_some_and(|now| now == state || (state == "idle" && now == "done")),
+            || format!("the window says {} is {:?}", self.pane, self.state()),
+        );
+    }
+
+    /// The pane's state as `muster window` says it.
+    fn state(&self) -> Option<String> {
+        let ran = muster(self, &["--json", "window"]);
+        let window: Value = serde_json::from_slice(&ran.stdout).ok()?;
+        let pane =
+            window["panes"].as_array()?.iter().find(|pane| pane["pane"] == json!(self.pane))?;
+        Some(pane["state"].as_str()?.to_string())
     }
 }
 
+/// A window onto an empty daemon, which asks it for a first tab: that tab's pane is the one
+/// this test waits on.
 fn a_window_onto_one_pane() -> Open {
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "waiting", "focus": true }));
-    let snapshot = daemon.call("session.snapshot", &json!({}));
-    let backend = snapshot["snapshot"]["panes"][0]["pane_id"]
-        .as_str()
-        .unwrap_or_else(|| panic!("a fresh workspace holds a pane: {snapshot}"))
-        .to_string();
+    let daemon = Daemon::start_detecting();
 
     let socket = daemon.root().join("command.sock").to_string_lossy().into_owned();
     accepted(&dispatch(request::Payload::Startup(Startup {
@@ -214,7 +237,7 @@ fn a_window_onto_one_pane() -> Open {
     })));
     accepted(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
 
-    let mut open = Open { daemon, socket, pane: String::new(), backend };
+    let mut open = Open { daemon, socket, pane: String::new() };
     open.pane = until_some("the window to describe the pane the daemon holds", || {
         let ran = muster(&open, &["--json", "window"]);
         let window: Value = serde_json::from_slice(&ran.stdout).ok()?;

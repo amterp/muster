@@ -1,9 +1,11 @@
 //! A pane `muster pane new` just printed can be named by the very next command.
 //!
 //! `P=$(muster pane new); muster pane read --pane "$P"` is the shape every script driving agents
-//! takes, and it was refused: a split answers with the pane's name as soon as the daemon has made
-//! it, and the daemon's event describing the pane reaches the window a moment later. Every verb
-//! that looks a name up in the window refused one it had not heard of yet (kan a_2P5nkSS8g).
+//! takes, and it was refused once: a split answered with the pane's name as soon as the daemon had
+//! made it, and the daemon's event describing the pane reached the window a moment later. Every
+//! verb that looks a name up in the window refused one it had not heard of yet (kan a_2P5nkSS8g).
+//! A submit now returns with its effect already in the window's mirror, which closes that gap by
+//! construction; these tests are what keeps it closed.
 //!
 //! Each test splits over the command socket and asks straight away, the way a script does. Waiting
 //! for the window to list the pane first would hide exactly the race under test.
@@ -11,14 +13,13 @@
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
     ArrangePane, ClosePane, CreateTab, OpenWindow, ReadPane, ReadWindow, RenamePane, Request,
     Response, SendToPane, SplitPane, Startup, Window, request, response,
 };
+use muster_harness::Daemon;
 use prost::Message;
-use serde_json::json;
 
 #[test]
 fn a_pane_is_read_the_moment_pane_new_prints_it() {
@@ -83,17 +84,14 @@ fn a_pane_is_renamed_the_moment_pane_new_prints_it() {
         }),
     );
     assert_did_it("pane rename", &made, &answer);
-    // herdr announces a rename to nobody, so an answer of ok and a window that never shows the
-    // name would be a rename that told the caller one thing and the person another.
-    until(
-        "the window to list the pane under the name it was given",
-        || given_name(&read_window(&open.socket), &made) == Some("renamed at once"),
-        || {
-            format!(
-                "the window lists {made} as {:?}",
-                given_name(&read_window(&open.socket), &made)
-            )
-        },
+    // Asserted rather than waited for: the rename's answer arrives after the daemon's event
+    // saying so, and an answer of ok with a window that does not yet show the name would be a
+    // rename that told the caller one thing and the person another.
+    let window = read_window(&open.socket);
+    assert_eq!(
+        given_name(&window, &made),
+        Some("renamed at once"),
+        "the rename was answered, and the window does not list {made} under the new name"
     );
 }
 
@@ -160,9 +158,9 @@ struct Open {
     pane: String,
 }
 
+/// The pane is the one the window asks its empty daemon for while it opens.
 fn a_window_onto_one_pane() -> Open {
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "just-made", "focus": true }));
+    let daemon = Daemon::start_built();
 
     let socket = daemon.root().join("command.sock");
     assert_ok(&dispatch(request::Payload::Startup(Startup {
@@ -172,16 +170,12 @@ fn a_window_onto_one_pane() -> Open {
     })));
     assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
 
-    let mut pane = None;
-    until(
-        "the window to list the daemon's pane",
-        || {
-            pane = read_window(&socket).panes.first().map(|pane| pane.pane_id.clone());
-            pane.is_some()
-        },
-        || "the window never listed a pane, so there was nothing to split".to_string(),
+    // Asserted rather than waited for: the window's ask for its first tab returns with the tab
+    // in place, before opening does.
+    let pane = read_window(&socket).panes.first().map(|pane| pane.pane_id.clone()).expect(
+        "the window opened onto an empty daemon and lists no pane, so it never asked for the \
+         first tab an empty window needs",
     );
-    let pane = pane.expect("the wait above returns only once there is one");
     Open { _daemon: daemon, socket, pane }
 }
 

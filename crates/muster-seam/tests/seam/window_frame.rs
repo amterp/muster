@@ -10,13 +10,13 @@
 //! is reset between tests and they take their turns through `muster::testing::fresh_session`,
 //! which is what the first line of each one is asking for.
 
-use herdr_harness::Daemon;
 use muster::proto::{
     OpenWindow, ReadWindowFrame, Request, Response, SetWindowFrame, Startup, WindowFrame,
     WindowRect, request, response,
 };
 use muster_core::composition::presentation::{Frame, Presentation};
 use muster_core::composition::saved::{Saved, to_toml};
+use muster_harness::Daemon;
 use prost::Message;
 
 /// The laptop this test pretends to be running on, and the desk monitor it is not.
@@ -27,7 +27,7 @@ const ON_A_MONITOR_THAT_IS_GONE: Frame =
 #[test]
 fn a_window_comes_back_the_size_it_was_left() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     // A previous run, which quit with the window on a display this machine no longer has.

@@ -13,7 +13,6 @@ use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     ArrangePane, AttachPane, CreateTab, Event, FocusPane, OpenWindow, ReadTabHolders, ReadWindow,
     Request, Response, Startup, ViewChanged, WindowFocus, event, request, response,
@@ -21,8 +20,10 @@ use muster::proto::{
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, WindowName};
 use muster_core::mirror::backend::TabId;
+use muster_daemon_proto::Side;
+use muster_harness::requests::{beside, create, in_new_tab, make, snapshot};
+use muster_harness::{Daemon, until};
 use prost::Message;
-use serde_json::json;
 
 /// A tab made outside Muster joins the window that was in front, and only that one.
 ///
@@ -32,14 +33,14 @@ use serde_json::json;
 #[test]
 fn a_tab_made_outside_muster_joins_the_window_in_front() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
 
     // Another window, open and in front of this one.
     let other = another_window(&daemon, "window-9", i64::MAX / 2);
     open_a_window(&daemon, "window-1");
     let ours = until_showing_something();
 
-    daemon.call("tab.create", &json!({ "focus": false }));
+    a_tab_made_outside_muster(&daemon, "t-outside-1");
     // The stand-in takes nothing itself, so what this can see is the half that matters here:
     // this window heard of the tab and left it alone.
     until(
@@ -61,7 +62,7 @@ fn a_tab_made_outside_muster_joins_the_window_in_front() {
     open_a_window(&daemon, "window-1");
     until_showing_something();
     let before = listed();
-    daemon.call("tab.create", &json!({ "focus": false }));
+    a_tab_made_outside_muster(&daemon, "t-outside-2");
     until(
         "this window to take the tab nobody asked for",
         || listed().len() == before.len() + 1,
@@ -71,14 +72,15 @@ fn a_tab_made_outside_muster_joins_the_window_in_front() {
 
 /// A tab this window asks for is its own, however recently another window was in front.
 ///
-/// The failure measured on 0.8.1: the window that asked lost the tab to one that had not. herdr
+/// The failure measured on 0.8.1: the window that asked lost the tab to one that had not. A daemon
 /// describes a new tab to every window before the asking window hears the answer naming it, so
 /// the rule for a tab nobody holds would hand it to the window in front - unless the asking window
-/// has said it is waiting.
+/// has already taken it. It does: the window names the tab and records it as its own before
+/// asking, so by the time any window hears of it the record already says whose it is.
 #[test]
 fn a_tab_this_window_asks_for_stays_here_while_another_is_in_front() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let _other = another_window(&daemon, "window-9", i64::MAX / 2);
     open_a_window(&daemon, "window-1");
     let first = until_showing_something();
@@ -87,12 +89,10 @@ fn a_tab_this_window_asks_for_stays_here_while_another_is_in_front() {
         take_focus: true,
         ..CreateTab::default()
     })));
-    until(
-        "the window to move onto the tab it asked for",
-        || showing().is_some_and(|tab| tab != first),
-        || format!("the window still shows {first}; the record says {:?}", holders(&daemon)),
-    );
-    let made = showing().expect("just waited for it");
+    // Asserted rather than waited for: the answer arrives after the daemon's events about the
+    // tab, so the window is already showing it.
+    let made = showing().expect("the window shows a tab");
+    assert_ne!(made, first, "the window did not move onto the tab it asked for");
     let record = holders(&daemon);
     assert!(
         record.iter().any(|(tab, window)| tab == &made && window == "window-1"),
@@ -103,18 +103,19 @@ fn a_tab_this_window_asks_for_stays_here_while_another_is_in_front() {
 /// A pane this window moves into a tab of its own takes that tab with it, however recently another
 /// window was in front.
 ///
-/// herdr names the tab a move made somewhere other than where it names the tab `tab.create` made,
-/// and reading only the second let the answer say nothing was made - so the window stopped waiting
-/// empty-handed and the window in front took the tab. An agent in a background window pulling its
-/// own pane out sent it to whatever window somebody was looking at.
+/// Under herdr the answer to a move did not name the tab it made, so the window stopped waiting
+/// empty-handed and the window in front took the tab: an agent in a background window pulling its
+/// own pane out sent it to whatever window somebody was looking at. The window now names that tab
+/// itself and takes it before asking, as it does for a tab it makes.
 #[test]
 fn a_pane_this_window_moves_into_a_new_tab_stays_here_while_another_is_in_front() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let _other = another_window(&daemon, "window-9", i64::MAX / 2);
     open_a_window(&daemon, "window-1");
     let first = until_showing_something();
-    daemon.call("pane.split", &json!({ "direction": "right" }));
+    let shown = panes_in(&first).pop().expect("the tab on screen has a pane");
+    make(&mut daemon.connect(), create("p-right", beside(&shown, Side::Right)));
     until(
         "the window to hear of the second pane",
         || panes_in_this_window().len() == 2,
@@ -145,12 +146,11 @@ fn a_pane_this_window_moves_into_a_new_tab_stays_here_while_another_is_in_front(
 #[test]
 fn a_focus_never_shows_a_tab_the_record_gives_another_window() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let _other = another_window(&daemon, "window-9", 0);
     open_a_window(&daemon, "window-1");
     let first = until_showing_something();
-    daemon.call("tab.create", &json!({ "focus": false }));
-    // The pane as well as the tab: herdr can announce a tab before the pane in it.
+    a_tab_made_outside_muster(&daemon, "t-outside");
     until(
         "this window, in front, to take the tab nobody asked for and hear of its pane",
         || listed().iter().any(|tab| tab != &first && !panes_in(tab).is_empty()),
@@ -163,7 +163,8 @@ fn a_focus_never_shows_a_tab_the_record_gives_another_window() {
     // it lets the tab go and leaves it for the window in front.
     let path = record(&daemon);
     let mut holders = read_record(&path);
-    holders.prune(|tab| tab.as_str() != theirs);
+    let answered = std::iter::once(DaemonId::new("local")).collect();
+    holders.prune(&answered, |tab| tab.as_str() != theirs);
     holders.focused(&WindowName::new("window-9"), i64::MAX / 2);
     write_record(&path, &holders);
     assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
@@ -187,7 +188,7 @@ fn a_focus_never_shows_a_tab_the_record_gives_another_window() {
 #[test]
 fn a_tab_another_window_takes_leaves_this_one() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let _other = another_window(&daemon, "window-9", 0);
     open_a_window(&daemon, "window-1");
     let first = until_showing_something();
@@ -209,11 +210,11 @@ fn a_tab_another_window_takes_leaves_this_one() {
         "{first} was given to another window and is still listed here: {:?}",
         listed()
     );
-    let tabs = daemon.call("session.snapshot", &json!({}))["snapshot"]["tabs"].clone();
+    let tabs = snapshot(&mut daemon.connect()).tabs;
     assert_eq!(
-        tabs.as_array().map_or(0, Vec::len),
+        tabs.len(),
         2,
-        "moving a tab between windows closed something on the daemon: {tabs}"
+        "moving a tab between windows closed something on the daemon: {tabs:?}"
     );
 }
 
@@ -221,7 +222,7 @@ fn a_tab_another_window_takes_leaves_this_one() {
 #[test]
 fn a_closed_window_keeps_its_tabs() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     open_a_window(&daemon, "window-1");
     let theirs = until_showing_something();
     assert_ok(&answer(request::Payload::Quitting(muster::proto::Quitting::default())));
@@ -248,7 +249,7 @@ fn a_closed_window_keeps_its_tabs() {
 #[test]
 fn the_first_launch_with_a_record_takes_every_tab_it_was_left_with() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     open_a_window(&daemon, "window-1");
     until_showing_something();
     assert_ok(&answer(request::Payload::CreateTab(CreateTab {
@@ -282,7 +283,7 @@ fn the_first_launch_with_a_record_takes_every_tab_it_was_left_with() {
 #[test]
 fn a_record_deleted_under_an_open_window_is_written_again() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     open_a_window(&daemon, "window-1");
     let ours = until_showing_something();
 
@@ -305,7 +306,7 @@ fn a_record_deleted_under_an_open_window_is_written_again() {
 #[test]
 fn a_first_window_lists_every_tab_already_on_the_daemon() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     tabs_already_running(&daemon);
 
     open_a_window(&daemon, "window-1");
@@ -321,13 +322,12 @@ fn a_first_window_lists_every_tab_already_on_the_daemon() {
 #[test]
 fn a_first_window_opened_onto_a_pane_lists_every_tab_already_on_the_daemon() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     tabs_already_running(&daemon);
     start_a_window(&daemon, "window-1");
-    let pane = a_named_pane(&daemon);
 
     assert!(matches!(
-        answer(request::Payload::AttachPane(AttachPane { pane_id: pane })).payload,
+        answer(request::Payload::AttachPane(AttachPane { pane_id: "p1".to_string() })).payload,
         Some(response::Payload::Attached(_))
     ));
 
@@ -351,11 +351,11 @@ fn a_first_window_opened_onto_a_pane_lists_every_tab_already_on_the_daemon() {
 #[test]
 fn a_reopened_window_lists_a_tab_made_while_it_was_closed() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     open_a_window(&daemon, "window-1");
     until_showing_something();
     assert_ok(&answer(request::Payload::Quitting(muster::proto::Quitting::default())));
-    daemon.call("tab.create", &json!({ "focus": false }));
+    a_tab_made_outside_muster(&daemon, "t-outside");
 
     turn.relaunch();
     open_a_window(&daemon, "window-1");
@@ -374,11 +374,11 @@ fn a_reopened_window_lists_a_tab_made_while_it_was_closed() {
 #[test]
 fn coming_to_the_front_takes_the_tabs_left_for_the_window_that_was() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let _other = another_window(&daemon, "window-9", i64::MAX / 2);
     open_a_window(&daemon, "window-1");
     until_showing_something();
-    daemon.call("tab.create", &json!({ "focus": false }));
+    a_tab_made_outside_muster(&daemon, "t-outside");
     until(
         "this window to hear of the tab nobody asked for",
         || panes_on_the_daemon() == 2,
@@ -465,7 +465,6 @@ fn start_a_window(daemon: &Daemon, name: &str) {
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         state_path: arrangement.to_string_lossy().into_owned(),
-        pane_names_path: daemon.root().join("panes.toml").to_string_lossy().into_owned(),
         tab_holders_path: record(daemon).to_string_lossy().into_owned(),
         ..Startup::default()
     })));
@@ -476,27 +475,17 @@ fn start_a_window(daemon: &Daemon, name: &str) {
 /// What `tools/smoke-launch.py` stages, and what Alex's machine looks like at his first launch of
 /// the release that brought this record: every tab already there, and no record saying whose.
 fn tabs_already_running(daemon: &Daemon) {
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "work", "focus": true }));
-    daemon.call("pane.split", &json!({ "direction": "right" }));
-    daemon.call("pane.split", &json!({ "direction": "down" }));
-    daemon.call("tab.create", &json!({ "focus": false }));
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", beside("p1", Side::Right)));
+    make(&mut control, create("p3", beside("p2", Side::Down)));
+    make(&mut control, create("p4", in_new_tab("t2")));
 }
 
-/// Muster's name for a pane the daemon already held, once the window has named it.
-fn a_named_pane(daemon: &Daemon) -> String {
-    let path = daemon.root().join("panes.toml");
-    let first = || -> Option<String> {
-        let text = std::fs::read_to_string(&path).ok()?;
-        let (panes, _) =
-            muster_core::names::from_toml(&text, muster_core::names::Mint::Drawn).ok()?;
-        panes.entries().next().map(|(name, _, _)| name.to_string())
-    };
-    until(
-        "the window to name the panes the daemon holds",
-        || first().is_some(),
-        || format!("{} names nothing yet", path.display()),
-    );
-    first().expect("just waited for it")
+/// A tab somebody made by talking to the daemon directly rather than through a window, which is
+/// what a script or another client does.
+fn a_tab_made_outside_muster(daemon: &Daemon, tab: &str) {
+    make(&mut daemon.connect(), create(&format!("p-{tab}"), in_new_tab(tab)));
 }
 
 fn until_showing_something() -> String {

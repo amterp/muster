@@ -19,18 +19,20 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     CreateTab, Event, OpenWindow, ReadWindow, Request, Response, SplitPane, Startup, ViewChanged,
     ViewNode, ViewRegion, event, request, response, view_node,
 };
 use muster_core::mirror::backend::TabId;
+use muster_daemon_proto::Outcome;
+use muster_harness::requests::{close_request, expect, snapshot};
+use muster_harness::{Daemon, until};
 use prost::Message;
 
 #[test]
 fn a_window_writes_down_what_it_is_showing() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     // The statics below outlive a test, so what the last one published is still there and
@@ -40,7 +42,7 @@ fn a_window_writes_down_what_it_is_showing() {
     open_a_window(&daemon, &state);
 
     until(
-        "the window to open onto a workspace",
+        "the window to open onto a tab",
         || tab_of_first_region().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -115,7 +117,7 @@ fn a_window_writes_down_what_it_is_showing() {
 #[test]
 fn a_window_reopens_each_saved_tab_once() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     // The statics below outlive a test, so what the last one published is still there and
@@ -124,7 +126,7 @@ fn a_window_reopens_each_saved_tab_once() {
     muster::ffi::muster_set_event_callback(Some(note));
     open_a_window(&daemon, &state);
     until(
-        "the first window to open onto a workspace",
+        "the first window to open onto a tab",
         || tab_of_first_region().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -181,7 +183,7 @@ fn a_window_reopens_each_saved_tab_once() {
 #[test]
 fn an_arrangement_naming_one_tab_twice_opens_it_once() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     // The statics below outlive a test, so what the last one published is still there and
@@ -190,7 +192,7 @@ fn an_arrangement_naming_one_tab_twice_opens_it_once() {
     muster::ffi::muster_set_event_callback(Some(note));
     open_a_window(&daemon, &state);
     until(
-        "the first window to open onto a workspace",
+        "the first window to open onto a tab",
         || tab_of_first_region().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -236,10 +238,11 @@ fn an_arrangement_naming_one_tab_twice_opens_it_once() {
 /// A window somebody asked for opens onto a tab of its own.
 ///
 /// Two windows on one machine is the arrangement this is about, and the daemon between them is
-/// what makes it sharp: herdr allows one client per terminal, so a second window that opened
-/// onto the tab the first one is showing gets every attach refused and renders four dead
-/// surfaces. Measured that way on 0.4.1 (kan `a_2IZ5TL6DQ`) - six panes, four bridges, four
-/// `already has an attached client`.
+/// what makes it sharp: a pane draws in one place at a time, so a second window that opened onto
+/// the tab the first one is showing takes every one of its panes away from the first. Measured
+/// on 0.4.1 (kan `a_2IZ5TL6DQ`), under herdr, as four dead surfaces in the second window; on
+/// muster-daemon a bridge takes a pane over instead, and the dead surfaces are the first
+/// window's.
 ///
 /// Nothing here can see the first window's bridges, because a process holds one session. What
 /// it can see is the thing that decides the outcome: which tab the second window opens onto.
@@ -252,7 +255,7 @@ fn an_arrangement_naming_one_tab_twice_opens_it_once() {
 #[test]
 fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     // The statics below outlive a test, so what the last one published is still there and
@@ -261,7 +264,7 @@ fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
     muster::ffi::muster_set_event_callback(Some(note));
     open_a_window(&daemon, &state);
     until(
-        "the first window to open onto a workspace",
+        "the first window to open onto a tab",
         || tab_of_first_region().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -289,7 +292,7 @@ fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
     assert_ne!(
         ours, theirs,
         "the window opened onto the tab the last one was showing ({theirs}), so on a machine \
-         where that window is still open every pane in it is a surface herdr will refuse"
+         where that window is still open every pane in it is taken from the window showing it"
     );
 
     // And it remembers nothing, which is the other half: two windows writing one file means the
@@ -315,7 +318,7 @@ fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
 #[test]
 fn two_windows_come_back_each_on_its_own_tabs() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let first = daemon.muster_config().with_file_name("window-1.toml");
     let second = daemon.muster_config().with_file_name("window-2.toml");
 
@@ -323,7 +326,7 @@ fn two_windows_come_back_each_on_its_own_tabs() {
     muster::ffi::muster_set_event_callback(Some(note));
     open_a_window(&daemon, &first);
     until(
-        "the first window to open onto a workspace",
+        "the first window to open onto a tab",
         || tab_of_first_region().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -378,14 +381,14 @@ fn two_windows_come_back_each_on_its_own_tabs() {
 #[test]
 fn a_window_muster_comes_back_to_still_takes_what_it_was_left() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     forget_the_view();
     muster::ffi::muster_set_event_callback(Some(note));
     open_a_window(&daemon, &state);
     until(
-        "the first window to open onto a workspace",
+        "the first window to open onto a tab",
         || tab_of_first_region().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -419,14 +422,14 @@ fn a_window_muster_comes_back_to_still_takes_what_it_was_left() {
 #[test]
 fn a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     forget_the_view();
     muster::ffi::muster_set_event_callback(Some(note));
     open_a_window(&daemon, &state);
     until(
-        "the first window to open onto a workspace",
+        "the first window to open onto a tab",
         || tab_of_first_region().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -451,7 +454,7 @@ fn a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there()
     // relaunch meets whenever something finished while Muster was not running.
     let held = daemon_panes(&daemon);
     let dropped = held.last().expect("the daemon holds the panes this window made");
-    daemon.call("pane.close", &serde_json::json!({ "pane_id": dropped }));
+    expect(&mut daemon.connect(), close_request(dropped), Outcome::Done);
 
     open_a_window(&daemon, &state);
     until(
@@ -485,14 +488,14 @@ fn a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there()
 #[test]
 fn a_restored_window_says_which_panes_it_is_drawing() {
     let turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     forget_the_view();
     muster::ffi::muster_set_event_callback(Some(note));
     open_a_window(&daemon, &state);
     until(
-        "the first window to open onto a workspace",
+        "the first window to open onto a tab",
         || tab_of_first_region().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
@@ -563,11 +566,6 @@ fn startup(daemon: &Daemon, state: &std::path::Path) -> Startup {
     Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         state_path: state.to_string_lossy().into_owned(),
-        // Named, because a saved region says which tab it was showing in Muster's own name for
-        // it. A relaunch that minted fresh names would fail every region's check and open as a
-        // first launch - which is the app's own behaviour without this file, and would leave a
-        // relaunch here testing nothing.
-        pane_names_path: daemon.root().join("panes.toml").to_string_lossy().into_owned(),
         // Shared by every launch in a test, as it is by every window on a machine: which window
         // holds each tab is what a relaunch reads back to know which tabs are its own.
         tab_holders_path: daemon.root().join("holding/tabs.toml").to_string_lossy().into_owned(),
@@ -608,13 +606,7 @@ fn panes_on_screen() -> usize {
 
 /// Every pane the daemon holds, in the order it lists them.
 fn daemon_panes(daemon: &Daemon) -> Vec<String> {
-    let snapshot = daemon.call("session.snapshot", &serde_json::json!({}));
-    snapshot["snapshot"]["panes"]
-        .as_array()
-        .map(|panes| {
-            panes.iter().filter_map(|pane| pane["pane_id"].as_str().map(str::to_string)).collect()
-        })
-        .unwrap_or_default()
+    snapshot(&mut daemon.connect()).panes.into_iter().map(|pane| pane.pane).collect()
 }
 
 fn tab_of_first_region() -> Option<String> {

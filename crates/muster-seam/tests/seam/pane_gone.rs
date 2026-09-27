@@ -2,15 +2,15 @@
 //!
 //! Closing a pane by hand put an error on its row five seconds later, telling the person to check
 //! that the machine holding it was reachable - on a healthy daemon, about a pane that had closed
-//! exactly as asked (kan a_2LMpvavhA). The bridge had heard herdr say the terminal was not found
-//! and reported it as a lost connection, so the window started replacement bridges at a terminal
-//! nothing can attach to and waited for one to dial.
+//! exactly as asked (kan a_2LMpvavhA). The bridge had heard the daemon say the terminal was not
+//! found and reported it as a lost connection, so the window started replacement bridges at a
+//! terminal nothing can attach to and waited for one to dial.
 //!
 //! No bridge process runs here, on the same terms as `respawn.rs`: a bridge is a connection to
-//! the pane's control socket and a line saying how it ended, so this dials the socket and says
-//! what a real bridge says, spelled by the same function a bridge spells it with. The daemon
-//! still lists the pane throughout, which is the moment the error came from: the terminal was
-//! gone while the window was still drawing the pane.
+//! the pane's link socket and a line saying how it ended, so this dials the socket and says what
+//! a real bridge says when the daemon detaches it from a closed pane, spelled by the report type
+//! a bridge spells it with. The daemon still lists the pane throughout, which is the moment the
+//! error came from: the terminal was gone while the window was still drawing the pane.
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -18,12 +18,13 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     Event, OpenWindow, ProblemsChanged, Request, Response, Startup, ViewChanged, ViewNode, event,
     request, response, view_node,
 };
-use muster_herdr::bridge_report::{self, Exiting};
+use muster_core::bridge_link::Report;
+use muster_core::respawn::{Ended, Ending};
+use muster_harness::{Daemon, until};
 use prost::Message;
 
 /// Short enough that the gate does not wait out the shipped five seconds. The same number
@@ -37,26 +38,25 @@ const DEADLINE_MS: u64 = 300;
 /// error came one deadline after it.
 const SETTLE: Duration = Duration::from_millis(900);
 
-/// herdr's words to a client whose pane was closed under it, recorded in
-/// `corpus/herdr-0.8.0/closing-reasons/closed.jsonl`.
-const CLOSED_UNDER_IT: &str = "terminal attach ended: terminal term_65b513b45873d1 not found";
+/// What a bridge reports when the daemon detaches its stream because the pane closed.
+const CLOSED_UNDER_IT: &str = "the pane closed";
 
 #[test]
 fn a_bridge_whose_terminal_no_longer_exists_is_not_replaced_or_blamed_on_the_network() {
     let _turn = muster::testing::fresh_session();
     shorten_the_deadline();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let log = daemon.root().join("run.jsonl");
     let pane = open_a_window(&daemon, &log);
     let socket = socket_of(&pane).expect("just waited for the pane's socket");
 
     let mut bridge = UnixStream::connect(&socket).expect("the core is listening on the socket");
-    let said = Exiting {
-        ending: bridge_report::ending(Some(CLOSED_UNDER_IT)),
+    let said = Report::Exiting(Ended {
+        ending: Ending::Gone,
         reason: Some(CLOSED_UNDER_IT.to_string()),
         rendered: true,
-    };
-    bridge.write_all(&said.wire_format()).expect("the core reads what a bridge says");
+    });
+    bridge.write_all(said.line().as_bytes()).expect("the core reads what a bridge says");
     drop(bridge);
 
     // Waited for rather than assumed, so a negative below is about what the window decided
@@ -139,7 +139,7 @@ fn pane_in_view(pane: &str) -> Option<(String, String, u32)> {
 fn leaves(node: &ViewNode) -> Vec<(String, String, u32)> {
     match &node.node {
         Some(view_node::Node::Pane(pane)) => {
-            vec![(pane.pane_id.clone(), pane.control_socket_path.clone(), pane.bridge_restarts)]
+            vec![(pane.pane_id.clone(), pane.link_socket_path.clone(), pane.bridge_restarts)]
         }
         Some(view_node::Node::Split(split)) => {
             split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()

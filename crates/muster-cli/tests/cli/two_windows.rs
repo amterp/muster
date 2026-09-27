@@ -229,7 +229,7 @@ fn answering(home: &Path, pid: u32, name: &str, others: Vec<OtherWindow>) {
 /// Under `/tmp` rather than under the platform's temporary directory, and named as briefly as
 /// this reads: a unix socket path has about a hundred bytes to spend, and macOS hands out
 /// `/var/folders/<two>/<long>/T/` which spends most of them before a name is written. The same
-/// reason `herdr-harness` picks its own root.
+/// reason `muster-harness` picks its own root.
 struct Scratch {
     root: PathBuf,
 }

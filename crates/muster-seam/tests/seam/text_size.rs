@@ -12,11 +12,11 @@
 
 use std::sync::Mutex;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     AdjustFontSize, Event, OpenWindow, Request, Response, SplitPane, Startup, ViewChanged,
     ViewNode, event, request, response, view_node,
 };
+use muster_harness::{Daemon, until};
 use prost::Message;
 
 #[test]
@@ -27,7 +27,7 @@ fn a_chord_sizes_one_pane_and_a_split_inherits_it() {
     // log, so it is switched off rather than waited out.
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
 
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     muster::ffi::muster_set_event_callback(Some(note_view));

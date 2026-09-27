@@ -8,11 +8,11 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     AdjustFontSize, Event, FocusPane, OpenWindow, Request, Response, Startup, ViewChanged, event,
     request, response,
 };
+use muster_harness::{Daemon, until};
 use prost::Message;
 
 #[test]
@@ -23,7 +23,7 @@ fn a_republish_that_changes_nothing_sends_the_shell_nothing() {
     // below was caused by this test.
     muster::testing::set_typeable_deadline(Duration::ZERO);
 
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let state = daemon.muster_config().with_file_name("window.toml");
 
     muster::ffi::muster_set_event_callback(Some(note));

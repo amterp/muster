@@ -9,56 +9,35 @@
 //! saved window records which tab each region was showing, so a launch that named tabs afresh
 //! would fail every region's check and open the window as a first launch, every launch.
 //!
-//! Driven from the file rather than by restarting the app, because the file is the whole
-//! mechanism: written on publish, read before any daemon is attached. This writes one by hand
-//! naming a pane and a tab the daemon already holds, and asserts the window comes up calling them
-//! that - then that the next publish writes the file back with both names in it.
-//!
-//! One test here so far, and no longer because a second could not be had: the seam's session
-//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
-//! which is what the first line of each one is asking for.
+//! The daemon keeps both: it knows a pane and a tab by the name the Muster that made them minted,
+//! and says so in every snapshot. So this makes a pane and a tab on the daemon under names in the
+//! shape a previous Muster would have minted, and asserts a window opening onto it calls them
+//! that rather than naming them again.
 
 use std::sync::Mutex;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     Event, OpenWindow, Request, Response, RosterChanged, Startup, event, request, response,
 };
+use muster_harness::requests::{create, in_new_tab, make};
+use muster_harness::{Daemon, until};
 use prost::Message;
-use serde_json::json;
 
 /// Names in the shape this Muster mints, so the test is about remembering rather than about
-/// what the registry would accept.
+/// what the window would accept.
 const REMEMBERED: &str = "p1w3r07bsd";
 const REMEMBERED_TAB: &str = "t1w3r07bsd";
 
 #[test]
 fn a_pane_and_a_tab_keep_the_names_they_had_before_this_launch() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
-    daemon
-        .call("workspace.create", &json!({ "cwd": "/tmp", "label": "remembered", "focus": true }));
-    let pane = only_pane(&daemon);
-    let tab = only_tab(&daemon);
-
-    // The file a previous Muster would have left behind, naming a pane and a tab this daemon still
-    // holds. Written before startup because that is when it is read, and it is read then because
-    // the first snapshot mints a name for everything it describes.
-    let names_path = daemon.root().join("panes.toml");
-    std::fs::write(
-        &names_path,
-        format!(
-            "version = 1\n\n\
-             [[pane]]\nname = \"{REMEMBERED}\"\ndaemon = \"local\"\nbackend = \"{pane}\"\n\n\
-             [[tab]]\nname = \"{REMEMBERED_TAB}\"\ndaemon = \"local\"\nbackend = \"{tab}\"\n"
-        ),
-    )
-    .expect("the harness root is writable");
+    let daemon = Daemon::start_built();
+    // What a previous Muster left behind: a pane and a tab it named, still running.
+    make(&mut daemon.connect(), create(REMEMBERED, in_new_tab(REMEMBERED_TAB)));
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
-        pane_names_path: names_path.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -67,47 +46,18 @@ fn a_pane_and_a_tab_keep_the_names_they_had_before_this_launch() {
     assert_eq!(
         listed(),
         vec![REMEMBERED.to_string()],
-        "the window named this pane afresh instead of keeping what the file said.\n  Impact: a \
-         program running in it since before this launch holds a name that resolves to nothing, \
-         so every command from inside it is refused.\n  Check that set_pane_names_path runs \
-         before the config is applied - reading it afterwards is too late, because attaching \
-         mints a name for every pane a snapshot describes."
+        "the window named this pane afresh instead of keeping the name the daemon holds it \
+         by.\n  Impact: a program running in it since before this launch holds a name that \
+         resolves to nothing, so every command from inside it is refused."
     );
 
     assert_eq!(
         tabs_listed(),
         vec![REMEMBERED_TAB.to_string()],
-        "the window named this tab afresh instead of keeping what the file said.\n  Impact: the \
-         saved arrangement names the tab each region was showing, so none of them resolve and the \
-         window opens as a first launch - every launch, not just this one.\n  Check that the tab \
-         registry is read back in set_pane_names_path beside the pane one."
+        "the window named this tab afresh instead of keeping the name the daemon holds it \
+         by.\n  Impact: the saved arrangement names the tab each region was showing, so none of \
+         them resolve and the window opens as a first launch - every launch, not just this one."
     );
-
-    // And written back. A launch that read the file and then replaced it with names of its own
-    // would pass everything above and strand the pane at the *next* restart instead.
-    let read_back = || std::fs::read_to_string(&names_path).unwrap_or_default();
-    until(
-        "the file to be written back with both names still in it",
-        || read_back().contains(REMEMBERED) && read_back().contains(REMEMBERED_TAB),
-        || format!("the file holds: {}", read_back()),
-    );
-}
-
-fn only_tab(daemon: &Daemon) -> String {
-    let snapshot = daemon.call("session.snapshot", &json!({}));
-    let tabs =
-        snapshot["snapshot"]["tabs"].as_array().unwrap_or_else(|| panic!("no tabs in {snapshot}"));
-    assert_eq!(tabs.len(), 1, "a fresh workspace holds one tab, and held {tabs:?}");
-    tabs[0]["tab_id"].as_str().expect("a tab carries an id").to_string()
-}
-
-fn only_pane(daemon: &Daemon) -> String {
-    let snapshot = daemon.call("session.snapshot", &json!({}));
-    let panes = snapshot["snapshot"]["panes"]
-        .as_array()
-        .unwrap_or_else(|| panic!("no panes in {snapshot}"));
-    assert_eq!(panes.len(), 1, "a fresh workspace holds one pane, and held {panes:?}");
-    panes[0]["pane_id"].as_str().expect("a pane carries an id").to_string()
 }
 
 static ROSTER: Mutex<Option<RosterChanged>> = Mutex::new(None);

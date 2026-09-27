@@ -13,16 +13,19 @@
 //! teaches somebody to ignore the one that does not, so the false positive is covered beside
 //! the true one rather than somewhere else.
 
+use std::io::Write;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     Event, OpenWindow, ProblemsChanged, Request, Response, Startup, ViewChanged, ViewNode, event,
     request, response, view_node,
 };
+use muster_core::bridge_link::Report;
+use muster_daemon_proto::{self as daemon_proto, pane_request};
+use muster_harness::requests::{beside, create, expect, in_new_tab, make, pane, snapshot};
+use muster_harness::{Control, Daemon, until};
 use prost::Message;
-use serde_json::json;
 
 /// Short enough that the gate does not wait out the shipped five seconds, and long enough that
 /// it is still a deadline rather than an immediate accusation - the daemon has to answer, the
@@ -41,7 +44,7 @@ fn a_pane_whose_bridge_never_dials_is_reported() {
     let _turn = muster::testing::fresh_session();
     shorten_the_deadline();
 
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let config = daemon.muster_config();
 
     watch_events();
@@ -88,7 +91,7 @@ fn a_pane_whose_bridge_never_dials_is_reported() {
          being found by typing is the silence this exists to end: {problem:?}"
     );
     assert!(
-        problem.detail.contains(&pane) && problem.detail.contains("channel.accept.failed"),
+        problem.detail.contains(&pane) && problem.detail.contains("link.accept.failed"),
         "the sentence has to name the pane and where to look for the cause: {problem:?}"
     );
 }
@@ -100,12 +103,12 @@ fn a_pane_whose_bridge_never_dials_is_reported() {
 /// on every launch onto a zoomed tab and as a notification each. The panes were fine; nothing
 /// was drawing them.
 ///
-/// It takes both halves of the fix to hold, which is why the test is worth its daemon. Binding
-/// a socket only for the pane a region draws is not enough on its own: herdr's bootstrap replay
-/// walks the tab through the arrangements it had, one of them from before the zoom, so the
-/// covered panes are briefly drawn and legitimately given sockets that then outlive the
-/// drawing. What settles it is that the watch counts a wait only while the window is showing
-/// the pane.
+/// It took two halves of a fix to hold: binding a socket only for the pane a region draws, and
+/// counting a wait only while the window is showing the pane. The second was needed because
+/// herdr replayed a tab through the arrangements it had, one of them from before the zoom, so
+/// the covered panes were briefly drawn and legitimately given sockets that then outlived the
+/// drawing. muster-daemon's snapshot describes a tab only as it is now, and neither half has
+/// been taken out.
 ///
 /// Unzooming is the other direction, and the reason the narrowing is safe rather than merely
 /// quiet: the revealed panes have to get their sockets before the shell is handed a view naming
@@ -115,18 +118,18 @@ fn a_zoomed_tab_does_not_accuse_the_panes_it_covers() {
     let _turn = muster::testing::fresh_session();
     shorten_the_deadline();
 
-    let daemon = Daemon::start();
-    // Four panes in one tab with one filling it, arranged through herdr's own API before
-    // Muster has heard of any of it. That is a window reopening onto the tab somebody left
-    // zoomed, which is the only way to reach this: a tab zoomed while Muster watches keeps
+    let daemon = Daemon::start_built();
+    // Four panes in one tab with one filling it, arranged through the daemon's own protocol
+    // before Muster has heard of any of it. That is a window reopening onto the tab somebody
+    // left zoomed, which is the only way to reach this: a tab zoomed while Muster watches keeps
     // the sockets it already bound.
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "zoomed", "focus": true }));
-    let first = the_only_pane(&daemon);
-    for _ in 0..3 {
-        daemon.call("pane.split", &json!({ "target_pane_id": first, "direction": "down" }));
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    for covered in ["p2", "p3", "p4"] {
+        make(&mut control, create(covered, beside("p1", daemon_proto::Side::Down)));
     }
-    daemon.call("pane.zoom", &json!({ "pane_id": first, "mode": "on" }));
-    let held = daemon_panes(&daemon);
+    zoom(&mut control, "p1", true);
+    let held = daemon_panes(&mut control);
     assert_eq!(
         held.len(),
         4,
@@ -148,7 +151,7 @@ fn a_zoomed_tab_does_not_accuse_the_panes_it_covers() {
     let (filling, socket) = filling().expect("just waited for one");
     assert!(
         !socket.is_empty(),
-        "the pane filling the region has no control socket, so it would paint nothing and \
+        "the pane filling the region has no link socket, so it would paint nothing and \
          swallow the keyboard"
     );
 
@@ -163,13 +166,10 @@ fn a_zoomed_tab_does_not_accuse_the_panes_it_covers() {
             )
         },
     );
-    // Proving a negative takes elapsed time, and this is the measurement behind the number
-    // (`docs/testing.md`). The covered panes get sockets of their own here, because herdr's
-    // bootstrap replay walks this tab through the arrangements it had and one of them is the
-    // tab before it was zoomed - measured at 432ms between the drawn pane's socket and the
-    // last of theirs, so their deadlines expire that much later than the problem waited for
-    // above. Three deadlines outlasts the last of them with room, and is not a guess at how
-    // long a machine takes.
+    // Proving a negative takes elapsed time (`docs/testing.md`). A socket bound for a covered
+    // pane would have been bound no earlier than the drawn pane's, whose problem has already
+    // arrived; herdr's replay once put the last of them 432ms later. Three deadlines outlasts
+    // that with room, and is not a guess at how long a machine takes.
     std::thread::sleep(SETTLE);
     let problems = latest_problems();
     assert_eq!(
@@ -186,7 +186,7 @@ fn a_zoomed_tab_does_not_accuse_the_panes_it_covers() {
         "the one problem names a pane other than the one on screen: {problems:?}"
     );
 
-    daemon.call("pane.zoom", &json!({ "pane_id": first, "mode": "off" }));
+    zoom(&mut control, "p1", false);
     until(
         "the window to paint every pane the tab holds, each with a socket to dial",
         || {
@@ -195,7 +195,7 @@ fn a_zoomed_tab_does_not_accuse_the_panes_it_covers() {
         },
         || {
             format!(
-                "unzooming left {:?}, and a pane published without a control socket is one the \
+                "unzooming left {:?}, and a pane published without a link socket is one the \
                  shell must not start a bridge for - so it paints nothing while the pane beside \
                  it takes the keyboard",
                 painted_panes()
@@ -228,7 +228,7 @@ fn a_problem_and_its_clearing_are_in_the_run_log_with_why() {
     let _turn = muster::testing::fresh_session();
     shorten_the_deadline();
 
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     let log = daemon.root().join("run.jsonl");
     watch_events();
     assert_ok(&answer(request::Payload::Startup(Startup {
@@ -250,8 +250,13 @@ fn a_problem_and_its_clearing_are_in_the_run_log_with_why() {
         || format!("nothing was reported {DEADLINE_MS}ms after a socket was bound for {pane}"),
     );
 
-    let _bridge = std::os::unix::net::UnixStream::connect(&socket)
+    // Dialing and saying it attached is what a bridge does once the daemon has accepted its
+    // stream, and the attach is what makes a pane typeable.
+    let mut bridge = std::os::unix::net::UnixStream::connect(&socket)
         .expect("the core is listening on the pane's socket");
+    bridge
+        .write_all(Report::Attached.line().as_bytes())
+        .expect("the core reads what a bridge says");
     until(
         "a bridge dialing in to take the problem back",
         || latest_problems().is_empty(),
@@ -292,26 +297,19 @@ fn shorten_the_deadline() {
     muster::testing::set_typeable_deadline(Duration::from_millis(DEADLINE_MS));
 }
 
-/// The pane a new workspace comes with, read back rather than spelled.
-///
-/// Pane ids are the daemon's to hand out, and a test naming one would be asserting herdr's
-/// numbering rather than Muster's behavior.
-fn the_only_pane(daemon: &Daemon) -> String {
-    let held = daemon_panes(daemon);
-    match held.as_slice() {
-        [only] => only.clone(),
-        _ => panic!("a new workspace should hold exactly one pane, and this one holds {held:?}"),
-    }
+fn zoom(control: &mut Control, pane_name: &str, zoomed: bool) {
+    expect(
+        control,
+        pane(pane_request::Request::Zoom(pane_request::Zoom {
+            pane: pane_name.to_string(),
+            zoomed,
+        })),
+        daemon_proto::Outcome::Done,
+    );
 }
 
-fn daemon_panes(daemon: &Daemon) -> Vec<String> {
-    let snapshot = daemon.call("session.snapshot", &json!({}));
-    snapshot["snapshot"]["panes"]
-        .as_array()
-        .map(|panes| {
-            panes.iter().filter_map(|pane| pane["pane_id"].as_str().map(str::to_string)).collect()
-        })
-        .unwrap_or_default()
+fn daemon_panes(control: &mut Control) -> Vec<String> {
+    snapshot(control).panes.into_iter().map(|pane| pane.pane).collect()
 }
 
 /// The one pane a zoomed region is showing, and the socket a bridge for it would dial.
@@ -324,7 +322,7 @@ fn filling() -> Option<(String, String)> {
         return None;
     }
     match region.root?.node? {
-        view_node::Node::Pane(pane) => Some((pane.pane_id, pane.control_socket_path)),
+        view_node::Node::Pane(pane) => Some((pane.pane_id, pane.link_socket_path)),
         view_node::Node::Split(_) => None,
     }
 }
@@ -347,7 +345,7 @@ fn painted_panes() -> Vec<(String, String)> {
 fn leaves(node: &ViewNode) -> Vec<(String, String)> {
     match &node.node {
         Some(view_node::Node::Pane(pane)) => {
-            vec![(pane.pane_id.clone(), pane.control_socket_path.clone())]
+            vec![(pane.pane_id.clone(), pane.link_socket_path.clone())]
         }
         Some(view_node::Node::Split(split)) => {
             split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()

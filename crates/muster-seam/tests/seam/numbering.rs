@@ -19,19 +19,20 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use herdr_harness::{Daemon, until};
 use muster::proto::{
     EndNumberedChord, Event, FocusPaneAt, OpenWindow, ReadTabHolders, ReloadConfig, Request,
     Response, RosterChanged, Startup, ViewChanged, WindowFocus, event, request, response,
     roster_changed::Counting,
 };
+use muster_daemon_proto::{Placement, Side};
+use muster_harness::requests::{beside, create, in_new_tab, make};
+use muster_harness::{Daemon, until};
 use prost::Message;
-use serde_json::{Value, json};
 
 #[test]
 fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
     let _turn = a_fresh_window();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     a_session_of_two_tabs(&daemon);
 
     // Registered before startup, because startup begins following the configured daemons and a
@@ -103,7 +104,7 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
 #[test]
 fn one_tab_under_the_prototype_numbers_panes_and_arms_nothing() {
     let _turn = a_fresh_window();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     a_session_of_one_tab_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
@@ -147,7 +148,7 @@ fn one_tab_under_the_prototype_numbers_panes_and_arms_nothing() {
 #[test]
 fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
     let _turn = a_fresh_window();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
@@ -211,7 +212,7 @@ fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
 #[test]
 fn anything_between_the_two_presses_takes_the_first_one_back() {
     let _turn = a_fresh_window();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
@@ -259,7 +260,7 @@ fn anything_between_the_two_presses_takes_the_first_one_back() {
 #[test]
 fn letting_go_of_the_modifier_takes_the_first_press_back() {
     let _turn = a_fresh_window();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
@@ -313,7 +314,7 @@ fn letting_go_of_the_modifier_takes_the_first_press_back() {
 #[test]
 fn hearing_who_holds_which_tab_leaves_a_chord_armed() {
     let _turn = a_fresh_window();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
@@ -349,7 +350,7 @@ fn hearing_who_holds_which_tab_leaves_a_chord_armed() {
 #[test]
 fn ending_a_chord_nobody_started_says_nothing() {
     let _turn = a_fresh_window();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
@@ -387,7 +388,7 @@ fn ending_a_chord_nobody_started_says_nothing() {
 #[test]
 fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
     let _turn = a_fresh_window();
-    let daemon = Daemon::start();
+    let daemon = Daemon::start_built();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
@@ -411,10 +412,10 @@ fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
     assert_ok(&answer(request::Payload::ReloadConfig(ReloadConfig {})));
 
     // Asserted the moment the reload returns rather than waited for, and that is the test.
-    // A reload asks the daemon to re-read its own config, so it says something shortly
-    // afterwards and the roster is republished anyway - which means a version of this that
-    // waited would pass whether or not the reload announced anything, and would be pinning the
-    // daemon's timing rather than Muster's guarantee.
+    // A reload sends the daemons their settings again, and anything they say back republishes
+    // the roster anyway - so a version of this that waited could pass whether or not the reload
+    // announced anything, and would be pinning the daemon's timing rather than Muster's
+    // guarantee.
     assert_eq!(
         chords(),
         vec![vec![1], vec![2], vec![3]],
@@ -439,24 +440,9 @@ fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
 /// first tab, and the second pane of the second tab is the window's third. A test on a session
 /// of one pane per tab would pass whichever scheme was in force.
 fn a_session_of_two_tabs_the_second_holding_two(daemon: &Daemon) {
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "numbering", "focus": true }));
-    let first = only_pane(daemon);
-    daemon.call("tab.create", &json!({ "focus": false }));
-    let inner_first = panes(daemon)
-        .into_iter()
-        .find(|pane| pane != &first)
-        .expect("the new tab brings a pane of its own");
-    daemon.call("pane.split", &json!({ "target_pane_id": inner_first, "direction": "right" }));
-    let inner_second = panes(daemon)
-        .into_iter()
-        .find(|pane| pane != &first && pane != &inner_first)
-        .expect("splitting makes a second pane in that tab");
-
-    for (pane, given) in
-        [(&first, VISIBLE), (&inner_first, INNER_FIRST), (&inner_second, INNER_SECOND)]
-    {
-        daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
-    }
+    labelled(daemon, "p1", in_new_tab("t1"), VISIBLE);
+    labelled(daemon, "p2", in_new_tab("t2"), INNER_FIRST);
+    labelled(daemon, "p3", beside("p2", Side::Right), INNER_SECOND);
 }
 
 /// One tab holding two panes, which is the window a person opens Muster to.
@@ -464,17 +450,8 @@ fn a_session_of_two_tabs_the_second_holding_two(daemon: &Daemon) {
 /// Named with the same two words the second tab's panes carry above, because they are the same
 /// two rows to every assertion here: the second pane of the tab the keyboard is in.
 fn a_session_of_one_tab_holding_two(daemon: &Daemon) {
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "numbering", "focus": true }));
-    let first = only_pane(daemon);
-    daemon.call("pane.split", &json!({ "target_pane_id": first, "direction": "right" }));
-    let second = panes(daemon)
-        .into_iter()
-        .find(|pane| pane != &first)
-        .expect("splitting makes a second pane in that tab");
-
-    for (pane, given) in [(&first, INNER_FIRST), (&second, INNER_SECOND)] {
-        daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
-    }
+    labelled(daemon, "p1", in_new_tab("t1"), INNER_FIRST);
+    labelled(daemon, "p2", beside("p1", Side::Right), INNER_SECOND);
 }
 
 /// What the second tab's two panes are called, so the assertions read as the arrangement.
@@ -518,22 +495,18 @@ fn armed_tabs() -> Vec<u32> {
 }
 
 /// Two tabs on one daemon, one pane each, so that the second pane is in a tab nothing shows.
-///
-/// Returns the pane in the tab a region will land on, then the pane behind it.
 fn a_session_of_two_tabs(daemon: &Daemon) {
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "numbering", "focus": true }));
-    let first = only_pane(daemon);
-    daemon.call("tab.create", &json!({ "focus": false }));
-    let second = panes(daemon)
-        .into_iter()
-        .find(|pane| pane != &first)
-        .expect("the new tab brings a pane of its own");
-
     // Named, because this test is about which row carries which number rather than about the
-    // names Muster mints. Before startup, since herdr announces a rename to nobody.
-    for (pane, given) in [(&first, VISIBLE), (&second, HIDDEN)] {
-        daemon.call("pane.rename", &json!({ "pane_id": pane, "label": given }));
-    }
+    // names Muster mints.
+    labelled(daemon, "p1", in_new_tab("t1"), VISIBLE);
+    labelled(daemon, "p2", in_new_tab("t2"), HIDDEN);
+}
+
+/// Makes a pane on the daemon, before any window opens, under a name somebody gave it.
+fn labelled(daemon: &Daemon, pane: &str, placement: Placement, given: &str) {
+    let mut request = create(pane, placement);
+    request.label = Some(given.to_string());
+    make(&mut daemon.connect(), request);
 }
 
 /// What the two panes are called, so the assertions below read as the arrangement they are about.
@@ -547,25 +520,6 @@ fn named(given: &str) -> String {
         .flat_map(|roster| rows(&roster))
         .find_map(|(_, name, pane)| (name == given).then_some(pane))
         .unwrap_or_else(|| panic!("the roster lists no pane called {given}"))
-}
-
-fn only_pane(daemon: &Daemon) -> String {
-    let panes = panes(daemon);
-    assert_eq!(panes.len(), 1, "a fresh workspace holds one pane, and held {panes:?}");
-    panes.into_iter().next().expect("just counted one")
-}
-
-fn panes(daemon: &Daemon) -> Vec<String> {
-    let snapshot = daemon.call("session.snapshot", &json!({}));
-    snapshot
-        .get("snapshot")
-        .and_then(|snapshot| snapshot.get("panes"))
-        .and_then(Value::as_array)
-        .unwrap_or_else(|| panic!("no panes in {snapshot}"))
-        .iter()
-        .filter_map(|pane| pane.get("pane_id").and_then(Value::as_str))
-        .map(str::to_string)
-        .collect()
 }
 
 /// Every pane's place and given name, in the order the roster lists them.

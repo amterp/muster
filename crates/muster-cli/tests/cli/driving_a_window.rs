@@ -14,16 +14,17 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use herdr_harness::{Daemon, until, until_file, until_some};
 use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
+use muster_harness::{Daemon, until, until_file, until_some};
 use prost::Message;
 use serde_json::{Value, json};
 
 #[test]
 fn a_pane_can_drive_the_window_it_is_drawn_in() {
     let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "driven", "focus": true }));
+    // An empty daemon: a window opening onto nothing asks its daemon for a first tab, and that
+    // tab's pane is the one this test stands in.
+    let daemon = Daemon::start_built();
 
     // Inside the daemon's own scratch directory, so the run leaves nothing behind and two runs of
     // this test in parallel cannot collide on one path.
@@ -48,8 +49,8 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     });
     assert!(
         first.starts_with('p'),
-        "the CLI is answered with Muster's own name for a pane, never the daemon's - a herdr id is \
-         not unique across machines and is not addressable. Got {first:?}"
+        "the CLI is answered with Muster's own name for a pane, which is unique across every \
+         machine the window shows and is what every other command addresses. Got {first:?}"
     );
 
     // The gesture the cards are about: an agent in a pane makes another pane below itself, names
@@ -150,12 +151,6 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     with_no_window_to_ask_nothing_is_guessed(daemon.root());
 }
 
-/// Every machine the window is attached to, and enough about it to end one on purpose.
-///
-/// The census `a_28YghIUw2` asked for. herdr answers no question that gets from a process to
-/// the work inside it, so pairing the two is Muster's to keep - and without it, twenty daemons
-/// on a machine are twenty identical rows and the one holding somebody's live agent is picked
-/// by age, which picks wrong.
 /// A send whose text never went through a shell's quoting (kan a_2M9T8iOgk).
 ///
 /// Each line carries a single quote, which is exactly what could not be passed through two
@@ -184,6 +179,12 @@ fn text_can_come_from_a_file_or_stdin(root: &Path, pane: &str, environment: &[(&
     until_file(&piped, "text sent on stdin to have run in the pane");
 }
 
+/// Every machine the window is attached to, and enough about it to end one on purpose.
+///
+/// The census `a_28YghIUw2` asked for. A daemon's process says nothing about the work inside
+/// it, so pairing the two is Muster's to keep - and without it, twenty daemons on a machine are
+/// twenty identical rows and the one holding somebody's live agent is picked by age, which picks
+/// wrong.
 fn the_machines_are_named_well_enough_to_end_one(environment: &[(&str, String)]) {
     let window = json_from(&run(&["window", "--json"], environment));
     let machines = window["daemons"].as_array().expect("a window names its machines");
@@ -191,7 +192,7 @@ fn the_machines_are_named_well_enough_to_end_one(environment: &[(&str, String)])
     let machine = &machines[0];
 
     // The socket, because it is the one thing that names *this* daemon and not the one beside
-    // it - `HERDR_SOCKET_PATH=<socket> herdr server stop` is the by-hand way out.
+    // it, and so the one thing a by-hand stop can be pointed at.
     assert!(
         machine["socket"].as_str().is_some_and(|socket| socket.contains(".sock")),
         "a machine with no socket cannot be ended deliberately: {machine}"
@@ -217,8 +218,7 @@ fn the_machines_are_named_well_enough_to_end_one(environment: &[(&str, String)])
 /// The daemon is not on the command line - a tab name is unique across machines, so the window
 /// finds which one holds it. That is what makes this the case worth having: the lookup either finds
 /// the tab or finds nothing, and "nothing" used to be unreachable because a request with no daemon
-/// was refused before the tab was ever looked for. herdr acts on whatever it has focused when it
-/// does not recognize a `tab_id`, so a name passed through would move somebody else's tab.
+/// was refused before the tab was ever looked for.
 fn a_tab_nobody_holds_is_refused_by_name(environment: &[(&str, String)]) {
     let refused = run(&["tab", "focus", "t000000000"], environment);
     assert_eq!(
@@ -249,8 +249,8 @@ fn a_tab_is_addressable_by_name(window: &Value, environment: &[(&str, String)]) 
     let tab = window["tabs"][0]["tab"].as_str().unwrap_or_default().to_string();
     assert!(
         tab.starts_with('t'),
-        "the CLI is answered with Muster's own name for a tab, never the daemon's - a herdr tab id \
-         is not unique across machines and is not addressable. Got {tab:?} from {window}"
+        "the CLI is answered with Muster's own name for a tab, which is unique across every \
+         machine the window shows and is what `muster tab` addresses. Got {tab:?} from {window}"
     );
     assert_eq!(
         window["panes"][0]["tab"],
@@ -291,12 +291,6 @@ fn a_tab_is_addressable_by_name(window: &Value, environment: &[(&str, String)]) 
     tab
 }
 
-/// What a pane has printed, which nothing else in this surface answers.
-///
-/// Read after `pane send`, so there is something on the pane to find. The check is that the text
-/// the pane was told to print comes back - not that the answer is byte-for-byte a terminal grid,
-/// which it is not: a row wraps at the pane's width and the shell echoes the command as well as
-/// running it, and pinning either would be pinning herdr's rendering rather than this surface.
 /// Every pane says since when its agent has been in its state, as a time `now` can be taken from.
 ///
 /// Seconds rather than milliseconds, like `started` in `muster daemons`, so `now - .since` in jq
@@ -322,6 +316,13 @@ fn every_pane_says_since_when(environment: &[(&str, String)]) {
     }
 }
 
+/// What a pane has printed, which nothing else in this surface answers.
+///
+/// Read after `pane send`, so there is something on the pane to find. The check is that the text
+/// the pane was told to print comes back - not that the answer is byte-for-byte a terminal grid,
+/// which it is not: a row wraps at the pane's width and the shell echoes the command as well as
+/// running it, and pinning either would be pinning the daemon's rendering rather than this
+/// surface.
 fn a_pane_can_be_read_back(pane: &str, environment: &[(&str, String)]) {
     let read = until_some("the pane to have printed what it was told to", || {
         let read = run(&["pane", "read", "--pane", pane], environment);
@@ -488,11 +489,10 @@ fn the_arrangement_is_readable(first: &str, made: &str, environment: &[(&str, St
 /// it happened. Both halves have to be here, because either alone is what the card already had -
 /// numbers nothing acts on, or a command nothing can check.
 ///
-/// Sizes are compared with room around them rather than exactly. A backend divides its own
-/// rectangle in whole cells and the tree here is rebuilt from those rectangles, so an even split
-/// of an odd number of rows lands a cell either side of half however right the arithmetic is
-/// (`observations/herdr-0.8.0.md` section 13). The tolerance is well under the difference the
-/// resize makes, so a divider that did not move still fails.
+/// Sizes are compared with room around them rather than exactly: the shares themselves are the
+/// core's arithmetic, pinned by `muster-core/tests/equalize.rs`, and what this proves is that the
+/// divider moved and came back. The tolerance is well under the difference the resize makes, so
+/// a divider that did not move still fails.
 fn an_uneven_tab_is_evened_out(first: &str, made: &str, environment: &[(&str, String)]) {
     let height = |pane: &str, window: &Value| -> f64 {
         window["panes"]
