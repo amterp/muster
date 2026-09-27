@@ -1296,9 +1296,17 @@ impl Session {
         if facts_changed { Reply::done() } else { Reply::already() }
     }
 
+    /// Clears the finish nobody had seen on each named pane there is. A pane named that is not
+    /// there, as one a window showed can close while it asks, is said in the answer and does not
+    /// stop the others being seen; only a request naming no pane there is refused.
     fn seen(&mut self, panes: &[String]) -> Reply {
-        if let Some(missing) = panes.iter().find(|pane| self.pane_index(pane).is_none()) {
-            return Reply::not_there(format!("no pane {missing} on this daemon"));
+        let missing: Vec<&str> = panes
+            .iter()
+            .filter(|pane| self.pane_index(pane).is_none())
+            .map(String::as_str)
+            .collect();
+        if !panes.is_empty() && missing.len() == panes.len() {
+            return Reply::not_there(format!("no pane {} on this daemon", missing.join(", ")));
         }
         let mut cleared = Vec::new();
         for pane in &mut self.panes {
@@ -1307,13 +1315,14 @@ impl Session {
                 cleared.push(pane.record.clone());
             }
         }
-        if cleared.is_empty() {
-            return Reply::already();
+        let mut reply = if cleared.is_empty() { Reply::already() } else { Reply::done() };
+        if !missing.is_empty() {
+            reply.reason = format!("no pane {} on this daemon", missing.join(", "));
         }
         for record in cleared {
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
-        Reply::done()
+        reply
     }
 
     fn close_pane(&mut self, pane: &str) -> Reply {

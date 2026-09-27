@@ -213,8 +213,9 @@ message PaneRequest {
 
   // Somebody has seen these panes: a window with the keyboard shows them. Clears each one's
   // `finished_unseen`. Sent when a focused window comes to show a pane, and for every pane it
-  // shows when it gains the keyboard. ALREADY_SO when none had anything unseen; a pane not on
-  // this daemon is refused before any is cleared.
+  // shows when it gains the keyboard. ALREADY_SO when none had anything unseen. A pane not on
+  // this daemon, as one that closed while this was sent, is named in the answer's reason and
+  // does not stop the others being seen; NOT_THERE only when none of them is here.
   message Seen {
     repeated string panes = 1;
   }
@@ -663,9 +664,10 @@ message Pane {
   // false to leave them to the surface's selection. Absent while it has said nothing, when the
   // surface's own setting decides, as Ghostty's mouse-shift-capture does.
   optional bool shift_capture = 9;
-  // The pane's agent finished something nobody has seen: it stopped working or waiting on you,
-  // by going idle or by ending, while no window with the keyboard showed the pane. Cleared by
-  // `PaneRequest.Seen`, or when the agent works or waits on you again. A view shows it as done.
+  // The pane's agent finished something: it stopped working or waiting on you, by going idle or
+  // by ending. Set whoever was looking, since the daemon cannot see a window; a window that
+  // shows the pane with the keyboard clears it with `PaneRequest.Seen`, and so does the agent
+  // working or waiting on you again. A view shows it as done.
   // Kept for as long as the daemon runs and across a handoff, and never written to the state
   // file: a restored pane has no agent to have finished anything.
   bool finished_unseen = 10;

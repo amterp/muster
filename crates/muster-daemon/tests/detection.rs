@@ -411,7 +411,8 @@ fn a_finish_nobody_has_seen_is_kept_until_somebody_sees_it() {
     seen(&mut control, &["p1"], proto::Outcome::Done);
     assert!(!finished_unseen(&mut control, "p1"));
     seen(&mut control, &["p1"], proto::Outcome::AlreadySo);
-    seen(&mut control, &["p1", "p9"], proto::Outcome::NotThere);
+    seen(&mut control, &["p1", "p9"], proto::Outcome::AlreadySo);
+    seen(&mut control, &["p9"], proto::Outcome::NotThere);
 
     settle(&mut control, &mut input, "blocked", proto::AgentState::Blocked);
     settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
@@ -422,6 +423,10 @@ fn a_finish_nobody_has_seen_is_kept_until_somebody_sees_it() {
     type_line(&mut input, "p1", "quit");
     until_detected(&mut control, "p1", None, proto::AgentState::Unknown);
     assert!(finished_unseen(&mut control, "p1"), "it ended while working");
+
+    // A window showing a pane that closed as it asked still has the others seen.
+    seen(&mut control, &["p1", "p9"], proto::Outcome::Done);
+    assert!(!finished_unseen(&mut control, "p1"), "seen alongside a pane that is gone");
 }
 
 /// What nobody has seen yet is still unseen after a handoff, since the pane's record goes over
