@@ -177,11 +177,11 @@ impl Saved {
 /// disk and the format this reads never differ silently, which is the property a version is for.
 ///
 /// **5 because the tabs it names moved to another daemon.** Versions 3 and 4 were written by a
-/// Muster running its panes on herdr, and name tabs herdr held. muster-daemon holds none of
-/// them - herdr's sessions are not carried across - so such a file parses and every region
-/// fails its check, which is the silent loss version 2 existed to prevent. Refused by version,
-/// the log says what was lost: which tabs the window held and in what order, and any tab
-/// grouped across machines.
+/// Muster running its panes on herdr, and name tabs and panes herdr held. muster-daemon holds
+/// none of them - herdr's sessions are not carried across - so read as they stand every region
+/// would fail its check, which is the silent loss version 2 existed to prevent. Such a file is
+/// read for what no daemon has an opinion on instead (`from_herdr`), and the log says what was
+/// left behind.
 const VERSION: i64 = 5;
 
 /// The versions a Muster running on herdr wrote.
@@ -320,14 +320,7 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
 
     match root.get("version").and_then(toml::Value::as_integer) {
         Some(VERSION) => {}
-        Some(other) if ON_HERDR.contains(&other) => {
-            return Err(format!(
-                "the saved arrangement is version {other}, written by a Muster that ran its panes \
-                 on herdr, and the tabs it names are not on muster-daemon. It will open as a \
-                 first launch does. Lost with it: which tabs the window held and in what order, \
-                 and any tab grouped across machines - `muster pane move` groups them again."
-            ));
-        }
+        Some(other) if ON_HERDR.contains(&other) => return Ok(from_herdr(&root, other)),
         Some(other) => {
             return Err(format!(
                 "the saved arrangement is version {other} and this Muster writes version \
@@ -358,11 +351,93 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
     // A tab with no region on any machine is not a tab, and a hand-edited file can say one.
     tabs.retain(|tab| !tab.regions.is_empty());
 
-    // Absent means the default, which is what a file written before this key existed looks
-    // like. Worth reading that way rather than refusing the file: the version above is for a
-    // format that moved, and a key that merely arrived has not moved anything.
     let window = root.get("window").and_then(toml::Value::as_table);
-    let presentation = Presentation::default()
+    let presentation = read_presentation(window);
+
+    report_window_wide_text_size(window);
+    let font_sizes = root
+        .get("pane")
+        .and_then(toml::Value::as_array)
+        .map(|entries| entries.iter().filter_map(read_pane_font_size).collect())
+        .unwrap_or_default();
+
+    Ok(Saved { daemons, tabs, showing, presentation, font_sizes })
+}
+
+/// What a file a Muster on herdr wrote still says: the window's frame and its list, and the
+/// machines it had attached whose daemon it started itself, which on muster-daemon are the
+/// same machines with Muster's new daemon on them.
+///
+/// Not the tabs, their order or a tab grouped across machines, which named what herdr held,
+/// nor a pane's text size, which named herdr's panes, nor a daemon reached by a socket the file
+/// named, which was a herdr's. The record says which of those the file had, so a machine
+/// that was attached can be named again.
+fn from_herdr(root: &toml::Table, version: i64) -> Saved {
+    let (daemons, left): (Vec<Daemon>, Vec<Daemon>) = root
+        .get("daemon")
+        .and_then(toml::Value::as_array)
+        .map(|entries| entries.iter().filter_map(read_daemon).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .partition(|daemon| {
+            matches!(
+                daemon.endpoint,
+                Endpoint::Local { socket_path: None } | Endpoint::Ssh { socket_path: None, .. }
+            )
+        });
+    let tabs = root
+        .get("region")
+        .and_then(toml::Value::as_array)
+        .map(|entries| entries.iter().filter_map(read_region).collect())
+        .map(into_tabs)
+        .unwrap_or_default();
+    log::warn(
+        "composition.restore.from_herdr",
+        fields! {
+            "version" => version,
+            "tabs_left" => tabs.len(),
+            "daemons_kept" => names(&daemons),
+            "daemons_left" => names(&left),
+            "impact" => "the window keeps its frame, its list and the machines Muster started a \
+                         daemon on, and opens its tabs as a first launch does: herdr's tabs and \
+                         panes are not on muster-daemon, so their order, their grouping across \
+                         machines and each pane's text size are gone, and so is any daemon \
+                         reached by a socket the file named",
+            "check" => "herdr's own daemons keep running until their panes end, and `muster \
+                        daemons` names them; a machine in daemons_left is attached again by \
+                        naming it in a [[daemon]] block of the config file",
+        },
+    );
+    Saved {
+        daemons,
+        tabs: Vec::new(),
+        showing: None,
+        presentation: read_presentation(root.get("window").and_then(toml::Value::as_table)),
+        font_sizes: FontSizes::default(),
+    }
+}
+
+/// How a record names daemons: by where they are, since an id means nothing to a reader.
+fn names(daemons: &[Daemon]) -> String {
+    daemons
+        .iter()
+        .map(|daemon| match &daemon.endpoint {
+            Endpoint::Local { socket_path: None } => "this machine".to_string(),
+            Endpoint::Local { socket_path: Some(path) } => path.clone(),
+            Endpoint::Ssh { host, socket_path: None, .. } => host.clone(),
+            Endpoint::Ssh { host, socket_path: Some(path), .. } => format!("{host}:{path}"),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The window's own chrome.
+///
+/// Absent means the default, which is what a file written before this key existed looks like.
+/// Worth reading that way rather than refusing the file: the version is for a format that
+/// moved, and a key that merely arrived has not moved anything.
+fn read_presentation(window: Option<&toml::Table>) -> Presentation {
+    Presentation::default()
         .with_sidebar(
             window
                 .and_then(|window| window.get("sidebar"))
@@ -375,16 +450,7 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
                 .and_then(|window| window.get("full_screen"))
                 .and_then(toml::Value::as_bool)
                 .unwrap_or(Presentation::default().full_screen),
-        );
-
-    report_window_wide_text_size(window);
-    let font_sizes = root
-        .get("pane")
-        .and_then(toml::Value::as_array)
-        .map(|entries| entries.iter().filter_map(read_pane_font_size).collect())
-        .unwrap_or_default();
-
-    Ok(Saved { daemons, tabs, showing, presentation, font_sizes })
+        )
 }
 
 /// Says so when a file remembers a text size for the whole window.

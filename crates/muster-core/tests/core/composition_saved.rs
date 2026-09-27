@@ -221,26 +221,45 @@ fn a_file_from_a_format_nobody_knows_is_refused_by_name() {
     assert!(refusal.contains("version"), "the refusal should say what is missing: {refusal}");
 }
 
-/// An arrangement a Muster on herdr wrote is refused, and says what is lost with it.
+/// An arrangement a Muster on herdr wrote keeps what no daemon has an opinion on, and nothing
+/// that named what herdr held.
 ///
-/// Its tabs were herdr's, and muster-daemon holds none of them, so read as it stands every
-/// region would fail its check and the arrangement would vanish with nothing said.
+/// Its tabs and panes were herdr's, and muster-daemon holds none of them, so read as they stand
+/// every region would fail its check. The window's frame and list are the window's own, and a
+/// machine Muster started its own daemon on is the same machine with the new daemon on it; a
+/// daemon reached by a socket the file named was a herdr, and is left out.
 #[test]
-fn an_arrangement_from_a_muster_on_herdr_is_refused_saying_what_is_lost() {
+fn an_arrangement_from_a_muster_on_herdr_keeps_its_window_and_its_machines() {
     for version in [3, 4] {
-        let refusal = from_toml(&format!(
+        let saved = from_toml(&format!(
             "version = {version}\n\
+             showing = \"t1w3r07bsd\"\n\
+             [window]\n\
+             sidebar = false\n\
+             full_screen = true\n\
+             [[daemon]]\n\
+             id = \"local\"\n\
+             [[daemon]]\n\
+             id = \"devenv\"\n\
+             ssh = \"devenv\"\n\
+             [[daemon]]\n\
+             id = \"theirs\"\n\
+             ssh = \"box\"\n\
+             socket = \"/home/them/.config/herdr/herdr.sock\"\n\
              [[region]]\n\
              daemon = \"local\"\n\
-             tab = \"t1w3r07bsd\"\n"
+             tab = \"t1w3r07bsd\"\n\
+             [[pane]]\n\
+             daemon = \"local\"\n\
+             pane = \"p1w3r07bsd\"\n\
+             font_size_offset = 2\n"
         ))
-        .expect_err("a file whose tabs no daemon holds is refused");
-        assert!(
-            refusal.contains(&format!("version {version}"))
-                && refusal.contains("herdr")
-                && refusal.contains("grouped across machines"),
-            "the refusal should say which version, why, and what is lost, and said: {refusal}"
-        );
+        .expect("a file from herdr is read for what still holds");
+        assert!(saved.tabs.is_empty() && saved.showing.is_none(), "version {version}: {saved:?}");
+        assert_eq!(saved.font_sizes, FontSizes::default(), "herdr's panes are not these");
+        assert!(!saved.presentation.sidebar && saved.presentation.full_screen);
+        let kept: Vec<&str> = saved.daemons.iter().map(|daemon| daemon.id.as_str()).collect();
+        assert_eq!(kept, ["local", "devenv"], "the daemon behind a named socket was a herdr");
     }
 }
 
