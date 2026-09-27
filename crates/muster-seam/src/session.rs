@@ -4428,7 +4428,8 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
     watch::publish(&Seen::Health(heard));
 }
 
-/// The moment the pane becomes typeable, on the thread that accepted the connection.
+/// The moment the pane becomes typeable: its bridge said `attached`, heard on the thread that
+/// reads the bridge's link.
 fn typeable(daemon: &DaemonId, pane: &PaneId) {
     let key = PaneKey::new(daemon, pane);
     // Something is painting this pane again, so the next bridge to stop is news.

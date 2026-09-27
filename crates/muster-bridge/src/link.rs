@@ -1,8 +1,8 @@
 //! What the bridge tells the window, on the socket the window bound for its pane.
 //!
-//! The window learns a bridge died from this socket closing, so it is dialled once, as soon
-//! as the pane's stream is attached, and held for the bridge's whole life
-//! (`muster_core::bridge_link`).
+//! The window learns a bridge died from this socket closing, so it is dialled once, before the
+//! pane's stream is attached so that a refused attach can still be reported, and held for the
+//! bridge's whole life (`muster_core::bridge_link`).
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;

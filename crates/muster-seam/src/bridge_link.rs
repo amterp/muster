@@ -1,11 +1,12 @@
 //! The socket a pane's bridge reports on, and the window's end of it.
 //!
-//! The bridge dials it once it has attached to its pane's stream and holds it for its whole life,
-//! so the connection ending is how the window learns a bridge died - whether it exited, was
-//! killed, or lost the machine it was running on. libghostty's `close_surface` would be the
-//! obvious signal, and two field runs showed it never arriving: a dead pane sits on libghostty's
-//! own "Process exited" screen, which is the surface held open rather than the host asked to
-//! close it (kan a_2IRcMjFs0). What travels on it is `muster_core::bridge_link`.
+//! The bridge dials it before it attaches to its pane's stream, so an attach the daemon refuses
+//! can still say why, and holds it for its whole life, so the connection ending is how the window
+//! learns a bridge died - whether it exited, was killed, or lost the machine it was running on.
+//! libghostty's `close_surface` would be the obvious signal, and two field runs showed it never
+//! arriving: a dead pane sits on libghostty's own "Process exited" screen, which is the surface
+//! held open rather than the host asked to close it (kan a_2IRcMjFs0). What travels on it is
+//! `muster_core::bridge_link`.
 
 use std::io::{BufRead, BufReader};
 use std::net::Shutdown;
