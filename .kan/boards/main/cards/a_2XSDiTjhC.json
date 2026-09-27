@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "the-daemon-s-reader",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790491706680,
+  "creator": "Alexander Terp",
+  "description": "Measured in the vertical slice: a pane draining yes | head -c 30000000 takes 16 s in muster-daemon with no bridge, against 10 s for a bare PTY read loop. macOS PTY reads return about 3 bytes each under yes, so per-read overhead (poll, read, a pane lock per chunk, detection) dominates. Profile before changing anything; the latency targets are already met, so this is throughput under floods only.",
+  "id": "a_2XSDiTjhC",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aa",
+  "title": "The daemon's reader costs 1.6x a bare PTY read on a flood",
+  "type": "enhancement",
+  "updated_at_millis": 1790491713273,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790491706680}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "sudo-in-a-pane-on-a",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790491706577,
+  "creator": "Alexander Terp",
+  "description": "A pane sets TERMINFO_DIRS to the daemon's data dir so TERM=xterm-ghostty resolves. sudo's env_reset drops TERMINFO_DIRS, and Ghostty's own sudo shell-integration feature (which carries TERMINFO through sudo) stays off. So on a host whose ncurses lacks xterm-ghostty (Debian bookworm, ncurses 6.4), sudo vim in a devenv pane cannot find the terminal. Options: a sudo feature that passes the terminfo through, installing the entry to ~/.terminfo on remote install, or accepting it. Related: a_2XQEFtV0H (ssh from a pane).",
+  "id": "a_2XSDiJdAU",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aZ",
+  "title": "sudo in a pane on a host without the xterm-ghostty terminfo",
+  "type": "bug",
+  "updated_at_millis": 1790491713231,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790491706577}
+  ]
+}

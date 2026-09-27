@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "daemon-restore-waits",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790491706896,
+  "creator": "Alexander Terp",
+  "description": "Restoring tabs after a daemon restart runs on its own thread and checks each recorded directory. A directory on a hung mount blocks that thread as long as the mount does. The state file stays untouched, which is safe, but no later tab comes back until the mount answers. Consider a per-directory timeout that falls back to home, as a gone directory already does.",
+  "id": "a_2XSDipxpt",
+  "parent": "a_2XJ1fUIyr",
+  "position": "ab",
+  "title": "Daemon restore waits forever on a hung directory",
+  "type": "enhancement",
+  "updated_at_millis": 1790491713355,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790491706896}
+  ]
+}
