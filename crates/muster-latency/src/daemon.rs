@@ -23,7 +23,7 @@ pub(crate) const GRID: proto::Grid =
 
 pub(crate) struct Daemon {
     /// Held so the daemon lives as long as the run, when this run started it.
-    _spawned: Option<muster_harness::Daemon>,
+    spawned: Option<muster_harness::Daemon>,
     socket: PathBuf,
     control: Control,
     input: Input,
@@ -47,13 +47,18 @@ impl Daemon {
         let control = Control::connect(&socket);
         let input = Input::connect(&socket);
         Daemon {
-            _spawned: spawned,
+            spawned,
             socket,
             control,
             input,
             prefix: format!("l{}", std::process::id()),
             made: 0,
         }
+    }
+
+    /// The daemon's process, when this run started it.
+    pub(crate) fn pid(&self) -> Option<u32> {
+        self.spawned.as_ref().map(muster_harness::Daemon::pid)
     }
 
     pub(crate) fn socket(&self) -> &Path {

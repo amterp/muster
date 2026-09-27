@@ -14,6 +14,7 @@ mod daemon;
 mod glyph;
 mod stats;
 mod surface;
+mod throughput;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -26,6 +27,7 @@ const USAGE: &str = "\
 usage: muster-latency (--daemon <path> | --socket <path>) --bridge <path>
                       [--samples <n>] [--panes <n>] [--flood-lines <n>]
                       [--flood-surface slow|fast] [--json]
+       muster-latency --throughput --daemon <path> [--bytes <n>] [--runs <n>]
 
 Times input-to-glyph through muster-daemon beside the bare PTY: the pane's stream read
 directly, and the real bridge (muster-bridge --daemon-socket) onto a PTY. Idle, in a
@@ -36,7 +38,10 @@ comes instead, so the flood's time is the program's, held only by the link and t
 flow control: how a remote window is judged.
 
 --daemon starts that muster-daemon for the run. --socket measures one already running,
-such as a devenv's through a forwarded socket; the bare PTY is still this machine's.";
+such as a devenv's through a forwarded socket; the bare PTY is still this machine's.
+
+--throughput times a pane with nothing attached draining `yes | head -c --bytes`
+(30000000) against a bare PTY read loop draining the same, best of --runs (3).";
 
 /// Roughly a fast typist, as in `tools/latency.py`: back-to-back keys would measure a queue
 /// draining rather than what one keystroke at a time sees.
@@ -101,6 +106,21 @@ impl Options {
     }
 }
 
+fn throughput_options(arguments: &[String]) -> Option<(PathBuf, u64, usize)> {
+    let (mut daemon, mut bytes, mut runs) = (None, 30_000_000, 3);
+    let mut read = arguments.iter();
+    while let Some(flag) = read.next() {
+        let value = read.next()?;
+        match flag.as_str() {
+            "--daemon" => daemon = Some(PathBuf::from(value)),
+            "--bytes" => bytes = value.parse().ok().filter(|&n| n > 0)?,
+            "--runs" => runs = value.parse().ok().filter(|&n| n > 0)?,
+            _ => return None,
+        }
+    }
+    Some((daemon?, bytes, runs))
+}
+
 /// One route from a keystroke to its glyph.
 enum Route<'a> {
     Plain(&'a mut Surface),
@@ -163,6 +183,14 @@ fn per(total: u64, count: usize) -> f64 {
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments.first().is_some_and(|flag| flag == "--throughput") {
+        let Some((daemon, bytes, runs)) = throughput_options(&arguments[1..]) else {
+            eprintln!("{USAGE}");
+            std::process::exit(2);
+        };
+        throughput::run(&daemon, bytes, runs);
+        return;
+    }
     let Some(options) = Options::parse(&arguments) else {
         eprintln!("{USAGE}");
         std::process::exit(2);

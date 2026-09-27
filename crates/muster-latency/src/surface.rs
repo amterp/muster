@@ -38,7 +38,7 @@ fn pty() -> (File, OwnedFd) {
 }
 
 /// Runs `command` with the replica as its terminal, and returns the master.
-fn on_pty(command: &mut Command) -> (File, Owned) {
+pub(crate) fn on_pty(command: &mut Command) -> (File, Owned) {
     let (master, replica) = pty();
     let child = command
         .stdin(Stdio::from(replica.try_clone().expect("a replica")))

@@ -7,6 +7,7 @@
 
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -22,6 +23,9 @@ pub(crate) struct Hold {
     /// Readable once the thread is asked to stop: the read end of a pipe.
     nudged: OwnedFd,
     nudge: OwnedFd,
+    /// Set after a byte is written to the pipe, so [`Hold::park`], which runs once per read of a
+    /// flooding pane, reads the pipe only when there is something to drain.
+    pending: AtomicBool,
 }
 
 #[derive(Debug, Default)]
@@ -58,6 +62,7 @@ impl Hold {
             changed: Condvar::new(),
             nudged,
             nudge,
+            pending: AtomicBool::new(false),
         })
     }
 
@@ -75,10 +80,7 @@ impl Hold {
     pub(crate) fn hold(&self, within: Duration) -> bool {
         let mut state = self.state();
         state.held = true;
-        // SAFETY: write of one byte from a live buffer. A full pipe has a nudge waiting already.
-        unsafe {
-            libc::write(self.nudge.as_raw_fd(), [0u8].as_ptr().cast(), 1);
-        }
+        self.nudge();
         let state = self
             .changed
             .wait_timeout_while(state, within, |state| !state.parked && !state.gone)
@@ -93,6 +95,9 @@ impl Hold {
         unsafe {
             libc::write(self.nudge.as_raw_fd(), [0u8].as_ptr().cast(), 1);
         }
+        // After the write: a park that saw the flag clear while the byte was already there
+        // leaves it for the poll, which wakes at once and parks again, and finds the flag set.
+        self.pending.store(true, Ordering::Release);
     }
 
     pub(crate) fn is_held(&self) -> bool {
@@ -109,9 +114,13 @@ impl Hold {
     /// until `ended` says it has been told to end some other way. `parking` runs first when it
     /// is held, before whoever held it hears that it has stopped.
     pub(crate) fn park(&self, ended: impl Fn() -> bool, parking: impl FnOnce()) {
-        let mut drained = [0u8; 64];
-        // SAFETY: reads into a live buffer of its length; the pipe is non-blocking.
-        while unsafe { libc::read(self.nudged.as_raw_fd(), drained.as_mut_ptr().cast(), 64) } > 0 {}
+        if self.pending.swap(false, Ordering::Acquire) {
+            let mut drained = [0u8; 64];
+            // SAFETY: reads into a live buffer of its length; the pipe is non-blocking.
+            while unsafe { libc::read(self.nudged.as_raw_fd(), drained.as_mut_ptr().cast(), 64) }
+                > 0
+            {}
+        }
         let mut state = self.state();
         if !state.held {
             return;
@@ -195,6 +204,26 @@ mod tests {
         stop.store(true, Ordering::Release);
         hold.hold(Duration::from_secs(5));
         thread.join().unwrap();
+    }
+
+    /// A nudge wakes the poll once: the next park drains it, so the poll sleeps again rather
+    /// than waking at once on every turn.
+    #[test]
+    fn a_nudge_wakes_the_poll_once() {
+        let hold = Hold::new(false).unwrap();
+        let readable = || {
+            let mut watched =
+                [libc::pollfd { fd: hold.polled(), events: libc::POLLIN, revents: 0 }];
+            // SAFETY: one valid pollfd.
+            unsafe { libc::poll(watched.as_mut_ptr(), 1, 0) == 1 }
+        };
+        hold.park(|| false, || {});
+        assert!(!readable());
+        hold.nudge();
+        hold.nudge();
+        assert!(readable());
+        hold.park(|| false, || {});
+        assert!(!readable(), "the park left the nudges in the pipe");
     }
 
     #[test]
