@@ -43,6 +43,7 @@ use crate::detect::Detecting;
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
 use crate::pane::{Ended, Pane, PaneIo, Watching};
+use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
 use crate::spawn;
@@ -61,6 +62,14 @@ pub(crate) struct Places {
     pub(crate) data: Data,
 }
 
+/// What a daemon starts from besides its places: what it writes its state with, and the
+/// settings the state it found held.
+#[derive(Debug)]
+pub(crate) struct Saved {
+    pub(crate) persister: Arc<Persister>,
+    pub(crate) settings: Option<proto::Settings>,
+}
+
 /// What every thread of the daemon shares.
 #[derive(Debug)]
 pub(crate) struct Shared {
@@ -76,8 +85,10 @@ impl Shared {
         stopping: Sender<()>,
         inherited: Vec<(OsString, OsString)>,
         places: Places,
+        saved: Saved,
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, data } = places;
+        let Saved { persister, settings } = saved;
         Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
@@ -95,20 +106,19 @@ impl Shared {
                     },
                 );
             }
+            persister.start(shared.clone());
             let shared = shared.clone();
             let ended: Ended = Arc::new(move |serial, status| {
                 if let Some(shared) = shared.upgrade() {
                     shared.lock().ended(serial, status);
                 }
             });
-            let settings = proto::Settings {
-                shell: Some(proto::Shell::default()),
-                ..proto::Settings::default()
-            };
+            let mut settings = settings.unwrap_or_default();
+            settings.shell.get_or_insert_default();
             let settled = Arc::new(Settled {
                 generation: 0,
                 appearance: Appearance::of(&settings),
-                scrollback: screen::DEFAULT_SCROLLBACK,
+                scrollback: scrollback(&settings),
             });
             Shared {
                 session: Mutex::new(Session {
@@ -133,6 +143,7 @@ impl Shared {
                     reports,
                     host: effects::host_name(),
                     reserved: HashSet::new(),
+                    persister,
                     stopping: false,
                 }),
                 stopping,
@@ -231,6 +242,8 @@ pub(crate) struct Session {
     /// Pane and tab names a create has claimed while its process starts, so a second create
     /// cannot claim them too.
     reserved: HashSet<String>,
+    /// Writes down what a restart needs, whenever it changes.
+    persister: Arc<Persister>,
     /// Set once the daemon has begun to stop, after which no pane starts.
     stopping: bool,
 }
@@ -345,6 +358,87 @@ impl Reading {
     }
 }
 
+/// A process started for a pane, or why it did not.
+type Started = std::io::Result<(OwnedFd, Child)>;
+
+/// A saved tab whose names are reserved, and whose panes' shells have yet to start.
+#[derive(Debug)]
+struct Restoring {
+    tab: persist::Tab,
+    panes: Vec<RestoringPane>,
+    /// Where a pane starts when its saved directory is gone.
+    home: PathBuf,
+}
+
+#[derive(Debug)]
+struct RestoringPane {
+    saved: persist::Pane,
+    argv: Vec<String>,
+    environment: Vec<(OsString, OsString)>,
+}
+
+impl Restoring {
+    /// Starts each pane's shell in its saved directory, or at home when that is gone. A shell
+    /// and never the command a pane was made with: an agent started afresh in every pane is not
+    /// what anybody asked for.
+    fn start(&self) -> Vec<(PathBuf, Started)> {
+        self.panes
+            .iter()
+            .map(|pane| {
+                let cwd = if pane.saved.cwd.is_dir() {
+                    pane.saved.cwd.clone()
+                } else {
+                    log::warn(
+                        "daemon.state.cwd_gone",
+                        fields! {
+                            "pane" => pane.saved.name,
+                            "cwd" => pane.saved.cwd.display(),
+                            "impact" => "the pane's shell starts in the home directory instead",
+                            "check" => "whether the directory was removed or its mount is gone",
+                        },
+                    );
+                    self.home.clone()
+                };
+                let launch = Launch {
+                    argv: &pane.argv,
+                    environment: &pane.environment,
+                    cwd: &cwd,
+                    grid: pane.saved.grid,
+                };
+                let started = pty::start(&launch);
+                (cwd, started)
+            })
+            .collect()
+    }
+}
+
+/// Brings back the tabs a previous run saved, one at a time, each pane's shell starting with
+/// the session unlocked. Only then may the persister write: until every saved tab is back, the
+/// session holds less than the file, and a write would lose the difference.
+pub(crate) fn restore(shared: &Shared, state: persist::State) {
+    let started = std::time::Instant::now();
+    let saved: HashMap<String, persist::Pane> =
+        state.panes.into_iter().map(|pane| (pane.name.clone(), pane)).collect();
+    let tabs = state.tabs.len();
+    for tab in state.tabs {
+        let Some(restoring) = shared.lock().prepare_restore(tab, &saved) else { continue };
+        let started = restoring.start();
+        shared.lock().restored(restoring, started);
+    }
+    let session = shared.lock();
+    log::info(
+        "daemon.state.restored",
+        fields! {
+            "tabs" => session.tabs.len(),
+            "saved_tabs" => tabs,
+            "panes" => session.panes.len(),
+            "saved_panes" => saved.len(),
+            "ms" => started.elapsed().as_millis(),
+        },
+    );
+    session.persister.arm();
+}
+
 /// A create that has been checked, with its names reserved, and whose process has yet to start.
 #[derive(Debug)]
 pub(crate) struct Starting {
@@ -443,7 +537,12 @@ impl Session {
     }
 
     /// Closes every tab, and so every pane, in the order they were opened, and starts no more.
+    /// What the daemon held before is what it leaves written down: a daemon that stops is not
+    /// one told to forget its tabs.
     pub(crate) fn close_everything(&mut self) {
+        if !self.stopping {
+            self.persister.stopping(self.persisted());
+        }
         self.stopping = true;
         while let Some(tab) = self.tabs.first() {
             let name = tab.name.clone();
@@ -471,6 +570,9 @@ impl Session {
     /// Numbers an event and queues it for every subscriber. One that cannot take it has fallen
     /// too far behind to catch up from here, so it is dropped and resubscribes.
     fn emit(&mut self, payload: Payload) {
+        if !matches!(payload, Payload::PaneEffect(_) | Payload::PasteHeld(_)) {
+            self.persister.changed();
+        }
         self.seq += 1;
         let message = proto::ControlMessage {
             message: Some(proto::control_message::Message::Event(proto::Event {
@@ -1021,20 +1123,13 @@ impl Session {
         self.settings_changed()
     }
 
-    /// The history each pane keeps, in bytes.
-    fn scrollback(&self) -> usize {
-        self.settings.scrollback_bytes.map_or(screen::DEFAULT_SCROLLBACK, |bytes| {
-            usize::try_from(bytes).unwrap_or(usize::MAX)
-        })
-    }
-
     /// Numbers what the settings now mean for a pane's terminal, and has every pane apply it
     /// once the lock is let go.
     fn resettle(&mut self) {
         self.settled = Arc::new(Settled {
             generation: self.settled.generation + 1,
             appearance: Appearance::of(&self.settings),
-            scrollback: self.scrollback(),
+            scrollback: scrollback(&self.settings),
         });
         for pane in &self.panes {
             self.deferred.push(Deferred::Settle(Arc::clone(&pane.io), Arc::clone(&self.settled)));
@@ -1132,6 +1227,155 @@ impl Session {
     }
 
     // -----------------------------------------------------------------------------------------
+    // Persistence
+
+    /// What a restart needs of the session now.
+    pub(crate) fn persisted(&self) -> persist::State {
+        persist::State {
+            version: persist::VERSION,
+            daemon: env!("CARGO_PKG_VERSION").to_string(),
+            settings: self.settings.clone(),
+            tabs: self
+                .tabs
+                .iter()
+                .map(|tab| persist::Tab {
+                    name: tab.name.clone(),
+                    label: tab.label.clone(),
+                    zoomed: tab.zoomed.clone(),
+                    root: tab.root.clone(),
+                })
+                .collect(),
+            panes: self
+                .panes
+                .iter()
+                .map(|pane| persist::Pane {
+                    name: pane.record.pane.clone(),
+                    label: pane.record.label.clone(),
+                    cwd: PathBuf::from(&pane.record.cwd),
+                    grid: pane.io.grid(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Checks a saved tab against what is here and reserves its names, for its panes' shells to
+    /// start with the session unlocked ([`Restoring::start`]) and [`Session::restored`] to
+    /// finish. A tab or pane whose name is already here - a client was quicker - is skipped.
+    fn prepare_restore(
+        &mut self,
+        tab: persist::Tab,
+        saved: &HashMap<String, persist::Pane>,
+    ) -> Option<Restoring> {
+        if self.stopping {
+            return None;
+        }
+        let taken = |session: &Session, name: &str| {
+            session.reserved.contains(name)
+                || session.pane_index(name).is_some()
+                || session.tab_index(name).is_some()
+        };
+        if taken(self, &tab.name) {
+            log::warn(
+                "daemon.state.tab_taken",
+                fields! {
+                    "tab" => tab.name,
+                    "impact" => "the saved tab is not brought back, since a client made one \
+                                 of that name first",
+                },
+            );
+            return None;
+        }
+        let mut panes = Vec::new();
+        for name in tab.root.panes() {
+            let Some(pane) = saved.get(name) else { continue };
+            if taken(self, name) {
+                log::warn(
+                    "daemon.state.pane_taken",
+                    fields! {
+                        "pane" => name,
+                        "impact" => "the saved pane is not brought back, since a client made \
+                                     one of that name first",
+                    },
+                );
+                continue;
+            }
+            let (argv, environment) = self.launch(name, None, &HashMap::new());
+            panes.push(RestoringPane { saved: pane.clone(), argv, environment });
+        }
+        self.reserved.insert(tab.name.clone());
+        for pane in &panes {
+            self.reserved.insert(pane.saved.name.clone());
+        }
+        Some(Restoring { tab, panes, home: self.home.clone() })
+    }
+
+    /// Finishes restoring a tab once its panes' shells have started, or failed to. The tab
+    /// comes back with the panes that did.
+    fn restored(&mut self, restoring: Restoring, started: Vec<(PathBuf, Started)>) {
+        let Restoring { tab, panes, .. } = restoring;
+        self.reserved.remove(&tab.name);
+        for pane in &panes {
+            self.reserved.remove(&pane.saved.name);
+        }
+        let mut back = HashSet::new();
+        for (pane, (cwd, started)) in panes.into_iter().zip(started) {
+            let program = &pane.argv[0];
+            let name = pane.saved.name;
+            let (master, child) = match started {
+                Ok(started) => started,
+                Err(error) => {
+                    Self::could_not_start(&name, program, &cwd, &error);
+                    continue;
+                }
+            };
+            if self.stopping {
+                drop(master);
+                pty::abandon(child.id().cast_signed());
+                continue;
+            }
+            let record = proto::Pane {
+                pane: name.clone(),
+                label: pane.saved.label,
+                cwd: cwd.display().to_string(),
+                ..proto::Pane::default()
+            };
+            if self.open(record, pane.saved.grid, master, child, program).is_ok() {
+                back.insert(name);
+            }
+        }
+        if self.stopping {
+            return;
+        }
+        let gone: Vec<String> = tab
+            .root
+            .panes()
+            .into_iter()
+            .filter(|pane| !back.contains(*pane))
+            .map(str::to_string)
+            .collect();
+        let mut root = Some(tab.root);
+        for pane in &gone {
+            root = root.and_then(|root| root.without(pane).0);
+        }
+        let Some(root) = root else {
+            log::warn(
+                "daemon.state.tab_lost",
+                fields! {
+                    "tab" => tab.name,
+                    "impact" => "none of the saved tab's panes started, so it is not brought back",
+                    "check" => "the daemon.pane.not_started records before this one",
+                },
+            );
+            return;
+        };
+        let zoomed = tab.zoomed.filter(|pane| root.contains(pane));
+        let tab = Tab { name: tab.name, label: tab.label, root, zoomed };
+        let record = tab.record();
+        self.tabs.push(tab);
+        self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
+    }
+
+    // -----------------------------------------------------------------------------------------
     // Lookups
 
     /// What a stream or input connection needs of a pane, found by name.
@@ -1152,9 +1396,16 @@ impl Session {
     }
 }
 
+/// The history each pane keeps, in bytes.
+fn scrollback(settings: &proto::Settings) -> usize {
+    settings
+        .scrollback_bytes
+        .map_or(screen::DEFAULT_SCROLLBACK, |bytes| usize::try_from(bytes).unwrap_or(usize::MAX))
+}
+
 /// Muster's names are minted as short ASCII words (`p1w3r07bsd`). The daemon holds any name to
 /// that shape, since it becomes an environment variable's value and, later, a line in a file.
-fn valid_name(what: &str, name: &str) -> Result<(), String> {
+pub(crate) fn valid_name(what: &str, name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > 64 || !name.bytes().all(|byte| byte.is_ascii_graphic()) {
         return Err(format!(
             "{name:?} is not a {what} name: one to 64 printable ASCII characters, no spaces"
@@ -1163,7 +1414,7 @@ fn valid_name(what: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn valid_ratio(ratio: f32) -> Result<f32, String> {
+pub(crate) fn valid_ratio(ratio: f32) -> Result<f32, String> {
     if ratio.is_finite() && ratio > 0.0 && ratio < 1.0 {
         Ok(ratio)
     } else {

@@ -642,6 +642,8 @@ dependencies = [
  "muster-harness",
  "muster-vt",
  "prost",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -660,6 +662,7 @@ dependencies = [
  "prost-build",
  "prost-types",
  "protox",
+ "serde",
  "sha2",
 ]
 

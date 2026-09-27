@@ -8,6 +8,17 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
+/// The messages a daemon writes into its persisted state as they are, so that a setting added
+/// to `Settings` is kept across a restart without anyone remembering to. A new message a
+/// setting uses goes here too.
+const PERSISTED: [&str; 5] = [
+    ".muster.daemon.Settings",
+    ".muster.daemon.Shell",
+    ".muster.daemon.Palette",
+    ".muster.daemon.Cursor",
+    ".muster.daemon.Label",
+];
+
 fn main() {
     let proto = PathBuf::from("../../proto/muster_daemon.proto");
     let root = proto.parent().expect("the schema has a directory");
@@ -17,6 +28,13 @@ fn main() {
     let descriptors = protox::compile([&proto], [root]).expect("the schema compiles");
     let mut config = prost_build::Config::new();
     config.skip_protoc_run();
+    for message in PERSISTED {
+        // Defaults for what a file written before a field existed does not hold.
+        config.message_attribute(
+            message,
+            "#[derive(serde::Serialize, serde::Deserialize)] #[serde(default)]",
+        );
+    }
     config.compile_fds(descriptors).expect("the schema generates");
 
     println!("cargo:rerun-if-env-changed=MUSTER_INSTALL");

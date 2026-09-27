@@ -292,7 +292,7 @@ impl PaneIo {
 #[derive(Debug)]
 pub(crate) struct Pane {
     /// What the protocol says about this pane. The fields a restart needs are persisted from
-    /// here (a later card); the rest are observations.
+    /// here (`persist.rs`); the rest are observations.
     pub(crate) record: proto::Pane,
     /// Tells this pane's process apart from a later pane given the same name.
     pub(crate) serial: u64,

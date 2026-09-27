@@ -12,7 +12,7 @@ use std::process::{Child, Command, Stdio};
 use crate::descriptors::Sealing;
 
 /// A pane's size in cells, and the pixels those cells cover.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Grid {
     pub(crate) cols: u16,
     pub(crate) rows: u16,

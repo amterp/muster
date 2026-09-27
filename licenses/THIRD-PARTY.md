@@ -11,7 +11,7 @@ The Rust set is every crate reachable along a normal dependency edge from `muste
 `muster-cli` or `muster-bridge`, resolved for `aarch64-apple-darwin`. Crates that only run at
 build time or under `cargo test` are not here, because they are not redistributed.
 
-**59 Rust crates** and **1 Swift package(s)**.
+**61 Rust crates** and **1 Swift package(s)**.
 
 ## What is in the binaries
 
@@ -57,7 +57,9 @@ build time or under `cargo test` are not here, because they are not redistribute
 | prost-derive | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
 | rustix | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/rustix |
+| serde | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_core | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
+| serde_derive | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_json | 1.0.151 | MIT OR Apache-2.0 | https://github.com/serde-rs/json |
 | serde_spanned | 1.1.1 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | sha2 | 0.10.9 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
@@ -522,9 +524,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### anyhow 1.0.104 and 10 others - LICENSE-MIT
+### anyhow 1.0.104 and 12 others - LICENSE-MIT
 
-anyhow 1.0.104, itoa 1.0.18, proc-macro2 1.0.107, quote 1.0.47, rustix 1.1.4, serde_core 1.0.229, serde_json 1.0.151, syn 2.0.119, syn 3.0.3, unicode-ident 1.0.24, zmij 1.0.23
+anyhow 1.0.104, itoa 1.0.18, proc-macro2 1.0.107, quote 1.0.47, rustix 1.1.4, serde 1.0.229, serde_core 1.0.229, serde_derive 1.0.229, serde_json 1.0.151, syn 2.0.119, syn 3.0.3, unicode-ident 1.0.24, zmij 1.0.23
 
 ```
 Permission is hereby granted, free of charge, to any
@@ -552,9 +554,9 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### anyhow 1.0.104 and 10 others - LICENSE-APACHE
+### anyhow 1.0.104 and 12 others - LICENSE-APACHE
 
-anyhow 1.0.104, itoa 1.0.18, libc 0.2.189, proc-macro2 1.0.107, quote 1.0.47, serde_core 1.0.229, serde_json 1.0.151, syn 2.0.119, syn 3.0.3, unicode-ident 1.0.24, utf8parse 0.2.2
+anyhow 1.0.104, itoa 1.0.18, libc 0.2.189, proc-macro2 1.0.107, quote 1.0.47, serde 1.0.229, serde_core 1.0.229, serde_derive 1.0.229, serde_json 1.0.151, syn 2.0.119, syn 3.0.3, unicode-ident 1.0.24, utf8parse 0.2.2
 
 ```
 Apache License

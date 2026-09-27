@@ -175,14 +175,35 @@ from their starts and stops, since that is what a harness's hooks see, and forge
 detection sees the pane's agent change or leave. `extras/claude-code/` wires Claude Code to it.
 
 **What a restart needs is persisted, and nothing else.** The daemon writes one versioned file with
-an atomic rename, shortly after each change and on shutdown: tabs, trees, ratios, zoom, labels,
-pane names, each pane's current directory (from OSC 7, falling back to the foreground process's
-cwd, written debounced), and the last palette and cell size an app gave it. Titles, agent state and
-process liveness are observations and are never written. A daemon that starts and finds the file
-rebuilds every tab and starts a shell in each pane's recorded directory, keeping every name. It
-does not re-run commands: an agent restarted fresh in fifteen panes is not what anyone asked for.
-Processes and scrollback do not survive a daemon restart, which is the guarantee herdr gives today
+an atomic rename, shortly after each change and on shutdown: tabs, trees, ratios, zoom, labels
+with their generations, pane names and labels, each pane's current directory (from OSC 7, falling
+back to the foreground process's cwd, checked after output), each pane's size in cells and
+pixels, and every setting an app gave it, the palette among them. Titles, agent state, an agent's
+own facts, commands and process liveness are observations and are never written; an agent's facts
+belong to a process that a restart ends. A daemon that starts and finds the file rebuilds every tab
+and starts a shell in each pane's recorded directory, keeping every name. It does not re-run
+commands: an agent restarted fresh in fifteen panes is not what anyone asked for. Processes and
+scrollback do not survive a daemon restart, which is the guarantee herdr gives today
 (`docs/architecture.md`, durability).
+
+The file is JSON beside the socket, `~/.muster/daemon/<install>.state.json`, so a person can read
+it. The settings in it are the protocol's own `Settings` message, so a setting added to the
+protocol is kept across a restart without anyone remembering to. It is written a second after the
+first change it covers, whatever changes after, with the session locked only to copy the state
+out; the write itself goes to a temporary file that is synced and renamed over the last, so a
+crash at any moment leaves the old file or the new one. A write that would change no byte, such as
+one after a title changed, is skipped. A daemon that stops, by `stop` or by a signal, writes what
+it held before it closed anything, so stopping a daemon is not asking it to forget its tabs.
+
+A file this daemon cannot use is never replaced. One written by a newer daemon, whose format
+version is higher, is refused with an error that says so, and this daemon starts with no tabs and
+saves nothing over it. One that does not parse, or holds a state no daemon would have written, is
+moved aside to `<file>.corrupt-<seconds>` with a warning, and the daemon starts empty. Neither stops
+the daemon from starting. Restoring runs once the socket is served, one tab at a time, so a
+directory on a hung mount cannot keep the daemon from answering; a client that connects meanwhile
+sees the tabs arrive as events. Nothing is written until every saved tab is back, so a crash
+while restoring loses nothing, and a directory that no longer exists starts its pane's shell at
+home.
 
 ### 3. Starting a pane
 
@@ -974,3 +995,5 @@ first.
   even a bridge that kept up behind: a bridge crediting at once received 80% of a 3 MB burst and was
   behind 5,621 times, so the pane's reader now waits for credit for up to a grace period, and a
   bridge behind is caught up at half its window (section 4).
+- 2026-09-27 Persistence built (section 2): the file's place and format, the settings kept as the
+  protocol's own message, and what happens to a file from a newer daemon or a damaged one.

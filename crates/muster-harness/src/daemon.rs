@@ -46,6 +46,8 @@ pub struct Daemon {
     binary: PathBuf,
     root: PathBuf,
     socket_path: PathBuf,
+    /// What was added to the daemon's environment, which a restart starts it with again.
+    environment: Vec<(String, String)>,
     process: Option<Child>,
     started_in: Duration,
 }
@@ -82,10 +84,14 @@ impl Daemon {
             binary: binary.as_ref().to_path_buf(),
             socket_path: root.join("daemon.sock"),
             root,
+            environment: environment
+                .iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+                .collect(),
             process: None,
             started_in: Duration::ZERO,
         };
-        daemon.process = Some(daemon.spawn(environment, held));
+        daemon.process = Some(daemon.spawn(held));
         daemon.started_in = daemon.wait_until_answering();
         daemon
     }
@@ -93,10 +99,23 @@ impl Daemon {
     /// Starts another daemon process on this daemon's socket, and hands it back unwaited: the
     /// one a test about a second daemon on a claimed socket watches exit.
     pub fn spawn_another(&self) -> Child {
-        self.spawn(&[], None)
+        self.spawn(None)
     }
 
-    fn spawn(&self, environment: &[(&str, &str)], held: Option<i32>) -> Child {
+    /// Starts the daemon again on the same root, socket and home, once it has stopped or been
+    /// killed, and waits for it to answer: what a machine does when its daemon comes back.
+    pub fn restart(&mut self) {
+        if let Some(process) = &mut self.process {
+            assert!(
+                process.try_wait().ok().flatten().is_some(),
+                "restarting a daemon that is still running; stop or kill it first"
+            );
+        }
+        self.process = Some(self.spawn(None));
+        self.started_in = self.wait_until_answering();
+    }
+
+    fn spawn(&self, held: Option<i32>) -> Child {
         let log = std::fs::File::options()
             .create(true)
             .append(true)
@@ -127,7 +146,7 @@ impl Daemon {
             .env("HOME", self.root.join("home"))
             .env("SHELL", SHELL)
             .env("MUSTER_LOG_FILE", self.root.join("daemon.log"))
-            .envs(environment.iter().copied())
+            .envs(self.environment.iter().map(|(name, value)| (name, value)))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::from(log))

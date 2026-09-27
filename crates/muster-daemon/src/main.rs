@@ -13,6 +13,7 @@ mod effects;
 mod facts;
 mod input;
 mod pane;
+mod persist;
 mod process;
 mod pty;
 mod report;
@@ -32,12 +33,13 @@ use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
+use std::time::Duration;
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto::install;
 
-use crate::session::{Places, Shared};
+use crate::session::{Places, Saved, Shared};
 
 // musl's own allocator serializes every allocation on one lock, and the daemon allocates from a
 // thread per pane (MIP-3, section 12). macOS's allocator does not have that problem.
@@ -48,6 +50,9 @@ static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 /// Exit status of a daemon that found another already serving its socket. Whoever started it
 /// dials that one instead.
 const ALREADY_SERVING: u8 = 3;
+
+/// How long a stopping daemon waits for its state to be written before it exits anyway.
+const LAST_WRITE: Duration = Duration::from_secs(5);
 
 const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n       muster-daemon report ...\n\n\
     Serves Muster's panes on this machine. Without --socket, listens where this install's \
@@ -139,7 +144,9 @@ fn run(socket: &Path, data: data::Data, signals: libc::sigset_t) -> Result<(), F
     let reachable =
         spawn::Reachable { daemon: std::env::current_exe().ok(), socket: socket.to_path_buf() };
     let places = Places { home, overrides, reachable, data };
-    let shared = Shared::new(instance(), stopping.clone(), inherited, places);
+    let (saved, state) = saved(socket);
+    let persister = Arc::clone(&saved.persister);
+    let shared = Shared::new(instance(), stopping.clone(), inherited, places, saved);
 
     let waiting = signals;
     std::thread::Builder::new()
@@ -152,6 +159,21 @@ fn run(socket: &Path, data: data::Data, signals: libc::sigset_t) -> Result<(), F
         .spawn(move || server::accept(&listener, &accepting))
         .map_err(|error| Failure::Other(format!("could not start the accept thread: {error}")))?;
 
+    // Once the socket is served: a shell starting in a directory on a hung mount must not keep
+    // the daemon from answering.
+    match state {
+        Some(state) => {
+            let restoring = Arc::clone(&shared);
+            std::thread::Builder::new()
+                .name("restore".to_string())
+                .spawn(move || session::restore(&restoring, state))
+                .map_err(|error| {
+                    Failure::Other(format!("could not start the restore thread: {error}"))
+                })?;
+        }
+        None => persister.arm(),
+    }
+
     log::info(
         "daemon.started",
         fields! {
@@ -162,9 +184,89 @@ fn run(socket: &Path, data: data::Data, signals: libc::sigset_t) -> Result<(), F
     );
     let _ = stop.recv();
     shared.lock().close_everything();
+    persister.wait_until_stopped(LAST_WRITE);
     let _ = std::fs::remove_file(socket);
     log::info("daemon.stopped", fields! { "socket" => socket.display() });
     Ok(())
+}
+
+/// Finds the state a previous run of this daemon saved, and what to write this run's with.
+///
+/// A file this daemon cannot read is never replaced: one from a newer daemon is left for that
+/// daemon, and one that is damaged is moved aside, so that whatever it held can still be read
+/// by a person. Either way the daemon starts, empty, rather than refusing to: a daemon that will
+/// not start ends no agent, but it starts none either.
+fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
+    let path = persist::path_for(socket);
+    let (disabled, state) = match persist::load(&path) {
+        persist::Loaded::Nothing => (false, None),
+        persist::Loaded::State(state) => (false, Some(state)),
+        persist::Loaded::Newer(version) => {
+            let problem = format!(
+                "{} was written by a newer muster-daemon (format {version}; this one reads up \
+                 to {}), so this daemon starts with no tabs and saves nothing over it",
+                path.display(),
+                persist::VERSION
+            );
+            eprintln!("muster-daemon: {problem}");
+            log::error(
+                "daemon.state.newer",
+                fields! {
+                    "path" => path.display(),
+                    "version" => version,
+                    "impact" => problem,
+                    "fix" => "run the newer daemon again to get its tabs back, or move the file \
+                              away to let this one save its own",
+                },
+            );
+            (true, None)
+        }
+        persist::Loaded::Corrupt(why) => match persist::move_aside(&path) {
+            Ok(aside) => {
+                log::warn(
+                    "daemon.state.corrupt",
+                    fields! {
+                        "path" => path.display(),
+                        "moved_to" => aside.display(),
+                        "why" => why,
+                        "impact" => "the daemon starts with no tabs; the file is kept where it \
+                                     was moved",
+                        "check" => "whether something other than the daemon edited the file, \
+                                    or the disk it is on is failing",
+                    },
+                );
+                (false, None)
+            }
+            Err(error) => {
+                log::error(
+                    "daemon.state.corrupt",
+                    fields! {
+                        "path" => path.display(),
+                        "why" => why,
+                        "error" => error,
+                        "impact" => "the file could not be moved aside, so the daemon starts \
+                                     with no tabs and saves nothing over it",
+                        "check" => "the permissions on the file and its directory",
+                    },
+                );
+                (true, None)
+            }
+        },
+        persist::Loaded::Unreadable(error) => {
+            log::error(
+                "daemon.state.unreadable",
+                fields! {
+                    "path" => path.display(),
+                    "error" => error,
+                    "impact" => "the daemon starts with no tabs and saves nothing over the file",
+                    "check" => "the permissions on the file and its directory",
+                },
+            );
+            (true, None)
+        }
+    };
+    let settings = state.as_ref().map(|state| state.settings.clone());
+    (Saved { persister: persist::Persister::new(path, disabled), settings }, state)
 }
 
 /// Refuses a path that holds something other than a socket, because binding replaces what is

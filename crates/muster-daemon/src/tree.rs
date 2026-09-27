@@ -5,7 +5,8 @@
 //! (MIP-3, section 2). Pure: nothing here knows a PTY exists.
 
 /// How a split divides its area.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Axis {
     /// Side by side; `first` is the left child.
     Columns,
@@ -42,7 +43,8 @@ pub(crate) enum Branch {
     Second,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Node {
     Pane(String),
     Split {

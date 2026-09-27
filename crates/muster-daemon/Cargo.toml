@@ -16,6 +16,8 @@ muster-detect.workspace = true
 muster-frame.workspace = true
 muster-vt.workspace = true
 prost.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc.workspace = true
