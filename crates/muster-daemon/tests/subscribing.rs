@@ -73,10 +73,19 @@ fn settings_are_announced_when_they_change_and_not_otherwise() {
     expect(&mut control, set_clipboard_write(true), proto::Outcome::AlreadySo);
     expect(&mut control, set_clipboard_write(false), proto::Outcome::Done);
 
+    let block = proto::Cursor { style: proto::CursorStyle::Block.into(), blink: Some(false) };
+    let set_cursor = |cursor: Option<proto::Cursor>| {
+        session(session_request::Request::SetCursor(proto::SetCursor { cursor }))
+    };
+    expect(&mut control, set_cursor(Some(block)), proto::Outcome::Done);
+    expect(&mut control, set_cursor(Some(block)), proto::Outcome::AlreadySo);
+    expect(&mut control, set_cursor(None), proto::Outcome::Refused);
+
     let settings = snapshot(&mut control).settings.unwrap();
     assert_eq!(settings.scrollback_bytes, Some(1_000_000));
     assert_eq!(settings.palette.unwrap().entries.len(), 2);
     assert_eq!(settings.clipboard_write, Some(false));
+    assert_eq!(settings.cursor, Some(block));
 
     let manifests = proto::SendManifests {
         engine: 1,

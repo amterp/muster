@@ -218,8 +218,13 @@ in, plus:
 - `MUSTER_DAEMON` and `MUSTER_DAEMON_SOCKET`, the daemon's own executable and its socket, which
   is how a program in the pane reaches the daemon that owns it (section 2, an agent's own facts);
 - Ghostty's shell integration for bash, zsh and fish, injected the way Ghostty injects it, so
-  prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work, with
-  `GHOSTTY_SHELL_FEATURES` at Ghostty's default. A command pane's own shell runs the command
+  prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work. Its
+  `path` and `title` features are on, as in Ghostty. Its `cursor` feature, which sets a bar at
+  every prompt, follows the app's `[cursor]`: blinking or steady as `blink` says while no style
+  is named, as Ghostty decides from `cursor-style-blink`, and off when a style is named, because
+  Muster turns the integration on without being asked and a named shape is what the person
+  asked for. A daemon no app has sent a cursor to uses Ghostty's default, a blinking bar. A
+  command pane's own shell runs the command
   without it, and its `exec` hands it to the interactive shell after: zsh's and fish's
   integrations each undo their injection as they load, so the first shell would use it up.
 

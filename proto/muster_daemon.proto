@@ -132,6 +132,7 @@ message SessionRequest {
     // Close every pane and exit. Answered before the daemon goes.
     Stop stop = 7;
     SetClipboardWrite set_clipboard_write = 8;
+    SetCursor set_cursor = 9;
   }
 
   message Snapshot {}
@@ -324,6 +325,28 @@ message SetClipboardWrite {
 
 message SetPalette {
   Palette palette = 1;
+}
+
+// The app's cursor setting. The app draws the cursor; the daemon needs it only because Ghostty's
+// shell integration changes the cursor at every prompt, and whether it may is decided from this
+// (MIP-3, section 3). A pane already running keeps what it started with.
+message SetCursor {
+  Cursor cursor = 1;
+}
+
+message Cursor {
+  CursorStyle style = 1;
+  // Absent leaves it to the program in the pane.
+  optional bool blink = 2;
+}
+
+enum CursorStyle {
+  // None named.
+  CURSOR_STYLE_UNSPECIFIED = 0;
+  CURSOR_STYLE_BLOCK = 1;
+  CURSOR_STYLE_BAR = 2;
+  CURSOR_STYLE_UNDERLINE = 3;
+  CURSOR_STYLE_HOLLOW = 4;
 }
 
 // The colours programs are told the terminal has, when they ask.
@@ -626,6 +649,8 @@ message Settings {
   optional Palette palette = 3;
   // Absent: allowed.
   optional bool clipboard_write = 4;
+  // Absent: none sent, which the daemon treats as nothing named.
+  optional Cursor cursor = 5;
 }
 
 // ---------------------------------------------------------------------------------------------

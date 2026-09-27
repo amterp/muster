@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
+use muster_daemon_proto as proto;
+
 use crate::shell_integration::{self, Integration};
 
 /// Variables the daemon sets itself on every pane, which an inherited or requested copy never
@@ -132,10 +134,25 @@ pub(crate) const TERM: &str = "xterm-ghostty";
 /// The Ghostty a pane runs in, as far as a program is concerned: the pinned one (`build.rs`).
 const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
 
-/// Ghostty's default features for its shell integration, which its scripts read, and which it
-/// sets whether or not a script was loaded. `sudo` and the `ssh-*` features stay off, as they do
-/// in Ghostty, and would need a Ghostty binary if they were on.
-const SHELL_FEATURES: &str = "cursor:blink,path,title";
+/// The features Ghostty's shell integration is told to use, which its scripts read, and which
+/// Ghostty sets whether or not a script was loaded. `sudo` and the `ssh-*` features stay off, as
+/// they do in Ghostty, and would need a Ghostty binary if they were on.
+///
+/// `cursor` makes every prompt set a bar cursor, blinking or steady as `cursor-style-blink` is,
+/// which is Ghostty's rule and applies here while the app's `[cursor]` names no shape. A shape it
+/// names is left alone at the prompt too: Muster turns the integration on without being asked,
+/// so the person asked for that shape and never for a bar. With no settings from an app yet, as
+/// in a daemon no window has reached, this is Ghostty's default, a blinking bar.
+fn shell_features(cursor: Option<&proto::Cursor>) -> String {
+    let named = cursor.is_some_and(|cursor| cursor.style() != proto::CursorStyle::Unspecified);
+    let blink = cursor.and_then(|cursor| cursor.blink).unwrap_or(true);
+    match (named, blink) {
+        (true, _) => "path,title",
+        (false, true) => "cursor:blink,path,title",
+        (false, false) => "cursor:steady,path,title",
+    }
+    .to_string()
+}
 
 /// A pane's environment: what the daemon inherited, less what names another pane or describes
 /// another terminal, plus what the request asked for, plus what the daemon sets itself.
@@ -152,6 +169,7 @@ pub(crate) fn environment(
     command: Option<&str>,
     terminfo: &Path,
     reachable: &Reachable,
+    cursor: Option<&proto::Cursor>,
 ) -> Vec<(OsString, OsString)> {
     let mut environment: Vec<(OsString, OsString)> = inherited
         .iter()
@@ -176,7 +194,7 @@ pub(crate) fn environment(
     put(&mut environment, "COLORTERM", "truecolor");
     put(&mut environment, "TERM_PROGRAM", "ghostty");
     put(&mut environment, "TERM_PROGRAM_VERSION", GHOSTTY_VERSION);
-    put(&mut environment, "GHOSTTY_SHELL_FEATURES", SHELL_FEATURES);
+    put(&mut environment, "GHOSTTY_SHELL_FEATURES", shell_features(cursor));
     put(&mut environment, PANE_NAME, pane);
     if let Some(command) = command {
         put(&mut environment, PANE_COMMAND, command);
@@ -270,8 +288,15 @@ mod tests {
             ("PATH".to_string(), "/usr/bin".to_string()),
             ("MUSTER_DAEMON".to_string(), "/requested/daemon".to_string()),
         ]);
-        let environment =
-            environment(&inherited, &requested, "p1", None, Path::new(TERMINFO), &reachable());
+        let environment = environment(
+            &inherited,
+            &requested,
+            "p1",
+            None,
+            Path::new(TERMINFO),
+            &reachable(),
+            None,
+        );
         assert_eq!(
             sorted(environment),
             sorted(pairs(&[
@@ -303,8 +328,15 @@ mod tests {
             ("TERM".to_string(), "vt100".to_string()),
             ("GHOSTTY_ASKED".to_string(), "kept".to_string()),
         ]);
-        let environment =
-            environment(&inherited, &requested, "p1", None, Path::new(TERMINFO), &reachable());
+        let environment = environment(
+            &inherited,
+            &requested,
+            "p1",
+            None,
+            Path::new(TERMINFO),
+            &reachable(),
+            None,
+        );
         assert_eq!(
             sorted(environment),
             sorted(pairs(&[
@@ -320,6 +352,18 @@ mod tests {
                 ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,title"),
             ]))
         );
+    }
+
+    #[test]
+    fn the_prompt_cursor_follows_the_apps_cursor_as_ghostty_does() {
+        let cursor = |style, blink| proto::Cursor { style: style as i32, blink };
+        let unnamed = proto::CursorStyle::Unspecified;
+        assert_eq!(shell_features(None), "cursor:blink,path,title");
+        assert_eq!(shell_features(Some(&cursor(unnamed, None))), "cursor:blink,path,title");
+        assert_eq!(shell_features(Some(&cursor(unnamed, Some(false)))), "cursor:steady,path,title");
+        let block = cursor(proto::CursorStyle::Block, Some(false));
+        assert_eq!(shell_features(Some(&block)), "path,title");
+        assert_eq!(shell_features(Some(&cursor(proto::CursorStyle::Bar, None))), "path,title");
     }
 
     #[test]

@@ -372,6 +372,7 @@ impl Session {
                 S::SetPalette(set) => self.set_palette(set),
                 S::SendManifests(manifests) => self.send_manifests(manifests),
                 S::SetClipboardWrite(set) => self.set_clipboard_write(set),
+                S::SetCursor(set) => self.set_cursor(set),
                 S::Stop(_) => {
                     self.close_everything();
                     Reply::done()
@@ -504,6 +505,7 @@ impl Session {
             create.command.as_deref(),
             &self.data.terminfo(),
             &self.reachable,
+            self.settings.cursor.as_ref(),
         );
         let (argv, environment) = spawn::start(
             &pty::shell(shell.command.as_deref(), &self.inherited),
@@ -1012,6 +1014,17 @@ impl Session {
         }
         self.settings.clipboard_write = Some(set.allowed);
         self.resettle();
+        self.settings_changed()
+    }
+
+    fn set_cursor(&mut self, set: proto::SetCursor) -> Reply {
+        let Some(cursor) = set.cursor else {
+            return Reply::refused("the request carries no cursor");
+        };
+        if self.settings.cursor.as_ref() == Some(&cursor) {
+            return Reply::already();
+        }
+        self.settings.cursor = Some(cursor);
         self.settings_changed()
     }
 

@@ -31,6 +31,42 @@ fn a_pane_runs_as_xterm_ghostty_from_the_daemons_own_terminfo() {
     assert!(written.contains("\nghostty "), "TERM_PROGRAM: {written}");
 }
 
+/// Each pane's shell integration is told what the app's cursor setting was when the pane started.
+#[test]
+fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let features = |control: &mut Control, pane: &str, tab: &str| {
+        let out = daemon.root().join(pane);
+        let mut asked = create(pane, in_new_tab(tab));
+        asked.command = Some(format!("echo \"$GHOSTTY_SHELL_FEATURES\" > {}", out.display()));
+        make(control, asked);
+        until_some("the pane to write its features", || {
+            std::fs::read_to_string(&out).ok().filter(|text| text.ends_with('\n'))
+        })
+    };
+    assert_eq!(features(&mut control, "p1", "t1"), "cursor:blink,path,title\n");
+
+    let steady =
+        proto::Cursor { style: proto::CursorStyle::Unspecified.into(), blink: Some(false) };
+    let set = proto::SetCursor { cursor: Some(steady) };
+    expect(
+        &mut control,
+        session(proto::session_request::Request::SetCursor(set)),
+        proto::Outcome::Done,
+    );
+    assert_eq!(features(&mut control, "p2", "t2"), "cursor:steady,path,title\n");
+
+    let bar = proto::Cursor { style: proto::CursorStyle::Bar.into(), blink: None };
+    let set = proto::SetCursor { cursor: Some(bar) };
+    expect(
+        &mut control,
+        session(proto::session_request::Request::SetCursor(set)),
+        proto::Outcome::Done,
+    );
+    assert_eq!(features(&mut control, "p3", "t3"), "path,title\n");
+}
+
 #[test]
 fn a_daemon_without_its_data_directory_refuses_to_start() {
     let scratch = std::env::temp_dir().join(format!("muster-no-data-{}", std::process::id()));
