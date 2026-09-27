@@ -546,11 +546,12 @@ fn run_ssh_tier():
 //
 // cargo builds each test for the target and hands it to tools/linux-run/run, which runs it in a
 // Debian container with this checkout mounted at its own path. Both architectures: the one
-// docker runs natively first and in full, then the other under emulation, without the two tests
-// whose subject emulation replaces - a timing budget, which would time the emulator, and the
-// live process probe, which reads the emulator's argv (qemu-x86_64 /usr/bin/sleep ...) where
-// Linux would give the program's. The native run holds the daemon to both.
+// docker runs natively first and in full, then the other under emulation, without the three
+// tests whose subject emulation replaces - two timing budgets, which would time the emulator, and
+// the live process probe, which reads the emulator's argv (qemu-x86_64 /usr/bin/sleep ...) where
+// Linux would give the program's. The native run holds the daemon to all three.
 EMULATED_TIMING = "a_spawned_daemon_answers_its_first_request_within_budget"
+EMULATED_WRITE_BUDGET = "a_write_that_never_finishes_holds_up_no_request"
 EMULATED_ARGV = "the_system_reports_a_real_process_group"
 
 fn run_linux_tier():
@@ -570,8 +571,8 @@ fn run_linux_tier():
             print(dim("{len(names)} test(s) on {target}, natively"))
             $`cargo test -p muster-daemon -p muster-detect --target {target} --no-fail-fast`
         else:
-            print(dim("{len(names)} test(s) on {target}, emulated, less {EMULATED_TIMING} and {EMULATED_ARGV}"))
-            $`cargo test -p muster-daemon -p muster-detect --target {target} --no-fail-fast -- --skip {EMULATED_TIMING} --skip {EMULATED_ARGV}`
+            print(dim("{len(names)} test(s) on {target}, emulated, less {EMULATED_TIMING}, {EMULATED_WRITE_BUDGET} and {EMULATED_ARGV}"))
+            $`cargo test -p muster-daemon -p muster-detect --target {target} --no-fail-fast -- --skip {EMULATED_TIMING} --skip {EMULATED_WRITE_BUDGET} --skip {EMULATED_ARGV}`
 
 // The pinned daemon built for the container rather than for this machine, on this machine.
 //

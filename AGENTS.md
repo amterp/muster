@@ -219,7 +219,7 @@ per target, rust-lld against the musl rustup ships with each target, and zig for
 and nothing new to install. It also runs clippy over the daemon's and detection's Linux code, which no Mac build
 compiles otherwise. `./dev --linux` runs those two packages' suites on Linux, which the gate cannot: cargo's runner
 for the musl targets puts each test binary in a Debian container with this checkout mounted at its own path. The
-architecture docker runs natively runs in full, the other under emulation without the two tests whose subject the
+architecture docker runs natively runs in full, the other under emulation without the three tests whose subject the
 emulator replaces. The container keeps Debian's own `/bin/sh`, dash, because a real devenv does. `--ssh` runs it too.
 
 `./dev -d` also assembles `muster-daemon-data` beside libghostty: Ghostty's terminfo entry and its shell integration,
