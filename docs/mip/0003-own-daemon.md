@@ -122,7 +122,11 @@ Stated by amterp when this was scoped, 2026-09-26:
 
 `muster-daemon` is a Rust binary built from this workspace. One runs per machine per user for each
 install, on a socket named for that install, so a development build never adopts the release
-daemon and tests never adopt either.
+daemon and tests never adopt either. The socket is `~/.muster/daemon/<install>.sock`, and the install
+name is fixed when the protocol crate is built: `MUSTER_INSTALL` for a build that ships (a release
+sets `release`), otherwise `dev-` and a hash of the checkout's path, so two working trees never share
+a daemon. Tests pass a socket of their own. A lock file beside the socket makes the first daemon to
+start the only one; a second exits and its starter dials the first.
 
 On the Mac it is the executable inside `MusterSessions.app`, started through Launch Services
 exactly as herdr is today and for the same reason: the process that owns the PTYs must be its own
@@ -412,7 +416,14 @@ namespaced by service (`pane.*`, `tab.*`, `session.*`), so a later message servi
 of its own.
 
 **App and daemon can differ in version.** The app adopts a running daemon whose protocol version it
-supports, so an app upgrade does not restart any agent.
+supports, so an app upgrade does not restart any agent. The version is a major and a minor. A client
+talks only to a daemon of its own major, and the daemon refuses the handshake otherwise; the minor
+grows when a request or event is added, so a client can tell whether an adopted daemon knows a request
+before sending it. A daemon handed a request it does not know answers refused, never misreads it.
+Within a major, a field keeps its number and type: `proto/muster_daemon.v<major>.baseline.proto` is the
+schema as that major was first published, and a test fails when the schema no longer reads it. Until a
+release ships the daemon, an incompatible change replaces the baseline; after that it means a new
+major.
 
 ### 10. Replacing a running daemon: handoff
 
@@ -470,11 +481,14 @@ installed to.
 ### 13. Testing
 
 **Tests run the real daemon, built from the same commit.** `docs/testing.md`'s rule, "Do not fake
-the backend. Run a real one.", holds unchanged, and gets cheaper: no download, no pin, no schema
-drift check. `crates/herdr-harness` becomes a neutral harness that spawns `muster-daemon` under a
-scratch directory. Its `until` and its answer-withholding relay survive. A spawned daemon must
-answer its first request within 25 ms, as herdr does today; any slower, and daemon-backed tests
-would be too slow to stay in the default gate.
+the backend. Run a real one.", holds unchanged, and gets cheaper: no download, no pin, and no drift
+check against a recorded daemon (the schema check that remains is between versions, section 9).
+`crates/muster-harness` is the neutral harness that spawns `muster-daemon` under a scratch
+directory, handed the binary's path by the caller - within the daemon's own package that is
+`CARGO_BIN_EXE_muster-daemon`, which cargo builds before the tests run. `until` and the
+answer-withholding relay moved there from `herdr-harness`. A spawned daemon must answer its first
+request within 25 ms, as herdr does today; any slower, and daemon-backed tests would be too slow to
+stay in the default gate. The first build answers in about 4 ms.
 
 **Oracles stay external.** Recording Muster's own daemon and judging the client against the
 recording would be an oracle the code rewrites for itself. What stays external:

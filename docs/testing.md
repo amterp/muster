@@ -35,6 +35,12 @@ Muster's principles, adapted to that evidence:
   and half-closing the write side - which is how every other herdr call signals it is finished - ends a subscription
   on the spot. Both fail as silence rather than as an error, which is the shape of bug a fake is worst at.
 
+  muster-daemon's tests work the same way through `crates/muster-harness`, with one difference: the daemon is built
+  from the same commit rather than pinned, and its tests hand the harness `CARGO_BIN_EXE_muster-daemon`. A spawned
+  one answers its first request in about 4 ms, and a test holds that under the 25 ms that keeps daemon-backed tests
+  in the default gate. `muster-harness` also holds what both harnesses share, `until` and the relay below, and
+  `herdr-harness` re-exports them until the cut-over deletes it.
+
   A lost answer is staged the same way. `Daemon::withholding_answers_to` puts a relay in front of the real daemon
   that passes every connection through and, for the methods a test names, reads herdr's answer and never delivers
   it. The daemon does the work and every byte a caller receives is one herdr sent, so what is staged is a transport
@@ -52,6 +58,12 @@ Muster's principles, adapted to that evidence:
   (`herdr api schema --json`). A copy sits in `corpus/herdr-<version>/api-schema.json`, and `./dev` diffs the two
   before running anything. A daemon that changed its wire is named as such, with the diff, instead of surfacing as
   a puzzling failure three layers up.
+
+  muster-daemon, which replaces herdr (MIP-3), is built from this repo, so its wire cannot drift from the code under
+  test. What can drift is the wire between two builds, because an app adopts whichever daemon is running. So
+  `proto/muster_daemon.v<major>.baseline.proto` records the schema as its major version was first published, and a
+  test in `muster-daemon-proto` fails when a field's number or type moved or a number was freed without being
+  reserved.
 - **Inject at the seams the code already has, not by impersonating a daemon.** Three different things get called
   fault injection, and only one needs machinery. *Daemon state* - a blocked agent, fifteen panes, a pane whose
   program died - is driven through herdr's own API, which can produce all of it on request. *Daemon-internal
@@ -91,7 +103,7 @@ Muster's principles, adapted to that evidence:
   event for "nothing further arrives". Both are legitimate; both need a measured number and a comment saying which
   measurement, because a wait sized by guesswork is the flake this rule exists to prevent.
 
-  **There is one `until`, in `herdr-harness`, and it has one deadline.** There were twenty-four, one per test file,
+  **There is one `until`, in `muster-harness`, and it has one deadline.** There were twenty-four, one per test file,
   because the way a test gets written is by copying the nearest one - and they had drifted to deadlines of two, ten,
   fifteen, twenty and thirty seconds, with not one of the outliers saying why. A single number is the honest answer
   because a deadline here bounds a failure rather than tuning anything: a genuine wedge shows up as runs that either
