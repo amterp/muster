@@ -49,6 +49,9 @@ pub(crate) fn on_pty(command: &mut Command) -> (File, Owned) {
     (master, Owned(child))
 }
 
+/// How long a bridge has to attach and draw its pane before the run gives up on it.
+const ATTACHED_WITHIN: Duration = Duration::from_secs(10);
+
 /// Waits up to `within` for the master to have something to read.
 fn readable(master: &File, within: Duration) -> bool {
     let mut watched = libc::pollfd { fd: master.as_raw_fd(), events: libc::POLLIN, revents: 0 };
@@ -84,6 +87,14 @@ impl Surface {
                 .env("MUSTER_LOG_FILE", log),
         );
         let mut surface = Surface { master, child, read: 0 };
+        // The attach replay is always the bridge's first write. Waiting for it, rather than only
+        // for a moment's quiet, keeps a bridge slow to start on a loaded machine from landing
+        // its replay inside the first sample and counting as echoed bytes.
+        assert!(
+            readable(&surface.master, ATTACHED_WITHIN),
+            "the bridge drew nothing within {ATTACHED_WITHIN:?} of starting; its log is {}",
+            log.display()
+        );
         surface.settle();
         surface
     }
