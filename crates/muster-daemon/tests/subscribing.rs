@@ -37,6 +37,37 @@ fn a_subscription_starts_from_its_snapshot_and_hears_only_what_follows() {
 #[test]
 fn a_subscription_made_amid_changes_hears_nothing_before_its_snapshot() {
     let daemon = daemon();
+    amid_changes(&daemon, || {
+        let mut watcher = daemon.connect();
+        let asked = expect(&mut watcher, subscribe_request(), proto::Outcome::Done);
+        let Some(proto::answer::Detail::Snapshot(snapshot)) = asked.answer.detail else {
+            panic!("a subscription answered without a snapshot");
+        };
+        assert_eq!(names(&asked.events), Vec::<String>::new(), "events before the snapshot");
+        assert_eq!(watcher.next_event().seq, snapshot.seq + 1, "the event after the snapshot");
+    });
+}
+
+/// A subscriber that asks for a snapshot again, to resynchronize, hears every event it covers
+/// before it and none that it does not: a later event ahead of it would be rolled back by it.
+#[test]
+fn a_snapshot_asked_amid_changes_arrives_after_exactly_the_events_it_covers() {
+    let daemon = daemon();
+    let mut watcher = daemon.connect();
+    expect(&mut watcher, subscribe_request(), proto::Outcome::Done);
+    amid_changes(&daemon, || {
+        let asked = expect(&mut watcher, snapshot_request(), proto::Outcome::Done);
+        let Some(proto::answer::Detail::Snapshot(snapshot)) = asked.answer.detail else {
+            panic!("a snapshot answered without one");
+        };
+        let later: Vec<u64> =
+            asked.events.iter().map(|event| event.seq).filter(|seq| *seq > snapshot.seq).collect();
+        assert_eq!(later, Vec::<u64>::new(), "events newer than the snapshot, ahead of it");
+    });
+}
+
+/// Runs `check` 200 times while another connection renames a pane as fast as it can.
+fn amid_changes(daemon: &Daemon, mut check: impl FnMut()) {
     let mut writer = daemon.connect();
     make(&mut writer, create("p1", in_new_tab("t1")));
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -55,13 +86,7 @@ fn a_subscription_made_amid_changes_hears_nothing_before_its_snapshot() {
         })
     };
     for _ in 0..200 {
-        let mut watcher = daemon.connect();
-        let asked = expect(&mut watcher, subscribe_request(), proto::Outcome::Done);
-        let Some(proto::answer::Detail::Snapshot(snapshot)) = asked.answer.detail else {
-            panic!("a subscription answered without a snapshot");
-        };
-        assert_eq!(names(&asked.events), Vec::<String>::new(), "events before the snapshot");
-        assert_eq!(watcher.next_event().seq, snapshot.seq + 1, "the event after the snapshot");
+        check();
     }
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     changing.join().unwrap();
