@@ -489,9 +489,12 @@ PTY closing rather than from `waitpid`.
   keyboard reads, scrollback limits, the write-back callback for query answers, the effect
   callbacks, the encoders configured from a terminal, a plain-text screen read that does not
   cost three FFI calls per cell, and the replay. The daemon links libghostty-vt statically, by
-  building with `MUSTER_VT_LINK=static`; nothing in the app process does, because a static
-  libghostty-vt collides with GhosttyKit there (`docs/observations/libghostty-9f9b8d1d.md`
-  section 8).
+  building with `MUSTER_VT_LINK=static`, so a daemon copied to a remote machine is one file.
+  The app's side links the dylib the bundle ships, so libmuster and the bridge share one copy.
+  A static copy would not collide with GhosttyKit there either: libmuster is a cdylib that
+  exports only `include/muster.h` (MIP-1), and the duplicate-symbol failure in
+  `docs/observations/libghostty-9f9b8d1d.md` section 8 needs both archives linked into one
+  image.
 
 **The backend seam survives, with one implementation.** `muster-core` keeps its backend-neutral
 traits (`BackendChannel`, `PaneChannel` and the event vocabulary), reshaped to the new protocol's

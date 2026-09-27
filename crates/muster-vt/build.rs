@@ -34,7 +34,11 @@ fn main() {
     // the bindings stale. Cargo scans a directory for any file that changed.
     println!("cargo:rerun-if-changed={}", include.join("ghostty").display());
     println!("cargo:rustc-link-search=native={}", lib.display());
-    println!("cargo:rustc-link-lib={}=ghostty-vt", link_kind());
+    let kind = link_kind();
+    if kind == "static" {
+        println!("cargo:rerun-if-changed={}", lib.join("libghostty-vt.a").display());
+    }
+    println!("cargo:rustc-link-lib={kind}=ghostty-vt");
     // Where a binary looks for the dylib at *runtime* is set in .cargo/config.toml, not
     // here: a link argument emitted by a build script reaches only its own crate, and every
     // downstream binary would link fine and fail at startup.
@@ -60,15 +64,23 @@ fn main() {
 
 /// How libghostty-vt is linked: as the dylib unless this cargo invocation says `static`.
 ///
-/// The daemon links it statically, so a daemon copied to another machine is one file, and
-/// nothing in the app's process may: a static libghostty-vt beside GhosttyKit fails to link on
-/// 35 duplicate Zig runtime symbols (docs/observations/libghostty-9f9b8d1d.md, section 8).
-/// A cargo feature cannot express that, because features unify across every package one
-/// invocation builds, and a workspace build would hand the seam the static archive. An
-/// environment variable is scoped to the invocation instead: the daemon's own build sets it,
-/// and a build that also produces `muster-seam` must not. rustc finds the archive itself and
-/// bundles it into this crate, so the dylib beside it in the same directory is not a
-/// candidate.
+/// The daemon links it statically, so a daemon copied to another machine is one file. The
+/// app's side links the dylib the bundle ships, so libmuster and the bridge share one copy.
+/// A cargo feature cannot say "static for the daemon only", because features unify across
+/// every package one invocation builds; an environment variable is scoped to the invocation,
+/// and the daemon's own build sets it.
+///
+/// Setting it for a build that also produces `muster-seam` is not an error, and nothing
+/// guards against it: the seam is a cdylib that exports only `include/muster.h`'s symbols
+/// (MIP-1), so a static libghostty-vt stays private inside it and does not meet GhosttyKit's.
+/// The collision in docs/observations/libghostty-9f9b8d1d.md section 8 comes from linking the
+/// two archives into one image, which that boundary rules out. It would only cost the app a
+/// second copy of the library.
+///
+/// rustc finds the archive itself and bundles it into this crate, so the dylib beside it in
+/// the same directory is not a candidate - and nor is a rebuilt archive noticed unless cargo
+/// is told to watch it, which it is: a patch that changes only Zig code rebuilds the archive
+/// and leaves every header alone.
 fn link_kind() -> &'static str {
     println!("cargo:rerun-if-env-changed=MUSTER_VT_LINK");
     match std::env::var("MUSTER_VT_LINK").as_deref() {
