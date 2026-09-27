@@ -48,20 +48,11 @@ RUN test -n "${DEV_PUBKEY}" \
     && chmod 0600 /home/dev/.ssh/authorized_keys \
     && chown dev:dev /home/dev/.ssh/authorized_keys
 
-# Root for exactly one thing: pointing /bin/sh at bash and back. Muster runs its remote scripts
-# through `sh`, and whether a backgrounded list forks depends on which shell that is - dash
-# here, bash on a RHEL-family box. crates/muster-herdr/tests/devenv_forking_shell.rs swaps it
-# for the length of one test (kan a_2I5yedXos). Scoped to the two commands rather than
-# NOPASSWD: ALL, for the same reason sshd refuses passwords above.
-RUN printf '%s\n' \
-        'dev ALL=(root) NOPASSWD: /usr/bin/ln -sf bash /bin/sh, /usr/bin/ln -sf dash /bin/sh' \
-    > /etc/sudoers.d/devenv-sh \
-    && chmod 0440 /etc/sudoers.d/devenv-sh \
-    && visudo -cf /etc/sudoers.d/devenv-sh
-
-# And for infocmp as root keeping the caller's TERMINFO, which is what Ghostty's sudo wrapper
-# asks for: crates/muster-daemon/tests/daemon/devenv_terminfo.rs runs it through the wrapper. sshd's
-# second AcceptEnv line is for the names Ghostty's ssh wrapper forwards.
+# Root for exactly one thing: infocmp as root keeping the caller's TERMINFO, which is what
+# Ghostty's sudo wrapper asks for. crates/muster-daemon/tests/daemon/devenv_terminfo.rs runs it
+# through the wrapper. Scoped to the one command rather than NOPASSWD: ALL, for the same reason
+# sshd refuses passwords above. sshd's second AcceptEnv line is for the names Ghostty's ssh
+# wrapper forwards.
 RUN printf '%s\n' \
         'dev ALL=(root) NOPASSWD:SETENV: /usr/bin/infocmp' \
     > /etc/sudoers.d/devenv-terminfo \

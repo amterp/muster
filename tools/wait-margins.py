@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What every wait in a test run actually cost, per site.
 
-Reads the lines `herdr_harness::until` writes when `MUSTER_WAIT_LOG` is set, and prints one row
+Reads the lines `muster_harness::until` writes when `MUSTER_WAIT_LOG` is set, and prints one row
 per wait site. Anything else on the stream is ignored, so a whole `cargo test` transcript can be
 piped in without filtering it first:
 

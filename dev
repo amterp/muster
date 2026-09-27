@@ -27,7 +27,7 @@ args:
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
     anyway bool    # With --perf, measure on a busy machine anyway rather than refusing.
-    latency bool   # Time input-to-glyph through herdr and muster-daemon. Not in the gate.
+    latency bool   # Time input-to-glyph through muster-daemon. Not in the gate.
     doctor bool    # Say what this repo's own tooling has left running on this machine.
 
 ZIG_VERSION = "0.16.0"

@@ -112,18 +112,18 @@ Muster's principles, adapted to that evidence:
 - **Assert what the user sees and what the daemon receives.** The user-facing oracle is the terminal grid, computed
   in the harness by libghostty-vt - the production engine. The daemon-facing oracle is the exact intent messages on
   the wire. Never pixels (GPU-flaky), never internal structures (false confidence in both directions).
-- **Deterministic or it does not merge.** Injected clock, event-driven waits (`events.subscribe`,
-  `pane.output_matched`), no sleeps, nothing reaches the network. Async byte streams are replayed, never raced. A
-  real daemon does not weaken this: what makes a test flaky is waiting on wall-clock time, not talking to a
-  process, and herdr's own integration suite is built the same way.
+- **Deterministic or it does not merge.** Injected clock, event-driven waits (the daemon's subscription events,
+  and a pane's text read until it holds what is expected: `muster_harness::requests::events_until` and
+  `until_text`), no sleeps, nothing reaches the network. Async byte streams are replayed, never raced. A real
+  daemon does not weaken this: what makes a test flaky is waiting on wall-clock time, not talking to a process, and
+  muster-daemon's own suite is built the same way.
 
   **"No sleeps" means no fixed wait standing in for a condition**, and two things in the suite look like sleeps
   without being one. A poll interval inside a deadline-bounded `until` is not a wait - what the test waits for is
   the condition, and the deadline only decides how long it takes to fail. And *proving a negative* needs elapsed
-  time by construction: `split_sides.rs` waits past herdr's own second publish, measured at 104.5 ms, so that a
-  mirror which merely got there first and then walked backwards fails rather than passing on timing. There is no
-  event for "nothing further arrives". Both are legitimate; both need a measured number and a comment saying which
-  measurement, because a wait sized by guesswork is the flake this rule exists to prevent.
+  time by construction, since there is no event for "nothing further arrives". Both are legitimate; both need a
+  measured number and a comment saying which measurement, because a wait sized by guesswork is the flake this rule
+  exists to prevent.
 
   **There is one `until`, in `muster-harness`, and it has one deadline.** There were twenty-four, one per test file,
   because the way a test gets written is by copying the nearest one - and they had drifted to deadlines of two, ten,

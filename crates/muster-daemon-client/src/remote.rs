@@ -345,12 +345,9 @@ mod tests {
                 .unwrap();
             assert!(output.status.success(), "{shell}: {output:?}");
             assert!(started.elapsed() < Duration::from_secs(5), "{shell} waited on the daemon");
-            // Generous, for the same reason as the previous test's bound: at a load of nineteen
-            // the fake daemon has taken over five seconds to write its first line.
-            let deadline = Instant::now() + Duration::from_secs(20);
-            while !told.exists() && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(10));
-            }
+            // The harness's one deadline, since at a load of nineteen the fake daemon has taken
+            // over five seconds to write its first line.
+            muster_harness::until_file(&told, "the fake daemon to say what it was given");
             let told = std::fs::read_to_string(&told).unwrap_or_default();
             let mut lines = told.lines();
             let printed = String::from_utf8_lossy(&output.stdout);
