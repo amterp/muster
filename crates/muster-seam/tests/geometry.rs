@@ -48,9 +48,7 @@ fn quitting_hands_every_pane_back_at_the_size_its_daemon_draws_it() {
     let _turn = muster::testing::fresh_session();
     // Nothing here paints a pane, so it never becomes typeable - an error, which opens the
     // roster and republishes. Harmless and noisy, so it is switched off rather than waited out.
-    // SAFETY: nothing else in this process reads the environment concurrently. This runs
-    // before the daemon is started and before any pane opens, which is when the core reads it.
-    unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", "0") };
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
 
     let daemon = Daemon::start();
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "geometry", "focus": true }));

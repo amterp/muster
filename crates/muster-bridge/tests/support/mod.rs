@@ -5,9 +5,9 @@
 //! showing. What differs between them is the keystrokes and the config, which is the part
 //! worth reading in the test itself.
 //!
-//! One test per binary, and that is a constraint rather than a style. The seam holds the
-//! attached pane in a process global and a `Startup` points the whole process at one config,
-//! so two tests in one binary would race both.
+//! The seam holds the attached pane in a process global and a `Startup` points the whole
+//! process at one config, so tests sharing a process take turns: a [`Typing`] holds the seam's
+//! turn (`muster::testing::fresh_session`) for as long as it lives.
 //!
 //! Each binary uses one slice of this, so whatever it does not touch is dead to it. That is
 //! how Rust builds integration tests, not a sign that something here has no readers.
@@ -25,6 +25,7 @@ use muster::proto::{
     AttachPane, Attached, Event, KeyDown, KeyEvent, OpenWindow, Request, Response, Startup, event,
     request, response,
 };
+use muster::testing::Turn;
 use muster_vt::{Grid, Terminal};
 use prost::Message;
 use serde_json::{Value, json};
@@ -150,10 +151,24 @@ pub(crate) struct Typing {
     pub(crate) daemon: Daemon,
     pub(crate) pane: String,
     pub(crate) bridge: Bridge,
+    /// Last, so it is given up after the daemon and the bridge have gone.
+    _turn: Turn,
 }
 
 impl Typing {
     pub(crate) fn start(config: &str) -> Typing {
+        Typing::start_in(muster::testing::fresh_session(), config)
+    }
+
+    /// For a test that sets something on the seam before the window opens: it takes the turn,
+    /// sets what it needs, and hands the turn over here.
+    pub(crate) fn start_in(turn: Turn, config: &str) -> Typing {
+        // This file's own record of the window, which the seam's reset does not reach.
+        TYPEABLE.store(false, Ordering::Relaxed);
+        poison_free(&NAMED).clear();
+        poison_free(&RESTARTS).clear();
+        poison_free(&PROBLEMS).clear();
+
         let daemon = Daemon::start();
         daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "input", "focus": true }));
         let pane = only_pane(&daemon);
@@ -190,7 +205,7 @@ impl Typing {
             || TYPEABLE.load(Ordering::Relaxed),
             || bridge.diagnosis("nothing became typeable"),
         );
-        Typing { daemon, pane, bridge }
+        Typing { daemon, pane, bridge, _turn: turn }
     }
 
     /// Runs a program in the pane and waits for it to take over.

@@ -11,13 +11,11 @@
 //! what a real bridge says, spelled by the same function a bridge spells it with. The daemon
 //! still lists the pane throughout, which is the moment the error came from: the terminal was
 //! gone while the window was still drawing the pane.
-//!
-//! Its own binary because the deadline the watch runs on is read once per process.
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::sync::{Mutex, Once};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use herdr_harness::{Daemon, until};
@@ -30,7 +28,7 @@ use prost::Message;
 
 /// Short enough that the gate does not wait out the shipped five seconds. The same number
 /// `untypeable.rs` and `stalled.rs` run on, and for the same reasons.
-const DEADLINE_MS: &str = "300";
+const DEADLINE_MS: u64 = 300;
 
 /// How long "and nothing was said about it" waits before it counts as true.
 ///
@@ -108,13 +106,9 @@ fn run_log(log: &Path) -> String {
     std::fs::read_to_string(log).unwrap_or_default()
 }
 
+/// Sets the deadline this test runs under, before any pane opens.
 fn shorten_the_deadline() {
-    static SET: Once = Once::new();
-    SET.call_once(|| {
-        // SAFETY: nothing else in this process reads the environment concurrently. This runs
-        // before any daemon is started and before any pane opens, which is when the core reads it.
-        unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", DEADLINE_MS) };
-    });
+    muster::testing::set_typeable_deadline(Duration::from_millis(DEADLINE_MS));
 }
 
 fn first_pane() -> Option<String> {

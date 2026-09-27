@@ -6,8 +6,6 @@
 //! window held on and the second one's takeover won; the same has to be true after, or
 //! switching back to a tab steals a pane another window is drawing - and the other window,
 //! answering the same way, steals it back.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 

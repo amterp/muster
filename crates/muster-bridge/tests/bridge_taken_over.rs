@@ -11,8 +11,6 @@
 //! So the ending has to reach the policy and not only the fact. This drives it with a real
 //! second client rather than a fabricated report, because what separates the two endings is
 //! herdr's own wording and nothing else (`docs/observations/herdr-0.8.0.md` section 23).
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 

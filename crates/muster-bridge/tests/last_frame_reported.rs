@@ -5,8 +5,6 @@
 //! arrived - so frames landing inside an interval waited for the next frame to carry them. The
 //! last keystrokes before somebody paused were echoed, painted and never reported, and ten
 //! seconds later the window said the pane had stopped painting. The next keystroke took it back.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 
@@ -18,7 +16,7 @@ use support::{Press, Typing, named_pane, problems};
 /// Long enough that a trailing report, which lands within a quarter of a second of the frame it
 /// carries, cannot miss it on a loaded machine. Short enough that the gate does not wait out the
 /// shipped ten seconds.
-const DEADLINE: &str = "1000";
+const DEADLINE: Duration = Duration::from_secs(1);
 
 /// How long "and nothing was raised" waits before it counts as true. There is no event for a
 /// warning not arriving, so a negative costs elapsed time (`docs/testing.md`): two deadlines,
@@ -27,11 +25,9 @@ const SETTLE: Duration = Duration::from_secs(2);
 
 #[test]
 fn a_pane_that_echoed_the_last_keystroke_is_not_accused() {
-    // SAFETY: nothing else in this process reads the environment concurrently. This runs before
-    // the core is started, which is when it reads this.
-    unsafe { std::env::set_var("MUSTER_PAINTING_DEADLINE_MS", DEADLINE) };
-
-    let typing = Typing::start("");
+    let turn = muster::testing::fresh_session();
+    muster::testing::set_painting_deadline(DEADLINE);
+    let typing = Typing::start_in(turn, "");
     let key = format!("pane:local/{}:painting", named_pane(&typing.pane));
     typing.run("cat", "cat");
 

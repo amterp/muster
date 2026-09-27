@@ -11,8 +11,6 @@
 //! to encode against the pane's real modes and never touch the bridge (`architecture.md`,
 //! control plane). `cat -v` runs in the pane so that what arrived is legible on the screen
 //! rather than inferred: an escape sequence renders as `^[[A`.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 

@@ -16,10 +16,10 @@
 //! is wrong. `SIGSTOP` rather than a kill, because a bridge that died is a different condition
 //! with its own sentence: what is being proved here is the one where every layer below reports
 //! health.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
+
+use std::time::Duration;
 
 use herdr_harness::until;
 use support::{Press, Typing, named_pane, problems};
@@ -27,15 +27,13 @@ use support::{Press, Typing, named_pane, problems};
 /// Short enough that the gate does not wait out the shipped ten seconds, and the number is not
 /// the subject - `pane-painting.json` argues about the real one. What is being proved is that a
 /// paint crosses the wire at all and reaches the rule.
-const DEADLINE: &str = "500";
+const DEADLINE: Duration = Duration::from_millis(500);
 
 #[test]
 fn a_pane_whose_frames_stopped_arriving_is_reported() {
-    // SAFETY: nothing else in this process reads the environment concurrently. This runs before
-    // the core is started, which is when it reads this.
-    unsafe { std::env::set_var("MUSTER_PAINTING_DEADLINE_MS", DEADLINE) };
-
-    let typing = Typing::start("");
+    let turn = muster::testing::fresh_session();
+    muster::testing::set_painting_deadline(DEADLINE);
+    let typing = Typing::start_in(turn, "");
     let key = format!("pane:local/{}:painting", named_pane(&typing.pane));
 
     // Nothing has been asked of this pane, so its quiet is not worth a word - which is the

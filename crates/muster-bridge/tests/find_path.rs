@@ -13,8 +13,6 @@
 //!
 //! The oracle is the grid libghostty-vt renders from the frame stream, which is what the person
 //! would be looking at.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 

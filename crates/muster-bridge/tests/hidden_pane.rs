@@ -11,8 +11,6 @@
 //! stream back, and sending to it while it is hidden - `muster pane send` to a pane behind
 //! another tab is ordinary - still reaches the program, without bringing the stream back: that
 //! goes to the daemon by name rather than through the bridge.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 

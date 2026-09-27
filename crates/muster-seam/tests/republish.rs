@@ -21,9 +21,7 @@ fn a_republish_that_changes_nothing_sends_the_shell_nothing() {
     // Nothing here starts a bridge, so every pane would become an untypeable one, which opens
     // the roster and republishes on its own schedule. Switched off so that every event counted
     // below was caused by this test.
-    // SAFETY: nothing else in this process reads the environment concurrently. This runs
-    // before the daemon is started and before any pane opens, which is when the core reads it.
-    unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", "0") };
+    muster::testing::set_typeable_deadline(Duration::ZERO);
 
     let daemon = Daemon::start();
     let state = daemon.muster_config().with_file_name("window.toml");

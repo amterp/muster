@@ -1183,6 +1183,8 @@ pub(crate) fn reset() {
     // remember two. The endpoint is given up by asking for nowhere, which is the same path a
     // shell configured with no socket takes.
     watchdog::forget_everything();
+    watchdog::unset_deadlines();
+    set_frame_cells(None);
     watch::forget_everyone();
     command::listen("");
     ffi::muster_set_event_callback(None);
@@ -2260,6 +2262,21 @@ static FRAME_CELLS: LazyLock<u32> = LazyLock::new(|| {
     }
 });
 
+/// What a test set in place of `FRAME_CELLS` ([`crate::testing`]).
+static SET_FRAME_CELLS: Mutex<Option<u32>> = Mutex::new(None);
+
+/// The cells a pane may hold, as set for a test or read from the environment.
+fn frame_cells() -> u32 {
+    poison::lock(&SET_FRAME_CELLS, "frame-cells").unwrap_or(*FRAME_CELLS)
+}
+
+/// Puts `cells` in place of the environment's ceiling, or back to it with `None`. Zero switches
+/// the ceiling off, as it does in the environment.
+pub(crate) fn set_frame_cells(cells: Option<u32>) {
+    *poison::lock(&SET_FRAME_CELLS, "frame-cells") =
+        cells.map(|cells| if cells == 0 { u32::MAX } else { cells });
+}
+
 /// A bridge has asked its daemon for a grid this big, and it may be one no frame can carry.
 ///
 /// The one number nothing else in the window has. A daemon draws a pane by sending the whole
@@ -2276,7 +2293,7 @@ pub(crate) fn pane_sized(pane: &PaneKey, columns: u32, rows: u32) {
         if !session.holds(pane) {
             return;
         }
-        session.grids.sized(pane, columns, rows, *FRAME_CELLS)
+        session.grids.sized(pane, columns, rows, frame_cells())
     };
     for (key, detail) in reported.raise {
         log::warn(
@@ -5258,7 +5275,7 @@ pub(crate) fn adjust_font_size(change: FontSizeChange) -> Result<(), String> {
         // the daemon's cap - which costs the pane every frame after it, silently. Saturated
         // rather than refused, on the same terms as the end of the offset's own range: the
         // honest answer to a key held down is text that stops shrinking.
-        if change == FontSizeChange::Smaller && !session.grids.may_shrink(&pane, *FRAME_CELLS) {
+        if change == FontSizeChange::Smaller && !session.grids.may_shrink(&pane, frame_cells()) {
             log::info(
                 "pane.font_size.floor",
                 fields! {

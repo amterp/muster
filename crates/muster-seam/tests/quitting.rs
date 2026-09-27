@@ -63,9 +63,7 @@ fn quitting_and_closing_sessions_ends_the_daemon() {
 fn open_a_window() -> Daemon {
     // Nothing here paints a pane, so none becomes typeable - an error, which opens the roster
     // and republishes. Noise rather than a finding, so it is switched off.
-    // SAFETY: nothing else in this process reads the environment concurrently; this runs before
-    // the daemon starts and before any pane opens, which is when the core reads it.
-    unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", "0") };
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
 
     let daemon = Daemon::start();
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "quitting", "focus": true }));

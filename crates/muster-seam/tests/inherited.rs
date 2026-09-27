@@ -19,8 +19,6 @@
 //! died. herdr drops such a pane from `pane.list` the moment its process goes, so what a
 //! daemon can hold is a live pane or no pane. A pane that dies while Muster is attached is a
 //! different case and has its own coverage - it is a pane the daemon stops holding.
-//!
-//! Its own binary because the seam holds one session per process.
 
 use std::sync::Mutex;
 

@@ -21,9 +21,7 @@ use prost::Message;
 fn a_pane_hidden_before_its_bridge_dials_is_told_when_it_does() {
     let _turn = muster::testing::fresh_session();
     // No bridge runs here, so a watchdog would otherwise start republishing on its own clock.
-    // SAFETY: nothing else in this process reads the environment concurrently. This runs
-    // before the daemon is started and before any pane opens, which is when the core reads it.
-    unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", "0") };
+    muster::testing::set_typeable_deadline(Duration::ZERO);
 
     let daemon = Daemon::start();
     muster::ffi::muster_set_event_callback(Some(note));

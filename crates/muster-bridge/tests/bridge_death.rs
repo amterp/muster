@@ -9,8 +9,6 @@
 //! So this one uses a real bridge process and ends it the way a machine going away would. What
 //! it asserts is the number the shell reads: a `bridge_restarts` that moved is what makes a
 //! window build a new surface, and building one is the only way a bridge is ever started.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 

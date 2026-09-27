@@ -90,6 +90,39 @@ static DEADLINE: LazyLock<u64> = LazyLock::new(|| {
     }
 });
 
+/// What a test set in place of the two deadlines above ([`crate::testing`]), in nanoseconds,
+/// since the environment is read once per process and a test binary holds many tests.
+static SET_DEADLINE: Mutex<Option<u64>> = Mutex::new(None);
+static SET_PAINTING_DEADLINE: Mutex<Option<u64>> = Mutex::new(None);
+
+/// The typeable deadline and the painting deadline in force, in nanoseconds.
+fn deadlines() -> (u64, u64) {
+    let typeable = *poison::lock(&SET_DEADLINE, "deadline");
+    let painting = *poison::lock(&SET_PAINTING_DEADLINE, "painting-deadline");
+    (typeable.unwrap_or(*DEADLINE), painting.unwrap_or(*PAINTING_DEADLINE))
+}
+
+pub(crate) fn set_typeable_deadline(deadline: Duration) {
+    *poison::lock(&SET_DEADLINE, "deadline") = Some(nanos(deadline));
+    KNOCK.notify_all();
+}
+
+pub(crate) fn set_painting_deadline(deadline: Duration) {
+    *poison::lock(&SET_PAINTING_DEADLINE, "painting-deadline") = Some(nanos(deadline));
+    KNOCK.notify_all();
+}
+
+/// Both deadlines back to the environment's.
+pub(crate) fn unset_deadlines() {
+    *poison::lock(&SET_DEADLINE, "deadline") = None;
+    *poison::lock(&SET_PAINTING_DEADLINE, "painting-deadline") = None;
+    KNOCK.notify_all();
+}
+
+fn nanos(deadline: Duration) -> u64 {
+    u64::try_from(deadline.as_nanos()).unwrap_or(u64::MAX)
+}
+
 /// The panes being waited on, and the door the thread is knocked on.
 ///
 /// A leaf lock: nothing is called while it is held. See the module comment for why that
@@ -246,7 +279,7 @@ pub(crate) fn forget_everything() {
 /// condvar rather than ticking, because a window whose panes are all typeable has nothing for
 /// it to do and an idle window should cost no wakeups at all.
 fn start() {
-    if *DEADLINE == 0 && *PAINTING_DEADLINE == 0 {
+    if deadlines() == (0, 0) {
         return;
     }
     if WATCHING.swap(true, Ordering::AcqRel) {
@@ -257,9 +290,8 @@ fn start() {
 }
 
 fn watch() {
-    let deadline = *DEADLINE;
-    let painting_deadline = *PAINTING_DEADLINE;
     loop {
+        let (deadline, painting_deadline) = deadlines();
         let reported = {
             let mut waiting = poison::lock(&WAITING, "typeable");
             waiting.reconcile(clock::monotonic_now(), deadline)

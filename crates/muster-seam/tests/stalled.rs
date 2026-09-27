@@ -11,12 +11,12 @@
 //! is the whole of what the shell is told, and `bridge_restarts` moving is the only thing that
 //! makes it build the surface a bridge is the command of.
 //!
-//! Its own binary because the deadline the watch runs on is read once per process, and the
-//! other respawn tests must not run under a short one - a stall ask landing between their
-//! bridge deaths would be a third thing moving the number they are counting.
+//! The short deadline is this file's alone, since each test's reset puts it back: the other
+//! respawn tests must not run under it - a stall ask landing between their bridge deaths would
+//! be a third thing moving the number they are counting.
 
 use std::sync::Mutex;
-use std::sync::{Once, atomic::AtomicUsize, atomic::Ordering};
+use std::sync::{atomic::AtomicUsize, atomic::Ordering};
 
 use herdr_harness::{Daemon, until};
 use muster::proto::{
@@ -29,7 +29,7 @@ use prost::Message;
 /// it is still a deadline rather than an immediate accusation - the daemon has to answer, the
 /// view has to be published and a socket has to be bound before the clock even starts. The
 /// same number `untypeable.rs` runs on, and for the same reasons.
-const DEADLINE_MS: &str = "300";
+const DEADLINE_MS: u64 = 300;
 
 #[test]
 fn a_pane_whose_first_bridge_never_dials_is_asked_for_another() {
@@ -79,19 +79,9 @@ fn a_replacement_that_never_arrives_is_asked_for_again() {
     );
 }
 
-/// Sets the deadline this binary runs under, before any pane opens.
-///
-/// Once per process rather than once per test, because it is read once per process and a
-/// second write would be the only thing in here touching the environment while a daemon the
-/// last test started is still being torn down.
+/// Sets the deadline this test runs under, before any pane opens.
 fn shorten_the_deadline() {
-    static SET: Once = Once::new();
-    SET.call_once(|| {
-        // SAFETY: nothing else in this process reads the environment concurrently. This runs
-        // before any daemon is started and before any pane opens, which is when the core
-        // reads it.
-        unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", DEADLINE_MS) };
-    });
+    muster::testing::set_typeable_deadline(std::time::Duration::from_millis(DEADLINE_MS));
 }
 
 /// Connects to the pane's control socket the way a bridge starting would, and waits for the

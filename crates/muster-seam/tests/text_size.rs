@@ -25,9 +25,7 @@ fn a_chord_sizes_one_pane_and_a_split_inherits_it() {
     // Nothing here starts a bridge, so every pane is one that never becomes typeable - an
     // error, which opens the roster and republishes. Harmless to this test and noisy in its
     // log, so it is switched off rather than waited out.
-    // SAFETY: nothing else in this process reads the environment concurrently. This runs
-    // before the daemon is started and before any pane opens, which is when the core reads it.
-    unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", "0") };
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
 
     let daemon = Daemon::start();
     let state = daemon.muster_config().with_file_name("window.toml");

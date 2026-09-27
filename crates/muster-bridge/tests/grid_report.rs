@@ -15,8 +15,6 @@
 //! So this uses a real bridge and asks the window what it thinks is wrong. The ceiling is set
 //! below what a bridge on a pipe can produce, because a test cannot make a pane of a hundred
 //! thousand cells: the bridge falls back to 80 by 24 when its stdout is not a surface's PTY.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 
@@ -27,15 +25,13 @@ use support::{Typing, named_pane, problems};
 /// Below 80 by 24, which is what a bridge whose stdout is a pipe reports. The number is not the
 /// subject here - `pane-grid.json` argues about the real one - what is being proved is that a
 /// grid crosses the wire at all and reaches the rule.
-const CEILING: &str = "100";
+const CEILING: u32 = 100;
 
 #[test]
 fn a_pane_too_big_to_draw_is_reported() {
-    // SAFETY: nothing else in this process reads the environment concurrently. This runs
-    // before the core is started, which is when it reads this.
-    unsafe { std::env::set_var("MUSTER_FRAME_CELLS", CEILING) };
-
-    let typing = Typing::start("");
+    let turn = muster::testing::fresh_session();
+    muster::testing::set_frame_cells(CEILING);
+    let typing = Typing::start_in(turn, "");
     let pane = typing.pane.clone();
 
     until(

@@ -19,9 +19,7 @@ use prost::Message;
 #[test]
 fn the_last_view_the_shell_is_sent_is_the_one_the_core_settled_last() {
     let _turn = muster::testing::fresh_session();
-    // SAFETY: nothing else in this process reads the environment concurrently. This runs
-    // before the daemon is started and before any pane opens, which is when the core reads it.
-    unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", "0") };
+    muster::testing::set_typeable_deadline(Duration::ZERO);
 
     let daemon = Daemon::start();
     let state = daemon.muster_config().with_file_name("window.toml");

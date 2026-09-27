@@ -10,8 +10,7 @@
 //! paint and then swallow every keystroke - so a pane published without one is a blank pane
 //! that nothing republishes, which is exactly how this shipped once.
 //!
-//! Its own binary because the seam holds one session per process, and this needs a session
-//! that has never seen a pane.
+//! `fresh_session` gives it a session that has never seen a pane, which is what it needs.
 
 use std::sync::Mutex;
 

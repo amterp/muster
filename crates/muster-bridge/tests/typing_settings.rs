@@ -10,8 +10,6 @@
 //! between the two answers is visible rather than inferred: `^[t` is an escape prefix and a
 //! meta chord, where the dagger option composed instead would arrive as its three UTF-8
 //! bytes and render as `M-bM-^@M- `.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 

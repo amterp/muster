@@ -15,8 +15,6 @@
 //! `cat -v` renders what arrived, so the difference is visible rather than inferred: `^[t` is an
 //! escape prefix and a meta chord, where the dagger the layout composed instead arrives as the
 //! character itself - valid UTF-8, which `cat -v` passes through untouched.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 

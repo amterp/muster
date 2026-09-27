@@ -19,8 +19,9 @@
 //! `include/muster.h` declares rather than everything this crate happens to make public.
 
 use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
-use crate::session;
+use crate::{session, watchdog};
 
 /// Which test is using the seam. Held for the length of one, so the tests in a binary run one
 /// at a time rather than racing each other through one session.
@@ -45,14 +46,34 @@ static TURN: Mutex<()> = Mutex::new(());
 /// rest of the seam recovers its own - the next test should fail on its own assertions, not on
 /// the last one's ghost.
 ///
-/// The environment is not reset, and cannot be: it is read once per process by things like the
-/// typeable deadline, and it belongs to the binary rather than to a test. A file a test writes
-/// is its own business; every helper here already puts one under the daemon's scratch root.
+/// The environment is not reset, and cannot be: it belongs to the process, which every test in
+/// a binary shares. The settings it is read for once per process - the typeable and painting
+/// deadlines and the frame-cell ceiling - are set here instead, and go back to the
+/// environment's on every reset. A file a test writes is its own business; every helper here
+/// already puts one under the daemon's scratch root.
 #[must_use]
 pub fn fresh_session() -> Turn {
     let turn = TURN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     session::reset();
     Turn { _turn: turn }
+}
+
+/// How long a pane may go without its bridge dialing in before it is reported untypeable, in
+/// place of `MUSTER_TYPEABLE_DEADLINE_MS`, until the next reset. Zero switches the watch off.
+pub fn set_typeable_deadline(deadline: Duration) {
+    watchdog::set_typeable_deadline(deadline);
+}
+
+/// How long a pane asked for a frame may go without one before it is reported, in place of
+/// `MUSTER_PAINTING_DEADLINE_MS`, until the next reset. Zero switches the watch off.
+pub fn set_painting_deadline(deadline: Duration) {
+    watchdog::set_painting_deadline(deadline);
+}
+
+/// The cells a pane may hold before it is reported too big to draw, in place of
+/// `MUSTER_FRAME_CELLS`, until the next reset. Zero switches the ceiling off.
+pub fn set_frame_cells(cells: u32) {
+    session::set_frame_cells(Some(cells));
 }
 
 /// How many callers are watching agent states right now.

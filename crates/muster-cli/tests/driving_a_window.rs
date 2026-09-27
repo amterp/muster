@@ -6,8 +6,6 @@
 //! that the binary cannot find the socket, renders nothing, or exits zero on a refusal. Each of
 //! those failures looks the same from a pane: the CLI does nothing.
 //!
-//! One test in this binary, on purpose: the seam holds one session per process.
-//!
 //! The child's environment is cleared rather than inherited, and that is load-bearing rather than
 //! tidy. This suite is developed inside Muster, so an inherited `MUSTER_SOCKET` would point the
 //! test at the developer's own window - splitting real panes and typing into them.
@@ -23,6 +21,7 @@ use serde_json::{Value, json};
 
 #[test]
 fn a_pane_can_drive_the_window_it_is_drawn_in() {
+    let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start();
     daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "driven", "focus": true }));
 

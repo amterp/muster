@@ -12,11 +12,8 @@
 //! And its opposite, which matters as much. An alarm that fires on a healthy window is what
 //! teaches somebody to ignore the one that does not, so the false positive is covered beside
 //! the true one rather than somewhere else.
-//!
-//! Its own binary because this needs a process whose deadline was set before any pane opened,
-//! and the deadline is read once per process. The seam serializes the tests inside a binary.
 
-use std::sync::{Mutex, Once};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use herdr_harness::{Daemon, until};
@@ -30,7 +27,7 @@ use serde_json::json;
 /// Short enough that the gate does not wait out the shipped five seconds, and long enough that
 /// it is still a deadline rather than an immediate accusation - the daemon has to answer, the
 /// view has to be published, and a socket has to be bound before the clock even starts.
-const DEADLINE_MS: &str = "300";
+const DEADLINE_MS: u64 = 300;
 
 /// How long "and nothing else was reported" waits before it counts as true.
 ///
@@ -290,19 +287,9 @@ fn records(log: &std::path::Path) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Sets the deadline this binary runs under, before any pane opens.
-///
-/// Once per process rather than once per test, because it is read once per process and a
-/// second write would be the only thing in here touching the environment while a daemon the
-/// last test started is still being torn down.
+/// Sets the deadline this test runs under, before any pane opens.
 fn shorten_the_deadline() {
-    static SET: Once = Once::new();
-    SET.call_once(|| {
-        // SAFETY: nothing else in this process reads the environment concurrently. This runs
-        // before any daemon is started and before any pane opens, which is when the core
-        // reads it.
-        unsafe { std::env::set_var("MUSTER_TYPEABLE_DEADLINE_MS", DEADLINE_MS) };
-    });
+    muster::testing::set_typeable_deadline(Duration::from_millis(DEADLINE_MS));
 }
 
 /// The pane a new workspace comes with, read back rather than spelled.

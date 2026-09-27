@@ -10,8 +10,6 @@
 //! catch, a scroll routed to the keyboard pane, looks identical from every layer above. The
 //! oracle is herdr's own `offset_from_bottom`, which is the daemon saying how far up a pane it
 //! has actually moved.
-//!
-//! One test in this binary, on purpose - see `support`.
 
 mod support;
 
