@@ -9,6 +9,7 @@ libc.workspace = true
 muster-core.workspace = true
 muster-daemon-proto.workspace = true
 muster-ssh.workspace = true
+prost.workspace = true
 
 [dev-dependencies]
 muster-harness.workspace = true
