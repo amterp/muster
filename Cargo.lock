@@ -633,12 +633,20 @@ dependencies = [
  "libc",
  "mimalloc",
  "muster-core",
+ "muster-daemon-client",
  "muster-daemon-proto",
  "muster-detect",
  "muster-frame",
  "muster-harness",
  "muster-vt",
  "prost",
+]
+
+[[package]]
+name = "muster-daemon-client"
+version = "0.9.0"
+dependencies = [
+ "muster-daemon-proto",
 ]
 
 [[package]]
