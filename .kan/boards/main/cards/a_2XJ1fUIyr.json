@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "mip-3-a-daemon-of",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell",
+    "testing",
+    "devenv"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790469794031,
+  "creator": "Alexander Terp",
+  "description": "Parent card for `docs/mip/0003-own-daemon.md` (Draft, 2026-09-26). The MIP is the design; the child cards are the work, in the MIP's three delivery stages.\n\nWhy: herdr re-renders every pane instead of forwarding its bytes. That one design choice is behind the 16 ms typing tail, the invisible terminal modes, the surfaces with no scrollback (so no Ghostty search), the 2 MiB frame cap, and the ssh exec per remote pane. Eighteen of the twenty-nine `uncommitted` cards are herdr findings. A daemon covering only what Muster needs is estimated at 9-13k lines; herdr is 126k lines of production Rust.\n\nGoals set by amterp when this was scoped: macOS and Linux only; only what Muster needs, not herdr parity; no technical debt carried across; typing, output and search that feel like native Ghostty; a clean cut, where old herdr daemons keep running until their panes end and the new app does not show them.\n\nStages:\n\n```\n1. Foundations (herdr untouched)\n     replay spike + muster-vt        protocol + daemon core + harness\n     pane streams + input            agent detection port\n     persistence                     Linux cross-build\n     shell integration + terminfo    vertical slice (throwaway, measured)\n2. Cut-over (one integration)\n     control plane    data plane + input + shell    suite + herdr deleted\n3. Distribution, handoff, doctrine\n     helper app + bundled Linux daemons + remote install\n     handoff    muster daemons / --doctor    docs    latency targets\n```\n\nMain is not released between the start of stage 2 and the end of stage 3.\n\nRelated: `a_2Rtd0Ed0l` holds the message service (council) that later lives in this daemon; `a_26BJbJeZL` held the fork option this MIP rejects.",
+  "id": "a_2XJ1fUIyr",
+  "position": "aY",
+  "title": "📜 MIP-3: a daemon of Muster's own, and herdr removed",
+  "type": "chore",
+  "updated_at_millis": 1790469796648,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790469794031}
+  ]
+}

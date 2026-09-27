@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "build-muster-daemon",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "devenv"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790469795058,
+  "creator": "Alexander Terp",
+  "description": "MIP-3 section 12. No Muster artifact builds for Linux today, and remote panes need the daemon on the devenv.\n\nDirection from the MIP: cross-compile from the Mac with the Zig 0.16 the build already requires, for `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` (added to `rust-toolchain.toml` targets); libghostty-vt built as a static library per target (`zig build -Demit-lib-vt -Dtarget=...`); link with `zig cc` or cargo-zigbuild; mimalloc instead of musl's allocator. herdr's release workflow does the equivalent on Linux runners, which is a reference for flags.\n\nAlso worth settling here: whether the default gate compile-checks the Linux targets (cheap insurance) or only `--ssh` and `--bundle` build them; and the binary size, which the MIP's case for bundling both Linux daemons in the app depends on.",
+  "id": "a_2XJ1h9yaV",
+  "parent": "a_2XJ1fUIyr",
+  "position": "ac",
+  "title": "Build muster-daemon for Linux x86_64 and aarch64",
+  "type": "chore",
+  "updated_at_millis": 1790469797113,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790469795058}
+  ]
+}

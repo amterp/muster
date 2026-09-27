@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "daemon-persistence",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790469794924,
+  "creator": "Alexander Terp",
+  "description": "MIP-3 section 2, \"What a restart needs is persisted\". Today herdr restores the tab tree and each pane's directory after a daemon restart; the new daemon has to keep that guarantee (`docs/architecture.md`, durability, row three).\n\nThe daemon writes one versioned file with an atomic rename, shortly after each change and on shutdown: tabs, trees, ratios, zoom, labels with generations, grouped-tab membership, pane names, each pane's current directory (OSC 7, falling back to the foreground process's cwd, debounced), and the last palette and cell size an app sent. Titles, agent state and liveness are never written. On start it rebuilds every tab and starts a shell in each recorded directory, keeping every name, and does not re-run commands.\n\nherdr's equivalent, for reference: `src/persist/snapshot.rs`, `src/app/session.rs`, `restore.rs` (5 s debounce, temp file and rename).",
+  "id": "a_2XJ1gvmm9",
+  "parent": "a_2XJ1fUIyr",
+  "position": "ab",
+  "title": "Daemon persistence: tabs and panes come back after a daemon restart",
+  "type": "feature",
+  "updated_at_millis": 1790469797060,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790469794924}
+  ]
+}

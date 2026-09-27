@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "replay-spike-bring-a",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1790469794141,
+  "creator": "Alexander Terp",
+  "description": "First card of MIP-3 (section 5), and it goes first because it can change the design.\n\nWhen a bridge attaches to a pane, the daemon must bring a fresh surface to the pane's exact state before live bytes follow. MIP-3 does this with a VT replay Muster composes from the daemon's headless libghostty-vt terminal. If the replay cannot be made faithful, passthrough falls back to server-rendered frames and loses native scrollback, so this is decided before anything is built on it.\n\nWhat is already known, from a probe against the pinned libghostty-vt (2026-09-26, `scratchpad/fmtprobe/probe{,2,3}.c` in the session that wrote the MIP; the cases are listed below so they can be rebuilt): the formatter's all-in-one VT output is not usable as a replay.\n- it emits modes before content (`formatter.zig:408-425`), so content replays in insert mode or with autowrap off;\n- its tabstop output leaves the cursor at column 17 (`formatter.zig:446-462`);\n- it omits trailing blank rows but restores the cursor absolutely, so typing after a replay of a cleared screen with history lands on a history row;\n- it writes all 256 palette entries as `OSC 4` overrides (5.5 KB), so a replayed pane stops following a theme switch;\n- its C API formats only the active screen (`formatter.h:120`), so a pane attached while a program is on the alternate screen shows an empty main screen when the program exits.\n\nThe MIP's replay order: reset; main screen with history (modes, tabstops, palette off; unwrap on; padding newlines so the active area lines up); alternate screen if active; modes, scrolling region, tabstops + CR, charsets, style, hyperlink; only changed palette and OSC 10/11/12 colors (`GHOSTTY_TERMINAL_DATA_COLOR_PALETTE` vs `_PALETTE_DEFAULT`); cursor last.\n\nTo settle:\n- the route to the main screen while the alternate is active: a screen-selecting field on the formatter's C options (the Zig `ScreenFormatter` exists; `formatter.zig:293-296` asks for it) sent upstream and carried as a patch on `deps/ghostty.pin` until it lands, or a detour through the snapshot API (`snapshot.h`, format v1, no compatibility guarantee). The MIP leans upstream-plus-patch;\n- whether the composed replay passes the oracle: feed bytes to terminal A, replay into B, compare grids, cursors, modes, and the result of feeding both the same bytes afterwards. Cases: alt screen then exit; trailing blank rows under history; insert mode, autowrap off, origin mode; custom tabstops; untouched palette then theme switch; OSC 11 set by the program; wide character at the last column of a soft-wrapped row; kitty keyboard flags set;\n- what a replay of deep history costs (10k and 100k rows), which sets the attach target in MIP-3 section 13 and decides whether history is capped or streamed.\n\nThe oracle and its cases should outlive the spike as the replay's permanent test. Record the outcome in the MIP's Open Questions (resolve them) and in an observation note if libghostty behaves unexpectedly.",
+  "id": "a_2XJ1ffNcD",
+  "parent": "a_2XJ1fUIyr",
+  "position": "a2",
+  "title": "🧪 Replay spike: bring a fresh terminal to a live pane's state",
+  "type": "chore",
+  "updated_at_millis": 1790469796699,
+  "history": [
+    {"field":"column","value":"next","at":1790469794141}
+  ]
+}

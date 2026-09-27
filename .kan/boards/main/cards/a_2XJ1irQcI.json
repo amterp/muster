@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "handoff-replace-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790469796115,
+  "creator": "Alexander Terp",
+  "description": "MIP-3 section 10. An app keeps using the daemon already running, so a daemon fix reaches a machine only when that daemon is replaced. Without handoff that ends every agent, people decline it, and old daemons run for weeks.\n\nThe old daemon starts the new one and passes each PTY master over `SCM_RIGHTS` with the pane's persisted fields and a replay of its headless terminal; the new one rebuilds each terminal by parsing the replay, takes the socket, and tells the old one to exit. A replay rather than the snapshot format, so the two libghostty versions need not match. The new daemon learns a pane's process exited from the PTY closing, since it is not the parent.\n\nShips before the first daemon update after the cut-over. Worth measuring on macOS: that permission (TCC) attribution survives, since the successor is started by the old daemon inside the same bundle. herdr's version (`src/server/handoff.rs`) is a reference.",
+  "id": "a_2XJ1irQcI",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aj",
+  "title": "Handoff: replace a running daemon without ending its panes",
+  "type": "feature",
+  "updated_at_millis": 1790469797471,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790469796115}
+  ]
+}

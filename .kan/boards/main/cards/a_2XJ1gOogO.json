@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-test-harness-that",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1790469794588,
+  "creator": "Alexander Terp",
+  "description": "MIP-3 section 13. `crates/herdr-harness` spawns the pinned herdr per test under a scratch XDG directory. The daemon cards need the same for `muster-daemon`, built from the same commit: no pin, no download.\n\nParts of herdr-harness are not herdr-shaped and should move rather than be copied: `until.rs` (the repo's single `until` with a single deadline) and `relay.rs` (`Daemon::withholding_answers_to`, which stages a request that lands but whose answer is lost). herdr-harness itself stays until the cut-over deletes it, so this is a new neutral crate those two move into, with herdr-harness re-exporting them in the meantime.\n\nConstraint worth keeping in view: a spawned herdr answers in about 25 ms (`docs/testing.md`), and daemon-backed tests are only in the default gate because of that. The new daemon has to match, and the harness is the natural place to assert it.",
+  "id": "a_2XJ1gOogO",
+  "parent": "a_2XJ1fUIyr",
+  "position": "a6",
+  "title": "A test harness that spawns muster-daemon instead of herdr",
+  "type": "chore",
+  "updated_at_millis": 1790469796904,
+  "history": [
+    {"field":"column","value":"next","at":1790469794588}
+  ]
+}
