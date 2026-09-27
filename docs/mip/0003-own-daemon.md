@@ -323,6 +323,13 @@ would kill them after. A group id the kernel reused within those three seconds w
 too, which is accepted: ids are handed out in order, and a group lives while any of its
 processes do.
 
+A pane taken over in a handoff (section 10) needs one more check, because its shell is not this
+daemon's child: whoever adopted it reaps it, and from then on its pid is free for any process.
+So its groups are signaled only if the shell still leads the session its terminal belongs to, or
+no process has the shell's pid at all - a group left behind by a dead shell keeps its id while any
+of its processes live, and the kernel reuses no id still in use. A process holding the shell's pid
+without leading the pane's terminal is somebody else's, and gets nothing.
+
 ### 4. Output: passthrough
 
 Each pane has a reader thread. Every chunk it reads from the PTY is sent unchanged to the bridge

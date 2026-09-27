@@ -425,6 +425,8 @@ pub(crate) struct Pane {
     wake: OwnedFd,
     /// The pane's process, the leader of its own session.
     process: Option<i32>,
+    /// Whether that process is another daemon's child, which this one never reaps.
+    adopted: bool,
 }
 
 /// A pane's process, as the daemon holding the pane knows it.
@@ -553,7 +555,7 @@ impl Pane {
                 .map_err(failed)?;
         }
 
-        Ok(Pane { record, serial, io, wake, process })
+        Ok(Pane { record, serial, io, wake, process, adopted: !child && process.is_some() })
     }
 
     pub(crate) fn process(&self) -> Option<i32> {
@@ -570,16 +572,47 @@ impl Pane {
     /// its master closed once its reader, its writer and the connections that looked it up let
     /// go of it. Its bridge's connection lets go at once (`Bridge::detach`); an input connection
     /// holds it only weakly.
+    ///
+    /// An adopted pane's process is reaped by whoever adopted it, so once it has ended its pid is
+    /// free for any process: its groups are signaled only while that pid is not somebody else's.
     pub(crate) fn hang_up(self, reason: proto::DetachReason) {
         self.io.close(reason);
         let foreground = self.io.foreground_group().filter(|group| Some(*group) != self.process);
-        let groups: Vec<i32> = self.process.into_iter().chain(foreground).collect();
+        let theirs = self.adopted
+            && self.process.is_some_and(|pid| {
+                !adopted_group_is_ours(
+                    pty::session_of(self.io.master()) == Some(pid),
+                    pty::process_exists(pid),
+                )
+            });
+        let groups: Vec<i32> = if theirs {
+            log::info(
+                "daemon.pane.not_signaled",
+                fields! {
+                    "pane" => self.record.pane,
+                    "pid" => self.process.unwrap_or_default(),
+                    "why" => "its shell has ended and its pid now belongs to another process",
+                },
+            );
+            Vec::new()
+        } else {
+            self.process.into_iter().chain(foreground).collect()
+        };
         for &group in &groups {
             pty::hang_up(group);
         }
         kill_after_grace(groups, &self.record.pane);
         drop(self.wake);
     }
+}
+
+/// Whether an adopted pane's process group, named by its shell's pid, can only be the pane's.
+/// While the shell lives it leads the session the pane's terminal belongs to. Once it has ended,
+/// its group keeps the id while any process of the pane is still in it, and the kernel reuses no
+/// id still in use, so a process that has the pid while not leading the pane's session is a
+/// stranger's. Past this check the reuse left is within the kill grace, as for any pane.
+fn adopted_group_is_ours(leads_the_terminal: bool, pid_in_use: bool) -> bool {
+    leads_the_terminal || !pid_in_use
 }
 
 fn live_cwd(master: BorrowedFd<'_>, process: Option<i32>) -> Option<PathBuf> {
@@ -848,6 +881,13 @@ impl PaneIo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_adopted_group_is_signaled_unless_its_pid_is_now_a_strangers() {
+        assert!(adopted_group_is_ours(true, true), "the shell still leads its terminal");
+        assert!(adopted_group_is_ours(false, false), "the shell is gone and its pid unused");
+        assert!(!adopted_group_is_ours(false, true), "another process has the shell's pid");
+    }
 
     fn heard() -> Heard {
         Heard {

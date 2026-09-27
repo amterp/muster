@@ -158,6 +158,21 @@ pub(crate) fn foreground_group(master: BorrowedFd<'_>) -> Option<i32> {
     (group > 0).then_some(group)
 }
 
+/// The session the terminal belongs to, which is its leader's pid, or None once that leader has
+/// gone and the terminal belongs to no session.
+pub(crate) fn session_of(master: BorrowedFd<'_>) -> Option<i32> {
+    // SAFETY: tcgetsid only reads the terminal's state.
+    let session = unsafe { libc::tcgetsid(master.as_raw_fd()) };
+    (session > 0).then_some(session)
+}
+
+/// Whether a process with this pid exists.
+pub(crate) fn process_exists(pid: i32) -> bool {
+    // SAFETY: kill with signal 0 only asks whether the process exists.
+    let answered = unsafe { libc::kill(pid, 0) };
+    answered == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
 /// Sends SIGHUP to a process group, which is what a terminal closing means to what runs in it.
 pub(crate) fn hang_up(group: i32) {
     // SAFETY: killpg with a positive group id signals that group and nothing else. A group that
