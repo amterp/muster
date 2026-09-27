@@ -85,6 +85,8 @@ fn a_socket_path_naming_a_file_is_refused_rather_than_deleted() {
     let mut refused = std::process::Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
         .arg("--socket")
         .arg(&mistyped)
+        .arg("--data")
+        .arg(DAEMON_DATA)
         .env_clear()
         .env("HOME", daemon.root().join("home"))
         .stderr(std::process::Stdio::piped())

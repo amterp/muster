@@ -30,6 +30,7 @@ use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
 
 use crate::control::Outbox;
+use crate::data::Data;
 use crate::effects::{self, Report, Reported, Reports};
 use crate::pane::{Ended, Pane, PaneIo, Watching};
 use crate::pty::{self, Grid, Launch};
@@ -53,6 +54,7 @@ impl Shared {
         stopping: Sender<()>,
         inherited: Vec<(OsString, OsString)>,
         home: PathBuf,
+        data: Data,
     ) -> Arc<Shared> {
         Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
@@ -90,6 +92,7 @@ impl Shared {
                     subscribers: Vec::new(),
                     inherited,
                     home,
+                    data,
                     next_serial: 0,
                     ended,
                     reports,
@@ -124,6 +127,8 @@ pub(crate) struct Session {
     inherited: Vec<(OsString, OsString)>,
     /// Where a pane starts when nothing says where.
     home: PathBuf,
+    /// What the daemon gives its shells: the terminfo entry and the shell integration.
+    data: Data,
     next_serial: u64,
     ended: Ended,
     /// Where panes send what their programs asked for, for the publisher to apply here.
@@ -413,6 +418,7 @@ impl Session {
             &create.env,
             &create.pane,
             create.command.as_deref(),
+            &self.data.terminfo(),
         );
 
         self.reserved.insert(create.pane.clone());

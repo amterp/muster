@@ -6,7 +6,7 @@
 use std::path::Path;
 
 pub use muster_daemon_proto as proto;
-pub use muster_harness::{Asked, Control, Daemon, until, until_file, until_some};
+pub use muster_harness::{Asked, Control, DAEMON_DATA, Daemon, until, until_file, until_some};
 use proto::request::Service;
 use proto::{pane_request, placement, session_request, tab_request};
 

@@ -6,6 +6,7 @@
 //! told to stop.
 
 mod control;
+mod data;
 mod descriptors;
 mod effects;
 mod input;
@@ -44,18 +45,24 @@ static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 /// dials that one instead.
 const ALREADY_SERVING: u8 = 3;
 
-const USAGE: &str = "usage: muster-daemon [--socket PATH]\n\n\
+const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n\n\
     Serves Muster's panes on this machine. Without --socket, listens where this install's \
-    daemon listens: $MUSTER_HOME/daemon/<install>.sock.";
+    daemon listens: $MUSTER_HOME/daemon/<install>.sock. Without --data, gives its shells the \
+    muster-daemon-data directory beside its executable.";
 
 fn main() -> ExitCode {
     let mut arguments = std::env::args().skip(1);
     let mut socket = None;
+    let mut data = None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--socket" => match arguments.next() {
                 Some(path) => socket = Some(PathBuf::from(path)),
                 None => return usage("--socket needs a path"),
+            },
+            "--data" => match arguments.next() {
+                Some(path) => data = Some(PathBuf::from(path)),
+                None => return usage("--data needs a directory"),
             },
             "--version" => {
                 println!("muster-daemon {} ({})", env!("CARGO_PKG_VERSION"), install::INSTALL);
@@ -76,10 +83,18 @@ fn main() -> ExitCode {
     };
 
     log::start_from_environment("daemon");
+    let data = match data::Data::locate(data.as_deref()) {
+        Ok(data) => data,
+        Err(message) => {
+            eprintln!("muster-daemon: {message}");
+            log::error("daemon.no_data", fields! { "error" => message });
+            return ExitCode::FAILURE;
+        }
+    };
     // Before any thread exists, so every thread inherits the mask and only the one waiting for
     // these signals ever receives them.
     let signals = block_signals();
-    match run(&socket, signals) {
+    match run(&socket, data, signals) {
         Ok(()) => ExitCode::SUCCESS,
         Err(Failure::AlreadyServing) => {
             eprintln!("muster-daemon: another daemon is already serving {}", socket.display());
@@ -103,7 +118,7 @@ enum Failure {
     Other(String),
 }
 
-fn run(socket: &Path, signals: libc::sigset_t) -> Result<(), Failure> {
+fn run(socket: &Path, data: data::Data, signals: libc::sigset_t) -> Result<(), Failure> {
     refuse_anything_but_a_socket(socket)?;
     let _claim = claim(socket)?;
     let listener = listen(socket)?;
@@ -111,7 +126,7 @@ fn run(socket: &Path, signals: libc::sigset_t) -> Result<(), Failure> {
     let (stopping, stop) = mpsc::channel();
     let inherited: Vec<_> = std::env::vars_os().collect();
     let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
-    let shared = Shared::new(instance(), stopping.clone(), inherited, home);
+    let shared = Shared::new(instance(), stopping.clone(), inherited, home, data);
 
     let waiting = signals;
     std::thread::Builder::new()

@@ -65,12 +65,14 @@ fn a_pane_is_read_in_pages_counted_from_its_oldest_row() {
 fn the_daemon_answers_a_programs_queries() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let cases: [(&str, &str, &[u8]); 5] = [
+    let cases: [(&str, &str, &[u8]); 6] = [
         ("da1", "\\033[c", b"\x1b[?62;22;52c"),
         ("da2", "\\033[>c", b"\x1b[>1;10;0c"),
         ("cursor", "\\033[3;5H\\033[6n", b"\x1b[3;5R"),
         ("size", "\\033[14t", b"\x1b[4;480;800t"),
         ("kitty", "\\033[?u", b"\x1b[?0u"),
+        // XTGETTCAP for the terminal's name, which has to be the TERM the pane was given.
+        ("name", "\\033P+q544e\\033\\\\", b"\x1bP1+r544E=787465726D2D67686F73747479\x1b\\"),
     ];
     for (index, (name, query, _)) in cases.iter().enumerate() {
         let out = daemon.root().join(name);

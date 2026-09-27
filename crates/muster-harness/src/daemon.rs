@@ -30,6 +30,11 @@ pub const FIRST_ANSWER_BUDGET: Duration = Duration::from_millis(25);
 /// A socket path must fit `sockaddr_un.sun_path`, 104 bytes on macOS, so the root stays short.
 const ROOT: &str = "/tmp/muster-test";
 
+/// What every daemon here gives its shells: the terminfo entry and the shell integration, from
+/// the directory `./dev -d` assembles in this checkout.
+pub const DAEMON_DATA: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../deps/ghostty/zig-out/muster-daemon-data");
+
 /// What a pane runs unless a test sets a shell: a `/bin/sh`, so nobody's dotfiles play a part.
 const SHELL: &str = "/bin/sh";
 
@@ -115,6 +120,8 @@ impl Daemon {
         command
             .arg("--socket")
             .arg(&self.socket_path)
+            .arg("--data")
+            .arg(DAEMON_DATA)
             .env_clear()
             .env("PATH", std::env::var("PATH").unwrap_or_default())
             .env("HOME", self.root.join("home"))

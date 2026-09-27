@@ -14,6 +14,7 @@ use muster_vt::{Answers, ColorScheme, Palette, Rgb, Terminal, TerminalError, Ter
 
 use crate::effects::Happened;
 use crate::pty::Grid;
+use crate::spawn;
 use crate::stream::{Bridge, Refusal};
 
 /// History a pane keeps when the app has not said: Ghostty's own `scrollback-limit`, so the
@@ -132,6 +133,7 @@ impl Screen {
             scrollback_bytes: Some(scrollback),
             kitty_image_bytes: Some(KITTY_IMAGE_BYTES),
             answers: appearance.answers(),
+            terminfo_name: Some(spawn::TERM.to_string()),
             ..TerminalOptions::new(grid.cols, grid.rows)
         })?;
         let happened = Arc::new(Mutex::new(Vec::new()));

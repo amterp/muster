@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
+use std::path::Path;
 
 /// Variables the daemon sets itself on every pane, which an inherited or requested copy never
 /// overrides: a pane must not be told it is some other pane.
@@ -16,6 +17,10 @@ pub(crate) const PANE_COMMAND: &str = "MUSTER_PANE_COMMAND";
 /// them would drive the wrong window. The requested environment supplies the right
 /// `MUSTER_SOCKET`; the daemon supplies the others.
 const NOT_INHERITED: [&str; 3] = [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND];
+
+/// Variables from a Ghostty the daemon was started in - its resources, its binary, its surface -
+/// which describe that terminal rather than this pane. A requested copy is still honored.
+const GHOSTTY_PREFIX: &str = "GHOSTTY_";
 
 /// The argv a pane starts with.
 ///
@@ -64,39 +69,65 @@ fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// A pane's environment: what the daemon inherited, less what names another pane, plus what the
-/// request asked for, plus what the daemon sets itself.
+/// The terminal a pane runs as. The daemon carries its terminfo entry, and the headless
+/// terminal answers XTGETTCAP under the same name, so a program that asks gets the same answer
+/// both ways.
+pub(crate) const TERM: &str = "xterm-ghostty";
+
+/// The Ghostty a pane runs in, as far as a program is concerned: the pinned one (`build.rs`).
+const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
+
+/// A pane's environment: what the daemon inherited, less what names another pane or describes
+/// another terminal, plus what the request asked for, plus what the daemon sets itself.
 ///
-/// `TERM` is not decided here. Until the daemon carries its terminfo entry (a card of its own), a
-/// pane has whatever `TERM` the daemon inherited.
+/// The pane says it is Ghostty (`TERM_PROGRAM`), because it is a Ghostty terminal and programs
+/// key features on that name; `MUSTER_PANE` and `MUSTER_SOCKET` are what say it is Muster's.
+/// Its terminfo entry is found through `TERMINFO_DIRS`, ahead of whatever else was there, with an
+/// empty entry after it so the system's database is still searched and a person's own
+/// `~/.terminfo` still comes first.
 pub(crate) fn environment(
     inherited: &[(OsString, OsString)],
     requested: &HashMap<String, String>,
     pane: &str,
     command: Option<&str>,
+    terminfo: &Path,
 ) -> Vec<(OsString, OsString)> {
     let mut environment: Vec<(OsString, OsString)> = inherited
         .iter()
         .filter(|(name, _)| !NOT_INHERITED.iter().any(|dropped| name == OsStr::new(dropped)))
+        .filter(|(name, _)| !name.to_string_lossy().starts_with(GHOSTTY_PREFIX))
         .cloned()
         .collect();
-    let mut set = |name: &str, value: &str| {
-        environment.retain(|(existing, _)| existing != OsStr::new(name));
-        environment.push((name.into(), value.into()));
-    };
     let mut requested: Vec<_> = requested.iter().collect();
     requested.sort();
     for (name, value) in requested {
         if name != PANE_NAME && name != PANE_COMMAND {
-            set(name, value);
+            put(&mut environment, name, value);
         }
     }
-    set("COLORTERM", "truecolor");
-    set(PANE_NAME, pane);
-    if let Some(command) = command {
-        set(PANE_COMMAND, command);
+    let mut dirs = OsString::from(terminfo);
+    dirs.push(":");
+    if let Some((_, existing)) = environment.iter().find(|(name, _)| name == "TERMINFO_DIRS") {
+        dirs.push(existing);
     }
+    put(&mut environment, "TERMINFO_DIRS", dirs);
+    put(&mut environment, "TERM", TERM);
+    put(&mut environment, "COLORTERM", "truecolor");
+    put(&mut environment, "TERM_PROGRAM", "ghostty");
+    put(&mut environment, "TERM_PROGRAM_VERSION", GHOSTTY_VERSION);
+    put(&mut environment, PANE_NAME, pane);
+    if let Some(command) = command {
+        put(&mut environment, PANE_COMMAND, command);
+    }
+    // Another terminal's claim, which Ghostty drops for the same reason.
+    environment.retain(|(name, _)| name != "VTE_VERSION");
     environment
+}
+
+/// Sets `name`, replacing any value it had.
+fn put(environment: &mut Vec<(OsString, OsString)>, name: &str, value: impl AsRef<OsStr>) {
+    environment.retain(|(existing, _)| existing != OsStr::new(name));
+    environment.push((name.into(), value.as_ref().into()));
 }
 
 #[cfg(test)]
@@ -136,31 +167,80 @@ mod tests {
         );
     }
 
+    fn pairs(pairs: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
+        pairs.iter().map(|(name, value)| ((*name).into(), (*value).into())).collect()
+    }
+
+    fn sorted(mut environment: Vec<(OsString, OsString)>) -> Vec<(OsString, OsString)> {
+        environment.sort();
+        environment
+    }
+
+    const TERMINFO: &str = "/data/terminfo";
+
     #[test]
     fn the_pane_is_named_by_the_daemon_and_nothing_else() {
-        let inherited = vec![
-            ("PATH".into(), "/bin".into()),
-            ("MUSTER_PANE".into(), "p-stale".into()),
-            ("MUSTER_SOCKET".into(), "/stale.sock".into()),
-            ("MUSTER_PANE_COMMAND".into(), "stale".into()),
-            ("COLORTERM".into(), "24bit".into()),
-        ];
+        let inherited = pairs(&[
+            ("PATH", "/bin"),
+            ("MUSTER_PANE", "p-stale"),
+            ("MUSTER_SOCKET", "/stale.sock"),
+            ("MUSTER_PANE_COMMAND", "stale"),
+            ("COLORTERM", "24bit"),
+        ]);
         let requested = HashMap::from([
             ("MUSTER_SOCKET".to_string(), "/window.sock".to_string()),
             ("MUSTER_PANE".to_string(), "p-requested".to_string()),
             ("PATH".to_string(), "/usr/bin".to_string()),
         ]);
-        let mut environment = environment(&inherited, &requested, "p1", None);
-        environment.sort();
-        let expected: Vec<(OsString, OsString)> = [
-            ("COLORTERM", "truecolor"),
-            ("MUSTER_PANE", "p1"),
-            ("MUSTER_SOCKET", "/window.sock"),
-            ("PATH", "/usr/bin"),
-        ]
-        .iter()
-        .map(|(name, value)| ((*name).into(), (*value).into()))
-        .collect();
-        assert_eq!(environment, expected);
+        let environment = environment(&inherited, &requested, "p1", None, Path::new(TERMINFO));
+        assert_eq!(
+            sorted(environment),
+            sorted(pairs(&[
+                ("COLORTERM", "truecolor"),
+                ("MUSTER_PANE", "p1"),
+                ("MUSTER_SOCKET", "/window.sock"),
+                ("PATH", "/usr/bin"),
+                ("TERM", "xterm-ghostty"),
+                ("TERMINFO_DIRS", "/data/terminfo:"),
+                ("TERM_PROGRAM", "ghostty"),
+                ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
+            ]))
+        );
+    }
+
+    #[test]
+    fn the_pane_is_a_ghostty_terminal_whatever_it_inherited_or_asked() {
+        let inherited = pairs(&[
+            ("TERM", "xterm-256color"),
+            ("TERM_PROGRAM", "Apple_Terminal"),
+            ("VTE_VERSION", "7600"),
+            ("GHOSTTY_RESOURCES_DIR", "/Applications/Ghostty.app/Contents/Resources/ghostty"),
+            ("TERMINFO_DIRS", "/opt/terminfo"),
+        ]);
+        let requested = HashMap::from([
+            ("TERM".to_string(), "vt100".to_string()),
+            ("GHOSTTY_ASKED".to_string(), "kept".to_string()),
+        ]);
+        let environment = environment(&inherited, &requested, "p1", None, Path::new(TERMINFO));
+        assert_eq!(
+            sorted(environment),
+            sorted(pairs(&[
+                ("COLORTERM", "truecolor"),
+                ("GHOSTTY_ASKED", "kept"),
+                ("MUSTER_PANE", "p1"),
+                ("TERM", "xterm-ghostty"),
+                ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo"),
+                ("TERM_PROGRAM", "ghostty"),
+                ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
+            ]))
+        );
+    }
+
+    #[test]
+    fn the_version_is_the_pinned_ghostty() {
+        let pin = include_str!("../../../deps/ghostty.pin").trim();
+        let (version, commit) = GHOSTTY_VERSION.split_once('+').unwrap();
+        assert_eq!(commit, &pin[..8]);
+        assert!(version.starts_with(|c: char| c.is_ascii_digit()), "{version}");
     }
 }
