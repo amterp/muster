@@ -1,0 +1,740 @@
+// The daemon protocol's schema as major version 1 was first published: what the
+// `compatible` test in muster-daemon-proto holds muster_daemon.proto to. Never edited by
+// hand; muster_daemon.proto's header says when it is replaced.
+//
+// What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
+//
+// The daemon owns every pane's PTY on one machine and outlives the app, so an app routinely
+// talks to a daemon built from a different commit: it adopts whichever one is running rather
+// than ending every agent to start its own. This file is therefore a compatibility promise in a
+// way muster.proto mostly is not, and the rules below are what keep the promise.
+//
+// ## Connections
+//
+// Every connection to the daemon's socket carries frames as muster-frame writes them: a
+// four-byte big-endian length, then a message. The first frame each way is the handshake: the
+// client sends a Hello naming the kind of connection and the protocol version it speaks, and
+// the daemon answers with a HelloAnswer before anything else. There are three kinds:
+//
+// - control, one per app per daemon: Request in, ControlMessage (answers and events) out;
+// - input, one per app per daemon: InputEvent in, nothing out. Never acknowledged, and never
+//   queued behind a large answer on the control connection;
+// - stream, one per bridge: StreamRequest in, StreamMessage out, for one pane's bytes.
+//
+// ## Answers and events
+//
+// Every event carries a sequence number, increasing by one within a daemon's lifetime and
+// starting again when the daemon does. Welcome and Snapshot carry `instance`, which names that
+// lifetime, so a client can tell a restarted daemon's numbers from the old one's.
+//
+// Subscribing answers with a snapshot and the sequence number it is current to. Every event
+// after it follows on the same connection, in order, and nothing from before it. On a subscribed
+// connection, the events a request produced arrive before its answer, and the answer's `seq`
+// names the last of them. So a client applies events only, and uses an answer to learn when its
+// request has taken effect. A client that sees a gap, or whose connection the daemon drops for
+// falling behind, subscribes again.
+//
+// A tab's tree never names a pane the client has not been told about: a pane is opened before
+// any tree holds it, and leaves every tree before it is closed.
+//
+// ## Compatibility
+//
+// `Version.major` changes when a message stops meaning what it meant. A client talks only to a
+// daemon with its own major, and the daemon refuses the handshake otherwise. `Version.minor`
+// grows when a request or an event is added, so a client can tell whether a daemon it adopted
+// knows a request before sending it. A daemon handed a request it does not know answers
+// REFUSED; it never reads it as something else.
+//
+// So a field keeps its number and its type for as long as the major lasts. Removing one means
+// reserving its number. `muster_daemon.v<major>.baseline.proto` beside this file is the schema
+// as that major was first published, and a test in muster-daemon-proto fails when anything in
+// it has moved here. Until a release ships the daemon, nothing has adopted this schema, so an
+// incompatible change replaces the baseline; from that release on, replacing the baseline is
+// bumping the major.
+
+syntax = "proto3";
+
+package muster.daemon;
+
+// ---------------------------------------------------------------------------------------------
+// Handshake
+
+message Version {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+enum ConnectionKind {
+  CONNECTION_KIND_UNSPECIFIED = 0;
+  CONNECTION_KIND_CONTROL = 1;
+  CONNECTION_KIND_INPUT = 2;
+  CONNECTION_KIND_STREAM = 3;
+}
+
+// The first frame on every connection, from the client.
+message Hello {
+  Version protocol = 1;
+  ConnectionKind kind = 2;
+  // Who is asking, for the daemon's log: "muster 0.9.0", "muster-bridge p1w3r07bsd".
+  string client = 3;
+}
+
+// The first frame on every connection, from the daemon. After a refusal the daemon hangs up.
+message HelloAnswer {
+  oneof answer {
+    Welcome welcome = 1;
+    HelloRefused refused = 2;
+  }
+}
+
+message Welcome {
+  Version protocol = 1;
+  // The daemon's own build, for a person reading a log: Cargo's package version.
+  string daemon_version = 2;
+  // Which install the daemon belongs to (muster-daemon-proto's `install`), so a client can
+  // tell a dev daemon from a release one when it reports what it adopted.
+  string install = 3;
+  // This daemon lifetime. Sequence numbers from a different instance are not comparable.
+  uint64 instance = 4;
+  uint32 pid = 5;
+}
+
+message HelloRefused {
+  string reason = 1;
+  // What the daemon speaks, so a client refused for its version can say which one it met.
+  Version daemon = 2;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Control: requests
+
+// Everything a client asks on a control connection. Namespaced by service, so a service added
+// later - messages between agents, kan a_2Rtd0Ed0l - takes an arm of its own.
+message Request {
+  // Chosen by the client and echoed in the answer. Requests on one connection are answered in
+  // the order they were sent.
+  uint64 id = 1;
+  oneof service {
+    SessionRequest session = 10;
+    TabRequest tab = 11;
+    PaneRequest pane = 12;
+  }
+}
+
+message SessionRequest {
+  oneof request {
+    // The daemon's state now, without subscribing.
+    Snapshot snapshot = 1;
+    // The daemon's state now, and every event after it on this connection.
+    Subscribe subscribe = 2;
+    SetShell set_shell = 3;
+    SetScrollback set_scrollback = 4;
+    SetPalette set_palette = 5;
+    SendManifests send_manifests = 6;
+    // Close every pane and exit. Answered before the daemon goes.
+    Stop stop = 7;
+  }
+
+  message Snapshot {}
+  message Subscribe {}
+  message Stop {}
+}
+
+message TabRequest {
+  oneof request {
+    Close close = 1;
+    Rename rename = 2;
+    SetSplitRatio set_split_ratio = 3;
+  }
+
+  // Closes the tab and every pane in it.
+  message Close {
+    string tab = 1;
+  }
+
+  // A lower generation than the one recorded is refused: the client that sent it has not seen
+  // the latest name.
+  message Rename {
+    string tab = 1;
+    Label label = 2;
+  }
+
+  message SetSplitRatio {
+    string tab = 1;
+    // The turns from the tab's root to the split.
+    repeated Branch path = 2;
+    // The first child's share, strictly between 0 and 1.
+    float ratio = 3;
+  }
+}
+
+message PaneRequest {
+  oneof request {
+    Create create = 1;
+    Close close = 2;
+    Resize resize = 3;
+    Zoom zoom = 4;
+    Swap swap = 5;
+    Move move = 6;
+    Rename rename = 7;
+    Read read = 8;
+  }
+
+  // Starts a pane. A pane of that name already here answers ALREADY_SO, so a create retried
+  // after its answer was lost does not start a second process.
+  message Create {
+    // Muster's name for it (`p1w3r07bsd`), which the process sees as MUSTER_PANE from birth.
+    string pane = 1;
+    Placement placement = 2;
+    // The pane's size from birth. Absent: the size of the pane it is placed beside, or 80x24 in
+    // a new tab.
+    optional Grid grid = 3;
+    // Absent: the current directory of the pane it is placed beside, or the daemon's home.
+    optional string cwd = 4;
+    // Added to the pane's environment. MUSTER_SOCKET travels here: it names the window, which
+    // the daemon knows nothing about.
+    map<string, string> env = 5;
+    // Run through the pane's shell, which the pane drops back to when it exits.
+    optional string command = 6;
+    optional string label = 7;
+  }
+
+  // Hangs the pane up: SIGHUP to its process groups, then the PTY closed.
+  message Close {
+    string pane = 1;
+  }
+
+  // Moves the nearest divider on `direction`'s axis in that direction, preferring one on that
+  // side of the pane.
+  message Resize {
+    string pane = 1;
+    Side direction = 2;
+    // A share of the split's area. Absent: the daemon's step.
+    optional float fraction = 3;
+  }
+
+  message Zoom {
+    string pane = 1;
+    bool zoomed = 2;
+  }
+
+  // Exchanges two panes' places. Both are in one tab.
+  message Swap {
+    string pane = 1;
+    string with = 2;
+  }
+
+  message Move {
+    string pane = 1;
+    Placement placement = 2;
+  }
+
+  message Rename {
+    string pane = 1;
+    // Absent takes the name away.
+    optional string label = 2;
+  }
+
+  // A page of a pane's text, by absolute row: row 0 is the oldest row the pane still holds, so
+  // a page does not shift as output arrives.
+  message Read {
+    string pane = 1;
+    uint64 first_row = 2;
+    uint32 rows = 3;
+  }
+}
+
+// Where a pane goes: beside one that exists, or into a tab of its own.
+message Placement {
+  oneof where {
+    Beside beside = 1;
+    NewTab new_tab = 2;
+  }
+
+  message Beside {
+    string pane = 1;
+    Side side = 2;
+    // The existing pane's share afterwards. Absent: half.
+    optional float ratio = 3;
+  }
+
+  // A tab named `tab` must not already be here. A Muster tab grouped across two machines is a
+  // tab of that name on each daemon.
+  message NewTab {
+    string tab = 1;
+    Label label = 2;
+  }
+}
+
+message SetShell {
+  Shell shell = 1;
+}
+
+// What a new pane runs. A pane already running keeps what it started with.
+message Shell {
+  // The program. Absent: $SHELL, or the account's shell.
+  optional string command = 1;
+  ShellMode mode = 2;
+}
+
+enum ShellMode {
+  // The daemon's own choice, which is a login shell.
+  SHELL_MODE_DEFAULT = 0;
+  SHELL_MODE_LOGIN = 1;
+  SHELL_MODE_NON_LOGIN = 2;
+}
+
+message SetScrollback {
+  // History a pane keeps. Absent: the daemon's own depth.
+  optional uint64 bytes = 1;
+}
+
+message SetPalette {
+  Palette palette = 1;
+}
+
+// The colours programs are told the terminal has, when they ask.
+message Palette {
+  // 0xRRGGBB, index order. Up to 256.
+  repeated uint32 entries = 1;
+  uint32 foreground = 2;
+  uint32 background = 3;
+  optional uint32 cursor = 4;
+  ColorScheme scheme = 5;
+}
+
+enum ColorScheme {
+  COLOR_SCHEME_UNSPECIFIED = 0;
+  COLOR_SCHEME_DARK = 1;
+  COLOR_SCHEME_LIGHT = 2;
+}
+
+// Agent detection rules, sent by the app so a detection fix reaches a daemon it adopted.
+message SendManifests {
+  // The detection engine version the manifests were written for.
+  uint32 engine = 1;
+  repeated Manifest manifests = 2;
+}
+
+message Manifest {
+  string agent = 1;
+  string toml = 2;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Control: what the daemon sends
+
+message ControlMessage {
+  oneof message {
+    Answer answer = 1;
+    Event event = 2;
+  }
+}
+
+message Answer {
+  uint64 id = 1;
+  Outcome outcome = 2;
+  // Why, for anything but DONE and ALREADY_SO: written for whoever reads it in a log.
+  string reason = 3;
+  // The last event this request produced, or the latest event when it produced none.
+  uint64 seq = 4;
+  oneof detail {
+    Snapshot snapshot = 10;
+    PaneText text = 11;
+  }
+}
+
+enum Outcome {
+  OUTCOME_UNSPECIFIED = 0;
+  OUTCOME_DONE = 1;
+  // Nothing needed doing: the daemon was already as asked.
+  OUTCOME_ALREADY_SO = 2;
+  // The pane or tab the request names is not on this daemon.
+  OUTCOME_NOT_THERE = 3;
+  // Not done, for the reason given.
+  OUTCOME_REFUSED = 4;
+}
+
+message Snapshot {
+  // The sequence number this state is current to.
+  uint64 seq = 1;
+  uint64 instance = 2;
+  repeated Tab tabs = 3;
+  repeated Pane panes = 4;
+  Settings settings = 5;
+}
+
+message PaneText {
+  // The absolute row of the first line in `text`.
+  uint64 first_row = 1;
+  // One line per row, joined by newlines.
+  string text = 2;
+  // Rows the pane holds in all, so a reader knows where the end is.
+  uint64 total_rows = 3;
+}
+
+message Event {
+  uint64 seq = 1;
+  oneof event {
+    PaneOpened pane_opened = 10;
+    PaneChanged pane_changed = 11;
+    PaneClosed pane_closed = 12;
+    TabOpened tab_opened = 13;
+    TabChanged tab_changed = 14;
+    TabClosed tab_closed = 15;
+    SettingsChanged settings_changed = 16;
+    PaneEffect pane_effect = 17;
+    PasteHeld paste_held = 18;
+  }
+}
+
+message PaneOpened {
+  Pane pane = 1;
+}
+
+// The pane's whole record as it is now.
+message PaneChanged {
+  Pane pane = 1;
+}
+
+message PaneClosed {
+  string pane = 1;
+  CloseReason reason = 2;
+  // How its process ended, when it ended on its own and the daemon saw it end.
+  optional int32 exit_status = 3;
+}
+
+enum CloseReason {
+  CLOSE_REASON_UNSPECIFIED = 0;
+  // A client asked: a pane or tab close, or stop.
+  CLOSE_REASON_REQUESTED = 1;
+  // Its process ended.
+  CLOSE_REASON_EXITED = 2;
+}
+
+message TabOpened {
+  Tab tab = 1;
+}
+
+// The tab's whole record as it is now.
+message TabChanged {
+  Tab tab = 1;
+}
+
+message TabClosed {
+  string tab = 1;
+}
+
+message SettingsChanged {
+  Settings settings = 1;
+}
+
+// Something a program did that is not a change to its pane's record.
+message PaneEffect {
+  string pane = 1;
+  oneof effect {
+    Bell bell = 2;
+    Notification notification = 3;
+    Progress progress = 4;
+    ClipboardWrite clipboard_write = 5;
+  }
+
+  message Bell {}
+
+  // OSC 9 and OSC 777.
+  message Notification {
+    string title = 1;
+    string body = 2;
+  }
+
+  // OSC 9;4.
+  message Progress {
+    ProgressState state = 1;
+    optional uint32 percent = 2;
+  }
+
+  // OSC 52. The app decides whether to apply it.
+  message ClipboardWrite {
+    ClipboardKind clipboard = 1;
+    string text = 2;
+  }
+}
+
+enum ProgressState {
+  PROGRESS_STATE_UNSPECIFIED = 0;
+  PROGRESS_STATE_REMOVE = 1;
+  PROGRESS_STATE_SET = 2;
+  PROGRESS_STATE_ERROR = 3;
+  PROGRESS_STATE_INDETERMINATE = 4;
+  PROGRESS_STATE_PAUSE = 5;
+}
+
+enum ClipboardKind {
+  CLIPBOARD_KIND_UNSPECIFIED = 0;
+  CLIPBOARD_KIND_STANDARD = 1;
+  CLIPBOARD_KIND_SELECTION = 2;
+  CLIPBOARD_KIND_PRIMARY = 3;
+}
+
+// A paste with a newline, to a pane that has not asked for bracketed paste, was not written.
+// The app asks the person whether to send it anyway, as Ghostty does.
+message PasteHeld {
+  string pane = 1;
+  string text = 2;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Records
+
+message Pane {
+  string pane = 1;
+  optional string label = 2;
+  string cwd = 3;
+  // What it was started with, if anything but a shell.
+  optional string command = 4;
+  string title = 5;
+  // The agent detection recognised, by its manifest's name.
+  optional string agent = 6;
+  AgentState agent_state = 7;
+}
+
+enum AgentState {
+  AGENT_STATE_UNKNOWN = 0;
+  AGENT_STATE_WORKING = 1;
+  AGENT_STATE_BLOCKED = 2;
+  AGENT_STATE_IDLE = 3;
+}
+
+message Tab {
+  string tab = 1;
+  Label label = 2;
+  Node root = 3;
+  optional string zoomed = 4;
+}
+
+// A tab's name, as a person gave it. Every daemon holding part of a grouped tab stores it, and
+// the generation says which of them is newest.
+message Label {
+  optional string text = 1;
+  uint64 generation = 2;
+}
+
+message Node {
+  oneof node {
+    string pane = 1;
+    Split split = 2;
+  }
+}
+
+message Split {
+  Axis axis = 1;
+  // The first child's share of the area.
+  float ratio = 2;
+  Node first = 3;
+  Node second = 4;
+}
+
+enum Axis {
+  AXIS_UNSPECIFIED = 0;
+  // Children side by side; `first` is the left one.
+  AXIS_COLUMNS = 1;
+  // Children one above the other; `first` is the upper one.
+  AXIS_ROWS = 2;
+}
+
+enum Branch {
+  BRANCH_UNSPECIFIED = 0;
+  BRANCH_FIRST = 1;
+  BRANCH_SECOND = 2;
+}
+
+enum Side {
+  SIDE_UNSPECIFIED = 0;
+  SIDE_LEFT = 1;
+  SIDE_RIGHT = 2;
+  SIDE_UP = 3;
+  SIDE_DOWN = 4;
+}
+
+// A pane's size: cells, and the pixels those cells cover.
+message Grid {
+  uint32 cols = 1;
+  uint32 rows = 2;
+  uint32 width_px = 3;
+  uint32 height_px = 4;
+}
+
+message Settings {
+  Shell shell = 1;
+  optional uint64 scrollback_bytes = 2;
+  optional Palette palette = 3;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Input: client to daemon, never answered
+
+// A keystroke, click or paste for one pane. The daemon encodes it against the pane's own
+// terminal modes and is the only writer to the pane's PTY.
+message InputEvent {
+  string pane = 1;
+  oneof input {
+    Key key = 2;
+    Mouse mouse = 3;
+    Wheel wheel = 4;
+    Paste paste = 5;
+    Send send = 6;
+    Focus focus = 7;
+    Perform perform = 8;
+  }
+
+  // The event libghostty carries for a key.
+  message Key {
+    KeyAction action = 1;
+    // libghostty's key code.
+    uint32 key = 2;
+    // libghostty's modifier bits.
+    uint32 mods = 3;
+    uint32 consumed_mods = 4;
+    string text = 5;
+    uint32 unshifted_codepoint = 6;
+    bool composing = 7;
+  }
+
+  // Position in pixels within the pane.
+  message Mouse {
+    MouseAction action = 1;
+    MouseButton button = 2;
+    uint32 mods = 3;
+    double x = 4;
+    double y = 5;
+  }
+
+  message Wheel {
+    double dx = 1;
+    double dy = 2;
+    bool precise = 3;
+    uint32 momentum = 4;
+    uint32 mods = 5;
+    double x = 6;
+    double y = 7;
+  }
+
+  // Fenced for bracketed paste when the pane asked for it; held (PasteHeld) when it did not and
+  // the text has a newline.
+  message Paste {
+    string text = 1;
+  }
+
+  // `muster pane send`: text, then Return if asked, encoded like typing.
+  message Send {
+    string text = 1;
+    bool enter = 2;
+  }
+
+  // Focus in or out, reported to a program that asked (mode 1004).
+  message Focus {
+    bool focused = 1;
+  }
+
+  // One of the binding actions the daemon performs rather than the surface.
+  message Perform {
+    oneof action {
+      ClearScreen clear_screen = 1;
+      Reset reset = 2;
+      // `text:`, `csi:` and `esc:` bindings, already resolved to bytes.
+      bytes raw = 3;
+    }
+
+    message ClearScreen {}
+    message Reset {}
+  }
+}
+
+enum KeyAction {
+  KEY_ACTION_UNSPECIFIED = 0;
+  KEY_ACTION_PRESS = 1;
+  KEY_ACTION_RELEASE = 2;
+  KEY_ACTION_REPEAT = 3;
+}
+
+enum MouseAction {
+  MOUSE_ACTION_UNSPECIFIED = 0;
+  MOUSE_ACTION_PRESS = 1;
+  MOUSE_ACTION_RELEASE = 2;
+  MOUSE_ACTION_MOTION = 3;
+}
+
+enum MouseButton {
+  MOUSE_BUTTON_UNSPECIFIED = 0;
+  MOUSE_BUTTON_NONE = 1;
+  MOUSE_BUTTON_LEFT = 2;
+  MOUSE_BUTTON_RIGHT = 3;
+  MOUSE_BUTTON_MIDDLE = 4;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Stream: one pane's bytes, for one bridge
+
+message StreamRequest {
+  oneof request {
+    // The first message after the handshake.
+    Attach attach = 1;
+    Credit credit = 2;
+    Resize resize = 3;
+  }
+
+  message Attach {
+    string pane = 1;
+    Grid grid = 2;
+    // Displace a bridge already attached, which is told why. Without it a second attach is
+    // refused.
+    bool takeover = 3;
+  }
+
+  // Bytes written to the surface since the last credit. The daemon keeps at most a fixed window
+  // unacknowledged.
+  message Credit {
+    uint64 bytes = 1;
+  }
+
+  message Resize {
+    Grid grid = 1;
+  }
+}
+
+message StreamMessage {
+  oneof message {
+    Attached attached = 1;
+    StreamRefused refused = 2;
+    // The composed VT stream bringing a fresh surface to the pane's state. Live output follows.
+    bytes replay = 3;
+    // The program's own bytes.
+    bytes output = 4;
+    // The window of unacknowledged bytes is full and output is being dropped; a replay follows
+    // once credit returns.
+    Behind behind = 5;
+    Detached detached = 6;
+  }
+
+  message Attached {
+    // The pane's output offset the replay is current to.
+    uint64 offset = 1;
+  }
+
+  message Behind {}
+
+  message Detached {
+    DetachReason reason = 1;
+  }
+}
+
+message StreamRefused {
+  string reason = 1;
+}
+
+enum DetachReason {
+  DETACH_REASON_UNSPECIFIED = 0;
+  DETACH_REASON_CLOSED = 1;
+  DETACH_REASON_EXITED = 2;
+  DETACH_REASON_TAKEN_OVER = 3;
+}
