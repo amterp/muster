@@ -74,9 +74,13 @@ impl TerminalOptions {
 
 pub struct Terminal {
     terminal: ffi::GhosttyTerminal,
-    /// Reached by libghostty's callbacks through the userdata pointer, so it lives in a box
-    /// whose address holds while the terminal moves, and is dropped after the handle.
-    effects: Box<Effects>,
+    /// Reached by libghostty's callbacks through the userdata pointer, so it lives on the heap
+    /// at an address that holds while the terminal moves, and is freed after the handle.
+    ///
+    /// Held as the raw pointer libghostty was given rather than as a `Box`: writing through a
+    /// `Box` after handing out a pointer derived from it invalidates that pointer under
+    /// Stacked Borrows, so every access, ours and the callbacks', goes through this one.
+    effects: *mut Effects,
 }
 
 impl fmt::Debug for Terminal {
@@ -118,11 +122,11 @@ impl Terminal {
 
         let mut terminal = Terminal {
             terminal: handle,
-            effects: Box::new(Effects { handler: None, answers: options.answers }),
+            effects: Box::into_raw(Box::new(Effects { handler: None, answers: options.answers })),
         };
-        // SAFETY: the box is owned by the terminal and outlives the handle, which Drop frees
-        // before the box goes.
-        unsafe { effects::register(handle, &raw mut *terminal.effects) };
+        // SAFETY: the allocation is owned by the terminal and outlives the handle, which Drop
+        // frees first.
+        unsafe { effects::register(handle, terminal.effects) };
 
         // As a reset default rather than a mode written at creation: a program's RIS restores
         // defaults, and a mode that was merely set would be lost to the first one while the
@@ -196,12 +200,15 @@ impl Terminal {
     /// Who hears about the effects of what is written from now on: query answers, bells,
     /// titles, notifications. Called synchronously inside `write`, so it must not block.
     pub fn set_effect_handler(&mut self, handler: impl FnMut(Effect<'_>) + Send + 'static) {
-        self.effects.handler = Some(Box::new(handler));
+        // SAFETY: the allocation lives as long as `self`, and `&mut self` means no callback
+        // is running.
+        unsafe { (*self.effects).handler = Some(Box::new(handler)) };
     }
 
     /// What queries are answered with from now on.
     pub fn set_answers(&mut self, answers: Answers) {
-        self.effects.answers = answers;
+        // SAFETY: as in `set_effect_handler`.
+        unsafe { (*self.effects).answers = answers };
     }
 
     /// Feeds bytes through the VT parser.
@@ -293,7 +300,11 @@ impl Terminal {
 
 impl Drop for Terminal {
     fn drop(&mut self) {
-        // SAFETY: the handle was created by `new` and is freed exactly once.
-        unsafe { ffi::ghostty_terminal_free(self.terminal) };
+        // SAFETY: the handle was created by `new` and is freed exactly once, before the
+        // effects its callbacks reach, which came from `Box::into_raw` and are freed once.
+        unsafe {
+            ffi::ghostty_terminal_free(self.terminal);
+            drop(Box::from_raw(self.effects));
+        }
     }
 }
