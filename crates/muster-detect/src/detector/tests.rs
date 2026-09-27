@@ -1,0 +1,712 @@
+//! The first half is herdr v0.8.0's own tests of these decisions, from `src/pane.rs` and
+//! `src/pane/agent_detection.rs` (Apache-2.0), minus those of what was not ported. The second
+//! drives whole ticks over a pane and processes of the test's making, with time passed in.
+
+// The subtractions are of constants a millisecond apart, or of an instant from a later one.
+#![allow(clippy::unchecked_time_subtraction)]
+
+use super::*;
+use crate::process::{Job, Process};
+
+fn publish_state(state: State) -> PublishState {
+    PublishState { state, visible: false }
+}
+
+fn claude() -> Agent {
+    Agent::new("claude")
+}
+
+// ---- herdr's decision tests ----
+
+#[test]
+fn foreground_shell_reports_process_exit_before_clearing_agent() {
+    let codex = Agent::new("codex");
+    assert_eq!(
+        foreground_shell_agent_action(Some(&codex), None, true, false),
+        ForegroundShellAgentAction::ReportProcessExit
+    );
+    assert_eq!(
+        foreground_shell_agent_action(Some(&codex), None, true, true),
+        ForegroundShellAgentAction::ClearAgent
+    );
+}
+
+#[test]
+fn same_agent_after_reported_exit_is_a_replacement_process() {
+    let pi = Agent::new("pi");
+    assert_eq!(
+        foreground_shell_agent_action(Some(&pi), Some(&pi), false, true),
+        ForegroundShellAgentAction::ReportReplacementProcess
+    );
+}
+
+#[test]
+fn unknown_non_shell_foreground_job_is_not_immediate_clear_signal() {
+    assert_eq!(
+        foreground_shell_agent_action(Some(&claude()), None, false, false),
+        ForegroundShellAgentAction::ObserveProbe
+    );
+}
+
+#[test]
+fn reported_process_exit_clears_before_unknown_foreground_probe() {
+    assert_eq!(
+        foreground_shell_agent_action(Some(&claude()), None, false, true),
+        ForegroundShellAgentAction::ClearAgent
+    );
+}
+
+#[test]
+fn foreground_agent_job_is_not_clear_signal() {
+    assert_eq!(
+        foreground_shell_agent_action(Some(&claude()), Some(&Agent::new("opencode")), true, false),
+        ForegroundShellAgentAction::ObserveProbe
+    );
+}
+
+fn probe_input() -> ProbeInput {
+    ProbeInput {
+        identified: false,
+        foreground_group: Some(42),
+        last_foreground_group: Some(42),
+        has_process_probe: true,
+        acquisition_age: None,
+        pending_foreground_shell_clear: false,
+        elapsed_since_process_check: Duration::from_secs(1),
+    }
+}
+
+#[test]
+fn unchanged_unidentified_foreground_group_skips_full_process_probe() {
+    assert!(!should_probe_foreground_job(probe_input()));
+}
+
+#[test]
+fn unidentified_foreground_group_change_runs_full_process_probe() {
+    assert!(should_probe_foreground_job(ProbeInput {
+        foreground_group: Some(43),
+        ..probe_input()
+    }));
+}
+
+#[test]
+fn unidentified_pane_gets_initial_process_probe() {
+    assert!(should_probe_foreground_job(ProbeInput { has_process_probe: false, ..probe_input() }));
+}
+
+#[test]
+fn stable_unidentified_foreground_group_has_no_safety_process_probe() {
+    assert!(!should_probe_foreground_job(ProbeInput {
+        elapsed_since_process_check: PROCESS_RECHECK_MISSING_FOREGROUND_GROUP,
+        ..probe_input()
+    }));
+}
+
+#[test]
+fn unidentified_pane_without_foreground_group_uses_safety_process_probe() {
+    let no_group =
+        ProbeInput { foreground_group: None, last_foreground_group: None, ..probe_input() };
+    assert!(!should_probe_foreground_job(no_group));
+    assert!(should_probe_foreground_job(ProbeInput {
+        elapsed_since_process_check: PROCESS_RECHECK_MISSING_FOREGROUND_GROUP,
+        ..no_group
+    }));
+}
+
+#[test]
+fn unidentified_pane_probes_when_foreground_group_disappears() {
+    assert!(should_probe_foreground_job(ProbeInput {
+        foreground_group: None,
+        last_foreground_group: Some(42),
+        ..probe_input()
+    }));
+}
+
+#[test]
+fn inferred_group_does_not_trigger_a_probe_on_every_tick() {
+    let tracked = process_group_for_change_tracking(None, Some(300));
+    assert_eq!(tracked, None);
+    assert!(!should_probe_foreground_job(ProbeInput {
+        identified: true,
+        foreground_group: None,
+        last_foreground_group: tracked,
+        elapsed_since_process_check: Duration::from_millis(300),
+        ..probe_input()
+    }));
+}
+
+#[test]
+fn pending_shell_clear_forces_a_process_probe() {
+    assert!(should_probe_foreground_job(ProbeInput {
+        identified: true,
+        pending_foreground_shell_clear: true,
+        ..probe_input()
+    }));
+}
+
+#[test]
+fn acquisition_window_catches_delayed_same_group_wrapper_startup() {
+    let acquiring = |age, elapsed| {
+        should_probe_foreground_job(ProbeInput {
+            acquisition_age: Some(age),
+            elapsed_since_process_check: elapsed,
+            ..probe_input()
+        })
+    };
+    let fast = Duration::from_millis(1250);
+    assert!(!acquiring(fast, PROCESS_ACQUISITION_FAST_RECHECK - Duration::from_millis(1)));
+    assert!(acquiring(fast, PROCESS_ACQUISITION_FAST_RECHECK));
+    assert!(acquiring(Duration::from_secs(5), PROCESS_ACQUISITION_SLOW_RECHECK));
+    assert!(!acquiring(
+        PROCESS_ACQUISITION_WINDOW + Duration::from_millis(1),
+        PROCESS_ACQUISITION_SLOW_RECHECK
+    ));
+}
+
+#[test]
+fn content_change_starts_bounded_unidentified_acquisition_window() {
+    let now = Instant::now();
+    let (mut started, mut last_change) = (None, None);
+    sync_content_change_acquisition(false, false, true, now, &mut started, &mut last_change);
+    assert_eq!((started, last_change), (Some(now), Some(now)));
+
+    let later = now + Duration::from_secs(1);
+    sync_content_change_acquisition(false, false, true, later, &mut started, &mut last_change);
+    assert_eq!(started, Some(now), "changed frames should not refresh the acquisition window");
+    assert_eq!(last_change, Some(later));
+
+    let quiet = later + PROCESS_ACQUISITION_WINDOW + PROCESS_ACQUISITION_IDLE_RESET;
+    sync_content_change_acquisition(false, false, false, quiet, &mut started, &mut last_change);
+    assert_eq!((started, last_change), (None, None));
+
+    let burst = quiet + Duration::from_secs(1);
+    sync_content_change_acquisition(false, false, true, burst, &mut started, &mut last_change);
+    assert_eq!((started, last_change), (Some(burst), Some(burst)));
+}
+
+#[test]
+fn content_change_does_not_start_acquisition_when_process_probe_has_other_signal() {
+    let now = Instant::now();
+    for (identified, group_changed) in [(true, false), (false, true)] {
+        let (mut started, mut last_change) = (None, None);
+        sync_content_change_acquisition(
+            identified,
+            group_changed,
+            true,
+            now,
+            &mut started,
+            &mut last_change,
+        );
+        assert_eq!((started, last_change), (None, None));
+    }
+}
+
+#[test]
+fn content_change_restarts_stale_process_group_acquisition_window() {
+    let now = Instant::now() + PROCESS_ACQUISITION_WINDOW * 2;
+    let mut started = Some(now - PROCESS_ACQUISITION_WINDOW - Duration::from_millis(1));
+    let mut last_change = None;
+    sync_content_change_acquisition(false, false, true, now, &mut started, &mut last_change);
+    assert_eq!((started, last_change), (Some(now), Some(now)));
+}
+
+#[test]
+fn identified_agent_uses_shorter_safety_process_probe() {
+    let identified = |elapsed| {
+        should_probe_foreground_job(ProbeInput {
+            identified: true,
+            elapsed_since_process_check: elapsed,
+            ..probe_input()
+        })
+    };
+    assert!(!identified(PROCESS_RECHECK_IDENTIFIED - Duration::from_millis(1)));
+    assert!(identified(PROCESS_RECHECK_IDENTIFIED));
+}
+
+#[test]
+fn identified_agent_probes_when_foreground_group_disappears() {
+    assert!(should_probe_foreground_job(ProbeInput {
+        identified: true,
+        foreground_group: None,
+        last_foreground_group: Some(42),
+        elapsed_since_process_check: PROCESS_RECHECK_IDENTIFIED - Duration::from_millis(1),
+        ..probe_input()
+    }));
+}
+
+#[test]
+fn stable_missing_foreground_group_uses_safety_process_probe() {
+    let no_group = |elapsed| {
+        should_probe_foreground_job(ProbeInput {
+            identified: true,
+            foreground_group: None,
+            last_foreground_group: None,
+            elapsed_since_process_check: elapsed,
+            ..probe_input()
+        })
+    };
+    assert!(!no_group(PROCESS_RECHECK_IDENTIFIED - Duration::from_millis(1)));
+    assert!(no_group(PROCESS_RECHECK_IDENTIFIED));
+}
+
+#[test]
+fn transient_process_miss_keeps_current_agent_detected() {
+    let mut presence = Presence { current: Some(Agent::new("pi")), consecutive_misses: 0 };
+    assert!(!presence.observe(None), "one miss should not clear the detected agent");
+    assert_eq!(presence.current, Some(Agent::new("pi")));
+}
+
+#[test]
+fn agent_only_clears_after_confirmation_misses() {
+    let mut presence = Presence { current: Some(Agent::new("pi")), consecutive_misses: 0 };
+    for attempt in 1..AGENT_MISS_CONFIRMATION_ATTEMPTS {
+        assert!(!presence.observe(None), "miss {attempt} should stay in the confirmation window");
+        assert_eq!(presence.current, Some(Agent::new("pi")));
+    }
+    assert!(presence.observe(None), "the last confirmation miss should clear the agent");
+    assert_eq!(presence.current, None);
+}
+
+fn screen_read(state: State, content_seq: u64) -> ScreenReadInput {
+    ScreenReadInput {
+        state,
+        identified: true,
+        pending_idle_active: false,
+        agent_changed: false,
+        process_exited: false,
+        content_seq: Some(content_seq),
+        last_screen_scan_content_seq: Some(10),
+    }
+}
+
+#[test]
+fn screen_read_skips_unchanged_idle_bottom_buffer() {
+    assert!(should_skip_screen_read(screen_read(State::Idle, 10)));
+}
+
+#[test]
+fn screen_read_reads_when_idle_bottom_buffer_changes() {
+    assert!(!should_skip_screen_read(screen_read(State::Idle, 11)));
+}
+
+#[test]
+fn screen_read_reads_for_transitions_and_missing_agent() {
+    for input in [
+        ScreenReadInput { pending_idle_active: true, ..screen_read(State::Idle, 10) },
+        ScreenReadInput { agent_changed: true, ..screen_read(State::Idle, 10) },
+        ScreenReadInput { process_exited: true, ..screen_read(State::Idle, 10) },
+        ScreenReadInput { identified: false, ..screen_read(State::Idle, 10) },
+        screen_read(State::Working, 10),
+    ] {
+        assert!(!should_skip_screen_read(input), "{input:?}");
+    }
+}
+
+#[test]
+fn pending_idle_holds_working_to_plain_idle_until_confirmed() {
+    let now = Instant::now();
+    let (previous, next) = (publish_state(State::Working), publish_state(State::Idle));
+    let mut pending = PendingIdle::default();
+    for recheck in 0..3 {
+        assert!(pending.should_hold_working_to_idle(
+            previous,
+            next,
+            false,
+            false,
+            now + PENDING_IDLE_RECHECK * recheck
+        ));
+    }
+    assert!(!pending.should_hold_working_to_idle(
+        previous,
+        next,
+        false,
+        false,
+        now + PENDING_IDLE_RECHECK * 3
+    ));
+}
+
+#[test]
+fn pending_idle_is_released_by_its_cap_whatever_the_count() {
+    let now = Instant::now();
+    let (previous, next) = (publish_state(State::Working), publish_state(State::Idle));
+    let mut pending = PendingIdle::default();
+    assert!(pending.should_hold_working_to_idle(previous, next, false, false, now));
+    assert!(!pending.should_hold_working_to_idle(
+        previous,
+        next,
+        false,
+        false,
+        now + PENDING_IDLE_CAP
+    ));
+}
+
+#[test]
+fn visible_idle_bypasses_plain_idle_hold() {
+    let mut pending = PendingIdle::default();
+    let next = PublishState { state: State::Idle, visible: true };
+    assert!(!pending.should_hold_working_to_idle(
+        publish_state(State::Working),
+        next,
+        false,
+        false,
+        Instant::now()
+    ));
+}
+
+#[test]
+fn transition_decision_publishes_next_for_visible_blocker() {
+    let blocked = PublishState { state: State::Blocked, visible: true };
+    assert!(decide_transition(
+        publish_state(State::Idle),
+        blocked,
+        false,
+        false,
+        Instant::now(),
+        &mut PendingIdle::default()
+    ));
+}
+
+#[test]
+fn nothing_new_is_not_published() {
+    assert!(!decide_transition(
+        publish_state(State::Working),
+        publish_state(State::Working),
+        false,
+        false,
+        Instant::now(),
+        &mut PendingIdle::default()
+    ));
+}
+
+// ---- whole ticks ----
+
+const SHELL: u32 = 100;
+const AGENT_GROUP: u32 = 200;
+
+#[derive(Debug, Default)]
+struct FakePane {
+    group: Option<u32>,
+    content_seq: u64,
+    screen: String,
+    title: String,
+    progress: String,
+    screen_reads: usize,
+}
+
+impl Pane for FakePane {
+    fn foreground_group(&self) -> Option<u32> {
+        self.group
+    }
+    fn content_seq(&self) -> u64 {
+        self.content_seq
+    }
+    fn screen_text(&mut self) -> String {
+        self.screen_reads += 1;
+        self.screen.clone()
+    }
+    fn title(&self) -> String {
+        self.title.clone()
+    }
+    fn progress(&self) -> String {
+        self.progress.clone()
+    }
+    fn clear_progress(&mut self) {
+        self.progress.clear();
+    }
+}
+
+/// The shell's group holds the shell; the agent's holds whatever `agent` names.
+#[derive(Debug)]
+struct FakeProcesses {
+    agent: &'static str,
+}
+
+impl FakeProcesses {
+    fn job(&self, group: u32) -> Option<Job> {
+        let (pid, name) = match group {
+            SHELL => (SHELL, "zsh"),
+            AGENT_GROUP => (AGENT_GROUP, self.agent),
+            _ => return None,
+        };
+        Some(Job {
+            group,
+            processes: vec![Process { pid, name: name.into(), argv0: None, argv: None }],
+        })
+    }
+}
+
+impl Processes for FakeProcesses {
+    fn leader(&self, group: u32) -> Option<Job> {
+        self.job(group)
+    }
+    fn job(&self, _shell: u32, group: u32) -> Option<Job> {
+        FakeProcesses::job(self, group)
+    }
+    fn agent_hint(&self, _pid: u32) -> Option<String> {
+        None
+    }
+}
+
+/// Claude's rules replaced by markers a test can paint.
+const MANIFEST: &str = r#"
+id = "claude"
+version = "9999.1"
+min_engine_version = 1
+
+[[rules]]
+id = "title_working"
+state = "working"
+priority = 20
+region = "osc_title"
+visible_working = true
+regex = ['^[\x{2800}-\x{28FF}] ']
+
+[[rules]]
+id = "busy"
+state = "working"
+priority = 10
+contains = ["busy"]
+
+[[rules]]
+id = "prompt"
+state = "idle"
+priority = 10
+visible_idle = true
+contains = ["ready>"]
+
+[[rules]]
+id = "ask"
+state = "blocked"
+priority = 30
+visible_blocker = true
+contains = ["allow?"]
+
+[[rules]]
+id = "viewer"
+state = "unknown"
+priority = 40
+skip_state_update = true
+contains = ["transcript"]
+"#;
+
+struct Run {
+    detector: Detector,
+    pane: FakePane,
+    processes: FakeProcesses,
+    manifests: Manifests,
+    now: Instant,
+    next: Duration,
+}
+
+impl Run {
+    /// A pane whose shell is at its prompt.
+    fn new() -> Run {
+        let (manifests, warnings) =
+            Manifests::load(&[("claude.toml".into(), MANIFEST.into())], None);
+        assert_eq!(warnings, []);
+        let now = Instant::now();
+        Run {
+            detector: Detector::new(SHELL, now),
+            pane: FakePane { group: Some(SHELL), ..FakePane::default() },
+            processes: FakeProcesses { agent: "claude" },
+            manifests,
+            now,
+            next: Detector::FIRST_TICK,
+        }
+    }
+
+    fn tick(&mut self) -> Option<Publication> {
+        self.now += self.next;
+        let tick = self.detector.tick(self.now, &mut self.pane, &self.processes, &self.manifests);
+        self.next = tick.next;
+        tick.publication
+    }
+
+    /// Ticks until something is published, or the time runs out.
+    fn until_published(&mut self, within: Duration) -> Option<(Duration, Publication)> {
+        let start = self.now;
+        while self.now - start < within {
+            if let Some(publication) = self.tick() {
+                return Some((self.now - start, publication));
+            }
+        }
+        None
+    }
+
+    fn paint(&mut self, screen: &str) {
+        self.pane.screen = screen.to_string();
+        self.pane.content_seq += 1;
+    }
+
+    /// Starts claude in the pane and waits out its grace.
+    fn start_agent(&mut self) {
+        self.pane.group = Some(AGENT_GROUP);
+        assert_eq!(self.tick(), Some(published(Some(claude()), State::Idle)));
+        self.settle();
+    }
+
+    /// Ticks through the startup grace, asserting nothing is published during it.
+    fn settle(&mut self) {
+        let start = self.now;
+        while self.detector.startup_grace_until.is_some() {
+            assert_eq!(self.tick(), None, "nothing is published during the grace");
+        }
+        assert!(self.now - start >= STARTUP_GRACE);
+    }
+}
+
+fn published(agent: Option<Agent>, state: State) -> Publication {
+    Publication { agent, state }
+}
+
+#[test]
+fn a_pane_with_no_agent_is_unknown_and_ticks_slowly() {
+    let mut run = Run::new();
+    assert_eq!(run.tick(), Some(published(None, State::Unknown)));
+    assert_eq!(run.next, TICK_UNIDENTIFIED);
+    assert_eq!(run.tick(), None);
+}
+
+#[test]
+fn a_new_agent_is_idle_at_once_and_its_screen_waits_out_the_grace() {
+    let mut run = Run::new();
+    run.tick();
+    run.paint("busy");
+    run.pane.group = Some(AGENT_GROUP);
+
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+    assert_eq!(run.next, TICK_IDENTIFIED);
+    let (after, publication) = run.until_published(Duration::from_secs(10)).unwrap();
+    assert_eq!(publication, published(Some(claude()), State::Working));
+    assert!(after > STARTUP_GRACE, "working was published {after:?} in, inside the grace");
+}
+
+#[test]
+fn working_to_a_plain_idle_is_held_until_it_has_been_seen_four_times() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1.state, State::Working);
+
+    run.paint("nothing matches this");
+    let held_from = run.now;
+    let mut reads = 0;
+    let publication = loop {
+        let publication = run.tick();
+        reads += 1;
+        if publication.is_some() {
+            break publication;
+        }
+        assert_eq!(run.next, PENDING_IDLE_RECHECK, "a held idle is rechecked quickly");
+    };
+    assert_eq!(publication, Some(published(Some(claude()), State::Idle)));
+    assert_eq!(reads, 4, "seen once, then confirmed three times");
+    assert!(run.now - held_from < PENDING_IDLE_CAP);
+}
+
+#[test]
+fn a_visible_idle_or_a_blocker_is_published_at_once() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(1)).unwrap();
+
+    run.paint("ready>");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+    run.paint("allow?");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
+}
+
+#[test]
+fn a_skip_rule_freezes_the_state() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(1)).unwrap();
+
+    run.paint("transcript: ready> allow? busy");
+    assert_eq!(run.until_published(Duration::from_secs(2)), None);
+}
+
+#[test]
+fn an_idle_pane_whose_output_has_not_moved_is_not_read_again() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.tick();
+    let reads = run.pane.screen_reads;
+    for _ in 0..10 {
+        run.tick();
+    }
+    assert_eq!(run.pane.screen_reads, reads, "an unchanged idle screen was read again");
+    run.paint("busy");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Working)));
+    assert_eq!(run.pane.screen_reads, reads + 1);
+}
+
+#[test]
+fn returning_to_the_shell_publishes_idle_and_then_unknown() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(1)).unwrap();
+
+    run.pane.group = Some(SHELL);
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)), "the agent finished");
+    assert_eq!(run.tick(), Some(published(None, State::Unknown)), "and then it is gone");
+    assert_eq!(run.detector.agent(), None);
+}
+
+#[test]
+fn an_agent_is_forgotten_only_after_six_probes_miss_it() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    // The agent's group is still in the foreground, but the probe cannot name it.
+    run.processes.agent = "mystery";
+    let mut probes = 0;
+    while run.detector.agent().is_some() {
+        run.now += PROCESS_RECHECK_IDENTIFIED;
+        run.tick();
+        probes += 1;
+        assert!(probes <= 6, "the agent outlived six misses");
+    }
+    assert_eq!(probes, 6);
+}
+
+#[test]
+fn a_new_agent_does_not_inherit_the_last_title_or_progress() {
+    let mut run = Run::new();
+    run.tick();
+    run.pane.title = "⠂ left over".to_string();
+    run.pane.progress = "4;1;50".to_string();
+    run.start_agent();
+    assert_eq!(run.pane.progress, "", "progress was cleared on the agent change");
+
+    run.paint("nothing");
+    assert_eq!(run.until_published(Duration::from_secs(1)), None, "the stale title counted");
+
+    run.pane.title = "⠄ fresh".to_string();
+    run.paint("nothing still");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Working)));
+}
+
+#[test]
+fn reset_forgets_the_agent_and_finds_it_again() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("allow?");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
+
+    run.detector.reset();
+    assert_eq!(run.detector.agent(), None);
+    run.next = Duration::ZERO;
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+    run.settle();
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
+}
