@@ -401,6 +401,8 @@ SKIPPED_SUITES = [
       "note": "needs the devenv container; ./dev --ssh runs it" },
     { "language": "Rust", "suite": "fresh_session's doc example", "skipped": 1,
       "note": "an illustration in a doc comment rather than a test, so nothing runs it" },
+    { "language": "Rust", "suite": "muster-daemon's echo latency", "skipped": 1,
+      "note": "a measurement, not a property; cargo test --release -p muster-daemon --test flood -- --ignored --nocapture prints it" },
     { "language": "Swift", "suite": "ClickRedriveTests", "skipped": 1,
       "note": "needs a logged-in session; ./dev --contract runs it" },
 ]
