@@ -48,6 +48,17 @@ impl Scratch {
 
     /// [`Scratch::ssh`] with ssh's own arguments given.
     fn ssh_with(&self, flags: &[&str], arguments: &[&str], failing: bool) -> Vec<String> {
+        self.ssh_through(env!("CARGO_BIN_EXE_muster-daemon"), flags, arguments, failing)
+    }
+
+    /// [`Scratch::ssh_with`] with the pane's `$MUSTER_DAEMON` given.
+    fn ssh_through(
+        &self,
+        daemon: &str,
+        flags: &[&str],
+        arguments: &[&str],
+        failing: bool,
+    ) -> Vec<String> {
         let _ = std::fs::remove_file(self.0.join("runs"));
         let path = format!("{}:{}", self.0.join("bin").display(), std::env::var("PATH").unwrap());
         let mut command = Command::new(Path::new(DAEMON_DATA).join("bin/ghostty"));
@@ -58,7 +69,7 @@ impl Scratch {
             .args(arguments)
             .env("PATH", path)
             .env("MUSTER_HOME", self.0.join("home"))
-            .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
+            .env("MUSTER_DAEMON", daemon)
             .env("FAKE_SSH_DIR", &self.0);
         if failing {
             command.env("FAKE_SSH_INSTALL_FAILS", "1");
@@ -159,4 +170,14 @@ fn the_install_gets_the_destination_without_the_remote_command() {
     );
     assert!(!runs[1].contains("ls -la"), "the command went with the install: {runs:?}");
     assert!(runs[2].ends_with("-o ControlMaster=no -p 2222 devbox ls -la "), "{runs:?}");
+}
+
+/// A pane outlives the daemon executable it was told about, which a reinstall or a moved bundle
+/// takes away; its ssh then goes on as plain ssh rather than failing.
+#[test]
+fn a_daemon_that_is_gone_leaves_ssh_working() {
+    let scratch = Scratch::new("gone");
+    let runs =
+        scratch.ssh_through("/nonexistent/muster-daemon", &[], &["-p", "2222", "devbox"], false);
+    assert_eq!(runs, ["-p 2222 devbox "]);
 }
