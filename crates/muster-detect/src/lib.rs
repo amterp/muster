@@ -13,6 +13,7 @@
 mod identify;
 mod manifest;
 mod manifests;
+mod osc;
 mod process;
 
 use std::fmt;
@@ -21,6 +22,7 @@ use std::sync::Arc;
 pub use identify::{Probe, identify_in_job, probe};
 pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Version};
 pub use manifests::{Manifests, Source, Warning};
+pub use osc::{Progress, title};
 pub use process::{Job, Process, Processes, System};
 
 /// What an agent is doing, as far as its screen says.
