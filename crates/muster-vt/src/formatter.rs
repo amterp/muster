@@ -175,20 +175,17 @@ impl Format {
 impl Terminal {
     /// The active screen, history included, formatted as `options` asks.
     pub fn format(&self, options: FormatOptions) -> Vec<u8> {
+        self.format_in(ffi::GhosttyPointTag_GHOSTTY_POINT_TAG_ACTIVE, options)
+    }
+
+    /// As `format`, with the selection's rows counted in `tag`'s coordinates.
+    fn format_in(&self, tag: ffi::GhosttyPointTag, options: FormatOptions) -> Vec<u8> {
         let mut raw = options.raw();
         let selection;
         if let Some(span) = options.selection {
             let (Some(start), Some(end)) = (
-                self.grid_ref(
-                    ffi::GhosttyPointTag_GHOSTTY_POINT_TAG_ACTIVE,
-                    span.start.0,
-                    span.start.1,
-                ),
-                self.grid_ref(
-                    ffi::GhosttyPointTag_GHOSTTY_POINT_TAG_ACTIVE,
-                    span.end.0,
-                    span.end.1,
-                ),
+                self.grid_ref(tag, span.start.0, span.start.1),
+                self.grid_ref(tag, span.end.0, span.end.1),
             ) else {
                 return Vec::new();
             };
@@ -231,6 +228,23 @@ impl Terminal {
             ..FormatOptions::plain()
         };
         String::from_utf8_lossy(&self.format(options)).into_owned()
+    }
+
+    /// Rows `first` through `last` of the active screen as plain text, counted from the oldest
+    /// row of history it still holds rather than from the top of the active area.
+    ///
+    /// What `muster pane read` pages through. A range past the last row reads as nothing.
+    pub fn screen_text(&self, first: u32, last: u32) -> String {
+        let last = last.min(u32::try_from(self.total_rows()).unwrap_or(u32::MAX).saturating_sub(1));
+        if first > last {
+            return String::new();
+        }
+        let options = FormatOptions {
+            selection: Some(Selection::rows(first, last, self.columns())),
+            ..FormatOptions::plain()
+        };
+        let text = self.format_in(ffi::GhosttyPointTag_GHOSTTY_POINT_TAG_SCREEN, options);
+        String::from_utf8_lossy(&text).into_owned()
     }
 
     /// The extras `options` asks for, with no screen content at all: the terminal's state

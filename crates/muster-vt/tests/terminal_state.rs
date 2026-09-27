@@ -121,3 +121,14 @@ fn text_reads_a_range_of_rows_in_one_call() {
         grid.rows.iter().map(|row| row.text().trim_end().to_string()).collect();
     assert_eq!(terminal.text(0, 5).lines().collect::<Vec<_>>(), from_grid);
 }
+
+#[test]
+fn screen_text_counts_rows_from_the_oldest_history() {
+    let mut terminal = Terminal::new(20, 3).expect("libghostty-vt gives us a terminal");
+    terminal.write(b"a\r\nb\r\nc\r\nd\r\ne");
+    assert_eq!(terminal.total_rows(), 5);
+    assert_eq!(terminal.screen_text(0, 1), "a\nb", "history, which text() cannot reach");
+    assert_eq!(terminal.screen_text(1, 3), "b\nc\nd", "across history into the active area");
+    assert_eq!(terminal.screen_text(3, 99), "d\ne", "a range past the end stops at the end");
+    assert_eq!(terminal.screen_text(9, 12), "", "a range wholly past the end is empty");
+}
