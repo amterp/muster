@@ -284,6 +284,16 @@ read` reaches them, and not in the surface's scrollback. The wait ends as soon a
 the bridge changes - credit, a detach, a takeover, the pane closing - and a pane with no bridge
 never waits.
 
+Measured through a forwarded socket to the devenv container at the vertical slice: a pane flooding 5 million lines into a surface that reads 4 KiB a millisecond
+and stops 250 ms every MiB fell behind only at those stops, was caught up with the pane's screen
+each time and ended showing it exactly, and slowed a second pane's echo by nothing at the median.
+Its p95 rose 4 ms (6.4 ms against 2.3 ms alone, at a load average of 14), where the daemon without
+the wait left the link idle while its bridge was behind and fell behind 141 times. Every stream
+over one machine's ssh connection shares its TCP stream, so a flood's bytes in flight are queued
+ahead of another pane's echo; whether that p95 holds on a quiet machine, and whether a remote
+window should be smaller than a local one, is measured again once the SSH tier installs the
+daemon itself.
+
 **One bridge per pane.** A bridge holds a pane at a time, and its grid is the pane's size. A second
 attach must ask for takeover or is refused; the displaced bridge is told why. A pane keeps its last
 size when its bridge detaches.
@@ -386,6 +396,16 @@ replay anyway, and nothing waits on it while holding the session lock (section 4
 scrollback limit already bounds it. A replay can be larger than a frame may be, so it travels in
 pieces of 1 MiB that the bridge writes in order.
 
+**In a real surface the replay shows what the pane showed.** The vertical slice drew one pane in
+libghostty surfaces through the real bridge: a surface fed live, a fresh one brought there by the
+replay, and the second again after more output, on a primary screen of 3,000 styled rows of
+history with wide characters, a wide character wrapped from the last column, a scrolling region
+under origin mode, insert mode, a pen and a pending wrap, and on the alternate screen above it.
+Read back through Ghostty's own screen dump and compared with the daemon's terminal, every row,
+every cell's style and the cursor matched in all three, while a control compared across different
+states did not. It found one gap: the cursor's shape, which no formatter writes and which is now
+stated (step 4).
+
 **A bridge that fell behind is caught up with the screen, keeping its history.** A replay opens
 with RIS, which erases the receiver's history, so a catch-up resets instead, piece by piece,
 whatever RIS would: the primary screen, the pen, hyperlink, protection and charsets, the cursor's
@@ -452,6 +472,15 @@ comes back marked so, and is written.
 A full queue drops a person's input for that pane too, with one warning per stall, rather than
 stall the input connection, which carries every pane's input, behind one program that stopped
 reading.
+
+**The side effects arrive as assumed.** In the vertical slice, with `keybind = clear` and every
+byte the surface wrote discarded by the bridge, a key event given to a surface scrolled up a page
+brought its viewport back to the bottom and cleared a selection, and the program saw the key once,
+from the daemon. Output alone left the viewport where it was, which is Ghostty's default
+(`scroll-to-bottom = keystroke, no-output`), and a wheel event scrolled the surface's own viewport
+and reached no program. The bridge has to read what the surface writes, key encodings and query
+answers alike, and throw it away: left unread, the terminal's input queue fills and the surface's
+writes block.
 
 **IME gets better.** The surface now knows the cursor, so composition can be drawn inline with
 `ghostty_surface_preedit` and the candidate window placed with `ghostty_surface_ime_point`.
@@ -696,6 +725,13 @@ reads slowly. The gate holds the structure beneath these numbers without timing 
 more, and another pane's echo still comes back through a writer, reader and stream of its own. An
 ignored test there prints the echo's latency, alone and beside the flood.
 
+`crates/muster-latency` measures these rows in `./dev --latency`. At the vertical slice, on an
+Apple silicon laptop at a load average of 9, the real bridge's echo was 0.08 ms over the bare PTY
+at the median and 0.16 ms at p95, with no second mode; 0.15 ms at p95 in a window of fifteen with
+the hidden panes attached, and 0.24 ms detached; one byte on the surface per echoed byte, and seven
+on the stream, the byte and its framing. An echo beside a local flood was no slower than alone.
+herdr's own client measured 1.4 ms and 22.6 ms. The remote row is in section 4.
+
 ### 14. What Muster deletes
 
 - `crates/muster-herdr`, `deps/herdr.pin`, `tools/herdr-probe` once the migration diff is done,
@@ -932,3 +968,9 @@ first.
 - 2026-09-27 Detection wired into the daemon (section 8) and agents' own facts added (section 2).
   From the streams review: a bridge behind is caught up once it has room again, `pane read`
   pages stop at 4 MiB, and nothing holding the session lock waits on a pane's (section 4).
+- 2026-09-27 The vertical slice: the replay matches in a real surface and now states the cursor's
+  shape (section 5); input's side effects on the surface are as assumed (section 6); the bridge on
+  the daemon measured against the targets (section 13). It found a burst larger than the window put
+  even a bridge that kept up behind: a bridge crediting at once received 80% of a 3 MB burst and was
+  behind 5,621 times, so the pane's reader now waits for credit for up to a grace period, and a
+  bridge behind is caught up at half its window (section 4).
