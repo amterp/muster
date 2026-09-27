@@ -103,7 +103,12 @@ fn prompts_are_marked(name: &str, required: bool, command: Option<&str>) {
         eprintln!("skipped: {name} is not installed here; ./dev --linux runs this with it");
         return;
     };
-    let daemon = daemon();
+    shell_prompts_are_marked(&daemon(), &shell, command);
+}
+
+/// [`prompts_are_marked`] for the shell at `shell`, on `daemon`.
+fn shell_prompts_are_marked(daemon: &Daemon, shell: &str, command: Option<&str>) {
+    let shell = shell.to_string();
     // zsh with no startup file of its own offers to write one instead of prompting.
     std::fs::write(daemon.root().join("home/.zshrc"), "").unwrap();
     let mut control = daemon.connect();
@@ -129,7 +134,7 @@ fn prompts_are_marked(name: &str, required: bool, command: Option<&str>) {
 
     // The first prompt may be drawn before the stream attaches, and a replay carries the screen
     // rather than the marks, so the test asks for fresh prompts until one arrives as output.
-    let mut stream = attached(&daemon, "p1", false);
+    let mut stream = attached(daemon, "p1", false);
     let mut input = muster_harness::Input::connect(daemon.socket_path());
     let enter = || {
         proto::input_event::Input::Send(proto::input_event::Send {
@@ -183,4 +188,26 @@ fn the_shell_a_command_leaves_behind_marks_its_prompts() {
     {
         prompts_are_marked(name, required, Some("echo ran"));
     }
+}
+
+/// The exec line runs after the command, in whatever the command left behind.
+#[test]
+fn a_command_that_empties_path_still_leaves_a_marked_prompt() {
+    for (name, required) in
+        [("zsh", true), ("bash", cfg!(target_os = "linux")), ("fish", cfg!(target_os = "linux"))]
+    {
+        prompts_are_marked(name, required, Some("PATH=/nonexistent"));
+    }
+}
+
+/// `env` would read a path containing `=` as a variable to set.
+#[test]
+fn a_shell_whose_path_has_an_equals_sign_runs_a_command_and_becomes_itself() {
+    let zsh = installed("zsh").expect("zsh is expected on every machine this suite runs on");
+    let daemon = daemon();
+    let dir = daemon.root().join("a=b");
+    std::fs::create_dir(&dir).unwrap();
+    let linked = dir.join("zsh");
+    std::os::unix::fs::symlink(zsh, &linked).unwrap();
+    shell_prompts_are_marked(&daemon, &linked.display().to_string(), Some("echo ran"));
 }

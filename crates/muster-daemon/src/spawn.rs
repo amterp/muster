@@ -73,33 +73,31 @@ pub(crate) fn start(
 /// written into the script. Written in, an open quote, a trailing backslash or an unfinished
 /// heredoc would swallow the `exec` after it and the pane would close. Through `eval` it is a
 /// shell error like any other, and the `exec` still runs. `eval "$VARIABLE"` means the same in
-/// sh, bash, zsh and fish - but see [`evaluate`] for how each is asked.
+/// sh, bash, zsh and fish - but see [`Language::evaluate`] for how each is asked.
 ///
 /// Only the interactive shell gets the integration. Given to the shell that runs the command,
 /// it would be undone before the `exec`: zsh's `.zshenv` and fish's script each take their own
 /// injection back out as they load, so the shell exec'd after would start without it, and
-/// bash's `ENV` would reach the command and everything it starts. So the `exec` sets the
-/// integration's variables itself, through `env`, which every shell here can exec.
+/// bash's `ENV` would reach the command and everything it starts. So the shell that ran the
+/// command exports the integration's variables itself just before its `exec`, rather than
+/// handing them to `env`: `env` would be found through a `PATH` the command may have changed,
+/// and reads any argument containing `=` as another variable, a shell's path included.
 fn argv(shell: &str, login: bool, runs_command: bool, integration: &Integration) -> Vec<String> {
     let flags: &[&str] = if login { &["-l", "-i"] } else { &["-i"] };
     let mut argv = vec![shell.to_string()];
     if runs_command {
+        let language = Language::of(shell);
         argv.extend(flags.iter().map(|flag| (*flag).to_string()));
-        let mut exec = vec!["exec".to_string()];
-        if !integration.environment.is_empty() {
-            exec.push("env".to_string());
-            exec.extend(
-                integration
-                    .environment
-                    .iter()
-                    .map(|(name, value)| quote(&format!("{name}={value}"))),
-            );
-        }
-        exec.push(quote(shell));
+        let mut script = vec![format!("{} \"${PANE_COMMAND}\"", language.evaluate())];
+        script.extend(
+            integration.environment.iter().map(|(name, value)| language.export(name, value)),
+        );
+        let mut exec = vec!["exec".to_string(), language.quote(shell)];
         exec.extend(integration.arguments.iter().cloned());
         exec.extend(flags.iter().map(|flag| (*flag).to_string()));
+        script.push(exec.join(" "));
         argv.push("-c".to_string());
-        argv.push(format!("{} \"${PANE_COMMAND}\"\n{}", evaluate(shell), exec.join(" ")));
+        argv.push(script.join("\n"));
     } else {
         argv.extend(integration.arguments.iter().cloned());
         argv.extend(flags.iter().map(|flag| (*flag).to_string()));
@@ -107,23 +105,55 @@ fn argv(shell: &str, login: bool, runs_command: bool, integration: &Integration)
     argv
 }
 
-/// How `shell` is told to evaluate the command.
-///
-/// `eval` is a special builtin in a POSIX shell, and a syntax error inside one abandons the rest
-/// of the script: dash, Debian's and Ubuntu's `/bin/sh`, then never reaches the `exec`, and the
-/// pane is left in the shell that ran the command rather than a login shell of its own. `command`
-/// takes the special status away, so the error is an ordinary failure and the script goes on.
-/// zsh and fish read `command eval` as an external program called `eval`, and neither needs it.
-fn evaluate(shell: &str) -> &'static str {
-    match shell.rsplit('/').next() {
-        Some("zsh" | "fish") => "eval",
-        _ => "command eval",
-    }
+/// Which language the exec line is written in, from the shell's name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Language {
+    Posix,
+    Zsh,
+    Fish,
 }
 
-/// `text` as one word to a POSIX shell.
-fn quote(text: &str) -> String {
-    format!("'{}'", text.replace('\'', r"'\''"))
+impl Language {
+    fn of(shell: &str) -> Language {
+        match shell.rsplit('/').next() {
+            Some("zsh") => Language::Zsh,
+            Some("fish") => Language::Fish,
+            _ => Language::Posix,
+        }
+    }
+
+    /// How the command is evaluated.
+    ///
+    /// `eval` is a special builtin in a POSIX shell, and a syntax error inside one abandons the
+    /// rest of the script: dash, Debian's and Ubuntu's `/bin/sh`, then never reaches the `exec`,
+    /// and the pane is left in the shell that ran the command rather than a login shell of its
+    /// own. `command` takes the special status away, so the error is an ordinary failure and the
+    /// script goes on. zsh and fish read `command eval` as an external program called `eval`, and
+    /// neither needs it.
+    fn evaluate(self) -> &'static str {
+        match self {
+            Language::Posix => "command eval",
+            Language::Zsh | Language::Fish => "eval",
+        }
+    }
+
+    /// `text` as one word. fish's single quotes take `\\` and `\'` as escapes, where a POSIX
+    /// shell's take nothing, so a value ending in a backslash would leave fish's string open.
+    fn quote(self, text: &str) -> String {
+        match self {
+            Language::Posix | Language::Zsh => format!("'{}'", text.replace('\'', r"'\''")),
+            Language::Fish => format!("'{}'", text.replace('\\', r"\\").replace('\'', r"\'")),
+        }
+    }
+
+    /// Exports `name` to what the shell execs. `name` is one of the integration's own, never
+    /// anything a request supplied, so it needs no quoting.
+    fn export(self, name: &str, value: &str) -> String {
+        match self {
+            Language::Posix | Language::Zsh => format!("export {name}={}", self.quote(value)),
+            Language::Fish => format!("set -gx {name} {}", self.quote(value)),
+        }
+    }
 }
 
 /// The terminal a pane runs as. The daemon carries its terminfo entry, and the headless
@@ -239,7 +269,7 @@ mod tests {
                 "/opt/it's/fish",
                 "-i",
                 "-c",
-                "eval \"$MUSTER_PANE_COMMAND\"\nexec '/opt/it'\\''s/fish' -i"
+                "eval \"$MUSTER_PANE_COMMAND\"\nexec '/opt/it\\'s/fish' -i"
             ]
         );
         assert_eq!(
@@ -399,7 +429,7 @@ mod tests {
                 "-l",
                 "-i",
                 "-c",
-                "eval \"$MUSTER_PANE_COMMAND\"\nexec env 'ZDOTDIR=/s/zsh' '/bin/zsh' -l -i"
+                "eval \"$MUSTER_PANE_COMMAND\"\nexport ZDOTDIR='/s/zsh'\nexec '/bin/zsh' -l -i"
             ]
         );
         assert!(environment.is_empty(), "{environment:?}");
@@ -408,9 +438,34 @@ mod tests {
         if !cfg!(target_os = "macos") {
             assert_eq!(
                 argv[3],
-                "command eval \"$MUSTER_PANE_COMMAND\"\nexec env 'ENV=/it'\\''s/bash/ghostty.bash' \
-                 'GHOSTTY_BASH_INJECT=1' '/bin/bash' --posix -i"
+                "command eval \"$MUSTER_PANE_COMMAND\"\n\
+                 export ENV='/it'\\''s/bash/ghostty.bash'\n\
+                 export GHOSTTY_BASH_INJECT='1'\n\
+                 exec '/bin/bash' --posix -i"
             );
         }
+    }
+
+    /// `env` read any argument containing `=` as a variable, a shell's path included, so the
+    /// exec line exports the integration's variables itself and execs the shell by its path.
+    #[test]
+    fn a_shell_whose_path_has_an_equals_sign_is_still_the_shell_execd() {
+        let (argv, _) = start("/opt/a=b/zsh", false, true, Vec::new(), Path::new("/s"));
+        assert_eq!(
+            argv[3],
+            "eval \"$MUSTER_PANE_COMMAND\"\nexport ZDOTDIR='/s/zsh'\nexec '/opt/a=b/zsh' -i"
+        );
+    }
+
+    #[test]
+    fn fish_is_written_to_in_fish() {
+        let (argv, _) = start("/usr/bin/fish", false, true, Vec::new(), Path::new(r"/it's\"));
+        assert_eq!(
+            argv[3],
+            "eval \"$MUSTER_PANE_COMMAND\"\n\
+             set -gx GHOSTTY_SHELL_INTEGRATION_XDG_DIR '/it\\'s\\\\'\n\
+             set -gx XDG_DATA_DIRS '/it\\'s\\\\:/usr/local/share:/usr/share'\n\
+             exec '/usr/bin/fish' -i"
+        );
     }
 }
