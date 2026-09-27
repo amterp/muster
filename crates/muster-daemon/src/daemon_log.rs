@@ -178,6 +178,13 @@ impl DaemonLog {
         }
     }
 
+    /// Removes what a daemon taking over left behind in an earlier handoff, before starting
+    /// another: one whose old daemon was killed before it could take the records in, which a
+    /// successor that never started would otherwise pass off as its own.
+    pub(crate) fn forget_handed_over(&self) {
+        let _ = std::fs::remove_file(handed_over_path(&self.inner().file.path));
+    }
+
     /// Writes into the file what a daemon that failed to take over logged before it failed,
     /// and removes where it left it. Returns how many records that was.
     pub(crate) fn take_in_handed_over(&self) -> usize {
@@ -336,6 +343,16 @@ mod tests {
         assert!(current.contains("test.record.99\""), "the newest record is in the file");
         assert!(!previous.contains("test.record.0\""), "the oldest is gone");
         assert!(current.lines().chain(previous.lines()).all(|line| line.ends_with('}')));
+    }
+
+    #[test]
+    fn records_left_by_an_earlier_handoff_are_not_taken_in_by_a_later_one() {
+        let scratch = Scratch::new("stale");
+        let path = scratch.0.join("daemon.log");
+        std::fs::write(handed_over_path(&path), "{\"event\":\"stale\"}\n").unwrap();
+        let log = DaemonLog::new(Rotating::open(path.clone(), 2000));
+        log.forget_handed_over();
+        assert_eq!(log.take_in_handed_over(), 0);
     }
 
     #[test]

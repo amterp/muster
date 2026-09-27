@@ -230,6 +230,9 @@ fn handed(
     if !shared.socket.accepting.hold(STEP) {
         return Err("this daemon's accept loop did not stop".to_string());
     }
+    if let Some(log) = &handing.log {
+        log.forget_handed_over();
+    }
     let (mut link, child) = start(replacement, &shared.socket.path)?;
     *successor = Some(child);
     let offer = handoff::Offer {
