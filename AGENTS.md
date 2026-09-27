@@ -239,6 +239,13 @@ shows up as `env: rad: No such file or directory`. Rust installs itself - `rust-
 rustup fetches it on the first `cargo` call, the same way `deps/ghostty.pin` decides which libghostty gets built.
 libclang, which the libghostty-vt bindings are generated with, comes from the Xcode command line tools.
 
+**The libghostty that gets built is the pin plus Muster's patches.** `deps/ghostty-patches/` holds changes Muster
+carries on libghostty for good, not until upstream takes them: `./dev` applies them in name order on top of the pinned
+commit, and they reach GhosttyKit as well as libghostty-vt because both build from that one checkout. Each patch only
+adds C API and changes no existing behavior, and stays small, so that a re-pin means rebasing it rather than rewriting
+it. `deps/.built` records the pin and a hash of every patch, so editing a patch rebuilds exactly as a re-pin does, and
+CI's cache key hashes both. A patch that no longer applies stops the build and names itself.
+
 `deps/rad.pin` names the Rad the gate is written against, and is the one pin `./dev` cannot act on - it is already
 running under Rad by the time it could look. CI installs exactly that build; your own `rad` is free to be any
 version, and one too old to parse `./dev` says which line it could not read.

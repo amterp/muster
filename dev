@@ -33,11 +33,17 @@ GHOSTTY_REPO = "https://github.com/ghostty-org/ghostty"
 GHOSTTY_DIR = "deps/ghostty"
 XCFRAMEWORK = "deps/ghostty/macos/GhosttyKit.xcframework"
 BUILT_STAMP = "deps/.built"
+// Muster's own changes to libghostty, applied in name order on top of the pin and carried
+// for good rather than until upstream takes them: each is additive C API, kept small so a
+// re-pin rebases it rather than rewriting it (docs/mip/0003-own-daemon.md, section 5).
+GHOSTTY_PATCHES = "deps/ghostty-patches"
 // Both builds of the pin: the surface API the shell renders through, and the VT the
-// core encodes keys with and the tests read grids from.
+// core encodes keys with and the tests read grids from - as a dylib for anything that
+// shares a process with the surface API, and as an archive for the daemon, which does not.
 DEP_ARTIFACTS = [
     XCFRAMEWORK,
     "deps/ghostty/zig-out/lib/libghostty-vt.dylib",
+    "deps/ghostty/zig-out/lib/libghostty-vt.a",
     "deps/ghostty/zig-out/include/ghostty/vt.h",
 ]
 // The session backend is a runtime dependency of the suite, not just of the app. Tests
@@ -1360,9 +1366,29 @@ fn check_keycodes():
     print_err("  tools/gen-keycodes/gen-keycodes")
     exit(1)
 
-// Everything under deps/ is reproducible from the pin, so the check is only ever
-// "is what sits there the commit we asked for". libghostty takes minutes to build and
-// changes only when the pin does.
+// The patches, in the order they apply.
+fn ghostty_patches():
+    if not get_path(GHOSTTY_PATCHES).exists:
+        return []
+    names = find_paths(GHOSTTY_PATCHES, depth=1).filter(fn(name) name.ends_with(".patch"))
+    return sort(names).map(fn(name) "{GHOSTTY_PATCHES}/{name}")
+
+fn patch_note():
+    count = len(ghostty_patches())
+    return count == 0 ? "" : " with {count} patch{count == 1 ? '' : 'es'}"
+
+// What deps/.built records: the pin, then each patch with a hash of its content, so editing,
+// adding or removing a patch rebuilds exactly as a re-pin does.
+fn deps_stamp(pin):
+    lines = [pin]
+    for patch in ghostty_patches():
+        hash = quiet $`git hash-object {patch}`.stdout.trim()
+        lines += ["{patch} {hash}"]
+    return lines.join("\n")
+
+// Everything under deps/ is reproducible from the pin and the patches, so the check is only
+// ever "is what sits there what we asked for". libghostty takes minutes to build and changes
+// only when one of those does.
 //
 // The stamp alone is not enough: a deleted or half-copied artifact leaves the stamp
 // saying yes, and the failure then surfaces minutes later as a linker error naming a
@@ -1370,7 +1396,7 @@ fn check_keycodes():
 fn deps_are_current(pin):
     stamp = read_file(BUILT_STAMP) catch:
         return false
-    if stamp.content.trim() != pin:
+    if stamp.content.trim() != deps_stamp(pin):
         return false
     for artifact in DEP_ARTIFACTS:
         if not get_path(artifact).exists:
@@ -1381,7 +1407,7 @@ fn deps_are_current(pin):
 fn build_deps():
     pin = read_pin()
     if deps_are_current(pin):
-        print(dim("libghostty already built at {pin[:12]}"))
+        print(dim("libghostty already built at {pin[:12]}{patch_note()}"))
         return
 
     // Asked for only once there is something to build with it. Every other tier takes deps on
@@ -1405,20 +1431,32 @@ fn build_deps():
         print_err("Try: brew install zig@0.16")
         exit(1)
 
-    print(dim("building libghostty at {pin[:12]} - several minutes on a cold cache"))
+    print(dim("building libghostty at {pin[:12]}{patch_note()} - several minutes on a cold cache"))
     $`mkdir -p {GHOSTTY_DIR}`
     $`git init -q {GHOSTTY_DIR}`
     // A fresh clone and a re-pin take the same path: fetch exactly the one commit.
     $`git -C {GHOSTTY_DIR} remote add origin {GHOSTTY_REPO} 2>/dev/null || true`
     $`git -C {GHOSTTY_DIR} fetch -q --depth 1 origin {pin}`
-    $`git -C {GHOSTTY_DIR} checkout -q FETCH_HEAD`
+    // Hard, so a checkout that already carries an older version of a patch comes back to the
+    // pin's own files before this version applies. Build output is untracked and survives.
+    $`git -C {GHOSTTY_DIR} checkout -q --force FETCH_HEAD`
+    $`git -C {GHOSTTY_DIR} reset -q --hard FETCH_HEAD`
+    for patch in ghostty_patches():
+        full = get_path(patch).full_path
+        $`git -C {GHOSTTY_DIR} apply --whitespace=nowarn {full}` catch:
+            print_err(red("{patch} does not apply to libghostty at {pin[:12]}."))
+            print_err("Impact: nothing is built, because Muster's replay and daemon call the API")
+            print_err("the patch adds, and a libghostty without it fails at link time instead.")
+            print_err("After a re-pin this means the patch needs rebasing: apply it in")
+            print_err("{GHOSTTY_DIR} by hand, resolve, and write the result back with `git diff`.")
+            exit(1)
 
     // Two builds, because -Demit-lib-vt turns the xcframework off: the surface API that
     // the shell renders through, then the VT that the core encodes keys with and the
     // tests read grids from.
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native`
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
-    write_file(BUILT_STAMP, pin)
+    write_file(BUILT_STAMP, deps_stamp(pin))
 
 // The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
 // and a logged-in GUI session, and the default suite must stay offline and deterministic

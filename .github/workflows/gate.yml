@@ -93,7 +93,7 @@ jobs:
           version: 0.16.0
 
       # Six minutes cold, and the only step here that is. `./dev -d` skips the build outright
-      # when deps/.built names the pinned commit and all three artifacts exist, so this
+      # when deps/.built names the pinned commit and patches and every artifact exists, so this
       # restores exactly those - not the 135 MB checkout or the 1.1 GB Zig cache that
       # produced them. No restore-keys: a near-miss would restore a .built naming a different
       # commit, which ./dev detects and rebuilds anyway.
@@ -104,7 +104,7 @@ jobs:
             deps/.built
             deps/ghostty/macos/GhosttyKit.xcframework
             deps/ghostty/zig-out
-          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/ghostty.pin') }}
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/ghostty.pin', 'deps/ghostty-patches/*.patch') }}
 
       # Small, and it saves a GitHub release round trip. ./dev re-verifies the checksum on
       # every run, so a cache that came back truncated is caught rather than trusted.
