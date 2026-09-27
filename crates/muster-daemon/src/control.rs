@@ -163,13 +163,23 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         );
         // The events a request produces are queued under this lock. Its answer is queued under
         // the next, once letting go of this one has done the work it left on panes' terminals,
-        // so an answer still means the request has taken effect.
+        // so an answer still means the request has taken effect. A subscribe leaves no such
+        // work, and its answer goes under this lock, beside the snapshot it carries.
         let handled = match request.service {
-            Some(service) => shared.lock().handle(service, &outbox),
+            Some(service) => {
+                let mut session = shared.lock();
+                match session.handle(service, &outbox) {
+                    Handled::Subscribed(reply) => {
+                        answer(&session, &outbox, request.id, reply);
+                        continue;
+                    }
+                    handled => handled,
+                }
+            }
             None => Handled::Reply(Reply::unsupported()),
         };
         let reply = match handled {
-            Handled::Reply(reply) => reply,
+            Handled::Reply(reply) | Handled::Subscribed(reply) => reply,
             // Outside the lock: starting a process waits for it to change directory and exec,
             // and a directory on a hung mount would otherwise stall every connection with it.
             Handled::Start(starting) => {

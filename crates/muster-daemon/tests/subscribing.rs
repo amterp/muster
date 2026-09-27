@@ -30,6 +30,43 @@ fn a_subscription_starts_from_its_snapshot_and_hears_only_what_follows() {
     assert_eq!(heard[1].seq, snapshot.seq + 2);
 }
 
+/// A subscription made while another connection is changing things still starts from its
+/// snapshot: no event reaches it before the answer, and the first one after is the next in
+/// sequence. An event queued between taking the snapshot and queueing its answer would arrive
+/// ahead of a snapshot older than it.
+#[test]
+fn a_subscription_made_amid_changes_hears_nothing_before_its_snapshot() {
+    let daemon = daemon();
+    let mut writer = daemon.connect();
+    make(&mut writer, create("p1", in_new_tab("t1")));
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let changing = {
+        let (stop, socket) = (std::sync::Arc::clone(&stop), daemon.socket_path().to_path_buf());
+        std::thread::spawn(move || {
+            let mut writer = Control::connect(&socket);
+            for turn in 0.. {
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                let label = Some(format!("label {turn}"));
+                let rename = proto::pane_request::Rename { pane: "p1".to_string(), label };
+                writer.ask(pane(proto::pane_request::Request::Rename(rename)));
+            }
+        })
+    };
+    for _ in 0..200 {
+        let mut watcher = daemon.connect();
+        let asked = expect(&mut watcher, subscribe_request(), proto::Outcome::Done);
+        let Some(proto::answer::Detail::Snapshot(snapshot)) = asked.answer.detail else {
+            panic!("a subscription answered without a snapshot");
+        };
+        assert_eq!(names(&asked.events), Vec::<String>::new(), "events before the snapshot");
+        assert_eq!(watcher.next_event().seq, snapshot.seq + 1, "the event after the snapshot");
+    }
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    changing.join().unwrap();
+}
+
 #[test]
 fn a_connection_that_did_not_subscribe_hears_no_events() {
     let daemon = daemon();

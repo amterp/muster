@@ -334,6 +334,9 @@ pub(crate) enum Handled {
     /// Manifests to compile with the session unlocked, then put in use with
     /// [`Session::manifests_loaded`].
     Manifests(Box<Loading>),
+    /// A subscription's snapshot, whose answer is queued before the session is let go: an event
+    /// queued between the two would reach the new subscriber ahead of a snapshot older than it.
+    Subscribed(Reply),
 }
 
 /// A `send_manifests` whose manifests have yet to be compiled.
@@ -562,7 +565,7 @@ impl Session {
                     detail: Some(Box::new(Detail::Snapshot(self.snapshot()))),
                     ..Reply::done()
                 },
-                S::Subscribe(_) => self.subscribe(asker),
+                S::Subscribe(_) => return Handled::Subscribed(self.subscribe(asker)),
                 S::SetShell(set) => self.set_shell(set),
                 S::SetScrollback(set) => self.set_scrollback(set),
                 S::SetPalette(set) => self.set_palette(set),
