@@ -305,8 +305,9 @@ mod tests {
         let started = Instant::now();
         let error =
             ensure_running(&Here, &installed, &installed.socket, &BTreeMap::new()).unwrap_err();
-        // Far inside the start's own 30 seconds, with room for a loaded machine's slow shells.
-        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+        // Well inside the start's own 30 seconds, with room for a loaded machine's slow shells:
+        // it takes under a second alone, and once took twelve beside the rest of the suite.
+        assert!(started.elapsed() < Duration::from_secs(20), "took {:?}", started.elapsed());
         assert!(error.contains("no data directory beside me"), "{error}");
         assert!(error.contains("exited before it answered"), "{error}");
         let _ = std::fs::remove_dir_all(&root);
@@ -322,7 +323,11 @@ mod tests {
         let binary = root.join("muster-daemon");
         executable(
             &binary,
-            &format!("#!/bin/sh\n{{ echo \"$$ $@\"; env; }} > '{}'\nsleep 3\n", told.display()),
+            // Written whole and then renamed, so the test never reads it half written.
+            &format!(
+                "#!/bin/sh\n{{ echo \"$$ $@\"; env; }} > '{0}.part' && mv '{0}.part' '{0}'\nsleep 3\n",
+                told.display()
+            ),
         );
         let given = environment(&[("HOME", "/home/o'neil"), ("LANG", "C.UTF-8")]);
         let installed = Installed { binary, socket: root.join("daemon").join("d.sock") };
