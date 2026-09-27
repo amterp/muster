@@ -271,14 +271,19 @@ impl PaneIo {
                 Happened::Reply(bytes) => {
                     self.queue(Input::Reply(bytes));
                 }
-                Happened::Title(title) => reports.send(self.serial, Reported::Title(title)),
+                // Every title write is sent, so one the queue drops is replaced by the next.
+                Happened::Title(title) => {
+                    reports.send(self.serial, Reported::Title(title));
+                }
                 Happened::Pwd(url) => {
                     if let Some(directory) = effects::local_directory(&url, &heard.host) {
                         heard.reports_directory = true;
                         heard.moved_to(directory, self.serial, reports);
                     }
                 }
-                Happened::Shown(shown) => reports.send(self.serial, Reported::Shown(shown)),
+                Happened::Shown(shown) => {
+                    reports.send(self.serial, Reported::Shown(shown));
+                }
             }
         }
     }
@@ -379,6 +384,7 @@ impl Pane {
             },
             detection: Detection::new(process, Instant::now()),
             detecting: Arc::clone(watching.detecting),
+            unsent: None,
         };
         std::thread::Builder::new()
             .name(format!("read {pane}"))
@@ -434,10 +440,11 @@ struct Heard {
 }
 
 impl Heard {
+    /// Publishes a directory unless it is the last one published. One the queue dropped is not
+    /// published, so the next check sends it again.
     fn moved_to(&mut self, directory: PathBuf, serial: u64, reports: &Reports) {
-        if directory != self.directory {
-            self.directory.clone_from(&directory);
-            reports.send(serial, Reported::Cwd(directory));
+        if directory != self.directory && reports.send(serial, Reported::Cwd(directory.clone())) {
+            self.directory = directory;
         }
     }
 }
@@ -452,6 +459,8 @@ struct Reader {
     heard: Heard,
     detection: Detection,
     detecting: Arc<Detecting>,
+    /// What detection published that the queue dropped, to send again at the next tick.
+    unsent: Option<Reported>,
 }
 
 impl Reader {
@@ -526,10 +535,11 @@ impl Reader {
 
     /// Ticks the pane's agent detection, and publishes what it says changed.
     fn detect(&mut self, now: Instant) {
-        if let Some(publication) = self.detection.tick(&self.io, &self.detecting, now) {
+        let published = self.detection.tick(&self.io, &self.detecting, now).map(|publication| {
             let (agent, state) = detect::recorded(&publication);
-            self.reports.send(self.io.serial, Reported::Agent { agent, state });
-        }
+            Reported::Agent { agent, state }
+        });
+        publish_agent(&self.reports, self.io.serial, published, &mut self.unsent);
     }
 
     /// Publishes the directory the pane's program is in, for a shell that does not say.
@@ -541,6 +551,19 @@ impl Reader {
             self.heard.moved_to(directory, self.io.serial, &self.reports);
         }
     }
+}
+
+/// Sends what detection just published, or else what the queue last dropped. The detector counts
+/// a publication as made once it has made it, so a dropped one would otherwise stand until the
+/// agent's state next changed.
+fn publish_agent(
+    reports: &Reports,
+    serial: u64,
+    published: Option<Reported>,
+    unsent: &mut Option<Reported>,
+) {
+    let Some(agent) = published.or_else(|| unsent.take()) else { return };
+    *unsent = (!reports.send(serial, agent.clone())).then_some(agent);
 }
 
 /// Waits for a pane's process to end, and says how it ended as a shell reports it in `$?`: its
@@ -636,6 +659,47 @@ impl PaneIo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn heard() -> Heard {
+        Heard { host: String::new(), directory: PathBuf::from("/"), reports_directory: false }
+    }
+
+    /// The queue to the session drops a report when it is full. A directory dropped there must
+    /// still reach the pane's record, which a restart restores the pane into.
+    #[test]
+    fn a_directory_the_queue_dropped_is_sent_at_the_next_check() {
+        let (reports, received) = Reports::with_depth(1);
+        reports.send(1, Reported::Title("filler".to_string()));
+        let mut heard = heard();
+        heard.moved_to(PathBuf::from("/tmp"), 1, &reports);
+        assert!(
+            received
+                .try_recv()
+                .is_ok_and(|report| report.what == Reported::Title("filler".to_string()))
+        );
+        heard.moved_to(PathBuf::from("/tmp"), 1, &reports);
+        assert_eq!(
+            received.try_recv().map(|report| report.what),
+            Ok(Reported::Cwd(PathBuf::from("/tmp")))
+        );
+    }
+
+    #[test]
+    fn an_agent_state_the_queue_dropped_is_sent_at_the_next_tick() {
+        let (reports, received) = Reports::with_depth(1);
+        reports.send(1, Reported::Title("filler".to_string()));
+        let working = Reported::Agent {
+            agent: Some("claude".to_string()),
+            state: proto::AgentState::Working,
+        };
+        let mut unsent = None;
+        publish_agent(&reports, 1, Some(working.clone()), &mut unsent);
+        assert!(received.try_recv().is_ok(), "the filler");
+        publish_agent(&reports, 1, None, &mut unsent);
+        assert_eq!(received.try_recv().map(|report| report.what), Ok(working));
+        publish_agent(&reports, 1, None, &mut unsent);
+        assert!(received.try_recv().is_err(), "sent once it fitted, and not again");
+    }
 
     #[test]
     fn a_closed_pane_refuses_a_bridge() {

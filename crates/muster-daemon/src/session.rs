@@ -89,7 +89,8 @@ impl Shared {
                     "daemon.publisher.no_thread",
                     fields! {
                         "error" => error,
-                        "impact" => "no pane's title, directory, bell or notification will be                                      published by this daemon",
+                        "impact" => "no pane's title, directory, agent state, bell or \
+                                     notification will be published by this daemon",
                         "check" => "whether the daemon is out of threads",
                     },
                 );

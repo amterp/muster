@@ -164,26 +164,34 @@ static OVERRUN_WARNED: AtomicBool = AtomicBool::new(false);
 
 impl Reports {
     pub(crate) fn channel() -> (Reports, Receiver<Report>) {
-        let (sender, receiver) = mpsc::sync_channel(REPORTS_DEPTH);
+        Reports::with_depth(REPORTS_DEPTH)
+    }
+
+    pub(crate) fn with_depth(depth: usize) -> (Reports, Receiver<Report>) {
+        let (sender, receiver) = mpsc::sync_channel(depth);
         (Reports { sender }, receiver)
     }
 
-    pub(crate) fn send(&self, serial: u64, what: Reported) {
+    /// Queues a report for the session. False when the queue was full and the report dropped,
+    /// so a caller holding state the session must end up with can send it again. A daemon that
+    /// is stopping counts as told.
+    pub(crate) fn send(&self, serial: u64, what: Reported) -> bool {
         match self.sender.try_send(Report { serial, what }) {
-            Ok(()) | Err(TrySendError::Disconnected(_)) => {}
+            Ok(()) | Err(TrySendError::Disconnected(_)) => true,
             Err(TrySendError::Full(_)) => {
                 if !OVERRUN_WARNED.swap(true, Ordering::Relaxed) {
                     log::warn(
                         "daemon.reports.overrun",
                         fields! {
                             "queued" => REPORTS_DEPTH,
-                            "impact" => "a pane's title, directory, agent state, bell or \
-                                         notification was dropped; later ones still arrive",
+                            "impact" => "a pane's title, bell or notification was dropped; \
+                                         a directory or agent state is sent again shortly",
                             "check" => "whether a request is holding the session lock for \
                                         seconds, which is a bug",
                         },
                     );
                 }
+                false
             }
         }
     }
