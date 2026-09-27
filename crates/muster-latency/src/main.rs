@@ -1,14 +1,14 @@
 //! muster-latency: input-to-glyph through muster-daemon, beside the bare PTY it is judged
 //! against (MIP-3, section 13).
 //!
-//! `tools/latency.py` measures herdr's paths, which Muster no longer runs; these rows are what
-//! the cut-over is judged by. A keystroke goes in as the app will send it, a key event on
-//! the daemon's input connection, and the glyph is the letter coming back: on the pane's stream
-//! read directly, which is the daemon's share, and on the PTY the real bridge writes to, where
-//! the surface would parse it. The surface's parse and the GPU are in no number here.
+//! These rows are what the cut-over is judged by. A keystroke goes in as the app will send it,
+//! a key event on the daemon's input connection, and the glyph is the letter coming back: on
+//! the pane's stream read directly, which is the daemon's share, and on the PTY the real bridge
+//! writes to, where the surface would parse it. The surface's parse and the GPU are in no
+//! number here.
 //!
 //! Every pane runs `cat` in canonical mode, so the echo is the terminal's own, as in the
-//! Python half.
+//! herdr measurements it replaced.
 
 mod daemon;
 mod glyph;
@@ -43,7 +43,7 @@ such as a devenv's through a forwarded socket; the bare PTY is still this machin
 --throughput times a pane with nothing attached draining `yes | head -c --bytes`
 (30000000) against a bare PTY read loop draining the same, best of --runs (3).";
 
-/// Roughly a fast typist, as in `tools/latency.py`: back-to-back keys would measure a queue
+/// Roughly a fast typist: back-to-back keys would measure a queue
 /// draining rather than what one keystroke at a time sees.
 const TYPING_GAP: Duration = Duration::from_millis(150);
 const TIMEOUT: Duration = Duration::from_secs(5);

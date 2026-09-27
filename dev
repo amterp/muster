@@ -1970,25 +1970,14 @@ if perf:
 
 if latency:
     announce("latency")
-    // Reported rather than gated. It needs a real daemon, and the number it produces is
-    // mostly herdr's render cadence rather than Muster's cost - so a threshold here would
-    // fail builds over a dependency's behavior. ./dev --perf gates what is ours.
+    // Reported rather than gated: the numbers move with whatever else the machine is doing, so a
+    // threshold here would fail builds over the load rather than the code. ./dev --perf gates
+    // what is ours.
     //
-    // The pinned daemon, like every other tier, and a release bridge, because the bridge's
+    // A keystroke through muster-daemon, with the bare PTY measured in the same run so the
+    // verdicts compare like with like (MIP-3 section 13). Release builds, because the bridge's
     // hop is one of the things measured and a debug build would overstate it.
-    herdr = herdr_binary()
     $`cargo build --release --bin muster-bridge --bin muster-daemon --bin muster-latency`
-    stdout, stderr, code = $`python3 tools/latency.py --herdr {herdr} --bridge target/release/muster-bridge` catch:
-        print_err(red("Input-to-glyph could not be measured through herdr, so nothing was learned."))
-        print_err(stdout.trim())
-        print_err(stderr.trim())
-        exit(1)
-    print(stdout.trim())
-
-    // The same keystroke through muster-daemon, which is what the cut-over is judged by, with
-    // the bare PTY measured again in the same run so the verdicts compare like with like
-    // (MIP-3 section 13). The herdr rows above go at the cut-over; these stay.
-    print("")
     stdout, stderr, code = $`target/release/muster-latency --daemon target/release/muster-daemon --bridge target/release/muster-bridge` catch:
         print_err(red("Input-to-glyph could not be measured through muster-daemon, so nothing was learned."))
         print_err(stdout.trim())

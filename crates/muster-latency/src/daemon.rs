@@ -17,7 +17,7 @@ use prost::Message;
 
 use crate::glyph;
 
-/// The grid every measured pane has, the one `tools/latency.py` uses.
+/// The grid every measured pane has.
 pub(crate) const GRID: proto::Grid =
     proto::Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 };
 

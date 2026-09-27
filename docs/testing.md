@@ -72,7 +72,7 @@ Muster's principles, adapted to that evidence:
 
   Nothing consults PATH for a daemon: a test that resolved its own could quietly run against one nobody built
   from this commit. herdr is still pinned (`deps/herdr.pin`, fetched into `deps/herdr/` and verified) for the
-  app the shell builds, the contract and latency tiers and the corpus probe until they move to muster-daemon, and
+  app the shell builds, the contract tier and the corpus probe until they move to muster-daemon, and
   no Rust test runs it.
 - **Detect wire drift mechanically, not by waiting for a test to fail.** herdr generates a canonical JSON Schema of
   its whole API from its own request types, fails its own build when the two disagree, and embeds it in the binary

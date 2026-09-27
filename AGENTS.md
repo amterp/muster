@@ -236,13 +236,10 @@ update has broken neither. It needs `ANTHROPIC_API_KEY` or `claude`'s own login,
 when it has neither, since a tier that checked nothing has not passed.
 
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
-against a checked-in baseline and fails on regression, the second times input-to-glyph stage by stage - the bare PTY,
-herdr's own client, the real bridge, and the bridge against a stand-in daemon that echoes at once, so herdr's share
-and Muster's come out as separate numbers - at one pane and at a full window of fifteen, with the hidden panes
-attached and detached. `crates/muster-latency` then times the same keystroke through muster-daemon, the pane's
-stream read directly and the real bridge drawing from it, idle, in a full window and beside a flood, and prints
-each against MIP-3's targets; those rows are what the cut-over is judged by, and the herdr rows go with herdr. A
-functional green is never a performance claim, so neither tier runs by default.
+against a checked-in baseline and fails on regression, the second times input-to-glyph with `crates/muster-latency`:
+a keystroke through muster-daemon, read off the pane's stream directly and through the real bridge drawing from it,
+beside the bare PTY measured in the same run - idle, in a full window of fifteen and beside a flood - and prints
+each against MIP-3's targets. A functional green is never a performance claim, so neither tier runs by default.
 
 `--perf` also refuses to run at all on a machine whose fast cores are already committed. Everywhere else a busy
 machine only makes a run slow; here it makes the run lie against a file in the repository, and a tier that fails for

@@ -13,8 +13,7 @@ pub(crate) struct Row {
     pub(crate) max: f64,
 }
 
-/// Nearest rank, as `tools/latency.py` computes it, so the two halves of `./dev --latency` put
-/// the same number in the same column.
+/// Nearest rank, so every percentile reported is a sample that was actually measured.
 fn percentile(sorted: &[f64], fraction: f64) -> f64 {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
     let rank = (sorted.len() as f64 * fraction) as usize;
