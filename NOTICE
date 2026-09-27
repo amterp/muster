@@ -52,6 +52,26 @@ are what Ghostty uses to write a crash report, and Ghostty compiles no DSN into
 them - the reports are written to disk for a person to send on if they choose.
 Muster changes nothing about that and adds no endpoint of its own.
 
+muster-daemon ships with a directory beside it, muster-daemon-data, which ./dev
+copies unchanged from the Ghostty checkout at deps/ghostty.pin. None of it is
+compiled into the daemon; the daemon points the shells it starts at it. It holds:
+
+  Ghostty's xterm-ghostty terminfo entry and its fish shell integration, under
+  the MIT License below.
+
+  shell-integration/bash/bash-preexec.sh, from bash-preexec
+  (https://github.com/rcaloras/bash-preexec), copyright Ryan Caloras and
+  contributors. The file carries no license header; its project licenses it
+  under the MIT License.
+
+  Three files under the GNU General Public License, version 3 or later, because
+  Ghostty based them on kitty's shell integration:
+  shell-integration/bash/ghostty.bash, shell-integration/zsh/.zshenv and
+  shell-integration/zsh/ghostty-integration. Each carries its license header,
+  and each is its own source. The license text is licenses/GPL-3.0.txt, and it
+  travels in the directory as GPL-3.0.txt, beside a README naming which file is
+  under which license.
+
 Muster's app bundle redistributes herdr (https://github.com/herdrdev/herdr),
 licensed under the Apache License, Version 2.0. The binary is the release named
 in deps/herdr.pin, unmodified; a copy of its license ships beside it in the

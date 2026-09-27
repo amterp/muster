@@ -49,6 +49,10 @@ LINUX_DAEMONS = {
     "x86_64-unknown-linux-musl": "x86_64-linux-musl",
     "aarch64-unknown-linux-musl": "aarch64-linux-musl",
 }
+// What the daemon gives the shells it starts, from the same pin: Ghostty's terminfo and its
+// shell integration. A directory beside the daemon rather than bytes inside it, because the
+// bash and zsh scripts are GPLv3 and the daemon is not (packaging/muster-daemon-data/README.md).
+DAEMON_DATA = "deps/ghostty/zig-out/muster-daemon-data"
 DEP_ARTIFACTS = [
     XCFRAMEWORK,
     "deps/ghostty/zig-out/lib/libghostty-vt.dylib",
@@ -56,6 +60,7 @@ DEP_ARTIFACTS = [
     "deps/ghostty/zig-out/include/ghostty/vt.h",
     "deps/ghostty/zig-out/x86_64-linux-musl/lib/libghostty-vt.a",
     "deps/ghostty/zig-out/aarch64-linux-musl/lib/libghostty-vt.a",
+    "deps/ghostty/zig-out/share/terminfo/78/xterm-ghostty",
 ]
 // The session backend is a runtime dependency of the suite, not just of the app. Tests
 // that speak to a daemon speak to a real one: a hand-written stand-in would be Muster's
@@ -1509,6 +1514,28 @@ fn build_deps():
         $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dtarget={zig_target} --prefix zig-out/{zig_target}`
     write_file(BUILT_STAMP, deps_stamp(pin))
 
+// Copies what the daemon hands its shells out of the pinned checkout, unchanged. Every time
+// rather than behind the stamp: it is a handful of copies, and two of its files are this repo's
+// own, which the stamp does not cover. The terminfo entries are the ones the xcframework build
+// compiled with the Mac's tic, placed under both layouts ncurses reads - hashed directories
+// (78/) on macOS, first letters (x/) on Linux. The compiled format is the same on both.
+fn assemble_daemon_data():
+    integration = "{GHOSTTY_DIR}/src/shell-integration"
+    compiled = "{GHOSTTY_DIR}/zig-out/share/terminfo"
+    quiet $`rm -rf {DAEMON_DATA}`
+    for dir in ["78", "x"]:
+        quiet $`mkdir -p {DAEMON_DATA}/terminfo/{dir}`
+        quiet $`cp {compiled}/78/xterm-ghostty {DAEMON_DATA}/terminfo/{dir}/xterm-ghostty`
+    for dir in ["67", "g"]:
+        quiet $`mkdir -p {DAEMON_DATA}/terminfo/{dir}`
+        quiet $`cp {compiled}/67/ghostty {DAEMON_DATA}/terminfo/{dir}/ghostty`
+    quiet $`mkdir -p {DAEMON_DATA}/shell-integration/fish`
+    quiet $`cp -R {integration}/bash {integration}/zsh {DAEMON_DATA}/shell-integration/`
+    quiet $`cp -R {integration}/fish/vendor_conf.d {DAEMON_DATA}/shell-integration/fish/`
+    quiet $`cp {GHOSTTY_DIR}/LICENSE {DAEMON_DATA}/LICENSE-ghostty`
+    quiet $`cp licenses/GPL-3.0.txt {DAEMON_DATA}/GPL-3.0.txt`
+    quiet $`cp packaging/muster-daemon-data/README.md {DAEMON_DATA}/README.md`
+
 // The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
 // and a logged-in GUI session, and the default suite must stay offline and deterministic
 // (docs/testing.md). Asking for it alone should not also take the whole gate.
@@ -1620,6 +1647,7 @@ if lint:
 if deps:
     announce("deps")
     build_deps()
+    assemble_daemon_data()
 
 if build:
     announce("build")
