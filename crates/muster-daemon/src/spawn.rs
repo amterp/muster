@@ -28,16 +28,35 @@ const NOT_INHERITED: [&str; 3] = [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND];
 /// written into the script. Written in, an open quote, a trailing backslash or an unfinished
 /// heredoc would swallow the `exec` after it and the pane would close. Through `eval` it is a
 /// shell error like any other, and the `exec` still runs. `eval "$VARIABLE"` means the same in
-/// sh, bash, zsh and fish.
+/// sh, bash, zsh and fish - but see [`evaluate`] for how each is asked.
 pub(crate) fn argv(shell: &str, login: bool, runs_command: bool) -> Vec<String> {
     let mut argv = vec![shell.to_string()];
     let flags: &[&str] = if login { &["-l", "-i"] } else { &["-i"] };
     argv.extend(flags.iter().map(|flag| (*flag).to_string()));
     if runs_command {
         argv.push("-c".to_string());
-        argv.push(format!("eval \"${PANE_COMMAND}\"\nexec {} {}", quote(shell), flags.join(" ")));
+        argv.push(format!(
+            "{} \"${PANE_COMMAND}\"\nexec {} {}",
+            evaluate(shell),
+            quote(shell),
+            flags.join(" ")
+        ));
     }
     argv
+}
+
+/// How `shell` is told to evaluate the command.
+///
+/// `eval` is a special builtin in a POSIX shell, and a syntax error inside one abandons the rest
+/// of the script: dash, Debian's and Ubuntu's `/bin/sh`, then never reaches the `exec`, and the
+/// pane is left in the shell that ran the command rather than a login shell of its own. `command`
+/// takes the special status away, so the error is an ordinary failure and the script goes on.
+/// zsh and fish read `command eval` as an external program called `eval`, and neither needs it.
+fn evaluate(shell: &str) -> &'static str {
+    match shell.rsplit('/').next() {
+        Some("zsh" | "fish") => "eval",
+        _ => "command eval",
+    }
 }
 
 /// `text` as one word to a POSIX shell.
@@ -103,6 +122,16 @@ mod tests {
                 "-i",
                 "-c",
                 "eval \"$MUSTER_PANE_COMMAND\"\nexec '/opt/it'\\''s/fish' -i"
+            ]
+        );
+        assert_eq!(
+            argv("/bin/sh", true, true),
+            [
+                "/bin/sh",
+                "-l",
+                "-i",
+                "-c",
+                "command eval \"$MUSTER_PANE_COMMAND\"\nexec '/bin/sh' -l -i"
             ]
         );
     }
