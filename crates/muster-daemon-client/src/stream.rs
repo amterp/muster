@@ -63,7 +63,7 @@ pub enum Happened {
     /// The daemon stopped sending output because the surface had not acknowledged a window of
     /// it. Output resumes after a catch-up.
     Behind,
-    /// A catch-up of this many bytes was written after falling behind.
+    /// A catch-up of this many bytes, all of them written, after falling behind.
     CaughtUp(usize),
 }
 
@@ -130,23 +130,34 @@ impl Attachment {
 
     /// Writes everything the daemon sends to `surface` until the stream ends, acknowledging
     /// output as it is written. `happened` hears about falling behind and catching up.
+    ///
+    /// A catch-up is reported once all of it has been written. It can arrive in several replay
+    /// pieces and nothing marks its last, so it is over when the daemon sends anything else, or
+    /// hangs up.
     pub fn pump(mut self, surface: &mut impl Write, mut happened: impl FnMut(Happened)) -> Ended {
         let mut behind = false;
+        // Bytes of a catch-up written so far, while one is arriving.
+        let mut catching_up: Option<usize> = None;
         loop {
             let message = match connection::receive::<proto::StreamMessage>(&mut self.reading) {
                 Ok(Some(message)) => message.message,
-                Ok(None) => return Ended::HungUp,
+                Ok(None) => {
+                    if let Some(total) = catching_up {
+                        happened(Happened::CaughtUp(total));
+                    }
+                    return Ended::HungUp;
+                }
                 Err(error) => {
                     return Ended::Failed(format!("reading {}'s stream: {error}", self.pane));
                 }
             };
+            if !matches!(message, Some(stream_message::Message::Replay(_)))
+                && let Some(total) = catching_up.take()
+            {
+                happened(Happened::CaughtUp(total));
+            }
             let (bytes, credit) = match message {
-                Some(stream_message::Message::Replay(bytes)) => {
-                    if std::mem::take(&mut behind) {
-                        happened(Happened::CaughtUp(bytes.len()));
-                    }
-                    (bytes, false)
-                }
+                Some(stream_message::Message::Replay(bytes)) => (bytes, false),
                 Some(stream_message::Message::Output(bytes)) => (bytes, true),
                 Some(stream_message::Message::Behind(_)) => {
                     behind = true;
@@ -174,6 +185,8 @@ impl Attachment {
                 let mut writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
                 // A daemon that stopped reading has hung up, and the next read says so.
                 let _ = send(&mut writing, stream_request::Request::Credit(credit));
+            } else if std::mem::take(&mut behind) || catching_up.is_some() {
+                *catching_up.get_or_insert(0) += bytes.len();
             }
         }
     }

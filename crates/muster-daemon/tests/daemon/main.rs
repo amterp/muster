@@ -3,7 +3,6 @@
 mod arranging;
 mod claude_code;
 mod claude_code_live;
-mod client_stream;
 mod detection;
 mod devenv_terminfo;
 mod environment;

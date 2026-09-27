@@ -1,6 +1,5 @@
-//! The stream client a bridge draws a pane with (`muster-daemon-client`), against the real
-//! daemon: it writes what the daemon sends, acknowledges output, and ends when the pane is no
-//! longer its own.
+//! The stream client a bridge draws a pane with, against the real daemon: it writes what the
+//! daemon sends, acknowledges output, and ends when the pane is no longer its own.
 
 use std::io::Write;
 use std::sync::mpsc::{Receiver, channel};
@@ -8,8 +7,10 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::support::*;
 use muster_daemon_client::stream::{AttachError, Attachment, Ended, Happened};
+use muster_daemon_proto as proto;
+use muster_harness::requests::*;
+use muster_harness::{Daemon, until, until_some};
 
 const GRID: proto::Grid = proto::Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 };
 
@@ -87,15 +88,17 @@ impl Write for Surface {
 
 struct Pumping {
     ended: JoinHandle<Ended>,
-    happened: Receiver<Happened>,
+    /// What happened, and how many bytes the surface held when it was said.
+    happened: Receiver<(Happened, usize)>,
 }
 
 fn pump(attachment: Attachment, surface: &Surface) -> Pumping {
     let (tell, happened) = channel();
-    let mut surface = surface.clone();
+    let mut writer = surface.clone();
+    let written = Arc::clone(&surface.written);
     let ended = std::thread::spawn(move || {
-        attachment.pump(&mut surface, move |happening| {
-            let _ = tell.send(happening);
+        attachment.pump(&mut writer, move |happening| {
+            let _ = tell.send((happening, written.lock().unwrap().len()));
         })
     });
     Pumping { ended, happened }
@@ -107,7 +110,7 @@ fn open(daemon: &Daemon, pane: &str, takeover: bool) -> Attachment {
 
 #[test]
 fn a_replay_then_the_panes_output_reach_the_surface_until_the_pane_closes() {
-    let daemon = daemon();
+    let daemon = Daemon::start_built();
     let mut control = daemon.connect();
     let flag = daemon.root().join("go");
     let wait = format!("while [ ! -e {} ]; do sleep 0.02; done", flag.display());
@@ -152,7 +155,7 @@ fn a_burst_reaches_a_surface_that_keeps_up_whole() {
 /// Runs a 3 MB burst into a surface that writes at once. Returns the surface, what the pump
 /// said happened, and how many of the surface's bytes were the replay.
 fn burst() -> (Surface, Vec<Happened>, usize) {
-    let daemon = daemon();
+    let daemon = Daemon::start_built();
     let mut control = daemon.connect();
     let flag = daemon.root().join("go");
     let burst = format!(
@@ -171,13 +174,13 @@ fn burst() -> (Surface, Vec<Happened>, usize) {
     until("the burst to end on the surface", || surface.ends_with("flooded"), || surface.screen());
     expect(&mut control, close_request("p1"), proto::Outcome::Done);
     pumping.ended.join().unwrap();
-    let happened = pumping.happened.try_iter().collect();
+    let happened = pumping.happened.try_iter().map(|(what, _)| what).collect();
     (surface, happened, replayed)
 }
 
 #[test]
 fn a_surface_that_stalls_falls_behind_once_and_is_caught_up_with_the_screen() {
-    let daemon = daemon();
+    let daemon = Daemon::start_built();
     let mut control = daemon.connect();
     make(
         &mut control,
@@ -192,11 +195,17 @@ fn a_surface_that_stalls_falls_behind_once_and_is_caught_up_with_the_screen() {
     until_text(&mut control, "p1", "flooded");
     surface.open();
 
-    assert_eq!(pumping.happened.recv().unwrap(), Happened::Behind);
-    let Happened::CaughtUp(bytes) = pumping.happened.recv().unwrap() else {
+    let (behind, when_behind) = pumping.happened.recv().unwrap();
+    assert_eq!(behind, Happened::Behind);
+    let (Happened::CaughtUp(bytes), when_caught_up) = pumping.happened.recv().unwrap() else {
         panic!("falling behind is followed by a catch-up");
     };
     assert!(bytes < 1_000_000, "the catch-up carries the screen, not the history: {bytes}");
+    assert_eq!(
+        when_caught_up - when_behind,
+        bytes,
+        "a catch-up is reported once all of it is on the surface, and counts all of it"
+    );
     until("the catch-up to show the screen", || surface.shows("flooded"), || surface.screen());
     let written = surface.written.lock().unwrap().len();
     until(
@@ -212,7 +221,7 @@ fn a_surface_that_stalls_falls_behind_once_and_is_caught_up_with_the_screen() {
 
 #[test]
 fn a_resize_reaches_the_panes_terminal() {
-    let daemon = daemon();
+    let daemon = Daemon::start_built();
     let mut control = daemon.connect();
     let out = daemon.root().join("size");
     let watch =
@@ -233,7 +242,7 @@ fn a_resize_reaches_the_panes_terminal() {
 
 #[test]
 fn a_takeover_ends_the_stream_it_displaced() {
-    let daemon = daemon();
+    let daemon = Daemon::start_built();
     let mut control = daemon.connect();
     make(&mut control, running("p1", "t1", "cat"));
 
@@ -254,7 +263,7 @@ fn a_takeover_ends_the_stream_it_displaced() {
 
 #[test]
 fn a_pane_that_is_not_there_is_refused() {
-    let daemon = daemon();
+    let daemon = Daemon::start_built();
     let refused = Attachment::open(daemon.socket_path(), "nowhere", GRID, false, "test");
     let Err(AttachError::Refused(reason)) = refused else {
         panic!("an attach to no pane is refused, and got {refused:?}");

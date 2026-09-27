@@ -26,7 +26,6 @@ mimalloc.workspace = true
 # in the package that owns the binary, and every one of them runs the real binary.
 [dev-dependencies]
 libc.workspace = true
-muster-daemon-client.workspace = true
 muster-harness.workspace = true
 
 [lints]
