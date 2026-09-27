@@ -244,7 +244,9 @@ carries on libghostty for good, not until upstream takes them: `./dev` applies t
 commit, and they reach GhosttyKit as well as libghostty-vt because both build from that one checkout. Each patch only
 adds C API and changes no existing behavior, and stays small, so that a re-pin means rebasing it rather than rewriting
 it. `deps/.built` records the pin and a hash of every patch, so editing a patch rebuilds exactly as a re-pin does, and
-CI's cache key hashes both. A patch that no longer applies stops the build and names itself.
+CI's cache key hashes both. A patch that no longer applies stops the build and names itself. Resolve a rebase in
+`deps/ghostty` and write it back into the patch before running `./dev` again: every build resets that checkout to the
+pin, and a resolution left there is discarded.
 
 `deps/rad.pin` names the Rad the gate is written against, and is the one pin `./dev` cannot act on - it is already
 running under Rad by the time it could look. CI installs exactly that build; your own `rad` is free to be any

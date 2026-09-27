@@ -1437,10 +1437,14 @@ fn build_deps():
     // A fresh clone and a re-pin take the same path: fetch exactly the one commit.
     $`git -C {GHOSTTY_DIR} remote add origin {GHOSTTY_REPO} 2>/dev/null || true`
     $`git -C {GHOSTTY_DIR} fetch -q --depth 1 origin {pin}`
-    // Hard, so a checkout that already carries an older version of a patch comes back to the
-    // pin's own files before this version applies. Build output is untracked and survives.
+    // Back to the pin's own files before the patches apply, so an older version of a patch
+    // never stacks under this one: hard, for the files a patch changed, and clean, for the
+    // files a patch created, which would otherwise make it refuse to apply a second time.
+    // Without -x, so what ghostty's own .gitignore covers - zig-out, .zig-cache and the
+    // xcframework, everything a build leaves - survives.
     $`git -C {GHOSTTY_DIR} checkout -q --force FETCH_HEAD`
     $`git -C {GHOSTTY_DIR} reset -q --hard FETCH_HEAD`
+    $`git -C {GHOSTTY_DIR} clean -q -f -d`
     for patch in ghostty_patches():
         full = get_path(patch).full_path
         $`git -C {GHOSTTY_DIR} apply --whitespace=nowarn {full}` catch:
@@ -1448,7 +1452,8 @@ fn build_deps():
             print_err("Impact: nothing is built, because Muster's replay and daemon call the API")
             print_err("the patch adds, and a libghostty without it fails at link time instead.")
             print_err("After a re-pin this means the patch needs rebasing: apply it in")
-            print_err("{GHOSTTY_DIR} by hand, resolve, and write the result back with `git diff`.")
+            print_err("{GHOSTTY_DIR} by hand, resolve, and write the result back with `git diff`")
+            print_err("before running ./dev again, which resets that checkout and discards it.")
             exit(1)
 
     // Two builds, because -Demit-lib-vt turns the xcframework off: the surface API that
