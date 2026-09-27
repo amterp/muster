@@ -185,18 +185,38 @@ through that shell and then replaces it with an interactive shell (`$SHELL -l -i
 exec $SHELL -l -i'`), so the command starts immediately with no typed input for a program to
 discard, and the pane drops to a shell when the command exits. The command reaches that shell in
 `MUSTER_PANE_COMMAND` and runs through `eval`, so a command with an open quote or a trailing backslash
-fails as a shell error and still leaves the `exec` to run. This removes the prompt polling Muster does
-today.
+fails as a shell error and still leaves the `exec` to run. In a POSIX shell that is `command eval`:
+`eval` is a special builtin there, and dash - `/bin/sh` on Debian and Ubuntu - abandons the rest of
+the script after a syntax error inside one. zsh and fish keep a plain `eval`, since they read
+`command eval` as a program called `eval`. This removes the prompt polling Muster does today.
 
 A pane's environment is the daemon's own (launchd's minimal environment on the Mac, which the login
-shell builds on), plus:
+shell builds on), less any `GHOSTTY_*` and `VTE_VERSION` it inherited from the terminal it was started
+in, plus:
 
 - `TERM=xterm-ghostty`, with the terminfo entry carried by the daemon and reached through
-  `TERMINFO_DIRS`, on both machines, so no host needs Ghostty installed;
+  `TERMINFO_DIRS`, on both machines, so no host needs Ghostty installed. The daemon's entry comes
+  first and an empty entry after it, so the system database is still searched and a person's
+  `~/.terminfo` still wins;
 - `COLORTERM=truecolor`;
+- `TERM_PROGRAM=ghostty`, because a pane is a Ghostty terminal and programs key features on the
+  name; Muster's identity is already in `MUSTER_PANE` and `MUSTER_SOCKET`. `TERM_PROGRAM_VERSION`
+  is the pinned Ghostty's declared version and commit (`1.3.2-dev+9f9b8d1d`): Ghostty's own build
+  gives one commit different versions depending on the branch it was built from, and those two
+  parts are what stay true;
 - `MUSTER_PANE` and `MUSTER_SOCKET`;
 - Ghostty's shell integration for bash, zsh and fish, injected the way Ghostty injects it, so
-  prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work.
+  prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work, with
+  `GHOSTTY_SHELL_FEATURES` at Ghostty's default. A command pane's own shell runs the command
+  without it, and its `exec` hands it to the interactive shell after: zsh's and fish's
+  integrations each undo their injection as they load, so the first shell would use it up.
+
+None of the requested environment overrides these. The terminfo entry and the integration scripts
+are the daemon's data directory, `muster-daemon-data`, found beside the executable or where
+`--data` says; a daemon without a complete one refuses to start. It is a directory rather than bytes
+compiled in because Ghostty's bash and zsh scripts are GPLv3, derived from kitty's, and the daemon is
+Apache-2.0: shipped as separate files, as Ghostty ships them, they are aggregated with it rather
+than combined into it.
 
 The daemon's `GHOSTTY_TERMINAL_OPT_TERMINFO_NAME` matches `TERM`, so XTGETTCAP answers agree with
 it.
@@ -549,9 +569,12 @@ crate, depending on nothing about panes, hosted by `muster-daemon` and never dep
 **The app carries every daemon it can install.** `./dev` cross-compiles `muster-daemon` for
 `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` with the Zig toolchain the build
 already requires, linking libghostty-vt statically and using mimalloc rather than musl's allocator.
-The bundle carries both under `Contents/Resources`, outside anything `codesign` treats as code. A
-remote install copies the matching binary from the bundle to `~/.muster/daemon/<version>/` on the
-far machine and starts it. A remote Mac gets the app's own arm64 daemon. Nothing is downloaded, so
+rust-lld links each against the musl rustup ships with the target and zig compiles mimalloc, so no
+Linux toolchain is involved. Stripped, a release build is 2.8 MB for x86_64 and 2.4 MB for aarch64,
+about 1.1 MB each compressed; the data directory both share is 120 KB. The bundle carries both
+under `Contents/Resources`, outside anything `codesign` treats as code, with the data directory
+beside them. A remote install copies the matching binary and the data directory from the bundle to
+`~/.muster/daemon/<version>/` on the far machine and starts it. A remote Mac gets the app's own arm64 daemon. Nothing is downloaded, so
 there is no pin and no checksum file, and a remote machine with no internet access can still be
 installed to.
 
@@ -811,8 +834,6 @@ first.
   measures it once a daemon exists.
 - **Size of a detached pane.** It keeps its last size (`a_29ryxUDCY`). Whether a pane should grow to
   a default when nothing is attached is undecided.
-- **`TERM_PROGRAM`.** Programs key features on it. Whether a pane should claim `ghostty`, whose
-  features it has, or name Muster, is undecided.
 - **Which of Ghostty's binding actions fall into which of section 6's three groups.** The groups are
   decided; the full list is worked out in stage 2.
 
@@ -843,3 +864,5 @@ first.
   patch field (section 5), the kitty store's size, option-as-alt per key, `pane send` as a
   paste, shift and the wheel as Ghostty has them, `clear_screen` waiting for shell integration,
   and `pane read`'s row numbering.
+- 2026-09-27 The Linux daemons and the pane's environment built: `TERM_PROGRAM` decided (section 3),
+  the data directory beside the daemon, `command eval` for dash, and the release sizes in section 12.

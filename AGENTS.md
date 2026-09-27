@@ -212,6 +212,19 @@ daemon and diff them against the macOS recording, which is what catches a herdr 
 not the other. Docker and python3 are the whole toolchain, no Rust, Swift or Zig - so this one *is* in CI, as the
 `corpus-linux` workflow, where the rest of the remote tier is not.
 
+**The gate builds `muster-daemon` for Linux too**, for `x86_64-unknown-linux-musl` and
+`aarch64-unknown-linux-musl`, cross-compiled from the Mac: libghostty-vt from the same patched checkout into a prefix
+per target, rust-lld against the musl rustup ships with each target, and zig for mimalloc's C - so no Linux toolchain
+and nothing new to install. It also runs clippy over the daemon's and detection's Linux code, which no Mac build
+compiles otherwise. `./dev --linux` runs those two packages' suites on Linux, which the gate cannot: cargo's runner
+for the musl targets puts each test binary in a Debian container with this checkout mounted at its own path. The
+architecture docker runs natively runs in full, the other under emulation without the two tests whose subject the
+emulator replaces. The container keeps Debian's own `/bin/sh`, dash, because a real devenv does. `--ssh` runs it too.
+
+`./dev -d` also assembles `muster-daemon-data` beside libghostty: Ghostty's terminfo entry and its shell integration,
+copied unchanged from the pin, which the daemon gives every shell it starts. It is a directory that ships beside the
+daemon rather than inside it, because the bash and zsh scripts are GPLv3 (`packaging/muster-daemon-data/README.md`).
+
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
 against a checked-in baseline and fails on regression, the second times input-to-glyph stage by stage - the bare PTY,
 herdr's own client, the real bridge, and the bridge against a stand-in daemon that echoes at once, so herdr's share

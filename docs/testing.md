@@ -134,7 +134,9 @@ Muster's principles, adapted to that evidence:
   logged-in GUI session to launch the app - and to draw the one Swift test that stands up a real libghostty
   surface, `ClickRedriveTests`, which skips itself in an ordinary run and says so - `--latency` and `--perf`
   measure timing and would be flaky as
-  assertions, `--corpus-linux` and the SSH tier need the devenv container. That is the real line, and it is
+  assertions, `--corpus-linux` and the SSH tier need the devenv container, and `--linux`, which runs the daemon's and
+  detection's suites on Linux, needs docker. The gate still compiles the Linux daemons and lints their Linux code,
+  so what `--linux` alone catches is behavior: dash as `/bin/sh`, `/proc`, `close_range`. That is the real line, and it is
   narrower than the one drawn when the backend was going to be faked.
 
   **A tier that measures time reads the machine before it judges one.** Everywhere else a loaded machine only
