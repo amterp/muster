@@ -1,6 +1,6 @@
-//! Muster's side of muster-daemon's protocol (MIP-3, section 11).
-//!
-//! Today this is the stream half, which the bridge uses to draw a pane. The control and input
-//! halves, which the seam will use, arrive when the seam moves onto the daemon.
+//! Muster's side of muster-daemon's protocol (MIP-3, section 11): the control connection the
+//! app asks and follows a daemon on, the input connection its keystrokes travel, and the stream
+//! a bridge draws a pane from.
 
+pub mod control;
 pub mod stream;
