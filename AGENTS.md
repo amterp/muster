@@ -12,13 +12,11 @@ if your harness wants one.
 that ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each
 of the first nine, renaming, trading two agents' places by dragging a row, configuration that reloads when you save
 it, a CLI that drives the window from inside a pane, a notification when an agent needs you that takes you to the
-pane that asked, a second daemon on an SSH machine in the same window - where Muster installs its own herdr
-rather than trusting whatever is over there, and where one tab can hold a laptop pane beside a devenv pane - and
-several windows that each hold their own tabs and hand them to each other. Not
-built, and worth knowing before you install rather than after: the shape of a split cannot be changed once it is
-made, mouse buttons and motion do not reach a pane, a pane on a devenv cannot drive the window it is drawn in, and
-find reaches only what a daemon will hand back - a thousand rows, and nothing at all behind the screen of a pane
-running a full-screen program.
+pane that asked, a second daemon on an SSH machine in the same window - where one tab can hold a laptop pane beside
+a devenv pane - and several windows that each hold their own tabs and hand them to each other. Not built, and worth
+knowing before you install rather than after: the shape of a split cannot be changed once it is made, a pane on a
+devenv cannot drive the window it is drawn in, and Muster does not yet put its daemon on an SSH machine, so one of
+the same version has to be installed there already.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.
@@ -77,17 +75,18 @@ Muster imposes no workflow: it provides panes, states, sessions, and a scriptabl
 how you run your agents.
 
 - Not a terminal emulator - libghostty is.
-- Not a multiplexer or session daemon - herdr is.
+- Not a multiplexer. Muster runs a session daemon of its own, which exists only to serve Muster and has no
+  interface of its own.
 - Not an agent framework - Muster runs whatever agents you already run.
 
 ## Shape
 
     native shell (macOS first)        thin, per-OS, mostly dumb - Swift + AppKit today
-      ├─ renderer seam → libghostty   real splits, GPU, VT fidelity
+      ├─ renderer seam → libghostty   real splits, GPU, VT fidelity, scrollback, find
       └─ core seam     → one symbol   protobuf over a C ABI; events, never bytes
            portable core (Rust)       mirror, keymap, dispatch, attention, config
-             └─ backend seam → herdr  JSON socket + ANSI pane streams
-                  ├─ one bridge per pane      unwraps frames onto a surface's PTY
+             └─ daemon seam → muster-daemon   protobuf over a Unix socket; owns the PTYs
+                  ├─ one bridge per pane      a pane's replay and output onto a surface's PTY
                   ├─ daemon on this machine   local agents
                   └─ daemon on devenv (SSH)   remote agents
 
@@ -95,7 +94,7 @@ how you run your agents.
 
 `docs/configuration.md` is every key Muster reads, what it means, and why it is spelled the way it is. What belongs
 here instead is the rule that decides where the next setting goes: **a setting is Muster's when Muster acts on the
-answer or hands it on**, including the ones it only translates onward - for libghostty, and now for herdr. It is the
+answer or hands it on**, including the ones it only translates onward - for libghostty, and for its daemon. It is the
 daemon's when it is about the daemon's own interface, which Muster never shows you. And within the file, a table when
 a subject has several answers, a root key when it has one.
 
@@ -169,11 +168,11 @@ during a build and committed nowhere, so a suite that skipped it ran the shell a
 and went green while the schema said something else.
 
 `./dev --bundle` assembles `.build/muster.app` around a release build - a thing you can double-click, keep in the
-Dock, or hand to somebody, with the pinned herdr, both dylibs, the icon and the licenses inside it. Release, where the
-gate builds debug: until 0.9.0 every bundle shipped the unoptimized shell, core and bridge, which nobody had chosen. Out of the gate
-because nothing in the gate needs one, and it is also the only way to meet the descriptor ceiling launchd imposes on
-a GUI-launched process. The signature is ad-hoc, which is what macOS needs to run a Mach-O at all and asserts nothing
-about who built it.
+Dock, or hand to somebody, with muster-daemon and its data, both dylibs, the icon and the licenses inside it.
+Release, where the gate builds debug: until 0.9.0 every bundle shipped the unoptimized shell, core and bridge, which
+nobody had chosen. Out of the gate because nothing in the gate needs one, and it is also the only way to meet the
+descriptor ceiling launchd imposes on a GUI-launched process. The signature is ad-hoc, which is what macOS needs to
+run a Mach-O at all and asserts nothing about who built it.
 
 **`MUSTER_SIGN_IDENTITY` is what makes a bundle somebody else can run**, and `./dev --notarize` is the rest of it.
 Set the variable to a Developer ID and the same `--bundle` signs with it instead, under the hardened runtime and with
@@ -192,21 +191,21 @@ A release is Apple Silicon only, and `--notarize` refuses to run anywhere else. 
 cross-building libghostty under Zig for a second architecture, and the Homebrew cask in `packaging/homebrew/` says
 `depends_on arch: :arm64` so an Intel Mac is turned away by brew rather than by a crash.
 
-`./dev --contract` is the exception that stays out of the gate. It launches the real app against a real herdr and
-reads its run log to see what connected, so it needs a logged-in GUI session - which the default suite is not allowed
-to require. The daemon it runs against is the pinned one, like every other tier's; it used to be whatever was on
-PATH, which meant a contract judged against a version nothing here recorded. It assembles a bundle on the way past
-and launches that too, with launchd's own `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, because a bundle is a different
-layout from the one SwiftPM leaves behind - the daemon moves into `Contents/Library/` - and 0.3.0 shipped a cask
-where no pane rendered while every check here was green against the other layout.
+`./dev --contract` is the exception that stays out of the gate. It launches the real app against a real
+muster-daemon and reads its run log to see what connected, so it needs a logged-in GUI session - which the default
+suite is not allowed to require. The checks are `crates/muster-contract`, ignored by the gate and run one at a time
+here, and the Swift tests that need a real surface run beside them. The daemon is the one built from this commit,
+like every other tier's. It assembles a bundle on the way past and launches that too, with launchd's own
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin`, because a bundle is a different layout from the one SwiftPM leaves behind -
+the daemon moves into `Contents/Library/` - and 0.3.0 shipped a cask where no pane rendered while every check here
+was green against the other layout.
 
 `./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it needs docker rather than a GUI
-session. It recreates the devenv container, runs the remote tests against it while it holds no daemon at all - which
-is the claim, that Muster puts its own herdr on a machine with nothing on it and a pane there works - and then drops
-a pinned Linux daemon in for the corpus half below. It leaves that container running, deliberately: a devenv is a
-thing you keep, and recreating it per run is what `up` is for. The tier says so on the way out, because the thing
-most likely to run next is `--perf`, and a container running beside a benchmark is enough to move the numbers it
-judges - `./devenv/devenv down` when you are finished with it.
+session. It recreates the devenv container, puts this build's Linux muster-daemon where Muster looks for it over
+there, runs the remote tests against it, and then drops the pinned Linux herdr in for the corpus half below. It
+leaves that container running, deliberately: a devenv is a thing you keep, and recreating it per run is what `up` is
+for. The tier says so on the way out, because the thing most likely to run next is `--perf`, and a container running
+beside a benchmark is enough to move the numbers it judges - `./devenv/devenv down` when you are finished with it.
 
 `./dev --corpus-linux` is that corpus half on its own: record the probe's scenarios against the container's Linux
 daemon and diff them against the macOS recording, which is what catches a herdr re-pin that moves one platform and
@@ -275,25 +274,22 @@ pin, and a resolution left there is discarded.
 running under Rad by the time it could look. CI installs exactly that build; your own `rad` is free to be any
 version, and one too old to parse `./dev` says which line it could not read.
 
-herdr is not something you install. Muster ships one: `deps/herdr.pin` names a release and a checksum per platform,
-`./dev` downloads that binary into `deps/herdr/<version>/` once and verifies it, and every place that needs a daemon
-gets that one - the tests spawn it, a build stages it beside the app, and `./dev --bundle` puts it inside
-`muster.app` - as a helper application of its own, which the app starts through Launch Services on a socket of its
-own, so that macOS charges every pane's permission prompts to the daemon rather than to a Muster that will quit
-(`docs/observations/macos-26.4.1.md`). Deliberately **not** your PATH, and deliberately not
-the socket your own herdr uses: a Muster talking to a daemon its corpus was never recorded against is a window whose
-every behaviour is unverified. So the herdr you run for your own work stays whatever version you want, a suite that
-passed did so against the daemon the corpus was recorded with, and the app never meets either.
-`MUSTER_HERDR=/path/to/herdr` overrides it for anyone
-bisecting herdr itself, and the run says so when it does. A daemon whose wire schema differs from
-`corpus/herdr-<version>/api-schema.json` fails the run with the command that shows what moved, rather than
-surfacing later as a confusing test failure. The download is the one step that touches the network; everything
-after it is offline.
+**The daemon is built here, not fetched.** `muster-daemon` is a crate in this workspace, so every place that needs
+a daemon gets the one built from the same commit: the tests spawn it, a build stages it beside the app with its data
+directory, and `./dev --bundle` puts both inside `muster.app` as a helper application of its own. Deliberately **not**
+your PATH: a suite that passed did so against that daemon, and the app never meets another.
+`MUSTER_DAEMON_BINARY=/path/to/muster-daemon` overrides it - not `MUSTER_DAEMON`, which every pane's environment
+already carries, naming the daemon that pane runs on. The app starts the daemon itself for now. Starting it through
+Launch Services instead, so that macOS charges a pane's permission prompts to the daemon rather than to a Muster that
+will quit (`docs/observations/macos-26.4.1.md`), is not built yet.
 
-The same pin is compiled into the app, which is how a machine you attach over SSH gets the daemon everything was
-tested against rather than whatever was installed there. `./dev --ssh` fetches that machine's asset against the same
-pin and hands it to the remote tests as a filled cache, so the tier proves the install over ssh and still reaches
-nothing itself.
+A machine you attach over SSH needs this build's daemon installed at `~/.muster/daemon/<version>/`, since Muster
+does not yet copy it there; `./dev --ssh` puts it in place before its tests run.
+
+herdr is still pinned, for the two things that have not moved off it: `./dev --corpus-linux` and `./dev --doctor`.
+`deps/herdr.pin` names a release and a checksum per platform. The corpus diff downloads the container's asset once
+and verifies it, which is the one step that touches the network; `--doctor` reads a Mac herdr only if one is already
+on disk.
 
 The seam's types are generated from `proto/muster.proto` on both sides and committed on neither, so a checkout
 cannot hold a shell and a core that disagree. Neither generator is a thing you install: Rust compiles the schema

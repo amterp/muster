@@ -59,8 +59,7 @@ window keeps its tabs, and any `muster` command reaches any tab from any window.
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
 same list as the ones on your laptop. `cmd+1` and `cmd+2` switch between a laptop tab and a devenv
 tab the way tabs switch everywhere else, and one tab can hold both at once - drag a devenv agent's
-row onto a laptop tab's caption and they sit side by side. You install nothing over there: Muster
-copies across the session daemon it was tested against, checked against a pinned checksum.
+row onto a laptop tab's caption and they sit side by side.
 
 **A CLI that drives the window.** `muster` reports what every agent is doing, waits for one to
 finish, reads back what any pane has printed, makes panes and tabs, moves and resizes them, names
@@ -110,12 +109,9 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- Mouse buttons and motion do not reach a pane.
+- Muster does not yet install its session daemon on an SSH machine: one of the same version has
+  to be at `~/.muster/daemon/<version>/` over there already.
 - A pane on an SSH machine cannot drive the window it is drawn in.
-- Find reaches only as far back as the session daemon will hand over, which is a thousand rows -
-  and a pane running a full-screen program keeps no history behind its screen at all, which is
-  most agent panes. The bar says which of those you are looking at rather than leaving a count of
-  zero to speak for itself.
 - Reopen Closed Window brings back the most recent closed window. An older one comes back when you
   go to one of its tabs - `muster window` lists them under the closed window's name.
 - Two windows cannot show the same tab. The session daemon allows one client per terminal, so a

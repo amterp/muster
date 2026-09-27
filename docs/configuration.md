@@ -18,6 +18,7 @@ option_as_alt = "left"         # never (the default) | always | left | right
 resize_step = "20c"            # per resize chord: cells (c) or points (px). Omit for the
                                # daemon's own step. The unit is required.
 scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
+clipboard_write = "deny"       # allow (the default) | deny: may a program set the clipboard
 numbered_chords = "panes"      # panes (the default) | tab_then_pane. A prototype; see below
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
@@ -220,20 +221,12 @@ silently - `opt+left` rebound to `focus_left` ends word motion in every shell in
 with nothing on screen connecting the two. None of the shipped defaults collide, so this only
 ever answers a chord you chose.
 
-**`find` searches a pane's history, and says how far back it got.** `cmd+f` opens a bar over
-the pane with the keyboard, `cmd+g` and `cmd+shift+g` walk the matches, and landing on one
-scrolls the pane to it and marks it. What it searches is not what is on screen: a pane's
-scrollback belongs to the daemon holding it, so the match count is Muster's answer about the
-daemon's history rather than the renderer's about the visible grid.
-
-Beside the counter the bar says what the search covered, and only when that is not
-everything. **"last 1000 of 3000"** is a pane deeper than herdr will hand over: it answers with
-at most a thousand rows and offers no way to ask for more. **"this screen"** is a pane whose
-program has taken the whole terminal - an agent harness, an editor, anything on the alternate
-screen - which leaves the daemon no history behind what is drawn, so the search covered the
-screen and there was nothing else to cover. Both are the same failure avoided twice: a find
-that quietly covered a fifth of a pane, or one screen of it, and answered "no results" would
-be worse than not having one.
+**`find` is Ghostty's search, over the pane's whole history.** `cmd+f` opens a bar over the
+pane with the keyboard, `cmd+g` and `cmd+shift+g` walk the matches, and landing on one scrolls
+the pane to it and marks it. It searches the screen that is showing, as Ghostty does: a pane
+whose program has taken the whole terminal - an agent harness, an editor, anything on the
+alternate screen - is searched as that one screen, and its history is searchable again once
+the program gives the terminal back.
 
 **A row in the agent list says two things, and you write the first one.** Underneath is what
 the agent calls itself - Claude sets its terminal title to what it is working on, so the row
@@ -272,14 +265,18 @@ hatch beneath all of that: a chord bound there sends exactly those bytes and no 
 consulted. It is keyed by chord where `[keymap]` is keyed by action, because an action has
 one chord and text has no name to key on.
 
-The other three root keys are small answers a terminal is expected to let you change, each
-one line because each is one value. `resize_step` is how far a resize chord moves a divider;
-omit it and the daemon decides, which is what a chord meant before the key existed.
+The other root keys are small answers a terminal is expected to let you change, each one line
+because each is one value. `resize_step` is how far a resize chord moves a divider; omit it
+and the daemon decides, which is what a chord meant before the key existed.
 `scroll_multiplier` scales whatever your trackpad or wheel reported, so `1` is the device's
 own answer and `0.5` is half of it - a multiplier rather than a line count, because how big
-one notch is belongs to the device. `pane_padding` is the space between a pane's text and its
-edges, one number for both axes; `0` is what fits the most rows into a window of fifteen
-agents.
+one notch is belongs to the device. It scales both what the pane scrolls and what a program
+that asked for the wheel is sent, so a notch moves `less` as far as it moves the scrollback.
+`pane_padding` is the space between a pane's text and its edges, one number for both axes; `0`
+is what fits the most rows into a window of fifteen agents. `clipboard_write` decides whether
+a program may set your clipboard, which is how `tmux`, `vim` and an agent over ssh copy (OSC
+52); `deny` drops those writes. Reading the clipboard is never offered to a program, since
+that would hand any process in a pane whatever you copied last.
 
 **`resize_step` takes a unit, and it is required**: `"20c"` is twenty cells, `"150px"` is a
 hundred and fifty points. Two units because neither one is right for everybody. A cell is
@@ -464,8 +461,8 @@ you ask for somebody else's daemon on purpose.
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
-the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `numbered_chords`
-and `[notifications]` all take effect where they are, including in panes that were already open; `pane_padding`
+the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `clipboard_write`,
+`numbered_chords` and `[notifications]` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

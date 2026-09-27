@@ -211,17 +211,15 @@ proportions rather than cells), pane, pane channel (the output stream feeding a 
 54x23 whether a client is attached or not (`observations/herdr-0.8.0.md` section 13) - so the cell rectangles it
 publishes describe nobody's window. What crosses the seam is the tree and its ratios; the shell lays that out at
 whatever size it has, and the pane's own geometry follows from the controller as below. Verbs, as intents: attach, split, close, focus, resize, send input,
-scroll, spawn. Small on purpose - everything the view needs, nothing any particular backend happens to offer. The
+spawn. Small on purpose - everything the view needs, nothing any particular backend happens to offer. The
 contract corpus at this seam is the executable form of this vocabulary and the definition any replacement backend
 (fork or wholesale) must satisfy.
 
-**Two of them are questions rather than requests, and find is why.** A backend is asked what a pane's history holds
-and where its viewport is looking; neither changes anything, so neither is an intent. Find is the only caller, and
-the shape it wants is one method: a backend that searches its own scrollback answers directly, and one that does not
-reads the history back and matches it in the core. herdr is the second kind and has no search at all
-(`observations/herdr-0.8.0.md` section 17), so the day it grows one is a change to one function body. What no backend
-gets to decide is what a match *is* - plain substring, ASCII case folding - because the renderer marks the ones on
-screen with its own matcher, and two answers to "how many are there" is the one thing a find bar cannot have.
+**Find is not one of them.** Find in a window is a view action, performed by Ghostty's search in the pane's
+surface, so the marks on screen and the count in the bar come from one matcher. It reaches what the surface holds:
+the history its bridge was replayed on attaching, and everything since, on whichever screen is showing - so behind a
+full-screen program it reaches that program's screen and none of the history under it. A pane's text read by the CLI
+or an agent comes from the daemon instead, and has a reach of its own (`cli/limits.md`).
 
 Agent states are working / blocked / idle / done / **unknown** - five, not four; unknown renders as itself, never as
 success. State is daemon truth, but one of the five is computed from a client-side input, so the vocabulary has to
@@ -308,36 +306,27 @@ reaching for the first time a tripwire fails to fire.
 Two kinds of traffic, opposite needs, different paths. The split is between *output* and *everything else* - not
 between "bytes" and "control":
 
-- **Output rides the data plane.** Each visible pane has its own channel from adapter to surface, bypassing the
-  core. With herdr the channel carries server-rendered frame diffs of the pane's screen - not the raw program
-  output - so the daemon's render cost scales with *visible* panes: a hidden pane's bridge lets go of its herdr
-  client and keeps its surface and its socket, and revealing the pane starts a client whose first frame is a full
-  repaint (about 50 ms to that frame on a loaded machine; the surface shows its last picture meanwhile). herdr
-  renders every attached client on each pass, and with twelve of fifteen panes printing that measured 0.135 of a
-  core with all of them attached against 0.030 with the two on screen. Detaching costs no state: herdr analyzes a
-  pane's screen whether or not anyone is watching it, so a hidden pane keeps reporting its agent state, and keeps
-  the size its last client gave it. Local panes only: a remote pane's client is an ssh exec that takes about half
-  a second to start, which would be the price of every tab switch, so a remote pane stays attached. The core never
-  sits in this path; per-byte work in the core is a defect (desiderata: fast is a feature).
-- **Everything else rides the control plane, through the core** - daemon events (structure, agent states, bells,
-  titles), intents, configuration, and *input*. Input is the awkward one, because nobody in this picture is in a
-  position to encode it well. Key encoding needs the pane's terminal modes (kitty keyboard, bracketed paste,
-  application cursor keys); those modes live in the daemon's VT, they are not replayed in the frame stream, and
-  herdr exposes none of them on its API. The daemon does not encode either: `terminal.input` on a control stream
-  is a raw write to the pane's PTY (`observations/herdr-0.8.0.md` section 5). So Muster encodes, blind. The shell
-  reports key, mouse and text events with full fidelity, the core routes them, and the core encodes with
-  libghostty-vt - the same engine the daemon's own VT runs - against a **declared mode profile** standing in for
-  state we cannot read. That profile is the one place the guess lives, and the seam that gets fed from truth the
-  day herdr publishes its `InputState`. herdr's named-key API is not an option: it has no navigation cluster.
-- **The control plane is not one connection.** herdr answers a request and closes the socket, so each intent costs a
-  connect; only subscriptions are long-lived. Nothing may assume a persistent request/response channel, and the
-  per-intent connect is a cost the perf budget has to carry.
-- **Scroll belongs to the daemon.** A frame stream has no history, so surfaces hold no scrollback and never handle
-  the wheel: scroll is an intent, answered by the daemon repainting the viewport - or, when the pane's program is
-  reporting mouse, by the daemon encoding a wheel event for it. `terminal.scroll` is the one input-shaped thing
-  herdr answers against a pane's real modes, and it is the shape the rest of input should eventually take. Mouse
-  buttons and motion have no such command, and Muster does not send them: an SGR click encoded blind is garbage
-  on the program's stdin, where a mis-encoded key is merely a wrong key.
+- **Output rides the data plane.** Each pane has its own stream from the daemon to its surface, bypassing the
+  core: the bridge attaches, receives a replay of the pane's whole history composed from the daemon's terminal,
+  and then gets every chunk the program writes, unchanged. The surface keeps its own scrollback, built from that replay.
+  Hidden panes stay attached, which costs the daemon a socket write per chunk and the surface a parse, the same as
+  a background tab in Ghostty (`mip/0003-own-daemon.md` section 4). The core never sits in this path; per-byte
+  work in the core is a defect (desiderata: fast is a feature).
+- **Everything else rides the control plane, through the core** - daemon events (structure, agent states,
+  titles, a program's clipboard write), intents, configuration, and *input*. The daemon holds each pane's
+  terminal, so it knows the program's modes (kitty keyboard, bracketed paste, application cursor keys, mouse
+  tracking) and encodes against them. The shell reports key, mouse, wheel and text events with full fidelity, the
+  core's keymap takes what is Muster's, and the rest goes to the pane's daemon to be encoded with libghostty-vt.
+  The surface is handed the same keys the program gets, for what Ghostty does on a keystroke - scroll to the
+  bottom, clear a selection - and whatever it writes to its PTY in return is discarded by the bridge, so the
+  daemon is the only writer to a pane.
+- **The control plane is not one connection.** A window holds two per daemon: one for requests, their answers
+  and the daemon's events, in order, and one for input alone, so typing never queues behind a request.
+- **The wheel goes to both.** The surface scrolls its own scrollback, by `scroll_multiplier`. The same event goes
+  to the daemon for the pane under the pointer, which gives it to the program only where a terminal would: as a
+  mouse report when the program tracks the mouse, as arrow keys when it is on the alternate screen, and otherwise
+  not at all. Clicks and drags take the same path, except that a shift-click is never reported, so it always
+  selects.
 
 ## The shell/core seam
 
