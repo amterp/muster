@@ -5,8 +5,9 @@
 //!
 //! Out of the gate, because it reaches the network and spends a turn of a real model. It runs
 //! with `ANTHROPIC_API_KEY` if that is set, and otherwise with the login `claude` already has;
-//! with neither, or with no `claude` on the PATH, it says why and passes. `./dev --claude-code`
-//! runs it.
+//! with neither, or with no `claude` on the PATH, it fails and says why, since a tier asked for
+//! that checked nothing has not passed. `./dev --claude-code` runs it; any other run of the
+//! ignored tests passes it by without trying.
 
 mod support;
 
@@ -26,9 +27,6 @@ const TURN: Duration = Duration::from_mins(3);
 /// API key with `--bare`, which loads no settings, hooks or plugins at all; or the login it
 /// has, with only the project's settings, of which a scratch directory has none.
 fn how_to_run() -> Result<Vec<String>, String> {
-    if std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none() {
-        return Err("MUSTER_CLAUDE_CODE_TESTS is not set; ./dev --claude-code sets it".to_string());
-    }
     let version = Command::new("claude")
         .arg("--version")
         .output()
@@ -108,13 +106,20 @@ fn prompt(control: &mut Control, input: &mut Input, pane: &str) {
 #[test]
 #[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
 fn claude_code_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
-    let arguments = match how_to_run() {
-        Ok(arguments) => arguments,
-        Err(why) => {
-            eprintln!("claude-code: skipped, {why}");
-            return;
-        }
-    };
+    if std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none() {
+        eprintln!(
+            "claude-code: skipped, MUSTER_CLAUDE_CODE_TESTS is not set; ./dev --claude-code sets it"
+        );
+        return;
+    }
+    let arguments = how_to_run().unwrap_or_else(|why| {
+        panic!(
+            "claude-code: could not run Claude Code: {why}.\n  Impact: nothing checked that \
+             Claude Code's hooks and screen still read working and idle, so this tier did not \
+             pass.\n  Fix: install claude and log in (`claude auth login`), or set \
+             ANTHROPIC_API_KEY."
+        )
+    });
     let home = std::env::var("HOME").expect("HOME is set");
     let mut environment = vec![("HOME", home), ("USER", std::env::var("USER").unwrap_or_default())];
     if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {

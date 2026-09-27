@@ -226,10 +226,11 @@ emulator replaces. The container keeps Debian's own `/bin/sh`, dash, because a r
 copied unchanged from the pin, which the daemon gives every shell it starts. It is a directory that ships beside the
 daemon rather than inside it, because the bash and zsh scripts are GPLv3 (`packaging/muster-daemon-data/README.md`).
 
-`./dev --claude-code` is the one tier allowed the network: it drives the Claude Code installed here for one turn,
-in a pane with `extras/claude-code`'s hooks and one without, and checks that both the hooks and the screen rules
-read it working and then idle - which is what says a Claude Code update has broken neither. It needs
-`ANTHROPIC_API_KEY` or `claude`'s own login, and says why it passed without running when it has neither.
+`./dev --claude-code` reaches a model, where `--notarize` and `--ssh` reach only Apple and herdr's releases: it
+drives the Claude Code installed here for one turn, in a pane with `extras/claude-code`'s hooks and one without, and
+checks that both the hooks and the screen rules read it working and then idle - which is what says a Claude Code
+update has broken neither. It needs `ANTHROPIC_API_KEY` or `claude`'s own login, and fails saying which is missing
+when it has neither, since a tier that checked nothing has not passed.
 
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
 against a checked-in baseline and fails on regression, the second times input-to-glyph stage by stage - the bare PTY,

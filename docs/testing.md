@@ -148,8 +148,8 @@ Muster's principles, adapted to that evidence:
   detection's suites on Linux, needs docker, and `--claude-code` needs the network and a model: it drives the
   Claude Code installed here for one turn, in a pane with Muster's hooks and one without, and checks both read
   working and then idle. It runs with `ANTHROPIC_API_KEY` and `--bare` when that is set, and otherwise with
-  `claude`'s own login and only project settings, so nobody's own hooks take part; with neither it says so and
-  passes. The gate still compiles the Linux daemons and lints their Linux code,
+  `claude`'s own login and only project settings, so nobody's own hooks take part; with neither it fails and
+  says which is missing. The gate still compiles the Linux daemons and lints their Linux code,
   so what `--linux` alone catches is behavior: dash as `/bin/sh`, `/proc`, `close_range`. That is the real line, and it is
   narrower than the one drawn when the backend was going to be faked.
 
