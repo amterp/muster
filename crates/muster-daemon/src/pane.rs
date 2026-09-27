@@ -298,8 +298,9 @@ impl Pane {
     }
 
     /// Ends the pane: its bridge told why, SIGHUP to its shell's process group and to whatever
-    /// holds its terminal's foreground, then its master closed once the reader and writer let
-    /// go of it.
+    /// holds its terminal's foreground, then its master closed once its reader, its writer and
+    /// the connections that looked it up let go of it. Its bridge's connection lets go at once
+    /// (`Bridge::detach`); an input connection holds it only weakly.
     pub(crate) fn hang_up(self, reason: proto::DetachReason) {
         self.io.screen().close(reason);
         let foreground = pty::foreground_group(self.io.master.as_fd())

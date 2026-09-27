@@ -179,3 +179,28 @@ fn a_bridge_that_stops_acknowledging_falls_behind_and_is_caught_up_with_the_scre
     let output = surface.output;
     surface.follow(&mut stream, "output again", true, |surface| surface.output > output);
 }
+
+#[test]
+fn a_closed_pane_lets_go_of_its_terminal_even_when_its_bridge_has_stopped_reading() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let done = daemon.root().join("done");
+    // Ignores the hangup a close sends and writes until its terminal is gone for good, which is
+    // when the daemon closes the pane's master.
+    let flood = format!(
+        "trap '' HUP; while printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; do :; done; \
+         touch {}",
+        done.display()
+    );
+    make(&mut control, running("p1", "t1", &flood));
+    // Attached, and never read: its socket fills, and the daemon's writes to it block.
+    let _stream = attached(&daemon, "p1", false);
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    expect(&mut control, close_request("p1"), proto::Outcome::Done);
+    until(
+        "the pane's program to find its terminal closed",
+        || done.exists(),
+        || "the daemon still holds the pane's master".to_string(),
+    );
+}

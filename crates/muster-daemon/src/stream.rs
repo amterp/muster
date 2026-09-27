@@ -12,6 +12,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
+use std::time::Duration;
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
@@ -90,6 +91,9 @@ pub(crate) struct Bridge {
     id: u64,
     frames: Sender<Vec<u8>>,
     credit: Credit,
+    /// The connection, to end the thread reading it once the pane lets the bridge go. That
+    /// thread holds the pane, and a bridge that has stopped sending would keep it forever.
+    socket: UnixStream,
 }
 
 impl Bridge {
@@ -128,10 +132,13 @@ impl Bridge {
         }
     }
 
+    /// Tells the bridge why it is let go. Its reading half is shut, which lets go of the pane
+    /// at once; the frames already queued, this one last, are still written.
     pub(crate) fn detach(self, reason: proto::DetachReason) {
         self.send(stream_message::Message::Detached(stream_message::Detached {
             reason: reason.into(),
         }));
+        let _ = self.socket.shutdown(Shutdown::Read);
     }
 
     fn send(&self, message: stream_message::Message) {
@@ -185,8 +192,15 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
             return;
         }
     };
+    let socket = match stream.try_clone() {
+        Ok(socket) => socket,
+        Err(error) => {
+            refuse(frames, format!("the daemon could not hold the stream: {error}"));
+            return;
+        }
+    };
     let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
-    let bridge = Bridge { id, frames, credit: Credit::new(WINDOW) };
+    let bridge = Bridge { id, frames, credit: Credit::new(WINDOW), socket };
     if let Err(refusal) = io.attach(bridge, grid, attach.takeover) {
         refuse(refusal.frames, refusal.reason);
         return;
@@ -194,8 +208,9 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
     log::info("daemon.stream.attached", fields! { "pane" => attach.pane, "bridge" => id });
 
     follow(&mut stream, &io, id, &attach.pane);
+    // Dropping the bridge, if the pane still holds it, ends the writer, which hangs the
+    // connection up once what is queued is written.
     io.detach(id);
-    let _ = stream.shutdown(Shutdown::Both);
     log::info("daemon.stream.detached", fields! { "pane" => attach.pane, "bridge" => id });
 }
 
@@ -237,12 +252,18 @@ fn follow(stream: &mut UnixStream, io: &Arc<PaneIo>, id: u64, pane: &str) {
     }
 }
 
+/// How long a write to a bridge may make no progress before the bridge counts as gone. A slow
+/// link still moves; a forward whose far end has stopped reading does not, and its queue
+/// would otherwise be held until the connection died of something else.
+const STALLED_WRITE: Duration = Duration::from_secs(30);
+
 /// Starts the thread that writes a stream's frames, and returns where to queue them. When every
 /// sender has gone, it writes what is left and hangs the connection up, which ends the thread
 /// reading it.
 fn writer(stream: &UnixStream) -> std::io::Result<Sender<Vec<u8>>> {
     let (frames, queued) = mpsc::channel::<Vec<u8>>();
     let mut writing = stream.try_clone()?;
+    writing.set_write_timeout(Some(STALLED_WRITE))?;
     std::thread::Builder::new().name("stream write".to_string()).spawn(move || {
         for frame in queued {
             if muster_frame::write_frame(&mut writing, &frame).is_err() {
