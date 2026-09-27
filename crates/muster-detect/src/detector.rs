@@ -79,6 +79,10 @@ pub struct Publication {
 /// One pane's detection. Tick it `FIRST_TICK` after the pane starts, and then after each
 /// tick's `next`.
 #[derive(Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "herdr's flags, kept as herdr named them so its loop ports as it was"
+)]
 pub struct Detector {
     shell: u32,
     presence: Presence,
@@ -98,6 +102,10 @@ pub struct Detector {
     /// changes: herdr cleared its copy of the title here, and this one belongs to the caller.
     stale_title: Option<String>,
     last_emitted: Option<Publication>,
+    /// A reset forgot what was known, so the next tick publishes what it finds, even when it
+    /// finds nothing that would count as a change. Otherwise a pane whose agent went with its
+    /// manifest would go on showing the old agent's last state.
+    owed: bool,
 }
 
 impl Detector {
@@ -124,11 +132,13 @@ impl Detector {
             pending_idle: PendingIdle::default(),
             stale_title: None,
             last_emitted: None,
+            owed: false,
         }
     }
 
     /// Starts over, as if the pane had just opened - for when the manifests change and what
-    /// was known was known under the old ones. Tick straight after.
+    /// was known was known under the old ones. Tick straight after: that tick publishes the
+    /// pane's agent and state as they now are, unless they are what was last published.
     pub fn reset(&mut self) {
         self.presence = Presence::default();
         self.published = PublishState { state: State::Unknown, visible: false };
@@ -142,6 +152,7 @@ impl Detector {
         self.last_screen_scan_content_seq = None;
         self.startup_grace_until = None;
         self.pending_idle.clear();
+        self.owed = true;
     }
 
     pub fn agent(&self) -> Option<&Agent> {
@@ -155,7 +166,10 @@ impl Detector {
         processes: &impl Processes,
         manifests: &Manifests,
     ) -> Tick {
-        let publication = self.step(now, pane, processes, manifests);
+        let mut publication = self.step(now, pane, processes, manifests);
+        if std::mem::take(&mut self.owed) && publication.is_none() {
+            publication = self.emit(self.presence.current.clone(), self.published.state);
+        }
         let next = if self.pending_idle.active() {
             PENDING_IDLE_RECHECK
         } else if self.presence.current.is_none() {

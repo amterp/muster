@@ -710,3 +710,37 @@ fn reset_forgets_the_agent_and_finds_it_again() {
     run.settle();
     assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
 }
+
+#[test]
+fn a_reset_publishes_the_truth_even_when_the_agent_went_with_its_manifest() {
+    const SPRITE: &str = r#"
+id = "sprite"
+version = "2026.01.01.1"
+min_engine_version = 1
+
+[[rules]]
+id = "busy"
+state = "working"
+priority = 10
+contains = ["busy"]
+"#;
+    let mut run = Run::new();
+    let (manifests, warnings) = Manifests::load(&[("sprite.toml".into(), SPRITE.into())], None);
+    assert_eq!(warnings, []);
+    run.manifests = manifests;
+    run.processes.agent = "sprite";
+    run.tick();
+    run.pane.group = Some(AGENT_GROUP);
+    run.tick();
+    run.settle();
+    run.paint("busy");
+    let sprite = Agent::new("sprite");
+    assert_eq!(run.tick(), Some(published(Some(sprite), State::Working)));
+
+    // The only manifest that knew sprite is gone: nothing names it now.
+    run.manifests = Manifests::built_in();
+    run.detector.reset();
+    run.next = Duration::ZERO;
+    assert_eq!(run.tick(), Some(published(None, State::Unknown)));
+    assert_eq!(run.until_published(Duration::from_secs(2)), None, "said once");
+}
