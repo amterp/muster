@@ -103,11 +103,14 @@ fn differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
 
 /// Whether two rows look and behave the same.
 ///
-/// One difference is forgiven, and only this one: a cell an erase painted with a background
-/// and no text, against a space in the same style. The formatter writes the first as the
-/// second, both draw identically, and no VT sequence other than the erase that made it can
-/// produce the first - so a replay cannot, and a test that demanded it would demand nothing
-/// a user could see.
+/// One difference is forgiven, and only this one: a cell with no text against a space, when
+/// everything else about the two cells is identical. The formatter writes an unwritten cell
+/// before or between text as a space, and a cell an erase painted with a background as a
+/// space in that background, and no sequence but the cursor move or erase that made the
+/// original can produce the first - so a replay cannot. Both draw the same, copy the same, and
+/// read the same through the formatter. And the formatter writes such spaces only on a row
+/// that has text elsewhere, so no row turns from blank to not. Style, width, protection and
+/// link must still match, which is what keeps this from hiding anything a user could see.
 fn same_row(a: Option<&Row>, b: Option<&Row>) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => {
@@ -120,9 +123,12 @@ fn same_row(a: Option<&Row>, b: Option<&Row>) -> bool {
     }
 }
 
+fn blank(cell: &Cell) -> bool {
+    cell.text.is_empty() || cell.text == " "
+}
+
 fn same_cell(a: &Cell, b: &Cell) -> bool {
-    let painted_blank = |cell: &Cell| cell.text.is_empty() || cell.text == " ";
-    if a.text != b.text && !(painted_blank(a) && painted_blank(b) && a.style.background.is_some()) {
+    if a.text != b.text && !(blank(a) && blank(b)) {
         return false;
     }
     a.width == b.width
@@ -156,7 +162,7 @@ fn row_difference(a: Option<&Row>, b: Option<&Row>) -> String {
         return format!("{} cells, replayed {}", a.cells.len(), b.cells.len());
     };
     let (x, y) = (&a.cells[column], &b.cells[column]);
-    let field = if x.text != y.text {
+    let field = if x.text != y.text && !(blank(x) && blank(y)) {
         format!("text {:?}, replayed {:?}", x.text, y.text)
     } else if x.width != y.width {
         format!("width {:?}, replayed {:?}", x.width, y.width)

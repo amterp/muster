@@ -262,6 +262,43 @@
       }
     },
     {
+      "name": "text placed by cursor addressing",
+      "why": "A TUI draws by moving the cursor and writing, so most of its rows start somewhere other than column 0 and have gaps. This is the bulk of what a replay carries for a full-screen program. It also covers a gap after bold text, where the bleed is invisible but still wrong.",
+      "given": {
+        "columns": 20,
+        "rows": 6,
+        "feed": "\u001b[?1049h\u001b[2;5Htitle\u001b[4;3H\u001b[1mitem\u001b[0m\u001b[4;15Hright\u001b[6;8H",
+        "after": "typed"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a gap after underlined text",
+      "why": "The same bleed with an underline: the gap would come back underlined.",
+      "given": {
+        "columns": 20,
+        "rows": 3,
+        "feed": "\u001b[4mund\u001b[0m\u001b[1;10Hx"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a gap after text with a background",
+      "why": "The formatter writes the blank cells before the next text on a row in whatever style the previous text left open, so a background would bleed across the gap - a colored label followed by text further along draws a band that was never there. The screen formatter Muster's patch adds closes the style first (unstyled_blanks).",
+      "given": {
+        "columns": 20,
+        "rows": 3,
+        "feed": "\u001b[41mred\u001b[0m\u001b[1;10Hx"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
       "name": "a status bar filled with a background color",
       "why": "An erase under a background color paints the whole row, with text only at its start. The replayed row must be painted to the edge too. The formatter writes the painted cells after the text as spaces in that background, which draws the same; the driver forgives exactly that difference and no other.",
       "given": {
