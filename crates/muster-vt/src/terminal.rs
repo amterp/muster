@@ -9,6 +9,7 @@ use std::fmt;
 
 use crate::ffi;
 use crate::grid::{Cell, Cursor, Grid, Row, Width};
+use crate::modes::Mode;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalError {
@@ -63,10 +64,24 @@ impl Terminal {
         }
 
         let terminal = Terminal { terminal: handle };
-        // No option on ghostty_terminal_set reaches DEC modes, so this goes in the way any
-        // program would set it.
-        if grapheme_clustering {
-            terminal.write(b"\x1b[?2027h");
+        // As a reset default rather than a mode written at creation: a program's RIS restores
+        // defaults, and a mode that was merely set would be lost to the first one while the
+        // surface beside this terminal kept it.
+        let mut config = ffi::GhosttyTerminalModeConfig {
+            mode: Mode::GRAPHEME_CLUSTER.packed(),
+            value: grapheme_clustering,
+        };
+        // SAFETY: the handle is ours and the pointer is to a local of the type documented
+        // for MODE_DEFAULT; libghostty copies it.
+        let result = unsafe {
+            ffi::ghostty_terminal_set(
+                terminal.terminal,
+                ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_MODE_DEFAULT,
+                (&raw mut config).cast(),
+            )
+        };
+        if result != ffi::GhosttyResult_GHOSTTY_SUCCESS {
+            return Err(TerminalError::CreationFailed(result));
         }
         Ok(terminal)
     }

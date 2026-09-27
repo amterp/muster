@@ -9,9 +9,11 @@ mod ffi;
 mod grid;
 mod key_encoder;
 mod key_mapping;
+mod modes;
 mod terminal;
 
 pub use build_info::engine_version;
 pub use grid::{Cell, Cursor, Grid, Row, Width};
 pub use key_encoder::{EncoderError, KeyEncoder};
+pub use modes::Mode;
 pub use terminal::{Terminal, TerminalError};

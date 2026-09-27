@@ -9,6 +9,7 @@
 //! `GhosttyCell` and `GhosttyGridRef` cross by value, and a wrong layout guess is a silent
 //! wrong answer rather than a link error.
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
 
 fn main() {
@@ -49,4 +50,45 @@ fn main() {
 
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets OUT_DIR"));
     bindings.write_to_file(out.join("bindings.rs")).expect("OUT_DIR should be writable");
+
+    let modes = include.join("ghostty/vt/modes.h");
+    println!("cargo:rerun-if-changed={}", modes.display());
+    std::fs::write(out.join("modes.rs"), mode_table(&modes)).expect("OUT_DIR should be writable");
+}
+
+/// Every mode `modes.h` names, as a Rust table.
+///
+/// The header spells modes as function-like macros over a `static inline` constructor, which
+/// bindgen cannot evaluate, so without this the list would be typed out by hand - and a pin
+/// that added a mode would leave the replay silently not carrying it. Parsing the header
+/// makes the table the pin's by construction, the same argument as the bindings above.
+fn mode_table(header: &std::path::Path) -> String {
+    let text = std::fs::read_to_string(header).expect("modes.h sits beside vt.h");
+    let mut table = String::from("pub(crate) const MODES: &[(&str, u16, bool)] = &[\n");
+    let mut count = 0;
+    for line in text.lines() {
+        let Some(rest) = line.trim().strip_prefix("#define GHOSTTY_MODE_") else { continue };
+        let Some((name, definition)) = rest.split_once(char::is_whitespace) else { continue };
+        let Some(arguments) = definition
+            .trim()
+            .strip_prefix("(ghostty_mode_new(")
+            .and_then(|rest| rest.split_once("))"))
+            .map(|(arguments, _)| arguments)
+        else {
+            continue;
+        };
+        let (value, ansi) = arguments.split_once(',').expect("ghostty_mode_new takes two arguments");
+        let value: u16 = value.trim().parse().expect("a mode's value is a number");
+        let ansi: bool = ansi.trim().parse().expect("a mode's ANSI flag is true or false");
+        writeln!(table, "    ({name:?}, {value}, {ansi}),").expect("writing to a String cannot fail");
+        count += 1;
+    }
+    assert!(
+        count > 30,
+        "found only {count} modes in {}. The header's spelling of them changed, and a short \
+         table would make the replay drop modes without saying so - fix the parser here.",
+        header.display()
+    );
+    table.push_str("];\n");
+    table
 }
