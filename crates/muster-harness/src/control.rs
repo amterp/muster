@@ -111,7 +111,9 @@ impl Control {
             if left.is_zero() {
                 return None;
             }
-            self.stream.set_read_timeout(Some(left)).expect("a socket takes a read timeout");
+            // macOS refuses a timeout on a socket whose peer has hung up, and reading one never
+            // blocks: what was sent before it hung up still arrives, then the end.
+            let _ = self.stream.set_read_timeout(Some(left));
             match connection::receive::<proto::ControlMessage>(&mut self.stream) {
                 Ok(Some(proto::ControlMessage {
                     message: Some(control_message::Message::LogLine(line)),

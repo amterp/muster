@@ -96,25 +96,30 @@ pub(crate) enum Loaded {
 }
 
 pub(crate) fn load(path: &Path) -> Loaded {
+    match std::fs::read(path) {
+        Ok(bytes) => parse(&bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Loaded::Nothing,
+        Err(error) => Loaded::Unreadable(error.to_string()),
+    }
+}
+
+/// A state as the file holds it, from wherever it came: a daemon handing its panes over sends
+/// the state in the same format, under the same rules.
+pub(crate) fn parse(bytes: &[u8]) -> Loaded {
     #[derive(Deserialize)]
     struct Versioned {
         version: u32,
     }
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Loaded::Nothing,
-        Err(error) => return Loaded::Unreadable(error.to_string()),
-    };
     // The version first, on its own: a newer daemon's file may not parse as this one's at all,
     // and must still be told apart from a damaged one.
-    let version = match serde_json::from_slice::<Versioned>(&bytes) {
+    let version = match serde_json::from_slice::<Versioned>(bytes) {
         Ok(versioned) => versioned.version,
         Err(error) => return Loaded::Corrupt(error.to_string()),
     };
     if version > VERSION {
         return Loaded::Newer(version);
     }
-    match serde_json::from_slice::<State>(&bytes) {
+    match serde_json::from_slice::<State>(bytes) {
         Ok(state) => match validate(&state) {
             Ok(()) => Loaded::State(state),
             Err(why) => Loaded::Corrupt(why),
@@ -258,6 +263,8 @@ struct Pending {
     changed: Option<Instant>,
     /// The state as the daemon began to stop, to write before it exits.
     last: Option<State>,
+    /// A copy or a write is under way.
+    writing: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -266,6 +273,8 @@ enum Phase {
     /// holds less than the file, and a write would lose the difference.
     Restoring,
     Writing,
+    /// The daemon is handing its panes to another, which writes the file once it serves.
+    Paused,
     /// The daemon is stopping, and its last state is being written.
     Stopping,
     Stopped,
@@ -280,7 +289,7 @@ impl Persister {
         let phase = if disabled { Phase::Off } else { Phase::Restoring };
         Arc::new(Persister {
             path,
-            pending: Mutex::new(Pending { phase, changed: None, last: None }),
+            pending: Mutex::new(Pending { phase, changed: None, last: None, writing: false }),
             woken: Condvar::new(),
             #[cfg(test)]
             writes: Mutex::new(Vec::new()),
@@ -340,6 +349,27 @@ impl Persister {
         }
     }
 
+    /// Writes nothing until [`Persister::resume`], once any write under way has finished, or
+    /// `within` has passed: the daemon taking over writes the file from when it serves.
+    pub(crate) fn pause(&self, within: Duration) {
+        let mut pending = self.pending();
+        if pending.phase != Phase::Writing {
+            return;
+        }
+        pending.phase = Phase::Paused;
+        let _ = self.woken.wait_timeout_while(pending, within, |pending| pending.writing);
+    }
+
+    /// Writes again after a handoff that failed, and writes what changed meanwhile.
+    pub(crate) fn resume(&self) {
+        let mut pending = self.pending();
+        if pending.phase == Phase::Paused {
+            pending.phase = Phase::Writing;
+            pending.changed.get_or_insert_with(Instant::now);
+            self.woken.notify_all();
+        }
+    }
+
     /// Writes nothing more this run, since the file holds something this daemon could not
     /// bring back and could not keep elsewhere.
     pub(crate) fn off(&self) {
@@ -362,15 +392,15 @@ impl Persister {
                 pending.phase = Phase::Stopping;
                 pending.last = Some(state);
             }
-            Phase::Restoring => {
+            Phase::Restoring | Phase::Paused => {
                 pending.phase = Phase::Stopped;
                 log::warn(
                     "daemon.state.not_saved",
                     fields! {
                         "path" => self.path.display(),
-                        "impact" => "the daemon stopped before every saved tab was back, so it \
-                                     saves nothing; the file keeps what the last run saved, and \
-                                     loses what this one changed",
+                        "impact" => "the daemon stopped before every saved tab was back, or while \
+                                     handing its panes over, so it saves nothing; the file keeps \
+                                     what was last saved, and loses what changed since",
                         "check" => "a daemon.state.* record before this one, if restoring was \
                                     stuck or failed",
                     },
@@ -407,7 +437,7 @@ impl Persister {
                     return;
                 }
                 Phase::Stopped | Phase::Off => return,
-                Phase::Restoring => {
+                Phase::Restoring | Phase::Paused => {
                     pending = self.woken.wait(pending).unwrap_or_else(PoisonError::into_inner);
                     continue;
                 }
@@ -427,15 +457,21 @@ impl Persister {
                 continue;
             }
             pending.changed = None;
+            pending.writing = true;
             drop(pending);
-            match copy() {
-                Copied::State(state) => self.write_if_changed(&state, &mut written),
-                // What the daemon held before it began to stop is the state to leave, and it
-                // was handed over in the same hold of the session's lock that this copy saw.
-                Copied::Stopping => {}
-                Copied::Gone => return,
+            let copied = copy();
+            if let Copied::State(state) = &copied {
+                self.write_if_changed(state, &mut written);
             }
             pending = self.pending();
+            pending.writing = false;
+            self.woken.notify_all();
+            match copied {
+                // What the daemon held before it began to stop is the state to leave, and it
+                // was handed over in the same hold of the session's lock that this copy saw.
+                Copied::State(_) | Copied::Stopping => {}
+                Copied::Gone => return,
+            }
         }
     }
 

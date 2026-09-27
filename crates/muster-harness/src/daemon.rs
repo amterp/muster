@@ -49,6 +49,9 @@ pub struct Daemon {
     /// What was added to the daemon's environment, which a restart starts it with again.
     environment: Vec<(String, String)>,
     process: Option<Child>,
+    /// The daemon a handoff started, which serves the socket once `process` has exited. Not the
+    /// harness's child, so it is known by its pid.
+    successor: Option<i32>,
     started_in: Duration,
 }
 
@@ -89,6 +92,7 @@ impl Daemon {
                 .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
                 .collect(),
             process: None,
+            successor: None,
             started_in: Duration::ZERO,
         };
         daemon.process = Some(daemon.spawn(held));
@@ -230,8 +234,41 @@ impl Daemon {
         Relay::start(&self.root, &self.socket_path, Arc::new(pump))
     }
 
+    /// Asks the daemon to hand every pane to `program` (the same binary when `None`), with
+    /// this harness's data directory, and returns the answer. Once it is done and the daemon
+    /// handing over has exited, this handle is the new daemon: `pid`, `kill` and the cleanup on
+    /// drop reach it.
+    pub fn replace(&mut self, program: Option<&Path>) -> proto::Answer {
+        let program = program.unwrap_or(&self.binary).display().to_string();
+        let replace = session_request::Replace {
+            program: Some(program),
+            data: Some(DAEMON_DATA.to_string()),
+        };
+        let answer = self
+            .connect()
+            .ask(Service::Session(proto::SessionRequest {
+                request: Some(session_request::Request::Replace(replace)),
+            }))
+            .answer;
+        if answer.outcome() == proto::Outcome::Done {
+            self.wait_for_exit();
+            self.successor = Some(self.connect().welcome().pid.cast_signed());
+        }
+        answer
+    }
+
     /// Waits for the daemon to exit by itself, as a `stop` or a signal asks it to.
     pub fn wait_for_exit(&mut self) -> ExitStatus {
+        if let Some(pid) = self.successor.take() {
+            // SAFETY: kill with signal 0 only asks whether the process exists.
+            until_within(
+                "the daemon to exit",
+                PATIENCE,
+                || unsafe { libc::kill(pid, 0) } == -1,
+                (),
+            );
+            return std::os::unix::process::ExitStatusExt::from_raw(0);
+        }
         let process = self.process.as_mut().expect("the daemon is running");
         let mut status = None;
         until_within(
@@ -249,11 +286,18 @@ impl Daemon {
 
     /// The daemon's process id, for a test that signals it.
     pub fn pid(&self) -> u32 {
-        self.process.as_ref().expect("the daemon is running").id()
+        match self.successor {
+            Some(pid) => pid.cast_unsigned(),
+            None => self.process.as_ref().expect("the daemon is running").id(),
+        }
     }
 
     /// Ends the daemon abruptly, the way a crash does.
     pub fn kill(&mut self) {
+        if let Some(pid) = self.successor.take() {
+            // SAFETY: kill signals that one process. Whoever adopted it reaps it.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
         if let Some(mut process) = self.process.take() {
             let _ = process.kill();
             let _ = process.wait();

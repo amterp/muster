@@ -47,14 +47,18 @@ struct Inner {
     kept: VecDeque<(u64, Arc<str>)>,
     next: u64,
     followers: Vec<Outbox>,
+    /// The first record kept from the file while another daemon writes it: from a handoff's
+    /// commit on the daemon handing over, and until it on the daemon taking over.
+    withheld_from: Option<u64>,
 }
 
 impl DaemonLog {
     /// Starts the log beside the socket and sends every record of this process to it, unless
     /// `MUSTER_LOG=0` turns logging off. `MUSTER_LOG_LEVEL` sets the level, as for every Muster
     /// process. Called once the daemon holds its socket's lock, which makes it the file's only
-    /// writer.
-    pub(crate) fn start(socket: &Path) -> Option<Arc<DaemonLog>> {
+    /// writer - or, with `withheld`, by a daemon taking over from the one that does: its records
+    /// stay out of the file until [`DaemonLog::write_file`].
+    pub(crate) fn start(socket: &Path, withheld: bool) -> Option<Arc<DaemonLog>> {
         if std::env::var("MUSTER_LOG").as_deref() == Ok("0") {
             return None;
         }
@@ -62,7 +66,15 @@ impl DaemonLog {
             .ok()
             .and_then(|name| LogLevel::parse(&name))
             .unwrap_or(LogLevel::Debug);
-        let log = Arc::new(DaemonLog::new(Rotating::open(path_for(socket), FILE_BYTES)));
+        let file = if withheld {
+            Rotating::closed(path_for(socket), FILE_BYTES)
+        } else {
+            Rotating::open(path_for(socket), FILE_BYTES)
+        };
+        let log = Arc::new(DaemonLog::new(file));
+        if withheld {
+            log.withhold_file();
+        }
         log::install(Box::new(Sink(Arc::clone(&log))), "daemon", level);
         Some(log)
     }
@@ -74,6 +86,7 @@ impl DaemonLog {
                 kept: VecDeque::with_capacity(KEPT),
                 next: 1,
                 followers: Vec::new(),
+                withheld_from: None,
             }),
         }
     }
@@ -86,7 +99,9 @@ impl DaemonLog {
     fn write(&self, record: &LogRecord) {
         let line = sink::line(record);
         let mut inner = self.inner();
-        inner.file.append(line.as_bytes());
+        if inner.withheld_from.is_none() {
+            inner.file.append(line.as_bytes());
+        }
         let number = inner.next;
         inner.next += 1;
         let line: Arc<str> = line.trim_end_matches('\n').into();
@@ -113,6 +128,30 @@ impl DaemonLog {
             inner.followers.push(outbox.clone());
         }
         inner.span()
+    }
+
+    /// Keeps records out of the file, which the daemon taking over writes from its commit.
+    pub(crate) fn withhold_file(&self) {
+        let mut inner = self.inner();
+        inner.file.file = None;
+        if inner.withheld_from.is_none() {
+            inner.withheld_from = Some(inner.next);
+        }
+    }
+
+    /// Writes to the file again, first the records kept from it that are still held.
+    pub(crate) fn write_file(&self) {
+        let mut inner = self.inner();
+        let Some(from) = inner.withheld_from.take() else { return };
+        let withheld: Vec<Arc<str>> = inner
+            .kept
+            .iter()
+            .filter(|(number, _)| *number >= from)
+            .map(|(_, line)| Arc::clone(line))
+            .collect();
+        for line in withheld {
+            inner.file.append(format!("{line}\n").as_bytes());
+        }
     }
 
     /// Stops handing records to a connection that has gone.
@@ -167,9 +206,14 @@ struct Rotating {
 
 impl Rotating {
     fn open(path: PathBuf, limit: u64) -> Rotating {
-        let mut rotating = Rotating { path, file: None, size: 0, limit };
+        let mut rotating = Rotating::closed(path, limit);
         rotating.reopen();
         rotating
+    }
+
+    /// Opened at the first record appended.
+    fn closed(path: PathBuf, limit: u64) -> Rotating {
+        Rotating { path, file: None, size: 0, limit }
     }
 
     /// Opens the file again, at the length it has: after a rotation that failed that is the
@@ -295,5 +339,29 @@ mod tests {
         assert!(all[0].1.contains("test.record.5\""));
         let later: Vec<u64> = inner.replay(Some(1000)).iter().map(|(number, _)| *number).collect();
         assert_eq!(later, vec![1001, 1002, 1003, 1004, 1005]);
+    }
+
+    /// Two daemons share the file across a handoff and never write it at once: the one handing
+    /// over stops at its commit, the one taking over starts there, and each writes what it kept
+    /// meanwhile when it takes the file back.
+    #[test]
+    fn records_withheld_from_the_file_reach_it_in_order_once_it_is_written_again() {
+        let scratch = Scratch::new("withheld");
+        let path = scratch.0.join("daemon.log");
+        let log = DaemonLog::new(Rotating::open(path.clone(), FILE_BYTES));
+        log.write(&record("test.record.before"));
+        log.withhold_file();
+        log.write(&record("test.record.while"));
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("test.record.while"));
+        log.write_file();
+        log.write(&record("test.record.after"));
+        let file = std::fs::read_to_string(&path).unwrap();
+        let events: Vec<&str> = ["before", "while", "after"]
+            .into_iter()
+            .filter(|event| file.contains(&format!("test.record.{event}\"")))
+            .collect();
+        assert_eq!(events, ["before", "while", "after"]);
+        let at = |event: &str| file.find(&format!("test.record.{event}\"")).unwrap();
+        assert!(at("before") < at("while") && at("while") < at("after"));
     }
 }

@@ -725,22 +725,76 @@ change simply replaces the baseline; after that an incompatible change means a n
 
 A newer app keeps using the daemon already running, so a daemon fix reaches a machine only when
 that daemon is replaced. Ending every agent to do that is a cost people will decline, and they will
-run old daemons for weeks. So replacing a daemon hands its panes to the new one:
+run old daemons for weeks. So replacing a daemon hands its panes to the new one, and ends none.
 
-1. the old daemon starts the new one and passes each pane's PTY master over `SCM_RIGHTS`, with the
-   pane's persisted fields and a replay of its headless terminal;
-2. the new daemon rebuilds each headless terminal by parsing the replay, takes over the socket, and
-   tells the old one to exit. It parses with no effect handler attached, because a replay can
-   provoke a reply of its own - setting mode 2033 sends a visibility report - and nothing the
-   replay provokes belongs on the pane's input.
+**The request.** `SessionRequest.replace` names the program to start, by default the executable the
+running daemon started from, and its data directory, by default whatever the new daemon finds for
+itself. It is answered DONE once the new daemon serves the socket, just before the old one exits,
+or REFUSED with the reason, and then the old daemon goes on exactly as it was. It is refused while
+the daemon is stopping, while it is still restoring its saved tabs (it holds less than it will), and
+while another handoff is under way. `muster-daemon replace` asks for it by hand; the app asks when it
+finds an older daemon running.
 
-A replay rather than libghostty-vt's snapshot format carries the terminal, because a VT stream
-means the same thing to both libghostty versions and the snapshot format has no compatibility
-guarantee. The daemon is structured from its first commit so that a pane can be rebuilt from a PTY
-master and a replay. Handoff ships before the first daemon update after the cut-over.
+**The exchange.** The old daemon starts the new one in a session of its own, with one end of a socket
+pair as descriptor 3 (`--handoff 3`), and they speak `Handoff` frames over it, never over the
+daemon's socket. Those messages are in `muster_daemon.proto`, so the baseline's compatibility check
+covers them, and any daemon of a protocol major hands to any other of the same major. A frame that
+brings descriptors follows a single byte that carries them as `SCM_RIGHTS`. In order:
 
-A pane's process is not the new daemon's child, so the new daemon learns that it exited from the
-PTY closing rather than from `waitpid`.
+1. `Offer`, from the old daemon: its protocol, version and pid, and how many panes follow. The new
+   one answers `Accept`, or `Refused` with a reason, which it also does at any later step it cannot
+   take.
+2. `Session`, bringing the listening socket and the lock file: the state as the file holds it
+   (section 2), read under the same rules - one in a newer format is refused - and the detection
+   manifests the app last sent.
+3. For each pane, `Pane`, bringing its PTY master: the pane's record, its grid, its process's pid,
+   and then a replay of its terminal (section 5) in pieces of a megabyte.
+4. `Ready`, from the new daemon; `Commit`, from the old; `Serving`, from the new.
+
+The old daemon first refuses any request that changes something, so what it hands over is what it
+holds, and stops accepting: a connection made meanwhile waits in the listener's backlog, which the
+two daemons share, for whichever serves next. It pauses its persister once a write under way has
+finished. Each pane's reader is held at the top of its loop, with every byte it read already in the
+terminal; the replay is composed after that, under the pane's lock, and whatever the program writes
+from then on waits in the PTY for the new daemon to read. Its input is still written.
+
+The new daemon rebuilds each terminal by parsing the replay with whatever the parse asked for thrown
+away, because a replay can provoke a reply of its own - setting mode 2033 sends a visibility report -
+and nothing the replay provokes belongs on the pane's input. A replay rather than libghostty-vt's
+snapshot format carries the terminal, because a VT stream means the same thing to both libghostty
+versions and the snapshot format has no compatibility guarantee. Its readers start held, its log
+keeps records in memory only, and it neither accepts nor writes the state file. At `Commit` the old
+daemon stops writing the log's file and the new one starts, with what it kept, so the file has one
+writer at a time and stays in order; the new daemon releases its readers, accepts on the socket it
+was handed, arms its persister, and says `Serving`.
+
+**Failure.** Until `Serving`, the old daemon keeps its own copy of every descriptor and has only
+paused. A new daemon that refuses, exits, hangs for ten seconds at a step, or says anything
+unexpected is killed; the old daemon lets its readers go on, accepts again, resumes its persister,
+takes the log's file back, and answers REFUSED, logging `daemon.handoff.failed`. No pane is ended at
+any point, and at no point does no daemon hold the panes. A new daemon that fails after `Commit` may
+have read some output the old one never sees. Once `Serving` arrives, the old daemon exits without
+closing a pane, writing its state or removing the socket.
+
+**Connections are dropped, not carried.** A bridge is told `Detached` with `REPLACED`, a subscriber
+hears `Replaced`, and every connection then ends as the old daemon exits. Input the old daemon had
+not yet written, a held paste among it, is lost. What the app does across a handoff:
+
+- on `REPLACED`, `Replaced` or the connection ending, connect to the same socket again;
+- a Welcome with a new `instance` means a new daemon: subscribe again, from its snapshot;
+- a bridge attaches again, and draws from the new daemon's replay;
+- follow the log again, from the new daemon's first record.
+
+**A pane's process stays the old daemon's child.** The new daemon cannot `waitpid` it, so it learns
+the process ended from the PTY closing, and says so without an exit status. When the old daemon
+exits, whoever adopts its children reaps them: launchd on macOS, init or the nearest subreaper on
+Linux, as for any orphan, including a daemon started with `setsid` over ssh. The Linux suite runs
+under a reaping init for that reason. Each pane's agent detection starts over in the new daemon, so
+an agent's state can pass through detection's startup grace once.
+
+**Not yet measured:** whether macOS charges a pane's permission prompts (TCC) to the new daemon when
+the process asking is the old one's child, which the stage that puts the daemon in its helper
+bundle measures.
 
 ### 11. Crates
 
@@ -1097,3 +1151,5 @@ first.
 - 2026-09-27 Remote flow control measured with real latency (section 4): the grace stays per
   read, one per episode having been built and rejected, and a bridge chooses its window, 2 MiB
   over ssh.
+- 2026-09-27 Handoff built (section 10): the exchange, what each side pauses and when, what a
+  failure at any step costs (nothing), and what the app does across one.

@@ -1,11 +1,10 @@
 //! One pane: what the daemon publishes about it, the PTY it runs on, and its terminal.
 //!
 //! [`Pane::start`] is the only way a pane comes to exist, and it takes a PTY master, a terminal
-//! and an optional child rather than spawning anything. A pane this daemon started has its
-//! child. A pane handed over by a daemon being replaced (MIP-3, section 10) will arrive as a
-//! master, its record and a terminal rebuilt from a replay, with no child, because its process
-//! is some other daemon's child - so nothing about a pane depends on this process being the
-//! PTY's parent.
+//! and its process rather than spawning anything. A pane this daemon started has its child. A
+//! pane handed over by a daemon being replaced (MIP-3, section 10) arrives as a master, its
+//! record and a terminal rebuilt from a replay, with a process that is some other daemon's
+//! child - so nothing about a pane depends on this process being the PTY's parent.
 //!
 //! Each pane runs three threads: a reader that feeds every chunk of output to the pane's
 //! terminal, a writer that is the only thing writing to the program, and, with a child, a
@@ -27,6 +26,7 @@ use muster_daemon_proto as proto;
 
 use crate::detect::{self, Detecting, Detection};
 use crate::effects::{self, Happened, Reported, Reports};
+use crate::hold::{Hold, Leaving};
 use crate::persist::Persister;
 use crate::process;
 use crate::pty;
@@ -66,6 +66,8 @@ pub(crate) struct PaneIo {
     flow: Flow,
     /// Told when the pane's size changes, which a restart keeps. None in tests of a lone pane.
     persister: Option<Arc<Persister>>,
+    /// Stops the reader while the pane is handed to another daemon.
+    hold: Hold,
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -229,9 +231,31 @@ impl PaneIo {
     }
 
     /// Tells the pane's bridge why the pane is going, and lets go of it.
-    fn close(&self, reason: proto::DetachReason) {
+    pub(crate) fn close(&self, reason: proto::DetachReason) {
         self.screen().close(reason);
         self.flow.change();
+    }
+
+    /// Stops the pane's reader once its terminal has everything the reader took from the PTY,
+    /// so what the program writes next waits in the PTY for whoever reads it next. False when
+    /// the reader did not stop `within`.
+    pub(crate) fn hold_reader(&self, within: Duration) -> bool {
+        self.hold.hold(within)
+    }
+
+    pub(crate) fn release_reader(&self) {
+        self.hold.release();
+    }
+
+    /// What a daemon taking the pane over rebuilds its terminal from: a replay of it, at its
+    /// size. Composed under the pane's lock, so the two agree.
+    pub(crate) fn replay(&self) -> (Vec<u8>, Grid) {
+        let screen = self.screen();
+        (screen.terminal().replay(), self.grid())
+    }
+
+    pub(crate) fn master(&self) -> BorrowedFd<'_> {
+        self.master.as_fd()
     }
 
     /// The pane's program and its terminal, both at a new size. A pane keeps its last size
@@ -311,8 +335,27 @@ pub(crate) struct Pane {
     /// which is how a pane lets go of its master without closing a descriptor another thread
     /// is using.
     wake: OwnedFd,
-    /// The process this daemon started, when it started one: the leader of its own session.
+    /// The pane's process, the leader of its own session.
     process: Option<i32>,
+}
+
+/// A pane's process, as the daemon holding the pane knows it.
+#[derive(Debug)]
+pub(crate) enum Process {
+    /// Started by this daemon, which waits for it and hears how it ended.
+    Child(Child),
+    /// Started by the daemon this one replaced, whose child it stays: the PTY closing is the
+    /// only word of its end, and whoever adopts it when that daemon exits reaps it.
+    Adopted(i32),
+}
+
+impl Process {
+    pub(crate) fn pid(&self) -> i32 {
+        match self {
+            Process::Child(child) => child.id().cast_signed(),
+            Process::Adopted(pid) => *pid,
+        }
+    }
 }
 
 /// What starts watching a pane.
@@ -322,32 +365,37 @@ pub(crate) struct Watching<'a> {
     pub(crate) host: &'a str,
     pub(crate) detecting: &'a Arc<Detecting>,
     pub(crate) persister: &'a Arc<Persister>,
+    /// Whether the reader starts held, as a pane handed over is until the handoff commits.
+    pub(crate) held: bool,
 }
 
 impl Pane {
     /// Starts watching `master`: a reader that feeds its output to `screen`, a writer for its
-    /// input and, when there is a child, a waiter that reaps it and says how it ended.
+    /// input and, when the process is this daemon's child, a waiter that reaps it and says how
+    /// it ended.
     ///
     /// With a child, the child ending is what ends the pane, even if a background job still
-    /// holds the terminal. Without one, the PTY closing is the only word there will be.
+    /// holds the terminal. Otherwise the PTY closing is the only word there will be.
     pub(crate) fn start(
         record: proto::Pane,
         serial: u64,
         master: OwnedFd,
         screen: Screen,
         grid: Grid,
-        child: Option<Child>,
+        process: Option<Process>,
         watching: &Watching<'_>,
     ) -> io::Result<Pane> {
-        let process = child.map(|child| child.id().cast_signed());
+        let child = matches!(process, Some(Process::Child(_)));
+        let process = process.map(|process| process.pid());
         // Every way this can fail leaves a started process nobody will wait for, so each one
-        // ends and reaps it before saying so.
+        // ends and reaps it before saying so. An adopted one is still its own daemon's.
         let failed = |error: io::Error| {
-            if let Some(pid) = process {
+            if let Some(pid) = process.filter(|_| child) {
                 pty::abandon(pid);
             }
             error
         };
+        let hold = Hold::new(watching.held).map_err(failed)?;
         nonblocking(&master).map_err(failed)?;
         let (wake_read, wake) = pipe().map_err(failed)?;
         let writer_wake = writer::duplicate(&wake_read).map_err(failed)?;
@@ -367,6 +415,7 @@ impl Pane {
             reset_detection: AtomicBool::new(false),
             flow: Flow::default(),
             persister: Some(Arc::clone(watching.persister)),
+            hold,
         });
         let pane = record.pane.clone();
 
@@ -386,7 +435,7 @@ impl Pane {
         let reader = Reader {
             io: Arc::clone(&io),
             wake: wake_read,
-            ended: process.is_none().then(|| Arc::clone(watching.ended)),
+            ended: (!child).then(|| Arc::clone(watching.ended)),
             reports: watching.reports.clone(),
             process,
             heard: Heard {
@@ -404,7 +453,7 @@ impl Pane {
             .spawn(move || reader.run())
             .map_err(failed)?;
 
-        if let Some(pid) = process {
+        if let Some(pid) = process.filter(|_| child) {
             let ended = Arc::clone(watching.ended);
             std::thread::Builder::new()
                 .name(format!("wait {pane}"))
@@ -416,6 +465,10 @@ impl Pane {
         }
 
         Ok(Pane { record, serial, io, wake, process })
+    }
+
+    pub(crate) fn process(&self) -> Option<i32> {
+        self.process
     }
 
     /// The directory the pane is working in now: its foreground job's, else its shell's.
@@ -498,22 +551,27 @@ impl Reader {
     /// Each chunk goes to the pane's terminal under the pane's lock; what it asked for is sent
     /// on once the lock is released. Nothing on this path waits for the session lock.
     fn run(mut self) {
+        let io = Arc::clone(&self.io);
+        let _leaving = Leaving(&io.hold);
         let mut buffer = vec![0u8; 64 * 1024];
         // When the directory is next worth checking. The poll's timeout is the cadence, so
         // neither this check nor agent detection needs a thread of its own.
         let mut due: Option<Instant> = None;
         loop {
+            // Here, with every byte read so far in the terminal, is where a handoff stops it.
+            self.io.hold.park(|| self.io.is_closed());
             let master = self.io.master.as_raw_fd();
             let mut watched = [
                 libc::pollfd { fd: master, events: libc::POLLIN, revents: 0 },
                 libc::pollfd { fd: self.wake.as_raw_fd(), events: libc::POLLIN, revents: 0 },
+                libc::pollfd { fd: self.io.hold.polled(), events: libc::POLLIN, revents: 0 },
             ];
             due = retry_due(due, &self.heard, Instant::now());
             let next = due.map_or(self.detection.due(), |due| due.min(self.detection.due()));
             let left = next.saturating_duration_since(Instant::now()).as_millis();
             let timeout = i32::try_from(left).unwrap_or(i32::MAX);
-            // SAFETY: `watched` is a valid array of two pollfds for the length given.
-            let ready = unsafe { libc::poll(watched.as_mut_ptr(), 2, timeout) };
+            // SAFETY: `watched` is a valid array of three pollfds for the length given.
+            let ready = unsafe { libc::poll(watched.as_mut_ptr(), 3, timeout) };
             if ready == -1 {
                 if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
                     continue;
@@ -522,6 +580,9 @@ impl Reader {
             }
             if watched[1].revents != 0 {
                 return;
+            }
+            if watched[2].revents != 0 {
+                continue;
             }
             let now = Instant::now();
             if due.is_some_and(|due| now >= due) {
@@ -686,6 +747,7 @@ impl PaneIo {
             reset_detection: AtomicBool::new(false),
             flow: Flow::default(),
             persister: None,
+            hold: Hold::new(false).expect("a pipe"),
         })
     }
 }

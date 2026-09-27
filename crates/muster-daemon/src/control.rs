@@ -17,7 +17,8 @@ use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, request::Service, session_request};
 use prost::Message;
 
-use crate::session::{Handled, Reply, Session, Shared};
+use crate::handoff;
+use crate::session::{Handled, Reply, Session, Shared, Stop};
 
 /// How many messages a connection may have waiting before the daemon gives up on it.
 ///
@@ -108,7 +109,7 @@ impl Outbox {
     }
 
     /// Waits until everything queued so far has been written, or `within` has passed.
-    fn flush(&self, within: Duration) {
+    pub(crate) fn flush(&self, within: Duration) {
         let (done, flushed) = mpsc::channel();
         if self.sender.try_send(Outbound::Flushed(done)).is_ok() {
             let _ = flushed.recv_timeout(within);
@@ -155,12 +156,13 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 break;
             }
         };
-        let stopping = matches!(
+        let mut stop = matches!(
             &request.service,
             Some(Service::Session(proto::SessionRequest {
                 request: Some(session_request::Request::Stop(_))
             }))
-        );
+        )
+        .then_some(Stop::Asked);
         // The events a request produces are queued under this lock. Its answer is queued under
         // the next, once letting go of this one has done the work it left on panes' terminals,
         // so an answer still means the request has taken effect. A snapshot leaves no such work,
@@ -192,11 +194,19 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 let loaded = loading.load();
                 shared.lock().manifests_loaded(*loading, loaded)
             }
+            // Outside the lock: it waits on another daemon, step by step.
+            Handled::Replace(replacement) => {
+                let reply = handoff::hand_over(shared, &replacement);
+                if reply.outcome == proto::Outcome::Done {
+                    stop = Some(Stop::HandedOff);
+                }
+                reply
+            }
         };
         answer(&shared.lock(), &outbox, request.id, reply);
-        if stopping {
+        if let Some(stop) = stop {
             outbox.flush(STOP_FLUSH);
-            let _ = shared.stopping.send(());
+            let _ = shared.stopping.send(stop);
             return;
         }
     }

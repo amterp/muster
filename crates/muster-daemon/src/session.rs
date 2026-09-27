@@ -43,10 +43,11 @@ use crate::data::Data;
 use crate::detect::Detecting;
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
-use crate::pane::{Ended, Pane, PaneIo, Watching};
+use crate::pane::{Ended, Pane, PaneIo, Process, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
+use crate::server::Socket;
 use crate::spawn;
 use crate::tree::{self, Node, Resized};
 use muster_detect::Manifests;
@@ -75,22 +76,34 @@ pub(crate) struct Saved {
     pub(crate) restoring: bool,
 }
 
+/// Why the daemon exits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Stop {
+    /// A `stop` answered, or a signal: every pane is closed first.
+    Asked,
+    /// Every pane was handed to a new daemon, which serves the socket now: nothing is closed,
+    /// and nothing of the socket's is removed.
+    HandedOff,
+}
+
 /// What every thread of the daemon shares.
 #[derive(Debug)]
 pub(crate) struct Shared {
     pub(crate) session: Mutex<Session>,
-    /// Told when the daemon should exit: a `stop` answered, or a signal.
-    pub(crate) stopping: Sender<()>,
+    /// Told when the daemon should exit, and why.
+    pub(crate) stopping: Sender<Stop>,
     pub(crate) instance: u64,
+    pub(crate) socket: Socket,
 }
 
 impl Shared {
     pub(crate) fn new(
         instance: u64,
-        stopping: Sender<()>,
+        stopping: Sender<Stop>,
         inherited: Vec<(OsString, OsString)>,
         places: Places,
         saved: Saved,
+        socket: Socket,
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, data, log } = places;
         let Saved { persister, settings, restoring } = saved;
@@ -152,15 +165,42 @@ impl Shared {
                     log,
                     stopping: false,
                     restoring,
+                    replacing: Replacing::No,
                 }),
                 stopping,
                 instance,
+                socket,
             }
         })
     }
 
     pub(crate) fn lock(&self) -> Locked<'_> {
         Locked { session: Some(poison::lock(&self.session, "daemon.session")) }
+    }
+
+    /// Puts in use the manifests the app sent the daemon this one replaced.
+    pub(crate) fn adopt_manifests(&self, manifests: Vec<proto::Manifest>) {
+        let sent = proto::SendManifests { engine: 0, manifests };
+        let Handled::Manifests(loading) = self.lock().send_manifests(sent) else { return };
+        let loaded = loading.load();
+        self.lock().manifests_loaded(*loading, loaded);
+    }
+}
+
+impl Places {
+    /// Where this process's daemon finds everything, besides the data directory and the log it
+    /// was given.
+    pub(crate) fn of_this_process(
+        socket: &Path,
+        data: Data,
+        log: Option<Arc<DaemonLog>>,
+    ) -> Places {
+        let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
+        let overrides = muster_daemon_proto::install::muster_home(|name| std::env::var(name).ok())
+            .map(|muster_home| muster_home.join("agent-detection"));
+        let reachable =
+            spawn::Reachable { daemon: std::env::current_exe().ok(), socket: socket.to_path_buf() };
+        Places { home, overrides, reachable, data, log }
     }
 }
 
@@ -257,6 +297,17 @@ pub(crate) struct Session {
     stopping: bool,
     /// Set while the tabs a previous run saved are coming back.
     restoring: bool,
+    replacing: Replacing,
+}
+
+/// Where the daemon stands in handing its panes to a new one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Replacing {
+    No,
+    /// Only a request that changes nothing is served.
+    Underway,
+    /// The new daemon serves: nothing here acts on a pane again.
+    HandedOff,
 }
 
 impl std::fmt::Debug for Session {
@@ -298,7 +349,7 @@ pub(crate) struct Reply {
 }
 
 impl Reply {
-    fn done() -> Reply {
+    pub(crate) fn done() -> Reply {
         Reply { outcome: Outcome::Done, reason: String::new(), detail: None }
     }
 
@@ -310,7 +361,7 @@ impl Reply {
         Reply { outcome: Outcome::NotThere, reason: what.into(), detail: None }
     }
 
-    fn refused(why: impl Into<String>) -> Reply {
+    pub(crate) fn refused(why: impl Into<String>) -> Reply {
         Reply { outcome: Outcome::Refused, reason: why.into(), detail: None }
     }
 
@@ -337,6 +388,44 @@ pub(crate) enum Handled {
     /// An answer carrying a snapshot, queued before the session is let go: an event queued
     /// between the two would reach a subscriber ahead of a snapshot older than it.
     Snapshot(Reply),
+    /// A handoff to run with the session unlocked ([`crate::handoff::hand_over`]).
+    Replace(Box<Replacement>),
+}
+
+/// A `replace` that has been checked: the daemon to hand every pane to.
+#[derive(Debug)]
+pub(crate) struct Replacement {
+    pub(crate) program: PathBuf,
+    pub(crate) data: Option<PathBuf>,
+}
+
+/// What a handoff sends, taken out of the session in one hold of its lock so that the state and
+/// the panes agree.
+pub(crate) struct Handing {
+    pub(crate) state: persist::State,
+    pub(crate) app_manifests: Vec<(String, String)>,
+    pub(crate) panes: Vec<HandedPane>,
+    pub(crate) persister: Arc<Persister>,
+    pub(crate) log: Option<Arc<DaemonLog>>,
+}
+
+pub(crate) struct HandedPane {
+    pub(crate) record: proto::Pane,
+    pub(crate) process: Option<i32>,
+    pub(crate) io: Arc<PaneIo>,
+}
+
+/// Whether a request changes anything, which a daemon being replaced refuses: what it holds
+/// has been, or is being, handed over as it stands.
+fn changes_anything(service: &Service) -> bool {
+    use pane_request::Request as P;
+    use session_request::Request as S;
+    !matches!(
+        service,
+        Service::Session(proto::SessionRequest {
+            request: Some(S::Snapshot(_) | S::Subscribe(_) | S::FollowLog(_))
+        }) | Service::Pane(proto::PaneRequest { request: Some(P::Read(_)) })
+    )
 }
 
 /// A `send_manifests` whose manifests have yet to be compiled.
@@ -663,6 +752,11 @@ impl Session {
         use pane_request::Request as P;
         use session_request::Request as S;
         use tab_request::Request as T;
+        if self.replacing != Replacing::No && changes_anything(&service) {
+            return Handled::Reply(Reply::refused(
+                "the daemon is handing its panes to a new one; ask the new one once it serves",
+            ));
+        }
         let reply = match service {
             Service::Session(proto::SessionRequest { request: Some(request) }) => match request {
                 S::Snapshot(_) => {
@@ -679,6 +773,7 @@ impl Session {
                 S::SetClipboardWrite(set) => self.set_clipboard_write(set),
                 S::SetCursor(set) => self.set_cursor(set),
                 S::FollowLog(follow) => self.follow_log(asker, follow.after),
+                S::Replace(replace) => return self.replace(replace),
                 S::Stop(_) => {
                     self.close_everything();
                     Reply::done()
@@ -903,6 +998,9 @@ impl Session {
         };
         let gone = match &starting.target {
             _ if self.stopping => Some(Reply::refused("the daemon stopped while the pane started")),
+            _ if self.replacing != Replacing::No => Some(Reply::refused(
+                "the daemon began handing its panes to a new one while the pane started; ask again",
+            )),
             Target::Beside { pane, .. } if self.tab_of(pane).is_none() => Some(Reply::not_there(
                 format!("{pane} closed while the pane beside it was starting"),
             )),
@@ -955,9 +1053,18 @@ impl Session {
             host: &self.host,
             detecting: &self.detecting,
             persister: &self.persister,
+            held: false,
         };
-        let pane = Pane::start(record, serial, master, screen, grid, Some(child), &watching)
-            .map_err(|error| Self::could_not_start(&name, program, &cwd, &error))?;
+        let pane = Pane::start(
+            record,
+            serial,
+            master,
+            screen,
+            grid,
+            Some(Process::Child(child)),
+            &watching,
+        )
+        .map_err(|error| Self::could_not_start(&name, program, &cwd, &error))?;
         log::info("daemon.pane.started", fields! { "pane" => name, "serial" => serial });
         self.emit(Payload::PaneOpened(proto::PaneOpened { pane: Some(pane.record.clone()) }));
         self.panes.push(pane);
@@ -1129,6 +1236,10 @@ impl Session {
 
     /// A pane's process ended. Nothing to do if the pane was already closed.
     fn ended(&mut self, serial: u64, status: Option<i32>) {
+        // The pane is the new daemon's now, and so is saying it ended.
+        if self.replacing == Replacing::HandedOff {
+            return;
+        }
         let Some(index) = self.panes.iter().position(|pane| pane.serial == serial) else { return };
         let name = self.panes[index].record.pane.clone();
         log::info(
@@ -1393,7 +1504,7 @@ impl Session {
 
     /// Has the manifests loaded again with the app's, with the session unlocked
     /// ([`Loading::load`]), then finished by [`Session::manifests_loaded`].
-    fn send_manifests(&mut self, sent: proto::SendManifests) -> Handled {
+    pub(crate) fn send_manifests(&mut self, sent: proto::SendManifests) -> Handled {
         self.manifest_loads += 1;
         Handled::Manifests(Box::new(Loading {
             detecting: Arc::clone(&self.detecting),
@@ -1609,6 +1720,138 @@ impl Session {
     }
 
     // -----------------------------------------------------------------------------------------
+    // Handoff (MIP-3 section 10)
+
+    /// Checks the daemon can be replaced now, and marks it as being replaced: from here a
+    /// request that changes anything is refused, so what is handed over is what the session
+    /// holds. The handoff runs with the session unlocked ([`crate::handoff::hand_over`]).
+    fn replace(&mut self, replace: session_request::Replace) -> Handled {
+        let refused = if self.stopping {
+            Some("the daemon is stopping")
+        } else if self.restoring {
+            Some("the daemon is still bringing back its saved tabs; ask again once it has")
+        } else if self.replacing != Replacing::No {
+            Some("the daemon is already being replaced")
+        } else {
+            None
+        };
+        if let Some(why) = refused {
+            return Handled::Reply(Reply::refused(why));
+        }
+        let Some(program) =
+            replace.program.map(PathBuf::from).or_else(|| self.reachable.daemon.clone())
+        else {
+            return Handled::Reply(Reply::refused(
+                "this daemon could not find its own executable; name the program to replace it with",
+            ));
+        };
+        self.replacing = Replacing::Underway;
+        Handled::Replace(Box::new(Replacement { program, data: replace.data.map(PathBuf::from) }))
+    }
+
+    pub(crate) fn log(&self) -> Option<Arc<DaemonLog>> {
+        self.log.clone()
+    }
+
+    /// What a handoff sends.
+    pub(crate) fn handing(&self) -> Handing {
+        Handing {
+            state: self.persisted(),
+            app_manifests: self.app_manifests.clone(),
+            panes: self
+                .panes
+                .iter()
+                .map(|pane| HandedPane {
+                    record: pane.record.clone(),
+                    process: pane.process(),
+                    io: Arc::clone(&pane.io),
+                })
+                .collect(),
+            persister: Arc::clone(&self.persister),
+            log: self.log.clone(),
+        }
+    }
+
+    /// The new daemon serves: subscribers are told, and are handed back to have what they were
+    /// sent written before the daemon exits.
+    pub(crate) fn replaced(&mut self, pid: u32, daemon_version: String) -> Vec<Outbox> {
+        self.replacing = Replacing::HandedOff;
+        self.emit(Payload::Replaced(proto::Replaced { pid, daemon_version }));
+        self.subscribers.clone()
+    }
+
+    /// The handoff failed, and this daemon goes on as it was.
+    pub(crate) fn not_replaced(&mut self) {
+        self.replacing = Replacing::No;
+    }
+
+    /// Takes over a pane from the daemon this one replaces. Its terminal is rebuilt from
+    /// `replay` with whatever parsing it asked for thrown away: a replay can provoke a reply of
+    /// its own, and none of that belongs on the pane's input. Its reader starts held, and reads
+    /// nothing until [`Session::release_readers`].
+    pub(crate) fn adopt(
+        &mut self,
+        record: proto::Pane,
+        grid: Grid,
+        master: OwnedFd,
+        process: Option<i32>,
+        replay: &[u8],
+    ) -> Result<(), String> {
+        let mut screen = Screen::new(grid, &self.settled).map_err(|error| error.to_string())?;
+        drop(screen.output(replay));
+        self.next_serial += 1;
+        let watching = Watching {
+            ended: &self.ended,
+            reports: &self.reports,
+            host: &self.host,
+            detecting: &self.detecting,
+            persister: &self.persister,
+            held: true,
+        };
+        let name = record.pane.clone();
+        let pane = Pane::start(
+            record,
+            self.next_serial,
+            master,
+            screen,
+            grid,
+            process.map(Process::Adopted),
+            &watching,
+        )
+        .map_err(|error| format!("pane {name}: {error}"))?;
+        self.panes.push(pane);
+        Ok(())
+    }
+
+    /// The tabs of a handed-over state, every pane in them already adopted.
+    pub(crate) fn adopt_tabs(&mut self, tabs: Vec<persist::Tab>) -> Result<(), String> {
+        for tab in tabs {
+            if let Some(missing) =
+                tab.root.panes().into_iter().find(|pane| self.pane_index(pane).is_none())
+            {
+                return Err(format!(
+                    "tab {} holds pane {missing}, which was not handed over",
+                    tab.name
+                ));
+            }
+            self.tabs.push(Tab {
+                name: tab.name,
+                label: tab.label,
+                root: tab.root,
+                zoomed: tab.zoomed,
+            });
+        }
+        Ok(())
+    }
+
+    /// Lets every adopted pane's reader go on, once the handoff has committed.
+    pub(crate) fn release_readers(&self) {
+        for pane in &self.panes {
+            pane.io.release_reader();
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
     // Lookups
 
     /// What a stream or input connection needs of a pane, found by name.
@@ -1726,7 +1969,11 @@ mod tests {
         let persister = Persister::new(file.to_path_buf(), false);
         let saved = Saved { persister, settings: None, restoring: true };
         let (stopping, _) = std::sync::mpsc::channel();
-        let shared = Shared::new(1, stopping, Vec::new(), places, saved);
+        let path = file.with_extension("sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let lock = std::fs::File::create(file.with_extension("lock")).unwrap();
+        let socket = Socket::new(path, listener, lock).unwrap();
+        let shared = Shared::new(1, stopping, Vec::new(), places, saved, socket);
         let (ours, theirs) = UnixStream::pair().unwrap();
         let outbox = Outbox::open(&ours).unwrap();
         shared.lock().subscribers.push(outbox);
@@ -1777,6 +2024,60 @@ mod tests {
         let expected = proto::Restored { saving_stopped: true, ..proto::Restored::default() };
         assert_eq!(next_event(&mut events), Payload::Restored(expected));
         assert!(!shared.lock().restoring);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn replace_request() -> Service {
+        Service::Session(proto::SessionRequest {
+            request: Some(session_request::Request::Replace(session_request::Replace {
+                program: Some("/bin/false".to_string()),
+                data: None,
+            })),
+        })
+    }
+
+    fn outcome(handled: Handled) -> Outcome {
+        match handled {
+            Handled::Reply(reply) | Handled::Snapshot(reply) => reply.outcome,
+            _ => Outcome::Done,
+        }
+    }
+
+    /// Until every saved tab is back, the session holds less than it will, and a handoff would
+    /// hand over less. And one handoff at a time.
+    #[test]
+    fn a_daemon_restoring_or_already_being_replaced_is_not_replaced() {
+        let dir = scratch("replace");
+        let (shared, events) = session(&dir.join("daemon.state.json"));
+        let asker = Outbox::open(&events).unwrap();
+        assert_eq!(outcome(shared.lock().handle(replace_request(), &asker)), Outcome::Refused);
+        shared.lock().restoring = false;
+        assert!(matches!(shared.lock().handle(replace_request(), &asker), Handled::Replace(_)));
+        assert_eq!(outcome(shared.lock().handle(replace_request(), &asker)), Outcome::Refused);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// What is handed over is what the session held when the handoff began, so while it runs a
+    /// request that would change that is refused, and one that only reads is served.
+    #[test]
+    fn a_daemon_being_replaced_serves_only_what_changes_nothing() {
+        let dir = scratch("replacing");
+        let (shared, events) = session(&dir.join("daemon.state.json"));
+        let asker = Outbox::open(&events).unwrap();
+        shared.lock().restoring = false;
+        assert!(matches!(shared.lock().handle(replace_request(), &asker), Handled::Replace(_)));
+        let close = Service::Tab(proto::TabRequest {
+            request: Some(tab_request::Request::Close(tab_request::Close {
+                tab: "t1".to_string(),
+            })),
+        });
+        let snapshot = Service::Session(proto::SessionRequest {
+            request: Some(session_request::Request::Snapshot(session_request::Snapshot {})),
+        });
+        assert_eq!(outcome(shared.lock().handle(close.clone(), &asker)), Outcome::Refused);
+        assert_eq!(outcome(shared.lock().handle(snapshot, &asker)), Outcome::Done);
+        shared.lock().not_replaced();
+        assert_eq!(outcome(shared.lock().handle(close, &asker)), Outcome::NotThere);
         let _ = std::fs::remove_dir_all(dir);
     }
 

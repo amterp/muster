@@ -12,11 +12,14 @@ mod descriptors;
 mod detect;
 mod effects;
 mod facts;
+mod handoff;
+mod hold;
 mod input;
 mod pane;
 mod persist;
 mod process;
 mod pty;
+mod replace;
 mod report;
 mod screen;
 mod server;
@@ -33,6 +36,7 @@ use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
@@ -41,7 +45,9 @@ use muster_core::fields;
 use muster_daemon_proto::install;
 
 use crate::daemon_log::DaemonLog;
-use crate::session::{Places, Saved, Shared};
+use crate::persist::Persister;
+use crate::server::Socket;
+use crate::session::{Places, Saved, Shared, Stop};
 
 // musl's own allocator serializes every allocation on one lock, and the daemon allocates from a
 // thread per pane (MIP-3, section 12). macOS's allocator does not have that problem.
@@ -56,21 +62,26 @@ const ALREADY_SERVING: u8 = 3;
 /// How long a stopping daemon waits for its state to be written before it exits anyway.
 const LAST_WRITE: Duration = Duration::from_secs(5);
 
-const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n       muster-daemon report ...\n\n\
+const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n       muster-daemon report ...\n       \
+    muster-daemon replace ...\n\n\
     Serves Muster's panes on this machine. Without --socket, listens where this install's \
     daemon listens: $MUSTER_HOME/daemon/<install>.sock. Its log and its saved tabs are beside \
     the socket, as <name>.log and <name>.state.json; MUSTER_LOG=0 turns the log off. Without \
     --data, gives its shells the muster-daemon-data directory beside its executable. `report` \
     tells the daemon of the pane it runs in what the agent there says about itself; \
-    `muster-daemon report --help` says how.";
+    `muster-daemon report --help` says how. `replace` hands a running daemon's panes to another \
+    daemon without ending any; `muster-daemon replace --help` says how.";
 
 fn main() -> ExitCode {
-    if std::env::args().nth(1).as_deref() == Some("report") {
-        return report::run(std::env::args().skip(2));
+    match std::env::args().nth(1).as_deref() {
+        Some("report") => return report::run(std::env::args().skip(2)),
+        Some("replace") => return replace::run(std::env::args().skip(2)),
+        _ => {}
     }
     let mut arguments = std::env::args().skip(1);
     let mut socket = None;
     let mut data = None;
+    let mut handoff = None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--socket" => match arguments.next() {
@@ -80,6 +91,11 @@ fn main() -> ExitCode {
             "--data" => match arguments.next() {
                 Some(path) => data = Some(PathBuf::from(path)),
                 None => return usage("--data needs a directory"),
+            },
+            // Given only by a daemon starting its successor (`handoff.rs`).
+            "--handoff" => match arguments.next().and_then(|fd| fd.parse::<i32>().ok()) {
+                Some(fd) => handoff = Some(fd),
+                None => return usage("--handoff needs a descriptor number"),
             },
             "--version" => {
                 println!("muster-daemon {} ({})", env!("CARGO_PKG_VERSION"), install::INSTALL);
@@ -102,7 +118,11 @@ fn main() -> ExitCode {
     // Before any thread exists, so every thread inherits the mask and only the one waiting for
     // these signals ever receives them.
     let signals = block_signals();
-    match run(&socket, data.as_deref(), signals) {
+    let ran = match handoff {
+        Some(link) => take_over(link, &socket, data.as_deref(), signals),
+        None => run(&socket, data.as_deref(), signals),
+    };
+    match ran {
         Ok(()) => ExitCode::SUCCESS,
         Err(Failure::AlreadyServing) => {
             eprintln!("muster-daemon: another daemon is already serving {}", socket.display());
@@ -128,36 +148,24 @@ enum Failure {
 
 fn run(socket: &Path, data: Option<&Path>, signals: libc::sigset_t) -> Result<(), Failure> {
     refuse_anything_but_a_socket(socket)?;
-    let _claim = claim(socket)?;
+    let claim = claim(socket)?;
     // Only once the socket is this daemon's: the log beside it has one writer, and a second
     // daemon turned away must not touch it.
-    let log = DaemonLog::start(socket);
+    let log = DaemonLog::start(socket, false);
     // Logged as daemon.failed on the way out, with the message saying what is missing.
     let data = data::Data::locate(data).map_err(Failure::Other)?;
     let listener = listen(socket)?;
+    let socket = Socket::new(socket.to_path_buf(), listener, claim).map_err(|error| {
+        Failure::Other(format!("could not set up {}: {error}", socket.display()))
+    })?;
 
     let (stopping, stop) = mpsc::channel();
     let inherited: Vec<_> = std::env::vars_os().collect();
-    let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
-    let overrides = install::muster_home(|name| std::env::var(name).ok())
-        .map(|muster_home| muster_home.join("agent-detection"));
-    let reachable =
-        spawn::Reachable { daemon: std::env::current_exe().ok(), socket: socket.to_path_buf() };
-    let places = Places { home, overrides, reachable, data, log };
-    let (saved, state) = saved(socket);
+    let places = Places::of_this_process(&socket.path, data, log);
+    let (saved, state) = saved(&socket.path);
     let persister = Arc::clone(&saved.persister);
-    let shared = Shared::new(instance(), stopping.clone(), inherited, places, saved);
-
-    let waiting = signals;
-    std::thread::Builder::new()
-        .name("signals".to_string())
-        .spawn(move || wait_for_signals(&waiting, &stopping))
-        .map_err(|error| Failure::Other(format!("could not start the signal thread: {error}")))?;
-    let accepting = Arc::clone(&shared);
-    std::thread::Builder::new()
-        .name("accept".to_string())
-        .spawn(move || server::accept(&listener, &accepting))
-        .map_err(|error| Failure::Other(format!("could not start the accept thread: {error}")))?;
+    let shared = Shared::new(instance(), stopping.clone(), inherited, places, saved, socket);
+    serve(&shared, signals, stopping).map_err(Failure::Other)?;
 
     // Once the socket is served: a shell starting in a directory on a hung mount must not keep
     // the daemon from answering.
@@ -177,17 +185,58 @@ fn run(socket: &Path, data: Option<&Path>, signals: libc::sigset_t) -> Result<()
     log::info(
         "daemon.started",
         fields! {
-            "socket" => socket.display(),
+            "socket" => shared.socket.path.display(),
             "version" => env!("CARGO_PKG_VERSION"),
             "install" => install::INSTALL,
         },
     );
-    let _ = stop.recv();
+    wait(&shared, &stop, &persister);
+    Ok(())
+}
+
+/// Serves in place of the daemon that started this one to hand over its panes.
+fn take_over(
+    link: i32,
+    socket: &Path,
+    data: Option<&Path>,
+    signals: libc::sigset_t,
+) -> Result<(), Failure> {
+    let taken = handoff::take_over(link, socket, data, signals).map_err(|why| {
+        Failure::Other(format!("did not take over from the daemon on {}: {why}", socket.display()))
+    })?;
+    wait(&taken.shared, &taken.stop, &taken.persister);
+    Ok(())
+}
+
+/// Starts waiting for signals and accepting connections: from here the daemon serves.
+pub(crate) fn serve(
+    shared: &Arc<Shared>,
+    signals: libc::sigset_t,
+    stopping: Sender<Stop>,
+) -> Result<(), String> {
+    std::thread::Builder::new()
+        .name("signals".to_string())
+        .spawn(move || wait_for_signals(&signals, &stopping))
+        .map_err(|error| format!("could not start the signal thread: {error}"))?;
+    let accepting = Arc::clone(shared);
+    std::thread::Builder::new()
+        .name("accept".to_string())
+        .spawn(move || server::accept(&accepting))
+        .map_err(|error| format!("could not start the accept thread: {error}"))?;
+    Ok(())
+}
+
+/// Serves until told to stop, then closes every pane, unless they were handed to another
+/// daemon: that one serves the socket now, so nothing of it is touched on the way out.
+fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
+    let socket = &shared.socket.path;
+    if stop.recv() == Ok(Stop::HandedOff) {
+        return;
+    }
     shared.lock().close_everything();
     persister.wait_until_stopped(LAST_WRITE);
     let _ = std::fs::remove_file(socket);
     log::info("daemon.stopped", fields! { "socket" => socket.display() });
-    Ok(())
 }
 
 /// Finds the state a previous run of this daemon saved, and what to write this run's with.
@@ -267,7 +316,7 @@ fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
     };
     let settings = state.as_ref().map(|state| state.settings.clone());
     let restoring = state.is_some();
-    (Saved { persister: persist::Persister::new(path, disabled), settings, restoring }, state)
+    (Saved { persister: Persister::new(path, disabled), settings, restoring }, state)
 }
 
 /// Refuses a path that holds something other than a socket, because binding replaces what is
@@ -332,7 +381,7 @@ fn listen(socket: &Path) -> Result<UnixListener, Failure> {
 
 /// A number naming this run of the daemon, so a client can tell sequence numbers from two runs
 /// apart. The clock and the pid together, because either alone repeats.
-fn instance() -> u64 {
+pub(crate) fn instance() -> u64 {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_nanos());
@@ -383,7 +432,7 @@ fn block_signals() -> libc::sigset_t {
     }
 }
 
-fn wait_for_signals(signals: &libc::sigset_t, stopping: &mpsc::Sender<()>) {
+fn wait_for_signals(signals: &libc::sigset_t, stopping: &Sender<Stop>) {
     loop {
         let mut signal = 0;
         // SAFETY: sigwait reads the set and writes one signal number.
@@ -396,7 +445,7 @@ fn wait_for_signals(signals: &libc::sigset_t, stopping: &mpsc::Sender<()>) {
             continue;
         }
         log::info("daemon.signal.stopping", fields! { "signal" => signal });
-        let _ = stopping.send(());
+        let _ = stopping.send(Stop::Asked);
         return;
     }
 }

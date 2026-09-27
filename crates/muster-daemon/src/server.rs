@@ -1,6 +1,10 @@
 //! Accepting connections, and the handshake that opens each one.
 
+use std::fs::File;
+use std::io;
+use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,6 +15,7 @@ use muster_daemon_proto::version::{PROTOCOL, compatible};
 use muster_daemon_proto::{self as proto, ConnectionKind, hello_answer, install};
 
 use crate::control;
+use crate::hold::{Hold, Leaving};
 use crate::input;
 use crate::session::Shared;
 use crate::stream;
@@ -19,11 +24,46 @@ use crate::stream;
 /// and is not worth a thread.
 const HELLO_PATIENCE: Duration = Duration::from_secs(5);
 
-/// Serves every connection to `listener`, each on a thread of its own, for as long as the daemon
-/// runs.
-pub(crate) fn accept(listener: &UnixListener, shared: &Arc<Shared>) {
-    for stream in listener.incoming() {
-        let Ok(stream) = stream else { continue };
+/// The daemon's socket: what listens on it, the lock that makes it this daemon's, and the hold a
+/// handoff takes on accepting. The listener and the lock are what a handoff passes on.
+#[derive(Debug)]
+pub(crate) struct Socket {
+    pub(crate) path: PathBuf,
+    pub(crate) listener: UnixListener,
+    pub(crate) lock: File,
+    pub(crate) accepting: Hold,
+}
+
+impl Socket {
+    /// Non-blocking, because a daemon handing over and the daemon taking over share one
+    /// listener: a connection one of them was woken for may be accepted by the other first.
+    pub(crate) fn new(path: PathBuf, listener: UnixListener, lock: File) -> io::Result<Socket> {
+        listener.set_nonblocking(true)?;
+        Ok(Socket { path, listener, lock, accepting: Hold::new(false)? })
+    }
+}
+
+/// Serves every connection to the daemon's socket, each on a thread of its own, for as long as
+/// the daemon runs. While a handoff holds it, a connection waits in the listener's backlog for
+/// whichever daemon serves next.
+pub(crate) fn accept(shared: &Arc<Shared>) {
+    let socket = &shared.socket;
+    let _leaving = Leaving(&socket.accepting);
+    loop {
+        socket.accepting.park(|| false);
+        let mut watched = [
+            libc::pollfd { fd: socket.listener.as_raw_fd(), events: libc::POLLIN, revents: 0 },
+            libc::pollfd { fd: socket.accepting.polled(), events: libc::POLLIN, revents: 0 },
+        ];
+        // SAFETY: `watched` is a valid array of two pollfds for the length given.
+        if unsafe { libc::poll(watched.as_mut_ptr(), 2, -1) } == -1 || watched[0].revents == 0 {
+            continue;
+        }
+        let Ok((stream, _)) = socket.listener.accept() else { continue };
+        // A socket accepted from a non-blocking listener is non-blocking itself on macOS.
+        if stream.set_nonblocking(false).is_err() {
+            continue;
+        }
         let shared = Arc::clone(shared);
         let spawned = std::thread::Builder::new()
             .name("connection".to_string())

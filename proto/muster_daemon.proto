@@ -143,11 +143,23 @@ message SessionRequest {
     SetCursor set_cursor = 9;
     // The daemon's recent log, then every record after it, on this connection.
     FollowLog follow_log = 10;
+    // Hand every pane to a new daemon, which serves this socket from then on, and exit, ending
+    // no pane (MIP-3 section 10). Answered DONE once the new daemon serves, just before this
+    // one exits. REFUSED with the reason when it cannot be done, and then this daemon goes on
+    // serving as before. While it runs, a request that changes anything is refused.
+    Replace replace = 11;
   }
 
   message Snapshot {}
   message Subscribe {}
   message Stop {}
+
+  message Replace {
+    // The daemon to start. Absent: the executable this one started from.
+    optional string program = 1;
+    // The new daemon's `--data`. Absent: the directory it finds for itself.
+    optional string data = 2;
+  }
 
   // Answered with LogFollowed. REFUSED when the daemon's log is off.
   message FollowLog {
@@ -486,7 +498,16 @@ message Event {
     PaneEffect pane_effect = 17;
     PasteHeld paste_held = 18;
     Restored restored = 19;
+    Replaced replaced = 20;
   }
+}
+
+// This daemon has handed every pane to a new one, which serves the same socket, and is about
+// to exit: the connection ends next. A client connects again and finds a new `instance`, so
+// it starts again from a snapshot.
+message Replaced {
+  uint32 pid = 1;
+  string daemon_version = 2;
 }
 
 // The daemon has finished bringing back what a previous run saved, sent only when it restored,
@@ -906,4 +927,69 @@ enum DetachReason {
   DETACH_REASON_CLOSED = 1;
   DETACH_REASON_EXITED = 2;
   DETACH_REASON_TAKEN_OVER = 3;
+  // The daemon has handed the pane to a new daemon on the same socket: attach there.
+  DETACH_REASON_REPLACED = 4;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Handoff: from a daemon to the daemon replacing it (MIP-3 section 10)
+//
+// Never on the daemon's socket. The old daemon starts the new one with one end of a socket pair
+// as the descriptor `--handoff` names, and they speak Handoff frames over it, framed as every
+// connection is. A frame that brings descriptors follows a single byte that carries them as
+// SCM_RIGHTS. In order: Offer; Accept or Refused; Session, bringing the listening socket and
+// the lock file; for each pane, Pane bringing its PTY master, then its replay in replay_piece
+// frames; Ready; Commit; Serving. Until Serving the old daemon keeps its own copy of every
+// descriptor, so a new daemon that fails at any point takes no pane with it.
+message Handoff {
+  oneof message {
+    Offer offer = 1;
+    Accept accept = 2;
+    Refused refused = 3;
+    Session session = 4;
+    Pane pane = 5;
+    bytes replay_piece = 6;
+    Ready ready = 7;
+    Commit commit = 8;
+    Serving serving = 9;
+  }
+
+  message Offer {
+    Version protocol = 1;
+    string daemon_version = 2;
+    uint32 pid = 3;
+    uint32 panes = 4;
+  }
+
+  message Accept {
+    Version protocol = 1;
+    string daemon_version = 2;
+  }
+
+  message Refused {
+    string reason = 1;
+  }
+
+  message Session {
+    // What a restart would bring back, as the state file holds it: the new daemon reads it with
+    // the same rules, and refuses one newer than it reads.
+    bytes state = 1;
+    // What the app last sent (SendManifests).
+    repeated Manifest app_manifests = 2;
+  }
+
+  message Pane {
+    // Everything the protocol says about the pane. Its tab, label and directory are in
+    // Session's state too.
+    .muster.daemon.Pane record = 1;
+    Grid grid = 2;
+    // The pane's process, which is the old daemon's child and never the new one's.
+    optional int32 process = 3;
+    // How many bytes of replay follow, in replay_piece frames.
+    uint64 replay_length = 4;
+  }
+
+  message Ready {}
+  message Commit {}
+  message Serving {}
 }
