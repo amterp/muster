@@ -30,9 +30,10 @@ pub(crate) const DEFAULT_SCROLLBACK: usize = 10_000_000;
 /// The bytes are spent only by panes whose programs send images, which the surface holds too.
 ///
 /// What that costs: the limit is per screen, so a pane holds 640 MB at worst on its primary and
-/// alternate screens, and the surface holds the same images again. A replay carries no images, so
-/// after a reattach this store answers for ids the surface no longer has, whatever its size. If
-/// the app ever exposes Ghostty's `image-storage-limit`, this takes the same value.
+/// alternate screens, and the surface holds the same images again. A replay carries no images,
+/// so whenever one is sent this store is emptied too ([`Screen::attach`]): it never answers for
+/// an id the surface no longer has. If the app ever exposes Ghostty's `image-storage-limit`, this
+/// takes the same value.
 const KITTY_IMAGE_BYTES: u64 = 320_000_000;
 
 /// Everything the app has said that each pane's terminal applies: what it draws with and
@@ -258,6 +259,7 @@ impl Screen {
         }
         bridge.attached(self.offset);
         bridge.replay(&self.terminal.replay());
+        self.terminal.forget_kitty_images();
         self.bridge = Some(bridge);
         Ok(())
     }
@@ -287,6 +289,7 @@ impl Screen {
         let Some(bridge) = self.bridge.as_mut().filter(|bridge| bridge.id() == id) else { return };
         if bridge.acknowledge(bytes) {
             bridge.replay(&self.terminal.catch_up());
+            self.terminal.forget_kitty_images();
         }
     }
 

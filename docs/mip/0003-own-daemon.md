@@ -451,12 +451,20 @@ and fails only when one image is larger than the whole store, so a smaller store
 image the surface takes, or forget an id the surface still holds. The bytes are spent only by panes
 whose programs send images, which the surface holds too. The daemon refuses the file, temporary-file and
 shared-memory transmission media, which name paths on the daemon's machine that a remote surface
-cannot read. Programs then fall back to sending images inline. An image is gone from the surface
-after a replay. Three costs come with this. Ghostty's limit is per screen, so a pane can hold
-640 MB at worst, on its primary and alternate screens together. The surface holds the same images,
-so the machine does too, twice. And since a replay carries no images, after a reattach the
-daemon still reports ids the surface no longer has, which no store size fixes. If the app ever
-exposes Ghostty's `image-storage-limit`, the daemon takes the same value.
+cannot read. Programs then fall back to sending images inline. Two costs come with this.
+Ghostty's limit is per screen, so a pane can hold 640 MB at worst, on its primary and alternate
+screens together. And the surface holds the same images, so the machine does too, twice. If the
+app ever exposes Ghostty's `image-storage-limit`, the daemon takes the same value.
+
+**A replay forgets every image, on both sides.** A replay carries no images, so a surface that
+attaches, or is caught up, has none. So the daemon's terminal empties its own store whenever it
+sends one, on both screens and virtual placements included, and a program that places an image by
+id from then on is told it is not there, as a fresh terminal would tell it, and sends it again.
+Carrying the images instead would cost up to the whole store per attach - 320 MB of decoded pixels
+per screen, a third more as base64, through a 2 MiB window over ssh - and still could not put back
+an image placed in scrollback or on the other screen, since the C API reports placements only
+within the viewport. A daemon taking over rebuilds its terminals from replays, so it holds none
+either.
 
 ### 5. Attaching: the replay
 

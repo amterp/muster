@@ -182,6 +182,25 @@ impl Terminal {
         Ok(terminal)
     }
 
+    /// Forgets every kitty image on both screens, placements and all, keeping the limit: what
+    /// a terminal that has only seen a replay holds, since a replay carries no images. A program
+    /// that places one by id from then on is told it is not there, and sends it again.
+    pub fn forget_kitty_images(&mut self) {
+        let limit = self
+            .get(ffi::GhosttyTerminalData_GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_STORAGE_LIMIT, 0u64);
+        if limit == 0 {
+            return;
+        }
+        // A limit of zero empties each screen's store, as libghostty disables images; the
+        // limit put back enables them again, empty. Neither can fail for a live terminal.
+        for mut bytes in [0u64, limit] {
+            let _ = self.set(
+                ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT,
+                (&raw mut bytes).cast(),
+            );
+        }
+    }
+
     fn set(
         &mut self,
         option: ffi::GhosttyTerminalOption,

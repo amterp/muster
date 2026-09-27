@@ -246,3 +246,35 @@ fn a_shell_that_does_not_report_its_directory_is_followed_anyway() {
     let snapshot = snapshot(&mut control);
     assert_eq!(snapshot.panes[0].cwd, elsewhere);
 }
+
+/// A replay carries no kitty images, so a surface that attaches has none of them. The daemon's
+/// terminal forgets them too, and a program placing one by id is told it is gone, as a fresh
+/// terminal would tell it, and sends it again.
+#[test]
+fn a_kitty_image_is_forgotten_once_a_replay_is_sent() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let (before, after, go) =
+        (daemon.root().join("before"), daemon.root().join("after"), daemon.root().join("go"));
+    let transmit = "\\033_Ga=t,f=32,s=1,v=1,i=7,q=2;AAAA/w==\\033\\\\";
+    let place = "\\033_Ga=p,i=7\\033\\\\";
+    let script = format!(
+        "{}; printf '{place}'; dd bs=4096 count=1 of={} 2>/dev/null; while [ ! -e {} ]; do \
+         sleep 0.05; done; printf '{place}'; dd bs=4096 count=1 of={} 2>/dev/null",
+        answer_to(transmit, &before).split("; dd").next().unwrap(),
+        before.display(),
+        go.display(),
+        after.display(),
+    );
+    make(&mut control, running("p1", "t1", script));
+    let placed = String::from_utf8_lossy(&bytes_in(&before)).into_owned();
+    assert!(placed.contains("i=7;OK"), "placed before the replay: {placed:?}");
+
+    let mut stream = attached(&daemon, "p1", false);
+    let mut surface = Surface::new(80, 24);
+    surface.follow(&mut stream, "the replay", true, |surface| surface.replays > 0);
+    std::fs::write(&go, "").unwrap();
+
+    let placed = String::from_utf8_lossy(&bytes_in(&after)).into_owned();
+    assert!(placed.contains("i=7;ENOENT"), "placed after the replay: {placed:?}");
+}
