@@ -2,17 +2,11 @@
 
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-/// The surface's grid, read from the PTY libghostty gave us.
+/// The surface's grid with the pixels it covers, read from the PTY libghostty gave us.
 ///
 /// This is why resize needs no channel of its own: libghostty sizes the PTY from the
-/// surface's pixels and font metrics, so asking the PTY is asking the surface.
-pub(crate) fn terminal_size() -> (u16, u16) {
-    let size = window_size();
-    (size.ws_col, size.ws_row)
-}
-
-/// The surface's grid with the pixels it covers, which libghostty sets on the PTY too. 80x24 and
-/// no pixels when the PTY does not say, as for a bridge run by hand on a pipe.
+/// surface's pixels and font metrics, so asking the PTY is asking the surface. 80x24 and no
+/// pixels when the PTY does not say, as for a bridge run by hand on a pipe.
 pub(crate) fn window_size() -> libc::winsize {
     let mut size = libc::winsize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
     // SAFETY: TIOCGWINSZ writes a winsize we own, and writes nothing when it fails.

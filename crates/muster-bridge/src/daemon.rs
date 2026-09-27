@@ -1,4 +1,4 @@
-//! Drawing a pane from muster-daemon rather than herdr (MIP-3, section 4).
+//! Drawing a pane from its daemon (MIP-3, section 4).
 //!
 //! The daemon sends the program's own bytes, so this writes them to the surface as they come and
 //! acknowledges each piece, which is all that keeps the daemon sending. The surface's writes -
@@ -6,18 +6,29 @@
 //! pane, and an unread terminal would eventually stop the surface writing at all.
 
 use std::io::Read;
+use std::sync::Arc;
 
+use muster_core::bridge_link::Report;
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_daemon_client::stream::{Attachment, Ended, Happened};
-use muster_daemon_proto::Grid;
+use muster_core::respawn::{Ended as Exit, Ending};
+use muster_daemon_client::stream::{AttachError, Attachment, Ended, Happened};
+use muster_daemon_proto::{DetachReason, Grid};
 
+use crate::link::{CountedSurface, Counting, Link};
 use crate::pty;
+
+/// The window of unacknowledged output a bridge asks for across an ssh forward: ssh's own
+/// channel window, measured as what keeps a remote program from being held to one small window
+/// per round trip (MIP-3, section 4).
+const REMOTE_WINDOW: u64 = 2 << 20;
 
 pub(crate) struct Arguments {
     /// Muster's name for the pane, which is also the daemon's.
     pane: String,
     socket: String,
+    app_socket: Option<String>,
+    remote: bool,
     takeover: bool,
 }
 
@@ -25,15 +36,17 @@ impl Arguments {
     pub(crate) fn parse(arguments: &[String]) -> Option<Arguments> {
         let mut read = arguments.iter();
         let pane = read.next().filter(|pane| !pane.starts_with('-'))?.clone();
-        let (mut socket, mut takeover) = (None, false);
+        let (mut socket, mut app_socket, mut remote, mut takeover) = (None, None, false, false);
         while let Some(flag) = read.next() {
             match flag.as_str() {
                 "--daemon-socket" => socket = Some(read.next()?.clone()),
+                "--app-socket" => app_socket = Some(read.next()?.clone()),
+                "--remote" => remote = true,
                 "--takeover" => takeover = true,
                 _ => return None,
             }
         }
-        Some(Arguments { pane, socket: socket?, takeover })
+        Some(Arguments { pane, socket: socket?, app_socket, remote, takeover })
     }
 }
 
@@ -56,16 +69,20 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
             "takeover" => arguments.takeover.to_string(),
         },
     );
-    let opened = Attachment::open(
+    // Before attaching, so a bridge the daemon refuses can still say why.
+    let link = Link::dial(arguments.app_socket.as_deref());
+    let opened = Attachment::open_with_window(
         arguments.socket.as_ref(),
         &arguments.pane,
         grid,
         arguments.takeover,
+        arguments.remote.then_some(REMOTE_WINDOW),
         &format!("muster-bridge {}", env!("CARGO_PKG_VERSION")),
     );
     let attachment = match opened {
         Ok((attachment, _)) => attachment,
         Err(error) => {
+            link.say(&Report::Exiting(refusal(&error)));
             log::error(
                 "bridge.attach.failed",
                 fields! {
@@ -86,6 +103,13 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
         }
     };
 
+    link.say(&Report::Attached);
+    let counting = Arc::new(Counting::new());
+    {
+        let (counting, link) = (Arc::clone(&counting), link.clone());
+        std::thread::spawn(move || counting.report(&link));
+    }
+
     let daemon = attachment.resizer();
     std::thread::spawn(move || {
         for () in resizes {
@@ -96,7 +120,8 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
         }
     });
 
-    let ended = attachment.pump(&mut std::io::stdout().lock(), |happened| match happened {
+    let mut surface = CountedSurface { surface: std::io::stdout().lock(), counting: &counting };
+    let ended = attachment.pump(&mut surface, |happened| match happened {
         Happened::Behind => log::info(
             "bridge.behind",
             fields! {
@@ -119,7 +144,40 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
             },
         ),
     }
+    link.say(&Report::Exiting(exit(&ended, counting.painted())));
     std::process::exit(exit_status(&ended));
+}
+
+/// What the window is told about a stream that ended: whether to start another bridge.
+fn exit(ended: &Ended, rendered: bool) -> Exit {
+    let (ending, reason) = match ended {
+        Ended::Detached(DetachReason::TakenOver) => {
+            (Ending::TakenOver, "another bridge attached to this pane".to_string())
+        }
+        Ended::Detached(DetachReason::Closed | DetachReason::Exited) => {
+            (Ending::Gone, "the pane closed".to_string())
+        }
+        Ended::Detached(reason) => {
+            (Ending::Lost, format!("the daemon let the pane go ({})", reason.as_str_name()))
+        }
+        Ended::HungUp => (Ending::Lost, "the daemon hung up".to_string()),
+        Ended::Failed(error) => (Ending::Lost, error.clone()),
+    };
+    Exit { ending, reason: Some(reason), rendered }
+}
+
+/// What the window is told about an attach the daemon refused.
+///
+/// The daemon states a refusal in prose, so this reads its two: another bridge is drawing the
+/// pane, or there is no such pane. The bridge's tests drive both against the real daemon, so a
+/// reworded refusal fails there rather than here in the field.
+fn refusal(error: &AttachError) -> Exit {
+    let ending = match error {
+        AttachError::Refused(reason) if reason.starts_with("another bridge") => Ending::Refused,
+        AttachError::Refused(_) => Ending::Gone,
+        AttachError::Handshake(_) | AttachError::Broken(_) => Ending::Lost,
+    };
+    Exit { ending, reason: Some(error.to_string()), rendered: false }
 }
 
 /// A stream that broke is a failure, like an attach that never happened. The daemon letting
@@ -167,18 +225,32 @@ mod tests {
     fn a_pane_and_a_socket_are_all_it_needs() {
         let parsed = parse(&["p1w3r07bsd", "--daemon-socket", "/tmp/d.sock"]).unwrap();
         assert_eq!((parsed.pane.as_str(), parsed.socket.as_str()), ("p1w3r07bsd", "/tmp/d.sock"));
-        assert!(!parsed.takeover);
-        assert!(parse(&["p1", "--takeover", "--daemon-socket", "/s"]).unwrap().takeover);
+        assert!(!parsed.takeover && !parsed.remote && parsed.app_socket.is_none());
+        let every =
+            parse(&["p1", "--takeover", "--daemon-socket", "/s", "--app-socket", "/a", "--remote"])
+                .unwrap();
+        assert!(every.takeover && every.remote);
+        assert_eq!(every.app_socket.as_deref(), Some("/a"));
     }
 
-    /// herdr's flags mean nothing to a daemon, and half a herdr command line is a mistake that
-    /// would otherwise draw from the wrong place.
     #[test]
-    fn nothing_of_herdrs_is_taken() {
+    fn a_flag_it_does_not_know_is_refused() {
         assert!(parse(&["p1", "--daemon-socket", "/s", "--herdr-socket", "/h"]).is_none());
-        assert!(parse(&["p1", "--daemon-socket", "/s", "--control-socket", "/c"]).is_none());
         assert!(parse(&["p1", "--daemon-socket"]).is_none(), "a socket names a path");
+        assert!(parse(&["p1", "--daemon-socket", "/s", "--app-socket"]).is_none());
         assert!(parse(&["--daemon-socket", "/s"]).is_none(), "a pane comes first");
+    }
+
+    /// Only a bridge the pane was taken from, or whose pane is gone, is not replaced; every
+    /// other ending asks the window to look again.
+    #[test]
+    fn the_window_hears_whether_to_start_another() {
+        let ending = |ended: Ended| exit(&ended, true).ending;
+        assert_eq!(ending(Ended::Detached(DetachReason::TakenOver)), Ending::TakenOver);
+        assert_eq!(ending(Ended::Detached(DetachReason::Closed)), Ending::Gone);
+        assert_eq!(ending(Ended::Detached(DetachReason::Exited)), Ending::Gone);
+        assert_eq!(ending(Ended::HungUp), Ending::Lost);
+        assert_eq!(ending(Ended::Failed("reset".into())), Ending::Lost);
     }
 
     #[test]

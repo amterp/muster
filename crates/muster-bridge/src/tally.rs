@@ -1,11 +1,11 @@
-//! Frames counted between the lines that report them.
+//! Writes to the surface, counted between the lines that report them.
 //!
-//! A bridge says how much it painted once per interval rather than once per frame, because at
-//! repaint rates a line per frame buries everything else. The first frame after a quiet spell is
-//! owed a line at once, and frames landing inside an interval are held until that interval ends.
+//! A bridge says how much it painted once per interval rather than once per write, because at
+//! repaint rates a line per write buries everything else. The first write after a quiet spell is
+//! owed a line at once, and writes landing inside an interval are held until that interval ends.
 //!
-//! Until it ends, not until the next frame, which is what the bridge used to do. The last frames
-//! before a pause had no next frame, so they were never reported, and a pane that had echoed the
+//! Until it ends, not until the next write, which is what the bridge used to do. The last writes
+//! before a pause had no next write, so they were never reported, and a pane that had echoed the
 //! last keystroke typed into it was accused of having stopped painting (kan a_2PeXwg4fA).
 //!
 //! Pure: the clock arrives as nanoseconds, so the rule is tested without a thread or a sleep.
@@ -13,7 +13,7 @@
 /// How much was painted since the last line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Counted {
-    pub(crate) frames: u64,
+    pub(crate) writes: u64,
     pub(crate) bytes: u64,
 }
 
@@ -27,17 +27,17 @@ pub(crate) struct Tally {
 
 impl Tally {
     pub(crate) const fn new(interval: u64) -> Tally {
-        Tally { interval, counted: Counted { frames: 0, bytes: 0 }, sent: None }
+        Tally { interval, counted: Counted { writes: 0, bytes: 0 }, sent: None }
     }
 
-    /// A frame arrived.
+    /// A write arrived.
     ///
     /// Answers whether it is the first counted since the last line, which is the only moment
     /// whatever waits on this tally needs waking: after that it is already waiting for the
     /// interval to end.
     pub(crate) fn count(&mut self, bytes: usize) -> bool {
-        let first = self.counted.frames == 0;
-        self.counted.frames += 1;
+        let first = self.counted.writes == 0;
+        self.counted.writes += 1;
         self.counted.bytes += bytes as u64;
         first
     }
@@ -46,7 +46,7 @@ impl Tally {
     ///
     /// `None` while nothing is counted, so a quiet pane costs no wakeups at all.
     pub(crate) fn due_in(&self, now: u64) -> Option<u64> {
-        if self.counted.frames == 0 {
+        if self.counted.writes == 0 {
             return None;
         }
         let Some(sent) = self.sent else { return Some(0) };
@@ -59,7 +59,7 @@ impl Tally {
             return None;
         }
         let counted = self.counted;
-        self.counted = Counted { frames: 0, bytes: 0 };
+        self.counted = Counted { writes: 0, bytes: 0 };
         self.sent = Some(now);
         Some(counted)
     }
@@ -79,37 +79,37 @@ mod tests {
     }
 
     #[test]
-    fn the_first_frame_is_owed_a_line_at_once() {
+    fn the_first_write_is_owed_a_line_at_once() {
         let mut tally = Tally::new(INTERVAL);
-        assert!(tally.count(12), "the first frame is the one that wakes the reporter");
+        assert!(tally.count(12), "the first write is the one that wakes the reporter");
         assert_eq!(tally.due_in(0), Some(0));
-        assert_eq!(tally.take(0), Some(Counted { frames: 1, bytes: 12 }));
+        assert_eq!(tally.take(0), Some(Counted { writes: 1, bytes: 12 }));
         assert_eq!(tally.due_in(0), None, "and once taken nothing more is owed");
     }
 
-    /// The bug this module exists for. A frame inside the interval used to wait for another
-    /// frame to carry it, and the last frame before a pause never got one.
+    /// The bug this module exists for. A write inside the interval used to wait for another
+    /// write to carry it, and the last write before a pause never got one.
     #[test]
-    fn a_frame_inside_the_interval_is_owed_a_line_when_the_interval_ends_with_no_frame_after_it() {
+    fn a_write_inside_the_interval_is_owed_a_line_when_the_interval_ends_with_no_write_after_it() {
         let mut tally = Tally::new(INTERVAL);
         tally.count(12);
         tally.take(0);
 
-        assert!(tally.count(5), "the first frame since a line wakes the reporter");
+        assert!(tally.count(5), "the first write since a line wakes the reporter");
         assert!(!tally.count(7), "a second one finds it already waiting");
         assert_eq!(tally.due_in(10), Some(240));
         assert_eq!(tally.take(10), None, "held for the rest of the interval");
-        assert_eq!(tally.take(250), Some(Counted { frames: 2, bytes: 12 }));
+        assert_eq!(tally.take(250), Some(Counted { writes: 2, bytes: 12 }));
     }
 
     #[test]
-    fn a_frame_after_a_quiet_spell_is_owed_a_line_at_once() {
+    fn a_write_after_a_quiet_spell_is_owed_a_line_at_once() {
         let mut tally = Tally::new(INTERVAL);
         tally.count(12);
         tally.take(0);
 
         tally.count(3);
         assert_eq!(tally.due_in(10_000), Some(0));
-        assert_eq!(tally.take(10_000), Some(Counted { frames: 1, bytes: 3 }));
+        assert_eq!(tally.take(10_000), Some(Counted { writes: 1, bytes: 3 }));
     }
 }

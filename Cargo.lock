@@ -586,12 +586,11 @@ checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 name = "muster-bridge"
 version = "0.9.0"
 dependencies = [
- "herdr-harness",
  "libc",
  "muster-core",
  "muster-daemon-client",
  "muster-daemon-proto",
- "muster-herdr",
+ "muster-harness",
  "muster-seam",
  "muster-ssh",
  "muster-vt",
