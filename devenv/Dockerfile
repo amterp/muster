@@ -40,6 +40,7 @@ RUN printf '%s\n' \
         'PermitRootLogin no' \
         'AllowUsers dev' \
         'AcceptEnv HERDR_* MUSTER_*' \
+        'AcceptEnv COLORTERM TERM_PROGRAM TERM_PROGRAM_VERSION' \
     > /etc/ssh/sshd_config.d/devenv.conf
 
 RUN test -n "${DEV_PUBKEY}" \
@@ -57,6 +58,15 @@ RUN printf '%s\n' \
     > /etc/sudoers.d/devenv-sh \
     && chmod 0440 /etc/sudoers.d/devenv-sh \
     && visudo -cf /etc/sudoers.d/devenv-sh
+
+# And for infocmp as root keeping the caller's TERMINFO, which is what Ghostty's sudo wrapper
+# asks for: crates/muster-daemon/tests/devenv_terminfo.rs runs it through the wrapper. sshd's
+# second AcceptEnv line is for the names Ghostty's ssh wrapper forwards.
+RUN printf '%s\n' \
+        'dev ALL=(root) NOPASSWD:SETENV: /usr/bin/infocmp' \
+    > /etc/sudoers.d/devenv-terminfo \
+    && chmod 0440 /etc/sudoers.d/devenv-terminfo \
+    && visudo -cf /etc/sudoers.d/devenv-terminfo
 
 # The same fake agents the local probe uses. screen-agent installs as `claude`
 # because herdr identifies an agent by its foreground process name, and only names it
