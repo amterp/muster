@@ -22,3 +22,4 @@ corrections get a superseding MIP, and the History section records the transitio
 |---|---|---|---|
 | [MIP-1](0001-portable-core.md) | A portable core, and the seam that reaches it | Architecture | Accepted |
 | [MIP-2](0002-muster-tabs.md) | Muster's own units - the window, the tab and the pane | Architecture | Accepted |
+| [MIP-3](0003-own-daemon.md) | A daemon of Muster's own, and herdr removed | Architecture | Draft |
