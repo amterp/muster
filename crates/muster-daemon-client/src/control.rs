@@ -53,6 +53,15 @@ pub enum Unanswered {
     Ended,
 }
 
+impl std::fmt::Display for Unanswered {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Unanswered::TimedOut => "no answer came in time",
+            Unanswered::Ended => "the connection ended before an answer came",
+        })
+    }
+}
+
 /// A request sent, and the answer on its way.
 #[derive(Debug)]
 pub struct Pending {
