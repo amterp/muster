@@ -1519,22 +1519,40 @@ fn build_deps():
 // own, which the stamp does not cover. The terminfo entries are the ones the xcframework build
 // compiled with the Mac's tic, placed under both layouts ncurses reads - hashed directories
 // (78/) on macOS, first letters (x/) on Linux. The compiled format is the same on both.
+//
+// Built beside the directory and swapped in only when it differs, because a daemon started by
+// another ./dev in this checkout - any test run - refuses to start on a directory caught
+// half-copied. A daemon starting in the instant between the two renames still finds none, which
+// can only happen when the content changed.
 fn assemble_daemon_data():
     integration = "{GHOSTTY_DIR}/src/shell-integration"
     compiled = "{GHOSTTY_DIR}/zig-out/share/terminfo"
-    quiet $`rm -rf {DAEMON_DATA}`
+    staged = quiet $`mktemp -d {DAEMON_DATA}.XXXXXX`.stdout.trim()
     for dir in ["78", "x"]:
-        quiet $`mkdir -p {DAEMON_DATA}/terminfo/{dir}`
-        quiet $`cp {compiled}/78/xterm-ghostty {DAEMON_DATA}/terminfo/{dir}/xterm-ghostty`
+        quiet $`mkdir -p {staged}/terminfo/{dir}`
+        quiet $`cp {compiled}/78/xterm-ghostty {staged}/terminfo/{dir}/xterm-ghostty`
     for dir in ["67", "g"]:
-        quiet $`mkdir -p {DAEMON_DATA}/terminfo/{dir}`
-        quiet $`cp {compiled}/67/ghostty {DAEMON_DATA}/terminfo/{dir}/ghostty`
-    quiet $`mkdir -p {DAEMON_DATA}/shell-integration/fish`
-    quiet $`cp -R {integration}/bash {integration}/zsh {DAEMON_DATA}/shell-integration/`
-    quiet $`cp -R {integration}/fish/vendor_conf.d {DAEMON_DATA}/shell-integration/fish/`
-    quiet $`cp {GHOSTTY_DIR}/LICENSE {DAEMON_DATA}/LICENSE-ghostty`
-    quiet $`cp licenses/GPL-3.0.txt {DAEMON_DATA}/GPL-3.0.txt`
-    quiet $`cp packaging/muster-daemon-data/README.md {DAEMON_DATA}/README.md`
+        quiet $`mkdir -p {staged}/terminfo/{dir}`
+        quiet $`cp {compiled}/67/ghostty {staged}/terminfo/{dir}/ghostty`
+    quiet $`mkdir -p {staged}/shell-integration/fish`
+    quiet $`cp -R {integration}/bash {integration}/zsh {staged}/shell-integration/`
+    quiet $`cp -R {integration}/fish/vendor_conf.d {staged}/shell-integration/fish/`
+    quiet $`cp {GHOSTTY_DIR}/LICENSE {staged}/LICENSE-ghostty`
+    quiet $`cp licenses/GPL-3.0.txt {staged}/GPL-3.0.txt`
+    quiet $`cp packaging/muster-daemon-data/README.md {staged}/README.md`
+    // mktemp makes the directory 0700, and the daemon's panes read it as whoever they run as.
+    quiet $`chmod 755 {staged}`
+
+    unchanged = true
+    quiet $`diff -rq {staged} {DAEMON_DATA}` catch:
+        unchanged = false
+    if unchanged:
+        quiet $`rm -rf {staged}`
+        return
+    if get_path(DAEMON_DATA).exists:
+        quiet $`mv {DAEMON_DATA} {staged}.old`
+    quiet $`mv {staged} {DAEMON_DATA}`
+    quiet $`rm -rf {staged}.old`
 
 // The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
 // and a logged-in GUI session, and the default suite must stay offline and deterministic
@@ -1607,7 +1625,7 @@ if test:
 // Compiling anything needs libghostty, which is reproduced from a pin rather than checked in.
 // Lint is on this list because clippy is a compile - the style half of it needs nothing, but
 // the half that runs after the build does. Cheap to demand: a tree that already has libghostty
-// answers with one line, and the freshness check below costs a stamp read and four path tests.
+// answers with one line, and the freshness check below costs a stamp read and seven path tests.
 if build or lint or perf or linux:
     deps = true
 
