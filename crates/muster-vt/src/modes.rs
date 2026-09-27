@@ -18,6 +18,7 @@ impl Mode {
     pub const COLUMN_132: Mode = Mode::dec(3);
     pub const ORIGIN: Mode = Mode::dec(6);
     pub const WRAPAROUND: Mode = Mode::dec(7);
+    pub const CURSOR_BLINKING: Mode = Mode::dec(12);
     pub const CURSOR_VISIBLE: Mode = Mode::dec(25);
     pub const ALT_SCREEN_LEGACY: Mode = Mode::dec(47);
     pub const KEYPAD_KEYS: Mode = Mode::dec(66);

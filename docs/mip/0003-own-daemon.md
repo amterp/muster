@@ -345,7 +345,10 @@ The replay is, in order:
    not apply to it; stated rather than diffed, because the defaults that matter are the
    receiver's. Left out: the screen switches, already made in step 3; 1048, which saves the
    cursor rather than holding a state; DECCOLM, which resizes; synchronized output, which would
-   freeze the receiver; and origin mode, which comes in step 5;
+   freeze the receiver; and origin mode, which comes in step 5. Then the cursor's shape, when a
+   program changed it from a block: no formatter writes DECSCUSR, and a shell with Ghostty's
+   integration sets a bar at every prompt. Left out otherwise, so the surface keeps the shape it
+   is configured with;
 5. tabstops, the scrolling region and modifyOtherKeys, then origin mode, which is relative to
    that region;
 6. only the palette entries and OSC 10/11/12 colors a program changed, then the title and the
@@ -385,7 +388,8 @@ pieces of 1 MiB that the bridge writes in order.
 
 **A bridge that fell behind is caught up with the screen, keeping its history.** A replay opens
 with RIS, which erases the receiver's history, so a catch-up resets instead, piece by piece,
-whatever RIS would: the primary screen, the pen, hyperlink, protection and charsets, margins and
+whatever RIS would: the primary screen, the pen, hyperlink, protection and charsets, the cursor's
+shape, margins and
 the scrolling region, synchronized output, kitty flags and modifyOtherKeys, and every color a
 program set. It then erases the screen, and composes the replay's own steps from the active area
 alone, stating the title and directory even when they are empty. The screen formatter leaves

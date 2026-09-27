@@ -152,6 +152,7 @@ fn state_differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
         format!("{:?}", b.active_screen()),
     );
     compare("cursor", format!("{:?}", a.cursor()), format!("{:?}", b.cursor()));
+    compare("cursor shape", format!("{:?}", a.cursor_shape()), format!("{:?}", b.cursor_shape()));
     compare("pending wrap", a.pending_wrap().to_string(), b.pending_wrap().to_string());
     for mode in Mode::all() {
         compare(&format!("mode {mode}"), a.mode(mode).to_string(), b.mode(mode).to_string());

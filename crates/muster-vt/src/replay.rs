@@ -16,7 +16,7 @@ use crate::formatter::{
 };
 use crate::grid::Width;
 use crate::modes::Mode;
-use crate::state::{Rgb, Screen};
+use crate::state::{CursorShape, Rgb, Screen};
 use crate::terminal::Terminal;
 
 const RESET: &[u8] = b"\x1bc";
@@ -24,12 +24,12 @@ const HOME: &[u8] = b"\x1b[H";
 
 /// What RIS would reset, short of the history it would erase: the primary screen, a pen,
 /// hyperlink, protection and charsets at their defaults (an erase paints with the pen's
-/// background), margins and a scrolling region spanning the screen, no frozen rendering, no
+/// background), the cursor's shape, margins and a scrolling region spanning the screen, no frozen rendering, no
 /// kitty flags or modifyOtherKeys, and every color a program set taken back. Then the screen
 /// erased, from the top. The modes the content is written under are stated here too; every
 /// mode is stated again after it.
 const CATCH_UP_RESET: &[u8] = b"\x1b[?2026l\x1b[?1049l\x1b[?1047l\x1b[?47l\
-    \x1b[0m\x1b]8;;\x1b\\\x1b[0\"q\x1b(B\x1b)B\x1b*B\x1b+B\x0f\
+    \x1b[0m\x1b]8;;\x1b\\\x1b[0\"q\x1b[0 q\x1b(B\x1b)B\x1b*B\x1b+B\x0f\
     \x1b[4l\x1b[?7h\x1b[?6l\x1b[?69l\x1b[r\x1b[=0;1u\x1b[>4m\
     \x1b]104\x1b\\\x1b]110\x1b\\\x1b]111\x1b\\\x1b]112\x1b\\\
     \x1b[H\x1b[2J";
@@ -108,6 +108,7 @@ impl Terminal {
         // whatever the program left them as. Origin mode waits: setting it moves the cursor
         // into the scrolling region, which does not exist yet.
         self.modes(out);
+        self.cursor_shape_statement(out);
         let movers = self.format_state(FormatOptions {
             extras: Extras {
                 tabstops: true,
@@ -133,6 +134,18 @@ impl Terminal {
             extras: Extras { screen: PEN, ..Extras::default() },
             ..FormatOptions::vt()
         }));
+    }
+
+    /// The cursor's shape, when a program changed it from the block a terminal starts with,
+    /// which no formatter writes. Left out otherwise, so the receiver keeps the shape it is
+    /// configured with rather than taking this terminal's default. DECSCUSR sets the blink as
+    /// well, so it is written with the blink mode 12 already has.
+    fn cursor_shape_statement(&self, out: &mut Vec<u8>) {
+        let shape = self.cursor_shape();
+        if shape != CursorShape::Block {
+            let blinking = self.mode(Mode::CURSOR_BLINKING);
+            out.extend_from_slice(format!("\x1b[{} q", shape.decscusr(blinking)).as_bytes());
+        }
     }
 
     /// The screen-switch mode the program entered the alternate screen with, so leaving it

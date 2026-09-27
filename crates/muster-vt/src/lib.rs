@@ -27,5 +27,5 @@ pub use key_encoder::{EncoderError, KeyEncoder, RawKeyEvent};
 pub use modes::Mode;
 pub use mouse_encoder::{MouseAction, MouseButton, MouseEncoder, MouseEvent, MouseGeometry};
 pub use paste::{encode_paste, paste_is_safe};
-pub use state::{Palette, Rgb, Screen};
+pub use state::{CursorShape, Palette, Rgb, Screen};
 pub use terminal::{Terminal, TerminalError, TerminalOptions};

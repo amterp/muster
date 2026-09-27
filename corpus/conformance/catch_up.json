@@ -183,6 +183,21 @@
       "expect": {
         "differences": []
       }
+    },
+    {
+      "name": "a cursor shape the stale program set and the source took back",
+      "why": "The receiver was left with the bar a prompt asked for; the source's program has since reset it. A catch-up resets the shape with the rest of what RIS would, so the receiver shows its own default again rather than a stale bar.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 0,
+        "feed": "$ \u001b[5 q\u001b[0 qvim",
+        "stale": "$ \u001b[5 q",
+        "after": "typed"
+      },
+      "expect": {
+        "differences": []
+      }
     }
   ]
 }

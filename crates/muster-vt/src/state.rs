@@ -44,6 +44,28 @@ impl Rgb {
 /// The 256 indexed colors.
 pub type Palette = [Rgb; 256];
 
+/// The cursor's shape, as DECSCUSR sets it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorShape {
+    Bar,
+    Block,
+    Underline,
+    HollowBlock,
+}
+
+impl CursorShape {
+    /// DECSCUSR's parameter for this shape, steady or blinking. A hollow block has none of its
+    /// own, and is asked for as a block.
+    pub fn decscusr(self, blinking: bool) -> u8 {
+        let steady = match self {
+            CursorShape::Block | CursorShape::HollowBlock => 2,
+            CursorShape::Underline => 4,
+            CursorShape::Bar => 6,
+        };
+        if blinking { steady - 1 } else { steady }
+    }
+}
+
 impl Terminal {
     pub fn columns(&self) -> u16 {
         self.get(ffi::GhosttyTerminalData_GHOSTTY_TERMINAL_DATA_COLS, 0u16)
@@ -182,6 +204,45 @@ impl Terminal {
 
     /// One scalar read. `fallback` is what a read the library refuses returns, and fixes
     /// the out parameter's type - which must be the one terminal.h documents for `data`.
+    /// The cursor's shape. Only a render state reads it, so this builds one for the question:
+    /// cheap next to the replay it serves, and never on a path that runs per byte.
+    pub fn cursor_shape(&self) -> CursorShape {
+        let mut state: ffi::GhosttyRenderState = std::ptr::null_mut();
+        let mut style = ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK;
+        // SAFETY: a render state is created with the default allocator, updated from a terminal
+        // this borrow keeps alive, read into a local of the type the header documents for
+        // CURSOR_VISUAL_STYLE, and freed before return on every path.
+        unsafe {
+            if ffi::ghostty_render_state_new(std::ptr::null(), &raw mut state)
+                != ffi::GhosttyResult_GHOSTTY_SUCCESS
+            {
+                return CursorShape::Block;
+            }
+            if ffi::ghostty_render_state_update(state, self.handle())
+                == ffi::GhosttyResult_GHOSTTY_SUCCESS
+            {
+                ffi::ghostty_render_state_get(
+                    state,
+                    ffi::GhosttyRenderStateData_GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE,
+                    (&raw mut style).cast(),
+                );
+            }
+            ffi::ghostty_render_state_free(state);
+        }
+        match style {
+            ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR => {
+                CursorShape::Bar
+            }
+            ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE => {
+                CursorShape::Underline
+            }
+            ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW => {
+                CursorShape::HollowBlock
+            }
+            _ => CursorShape::Block,
+        }
+    }
+
     fn get<T: Copy>(&self, data: ffi::GhosttyTerminalData, fallback: T) -> T {
         let mut value = fallback;
         // SAFETY: every caller pairs `data` with the output type the header documents for it.

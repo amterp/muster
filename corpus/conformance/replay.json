@@ -413,6 +413,34 @@
       }
     },
     {
+      "name": "a cursor shape the program set",
+      "why": "No formatter writes DECSCUSR, and a shell with Ghostty's integration sets a bar at every prompt, so a pane attached at a prompt showed the receiver's default shape until the next prompt. The blink comes through mode 12 on its own; the shape needs saying.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 0,
+        "feed": "$ \u001b[5 q",
+        "after": "typed"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a steady underline the program set",
+      "why": "The blink DECSCUSR writes must agree with mode 12, which the replay states earlier: a steady shape stated as blinking would undo it.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 0,
+        "feed": "$ \u001b[4 q",
+        "after": "typed"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
       "name": "protected cells on the screen",
       "why": "DECSCA marks cells a selective erase must skip. The formatter writes no per-cell protection, so replayed cells lose it and the next selective erase wipes them. Known gap, pinned: selective erase is rare enough that no carried patch is worth it, and the pen's protection - what the program writes next - is the case after this one.",
       "given": {
