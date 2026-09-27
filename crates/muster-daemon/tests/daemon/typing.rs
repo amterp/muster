@@ -193,6 +193,24 @@ fn sent_text_goes_as_a_paste_and_is_submitted_with_a_return() {
     received(&plain, &expected);
 }
 
+/// A send with no text and a Return is the Return alone. An empty paste before it is text
+/// nobody sent, and a program that fences pastes may take the Return right after one as part
+/// of the paste: a Claude Code prompt was left unsubmitted that way.
+#[test]
+fn an_empty_send_with_a_return_is_the_return_alone() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let fenced = receiving(&mut control, &daemon, "fenced", b"\x1b[?2004h");
+    let mut input = Input::connect(daemon.socket_path());
+    input.send("fenced", Event::Send(input_event::Send { text: String::new(), enter: true }));
+
+    let encoder = key_encoder(&after(b"\x1b[?2004h"));
+    let mut expected = encoder.encode(&KeyEvent::press(Key::Enter)).unwrap();
+    let release = KeyEvent { action: KeyAction::Release, ..KeyEvent::press(Key::Enter) };
+    expected.extend(encoder.encode(&release).unwrap());
+    received(&fenced, &expected);
+}
+
 /// A long send reaches a program reading raw input whole, in however many writes the pty takes.
 #[test]
 fn a_long_send_reaches_a_raw_reader_whole() {

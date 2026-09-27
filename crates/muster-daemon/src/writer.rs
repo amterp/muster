@@ -222,6 +222,20 @@ pub(crate) struct Writer {
     scroll: Scroll,
 }
 
+/// The bytes of text a program or agent sent. Not a clipboard, so never held; fenced when the
+/// program asked, so a newline in it is text rather than a Return. No text is no paste: an
+/// empty one is still a paste to the program, which may take a Return straight after it as part
+/// of it - a Claude Code prompt was left unsubmitted that way.
+fn sent_text(text: String, bracketed_paste: bool) -> Vec<u8> {
+    if text.is_empty() {
+        Vec::new()
+    } else if bracketed_paste {
+        encode_paste(&text, true)
+    } else {
+        text.into_bytes()
+    }
+}
+
 impl Writer {
     pub(crate) fn new(
         pane: String,
@@ -341,13 +355,7 @@ impl Writer {
                 encode_paste(&text, false)
             }
             Input::Send { text, enter } => {
-                // A program or agent speaking, not a clipboard, so it is never held; fenced
-                // when the program asked, so a newline in it is text rather than a Return.
-                let mut bytes = if modes.bracketed_paste {
-                    encode_paste(&text, true)
-                } else {
-                    text.into_bytes()
-                };
+                let mut bytes = sent_text(text, modes.bracketed_paste);
                 if enter {
                     for action in [KeyAction::Press, KeyAction::Release] {
                         let key = KeyEvent { action, ..KeyEvent::press(Key::Enter) };
