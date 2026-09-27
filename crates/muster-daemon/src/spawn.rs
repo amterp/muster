@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
+use crate::shell_integration::{self, Integration};
+
 /// Variables the daemon sets itself on every pane, which an inherited or requested copy never
 /// overrides: a pane must not be told it is some other pane.
 const PANE_NAME: &str = "MUSTER_PANE";
@@ -22,6 +24,27 @@ const NOT_INHERITED: [&str; 3] = [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND];
 /// which describe that terminal rather than this pane. A requested copy is still honored.
 const GHOSTTY_PREFIX: &str = "GHOSTTY_";
 
+/// What a pane starts: `shell`, with Ghostty's integration for it from `scripts`, running the
+/// pane's command first if it has one. `environment` is the pane's, from [`environment`].
+pub(crate) fn start(
+    shell: &str,
+    login: bool,
+    runs_command: bool,
+    mut environment: Vec<(OsString, OsString)>,
+    scripts: &Path,
+) -> (Vec<String>, Vec<(OsString, OsString)>) {
+    let integration = shell_integration::for_shell(shell, &environment, scripts);
+    let argv = argv(shell, login, runs_command, &integration);
+    // A command's shell runs it clean; the integration is for the shell it becomes, and the
+    // exec line carries it there (`argv`).
+    if !runs_command {
+        for (name, value) in &integration.environment {
+            put(&mut environment, name, value);
+        }
+    }
+    (argv, environment)
+}
+
 /// The argv a pane starts with.
 ///
 /// An interactive shell, a login one unless asked otherwise (MIP-3, section 3). A command runs
@@ -34,18 +57,35 @@ const GHOSTTY_PREFIX: &str = "GHOSTTY_";
 /// heredoc would swallow the `exec` after it and the pane would close. Through `eval` it is a
 /// shell error like any other, and the `exec` still runs. `eval "$VARIABLE"` means the same in
 /// sh, bash, zsh and fish - but see [`evaluate`] for how each is asked.
-pub(crate) fn argv(shell: &str, login: bool, runs_command: bool) -> Vec<String> {
-    let mut argv = vec![shell.to_string()];
+///
+/// Only the interactive shell gets the integration. Given to the shell that runs the command,
+/// it would be undone before the `exec`: zsh's `.zshenv` and fish's script each take their own
+/// injection back out as they load, so the shell exec'd after would start without it, and
+/// bash's `ENV` would reach the command and everything it starts. So the `exec` sets the
+/// integration's variables itself, through `env`, which every shell here can exec.
+fn argv(shell: &str, login: bool, runs_command: bool, integration: &Integration) -> Vec<String> {
     let flags: &[&str] = if login { &["-l", "-i"] } else { &["-i"] };
-    argv.extend(flags.iter().map(|flag| (*flag).to_string()));
+    let mut argv = vec![shell.to_string()];
     if runs_command {
+        argv.extend(flags.iter().map(|flag| (*flag).to_string()));
+        let mut exec = vec!["exec".to_string()];
+        if !integration.environment.is_empty() {
+            exec.push("env".to_string());
+            exec.extend(
+                integration
+                    .environment
+                    .iter()
+                    .map(|(name, value)| quote(&format!("{name}={value}"))),
+            );
+        }
+        exec.push(quote(shell));
+        exec.extend(integration.arguments.iter().cloned());
+        exec.extend(flags.iter().map(|flag| (*flag).to_string()));
         argv.push("-c".to_string());
-        argv.push(format!(
-            "{} \"${PANE_COMMAND}\"\nexec {} {}",
-            evaluate(shell),
-            quote(shell),
-            flags.join(" ")
-        ));
+        argv.push(format!("{} \"${PANE_COMMAND}\"\n{}", evaluate(shell), exec.join(" ")));
+    } else {
+        argv.extend(integration.arguments.iter().cloned());
+        argv.extend(flags.iter().map(|flag| (*flag).to_string()));
     }
     argv
 }
@@ -76,6 +116,11 @@ pub(crate) const TERM: &str = "xterm-ghostty";
 
 /// The Ghostty a pane runs in, as far as a program is concerned: the pinned one (`build.rs`).
 const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
+
+/// Ghostty's default features for its shell integration, which its scripts read, and which it
+/// sets whether or not a script was loaded. `sudo` and the `ssh-*` features stay off, as they do
+/// in Ghostty, and would need a Ghostty binary if they were on.
+const SHELL_FEATURES: &str = "cursor:blink,path,title";
 
 /// A pane's environment: what the daemon inherited, less what names another pane or describes
 /// another terminal, plus what the request asked for, plus what the daemon sets itself.
@@ -115,6 +160,7 @@ pub(crate) fn environment(
     put(&mut environment, "COLORTERM", "truecolor");
     put(&mut environment, "TERM_PROGRAM", "ghostty");
     put(&mut environment, "TERM_PROGRAM_VERSION", GHOSTTY_VERSION);
+    put(&mut environment, "GHOSTTY_SHELL_FEATURES", SHELL_FEATURES);
     put(&mut environment, PANE_NAME, pane);
     if let Some(command) = command {
         put(&mut environment, PANE_COMMAND, command);
@@ -136,18 +182,21 @@ mod tests {
 
     #[test]
     fn a_shell_alone_is_interactive_and_login_unless_asked_otherwise() {
-        assert_eq!(argv("/bin/zsh", true, false), ["/bin/zsh", "-l", "-i"]);
-        assert_eq!(argv("/bin/zsh", false, false), ["/bin/zsh", "-i"]);
+        assert_eq!(
+            argv("/bin/zsh", true, false, &Integration::default()),
+            ["/bin/zsh", "-l", "-i"]
+        );
+        assert_eq!(argv("/bin/zsh", false, false, &Integration::default()), ["/bin/zsh", "-i"]);
     }
 
     #[test]
     fn a_command_is_evaluated_and_then_the_shell_becomes_itself() {
         assert_eq!(
-            argv("/bin/zsh", true, true),
+            argv("/bin/zsh", true, true, &Integration::default()),
             ["/bin/zsh", "-l", "-i", "-c", "eval \"$MUSTER_PANE_COMMAND\"\nexec '/bin/zsh' -l -i"]
         );
         assert_eq!(
-            argv("/opt/it's/fish", false, true),
+            argv("/opt/it's/fish", false, true, &Integration::default()),
             [
                 "/opt/it's/fish",
                 "-i",
@@ -156,7 +205,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            argv("/bin/sh", true, true),
+            argv("/bin/sh", true, true, &Integration::default()),
             [
                 "/bin/sh",
                 "-l",
@@ -204,6 +253,7 @@ mod tests {
                 ("TERMINFO_DIRS", "/data/terminfo:"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
+                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,title"),
             ]))
         );
     }
@@ -232,6 +282,7 @@ mod tests {
                 ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
+                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,title"),
             ]))
         );
     }
@@ -242,5 +293,45 @@ mod tests {
         let (version, commit) = GHOSTTY_VERSION.split_once('+').unwrap();
         assert_eq!(commit, &pin[..8]);
         assert!(version.starts_with(|c: char| c.is_ascii_digit()), "{version}");
+    }
+
+    #[test]
+    fn a_shell_pane_starts_integrated() {
+        let (argv, environment) =
+            start("/usr/bin/bash", true, false, pairs(&[("HISTFILE", "/h")]), Path::new("/s"));
+        assert_eq!(argv, ["/usr/bin/bash", "--posix", "-l", "-i"]);
+        assert_eq!(
+            sorted(environment),
+            sorted(pairs(&[
+                ("HISTFILE", "/h"),
+                ("ENV", "/s/bash/ghostty.bash"),
+                ("GHOSTTY_BASH_INJECT", "1"),
+            ]))
+        );
+    }
+
+    #[test]
+    fn a_command_runs_clean_and_the_shell_it_becomes_is_integrated() {
+        let (argv, environment) = start("/bin/zsh", true, true, Vec::new(), Path::new("/s"));
+        assert_eq!(
+            argv,
+            [
+                "/bin/zsh",
+                "-l",
+                "-i",
+                "-c",
+                "eval \"$MUSTER_PANE_COMMAND\"\nexec env 'ZDOTDIR=/s/zsh' '/bin/zsh' -l -i"
+            ]
+        );
+        assert!(environment.is_empty(), "{environment:?}");
+
+        let (argv, _) = start("/bin/bash", false, true, Vec::new(), Path::new("/it's"));
+        if !cfg!(target_os = "macos") {
+            assert_eq!(
+                argv[3],
+                "command eval \"$MUSTER_PANE_COMMAND\"\nexec env 'ENV=/it'\\''s/bash/ghostty.bash' \
+                 'GHOSTTY_BASH_INJECT=1' '/bin/bash' --posix -i"
+            );
+        }
     }
 }

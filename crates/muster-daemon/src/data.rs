@@ -58,4 +58,10 @@ impl Data {
     pub(crate) fn terminfo(&self) -> PathBuf {
         self.dir.join("terminfo")
     }
+
+    /// Laid out as Ghostty lays out `<resources>/shell-integration`, which its scripts rely on
+    /// to find each other.
+    pub(crate) fn shell_integration(&self) -> PathBuf {
+        self.dir.join("shell-integration")
+    }
 }

@@ -16,6 +16,7 @@ mod pty;
 mod screen;
 mod server;
 mod session;
+mod shell_integration;
 mod spawn;
 mod stream;
 mod tree;

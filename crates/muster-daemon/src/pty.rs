@@ -10,7 +10,6 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
 use crate::descriptors::Sealing;
-use crate::spawn;
 
 /// A pane's size in cells, and the pixels those cells cover.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,13 +198,10 @@ fn account_shell() -> Option<String> {
     shell.to_str().ok().filter(|shell| !shell.is_empty()).map(str::to_string)
 }
 
-/// The argv for a pane given the configured shell settings.
-pub(crate) fn argv(
+/// The shell a pane runs: the configured one, else the default.
+pub(crate) fn shell(
     configured: Option<&str>,
-    login: bool,
-    runs_command: bool,
     environment: &[(std::ffi::OsString, std::ffi::OsString)],
-) -> Vec<String> {
-    let shell = configured.map_or_else(|| default_shell(environment), str::to_string);
-    spawn::argv(&shell, login, runs_command)
+) -> String {
+    configured.map_or_else(|| default_shell(environment), str::to_string)
 }

@@ -411,14 +411,19 @@ impl Session {
 
         let shell = self.settings.shell.clone().unwrap_or_default();
         let login = shell.mode() != proto::ShellMode::NonLogin;
-        let argv =
-            pty::argv(shell.command.as_deref(), login, create.command.is_some(), &self.inherited);
         let environment = spawn::environment(
             &self.inherited,
             &create.env,
             &create.pane,
             create.command.as_deref(),
             &self.data.terminfo(),
+        );
+        let (argv, environment) = spawn::start(
+            &pty::shell(shell.command.as_deref(), &self.inherited),
+            login,
+            create.command.is_some(),
+            environment,
+            &self.data.shell_integration(),
         );
 
         self.reserved.insert(create.pane.clone());

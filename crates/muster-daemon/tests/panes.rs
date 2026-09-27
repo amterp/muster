@@ -262,7 +262,10 @@ fn closing_a_pane_hangs_up_its_processes_and_reaps_them() {
     let pid = written(&pid);
 
     let closed = expect(&mut control, close_request("p2"), proto::Outcome::Done);
-    assert_eq!(names(&closed.events), ["tab_changed:t1", "pane_closed:p2"]);
+    // p1 is an integrated bash, which titles itself after each prompt whenever it gets there.
+    let mut published = names(&closed.events);
+    published.retain(|name| name != "pane_changed:p1");
+    assert_eq!(published, ["tab_changed:t1", "pane_closed:p2"]);
     assert_eq!(written(&hup), "hup\n");
     until(
         "the closed pane's shell to be reaped",
