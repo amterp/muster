@@ -52,8 +52,9 @@ are what Ghostty uses to write a crash report, and Ghostty compiles no DSN into
 them - the reports are written to disk for a person to send on if they choose.
 Muster changes nothing about that and adds no endpoint of its own.
 
-muster-daemon ships with a directory beside it, muster-daemon-data, which ./dev
-copies unchanged from the Ghostty checkout at deps/ghostty.pin. None of it is
+muster-daemon ships with a directory, muster-daemon-data, which ./dev copies
+unchanged from the Ghostty checkout at deps/ghostty.pin. A build puts it beside
+the daemon; the app bundle keeps it in the daemon's own Resources. None of it is
 compiled into the daemon; the daemon points the shells it starts at it. It holds:
 
   Ghostty's xterm-ghostty terminfo entry and its fish shell integration, under
@@ -72,17 +73,13 @@ compiled into the daemon; the daemon points the shells it starts at it. It holds
   travels in the directory as GPL-3.0.txt, beside a README naming which file is
   under which license.
 
-Muster's app bundle redistributes herdr (https://github.com/herdrdev/herdr),
-licensed under the Apache License, Version 2.0. The binary is the release named
-in deps/herdr.pin, unmodified; a copy of its license ships beside it in the
-bundle and is kept at licenses/herdr/LICENSE. That copy is herdr's own file
-byte for byte, including the unfilled placeholders in the Apache appendix -
-which is why it names nobody, and why this paragraph rather than that file is
-where herdr is attributed. Muster starts that daemon and speaks to it over its
-socket.
-
-Muster's source also carries herdr code, under the same license. The crate
-crates/muster-detect ports herdr v0.8.0's agent detection, and changes it:
+Muster carries code from herdr (https://github.com/herdrdev/herdr), licensed
+under the Apache License, Version 2.0, compiled into muster-daemon. A copy of
+that license ships in the app bundle as LICENSE-herdr.txt and is kept at
+licenses/herdr/LICENSE. That copy is herdr's own file byte for byte, including
+the unfilled placeholders in the Apache appendix - which is why it names nobody,
+and why this paragraph rather than that file is where herdr is attributed. The
+crate crates/muster-detect ports herdr v0.8.0's agent detection, and changes it:
 src/manifest.rs and src/manifests.rs port src/detect/manifest.rs and the version
 type in src/detect/manifest_update.rs; src/identify.rs ports the process
 identification in src/detect/mod.rs and src/pane.rs; src/process.rs and

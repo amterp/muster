@@ -8,10 +8,15 @@
 # Relative to the loading binary, so a checkout works without installing anything. The two
 # depths are `target/<profile>/` for a binary and `target/<profile>/deps/` for a test
 # executable. Package.swift carries the same pair for the same reason.
+#
+# The header padding is for `./dev --bundle`, which adds a bundle's rpath to a binary after it
+# is linked: without room left in the Mach-O header, install_name_tool refuses, and it did for
+# muster-daemon.
 [target.'cfg(target_os = "macos")']
 rustflags = [
     "-C", "link-arg=-Wl,-rpath,@loader_path/../../deps/ghostty/zig-out/lib",
     "-C", "link-arg=-Wl,-rpath,@loader_path/../../../deps/ghostty/zig-out/lib",
+    "-C", "link-arg=-Wl,-headerpad_max_install_names",
 ]
 
 # The Linux daemons, cross-compiled from the Mac (MIP-3, section 12). rust-lld links them against

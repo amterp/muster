@@ -207,6 +207,10 @@ jobs:
 
       - name: Build, sign, notarize and staple
         env:
+          # The name the release's daemon and app agree on for their socket. Without it
+          # every build is named for the checkout it came from, and two released versions
+          # could not find each other's daemon.
+          MUSTER_INSTALL: release
           MUSTER_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
           MUSTER_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           MUSTER_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
