@@ -1527,7 +1527,6 @@ pub(crate) fn submit(
     };
 
     let mut session = poison::lock(&SESSION, "session");
-    let mut moved = false;
     // A tab this request made is shown. Not for a move, which is the one request here that
     // makes a tab without being about one: it makes a place to put a pane. Bringing that tab on
     // screen would put the tab somebody was working in behind it, so "pull that pane out of the
@@ -1538,7 +1537,7 @@ pub(crate) fn submit(
         && let Some(tab) = created_tab
     {
         session.composition.hold(tab.clone());
-        moved |= session.composition.surface(daemon, tab).is_some();
+        session.composition.surface(daemon, tab);
     }
     if let Some(created) = created {
         let made = PaneKey::new(daemon, created);
@@ -1555,13 +1554,13 @@ pub(crate) fn submit(
         }
         if let (Some(region), Keyboard::Follows) = (region, keyboard) {
             session.composition.focus_pane(region, created.clone());
-            moved = true;
         }
     }
     drop(session);
-    if moved {
-        publish("intent");
-    }
+    // Always, so a caller that asks for the view next sees what it asked for. The mirror is
+    // already current, but the daemon's notices are announced on a thread of their own, and
+    // the publish behind them may not have run yet. One that finds nothing new sends nothing.
+    publish("intent");
     // The pane, so a caller can name it in its next breath: the name was minted inside this
     // call. The refusal's kind survives rather than being flattened to its sentence. A daemon
     // saying it does not hold what was named is the one a caller may have to reword: asked
