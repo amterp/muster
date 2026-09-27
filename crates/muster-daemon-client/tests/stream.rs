@@ -250,7 +250,7 @@ fn a_takeover_ends_the_stream_it_displaced() {
     assert!(
         matches!(
             Attachment::open(daemon.socket_path(), "p1", GRID, false, "test"),
-            Err(AttachError::Refused(_))
+            Err(AttachError::Refused { kind: proto::AttachRefusal::AttachedElsewhere, .. })
         ),
         "a second attach without takeover is refused"
     );
@@ -265,8 +265,23 @@ fn a_takeover_ends_the_stream_it_displaced() {
 fn a_pane_that_is_not_there_is_refused() {
     let daemon = Daemon::start_built();
     let refused = Attachment::open(daemon.socket_path(), "nowhere", GRID, false, "test");
-    let Err(AttachError::Refused(reason)) = refused else {
-        panic!("an attach to no pane is refused, and got {refused:?}");
+    let Err(AttachError::Refused { kind: proto::AttachRefusal::NoPane, reason }) = refused else {
+        panic!("an attach to no pane is refused as no pane, and got {refused:?}");
     };
     assert!(reason.contains("nowhere"), "{reason}");
+}
+
+/// A grid no terminal can have is refused as that, which says nothing about whether the pane
+/// is there to be drawn.
+#[test]
+fn a_grid_of_no_cells_is_refused_as_a_bad_grid() {
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, running("p1", "t1", "cat"));
+    let empty = proto::Grid { cols: 0, rows: 0, ..GRID };
+    let refused = Attachment::open(daemon.socket_path(), "p1", empty, false, "test");
+    assert!(
+        matches!(refused, Err(AttachError::Refused { kind: proto::AttachRefusal::BadGrid, .. })),
+        "{refused:?}"
+    );
 }

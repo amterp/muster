@@ -978,6 +978,25 @@ message StreamMessage {
 
 message StreamRefused {
   string reason = 1;
+  AttachRefusal kind = 2;
+}
+
+// Which refusal it was, so that a bridge can tell a pane that is gone from an attach worth
+// trying again without reading the reason's prose.
+enum AttachRefusal {
+  ATTACH_REFUSAL_UNSPECIFIED = 0;
+  // The daemon holds no pane by that name.
+  ATTACH_REFUSAL_NO_PANE = 1;
+  // The pane is closing.
+  ATTACH_REFUSAL_PANE_CLOSED = 2;
+  // Another bridge is drawing the pane, and this one did not ask to take it over.
+  ATTACH_REFUSAL_ATTACHED_ELSEWHERE = 3;
+  // The grid is not one a terminal can have, such as zero cells.
+  ATTACH_REFUSAL_BAD_GRID = 4;
+  // The stream's first message did not read, or was not an attach.
+  ATTACH_REFUSAL_MALFORMED = 5;
+  // The daemon could not hold the stream, for want of a descriptor or a thread.
+  ATTACH_REFUSAL_UNAVAILABLE = 6;
 }
 
 enum DetachReason {

@@ -83,7 +83,7 @@ pub struct Surface {
     pub replays: usize,
     pub behind: usize,
     pub detached: Option<proto::DetachReason>,
-    pub refused: Option<String>,
+    pub refused: Option<proto::StreamRefused>,
     /// The daemon hung up.
     pub ended: bool,
 }
@@ -119,7 +119,7 @@ impl Surface {
             }
             Some(Streamed::Behind(_)) => self.behind += 1,
             Some(Streamed::Detached(detached)) => self.detached = Some(detached.reason()),
-            Some(Streamed::Refused(refused)) => self.refused = Some(refused.reason),
+            Some(Streamed::Refused(refused)) => self.refused = Some(refused),
             None => self.ended = true,
         }
     }

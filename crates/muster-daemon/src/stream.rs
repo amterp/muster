@@ -139,8 +139,8 @@ impl Bridge {
         self.id
     }
 
-    pub(crate) fn refused(self, reason: String) -> Refusal {
-        Refusal { frames: self.frames, reason }
+    pub(crate) fn refused(self, kind: proto::AttachRefusal, reason: String) -> Refusal {
+        Refusal { frames: self.frames, kind, reason }
     }
 
     pub(crate) fn attached(&self, offset: u64) {
@@ -204,8 +204,9 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
             return;
         }
     };
-    let refuse = |frames: Sender<Vec<u8>>, reason: String| {
-        let refused = stream_message::Message::Refused(proto::StreamRefused { reason });
+    let refuse = |frames: Sender<Vec<u8>>, kind: proto::AttachRefusal, reason: String| {
+        let refused =
+            stream_message::Message::Refused(proto::StreamRefused { reason, kind: kind.into() });
         let _ = frames.send(proto::StreamMessage { message: Some(refused) }.encode_to_vec());
     };
 
@@ -215,36 +216,52 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
         })) => attach,
         Ok(None) => return,
         Ok(Some(_)) => {
-            refuse(frames, "a stream's first message attaches it to a pane".to_string());
+            refuse(
+                frames,
+                proto::AttachRefusal::Malformed,
+                "a stream's first message attaches it to a pane".to_string(),
+            );
             return;
         }
         Err(error) => {
-            refuse(frames, format!("the stream's first message did not read: {error}"));
+            refuse(
+                frames,
+                proto::AttachRefusal::Malformed,
+                format!("the stream's first message did not read: {error}"),
+            );
             return;
         }
     };
     let Some(io) = shared.lock().pane_io(&attach.pane) else {
-        refuse(frames, format!("no pane {} on this daemon", attach.pane));
+        refuse(
+            frames,
+            proto::AttachRefusal::NoPane,
+            format!("no pane {} on this daemon", attach.pane),
+        );
         return;
     };
     let grid = match attach.grid.map(session::grid).transpose() {
         Ok(grid) => grid,
         Err(reason) => {
-            refuse(frames, reason);
+            refuse(frames, proto::AttachRefusal::BadGrid, reason);
             return;
         }
     };
     let socket = match stream.try_clone() {
         Ok(socket) => socket,
         Err(error) => {
-            refuse(frames, format!("the daemon could not hold the stream: {error}"));
+            refuse(
+                frames,
+                proto::AttachRefusal::Unavailable,
+                format!("the daemon could not hold the stream: {error}"),
+            );
             return;
         }
     };
     let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
     let bridge = Bridge { id, frames, credit: Credit::new(window(attach.window)), socket };
     if let Err(refusal) = io.attach(bridge, grid, attach.takeover) {
-        refuse(refusal.frames, refusal.reason);
+        refuse(refusal.frames, refusal.kind, refusal.reason);
         return;
     }
     log::info("daemon.stream.attached", fields! { "pane" => attach.pane, "bridge" => id });
@@ -332,6 +349,7 @@ impl Bridge {
 #[derive(Debug)]
 pub(crate) struct Refusal {
     pub(crate) frames: Sender<Vec<u8>>,
+    pub(crate) kind: proto::AttachRefusal,
     pub(crate) reason: String,
 }
 

@@ -89,7 +89,9 @@ fn a_second_bridge_is_refused_unless_it_takes_over_and_the_first_is_told() {
     let mut second = attached(&daemon, "p1", false);
     let mut refused = Surface::new(80, 24);
     refused.follow(&mut second, "a refusal", true, |surface| surface.refused.is_some());
-    assert!(refused.refused.as_deref().unwrap().contains("takeover"));
+    let said = refused.refused.unwrap();
+    assert_eq!(said.kind(), proto::AttachRefusal::AttachedElsewhere);
+    assert!(said.reason.contains("takeover"), "{}", said.reason);
 
     let mut third = attached(&daemon, "p1", true);
     let mut taking = Surface::new(80, 24);
@@ -102,7 +104,9 @@ fn a_second_bridge_is_refused_unless_it_takes_over_and_the_first_is_told() {
     let mut missing = attached(&daemon, "nowhere", false);
     let mut nothing = Surface::new(80, 24);
     nothing.follow(&mut missing, "a refusal", true, |surface| surface.refused.is_some());
-    assert!(nothing.refused.as_deref().unwrap().contains("no pane nowhere"));
+    let said = nothing.refused.unwrap();
+    assert_eq!(said.kind(), proto::AttachRefusal::NoPane);
+    assert!(said.reason.contains("no pane nowhere"), "{}", said.reason);
 }
 
 #[test]

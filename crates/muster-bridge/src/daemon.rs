@@ -13,7 +13,7 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::respawn::{Ended as Exit, Ending};
 use muster_daemon_client::stream::{AttachError, Attachment, Ended, Happened};
-use muster_daemon_proto::{DetachReason, Grid};
+use muster_daemon_proto::{AttachRefusal, DetachReason, Grid};
 
 use crate::link::{CountedSurface, Counting, Link};
 use crate::pty;
@@ -168,14 +168,18 @@ fn exit(ended: &Ended, rendered: bool) -> Exit {
 
 /// What the window is told about an attach the daemon refused.
 ///
-/// The daemon states a refusal in prose, so this reads its two: another bridge is drawing the
-/// pane, or there is no such pane. The bridge's tests drive both against the real daemon, so a
-/// reworded refusal fails there rather than here in the field.
+/// Only a pane the daemon no longer holds is gone, and only another bridge drawing it is a
+/// refusal the window should respect. Every other refusal says nothing about the pane, so the
+/// window may start another bridge for it.
 fn refusal(error: &AttachError) -> Exit {
     let ending = match error {
-        AttachError::Refused(reason) if reason.starts_with("another bridge") => Ending::Refused,
-        AttachError::Refused(_) => Ending::Gone,
-        AttachError::Handshake(_) | AttachError::Broken(_) => Ending::Lost,
+        AttachError::Refused {
+            kind: AttachRefusal::NoPane | AttachRefusal::PaneClosed, ..
+        } => Ending::Gone,
+        AttachError::Refused { kind: AttachRefusal::AttachedElsewhere, .. } => Ending::Refused,
+        AttachError::Refused { .. } | AttachError::Handshake(_) | AttachError::Broken(_) => {
+            Ending::Lost
+        }
     };
     Exit { ending, reason: Some(error.to_string()), rendered: false }
 }
@@ -260,6 +264,25 @@ mod tests {
         assert_eq!(exit_status(&Ended::HungUp), 0);
         for reason in [DetachReason::Closed, DetachReason::Exited, DetachReason::TakenOver] {
             assert_eq!(exit_status(&Ended::Detached(reason)), 0, "{reason:?}");
+        }
+    }
+
+    /// Only a pane that is not there is gone, and only another bridge drawing it is to be
+    /// respected; any other refusal leaves the window free to try again.
+    #[test]
+    fn a_refusal_is_gone_only_when_the_pane_is() {
+        let refused = |kind| AttachError::Refused { kind, reason: String::new() };
+        let cases = [
+            (AttachRefusal::NoPane, Ending::Gone),
+            (AttachRefusal::PaneClosed, Ending::Gone),
+            (AttachRefusal::AttachedElsewhere, Ending::Refused),
+            (AttachRefusal::BadGrid, Ending::Lost),
+            (AttachRefusal::Malformed, Ending::Lost),
+            (AttachRefusal::Unavailable, Ending::Lost),
+            (AttachRefusal::Unspecified, Ending::Lost),
+        ];
+        for (kind, ending) in cases {
+            assert_eq!(refusal(&refused(kind)).ending, ending, "{kind:?}");
         }
     }
 }

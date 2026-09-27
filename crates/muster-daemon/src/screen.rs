@@ -280,6 +280,7 @@ impl Screen {
     pub(crate) fn attach(&mut self, bridge: Bridge, takeover: bool) -> Result<(), Refusal> {
         if self.bridge.is_some() && !takeover {
             return Err(bridge.refused(
+                proto::AttachRefusal::AttachedElsewhere,
                 "another bridge is drawing this pane; attach with takeover to replace it"
                     .to_string(),
             ));

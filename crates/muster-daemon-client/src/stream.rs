@@ -28,8 +28,8 @@ pub struct Attachment {
 pub enum AttachError {
     /// No daemon answered on the socket, or it would not talk to this client.
     Handshake(HandshakeError),
-    /// The daemon answered and would not attach, for the reason it gave.
-    Refused(String),
+    /// The daemon answered and would not attach: which refusal it was, and the reason it gave.
+    Refused { kind: proto::AttachRefusal, reason: String },
     /// The daemon went away or answered with something other than an attach's answer.
     Broken(String),
 }
@@ -38,7 +38,9 @@ impl std::fmt::Display for AttachError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AttachError::Handshake(error) => write!(formatter, "{error}"),
-            AttachError::Refused(reason) => write!(formatter, "the daemon refused: {reason}"),
+            AttachError::Refused { reason, .. } => {
+                write!(formatter, "the daemon refused: {reason}")
+            }
             AttachError::Broken(why) => write!(formatter, "the attach did not complete: {why}"),
         }
     }
@@ -105,7 +107,9 @@ impl Attachment {
             })) => attached.offset,
             Ok(Some(proto::StreamMessage {
                 message: Some(stream_message::Message::Refused(refused)),
-            })) => return Err(AttachError::Refused(refused.reason)),
+            })) => {
+                return Err(AttachError::Refused { kind: refused.kind(), reason: refused.reason });
+            }
             Ok(Some(other)) => {
                 return Err(AttachError::Broken(format!("the daemon answered {other:?}")));
             }

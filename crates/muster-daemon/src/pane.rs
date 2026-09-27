@@ -347,7 +347,9 @@ impl PaneIo {
         // Checked under the pane's lock, which the hang-up takes after setting the flag: a
         // bridge either sees the pane closed here, or is registered in time to be detached.
         if self.is_closed() {
-            return Err(bridge.refused("the pane has closed".to_string()));
+            return Err(
+                bridge.refused(proto::AttachRefusal::PaneClosed, "the pane has closed".to_string())
+            );
         }
         if let Some(grid) = grid.filter(|&grid| grid != self.grid()) {
             self.resize_locked(&mut screen, grid);
