@@ -1,0 +1,31 @@
+//! muster-core's integration tests, as one binary rather than one per file: see docs/testing.md.
+
+mod agent_state;
+mod attention;
+mod bindings;
+mod change_consequences;
+mod chord;
+mod composition;
+mod composition_arbiter;
+mod composition_saved;
+mod config;
+mod daemons;
+mod equalize;
+mod find;
+mod font_family;
+mod keymap;
+mod log_record;
+mod mirror;
+mod names;
+mod pane_grid;
+mod pane_input;
+mod pane_painting;
+mod poison;
+mod problems;
+mod reconnect;
+mod respawn;
+mod roster;
+mod support;
+mod tab_holding;
+mod typeable;
+mod window_frame;

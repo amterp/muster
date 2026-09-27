@@ -1,0 +1,32 @@
+//! muster-seam's integration tests, as one binary rather than one per file: see docs/testing.md.
+
+mod across_machines;
+mod agent_states;
+mod arranging;
+mod attach;
+mod background_tab;
+mod carrying;
+mod cold_start;
+mod command;
+mod confirmed_send;
+mod daemon_census;
+mod dispatch;
+mod geometry;
+mod hidden_before_dial;
+mod holding;
+mod inherited;
+mod just_made;
+mod numbering;
+mod pane_gone;
+mod presentation;
+mod publish_order;
+mod quitting;
+mod remembered_names;
+mod reopen;
+mod republish;
+mod respawn;
+mod stalled;
+mod text_size;
+mod unanswered;
+mod untypeable;
+mod window_frame;
