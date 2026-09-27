@@ -6,7 +6,7 @@ One name per concept; docs and code use these terms. Alphabetical.
   it.
 - **agent state** - working / blocked / idle / done / unknown, per pane. Daemon-detected, except `done`, which Muster
   derives from seen-ness.
-- **backend** - the daemon system that owns sessions; herdr today.
+- **backend** - the daemon system that owns sessions: `muster-daemon`, Muster's own since it replaced herdr (MIP-3).
 - **backend session** - one live connection to one daemon.
 - **bridge** - the subprocess a surface runs to deliver a pane channel; output only.
 - **composition** - the Muster-owned arrangement: which daemons are attached, which tabs the window holds and in
@@ -17,15 +17,15 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **core** - the headless, OS-free view-model: mirror, dispatcher, keymap, attention, config.
 - **daemon** - one running backend server instance owning PTYs and sessions, local or remote.
 - **data plane** - output only: pane channels, adapter to surface, bypassing the core.
-- **devenv container** - the repo's Linux container (sshd, Linux herdr, scripted fake agents); dev sandbox and
-  remote-path test fixture in one.
+- **devenv container** - the repo's Linux container, running sshd and no daemon until a remote test or an attach
+  installs this build's; dev sandbox and remote-path test fixture in one.
 - **command endpoint** - the unix socket a window answers requests on, at
   `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
   which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
-- **frame** - one screen-diff message on a pane channel.
+- **frame** - one message on a socket: a four-byte length, then that many bytes (`muster-frame`).
 - **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
   lists only the tabs it holds; the record is `~/.muster/state/holding/tabs.toml`, shared by every window.
-- **intent** - a requested mutation sent to a daemon (split, focus, resize, input, scroll, spawn). Muster never
+- **intent** - a requested mutation sent to a daemon (split, close, resize, zoom, input, spawn). Muster never
   mutates; it requests.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
   authoritative.
@@ -33,8 +33,7 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **pane name** - what Muster calls a pane: `p1w3r07bsd`, minted by Muster rather than borrowed from the backend,
   unique across every attached machine, and never reused. What every message and every CLI argument means by a pane.
   A pane reads its own from `MUSTER_PANE`.
-- **pane channel** - the output stream feeding one surface. With herdr: server-rendered frame diffs, not raw program
-  output.
+- **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
 - **pane tree** - the split layout inside one tab; daemon truth.
 - **region** - the part of a Muster tab that one machine holds, as it sits on screen: that machine's pane tree,
   and how wide it is. One for every tab until somebody groups two.
@@ -49,8 +48,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **surface** - one libghostty terminal view rendering one pane channel; disposable.
 - **tab** - a named set of panes a window shows together. Muster's own unit, and the one thing here that is not a
   daemon's: a tab holding panes on one machine is one backend tab and comes back after a daemon restart like
-  everything else, and a tab somebody has grouped to hold panes on two is one backend tab on each, held together by
-  Muster's name registry and nowhere else. `docs/architecture.md`, durability, says what that costs.
+  everything else, and a tab somebody has grouped to hold panes on two is one backend tab on each, both carrying the
+  same tab name. `docs/architecture.md`, durability, says what survives what.
 - **tab name** - what Muster calls a tab: `t1w3r07bsd`, from the same registry as a pane name and on the same terms,
   and what every message and every CLI argument means by a tab. Nothing tells a tab which tab it is, so no pane's
   environment carries one - a script reads it out of `muster window`.

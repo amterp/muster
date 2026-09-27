@@ -2,7 +2,7 @@
 
 Code written largely by AI agents needs the suite, not the author's memory, to be the proof it works. Classic
 integration-test discipline - real internals, fake edges, deterministic, asserted black-box - is the substrate, but a
-native GUI over daemons we do not own bends it in specific ways, and the neighbors show how. ghostty's Zig core
+native GUI over long-running daemons bends it in specific ways, and the neighbors show how. ghostty's Zig core
 carries hundreds of test blocks (324 in Terminal.zig alone) while its macOS shell ships none: even the best
 native-app team treats the AppKit layer as untestable and survives by keeping it thin. herdr's ~3,500 test functions
 name their integration suites after user-visible behaviors (detach_reattach, multi_client, live_handoff) and feed
@@ -30,10 +30,11 @@ Muster's principles, adapted to that evidence:
   hand-written daemon in this repo, so there is nothing to drift, and "a drifted fake daemon is Muster's top
   false-green risk" stops being a risk we manage and becomes one we do not have.
 
-  It also catches what a stand-in cannot. Building the subscription against real herdr turned up two facts no
-  invented one would have contradicted: a subscription is requested by a dotted name and answered with a snake one,
-  and half-closing the write side - which is how every other herdr call signals it is finished - ends a subscription
-  on the spot. Both fail as silence rather than as an error, which is the shape of bug a fake is worst at.
+  It also catches what a stand-in cannot. When Muster ran herdr, building the subscription against it turned up
+  two facts no invented one would have contradicted: a subscription is requested by a dotted name and answered
+  with a snake one, and half-closing the write side - which is how every other herdr call signals it is finished -
+  ends a subscription on the spot. Both fail as silence rather than as an error, which is the shape of bug a fake
+  is worst at.
 
   The daemon is built from the same commit rather than pinned: the daemon's own tests hand the harness
   `CARGO_BIN_EXE_muster-daemon`, and cargo gives that only to the daemon's own package, so a test anywhere else -
@@ -45,10 +46,11 @@ Muster's principles, adapted to that evidence:
   one answers its first request in about 4 ms, and a test holds that under the 25 ms that keeps daemon-backed tests
   in the default gate. A Muster config naming the daemon is `muster_config()`, and a window's test points the seam
   at it the way a person's file would. Agent state is driven the way a real agent drives it:
-  `Daemon::start_detecting()` gives the daemon a home holding the herdr probe's fake agent under the name `claude`
-  and an override manifest that reads its markers, `run_agent` starts it in a pane, and `set_agent_state` tells it
-  what to paint - so no test sets a state the detector did not reach. Beside the control connection it drives the other
-  two the way a bridge and the app will: a `Stream` that attaches and gives or withholds credit, and an `Input`.
+  `Daemon::start_detecting()` gives the daemon a home holding a fake agent (`crates/muster-harness/fake-agent/`)
+  under the name `claude` and an override manifest that reads its markers, `run_agent` starts it in a pane, and
+  `set_agent_state` tells it what to paint - so no test sets a state the detector did not reach. Beside the control
+  connection it drives the other two the way a bridge and the app will: a `Stream` that attaches and gives or
+  withholds credit, and an `Input`.
   What a pane's program received is read from inside it - a program in raw mode copying its input to a file - and
   the bytes it should have received come from libghostty's own encoders, configured from a terminal fed the same
   modes, so no test spells an escape sequence the encoder is the authority on. The flood test holds the structure
@@ -56,13 +58,14 @@ Muster's principles, adapted to that evidence:
   latency. `./dev --latency` times the same keystroke through the daemon with `crates/muster-latency`: the pane's
   stream read directly, and the real bridge (`muster-bridge --daemon-socket`) onto a PTY where a surface would be,
   beside the bare PTY measured in the same run, idle, in a window of fifteen panes and beside a pane flooding into
-  a surface that reads slowly. It starts its own daemon from `target/release`, directly rather than through Launch
-  Services, until stage 3 puts the daemon in a helper bundle. `--socket` measures a daemon already running instead,
+  a surface that reads slowly. It starts its own daemon from `target/release` by spawning it, as a SwiftPM build
+  does, rather than through Launch Services as a bundle does. `--socket` measures a daemon already running instead,
   which is how a devenv's is measured through a forwarded socket, and
   `--flood-surface fast` floods a surface that keeps up, so the flood's time is what the link and the daemon's flow
-  control allow. Agent detection is checked the way the herdr probe checked herdr's: its `detection` scenario runs
-  again against the daemon, the same fake agent and override manifest, and prints each state's settle time beside
-  the one recorded in `corpus/herdr-0.8.0/detection/`. Everything else herdr was recorded doing is kept as a
+  control allow. Agent detection is checked against what herdr did: the first test in
+  `crates/muster-daemon/tests/detection.rs` reruns the `detection` scenario recorded in
+  `corpus/herdr-0.8.0/detection/` with the same fake agent and override manifest, and prints each state's settle
+  time beside herdr's. Everything else herdr was recorded doing is kept as a
   reference: `corpus/herdr-0.8.0/MIGRATION.json` gives each recorded fact a verdict - pinned to the test that holds
   muster-daemon to the same behavior, different on purpose and why, or about herdr alone - and
   `crates/muster-daemon/tests/migration.rs` fails when a fact has none or a verdict names a test that is gone.
@@ -76,17 +79,11 @@ Muster's principles, adapted to that evidence:
   Nothing consults PATH for a daemon: a test that resolved its own could quietly run against one nobody built
   from this commit. The contract tier (`crates/muster-contract`) is no exception: it launches the app against a
   daemon built from the same commit, whether the harness started it or the app did.
-- **Detect wire drift mechanically, not by waiting for a test to fail.** herdr generates a canonical JSON Schema of
-  its whole API from its own request types, fails its own build when the two disagree, and embeds it in the binary
-  (`herdr api schema --json`). A copy sits in `corpus/herdr-<version>/api-schema.json`, and `./dev` diffs the two
-  before running anything. A daemon that changed its wire is named as such, with the diff, instead of surfacing as
-  a puzzling failure three layers up.
-
-  muster-daemon, which replaces herdr (MIP-3), is built from this repo, so its wire cannot drift from the code under
-  test. What can drift is the wire between two builds, because an app adopts whichever daemon is running. So
-  `proto/muster_daemon.v<major>.baseline.proto` records the schema as its last minor version was published, and a
-  test in `muster-daemon-proto` fails when a field's number or type moved, a number was freed without being
-  reserved, or the schema changed without its minor version moving past the baseline's.
+- **Detect wire drift mechanically, not by waiting for a test to fail.** muster-daemon is built from this repo, so
+  its wire cannot drift from the code under test. What can drift is the wire between two builds, because an app adopts
+  whichever daemon is running. So `proto/muster_daemon.v<major>.baseline.proto` records the schema as its last minor
+  version was published, and a test in `muster-daemon-proto` fails when a field's number or type moved, a number was
+  freed without being reserved, or the schema changed without its minor version moving past the baseline's.
 - **Inject at the seams the code already has, not by impersonating a daemon.** Three different things get called
   fault injection, and only one needs machinery. *Daemon state* - a blocked agent, fifteen panes, a pane whose
   program died - is driven through the daemon's own requests and the fake agent, which can produce all of it on
@@ -217,8 +214,8 @@ concept, because prose survives it and both languages parse it without a depende
 **A wrong oracle gets agreed on twice.** If the corpus is wrong, every implementation passes and every
 implementation is wrong. Each file declares its `source`:
 
-- `recorded` - captured from real herdr, real libghostty-vt, a real terminal. Carries the command that regenerates
-  it, so it can be re-derived rather than believed.
+- `recorded` - captured from real libghostty-vt, a real terminal, or real herdr when Muster ran it. Carries the
+  command that regenerates it, so it can be re-derived rather than believed.
 - `ported` - lifted from an existing suite. Trusted exactly as far as that implementation was, which is the honest
   label for most of an extraction.
 - `authored` - our own policy, with a citation. Muster's keymap defaults have no oracle beyond ghostty's config;
@@ -246,8 +243,8 @@ that the count is never zero.
 
 **Snapshots are oracles too**, so they live beside the cases in `corpus/snapshots/` rather than under one
 language's tests. Some behavior is one matrix with one reason rather than N behaviors with N justifications - what
-nineteen common keystrokes encode to, what a recorded frame stream paints - and a rendered file is the honest shape
-for that. Both implementations read the same bytes, which is what makes "the port did not have to re-record them"
+nineteen common keystrokes encode to under each keyboard protocol - and a rendered file is the honest shape for
+that. Both implementations read the same bytes, which is what makes "the port did not have to re-record them"
 worth anything: a snapshot that gets regenerated to make a rewrite pass was never an oracle.
 
 **What a snapshot renders is data too**, in a `survey` section beside the cases. The rendering belongs to the driver,

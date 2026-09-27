@@ -14,21 +14,21 @@ questions live on the kan board. This document is the bridge between the desider
 
     ┌─ native shell (per-OS; macOS first) ────────────────────────────────┐
     │  windows · split chrome · key capture · sidebar · notifications     │
-    │  renderer surfaces (libghostty), one per visible pane               │
+    │  renderer surfaces (libghostty), one per pane                       │
     └──────┬───────────────────────────────────────────────▲──────────────┘
-           │ key/mouse/scroll/resize events, actions       │ pane frames
+           │ key/mouse/scroll/resize events, actions       │ pane output
     ┌──────▼───────────────────────────────┐               │ (data plane:
     │  core (headless view-model)          │               │  output only,
-    │  mirror · dispatcher · keymap ·      │               │  one channel
-    │  attention · config                  │               │  per visible
-    └──────┬───────────────────────────────┘               │  pane)
+    │  mirror · dispatcher · keymap ·      │               │  one stream
+    │  attention · config                  │               │  per pane)
+    └──────┬───────────────────────────────┘               │
            │ Muster vocabulary (control plane:             │
            │ events, state, intents, input)                │
     ┌──────▼───────────────────────────────────────────────┴──────────────┐
-    │  backend adapters (herdr today)                                     │
+    │  backend adapter (muster-daemon-client)                             │
     └──────▲──────────────────────────────▲───────────────────────────────┘
            │                              │
-     herdr daemon (local)          herdr daemon (remote, SSH)
+     muster-daemon (local)         muster-daemon (remote, SSH)
 
 Three layers, two seams.
 
@@ -54,16 +54,18 @@ between shell and core has to exist the moment a second platform appears, becaus
 be Swift either. Putting a portable core on one side of it means macOS pays a well-supported FFI direction and every
 other platform pays nothing.
 
-**Backend adapters** (herdr today). Translate the Muster vocabulary to a concrete backend. One adapter per backend;
-nothing herdr-shaped escapes it.
+**Backend adapter** (`muster-daemon-client`). Translates the Muster vocabulary to muster-daemon's protocol, and is the
+one place the core's requests become that protocol; the core never sees it. The daemon has been Muster's own since
+MIP-3 replaced herdr, so its protocol is part of Muster's contract, and a second backend would be a second adapter.
 
-**Muster ships its daemon and runs it, and talks to no other.** Not for convenience, though it is convenient: a
-person using Muster should not have to learn what herdr is. It is what makes the rest of this document mean
-anything. The corpus is recorded from one pinned build, so a Muster attached to some other daemon is a Muster whose
-every behaviour is unverified - and the daemon on herdr's default socket is whatever the user last started. So the
-bundle carries the binary named in `deps/herdr.pin`, the app finds it beside its own executable rather than on PATH,
-and it runs it under a herdr session of its own. A stranger is then not something to detect; it is something that
-cannot arise.
+**Muster ships its daemon and runs it, and talks to no other.** It is what makes the rest of this document mean
+anything. The suite runs against the daemon built from the same commit, so a Muster attached to some other daemon is a
+Muster whose every behavior is unverified. So the app finds its daemon beside its own executable rather than on PATH,
+and it listens on a socket named for the install, `~/.muster/daemon/<install>.sock`: a development build never adopts
+the release daemon, two checkouts never adopt each other's, and tests start one on a socket of their own. A release
+does adopt the release daemon an earlier version started, if it speaks that daemon's protocol, which is what keeps an
+upgrade from ending every agent (MIP-3, sections 1 and 9). A stranger is then not something to detect; it is something
+that cannot arise.
 
 **How it runs it is a permissions decision rather than a packaging one.** In a bundle the daemon is a helper
 application of its own, `Contents/Library/MusterSessions.app`, and Muster starts it through Launch Services rather
@@ -76,11 +78,9 @@ a name for the prompt and a reason to put in it. Measured with the arrangements 
 `observations/macos-26.4.1.md`. A plain `swift build` stages a bare binary and keeps the spawn, which is also what
 every test uses, so both paths have to stay correct rather than one replacing the other.
 
-Started, never stopped, because sessions outliving the app is the point. What it costs is the escape hatch - a
-terminal's `herdr pane list` does not see Muster's panes - and `herdr --session muster` buys it back, since the
-session is herdr's own concept rather than one invented here. Naming a `socket` in Muster's config file is the way
-to ask for a particular daemon on purpose; nothing else in the environment is read, so an exported
-`HERDR_SOCKET_PATH` meant for somebody's own CLI cannot quietly redirect a window.
+Started, never stopped, because sessions outliving the app is the point. Naming a `socket` in Muster's config file is
+the way to ask for a particular daemon on purpose; nothing in the environment chooses one, so the
+`MUSTER_DAEMON_SOCKET` every pane carries cannot quietly redirect a window opened from inside a pane.
 
 **The daemon's environment is built, not inherited, and that follows from it being started and never stopped.**
 Whatever shell launched Muster is a moment; the daemon is not, and every pane's program is its child - so anything
@@ -107,33 +107,21 @@ the core decides whether a daemon gets it - only when nothing in the environment
 inherited and one half supplied is the split the allowlist already refuses to create. The run log names supplied
 variables as a third list beside carried and dropped, so "where did this come from" has an answer.
 
-`TERM` is not one of them, and its absence is the more useful fact. herdr sets a pane's `TERM` itself, so no pane has
-ever seen the daemon's; the one thing that reads it is herdr's host-terminal detection, which decides who a
-notification is attributed to. Carrying it meant a Muster launched from Ghostty had its daemon posting notifications
-as Ghostty, to a terminal that was not there.
+`TERM` is not one of them, and its absence is the more useful fact. The daemon sets `TERM`, `COLORTERM` and
+`TERM_PROGRAM` on every pane itself, because a pane is a Ghostty terminal whatever launched the app, so no pane has
+ever seen the daemon's. Dropping it also gives the daemon the same environment whether Muster was started from a
+terminal or from the Dock, which never hands it one. When Muster ran herdr, the daemon's `TERM` also fed herdr's
+host-terminal detection, and a Muster launched from Ghostty had its daemon posting notifications as Ghostty, to a
+terminal that was not there.
 
-**The daemon's config is derived, not borrowed, and it follows from the same fact.** A daemon of Muster's own that
-reads a stranger's config file is not a daemon of Muster's own: a `default_shell` somebody set for their own terminal
-decided what every Muster pane ran, and - the sharper half - `version_check` defaults to true, so a daemon pinned by
-version and checksum took its update policy from a file Muster does not own. Pinning it is what makes a green suite a
-claim about anything, and a version check is the one thing that moves it off the pin with nobody asking. herdr's other
-update check, `manifest_check`, is left alone, and the difference is the subject rather than the mechanism: a version
-names the binary this project records a corpus against, while a manifest describes how a third-party agent looks on
-screen and goes stale when that agent changes (`configuration.md`, and kan a_2HxSqYtuA for what it cost). So Muster
-derives a config from its own file and names it to the daemon with `HERDR_CONFIG_PATH`, the
-same shape of answer the renderer already gets. What makes that variable the right lever rather than a private
-`XDG_CONFIG_HOME` is that it moves the config file and nothing else: the socket, the session state and the data
-directory stay where herdr's own rules put them, so the escape hatch above still works and a daemon holding somebody's
-agents is not orphaned by an upgrade.
-
-The cost is one leak, and it is answered rather than accepted. A pane's process inherits the daemon's environment, so
-that variable reaches every pane, and `herdr` typed inside one would read Muster's file instead of the person's. Every
-pane-creating call therefore carries the user's own path back in its `env`. A parameter rather than a scrub, because
-the two fail differently: forgetting to scrub is invisible from outside, while a parameter can be asserted - a
-conformance case walks every intent Muster sends and fails any that herdr says could carry an environment and does
-not, so a fourth way of making a pane fails the gate rather than leaking quietly. What it cannot cover is a pane
-Muster did not make: one herdr restores after a daemon restart is built with no launch environment at all. That is a
-stated limit, not a gap to chase.
+**The daemon's settings are Muster's, and travel over its protocol rather than in a file.** A daemon of Muster's own
+that took its settings from a stranger's config file would not be a daemon of Muster's own: when Muster ran herdr, a
+`default_shell` somebody set for their own terminal decided what every Muster pane ran. So the shell a pane runs, how
+much scrollback it keeps, its palette, its cursor, whether a program may write the clipboard, and how far a wheel
+notch scrolls are read from Muster's file and sent as requests on the control connection - each one when it changes,
+and all of them on every connect (MIP-3, section 9). No daemon reads a config file, so there is nothing for a pane to
+inherit and nothing to hand back. The daemon saves what it was sent with its tabs, so one that restarts with no window
+attached starts panes the way a window last asked (MIP-3, section 2).
 
 **The guarantee reaches the far machine too, by putting the daemon there.** For a while a remote daemon was
 whatever somebody had installed, and a window's two halves could run different versions with nothing saying so. On
@@ -154,16 +142,13 @@ One consequence worth stating: a `socket` named in the config file still attache
 either machine - that is the deliberate way out of the whole arrangement, and it
 would be no escape hatch if a remote one behaved differently from a local one.
 
-**Reaching a remote daemon is a transport concern and stops there.** A remote herdr speaks the same socket a local
-one does, so an SSH master forwards that socket onto a path on this machine and the adapter is handed a path like
-any other - the client, the snapshot, the subscription, the agent watchers and the server-side encoder are
-unchanged. The evidence that this is safe is `observations/herdr-0.8.0.md` section 8: the same recordings against a
-Linux daemon differ in nothing. The data plane cannot use the trick, because herdr publishes a pane's frames through
-a CLI over stdio rather than through a socket method - so a pane's bridge runs that command over the same master,
-which is also what keeps a remote pane as cheap as a local one. Reimplementing that stream was rejected: it is
-bincode over herdr's internal types with no published schema, which is the byte-level protocol emulation
-`testing.md` deletes. A tunnel that drops is reopened onto the same path, so recovery is the adapter's ordinary
-reconnect rather than a mechanism of its own.
+**Reaching a remote daemon is a transport concern and stops there.** A remote muster-daemon speaks the same socket
+protocol a local one does, so an SSH master forwards that socket onto a path on this machine and the adapter is handed
+a path like any other - the control connection, the input connection and every pane's stream are unchanged. The data
+plane rides the same forward: a bridge dials the forwarded socket and asks for its pane's stream, so a remote pane
+costs no ssh exec of its own and a remote bridge restarts as cheaply as a local one (MIP-3, section 4). A tunnel that
+drops is reopened onto the same path, so recovery is the adapter's ordinary reconnect rather than a mechanism of its
+own.
 
 The master is opened before the daemon exists, which is what lets everything after it ask "does it answer" through
 the forwarded path rather than through a second mechanism. Measured against the devenv: ssh binds the near end when
@@ -194,23 +179,18 @@ where they accumulate. Killing the child remains the fallback for a master that 
 the question are kept: the first holds a daemon to one ssh process rather than two, and the second is right whatever
 a future ssh does about forking.
 
-That bridge command needs two things it cannot work out, and both are answered rather than guessed. It is handed the
-daemon's socket as the *far* side spells it, because the near end of a tunnel names nothing over there and Muster's
-daemon listens on a session of its own on both machines. And it looks for its herdr at `~/.muster/bin/herdr` before
-falling back to the name, because the one Muster installed is deliberately not on anybody's PATH - a version-scoped
-path is exactly what a command line assembled here cannot name, so the install leaves a name that does not move.
-
 ## The vocabulary
 
-The backend contract speaks Muster's terms, not any backend's. Nouns: backend session (one daemon connection),
-workspace, tab (the unit that owns one pane tree - trees hang off tabs, not workspaces), layout (a tab's tree, as
-proportions rather than cells), pane, pane channel (the output stream feeding a surface), agent state.
+The backend contract speaks Muster's terms, not any backend's. Nouns: backend session (one daemon connection), tab
+(the unit that owns one pane tree), layout (a tab's tree, as proportions rather than cells), pane, pane channel (the
+output stream feeding a surface), agent state.
 
-**A layout is proportions, never geometry.** A backend sizes panes for a viewport of its own - herdr's is a fixed
-54x23 whether a client is attached or not (`observations/herdr-0.8.0.md` section 13) - so the cell rectangles it
-publishes describe nobody's window. What crosses the seam is the tree and its ratios; the shell lays that out at
-whatever size it has, and the pane's own geometry follows from the controller as below. Verbs, as intents: attach, split, close, focus, resize, send input,
-spawn. Small on purpose - everything the view needs, nothing any particular backend happens to offer. The
+**A layout is proportions, never geometry.** The daemon holds each tab's tree as splits with an axis and a ratio, and
+sends it as a tree. What crosses the seam is the tree and its ratios; the shell lays that out at whatever size it has,
+and the pane's own geometry follows from the controller as below. The rule predates muster-daemon: herdr sized panes
+for a fixed 54x23 viewport of its own whether a client was attached or not (`observations/herdr-0.8.0.md` section 13),
+so the cell rectangles it published described nobody's window. Verbs, as intents: attach, split, close, focus, resize,
+send input, spawn. Small on purpose - everything the view needs, nothing any particular backend happens to offer. The
 contract corpus at this seam is the executable form of this vocabulary and the definition any replacement backend
 (fork or wholesale) must satisfy.
 
@@ -225,28 +205,26 @@ success. State is daemon truth, but one of the five is computed from a client-si
 carry that input.
 
 `done` is not stored anywhere: it is `idle` on a pane that has not been *seen*, and seen-ness is written only when an
-agent completes - a working or blocked pane going idle. **Muster derives it rather than reading it.** herdr derives
-one too, from whether the pane's tab is active and whether the foreground client's window has OS focus, and its JSON
-API has no method for the second (`observations/herdr-0.8.0.md` section 3). A daemon asked to decide this for a
-window it cannot see is answering from a client that never reported, so its `done` is normalized back to `idle` on
-the way in and Muster's own answer replaces it. Two writers for one field is the failure named below; of the two,
-only one can see the window.
+agent completes - a working or blocked pane going idle. **Muster derives it rather than reading it.** muster-daemon
+reports four states and never `done`, because deciding it takes a window's focus, which no daemon can see. herdr, the
+daemon Muster ran before its own, did derive one, from whether the pane's tab was active and whether the foreground
+client's window had OS focus. Its JSON API had no method for the second (`observations/herdr-0.8.0.md` section 3), so
+it answered for a window that never reported. Two writers for one field is the failure named below; of the two, only
+one can see the window.
 
 Muster's rule is the same shape with inputs it actually has. A pane is seen when it is on screen in a window that has
 the OS's focus, and the shell reports that focus across the seam because nothing else can observe it. A completion on
 a seen pane is `idle`; anywhere else it is `done`, until somebody looks - gaining focus and bringing a pane on screen
-both settle it. Looking away does not un-see what was already seen. `pane.focus` is still written to the daemon,
-because it activates the pane's tab and other clients read that.
+both settle it. Looking away does not un-see what was already seen.
 
-**First sight is the exception, and it has to be.** A pane that finished before Muster attached produced no
-transition to observe, and a daemon outlives the app - so quitting and coming back is the ordinary case, not a corner
-one. There the daemon's own answer is the only evidence there is, and it is real evidence: it knows the pane's tab was
-in the background. So a pane arriving already `done` is adopted as unseen, and every observation after that is
-Muster's. The same shape the mirror already uses for the field itself: structure sets agent state only for a pane it
-is seeing for the first time, and the agent channel owns it from then on.
+**A pane that finished while no window was open reads `idle`, and that is a gap rather than a decision.** A daemon
+outlives the app, so quitting and coming back is the ordinary case, and agents finish in between. Muster saw no
+transition there. muster-daemon now records one: a pane's record carries `finished_unseen` until a window reports
+seeing it with `PaneRequest.Seen` (MIP-3 section 8). The app does not read that fact or send `Seen` yet, so the gap
+stays open until it does. With herdr, first sight adopted the daemon's own `done`.
 
 What this cannot answer, stated rather than hidden: ours is the only focus we can observe, so `done` means "nobody
-*we know of* saw it". A second Muster window, or a herdr TUI open beside us, is outside it.
+*we know of* saw it". A second Muster window is outside it.
 
 **One legend, and the window holds it.** working cyan, blocked orange, done green, idle grey, and unknown a fainter
 grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
@@ -363,112 +341,65 @@ codegen - a surface that cannot express an action is a missing message, visible 
 
 ## Ownership of truth
 
-- **Daemons own structure**: workspaces, tabs, pane trees, panes, scrollback, agent states, process lifetimes.
-  View = f(daemon state). Owning the scrollback buffer is not the same as deciding how deep it goes: that answer,
-  and what a pane runs, are Muster's, translated onward into a config file the daemon reads (the shape, above).
+- **Daemons own structure**: tabs, pane trees, panes, scrollback, agent states, process lifetimes. View = f(daemon
+  state). Owning the scrollback buffer is not the same as deciding how deep it goes: that answer, and what a pane
+  runs, are Muster's, sent onward as settings the daemon keeps (the shape, above).
 - **The core owns a mirror**: a derived, disposable cache of daemon structure, bootstrapped from an authoritative
   snapshot plus event subscription, rebuilt after any gap, never patched across one.
-- **A daemon's answer is daemon truth, on the same terms as its events.** Not a prediction and not a patch: a
-  statement about a change the daemon has just made, arriving on the request channel instead of the broadcast one.
-  Both may be applied; neither may be assumed, and Muster still never writes anything it was not told. Timing is
-  why it is worth having two channels: herdr answers a swap, a resize or a divider position with the settled
-  arrangement in about a millisecond and broadcasts the same arrangement about a hundred later, so a mirror that
-  waits to be told twice renders the arrangement it is moving away from (`observations/herdr-0.8.0.md`, section
-  14). Between the answer and its broadcast the mirror is ahead of its own stream, so it remembers the arrangements
-  the tab has passed through and drops each one once when it arrives - matched by shape rather than by whole
-  layout, because the cursors beside a tree move on their own terms. Bounded by construction: an entry is spent on
-  its first match, so nothing is suppressed indefinitely and a wrong guess costs one frame rather than a stuck
-  window. How many may be remembered at once follows from the fastest thing that produces them, which is a dragged
-  divider at about a hundred a second - roughly ten in flight, and a bound sized for anything slower is a drag that
-  snaps back to where the gesture began.
-
-  Reading an answer costs a reader per shape the daemon states one in, and herdr has two: flat rectangles for
-  everything it broadcasts and for most answers, its own exported tree for a divider position. Muster reads both
-  and tells them apart by which keys a payload has rather than by which verb answered, so a daemon that starts
-  answering with either needs no change.
-- **The core owns composition**: which daemons are attached, which tabs the window holds and in what order, which
-  of them is on screen, and how each divides between the machines holding panes in it. A workspace is the backend's
-  unit for a whole project and is not one of Muster's own, so it is not in this record and not in the file it is
-  written to - the adapter works out which of a backend's workspaces a request means, from the pane it names
-  (MIP-2). Mixing is at tab granularity: a tab holds a region per machine with panes in it, each rendering that
-  machine's pane tree from daemon truth, side by side. One region for every tab until somebody groups two. Muster
-  does not own an outer split tree over panes - that would make it a multiplexer (non-goal) - and a pane can never
-  move between daemons: the process lives where it lives, and grouping moves which tab it is in rather than the
-  process.
+- **A daemon's events say what changed, and its answer says when.** Every event is numbered, and the events a request
+  produced are delivered before its answer, which names the last of them (MIP-3, section 9). So the mirror applies
+  events and nothing else, and a request waits on its answer only to learn that its change is already there: by the
+  time a submit returns, the mirror shows it. Muster never writes anything it was not told. When Muster ran herdr, an
+  answer arrived about a hundred milliseconds before the broadcast of the same change, and the mirror applied answers
+  and then recognized each broadcast as one it had seen (`observations/herdr-0.8.0.md`, section 14); with answers
+  after their events there is nothing to reconcile.
+- **The core owns composition**: which daemons are attached, which tabs the window holds and in what order, which of
+  them is on screen, and how each divides between the machines holding panes in it. Mixing is at tab granularity: a
+  tab holds a region per machine with panes in it, each rendering that machine's pane tree from daemon truth, side by
+  side. One region for every tab until somebody groups two. Muster does not own an outer split tree over panes - that
+  would make it a multiplexer (non-goal) - and a pane can never move between daemons: the process lives where it
+  lives, and grouping moves which tab it is in rather than the process.
 - **Composition is resolved against the mirror, never patched by events.** It names daemon things - a tab, a
   pane - and those go away without asking: a tab closed from another client, a pane whose program exited. Every
   such way ends in a window that ignores the keyboard and cannot say why, so composition is brought back into line
   with a daemon's mirror whenever that daemon's structure moves. A region whose tab is gone closes; view-local
   focus falls to a pane that exists.
-- **Muster names its own panes.** A name is `p` and nine characters - `p1w3r07bsd` - minted by Muster rather than
-  borrowed from the backend, and it is what every message in the schema means by a pane id. The reason is not
-  tidiness: Muster has to be able to tell a pane which pane it is, and a backend's id arrives too late for that.
-  herdr assigns `w1:p3` in its *answer* to `pane.split`, while the environment a new pane is born with has to be
-  sent *with* the request, so there is no moment where Muster holds both. A name Muster mints goes into the request
-  that creates the pane, reaches it as `MUSTER_PANE`, and is bound to whatever comes back. The registry that does
-  the binding is `crates/muster-core/src/names.rs`, and the adapter translates at the wire - nothing above it
-  spells a pane the backend's way.
-  A name is unique across every attached machine, which is what makes it an answer on its own: two daemons both
-  hand out `w1:p1`, and a caller naming a pane on the devenv has no way to know and no reason to say which machine
-  holds it. So a request that names a pane and no daemon finds the daemon from the pane. The empty pane means "the
-  one this window's keyboard is on", which is what a keybinding means and what every menu item sends.
-  Two handles do still travel in the backend's vocabulary, both marked as such in the schema: `ViewPane`'s
-  `backend_pane_id` and `ViewRegion`'s `backend_socket`, for the bridge, which streams frames from the daemon
-  directly. Workspaces keep the backend's ids.
-- **Muster names its own tabs too, for the other half of the reason.** `t1w3r07bsd`, from the same registry and
-  translated at the same wire. Nothing has to tell a tab which tab it is, so there is no reservation before creation
-  and no `MUSTER_TAB` in any pane's environment - a tab name is minted the first time a daemon mentions the tab. What
-  it buys is only the uniqueness: `w1:t1` is a string both machines hand out, so a window showing a laptop beside a
-  devenv could describe a tab and offer no way to act on it. Now a request that names a tab and no daemon finds the
-  daemon from the tab, exactly as a pane request does, and `muster tab focus` and `muster tab rename` are sayable.
-  Unlike a pane there is no backend spelling beside it in the schema, because nothing outside the core ever names a
-  tab to a daemon: no bridge streams one.
-  A tab name is written down with the pane names, and for two reasons that are about neither. The saved arrangement
-  records which tabs the window held, so a registry that forgot them would open the window as a first launch, every
-  launch. And a tab name may cover a backend tab on more than one machine, which is the whole of what makes a tab
-  hold a laptop pane beside a devenv one - a fact neither daemon has ever been told, so the registry is the only
-  place it can live.
+- **Muster names its own panes.** A name is `p` and nine characters - `p1w3r07bsd` - minted by Muster, and it is what
+  every message in the schema means by a pane id. The reason is not tidiness: Muster has to be able to tell a pane
+  which pane it is, so the name has to exist before the pane does. A name Muster mints goes into the request that
+  creates the pane, reaches it as `MUSTER_PANE`, and is what the daemon knows the pane by from then on (MIP-3, section
+  2). herdr forced that order on Muster by assigning its `w1:p3` only in its *answer* to `pane.split`, after the new
+  pane's environment had been sent; muster-daemon has no id of its own to assign. The registry that mints names is
+  `crates/muster-core/src/names.rs`. A name is unique across every attached machine, which is what makes it an answer
+  on its own: a caller naming a pane on the devenv has no way to know and no reason to say which machine holds it. So
+  a request that names a pane and no daemon finds the daemon from the pane. The empty pane means "the one this
+  window's keyboard is on", which is what a keybinding means and what every menu item sends. The one daemon detail the
+  shell is handed is `ViewRegion`'s `daemon_socket`, for the bridge, which streams a pane from the daemon directly.
+- **Muster names its own tabs too, for the other half of the reason.** `t1w3r07bsd`, from the same registry and passed
+  in the request that makes the tab, as a pane's name is. Nothing has to tell a tab which tab it is, so there is no
+  `MUSTER_TAB` in any pane's environment. What the name buys is uniqueness: a request that names a tab and no daemon
+  finds the daemon from the tab, exactly as a pane request does, and `muster tab focus` and `muster tab rename` are
+  sayable. It is also the whole of what makes a tab hold a laptop pane beside a devenv one: each machine's part of the
+  tab carries the same name, so the two daemons record between them that they are one tab without either knowing the
+  other exists (MIP-3, section 2).
 - **Health is per connection, and so is what a window says about it.** A laptop and a devenv have two answers and one
   title bar. The unhappiest is what shows, named - reporting one state for the window would let a dropped VPN read as
   though every session had gone.
-- **Cursors are written, not read.** Daemon focus (focused workspace, tab, pane) is a single value per daemon,
-  shared with every client including the herdr TUI. Muster's input routing - which pane its keyboard feeds - is
-  view-local. Interacting writes daemon focus (which activates the pane's tab, for the clients that read it); Muster
-  never *routes* input by reading
-  it, so another client moving daemon focus never yanks Muster's keyboard. Both halves are one action to whoever
-  clicked, so one request does both: the keyboard moves whatever the daemon answers, and a refused write is worth a
-  log line rather than undoing a focus move the user watched happen. Rendering follows the same rule wherever a
-  daemon's answer is a bare flag beside its own cursor: herdr says a tab is zoomed and leaves which pane to its
-  focused one, so Muster reads the flag and fills the region with the pane its own keyboard is on. Reading the
-  daemon's cursor there would let another client decide what this window paints, and would leave ⌘2 inside a zoomed
+- **Where the keyboard is belongs to the window.** muster-daemon keeps no focus of its own, so which pane Muster's
+  keyboard feeds is view-local and nothing another window does can move it. Rendering follows the same rule: the
+  daemon records which pane of a tab is zoomed, but a region fills a zoomed tab with the pane its own keyboard is on,
+  and uses the daemon's zoomed pane only when its keyboard is on none (`zoom_filling` in `composition/view.rs`).
+  Following the daemon there would let another window decide what this one paints, and would leave ⌘2 inside a zoomed
   tab typing into a pane nobody can see.
-- **A tree that disagrees with its tab is not an arrangement.** A tab's pane list and its pane tree arrive as
-  separate events with no order between them, so the tree can name fewer panes than the tab holds or more, and a
-  subscription that has just bootstrapped replays layout events - walking a tab backwards through arrangements it
-  had minutes ago. Both measured against herdr 0.8.0. The pane list decides what exists; the tree decides only
-  order, and one that disagrees is withheld rather than repaired. Repairing means inventing a place for a pane
-  nobody placed; publishing it drops every pane it omits, and a dropped pane costs its surface and the bridge that
-  feeds it. Withheld is a state the shell already answers correctly, by leaving what it is showing alone.
-  **The pane list settles less than that makes it sound**, and the rest is the mirror's to close rather than the
-  view's. It rejects every arrangement from before the tab's last pane appeared and none of the ones since, so a
-  zoom or a dragged divider replays past it naming exactly the right panes and is drawn in turn. So a bootstrap
-  holds onto the arrangement its snapshot gave until the stream states it, counting the tree and what is zoomed over
-  it as one arrangement - and gives up rather than waiting forever, because a tab frozen at a shape it has left is a
-  worse thing than the tenth of a second of flicker it was written to stop.
-- **Geometry follows the controller.** Pane cell dimensions are daemon truth; the shell converts pixels to cells
-  and sends resize intents. While Muster controls a pane, the pane's PTY is held at Muster's geometry. Other clients
-  are not dragged to that size - the daemon re-renders the screen into each viewer's own requested viewport - so
-  concurrent TUI viewing is degraded by seeing a larger screen reflowed into a smaller window, not by resizing.
-  The hold does **not** release when Muster detaches: a pane keeps the last geometry its controller set. Leaving a
-  user's panes sized to a window that no longer exists is the sharp edge of "sessions outlive everything", so Muster
-  hands every pane it was driving back on the way out, and will until herdr releases the hold itself.
-  **Back to the daemon's layout, not to what the pane was.** What it was is not recoverable by any client - herdr
-  publishes a pane's rows and its columns nowhere - and it is not the more useful answer either: herdr does not
-  resize an unattached pane when its tab is rearranged, so a pane that has been split since is at a size nothing
-  will draw it at. Its rectangle in the daemon's own layout is what the next client renders, which is what makes it
-  the size worth handing back. That rectangle is in cells of a terminal area herdr keeps for itself, fixed whether
-  a client is attached or not, and the pane's grid is one column narrower than it
-  (`observations/herdr-0.8.0.md` section 4, and `crates/muster-seam/tests/seam/geometry.rs` for the measurement).
+- **A pane is shown once a tree places it.** The daemon announces a pane as opened before the change to the tab that
+  places it, so for a moment a pane belongs to no tab. The mirror holds it aside rather than showing it, and adds it
+  when a tree names it (`mirror/state.rs`), because everything that draws or lists a pane does so by its tab.
+- **Geometry follows the window.** Pane cell dimensions are daemon truth. The shell converts pixels to cells, and a
+  pane's bridge reports its surface's grid to the daemon on every resize, so the pane's PTY is sized to what the
+  window draws (MIP-3, section 4). A pane is drawn by one bridge at a time, so no two windows contest its size, and a
+  pane keeps its last size when its bridge detaches. When Muster ran herdr, it handed every pane back to herdr's own
+  layout on quit, because herdr kept a PTY at the size its last client set and published no other; muster-daemon has
+  no layout of its own to hand back to, so nothing is handed back.
 - **The shell owns nothing.** Surfaces are disposable renders of a pane channel. A surface attaching to a live pane
   starts with a full repaint and never assumes it saw the start of the stream. Closing a window destroys surfaces
   and touches no session.
@@ -476,56 +407,25 @@ codegen - a surface that cannot express an action is a missing message, visible 
 ## Event model
 
 State changes only by applying events and intents in one place, in one order per daemon connection; rendering reads
-the result. Pane content is not state in this sense - it is a stream the surface renders. Two constraints carry the
-model:
+the result. Pane content is not state in this sense - it is a stream the surface renders. The daemon's events are
+built for this (MIP-3, section 9):
 
-- **Application is convergent.** herdr offers no way to ask for what a client missed, and subscribing replays the
-  daemon's last 512 events one kind at a time, so a client sees existing entities twice and sees the recent past
-  out of order. Every event is therefore applied idempotently and carries absolute values, never deltas, so
-  snapshot-plus-events converges regardless of what raced the bootstrap.
-- **Only a creation or a snapshot introduces something, and a removal is remembered.** herdr writes at most one
-  event of a kind per 100ms pass, live as well as on replay, so an update built before a pane closed can arrive
-  after the close, and a workspace's close can land before the creation of a pane in it
-  (`observations/herdr-0.8.0.md` section 10). An update for a pane the mirror does not hold is dropped; a pane
-  announced closed, or named as in a tab or workspace said to be gone, is not put back until the next snapshot.
-  Without this a window counted ten panes on a daemon holding one (kan a_2Mi2uGGxX).
-- **Gaps are quantifiable for agent state in arrears, and never for structure.** Measured rather than assumed
-  (`observations/herdr-0.8.0.md` section 10). An agent's `state_change_seq` is stamped from one session-wide
-  counter, so comparing two of them says how many transitions ran in between, including on panes the client has
-  never heard of. In arrears because the stamp reaches a client in exactly one place - a snapshot's agent list - and
-  is on no event: what a client learns, it learns at the moment it re-snapshots, which is the moment the snapshot
-  has already made it correct. So the number is not a consistency signal but an attention one, and Muster reports it
-  as such: an agent may have asked for the user while nobody was listening. A pane's `revision` answers none of
-  this - it tracks terminal titles and metadata tokens and does not move when an agent changes state. Nothing at all
-  reports a pane created and closed inside a gap, so structure has no evidence-based detector and periodic
-  reconciliation against a fresh snapshot is the only one. Cadence is a separate decision.
-- **Removal has two spellings.** A pane a client closes emits `pane_closed`; a pane whose program ends emits
-  `pane_exited` and no `pane_closed`. Both must drop the pane, or an exited pane renders forever.
-- **Agent state has one writer.** herdr carries `agent_status` on its pane payloads as well as on its agent events,
-  and the payloads are replayed as of when a subscription opened - so letting structure write that field means a
-  reconnect can roll a working agent back with nothing following to correct it. The agent channel owns the field;
-  structure sets it only for a pane it is seeing for the first time.
-- **A watcher subscribes and then asks, because the two cannot happen at once.** A per-pane subscription can only be
-  opened once the pane is known to exist, and dialing it takes time - so between a pane appearing and its watcher
-  being live there is a window, and herdr has no replay for what falls in it. Nothing corrects it afterwards either:
-  only a reconnect re-bootstraps, so on a healthy connection the pane keeps its old state indefinitely and looks
-  calm. That is this project's founding claim failing silently, at the moment it is most likely to matter - just
-  after a split, with something new started in the pane. So each watcher reads its pane's current state once it is
-  subscribed, and the read is refused if the subscription moved the pane while the question was in flight: a stream
-  is a better authority than an answer to a question asked at the same moment. The read is deliberately not counted
-  as a transition, because the daemon counted one Muster never saw - counting it would hide the very gap it
-  recovered from. Periodic reconciliation would paper over this rather than close it, and "papering over" is the
-  accurate description: the pane would stay wrong until the next sweep.
-- **Agent state costs a connection per pane.** `pane.agent_status_changed` takes a `pane_id` and no session-wide
-  subscription carries the same information (`observations/herdr-0.8.0.md` section 11), so an overview of N panes is
-  N held-open connections plus one for structure. Muster subscribes for every pane the mirror holds rather than only
-  the attached one, because showing them all is the point and measuring the cheap arrangement would tell us nothing
-  about the one that ships. Measured at fifteen panes, that is one thread and ~48 KB each, idle at zero CPU - so the
-  arrangement stays, and the upstream ask is a courtesy rather than a need. What it does cost is two descriptors per
-  pane against the 256 a GUI-launched process inherits, so the shell must raise its own soft limit at startup.
+- **Application is convergent.** Every event carries a whole record - a pane as it is now, a tab with its tree and its
+  zoom - never a delta, so applying one twice is applying it once, and snapshot-plus-events converges.
+- **Events arrive in order, and a gap is a resubscribe.** Subscribing answers with a snapshot and the number it is
+  current to, then every later event in order, with nothing replayed from before it. A client that sees a number
+  skipped subscribes again, and the fresh snapshot is the whole repair: the mirror reports only what differs from what
+  it held (`muster-daemon-client`'s `follow`). A reconnect, a daemon that restarted and one replaced by a handoff are
+  the same case.
+- **One event removes a pane**, whether a request closed it or its program ended.
+- **Agent state travels with the pane.** It is a field of the pane's record, on the one stream every other change
+  uses, so an overview of N panes costs no connection of its own.
 - **Cross-daemon order is core order.** Streams from different daemons have no mutual order. Composition and
   attention are ordered by the core's own application sequence, and nothing may depend on cross-daemon event order
   for correctness.
+
+What herdr's events forced on the mirror - rejecting replayed events, remembering removals, a subscription per pane
+for agent state - is recorded in `observations/herdr-0.8.0.md` sections 10 and 11, and went with it.
 
 Rendering is driven by diffs scoped to what changed: an agent-state change costs that change, not a walk of every
 pane (desiderata: fast is a feature, the per-event half).
@@ -573,7 +473,7 @@ a state blinks.
 writes it down, so it survives a daemon restart - and it wins over anything derived, because it is the only line
 written for that pane rather than worked out from where it sits. Under it, when there is something to say, goes what
 the agent calls itself: volatile status, lost on a restart because the process that would set it again is new
-(`observations/herdr-0.8.0.md` section 16). Between them a row has a first line stable enough to learn and a second
+(MIP-3, section 2). Between them a row has a first line stable enough to learn and a second
 that changes as work happens, which is what fifteen rows reading `<directory> · claude` could never do.
 
 The second line is drawn only for a pane with a detected harness whose title says something the first line does not,
@@ -584,10 +484,9 @@ harness is a fact the daemon reports. A row is one line or two and never taller:
 of what an agent wrote would move the rows below it while somebody was reading them.
 
 Naming is an ordinary intent through the one action path, so a chord, a menu item, the CLI and an agent all reach it,
-and nothing is rendered optimistically - a rename is applied from what the daemon answers, the way a split is. That
-answer is the only route there is for Muster's own renames: herdr emits no event for one at all, so a rename made by
-another client arrives when the connection next re-snapshots. Clearing a name is a null rather than an empty string,
-and for a tab it is neither, because herdr has no spelling for it.
+and nothing is rendered optimistically - a rename is applied from the daemon's event, the way a split is, so a rename
+made in another window arrives by the same route. Clearing a name, a pane's or a tab's, leaves it called after what it
+is again: its directory, or its place.
 
 **The roster is a tree, because a tab is what a person navigates between.** Tab, then pane: a flat list of panes
 cannot say which of them sit side by side, and a window shows one tab at a time, so "where has that agent got to" is
@@ -602,17 +501,13 @@ themselves, for the two states no pane row can hold: a machine that is unreachab
 all. Without them a machine you asked to see would vanish from the window entirely the moment you closed its last
 pane, which is the state kan a_2HpkpfIfq was about.
 
-Naming is the core's, on the same terms as the ordering, and it drops what a backend's own label repeats - herdr
-names an unnamed tab after its position, and Muster has a better position to write one from. Each row carries the
-tab's Muster name beside its place, so reading the roster and acting on what it says are the same vocabulary.
+Naming is the core's, on the same terms as the ordering: a tab nobody named is captioned by its place in the window's
+count. Each row carries the tab's Muster name beside its place, so reading the roster and acting on what it says are
+the same vocabulary.
 
-**The order within a daemon is the daemon's, and the numbering over it is Muster's.** Those are different claims and
-both are needed. A tab's place among its workspace's tabs is something the backend states - on a snapshot as a list, and
-on a reorder as the whole settled list again - so a tab somebody drags elsewhere in another client moves here too, and
-the mirror adopts the sequence rather than deriving one. What Muster owns is the count laid over the result: one number
-running across every attached daemon, which no daemon could produce because no daemon knows the others exist. The order
-*between* two workspaces is the one thing neither owns, so it stays the order they arrived in
-(`mirror/ordered.rs`).
+**The order of tabs is the window's, and so is the numbering over it.** Which tabs a window holds, and in what order,
+is its composition (above), so the list walks tabs in that order, and one number runs across every attached daemon -
+which no daemon could produce, because no daemon knows the others exist.
 
 **One numbering, and it is on the panes.** Every pane carries a place in a single count that runs across every
 attached daemon and every tab, and that number is what the list draws and what ⌘1 to ⌘9 name. It is on panes because
@@ -638,7 +533,7 @@ One gesture, two requests, and the choice is the core's. Two panes in one tab ex
 row in another tab moves into that tab behind it. The shell knows only which two rows were involved, so it sends
 both and the core picks the verb from where the panes are - a shell that chose would be a second place that rule
 lives, and it would have to read the tree to do it. An exchange rather than an insertion because an arrangement has
-no "between", which is also the constraint the backend imposes: herdr's swap is a pair of ids.
+no "between".
 
 A drop across daemons is refused in the shell, before it becomes a request. A pane is a PTY its daemon owns, so
 moving one to another machine means killing a process on one host and starting a different one on another - not a
@@ -685,7 +580,7 @@ left; and switching costs no bridge, because a surface belongs to its pane and i
 
 A keystroke resolves in fixed order: first the Muster keymap - if the chord is bound to an action, dispatch it and
 stop; otherwise it is reported, with full fidelity, toward the focused pane via the control plane. The wheel is the
-standing exception: scroll always becomes an intent (see data plane). The keymap is data in the config file, not
+exception: it goes to the surface and to the daemon both (see data plane). The keymap is data in the config file, not
 code.
 
 ## One action path
@@ -697,7 +592,7 @@ arrangement.
 
 **The endpoint is the same schema on a different transport, not a second path.** A window binds
 `~/.muster/state/command-<pid>.sock` and answers a length-prefixed `Request` through the same `dispatch` the C ABI
-calls, one request per connection, a thread each so a `pane new --run` waiting on a shell prompt does not hold up a
+calls, one request per connection, a thread each so a request waiting on a slow daemon does not hold up a
 caller asking what the window looks like. Nothing there decides anything; a second entry point that made its own
 decisions would be a second Muster.
 
@@ -741,7 +636,7 @@ rewriting a person's `PATH` after their own profile had, which is not a thing a 
 The one thing an install does owe the link is cleanup: uninstall deletes the bundle the link points into, and the
 app that would have repaired it is the one that just left.
 
-**It is not a view-layer CLI beside the backend's own.** That was the earlier plan, on the reasoning that herdr has a
+**It is not a view-layer CLI beside the backend's own.** That was the earlier plan, on the reasoning that herdr had a
 good CLI already and Muster should not reimplement it, and three things sank it. A window can be attached to more
 than one daemon, and a backend CLI inside a pane reaches that pane's daemon and no other - so it cannot put a pane on
 the devenv, and cannot answer what the window is showing, because no single daemon knows. Making a pane and landing
@@ -751,14 +646,14 @@ the caller has no way to ask. And a documented backend-shaped surface becomes th
 says, because every script and skill written against it is what a replacement would have to provide - which is the
 one thing "we never let one own our contract" rules out.
 
-So the backend's own CLI is not Muster's agent surface. It stays reachable - herdr sets `HERDR_*` in every pane and
-Muster does not hide that - and it is unsupported: it speaks the backend's vocabulary rather than Muster's, and
-nothing here tracks it.
+So Muster's CLI is the agent surface, and the daemon offers no other: `muster-daemon` has no verbs for panes or tabs,
+only `report`, for a harness in a pane to say what its agent is doing, and `replace`, which hands a running daemon's
+panes to a successor.
 
-What that CLI is *not* is a verb-per-backend-verb translation. It is shaped to intents, one call each, because that
-is where the knowledge lives: a pane's program is spawned with the pane, so text sent before its shell has drawn a
-prompt races the program's own first output. Anybody scripting "make a pane and run this in it" by hand rediscovers
-that wait and gets it wrong under load. One call owns it once.
+What that CLI is *not* is a verb-per-backend-verb translation. It is shaped to intents, one call each, because that is
+where the knowledge lives: `muster pane new --run` puts the command in the request that makes the pane, so the daemon
+starts it before anything could be typed, and nobody scripting "make a pane and run this in it" has to find out that
+typing it into a fresh pane races the shell's first prompt.
 
 Reads are half of it. A person driving the GUI can see which panes are on screen and where the keyboard is; an agent
 has to ask, and a CLI that only writes leaves one arranging a window it cannot look at. `ReadWindow` answers the
@@ -778,7 +673,8 @@ records 100 ms apart read as a replay bug for an evening; they were one person h
 repeated, and whether it arrived as a shortcut or as a menu somebody picked. A reader then has the cause in front of
 the effect rather than inferring it from the spacing.
 
-**The intent is parameterized; the action is not.** `CreateTab { workspace, cwd }` takes arguments, and `new_tab` is
+**The intent is parameterized; the action is not.** `CreateTab { tab, cwd, run, name }` takes arguments, and
+`new_tab` is
 a parameterless name that dispatches it with defaults. That split falls out of the menu: an item has exactly one key
 equivalent, and that is also the handle System Settings needs to rebind it, so an action name has nowhere to put an
 argument and `[keymap]` stays keyed by action. Ghostty's chord-keyed form - `cmd+shift+h=resize_split:left,150` -
@@ -817,8 +713,9 @@ the thing it was about being fixed. Severity exists to decide interruption and n
 somebody closed, a warning waits to be found.
 
 **The list also carries failures nobody caused, and a pane that never becomes typeable is the first of them.** A
-pane's keystrokes travel through a bridge that dials a socket the core bound for it, and until that connection
-arrives the pane renders, paints, and discards everything typed into it. Three separate bugs ended in exactly that
+pane's output reaches its surface through a bridge that dials a socket the core bound for it, and until that
+connection arrives the pane shows what it last drew and nothing typed into it appears. Three separate bugs ended in
+exactly that
 state - the bridge failed to dial, the socket path had moved, the channel could not be opened - and every one of them
 was found by somebody typing. Both ends of the wait were already known to the core, which binds the socket and runs
 the callback the accept fires, so what was missing was a deadline between them: five seconds, one problem per pane,
@@ -830,13 +727,13 @@ drawn rather than carrying forward a silence nobody was in a position to notice.
 found: a window opening onto one accused the three panes the zoom covered, every launch, as a notification each.
 An error rather than a warning, even though nobody
 misconfigured anything, because severity is about interruption and a warning waiting to be found would be found the
-old way - by typing into a pane that had stopped listening. The decision is a fold in `typeable.rs` and the clock is
+old way - by typing into a pane that had stopped drawing. The decision is a fold in `typeable.rs` and the clock is
 a single parked thread in the seam, so an idle window costs no wakeups and the rules are answerable by a case.
 
 **And it says which of those it is, because the pane looks the same in all of them and the remedy does not.** A
 pane whose bridge lost its connection recovers on its own once the machine is reachable; one whose attach was
-refused wants a client killed on the far machine; one whose terminal was taken is being shown in another window and
-wants nothing done at all. Until the bridge reported how it ended, all three raised one sentence pointing at a log
+refused is taken over by a reattach; one another bridge took over is being shown in another window and wants nothing
+done at all. Until the bridge reported how it ended, all three raised one sentence pointing at a log
 file - true, useless, and asking the person to open the one surface this list exists to replace. The endings arrive
 on the pane's own control socket, and the sentence for each is a case in `corpus/conformance/typeable.json`, where
 prose somebody reads under pressure can be reviewed as prose.
@@ -856,36 +753,34 @@ queueing behind itself, and the position it ends on is always sent, because the 
 asked for. This is contained to that request rather than made general - the other drag in the window moves a region
 boundary, which is Muster's own composition and never reaches a daemon.
 
-**Input the daemon encodes is the other.** An unmodified arrow and a paste go to the daemon as `pane.send_input`,
-because only it knows the pane's modes, and herdr answers that on the thread that renders every pane it streams - 154
-ms at p90 in one busy session, with the window frozen for each. So a pane's input path hands such an intent to a worker
-and returns, and anything typed while it is out queues behind it: the order in which a pane receives keys is the order
-they were pressed, and only the waiting moved.
+**Input never waits at all.** Every keystroke, click and paste goes to the daemon on the input connection, which is
+never answered: events queue for a writer thread, and a queue full enough to mean the daemon has stopped reading drops
+an event rather than freezing the window (`muster-daemon-client`'s `input`).
 
 ## The renderer seam
 
 The renderer gets the same treatment as the backend: a narrow contract in Muster's terms - create a surface in a
-region, run a pane channel into it, resize it, mark text on it, read its grid (the test oracle) - and nothing
+region, run a pane channel into it, resize it, search it, read its grid (the test oracle) - and nothing
 libghostty-shaped escapes the seam.
 
-**Marking text is a division of labour rather than a second implementation.** libghostty has a full search, and it
-covers the scrollback of a terminal it owns - which is not the situation here, because a surface is repainted from a
-frame stream and holds no history. So the core searches, against what the daemon hands over, and the renderer is
-asked only to mark occurrences of a string on the screen it has already painted. There is still exactly one answer to
-how many matches exist and it is the core's. What the renderer refuses comes back rather than throwing, on the same
-terms as sizing text: a renderer that cannot mark costs the marks and nothing else, and that is a line for the log. Today the only way to feed an embedded ghostty surface is the command it spawns; the embedding
-header has no byte-feed API. The pane channel is therefore delivered by a bridge subprocess the surface runs. That
-is a fact about current libghostty, not a choice - re-verify on upgrades, and revisit if upstream grows a direct
-feed.
+**Find is the renderer's own.** A surface parses the program's own bytes and keeps its own scrollback (the data plane,
+above), so libghostty's search covers everything the surface holds: the shell hands it a needle, and libghostty
+searches, marks and counts on a thread of its own. What the renderer refuses comes back rather than throwing, on the
+same terms as sizing text: a renderer that cannot search costs the marks and nothing else, and that is a line for the
+log.
+
+Today the only way to feed an embedded ghostty surface is the command it spawns; the embedding header has no byte-feed
+API. The pane channel is therefore delivered by a bridge subprocess the surface runs. That is a fact about current
+libghostty, not a choice - re-verify on upgrades, and revisit if upstream grows a direct feed.
 
 **A surface belongs to its pane, not to the region showing it.** One per pane per window, held by the shell for as
-long as the pane's daemon holds the pane, and lent to whichever region is showing it. It follows from the line
-above: a bridge is a surface's command, so a surface torn down when its tab went off screen took the bridge with
-it, and a remote bridge is an `ssh` exec whose machine spends about 400ms opening a session for it - paid again on
-every switch back, measured at 444-561ms against 29-59ms for a local pane. The rule also makes a pane drawn in two
-regions unable to become two bridges dialing one terminal, which herdr refuses and which leaves a panel nobody can
-close. What it costs is one bridge, one ssh channel and one herdr client per pane rather than per pane on screen;
-the roster is what says a pane has closed, and that is when its surface goes.
+long as the pane's daemon holds the pane, and lent to whichever region is showing it. It follows from the line above:
+a bridge is a surface's command, so a surface torn down when its tab went off screen took the bridge with it, and
+every switch back paid for a new attach and its replay. When Muster ran herdr a remote bridge was also an `ssh` exec,
+measured at 444-561ms a switch against 29-59ms for a local pane. The rule also keeps a pane drawn in two regions from
+becoming two bridges dialing one pane, which the daemon allows only as a takeover. What it costs is one bridge and one
+stream per pane rather than per pane on screen; the roster is what says a pane has closed, and that is when its
+surface goes.
 
 **Appearance crosses this seam in Muster's words, and reads no file belonging to another application.** Muster
 called `ghostty_config_load_default_files` until 2026-08-16, so a Ghostty config on disk decided what a pane looked
@@ -910,10 +805,8 @@ every reload after it, and one mechanism cannot disagree with itself. The derive
 `~/.muster/state/` beside the saved arrangements, and is rewritten every launch; it is also the answer to "what did Muster actually tell the
 renderer", which is the first question when a colour does not take.
 
-The backend seam does the same thing for the same shape of reason - herdr takes a value only as a file too - with one
-difference worth stating: an appearance naming nothing produces no file at all, because every value in it is
-somebody's preference, while the daemon's is written even when nothing is configured. An unconfigured Muster still
-has an opinion there, and it is that the daemon it pinned does not go looking for its own updates.
+The backend seam needs no such file, because muster-daemon takes its settings as requests on its control connection
+(the shape, above).
 
 ## Degradation
 
@@ -929,85 +822,62 @@ Liveness needs an active probe - the control plane is legitimately silent when n
 is an implementation choice. Version skew between Muster and a daemon is detected at attach and surfaced plainly.
 Sessions survive anything Muster does: a broken Muster must never strand a session (see also geometry, above).
 
-**A fourth state, and the one that is easy to get wrong: the daemon answered, and the session it describes is not
-the one we knew.** After a daemon restart the pane ids and the tree come back but every terminal is new
-(`observations/herdr-0.8.0.md` section 12); after a config change or a crash the session may be empty entirely.
-Every test for "connected" passes in both cases, and rendering an empty session as though the user closed
-everything is the worst available answer. This is a distinct state with a distinct response - say what was there,
-offer to rebuild it - and it belongs to Muster because no daemon can know what a window was showing.
+**A fourth state, and the one that is easy to get wrong: the daemon answered, and the session it describes is not the
+one we knew.** A daemon that restarts brings back every tab, name and directory from its saved state, with a new shell
+in each pane and none of the old processes, and says in a `restored` event what it could not bring back; a daemon
+whose saved state it could not read starts empty (MIP-3, section 2). Every test for "connected" passes in each case,
+and rendering an empty session as though the user closed everything is the worst available answer. This is a distinct
+state with a distinct response - say what was there, offer to rebuild it - and it belongs to Muster because no daemon
+can know what a window was showing.
 
 **A connection dropping costs a pane its bridge, and the bridge is what has to come back.** The row below saying a
 dropped connection loses nothing is about the daemon, which keeps running with the agent in it; the near side gives
-up, because a bridge for a remote pane is an `ssh` exec and it dies with the route. So a bridge that ended is
-replaced while its daemon still holds its pane, and the interval between one ending and the next tells a connection
-that blinked from a pane nothing will fix - three replacements inside half a minute and Muster stops and says why
-(`crates/muster-core/src/respawn.rs`). Two things make that harder than it sounds. The exits arrive before the
-tunnel is reported down rather than after, so nothing may key on the reopen. And the far machine refuses the
-replacement: only one client may hold a herdr terminal, and the client from before the drop goes on holding one -
-measured still attached 53 minutes after its ssh was gone - so a replacement re-attaches with `--takeover`, which a
-first bridge never does, because the terminal it would take could be one another window is showing.
+up, because a remote bridge's stream rides the ssh forward and ends with the route. So a bridge that ended is replaced
+while its daemon still holds its pane, and the interval between one ending and the next tells a connection that
+blinked from a pane nothing will fix - three replacements inside half a minute and Muster stops and says why
+(`crates/muster-core/src/respawn.rs`). Two things make that harder than it sounds. The exits arrive before the tunnel
+is reported down rather than after, so nothing may key on the reopen. And the far machine refuses the replacement: a
+pane has one bridge at a time, and the stream from before the drop stays open over there until its ssh notices, so a
+replacement re-attaches with `--takeover`, which a first bridge never does, because the pane it would take could be
+one another window is showing.
 
-**A pane can also be too big to be drawn at all, and every layer below reports health while it
-is.** A daemon paints a pane by sending the whole screen as one frame; herdr refuses any client
-frame over 2 MiB and skips a text one with a line in its own log, so a pane past roughly a
-hundred thousand cells - about twenty bytes each - simply stops updating. Nothing downstream
-disagrees: the client stays connected, the bridge goes on relaying keystrokes, the agent goes on
-working, and the pane's state reads `idle`. Sixteen minutes of that was measured, with the only
-evidence a WARN on the far machine (kan a_2KHGYMpnK). Both halves are Muster's, because Muster
-asked for the grid: the font-size chord saturates at the last size that fits, and a pane that
-gets there another way - a zoom, a window dragged wider - raises a problem naming its grid.
-**The number comes from the bridge**, which is the only process that has it: the shell measures a
-region in points, the daemon is only ever told, and the bridge is what reads its PTY and passes
-`--cols` and `--rows` to herdr. It reports every grid it asks for on the control socket it
-already holds, so one report covers every way a pane can grow. The ceiling sits at the real cap
-rather than short of it, because a margin large enough to absorb a keypress would refuse an
-ordinary small font on a wide display - and a false alarm that also disables a working control is
-worse than the silence it would be preventing.
-
-**Under that ceiling is a wider net: a pane that was asked for something and painted nothing.**
-The ceiling names one cause and can say what to do about it. Every other way a pane stops
-painting - a wedged bridge, a transport that dropped without closing, a daemon still answering
-requests while one of its terminals went quiet - leaves the same picture and nothing to read it
-by (kan a_2LMRCug0P). The trigger is an intent that actually reached the pane rather than silence
-itself, because an idle agent paints nothing all afternoon and is perfectly healthy: what makes
-quiet wrong is that somebody typed. Neither process knows both halves, which is why this is
-joined above the seam - the app is the sender, and the bridge is the only thing that sees a
-frame, so it says it painted on the control socket it already holds, at most four times a second
-and not at all while nothing is arriving. Frames inside that quarter second are reported when it
-ends rather than by the next frame, because the echo of the last keystroke before a pause has no
-next frame, and waiting for one accused a healthy pane on every pause (kan a_2PeXwg4fA). Three guards keep the sentence true: only while the
-window is drawing the pane, only while its daemon is answering, and never when the ceiling has
-already named the silence, because two rows about one frozen pane send the reader to the one
-without the remedy in it. The first guard is about raising, not keeping: a warning already raised stays when its pane
-leaves the screen, and goes only when a frame arrives, the pane closes, its machine goes away or
-the ceiling names the cause - so a warning that went away means one of those happened, not that
-somebody looked elsewhere (kan a_2LWqtPd8E). It is a warning rather than an error - it may clear by itself, and a
-program that turned echo off for a password looks exactly like this until it paints again.
+**A pane can also stop painting while every layer below reports health: a pane that was asked for something and
+painted nothing.** A wedged bridge, a transport that dropped without closing, a daemon still answering requests while
+one of its terminals went quiet - each leaves the same picture and nothing to read it by (kan a_2LMRCug0P). The
+trigger is an intent that actually reached the pane rather than silence itself, because an idle agent paints nothing
+all afternoon and is perfectly healthy: what makes quiet wrong is that somebody typed. Neither process knows both
+halves, which is why this is joined above the seam - the app is the sender, and the bridge is the only thing that sees
+output reach its surface, so it says it painted on the control socket it already holds, at most four times a second
+and not at all while nothing is arriving. Output inside that quarter second is reported when it ends rather than by
+the next arrival, because the echo of the last keystroke before a pause has nothing after it, and waiting for more
+accused a healthy pane on every pause (kan a_2PeXwg4fA). Two guards keep the sentence true: only while the window is
+drawing the pane, and only while its daemon is answering. The first guard is about raising, not keeping: a warning
+already raised stays when its pane leaves the screen, and goes only when the pane paints, closes, or its machine goes
+away - so a warning that went away means one of those happened, not that somebody looked elsewhere (kan a_2LWqtPd8E).
+It is a warning rather than an error - it may clear by itself, and a program that turned echo off for a password looks
+exactly like this until it paints again.
 
 **How the app finds out a bridge has died is Muster's own business, not the renderer's.** libghostty offers a
 `close_surface` callback and it does not arrive: a dead pane sits on libghostty's own "Process exited. Press any
 key" screen, which is the surface being held open rather than the host being asked to close it, so for two releases
 the replacement policy above was written, covered by the corpus, and reachable from nothing (kan a_2IRcMjFs0). What
 Muster watches instead is the socket it bound for the pane and the bridge dialed back on
-(`muster-herdr/src/control_socket.rs`). That connection ends when the process does, whether it exited, was killed,
-or lost the machine it was running on, and it needs no cooperation from either dependency. The bridge writes one
-sentence there before it goes, saying which ending this was, because the answer differs: a refused attach is worth
-taking the terminal for, a terminal taken by somebody else is not, and a terminal the daemon says no longer exists -
+(`crates/muster-seam/src/bridge_link.rs`). That connection ends when the process does, whether it exited, was killed,
+or lost the machine it was running on, and it needs no cooperation from the renderer or the daemon. The bridge writes
+one sentence there before it goes, saying which ending this was, because the answer differs: a refused attach is worth
+taking the pane over for, a pane another bridge took over is not, and a pane the daemon says no longer exists -
 which is what a bridge hears when its pane is closed under it - is worth no bridge at all. The renderer's callback is still wired, as a
 second source rather than the one that matters, and a pane whose bridge is already known gone ignores the second
 arrival.
 
-**A success that means a refusal: the daemon considered a change, performed none of it, and named its reason beside
-an ordinary answer.** herdr does this for zoom, swap, move and resize, so a window reading only the envelope cannot
-tell it from a change that worked, and the one symptom is a window that does not move - which is what a bug in the
-request looks like too. **The rule is that a decline whose state already holds is a success, and a decline that did
-not happen is a refusal**: zooming a tab that holds one pane is looking at what it asked to see, moving a pane into
-a zoomed tab is not, and answering the second one with a success tells the caller something untrue. Which reason is
-which is a reading of one backend's own vocabulary, so it belongs in that adapter (`muster_herdr::considered`) and
-what crosses the seam is Muster's own `Refusal` - one decision serving the keyboard and the CLI, because both reach
-the adapter by the same route. A reason the adapter does not recognize is a refusal, on the same grounds as an
-unread event kind: calling a change that happened refused costs one message somebody can check, and the other way
-round is the silence this rule exists to end.
+**Every answer says what happened, and a decline is never dressed as a success.** muster-daemon answers each change
+with one of four outcomes: done, already so, refused because the thing named does not exist, or refused for a stated
+reason (MIP-3, section 9). The adapter reads the first two as success and the others as Muster's own `Refusal`, one
+decision serving the keyboard and the CLI, because both reach the adapter by the same route. Already so is a success
+because the state the caller asked for holds - a resize against a pane already at its limit, say - while a change that
+did not happen is a refusal, and answering it with a success would tell the caller something untrue. When Muster ran
+herdr, this took reading a reason herdr put beside an ordinary answer, since herdr answered a zoom, swap, move or
+resize it had considered and not performed as a success, and the one symptom was a window that did not move.
 
 A refusal that proves the window is stale is worth more than a message. Muster picks between swapping two panes and
 moving one by reading which tabs its mirror has them in, so a daemon refusing that choice has said the mirror is
@@ -1023,25 +893,20 @@ and because the layer that can honestly answer each is different.
 |---|---|---|
 | Muster quits or crashes | nothing | nobody needs to; the daemon owns the PTYs, and holds the panes' permissions with them |
 | the connection drops (VPN, lid, SSH) | nothing; the view goes stale and resyncs | the degradation model above |
-| the daemon restarts | every process; scrollback | herdr restores the tree and cwds |
+| the daemon restarts | every process; scrollback; titles | the daemon restores its tabs, names and directories |
 | the machine reboots | the same, plus the daemon must come back | as above |
 | the machine is gone | local work only | remote daemons keep running |
 
-**A tab that spans two machines is in a weaker tier than the rest, and it is the only thing here that is.** Every row
-above holds because a daemon wrote the shape down: quitting Muster costs nothing, and a Muster that never comes back
-costs nothing either, because herdr still has the tab and its tree. A tab holding a laptop pane beside a devenv pane
-is one herdr tab on each, and *that they are one tab* is a fact neither daemon has ever been told - neither knows the
-other exists. It lives in `~/.muster/state/names.toml` and nowhere else.
+**A tab that spans two machines is written down on both, so no tab depends on a file of Muster's.** A tab holding a
+laptop pane beside a devenv pane is a part on each daemon, and each part carries the tab's one Muster name, so each
+daemon restores its part under that name (MIP-3, section 2). Only the order and widths of the tab's regions are
+Muster's, in the window's arrangement. That closed the weaker tier MIP-2 accepted, where the grouping lived in
+`~/.muster/state/names.toml` and nowhere else.
 
-So the guarantee degrades per tab rather than wholesale (MIP-2). A tab whose panes are all on one machine keeps every
-row above, which is every tab until somebody deliberately groups two; only a grouped one depends on a file of
-Muster's, and only that one is lost if the file is - as a tab per machine, with every pane still running.
-
-Two states it answers either way. **A daemon restarts:** herdr returns the pane tree and each pane's directory, not
-the processes. A single-machine tab comes back as row three says; a grouped one is reassembled from two halves and is
-whole as soon as both daemons have spoken. **One of a tab's machines is unreachable:** the tab opens showing the
-panes it can reach rather than refusing to open, which is the rule the mirror already follows for a stale daemon
-applied to a tab.
+Two states it answers either way. **A daemon restarts:** it returns every tab, each pane's name and each pane's
+directory, not the processes, and a grouped tab is whole again as soon as both daemons have spoken. **One of a tab's
+machines is unreachable:** the tab opens showing the panes it can reach rather than refusing to open, which is the
+rule the mirror already follows for a stale daemon applied to a tab.
 
 **The first row used to have an exception, and what closed it is the daemon being a helper application.** macOS
 charges a protected request - a folder, the camera, AppleScript, the local network - to the *responsible* process.
@@ -1066,9 +931,9 @@ restart (agent status, scroll offsets, revisions), so the mirror is deliberately
 persistence hooks. What gets written down is what someone would ask for again.
 
 This also resolves an apparent gap in "view = f(daemon state)": restoring looks like it needs an inverse, and does
-not. A restore is a sequence of ordinary intents - create a workspace, apply a layout, spawn - so it flows through
-the one action path, which makes it scriptable, agent-drivable, and testable with no new mechanism. `layout.apply`
-is the primitive, and it is additive rather than reconciling, so whatever calls it must apply into something fresh.
+not. The daemon writes down what someone would ask for again - tabs, trees, names, directories, settings - and never
+an observation such as a title or an agent's state, then rebuilds from that file when it starts (MIP-3, section 2). A
+window reads the result the way it reads any other daemon state.
 
 **Muster's own durable state is composition, plus what the window looks like.** Composition is which daemons are
 attached, which tabs the window holds and in what order, which of them is on screen, and how each divides between the
@@ -1106,30 +971,32 @@ reopen` reads.
 
 **Every tab belongs to exactly one window, and that is written down beside the names** (kan a_2Mhi0EZlv).
 `~/.muster/state/holding/tabs.toml` says which window holds each tab, and every window reads, changes and writes it
-inside the same lock the names use. herdr allows one client per terminal, so a tab two windows both listed was a tab
-whose terminals the second took from the first at a click - and before this every window listed every tab, so a
+inside the same lock the names use. A pane is drawn by one bridge at a time, so a tab two windows both listed was a
+tab whose panes the second took from the first at a click - and before this every window listed every tab, so a
 window holding nothing drew the next tab anybody made. Now a window lists the tabs the record gives it and no others,
 and its arrangement names only those.
 
 A window here is its arrangement's name, `window-2`, not its process, so a window keeps its tabs across a quit and
 `muster window reopen` comes back to them. Whether a window is open is asked by dialing its socket rather than read
 off a pid. A tab a window asks for is recorded as its own before anybody else can take it: the window writes that it
-is waiting on that machine before it asks, and one write takes the tab and clears the wait, because herdr describes a
-new tab to every window before the asking one hears its name. A tab nothing asked for - made in herdr's own TUI, or
-held by a window whose arrangement has gone, or every tab on the first launch after this existed - joins the window
-that was in front most recently. The shell watches the record's directory and tells the core when it moves, so an idle
+is waiting on that machine before it asks, and one write takes the tab and clears the wait, because the daemon
+announces a new tab to every window before the asking one hears its answer. A tab nothing asked for - made by another
+client, or held by a window whose arrangement has gone, or every tab on the first launch after this existed - joins
+the window that was in front most recently. The shell watches the record's directory and tells the core when it moves, so an idle
 window costs no wakeups.
 
-But composition is the piece nobody else can save. A herdr daemon's export is scoped to itself and structurally cannot
-describe a workspace spanning a laptop and a devenv, because neither daemon knows the other exists. Muster is the
-only layer that sees across them, which makes cross-daemon composition the part of durability that is genuinely
-ours - and it follows that restore is per-daemon and partial by nature, since after a reboot the local daemon comes
-back fresh while the remote one never noticed.
+But composition is the piece nobody else can save. A daemon's saved state is scoped to itself: it can record that its
+part of a tab carries a name, but not which window shows that tab, where the tab sits in the window's list, or how
+wide each machine's region is, because no daemon knows the windows or the other daemons exist. Muster is the only
+layer that sees across them, which makes that part of durability genuinely ours - and it follows that restore is
+per-daemon and partial by nature, since after a reboot the local daemon comes back from its own file while the remote
+one never noticed.
 
 What Muster must not do here: keep its own session store, or infer an agent's resume token by reading its output.
 The first is the multiplexer non-goal and the second is the agent-framework one. Reporting a session reference the
-harness hands over is metadata about a pane and is fine; herdr already has `pane.report_agent_session` for it, and
-that is where a real "resume this agent" story lives - in the harness's own session, not in the terminal.
+harness hands over is metadata about a pane and is fine; `muster-daemon report` already carries what a harness says
+about its agent, and that is where a real "resume this agent" story lives - in the harness's own session, not in the
+terminal.
 
 ## The diagnostic log
 
@@ -1169,10 +1036,10 @@ Where the file lives is an OS question and therefore the shell's; nothing in the
 
 The injected edges, matching `testing.md`: the clock, and the renderer seam (tests feed pane channels through
 libghostty-vt and assert the resulting grid). The backend connection is deliberately *not* one of them - tests
-spawn a real, version-pinned herdr rather than a stand-in, so the adapter is judged against the daemon itself.
-What is injectable there is narrower and lives in the code's own shape: the event parser takes a reader rather
-than a socket, so a recorded stream can be cut anywhere, and the connection loop takes a socket path, so a killed
-daemon is the disconnect case. The perf harness measures at the same edges, at 1 and 15 panes (desiderata budgets).
+spawn a real muster-daemon built from the same commit rather than a stand-in, so the adapter is judged against the
+daemon itself. What is injectable there is narrower and lives in the code's own shape: the message reader takes a
+reader rather than a socket, so a recorded stream can be cut anywhere, and the connection loop takes a socket path,
+so a killed daemon is the disconnect case. The perf harness measures at the same edges, at 1 and 15 panes (desiderata budgets).
 
 ## Deliberately open
 
@@ -1181,7 +1048,6 @@ Left to implementing agents with better information at build time:
 - The concurrency mechanism, as long as the event-model property holds.
 - Wire framing of the app's CLI and IPC endpoint.
 - Reconciliation cadence and the liveness probe.
-- Per-view tab selection: default to the daemon's focused tab, or remember per view.
 
 Project-level undecideds - the language split, optimistic UI, reproducible presentation
 state - are tracked on the kan board.

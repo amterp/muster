@@ -9,9 +9,8 @@ what a keystroke becomes on its way to a pane.
 
 One directory rather than a file in each of the XDG trees, because Muster's surface is meant
 to be discovered rather than taught - an agent that can list one directory needs no
-documentation to find the whole of it. `XDG_CONFIG_HOME` and its family still decide where
-herdr listens; they no longer move anything of Muster's, and they no longer decide what
-Muster's own daemon reads.
+documentation to find the whole of it. `XDG_CONFIG_HOME` and its family move nothing of
+Muster's.
 
 ```toml
 option_as_alt = "left"         # never (the default) | always | left | right
@@ -89,11 +88,7 @@ System Settings can move it again.
 
 Seven of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
-the menu, one click away and one `[keymap]` line from a chord. Which of the four sides costs
-herdr one request and which costs two is not something you can tell from here, and that is the
-point: herdr splits rightward and downward only, so the other two are a split and a rearrange,
-and Muster takes the arrangement from the daemon's own answer rather than letting you watch the
-pane move.
+the menu, one click away and one `[keymap]` line from a chord.
 
 `rename_tab` is the third, and that one is Muster's own call rather than Ghostty's: you name a
 tab once and a pane several times an hour, so the chord goes to `rename_pane` (`cmd+shift+n`)
@@ -377,10 +372,11 @@ against and notifies nothing; it says so in the run log, and `./dev --bundle` is
 
 `[shell]` and `scrollback_bytes` are the two Muster does not act on at all. What a pane runs
 and how much of it you can scroll back through belong to the daemon that makes the pane - so
-Muster translates them into a file of its own and hands that to the daemon, exactly as it does
-`[font]` and `[colors]` for the renderer. Before this you had to learn that herdr existed and
-find its config file, and a `default_shell` set for your own terminal quietly decided what
-every Muster pane ran.
+Muster hands them to the daemon as settings over its own connection, as it hands `[font]` and
+`[colors]` to the renderer, and sends them again whenever the file changes or the daemon
+reconnects. No daemon reads a config file of its own. When Muster ran herdr, you had to learn
+that herdr existed and find its config file, and a `default_shell` set for your own terminal
+quietly decided what every Muster pane ran.
 
 `ssh_terminfo`, `ssh_env` and `sudo` are Ghostty's shell integration features of the same
 names, which every pane's shell gets, and they answer one problem: a program on another machine,
@@ -404,43 +400,28 @@ uses that one.
 
 `scrollback_bytes` is bytes because that is what the buffer is measured in; a line has no
 fixed size, so a count of them would be a number that did not mean what it said. Zero is a
-real answer - a pane that keeps only what is on screen. What is deliberately *not* offered is
-the daemon's version check: Muster ships one herdr, pinned by version and checksum, and turns
-that check off. A daemon that could be told to go and fetch a different version of itself would
-make "this was tested against the daemon it ships with" mean nothing.
+real answer - a pane that keeps only what is on screen.
 
-**herdr's other update check, the one for its agent-detection manifests, is left on**, and the
-difference between the two is worth stating because Muster used to turn both off together. A
-version names the binary this project records a corpus against. A manifest is data describing
-how somebody else's agent looks on screen, and those agents change on their own schedule -
-Claude Code moved its busy spinner from a Braille character to a half-circle, the one rule in
-herdr's bundled manifest that can produce `working` matches Braille, and so the dot could no
-longer say that an agent was working at all. Eleven agent transitions over a day of real use on
-two machines, and `working` was not among them. herdr had published a corrected manifest two
-days before anyone noticed, and Muster's config file was what stopped it arriving.
-
-So a daemon Muster starts fetches manifests the way herdr would on its own. The cost is that
-detection rules can move under a build that was tested against different ones, and that a
-daemon start reaches the network. The suite is unaffected: the daemons it runs are given their
-manifests up front and check for none, so a recorded corpus is still judged against frozen
-rules. A daemon that has already started keeps the manifests it loaded, so a machine picks a
-new set up when its daemon next restarts rather than immediately.
-
-**`~/.muster/agent-detection/` is where you correct detection yourself, on Muster's own daemon**
-(MIP-3), which takes over from herdr at the cut-over. It has no catalog to fetch from: its
-manifests are built in, the app sends its own when it connects, and a file here beats both. A
-file is one agent's manifest in herdr's format, named for the agent - `claude.toml` replaces the
-built-in claude, and a new name adds an agent Muster never knew. A file named for a different
-agent than its `id`, or needing a newer detection engine than the daemon has, is ignored and the
-daemon's log says why. The directory is read when the daemon starts and again whenever the app
-sends manifests, which it does on connect; only panes running an agent whose manifest changed
-start their detection over, so reconnecting never makes a working agent flash idle.
+**Detection rules travel with the app, and `~/.muster/agent-detection/` is where you correct
+them yourself.** A manifest is data describing how somebody else's agent looks on screen, and
+those agents change on their own schedule. When Muster ran herdr, Claude Code moved its busy
+spinner from a Braille character to a half-circle while the one rule that could produce
+`working` still matched Braille, and eleven agent transitions over a day on two machines never
+once said `working`. So a fix to a manifest has to reach a daemon that is already running. The
+daemon's manifests are built in, the app sends its own when it connects, and a file here beats
+both; nothing is fetched from the network. A file is one agent's manifest in herdr's format,
+named for the agent - `claude.toml` replaces the built-in claude, and a new name adds an agent
+Muster never knew. A file named for a different agent than its `id`, or needing a newer
+detection engine than the daemon has, is ignored and the daemon's log says why. The directory is
+read when the daemon starts and again whenever the app sends manifests, which it does on
+connect; only panes running an agent whose manifest changed start their detection over, so
+reconnecting never makes a working agent flash idle.
 
 **`MUSTER_AGENT` names the agent a process is, whatever its executable is called.** Set it in
 the environment a wrapper script starts its agent with - `MUSTER_AGENT=claude` - and the daemon
 reads it off that process and matches it against the manifests' names. macOS does not show the
 environment of its own binaries (`/bin/sh`, `/bin/sleep`), so the variable has to be on the agent
-process itself rather than on a system shell that runs it. herdr's equivalent is `HERDR_AGENT`.
+process itself rather than on a system shell that runs it.
 
 **Both work on a devenv too**, where the daemon reads that machine's own
 `~/.muster/agent-detection/`. A `[[daemon]]` with a `host` starts the daemon of this Muster's
@@ -527,17 +508,5 @@ format, because libghostty has no way to be handed a value except as a file. Rew
 launch, so editing it changes nothing - but reading it answers "what did Muster actually tell
 the renderer", which is the first question when a colour does not take.
 
-`herdr.toml` is the same arrangement for the daemon: `[shell]` and `scrollback_bytes` in
-herdr's own format, plus the version check Muster turns off, handed over by name so it moves
-which file that daemon reads without moving the socket it listens on. Reading it answers "what
-did Muster actually tell the daemon", which is the first question when a pane opens the wrong
-shell. It is written even when you have configured nothing, because the version check is
-Muster's answer rather than yours - and your own `~/.config/herdr/config.toml` is untouched,
-still read by your own herdr, and handed back to every pane Muster opens so that `herdr` typed
-inside one reads what it always did. A daemon on another machine gets the same file, written to
-`~/.muster/state/herdr.toml` over there, and that machine's panes are handed that machine's own
-herdr config back for the same reason.
-
-`~/.muster/cache/` is the other directory Muster writes, and holds what it downloaded - today,
-one herdr per platform you attach a remote daemon on. Delete it and the next such attach fetches
-again, which costs about 18 MB and nothing else.
+The daemon has no such file: what it is told arrives over its connection, and nothing is
+downloaded, so Muster keeps no cache directory either.

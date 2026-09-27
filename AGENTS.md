@@ -34,25 +34,26 @@ setting, and `docs/cli/limits.md` is the same honest account for the CLI.
 - **Sessions outlive the app, and their shape outlives the daemon.** Backend daemons own the PTYs, so quitting
   Muster, dropping the VPN or closing the lid costs nothing: agents keep working and every pane comes back. Below
   that line the guarantee weakens honestly rather than silently - a daemon restart returns the pane tree and each
-  pane's directory but not the processes, and a reboot is the same case with the daemon to start first. The one
-  shape no daemon can write down is a tab holding panes on two machines, because neither knows the other exists;
-  that grouping lives in a file of Muster's, and only a tab somebody grouped depends on it. What can be written
-  down is written down; a live process cannot be, and Muster does not pretend otherwise
+  pane's directory but not the processes, and a reboot is the same case with the daemon to start first. A tab
+  holding panes on two machines is written down on both daemons, each part carrying the tab's one name; only the
+  order and widths of its regions are Muster's to keep. What can be written down is written down; a live process
+  cannot be, and Muster does not pretend otherwise
   (`docs/architecture.md`, durability).
 - **View = f(daemon state).** The app owns no truth. Layout, agent state, and scrollback live in the backend; the app
   renders them and forwards intent.
-- **Swappable organs, pragmatically.** The session backend ([herdr](https://github.com/herdrdev/herdr) today) and the
-  renderer ([libghostty](https://github.com/ghostty-org/ghostty) today) sit behind narrow seams we own: the core
-  speaks Muster's own vocabulary, each dependency lives in one adapter, and the contract corpus is the executable
-  definition of what a replacement - wholesale, or a fork - must provide. We embrace a dependency where it
-  simplifies; we never let one own our contract - and the surface a person or an agent drives is part of that
-  contract. Where Muster acts on the answer, the way to ask is Muster's, never the dependency's.
+- **Swappable organs, pragmatically.** The session backend (`muster-daemon`, Muster's own since it replaced
+  [herdr](https://github.com/herdrdev/herdr) in MIP-3) and the renderer
+  ([libghostty](https://github.com/ghostty-org/ghostty) today) sit behind narrow seams we own: the core speaks
+  Muster's own vocabulary, each organ lives in one adapter (the daemon's is `muster-daemon-client`), and the contract
+  corpus is the executable definition of what a replacement - wholesale, or a fork - must provide. We embrace a
+  dependency where it simplifies; we never let one own our contract - and the surface a person or an agent drives is
+  part of that contract. Where Muster acts on the answer, the way to ask is Muster's, never the dependency's.
 - **Green suite means it works.** Muster is built largely by AI agents, so the suite carries the confidence an
   author's memory cannot. What makes that achievable here: a thin shell over a thick headless core, so no logic hides
-  in the untestable layer; a real, version-pinned herdr behind the backend seam rather than a stand-in, because a
-  stand-in is Muster's own guess at a daemon and a wrong guess passes; oracles recorded from reality - terminal grids
-  via libghostty-vt, intent on the wire - never pixels or internals; deterministic, and offline in the sense that
-  nothing reaches the network.
+  in the untestable layer; a real muster-daemon built from the same commit behind the backend seam rather than a
+  stand-in, because a stand-in is Muster's own guess at a daemon and a wrong guess passes; oracles recorded from
+  reality - terminal grids via libghostty-vt, intent on the wire - never pixels or internals; deterministic, and
+  offline in the sense that nothing reaches the network.
 - **Every run explains itself.** Muster is several processes, often on several machines, and a symptom in one usually
   has its cause in another: a window that ignores the keyboard is a bridge that never started, or one that started and
   could not dial back. Each run leaves a single machine-readable timeline spanning all of them, so a bug report is a
