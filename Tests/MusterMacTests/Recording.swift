@@ -26,6 +26,8 @@ final class RecordingSurface: PaneSurface {
   var fontSizeOffsets: [Int32] = []
   /// In backing pixels, as libghostty answers. Nil is a surface nothing has sized yet.
   var cellPixelSize: (width: UInt32, height: UInt32)?
+  var textPixelSize: (width: UInt32, height: UInt32)?
+  var padding: Double = 0
   /// Every needle it was asked to search for, `nil` for an end, so a test can tell one from
   /// none.
   var searches: [String?] = []

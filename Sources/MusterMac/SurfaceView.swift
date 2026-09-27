@@ -339,11 +339,26 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   }
 
   /// Where an event landed in the pixels a pane's daemon measures its terminal in: backing
-  /// pixels, from the top left.
+  /// pixels, from the top left of its text.
+  ///
+  /// From the text rather than the view's edge, because the terminal's size is what its cells
+  /// cover, as libghostty sizes it. Ghostty counts a position over the padding as the nearest
+  /// cell and one off the surface as outside it, and the daemon's encoder knows only the
+  /// cells, so a position over the padding is moved onto them here and one off the view is
+  /// left for the encoder's own rules about the world outside a terminal.
   private func pixels(_ event: NSEvent) -> (x: Double, y: Double) {
     let scale = window?.backingScaleFactor ?? 2
     let at = flipped(event)
-    return (Double(at.x * scale), Double(at.y * scale))
+    let inset = surface?.padding ?? 0
+    var x = Double((at.x - inset) * scale)
+    var y = Double((at.y - inset) * scale)
+    if bounds.contains(convert(event.locationInWindow, from: nil)),
+      let text = surface?.textPixelSize
+    {
+      x = min(max(0, x), Double(text.width) - 1)
+      y = min(max(0, y), Double(text.height) - 1)
+    }
+    return (x, y)
   }
 
   public override func scrollWheel(with event: NSEvent) {

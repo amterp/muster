@@ -98,6 +98,10 @@ public final class Renderer {
   private let app: ghostty_app_t
   /// Replaced when the config file is read again, and freed with the app.
   private var config: ghostty_config_t
+  /// What a surface made now is padded by, in points. Held beside the config because a
+  /// surface keeps the padding it was made with, and the window has to measure a click from
+  /// where that surface's text starts.
+  private var padding: Double
   /// Where the derived config is written, kept so a reload writes to the same place.
   private let configPath: String
 
@@ -139,6 +143,7 @@ public final class Renderer {
     ghostty_config_finalize(config)
     self.config = config
     self.configPath = configPath
+    self.padding = surfacePadding(appearance)
     self.diagnostics = Renderer.complaints(about: config)
 
     // Six callbacks, and a spike owes real answers to none of them.
@@ -212,6 +217,7 @@ public final class Renderer {
     ghostty_app_update_config(app, updated)
     ghostty_config_free(config)
     config = updated
+    padding = surfacePadding(appearance)
   }
 
   /// Creates a surface that renders into `view`, running `command`.
@@ -247,7 +253,7 @@ public final class Renderer {
       }
 
     guard let surface else { throw RendererError.surfaceCreationFailed }
-    return Surface(surface, token: token)
+    return Surface(surface, token: token, padding: padding)
   }
 }
 
@@ -275,9 +281,13 @@ public final class Surface {
   /// fresh one starts at the size the configuration named, which is exactly zero.
   private var fontSizeOffset: Int32 = 0
 
-  init(_ surface: ghostty_surface_t, token: UInt) {
+  /// The space between the text and the surface's top and left edges, in points.
+  public let padding: Double
+
+  init(_ surface: ghostty_surface_t, token: UInt, padding: Double) {
     self.surface = surface
     self.token = token
+    self.padding = padding
     Surface.living[token] = Held(surface: self)
   }
 
@@ -414,6 +424,15 @@ public final class Surface {
     let size = ghostty_surface_size(surface)
     guard size.cell_width_px > 0, size.cell_height_px > 0 else { return nil }
     return (size.cell_width_px, size.cell_height_px)
+  }
+
+  /// How much of the surface its cells cover, in backing pixels: the size the pane's terminal
+  /// is told it has, which is the surface less its padding and less the part of a cell that
+  /// does not fit. `nil` before the surface has been sized.
+  public var textPixelSize: (width: UInt32, height: UInt32)? {
+    let size = ghostty_surface_size(surface)
+    guard size.columns > 0, size.rows > 0 else { return nil }
+    return (UInt32(size.columns) * size.cell_width_px, UInt32(size.rows) * size.cell_height_px)
   }
 
   // The pointer and the wheel, which libghostty turns into a selection or a scroll of its own

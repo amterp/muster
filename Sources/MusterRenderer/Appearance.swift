@@ -91,6 +91,14 @@ public struct Appearance: Equatable, Sendable {
 /// is what lets a reload use the same path as a launch instead of a second one that can
 /// disagree with it.
 ///
+/// How far a surface made under `appearance` sets its text in from its top and left edges, in
+/// points: `pane_padding` when the file names one, and Ghostty's own `window-padding-x` and
+/// `-y` default of 2 when it does not. Unbalanced, as Ghostty's default is, so what is left
+/// over after whole cells goes to the right and bottom and the top left is exactly this.
+func surfacePadding(_ appearance: Appearance) -> Double {
+  Double(appearance.panePadding ?? 2)
+}
+
 /// Never empty: whatever the appearance says, a surface is told it has no bindings and no
 /// clipboard of its own (`embedded` below).
 public func ghosttyConfiguration(_ appearance: Appearance) -> [String] {

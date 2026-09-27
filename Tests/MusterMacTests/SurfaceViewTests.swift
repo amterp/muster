@@ -297,6 +297,27 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
   #expect(surface.buttons.map(\.number) == [0, 0])
 }
 
+@Test(.ownsTheSeam) @MainActor func aClickIsMeasuredFromWhereTheTextStarts() {
+  // The daemon's grid starts where the text does, inside the padding, as libghostty sizes it.
+  // Measured from the view's edge, every click in vim with `pane_padding = 10` landed a column
+  // right and half a row low.
+  let recorder = RecordingDispatcher()
+  let recording = RecordingSurface()
+  recording.padding = 10
+  recording.textPixelSize = (width: 150, height: 150)
+  let pane = paneOnTheSeam(recording, recorder)
+
+  pane.mouseDown(with: click(at: NSPoint(x: 10, y: 90)))
+  // Over the padding, which is the nearest cell as far as the program is concerned: the top
+  // left one, then the bottom right one.
+  pane.mouseDragged(with: drag(to: NSPoint(x: 4, y: 96)))
+  pane.mouseUp(with: release(at: NSPoint(x: 96, y: 4)))
+
+  let sent = mice(recorder)
+  #expect(sent.map(\.x) == [0, 0, 149])
+  #expect(sent.map(\.y) == [0, 0, 149])
+}
+
 @Test(.ownsTheSeam) @MainActor func aPressCarriesThePointerBeforeTheButton() {
   // libghostty holds the pointer position separately from the button, so a press reported
   // without one starts the selection wherever the pointer was last seen - which after a click

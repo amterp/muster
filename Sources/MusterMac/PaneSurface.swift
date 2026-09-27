@@ -80,6 +80,13 @@ public protocol PaneSurface: AnyObject {
   /// size. The core needs it to read a `resize_step` written in points, since the daemon
   /// resizes a grid and something has to divide.
   var cellPixelSize: (width: UInt32, height: UInt32)? { get }
+
+  /// How much of the surface its cells cover, in backing pixels, or nil before it is sized.
+  var textPixelSize: (width: UInt32, height: UInt32)? { get }
+
+  /// The space between the pane's text and the surface's top and left edges, in points, as it
+  /// was when the surface was made: a reloaded `pane_padding` reaches new surfaces only.
+  var padding: Double { get }
 }
 
 extension Surface: PaneSurface {}
