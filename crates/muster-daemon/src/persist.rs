@@ -353,15 +353,20 @@ impl Persister {
         }
     }
 
-    /// Writes nothing until [`Persister::resume`], once any write under way has finished, or
-    /// `within` has passed: the daemon taking over writes the file from when it serves.
-    pub(crate) fn pause(&self, within: Duration) {
+    /// Writes nothing until [`Persister::resume`], once any write under way has finished: the
+    /// daemon taking over writes the file from when it serves. False when that write was still
+    /// under way after `within`, and the file may yet be written by this daemon.
+    pub(crate) fn pause(&self, within: Duration) -> bool {
         let mut pending = self.pending();
         if pending.phase != Phase::Writing {
-            return;
+            return true;
         }
         pending.phase = Phase::Paused;
-        let _ = self.woken.wait_timeout_while(pending, within, |pending| pending.writing);
+        let (_pending, waited) = self
+            .woken
+            .wait_timeout_while(pending, within, |pending| pending.writing)
+            .unwrap_or_else(PoisonError::into_inner);
+        !waited.timed_out()
     }
 
     /// Writes again after a handoff that failed, and writes what changed meanwhile.
@@ -672,6 +677,16 @@ mod tests {
 
     /// While saved tabs are coming back the session holds less than the file, so a change
     /// long overdue writes nothing until restoring ends, and then writes at once.
+    #[test]
+    fn a_pause_says_so_when_a_write_under_way_does_not_finish() {
+        let persister = Persister::new(PathBuf::from("/nonexistent/state.json"), false);
+        persister.arm();
+        assert!(persister.pause(Duration::from_millis(10)), "nothing under way");
+        persister.resume();
+        persister.pending().writing = true;
+        assert!(!persister.pause(Duration::from_millis(50)), "a write that did not finish");
+    }
+
     #[test]
     fn nothing_is_written_until_restoring_ends() {
         let scratch = Scratch::new("restoring");

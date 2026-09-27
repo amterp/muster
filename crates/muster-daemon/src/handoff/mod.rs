@@ -135,7 +135,6 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
             "panes" => handing.panes.len(),
         },
     );
-    handing.persister.pause(STEP);
     let mut successor = None;
     match handed(shared, replacement, &mut handing, &mut successor) {
         Ok(accepted) => {
@@ -204,6 +203,10 @@ fn handed(
     handing: &mut Handing,
     successor: &mut Option<Child>,
 ) -> Result<handoff::Accept, String> {
+    // Two daemons writing the state file at once would share its temporary file.
+    if !handing.persister.pause(STEP) {
+        return Err("this daemon's write of its state file did not finish".to_string());
+    }
     if !shared.socket.accepting.hold(STEP) {
         return Err("this daemon's accept loop did not stop".to_string());
     }
