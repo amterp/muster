@@ -202,9 +202,14 @@ pub fn until_text(control: &mut Control, name: &str, needle: &str) -> String {
 /// A command that puts its terminal in raw mode, writes `query` (a printf format), and saves
 /// whatever comes back on its input to `out` - which is how a test sees the daemon answer a
 /// program's query as the program would.
+///
+/// The read waits for the answer however long it takes, never on a clock of its own: a loaded
+/// machine can take longer than any fixed window, and an empty file from a window that elapsed
+/// would fail the test as though the daemon had not answered. One that never answers still
+/// fails, at the test's patience.
 pub fn answer_to(query: &str, out: &Path) -> String {
     format!(
-        "stty raw -echo min 0 time 50; printf '{query}'; dd bs=4096 count=1 of={} 2>/dev/null",
+        "stty raw -echo min 1 time 0; printf '{query}'; dd bs=4096 count=1 of={} 2>/dev/null",
         out.display()
     )
 }
