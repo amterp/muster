@@ -67,9 +67,16 @@ fn settings_are_announced_when_they_change_and_not_otherwise() {
     let too_many = proto::Palette { entries: vec![0; 257], ..proto::Palette::default() };
     expect(&mut control, set_palette(too_many), proto::Outcome::Refused);
 
+    let set_clipboard_write = |allowed| {
+        session(session_request::Request::SetClipboardWrite(proto::SetClipboardWrite { allowed }))
+    };
+    expect(&mut control, set_clipboard_write(true), proto::Outcome::AlreadySo);
+    expect(&mut control, set_clipboard_write(false), proto::Outcome::Done);
+
     let settings = snapshot(&mut control).settings.unwrap();
     assert_eq!(settings.scrollback_bytes, Some(1_000_000));
     assert_eq!(settings.palette.unwrap().entries.len(), 2);
+    assert_eq!(settings.clipboard_write, Some(false));
 
     let manifests = proto::SendManifests {
         engine: 1,

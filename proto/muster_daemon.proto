@@ -131,6 +131,7 @@ message SessionRequest {
     SendManifests send_manifests = 6;
     // Close every pane and exit. Answered before the daemon goes.
     Stop stop = 7;
+    SetClipboardWrite set_clipboard_write = 8;
   }
 
   message Snapshot {}
@@ -233,11 +234,13 @@ message PaneRequest {
     optional string label = 2;
   }
 
-  // A page of a pane's text, by absolute row: row 0 is the oldest row the pane still holds, so
-  // a page does not shift as output arrives.
+  // A page of the text on a pane's active screen, by row: row 0 is the oldest row of history the
+  // pane still holds. A page does not shift as output arrives until history reaches the pane's
+  // scrollback limit; from then on, each row trimmed from the top moves every row up by one.
   message Read {
     string pane = 1;
     uint64 first_row = 2;
+    // Zero reads to the last row.
     uint32 rows = 3;
   }
 }
@@ -285,6 +288,12 @@ enum ShellMode {
 message SetScrollback {
   // History a pane keeps. Absent: the daemon's own depth.
   optional uint64 bytes = 1;
+}
+
+// Whether programs may write the clipboard (OSC 52), which the app applies. The daemon only
+// needs to know so that a program asking what the terminal supports is told the truth.
+message SetClipboardWrite {
+  bool allowed = 1;
 }
 
 message SetPalette {
@@ -567,6 +576,8 @@ message Settings {
   Shell shell = 1;
   optional uint64 scrollback_bytes = 2;
   optional Palette palette = 3;
+  // Absent: allowed.
+  optional bool clipboard_write = 4;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -597,6 +608,9 @@ message InputEvent {
     string text = 5;
     uint32 unshifted_codepoint = 6;
     bool composing = 7;
+    // The app's setting, which the core has already applied to the modifiers and text; the
+    // encoder is told it too, so the two steps cannot disagree.
+    OptionAsAlt option_as_alt = 8;
   }
 
   // Position in pixels within the pane.
@@ -622,9 +636,13 @@ message InputEvent {
   // the text has a newline.
   message Paste {
     string text = 1;
+    // The person agreed to paste text that was held, so it is written although unsafe.
+    bool confirmed = 2;
   }
 
-  // `muster pane send`: text, then Return if asked, encoded like typing.
+  // `muster pane send`: the text as a paste, fenced when the pane asked for bracketed paste but
+  // never held, since a program or agent is speaking rather than a clipboard; then Return, if
+  // asked, encoded as the key against the pane's modes.
   message Send {
     string text = 1;
     bool enter = 2;
@@ -647,6 +665,15 @@ message InputEvent {
     message ClearScreen {}
     message Reset {}
   }
+}
+
+enum OptionAsAlt {
+  // Never.
+  OPTION_AS_ALT_UNSPECIFIED = 0;
+  OPTION_AS_ALT_NEVER = 1;
+  OPTION_AS_ALT_ALWAYS = 2;
+  OPTION_AS_ALT_LEFT = 3;
+  OPTION_AS_ALT_RIGHT = 4;
 }
 
 enum KeyAction {
@@ -690,8 +717,8 @@ message StreamRequest {
     bool takeover = 3;
   }
 
-  // Bytes written to the surface since the last credit. The daemon keeps at most a fixed window
-  // unacknowledged.
+  // Bytes of `output` written to the surface since the last credit; a replay's bytes are not
+  // counted. The daemon keeps at most a fixed window of output unacknowledged.
   message Credit {
     uint64 bytes = 1;
   }
@@ -705,12 +732,15 @@ message StreamMessage {
   oneof message {
     Attached attached = 1;
     StreamRefused refused = 2;
-    // The composed VT stream bringing a fresh surface to the pane's state. Live output follows.
+    // The composed VT stream bringing the surface to the pane's state. Live output follows. After
+    // an attach it brings a fresh surface there, history included; after `behind`, it brings the
+    // surface's screen there and keeps the history the surface already holds.
     bytes replay = 3;
     // The program's own bytes.
     bytes output = 4;
-    // The window of unacknowledged bytes is full and output is being dropped; a replay follows
-    // once credit returns.
+    // The window of unacknowledged output is full and output is being skipped. Once every byte
+    // sent has been credited, a replay catches the surface up with the screen, not the history it
+    // missed.
     Behind behind = 5;
     Detached detached = 6;
   }

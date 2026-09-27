@@ -239,6 +239,7 @@ impl Session {
                 S::SetScrollback(set) => self.set_scrollback(set),
                 S::SetPalette(set) => self.set_palette(set),
                 S::SendManifests(manifests) => self.send_manifests(manifests),
+                S::SetClipboardWrite(set) => self.set_clipboard_write(&set),
                 S::Stop(_) => {
                     self.close_everything();
                     Reply::done()
@@ -748,6 +749,14 @@ impl Session {
             return Reply::already();
         }
         self.settings.palette = Some(palette);
+        self.settings_changed()
+    }
+
+    fn set_clipboard_write(&mut self, set: &proto::SetClipboardWrite) -> Reply {
+        if self.settings.clipboard_write.unwrap_or(true) == set.allowed {
+            return Reply::already();
+        }
+        self.settings.clipboard_write = Some(set.allowed);
         self.settings_changed()
     }
 
