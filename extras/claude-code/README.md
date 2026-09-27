@@ -63,4 +63,6 @@ Linux devenv may not.
 
 Claude Code 2.1.283, in a pane of a daemon, with both pieces installed: the model and cost arrived
 with the first statusline, the context used with the first message, and the sub-agent count rose
-to one when a sub-agent started and fell back to none when it stopped.
+to one when a sub-agent started and fell back to none when it stopped. With the hooks loaded as a
+plugin, a turn read working and then idle from the hooks alone. `./dev --claude-code` checks that
+last part against whatever Claude Code is installed.

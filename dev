@@ -21,6 +21,7 @@ args:
     notarize bool  # Sign for release, send it to Apple, and staple. Needs credentials; not in the gate.
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
     ssh bool       # Run the remote tier against the devenv container. Needs docker; not in the gate.
+    claude_code bool  # Drive the installed Claude Code for one turn through its hooks and its screen. Reaches the network; not in the gate.
     linux bool     # Run the daemon's and detection's suites on Linux, in docker. Not in the gate.
     corpus_linux bool  # Diff the recorded corpus against the container's Linux daemon. Docker and python3 only.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
@@ -419,6 +420,8 @@ SKIPPED_SUITES = [
       "note": "an illustration in a doc comment rather than a test, so nothing runs it" },
     { "language": "Rust", "suite": "muster-daemon's echo latency", "skipped": 1,
       "note": "a measurement, not a property; cargo test --release -p muster-daemon --test flood -- --ignored --nocapture prints it" },
+    { "language": "Rust", "suite": "muster-daemon's live Claude Code check", "skipped": 1,
+      "note": "reaches the network and spends a model turn; ./dev --claude-code runs it" },
     { "language": "Swift", "suite": "ClickRedriveTests", "skipped": 1,
       "note": "needs a logged-in session; ./dev --contract runs it" },
 ]
@@ -1591,6 +1594,11 @@ if contract:
 if ssh:
     build = true
 
+// Needs the daemon's data directory, which the libghostty build assembles, and nothing else of
+// the app.
+if claude_code:
+    deps = true
+
 if record and not perf:
     print_err(red("--record only means something with --perf."))
     print_err("It records what a perf run measured, so on its own there is nothing to")
@@ -1621,7 +1629,7 @@ if bundle:
 if notarize:
     bundle = true
 
-if not (deps or build or test or lint or format or clean or bundle or notarize or contract or ssh or linux or corpus_linux or perf or latency or doctor):
+if not (deps or build or test or lint or format or clean or bundle or notarize or contract or ssh or claude_code or linux or corpus_linux or perf or latency or doctor):
     deps = true
     build = true
     test = true
@@ -1863,6 +1871,14 @@ if contract:
 if ssh:
     announce("ssh")
     run_ssh_tier()
+
+if claude_code:
+    announce("claude-code")
+    // The one tier that reaches the network and a real model, with whatever Claude Code is
+    // installed here: it says whether an update broke the hooks or the screen rules. The test
+    // skips itself, saying why, without claude, a login or ANTHROPIC_API_KEY, and without this
+    // variable, so the remote tier's run of every ignored test leaves it alone.
+    $`MUSTER_CLAUDE_CODE_TESTS=1 cargo test -p muster-daemon --test claude_code_live -- --ignored --nocapture`
 
 // The remote tier needs docker anyway, and a remote pane is a Linux daemon's pane.
 if linux or ssh:

@@ -144,8 +144,12 @@ Muster's principles, adapted to that evidence:
   surface, `ClickRedriveTests`, which skips itself in an ordinary run and says so - `--latency` and `--perf`
   measure timing and would be flaky as
   assertions (`--latency` prints verdicts against MIP-3's targets and fails only when it cannot measure),
-  `--corpus-linux` and the SSH tier need the devenv container, and `--linux`, which runs the daemon's and
-  detection's suites on Linux, needs docker. The gate still compiles the Linux daemons and lints their Linux code,
+  `--corpus-linux` and the SSH tier need the devenv container, `--linux`, which runs the daemon's and
+  detection's suites on Linux, needs docker, and `--claude-code` needs the network and a model: it drives the
+  Claude Code installed here for one turn, in a pane with Muster's hooks and one without, and checks both read
+  working and then idle. It runs with `ANTHROPIC_API_KEY` and `--bare` when that is set, and otherwise with
+  `claude`'s own login and only project settings, so nobody's own hooks take part; with neither it says so and
+  passes. The gate still compiles the Linux daemons and lints their Linux code,
   so what `--linux` alone catches is behavior: dash as `/bin/sh`, `/proc`, `close_range`. That is the real line, and it is
   narrower than the one drawn when the backend was going to be faked.
 
