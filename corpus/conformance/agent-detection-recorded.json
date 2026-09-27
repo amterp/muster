@@ -1,0 +1,60 @@
+{
+  "concept": "detection.recordedScreens",
+  "source": "recorded",
+  "regenerate": "python3 tools/detection-capture.py <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal, rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture; no rule reads it. Claude Code showed no folder-trust prompt, so that state is not here.",
+  "cases": [
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Try \"how do I log an error?\"\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:13] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "✳ Claude Code"
+      },
+      "name": "claude 2.1.283: idle at the prompt",
+      "why": "Claude Code waiting at its prompt box for a request."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n· Billowing… (2s · thinking with high effort)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:13] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "◐ Remove no-such-dir"
+      },
+      "name": "claude 2.1.283: working on a request",
+      "why": "Claude Code thinking about the request, its spinner in the title."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Removing the no-such-dir directory if present\n  ⎿  $ rm -rf ./no-such-dir\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below\n\n   rm -rf ./no-such-dir\n   Remove the no-such-dir directory if present\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to /tmp/capture from this project\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n\n Esc to cancel · Tab to amend\n",
+        "title": "✳ Remove no-such-dir"
+      },
+      "name": "claude 2.1.283: bash permission prompt",
+      "why": "Claude Code asking whether it may run the command."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Cogitated for 3s · done 11:10 pm\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                  ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:10:01] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "✳ Remove no-such-dir"
+      },
+      "name": "claude 2.1.283: idle after refusing",
+      "why": "The prompt refused with Esc; Claude Code back at its prompt."
+    }
+  ]
+}
