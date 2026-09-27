@@ -1,0 +1,29 @@
+#!/bin/sh
+# Runs one Linux test binary in a container: cargo's runner for the musl targets
+# (.cargo/config.toml), so `cargo test --target <arch>-unknown-linux-musl` runs on Linux.
+#
+# The checkout is mounted at its own path, so the paths cargo compiled into the tests -
+# CARGO_BIN_EXE_muster-daemon, CARGO_MANIFEST_DIR - point at the same files inside. Only
+# RUST_* and MUSTER_WAIT_LOG cross over: this Mac's other variables, a pane's MUSTER_SOCKET
+# among them, mean nothing in the container or something wrong.
+set -eu
+platform=$1
+shift
+
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(cd "$here/../.." && pwd)
+# Tagged by the Dockerfile's content, so an edited Dockerfile is a new image rather than a
+# stale one reused.
+tag="muster-linux-run:$(echo "$platform" | tr / -)-$(shasum -a 256 "$here/Dockerfile" | cut -c1-12)"
+if ! docker image inspect "$tag" >/dev/null 2>&1; then
+    docker build -q --platform "$platform" -t "$tag" "$here" >/dev/null
+fi
+
+set -- --rm --platform "$platform" --user "$(id -u):$(id -g)" \
+    -v "$root:$root" -w "$PWD" -e HOME=/tmp "$tag" "$@"
+for name in $(env | sed -n 's/^\(RUST_[A-Za-z0-9_]*\)=.*/\1/p') MUSTER_WAIT_LOG; do
+    if [ -n "$(printenv "$name" || true)" ]; then
+        set -- -e "$name" "$@"
+    fi
+done
+exec docker run "$@"

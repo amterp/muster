@@ -215,16 +215,11 @@ fn descriptors_of_a_new_pane(
     control: &mut Control,
     placement: proto::Placement,
 ) -> String {
-    // Not a login shell: bash started with both -l and -i closes descriptors it inherited,
-    // which would hide a leak from this test while a person's zsh kept it.
-    let shell = proto::Shell {
-        command: Some("/bin/sh".to_string()),
-        mode: proto::ShellMode::NonLogin.into(),
-    };
-    let set = proto::SetShell { shell: Some(shell) };
-    let set = session(proto::session_request::Request::SetShell(set));
-    let asked = control.ask(set);
-    assert!(matches!(asked.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo));
+    // bash by name, because the loop below knows where bash keeps its own descriptors and
+    // /bin/sh is not bash everywhere: Debian's dash keeps its terminal on descriptor 10. Not a
+    // login shell: bash started with both -l and -i closes descriptors it inherited, which would
+    // hide a leak from this test while a person's zsh kept it.
+    use_shell(control, "/bin/bash", proto::ShellMode::NonLogin);
 
     let out = daemon.root().join("fds");
     let mut asked = create("listing", placement);
@@ -251,6 +246,9 @@ fn closing_a_pane_hangs_up_its_processes_and_reaps_them() {
     let daemon = daemon();
     let mut control = daemon.connect();
     expect(&mut control, subscribe_request(), proto::Outcome::Done);
+    // bash by name: an interactive dash, Debian's /bin/sh, holds a HUP trap until a loop it is
+    // running ends, and this loop never does.
+    use_shell(&mut control, "/bin/bash", proto::ShellMode::Login);
     make(&mut control, create("p1", in_new_tab("t1")));
     let pid = daemon.root().join("pid");
     let hup = daemon.root().join("hup");
@@ -314,4 +312,12 @@ fn a_pane_that_cannot_start_is_refused_and_leaves_nothing_behind() {
     let refused = expect(&mut control, create_request(asked), proto::Outcome::Refused);
     assert!(refused.answer.reason.contains("/no/such/directory"), "{}", refused.answer.reason);
     assert!(snapshot(&mut control).tabs.is_empty());
+}
+
+/// Every pane after this runs `command` as its shell, in `mode`.
+fn use_shell(control: &mut Control, command: &str, mode: proto::ShellMode) {
+    let shell = proto::Shell { command: Some(command.to_string()), mode: mode.into() };
+    let set = proto::SetShell { shell: Some(shell) };
+    let asked = control.ask(session(proto::session_request::Request::SetShell(set)));
+    assert!(matches!(asked.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo));
 }

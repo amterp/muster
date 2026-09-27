@@ -21,6 +21,7 @@ args:
     notarize bool  # Sign for release, send it to Apple, and staple. Needs credentials; not in the gate.
     contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
     ssh bool       # Run the remote tier against the devenv container. Needs docker; not in the gate.
+    linux bool     # Run the daemon's and detection's suites on Linux, in docker. Not in the gate.
     corpus_linux bool  # Diff the recorded corpus against the container's Linux daemon. Docker and python3 only.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
@@ -527,6 +528,37 @@ fn run_ssh_tier():
     print(dim("thing you keep. It costs this machine something while it runs, and ./dev --perf"))
     print(dim("reads slow against its baseline until it stops. Stop it with:"))
     print(dim("  ./devenv/devenv down"))
+
+// The daemon's and detection's own suites, run on Linux rather than only compiled for it.
+//
+// cargo builds each test for the target and hands it to tools/linux-run/run, which runs it in a
+// Debian container with this checkout mounted at its own path. Both architectures: the one
+// docker runs natively first and in full, then the other under emulation, without the two tests
+// whose subject emulation replaces - a timing budget, which would time the emulator, and the
+// live process probe, which reads the emulator's argv (qemu-x86_64 /usr/bin/sleep ...) where
+// Linux would give the program's. The native run holds the daemon to both.
+EMULATED_TIMING = "a_spawned_daemon_answers_its_first_request_within_budget"
+EMULATED_ARGV = "the_system_reports_a_real_process_group"
+
+fn run_linux_tier():
+    stdout, stderr, code = quiet $`docker info --format '\{\{.Architecture\}\}'` catch:
+        print_err(red("docker is not answering, so the Linux tier ran nothing."))
+        print_err("Impact: the daemon and detection are unverified on Linux by this run.")
+        print_err("Start Docker Desktop (open -a Docker), then run ./dev --linux again.")
+        exit(1)
+    native = stdout.trim() == "x86_64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"
+    emulated = LINUX_DAEMONS.keys().filter(fn(target) target != native)
+    for target in [native] + emulated:
+        listed = $`cargo test -p muster-daemon -p muster-detect --target {target} -- --list`
+        names = listed.split("\n").filter(fn(line) line.ends_with(": test"))
+        if len(names) == 0:
+            fail_empty_suite("Linux ({target})", "Check that crates/muster-daemon/tests/ and crates/muster-detect/tests/ still exist.")
+        if target == native:
+            print(dim("{len(names)} test(s) on {target}, natively"))
+            $`cargo test -p muster-daemon -p muster-detect --target {target} --no-fail-fast`
+        else:
+            print(dim("{len(names)} test(s) on {target}, emulated, less {EMULATED_TIMING} and {EMULATED_ARGV}"))
+            $`cargo test -p muster-daemon -p muster-detect --target {target} --no-fail-fast -- --skip {EMULATED_TIMING} --skip {EMULATED_ARGV}`
 
 // The pinned daemon built for the container rather than for this machine, on this machine.
 //
@@ -1524,7 +1556,7 @@ if bundle:
 if notarize:
     bundle = true
 
-if not (deps or build or test or lint or format or clean or bundle or notarize or contract or ssh or corpus_linux or perf or latency or doctor):
+if not (deps or build or test or lint or format or clean or bundle or notarize or contract or ssh or linux or corpus_linux or perf or latency or doctor):
     deps = true
     build = true
     test = true
@@ -1549,7 +1581,7 @@ if test:
 // Lint is on this list because clippy is a compile - the style half of it needs nothing, but
 // the half that runs after the build does. Cheap to demand: a tree that already has libghostty
 // answers with one line, and the freshness check below costs a stamp read and four path tests.
-if build or lint or perf:
+if build or lint or perf or linux:
     deps = true
 
 // Sampled once and reported before anything else runs, so that every run - the full gate and
@@ -1765,6 +1797,11 @@ if contract:
 if ssh:
     announce("ssh")
     run_ssh_tier()
+
+// The remote tier needs docker anyway, and a remote pane is a Linux daemon's pane.
+if linux or ssh:
+    announce("linux")
+    run_linux_tier()
 
 if corpus_linux:
     announce("corpus-linux")

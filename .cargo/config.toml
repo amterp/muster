@@ -17,11 +17,15 @@ rustflags = [
 # The Linux daemons, cross-compiled from the Mac (MIP-3, section 12). rust-lld links them against
 # the musl that rustup ships with each target, so no Linux toolchain is involved; zig compiles the
 # one C dependency cargo builds from source, mimalloc. libghostty-vt arrives already built by zig.
+#
+# The runner puts each test binary in a container, so the suites run on Linux (./dev --linux).
 [target.x86_64-unknown-linux-musl]
 linker = "rust-lld"
+runner = ["tools/linux-run/run", "linux/amd64"]
 
 [target.aarch64-unknown-linux-musl]
 linker = "rust-lld"
+runner = ["tools/linux-run/run", "linux/arm64"]
 
 [env]
 CC_x86_64_unknown_linux_musl = { value = "tools/zig-cc/x86_64-linux-musl", relative = true }
