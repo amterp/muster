@@ -275,6 +275,17 @@ fn writer(stream: &UnixStream) -> std::io::Result<Sender<Vec<u8>>> {
     Ok(frames)
 }
 
+#[cfg(test)]
+impl Bridge {
+    /// A bridge whose frames arrive on the receiver returned, over a socket nobody reads.
+    pub(crate) fn for_test() -> (Bridge, mpsc::Receiver<Vec<u8>>) {
+        let (frames, received) = mpsc::channel();
+        let (socket, _) = UnixStream::pair().expect("a socket pair");
+        let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
+        (Bridge { id, frames, credit: Credit::new(WINDOW), socket }, received)
+    }
+}
+
 /// Why a bridge was not attached, with its queue back so it can be told.
 #[derive(Debug)]
 pub(crate) struct Refusal {

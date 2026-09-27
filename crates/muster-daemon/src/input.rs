@@ -23,7 +23,7 @@ use crate::writer::{Input, OwnedKey, Wheel};
 /// Serves a welcomed input connection until it hangs up.
 pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) {
     log::info("daemon.input.opened", fields! { "client" => client });
-    let mut panes: HashMap<String, Weak<PaneIo>> = HashMap::new();
+    let mut panes = Panes::default();
     // Panes whose queue was full at the last event, so a stall is said once rather than per
     // keystroke.
     let mut stalled: Vec<String> = Vec::new();
@@ -47,12 +47,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         let Some(input) = event.input.and_then(|input| input_of(input, &event.pane)) else {
             continue;
         };
-        let io = panes.get(&event.pane).and_then(Weak::upgrade).or_else(|| {
-            let io = shared.lock().pane_io(&event.pane)?;
-            panes.insert(event.pane.clone(), Arc::downgrade(&io));
-            Some(io)
-        });
-        let Some(io) = io else {
+        let Some(io) = panes.get(&event.pane, || shared.lock().pane_io(&event.pane)) else {
             log::debug("daemon.input.no_pane", fields! { "pane" => event.pane });
             continue;
         };
@@ -71,6 +66,31 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         }
     }
     log::info("daemon.input.closed", fields! { "client" => client });
+}
+
+/// The panes a connection has sent input to, by name, so that a keystroke does not take the
+/// session lock. Held weakly: a connection keeps no pane alive.
+#[derive(Default)]
+struct Panes {
+    cached: HashMap<String, Weak<PaneIo>>,
+}
+
+impl Panes {
+    /// The pane named `name`, from the cache, else from `look_up`.
+    fn get(
+        &mut self,
+        name: &str,
+        look_up: impl FnOnce() -> Option<Arc<PaneIo>>,
+    ) -> Option<Arc<PaneIo>> {
+        // A closed pane's name may already be another pane's.
+        if let Some(io) = self.cached.get(name).and_then(Weak::upgrade).filter(|io| !io.is_closed())
+        {
+            return Some(io);
+        }
+        let io = look_up()?;
+        self.cached.insert(name.to_string(), Arc::downgrade(&io));
+        Some(io)
+    }
 }
 
 /// What an event asks the pane's writer for. Nothing for an event that names nothing to do.
@@ -151,4 +171,21 @@ fn input_of(input: input_event::Input, pane: &str) -> Option<Input> {
 #[allow(clippy::cast_possible_truncation)]
 fn position(x: f64, y: f64) -> (f32, f32) {
     (x as f32, y as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_name_whose_pane_closed_is_looked_up_again() {
+        let old = PaneIo::idle(1);
+        let new = PaneIo::idle(2);
+        let mut panes = Panes::default();
+        assert_eq!(panes.get("p", || Some(Arc::clone(&old))).map(|io| io.serial), Some(1));
+        assert_eq!(panes.get("p", || None).map(|io| io.serial), Some(1), "from the cache");
+        old.mark_closed();
+        let found = panes.get("p", || Some(Arc::clone(&new)));
+        assert_eq!(found.map(|io| io.serial), Some(2), "the pane now of that name");
+    }
 }

@@ -16,7 +16,7 @@ use std::io;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::path::PathBuf;
 use std::process::Child;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -54,11 +54,22 @@ pub(crate) struct PaneIo {
     /// The pane's modes as the writer encodes against them, refreshed under the pane's lock.
     encoding: Arc<Mutex<Encoding>>,
     input: SyncSender<Input>,
+    /// Set when the session forgets the pane, under the session's lock, before anything else of
+    /// the pane is let go: after it, the pane's name may belong to another pane.
+    closed: AtomicBool,
 }
 
 impl PaneIo {
     pub(crate) fn screen(&self) -> MutexGuard<'_, Screen> {
         poison::lock(&self.screen, "daemon.pane.screen")
+    }
+
+    pub(crate) fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn mark_closed(&self) {
+        self.closed.store(true, Ordering::Release);
     }
 
     pub(crate) fn grid(&self) -> Grid {
@@ -116,6 +127,11 @@ impl PaneIo {
         takeover: bool,
     ) -> Result<(), Refusal> {
         let mut screen = self.screen();
+        // Checked under the pane's lock, which the hang-up takes after setting the flag: a
+        // bridge either sees the pane closed here, or is registered in time to be detached.
+        if self.is_closed() {
+            return Err(bridge.refused("the pane has closed".to_string()));
+        }
         if let Some(grid) = grid.filter(|&grid| grid != self.grid()) {
             self.resize_locked(&mut screen, grid);
         }
@@ -245,6 +261,7 @@ impl Pane {
             grid: AtomicU64::new(grid.to_bits()),
             encoding: Arc::clone(&encoding),
             input,
+            closed: AtomicBool::new(false),
         });
         let pane = record.pane.clone();
 
@@ -481,4 +498,45 @@ fn pipe() -> io::Result<(OwnedFd, OwnedFd)> {
         }
     }
     Ok((read, write))
+}
+
+#[cfg(test)]
+impl PaneIo {
+    /// A pane with no program and no threads, for tests of what connections do with one.
+    pub(crate) fn idle(serial: u64) -> Arc<PaneIo> {
+        use crate::screen::{Appearance, DEFAULT_SCROLLBACK};
+        let master = OwnedFd::from(std::fs::File::open("/dev/null").expect("/dev/null"));
+        let settled = Settled {
+            generation: 0,
+            appearance: Appearance::of(&proto::Settings::default()),
+            scrollback: DEFAULT_SCROLLBACK,
+        };
+        let grid = Grid::FALLBACK;
+        let screen = Screen::new(grid, &settled).expect("a terminal");
+        let encoding = Encoding::new(screen.terminal(), grid).expect("encoders");
+        let (input, _) = writer::queue();
+        Arc::new(PaneIo {
+            serial,
+            master: Arc::new(master),
+            screen: Mutex::new(screen),
+            grid: AtomicU64::new(grid.to_bits()),
+            encoding: Arc::new(Mutex::new(encoding)),
+            input,
+            closed: AtomicBool::new(false),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_closed_pane_refuses_a_bridge() {
+        let io = PaneIo::idle(1);
+        io.mark_closed();
+        let (bridge, _frames) = Bridge::for_test();
+        let refused = io.attach(bridge, None, false).expect_err("a closed pane takes no bridge");
+        assert!(refused.reason.contains("closed"), "{}", refused.reason);
+    }
 }

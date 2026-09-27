@@ -722,6 +722,7 @@ impl Session {
     fn forget(&mut self, pane: &str, reason: proto::CloseReason, exit_status: Option<i32>) {
         let Some(index) = self.pane_index(pane) else { return };
         let removed = self.panes.remove(index);
+        removed.io.mark_closed();
         self.emit(Payload::PaneClosed(proto::PaneClosed {
             pane: pane.to_string(),
             reason: reason.into(),

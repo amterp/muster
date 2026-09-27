@@ -288,3 +288,18 @@ fn a_bindings_bytes_are_written_and_a_reset_resets_the_pane_and_its_surface() {
     });
     received(&out, b"\x1b[15~");
 }
+
+#[test]
+fn keys_for_a_name_reach_the_pane_that_has_it_now() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    let first = receiving(&mut control, &daemon, "p1", b"");
+    input.send("p1", key(KEY_A, "a"));
+    received(&first, b"a");
+
+    expect(&mut control, close_request("p1"), proto::Outcome::Done);
+    let second = receiving(&mut control, &daemon, "p1", b"");
+    input.send("p1", key(KEY_Z, "z"));
+    received(&second, b"z");
+}
