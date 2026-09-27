@@ -99,7 +99,7 @@ impl Control {
         client: &str,
         deliver: impl FnMut(Delivered) + Send + 'static,
     ) -> Result<Control, HandshakeError> {
-        let (stream, welcome) = connection::connect(socket, ConnectionKind::Control, client)?;
+        let (stream, welcome) = crate::dial(socket, ConnectionKind::Control, client)?;
         log::info(
             "daemon.control.opened",
             fields! {

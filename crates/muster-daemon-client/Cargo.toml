@@ -5,6 +5,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+libc.workspace = true
 muster-core.workspace = true
 muster-daemon-proto.workspace = true
 

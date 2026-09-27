@@ -93,8 +93,8 @@ impl Attachment {
         window: Option<u64>,
         client: &str,
     ) -> Result<(Attachment, u64), AttachError> {
-        let (mut stream, _) = connection::connect(socket, ConnectionKind::Stream, client)
-            .map_err(AttachError::Handshake)?;
+        let (mut stream, _) =
+            crate::dial(socket, ConnectionKind::Stream, client).map_err(AttachError::Handshake)?;
         let attach =
             stream_request::Attach { pane: pane.to_string(), grid: Some(grid), takeover, window };
         send(&mut stream, stream_request::Request::Attach(attach))
