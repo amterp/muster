@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "done-survives-a",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790507174835,
+  "creator": "Alexander Terp",
+  "description": "Since the cut-over (a_2XJ1hqla3), a pane whose agent finished while no Muster window was open comes back idle, not done: done is computed in the core (crates/muster-core/src/attention.rs) from transitions it saw, and muster-daemon reports only four states, so there is nothing to adopt the way herdr's own done was adopted (Attention::first_seen). That is the moment something needs you. Decided (integrator): the daemon holds a per-pane finished-unseen fact, set when an agent goes from working to idle, cleared by a request the app sends when a focused window shows the pane (and when the agent works again); the app's done is that fact. It survives app restarts and covers several windows, which the app-side fold cannot. Daemon side and protocol first, then the core and shell. Must land before the cut-over reaches main.",
+  "id": "a_2XYi76eVz",
+  "parent": "a_2XJ1fUIyr",
+  "position": "az",
+  "title": "done survives a window that was closed: the daemon records finished-and-unseen",
+  "type": "bug",
+  "updated_at_millis": 1790507184581,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790507174835}
+  ]
+}

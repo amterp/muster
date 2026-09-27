@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "a-devenv-test-that",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790507174983,
+  "creator": "Alexander Terp",
+  "description": "The cut-over deleted herdr's two seam-level devenv tests with its crate. The client's devenv test proves only that the far daemon starts, is adopted and serves a pane. Nothing checks that a devenv pane gets the settings from Muster's config (palette, cursor, environment) through the seam, over the tunnel. Found at the cut-over (round 6).",
+  "id": "a_2XYi7KaZk",
+  "parent": "a_2XJ1fUIyr",
+  "position": "b00",
+  "title": "A devenv test that Muster's settings reach a remote pane end to end",
+  "type": "chore",
+  "updated_at_millis": 1790507184728,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790507174983}
+  ]
+}
