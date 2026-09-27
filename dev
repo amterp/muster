@@ -1524,9 +1524,16 @@ fn build_deps():
 // another ./dev in this checkout - any test run - refuses to start on a directory caught
 // half-copied. A daemon starting in the instant between the two renames still finds none, which
 // can only happen when the content changed.
+//
+// Two runs can swap at once. The last rename is one that refuses a target that is not empty,
+// where mv would move the directory inside it: the run that loses has staged the same checkout's
+// files, so it drops its copy. A copy a failed run left behind is swept once it is ten minutes
+// old, never sooner, since a younger one may be another run's still being staged.
 fn assemble_daemon_data():
     integration = "{GHOSTTY_DIR}/src/shell-integration"
     compiled = "{GHOSTTY_DIR}/zig-out/share/terminfo"
+    sweep = "import glob, os, shutil, sys, time; [shutil.rmtree(p, ignore_errors=True) for p in glob.glob(sys.argv[1] + '.*') if time.time() - os.path.getmtime(p) > 600]"
+    quiet $`python3 -c {sweep} {DAEMON_DATA}`
     staged = quiet $`mktemp -d {DAEMON_DATA}.XXXXXX`.stdout.trim()
     for dir in ["78", "x"]:
         quiet $`mkdir -p {staged}/terminfo/{dir}`
@@ -1549,9 +1556,13 @@ fn assemble_daemon_data():
     if unchanged:
         quiet $`rm -rf {staged}`
         return
+    // Either may fail to a run swapping at the same moment, which leaves an equal copy in place.
     if get_path(DAEMON_DATA).exists:
-        quiet $`mv {DAEMON_DATA} {staged}.old`
-    quiet $`mv {staged} {DAEMON_DATA}`
+        aside = quiet $`mv {DAEMON_DATA} {staged}.old`.code
+    rename = "import os, sys; os.rename(sys.argv[1], sys.argv[2])"
+    swapped = quiet $`python3 -c {rename} {staged} {DAEMON_DATA} 2>/dev/null`.code
+    if swapped != 0:
+        quiet $`rm -rf {staged}`
     quiet $`rm -rf {staged}.old`
 
 // The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
