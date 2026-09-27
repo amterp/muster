@@ -53,37 +53,35 @@ impl Pane {
         child: Option<Child>,
         ended: &Ended,
     ) -> io::Result<Pane> {
-        let (wake_read, wake) = pipe()?;
+        let process = child.map(|child| child.id().cast_signed());
+        // Every way this can fail leaves a started process nobody will wait for, so each one
+        // ends and reaps it before saying so.
+        let failed = |error: io::Error| {
+            if let Some(pid) = process {
+                pty::abandon(pid);
+            }
+            error
+        };
+        let (wake_read, wake) = pipe().map_err(failed)?;
         let master = Arc::new(master);
-        let process = child.as_ref().map(|child| child.id().cast_signed());
 
         let reading = Arc::clone(&master);
-        let reader_ends_pane = child.is_none().then(|| Arc::clone(ended));
+        let reader_ends_pane = process.is_none().then(|| Arc::clone(ended));
         let pane = record.pane.clone();
         std::thread::Builder::new()
             .name(format!("read {pane}"))
-            .spawn(move || drain(&reading, &wake_read, serial, reader_ends_pane.as_ref()))?;
+            .spawn(move || drain(&reading, &wake_read, serial, reader_ends_pane.as_ref()))
+            .map_err(failed)?;
 
-        if let Some(mut child) = child {
+        if let Some(pid) = process {
             let ended = Arc::clone(ended);
-            std::thread::Builder::new().name(format!("wait {pane}")).spawn(move || {
-                let status = match child.wait() {
-                    Ok(status) => exit_code(status),
-                    Err(error) => {
-                        log::error(
-                            "daemon.pane.wait_failed",
-                            fields! {
-                                "pane" => pane,
-                                "error" => error,
-                                "impact" => "the pane is closed without an exit status, and its \
-                                             process may be left unreaped",
-                            },
-                        );
-                        None
-                    }
-                };
-                ended(serial, status);
-            })?;
+            std::thread::Builder::new()
+                .name(format!("wait {pane}"))
+                .spawn(move || {
+                    let status = wait(pid, &pane);
+                    ended(serial, status);
+                })
+                .map_err(failed)?;
         }
 
         Ok(Pane { record, grid, serial, master, wake, process })
@@ -108,11 +106,31 @@ impl Pane {
     }
 }
 
-/// How a process ended, as a shell reports it in `$?`: its exit code, or 128 plus the signal
-/// that ended it.
-fn exit_code(status: std::process::ExitStatus) -> Option<i32> {
+/// Waits for a pane's process to end, and says how it ended as a shell reports it in `$?`: its
+/// exit code, or 128 plus the signal that ended it.
+fn wait(pid: i32, pane: &str) -> Option<i32> {
     use std::os::unix::process::ExitStatusExt;
-    status.code().or_else(|| status.signal().map(|signal| 128 + signal))
+    let mut status = 0;
+    loop {
+        // SAFETY: waitpid on this daemon's own child, writing one int.
+        if unsafe { libc::waitpid(pid, &raw mut status, 0) } == pid {
+            let status = std::process::ExitStatus::from_raw(status);
+            return status.code().or_else(|| status.signal().map(|signal| 128 + signal));
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            log::error(
+                "daemon.pane.wait_failed",
+                fields! {
+                    "pane" => pane,
+                    "error" => error,
+                    "impact" => "the pane is closed without an exit status, and its process may \
+                                 be left unreaped",
+                },
+            );
+            return None;
+        }
+    }
 }
 
 /// Reads the pane's output until its PTY closes or the pane lets go.

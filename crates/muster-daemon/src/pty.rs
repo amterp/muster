@@ -143,16 +143,18 @@ pub(crate) fn hang_up(group: i32) {
 
 /// Ends a process started for a pane that will never exist, and reaps it: SIGKILL to its
 /// process group, since nothing it started has had a chance to matter yet.
-pub(crate) fn abandon(mut child: Child) {
-    if let Ok(group) = i32::try_from(child.id()) {
-        // SAFETY: killpg with a positive group id signals that group only; the child leads its
-        // own group because it started its own session.
-        unsafe {
-            libc::killpg(group, libc::SIGKILL);
-        }
+pub(crate) fn abandon(pid: i32) {
+    // SAFETY: killpg and kill with a positive id signal that group or process only; the child
+    // leads its own group because it started its own session. waitpid reaps this daemon's own
+    // child and writes one int.
+    unsafe {
+        libc::killpg(pid, libc::SIGKILL);
+        libc::kill(pid, libc::SIGKILL);
+        let mut status = 0;
+        while libc::waitpid(pid, &raw mut status, 0) == -1
+            && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted
+        {}
     }
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 /// The shell a pane runs when nothing names one: `$SHELL`, else the account's, else `/bin/sh`.

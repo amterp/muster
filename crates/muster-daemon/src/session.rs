@@ -407,7 +407,7 @@ impl Session {
         };
         if let Some(reply) = gone {
             drop(master);
-            pty::abandon(child);
+            pty::abandon(child.id().cast_signed());
             return reply;
         }
 
