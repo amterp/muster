@@ -183,6 +183,7 @@ message PaneRequest {
     Move move = 6;
     Rename rename = 7;
     Read read = 8;
+    Report report = 9;
   }
 
   // Starts a pane. A pane of that name already here answers ALREADY_SO, so a create retried
@@ -250,6 +251,30 @@ message PaneRequest {
     // largest message, and the answer says how many rows it holds.
     uint32 rows = 3;
   }
+
+  // Facts the agent in a pane states about itself, sent from inside the pane
+  // (`muster-daemon report`, which a harness's hooks and statusline call). Each field present
+  // replaces what the pane held; `clear` forgets everything first. A report outside the bounds
+  // on `AgentFacts` is refused whole.
+  message Report {
+    string pane = 1;
+    optional float context_used = 2;
+    optional string model = 3;
+    optional double cost_usd = 4;
+    SubagentChange subagent = 5;
+    // An empty value removes its key.
+    map<string, string> facts = 6;
+    bool clear = 7;
+  }
+}
+
+enum SubagentChange {
+  SUBAGENT_CHANGE_NONE = 0;
+  // One more sub-agent is running. The daemon keeps the count, since a harness reports each
+  // sub-agent's start and stop rather than how many are running.
+  SUBAGENT_CHANGE_STARTED = 1;
+  // One fewer, never below none.
+  SUBAGENT_CHANGE_STOPPED = 2;
 }
 
 // Where a pane goes: beside one that exists, or into a tab of its own.
@@ -514,6 +539,25 @@ message Pane {
   // The agent detection recognised, by its manifest's name.
   optional string agent = 6;
   AgentState agent_state = 7;
+  // What the agent has said about itself. Absent until it says anything, and cleared when
+  // detection sees the pane's agent change or leave.
+  AgentFacts facts = 8;
+}
+
+// Facts an agent reports about itself (`PaneRequest.Report`), for a view to render beside its
+// state.
+message AgentFacts {
+  // How much of the agent's context window is in use, from 0 to 100.
+  optional float context_used = 1;
+  // Sub-agents running now.
+  uint32 subagents = 2;
+  // The model, as the agent names it for a person: "Opus 4.5". At most 128 bytes.
+  optional string model = 3;
+  // What the session has cost so far, in US dollars. Not negative.
+  optional double cost_usd = 4;
+  // Anything else, passed through: at most 16 keys, each 1 to 64 bytes, each value at most 256
+  // bytes, with no control characters in either.
+  map<string, string> other = 5;
 }
 
 enum AgentState {

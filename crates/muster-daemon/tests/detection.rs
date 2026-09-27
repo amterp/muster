@@ -272,3 +272,31 @@ fn manifests_sent_at_connect_leave_an_unchanged_agents_state_alone() {
         (Some("claude".to_string()), proto::AgentState::Working)
     );
 }
+
+#[test]
+fn what_an_agent_reported_about_itself_stays_while_it_runs_and_goes_with_it() {
+    let home = Home::new("facts", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+
+    // A statusline can report before detection has recognised the agent it belongs to.
+    let model = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        model: Some("Opus".to_string()),
+        ..Default::default()
+    };
+    expect(&mut control, pane(proto::pane_request::Request::Report(model)), proto::Outcome::Done);
+    type_line(&mut input, "p1", &home.agent("claude").display().to_string());
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+    let facts = |control: &mut Control| {
+        snapshot(control).panes.into_iter().find(|record| record.pane == "p1").and_then(|p| p.facts)
+    };
+    assert_eq!(facts(&mut control).and_then(|facts| facts.model).as_deref(), Some("Opus"));
+
+    type_line(&mut input, "p1", "quit");
+    until_detected(&mut control, "p1", None, proto::AgentState::Unknown);
+    assert_eq!(facts(&mut control), None, "the agent's facts left with it");
+}

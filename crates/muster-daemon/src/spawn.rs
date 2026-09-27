@@ -14,11 +14,26 @@ const PANE_NAME: &str = "MUSTER_PANE";
 /// everything it starts can also read.
 pub(crate) const PANE_COMMAND: &str = "MUSTER_PANE_COMMAND";
 
+/// The daemon's own executable and its socket, so a program in the pane can reach the daemon
+/// that owns it with no window involved: `"$MUSTER_DAEMON" report` is how an agent's hooks say
+/// what it is doing. The executable rather than a `muster` on `PATH`, because it is the one
+/// program certain to be on every machine with panes, a devenv included.
+pub(crate) const DAEMON: &str = "MUSTER_DAEMON";
+pub(crate) const DAEMON_SOCKET: &str = "MUSTER_DAEMON_SOCKET";
+
+/// How a pane's programs reach the daemon that owns it.
+#[derive(Debug, Clone)]
+pub(crate) struct Reachable {
+    /// Absent when the daemon could not find its own executable.
+    pub(crate) daemon: Option<std::path::PathBuf>,
+    pub(crate) socket: std::path::PathBuf,
+}
+
 /// Variables dropped from what the daemon inherited. A daemon a developer started by hand from
 /// inside a Muster pane carries that pane's name, window and command, and a pane that inherited
 /// them would drive the wrong window. The requested environment supplies the right
 /// `MUSTER_SOCKET`; the daemon supplies the others.
-const NOT_INHERITED: [&str; 3] = [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND];
+const NOT_INHERITED: [&str; 5] = [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND, DAEMON, DAEMON_SOCKET];
 
 /// Variables from a Ghostty the daemon was started in - its resources, its binary, its surface -
 /// which describe that terminal rather than this pane. A requested copy is still honored.
@@ -136,6 +151,7 @@ pub(crate) fn environment(
     pane: &str,
     command: Option<&str>,
     terminfo: &Path,
+    reachable: &Reachable,
 ) -> Vec<(OsString, OsString)> {
     let mut environment: Vec<(OsString, OsString)> = inherited
         .iter()
@@ -146,7 +162,7 @@ pub(crate) fn environment(
     let mut requested: Vec<_> = requested.iter().collect();
     requested.sort();
     for (name, value) in requested {
-        if name != PANE_NAME && name != PANE_COMMAND {
+        if ![PANE_NAME, PANE_COMMAND, DAEMON, DAEMON_SOCKET].contains(&name.as_str()) {
             put(&mut environment, name, value);
         }
     }
@@ -167,6 +183,10 @@ pub(crate) fn environment(
     }
     // Another terminal's claim, which Ghostty drops for the same reason.
     environment.retain(|(name, _)| name != "VTE_VERSION");
+    if let Some(daemon) = &reachable.daemon {
+        put(&mut environment, DAEMON, daemon);
+    }
+    put(&mut environment, DAEMON_SOCKET, &reachable.socket);
     environment
 }
 
@@ -227,6 +247,13 @@ mod tests {
 
     const TERMINFO: &str = "/data/terminfo";
 
+    fn reachable() -> Reachable {
+        Reachable {
+            daemon: Some("/opt/muster/muster-daemon".into()),
+            socket: "/run/daemon.sock".into(),
+        }
+    }
+
     #[test]
     fn the_pane_is_named_by_the_daemon_and_nothing_else() {
         let inherited = pairs(&[
@@ -234,18 +261,23 @@ mod tests {
             ("MUSTER_PANE", "p-stale"),
             ("MUSTER_SOCKET", "/stale.sock"),
             ("MUSTER_PANE_COMMAND", "stale"),
+            ("MUSTER_DAEMON_SOCKET", "/stale-daemon.sock"),
             ("COLORTERM", "24bit"),
         ]);
         let requested = HashMap::from([
             ("MUSTER_SOCKET".to_string(), "/window.sock".to_string()),
             ("MUSTER_PANE".to_string(), "p-requested".to_string()),
             ("PATH".to_string(), "/usr/bin".to_string()),
+            ("MUSTER_DAEMON".to_string(), "/requested/daemon".to_string()),
         ]);
-        let environment = environment(&inherited, &requested, "p1", None, Path::new(TERMINFO));
+        let environment =
+            environment(&inherited, &requested, "p1", None, Path::new(TERMINFO), &reachable());
         assert_eq!(
             sorted(environment),
             sorted(pairs(&[
                 ("COLORTERM", "truecolor"),
+                ("MUSTER_DAEMON", "/opt/muster/muster-daemon"),
+                ("MUSTER_DAEMON_SOCKET", "/run/daemon.sock"),
                 ("MUSTER_PANE", "p1"),
                 ("MUSTER_SOCKET", "/window.sock"),
                 ("PATH", "/usr/bin"),
@@ -271,12 +303,15 @@ mod tests {
             ("TERM".to_string(), "vt100".to_string()),
             ("GHOSTTY_ASKED".to_string(), "kept".to_string()),
         ]);
-        let environment = environment(&inherited, &requested, "p1", None, Path::new(TERMINFO));
+        let environment =
+            environment(&inherited, &requested, "p1", None, Path::new(TERMINFO), &reachable());
         assert_eq!(
             sorted(environment),
             sorted(pairs(&[
                 ("COLORTERM", "truecolor"),
                 ("GHOSTTY_ASKED", "kept"),
+                ("MUSTER_DAEMON", "/opt/muster/muster-daemon"),
+                ("MUSTER_DAEMON_SOCKET", "/run/daemon.sock"),
                 ("MUSTER_PANE", "p1"),
                 ("TERM", "xterm-ghostty"),
                 ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo"),

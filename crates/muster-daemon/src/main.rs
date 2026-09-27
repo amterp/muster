@@ -10,10 +10,12 @@ mod data;
 mod descriptors;
 mod detect;
 mod effects;
+mod facts;
 mod input;
 mod pane;
 mod process;
 mod pty;
+mod report;
 mod screen;
 mod server;
 mod session;
@@ -35,7 +37,7 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto::install;
 
-use crate::session::Shared;
+use crate::session::{Places, Shared};
 
 // musl's own allocator serializes every allocation on one lock, and the daemon allocates from a
 // thread per pane (MIP-3, section 12). macOS's allocator does not have that problem.
@@ -47,12 +49,16 @@ static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 /// dials that one instead.
 const ALREADY_SERVING: u8 = 3;
 
-const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n\n\
+const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n       muster-daemon report ...\n\n\
     Serves Muster's panes on this machine. Without --socket, listens where this install's \
     daemon listens: $MUSTER_HOME/daemon/<install>.sock. Without --data, gives its shells the \
-    muster-daemon-data directory beside its executable.";
+    muster-daemon-data directory beside its executable. `report` tells the daemon of the pane \
+    it runs in what the agent there says about itself; `muster-daemon report --help` says how.";
 
 fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("report") {
+        return report::run(std::env::args().skip(2));
+    }
     let mut arguments = std::env::args().skip(1);
     let mut socket = None;
     let mut data = None;
@@ -130,7 +136,10 @@ fn run(socket: &Path, data: data::Data, signals: libc::sigset_t) -> Result<(), F
     let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
     let overrides = install::muster_home(|name| std::env::var(name).ok())
         .map(|muster_home| muster_home.join("agent-detection"));
-    let shared = Shared::new(instance(), stopping.clone(), inherited, home, data, overrides);
+    let reachable =
+        spawn::Reachable { daemon: std::env::current_exe().ok(), socket: socket.to_path_buf() };
+    let places = Places { home, overrides, reachable, data };
+    let shared = Shared::new(instance(), stopping.clone(), inherited, places);
 
     let waiting = signals;
     std::thread::Builder::new()

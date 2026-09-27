@@ -39,11 +39,24 @@ use crate::control::Outbox;
 use crate::data::Data;
 use crate::detect::Detecting;
 use crate::effects::{self, Report, Reported, Reports};
+use crate::facts;
 use crate::pane::{Ended, Pane, PaneIo, Watching};
 use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
 use crate::spawn;
 use crate::tree::{self, Node, Resized};
+
+/// Where the daemon finds and is found.
+#[derive(Debug)]
+pub(crate) struct Places {
+    /// Where a pane starts when nothing says where.
+    pub(crate) home: PathBuf,
+    /// A person's detection manifests, `~/.muster/agent-detection/`.
+    pub(crate) overrides: Option<PathBuf>,
+    pub(crate) reachable: spawn::Reachable,
+    /// What the daemon gives its shells: the terminfo entry and the shell integration.
+    pub(crate) data: Data,
+}
 
 /// What every thread of the daemon shares.
 #[derive(Debug)]
@@ -59,10 +72,9 @@ impl Shared {
         instance: u64,
         stopping: Sender<()>,
         inherited: Vec<(OsString, OsString)>,
-        home: PathBuf,
-        data: Data,
-        overrides: Option<PathBuf>,
+        places: Places,
     ) -> Arc<Shared> {
+        let Places { home, overrides, reachable, data } = places;
         Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
@@ -109,6 +121,7 @@ impl Shared {
                     inherited,
                     home,
                     data,
+                    reachable,
                     next_serial: 0,
                     ended,
                     reports,
@@ -160,7 +173,7 @@ impl Drop for Locked<'_> {
 
 /// Work on a pane's terminal that a request caused, done once the session is unlocked.
 enum Deferred {
-    HangUp(Pane, proto::DetachReason),
+    HangUp(Box<Pane>, proto::DetachReason),
     Settle(Arc<PaneIo>, Arc<Settled>),
 }
 
@@ -197,6 +210,8 @@ pub(crate) struct Session {
     home: PathBuf,
     /// What the daemon gives its shells: the terminfo entry and the shell integration.
     data: Data,
+    /// How a pane's programs reach this daemon, which every pane's environment says.
+    reachable: spawn::Reachable,
     next_serial: u64,
     ended: Ended,
     /// Where panes send what their programs asked for, for the publisher to apply here.
@@ -375,6 +390,7 @@ impl Session {
                 P::Swap(swap) => self.swap(&swap),
                 P::Move(moved) => self.move_pane(moved),
                 P::Rename(rename) => self.rename_pane(rename),
+                P::Report(report) => self.report(report),
                 P::Read(read) => match self.pane_index(&read.pane) {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
                     Some(index) => {
@@ -487,6 +503,7 @@ impl Session {
             &create.pane,
             create.command.as_deref(),
             &self.data.terminfo(),
+            &self.reachable,
         );
         let (argv, environment) = spawn::start(
             &pty::shell(shell.command.as_deref(), &self.inherited),
@@ -667,6 +684,25 @@ impl Session {
         Payload::TabClosed(proto::TabClosed { tab: closed.name })
     }
 
+    /// Facts the agent in a pane states about itself.
+    fn report(&mut self, report: pane_request::Report) -> Reply {
+        let Some(index) = self.pane_index(&report.pane) else {
+            return Reply::not_there(format!("no pane {} on this daemon", report.pane));
+        };
+        let record = &mut self.panes[index].record;
+        let facts = match facts::apply(record.facts.as_ref(), report) {
+            Ok(facts) => facts,
+            Err(why) => return Reply::refused(why),
+        };
+        if record.facts == facts {
+            return Reply::already();
+        }
+        record.facts = facts;
+        let record = record.clone();
+        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        Reply::done()
+    }
+
     fn close_pane(&mut self, pane: &str) -> Reply {
         if self.pane_index(pane).is_none() {
             return Reply::not_there(format!("no pane {pane} on this daemon"));
@@ -710,6 +746,12 @@ impl Session {
             }
             Reported::Agent { agent, state } => {
                 if record.agent != agent || record.agent_state() != state {
+                    // What an agent said about itself leaves with it. Not when a pane with no
+                    // agent is first recognised: its statusline can report before the first
+                    // probe lands, and that report is the new agent's.
+                    if record.agent.is_some() && record.agent != agent {
+                        record.facts = None;
+                    }
                     record.agent = agent;
                     record.set_agent_state(state);
                     let record = record.clone();
@@ -750,7 +792,7 @@ impl Session {
             proto::CloseReason::Exited => proto::DetachReason::Exited,
             _ => proto::DetachReason::Closed,
         };
-        self.deferred.push(Deferred::HangUp(removed, reason));
+        self.deferred.push(Deferred::HangUp(Box::new(removed), reason));
     }
 
     fn resize(&mut self, resize: &pane_request::Resize) -> Reply {
