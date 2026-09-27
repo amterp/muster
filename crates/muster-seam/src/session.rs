@@ -2797,6 +2797,13 @@ fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
     if let Some(connection) = connection
         && !connection.wait_for_snapshot(FIRST_SNAPSHOT)
     {
+        // Let go of it rather than keep following it. A daemon that never answered is not
+        // one this window is showing, and kept, it would count as something followed - so a
+        // window whose every configured daemon is silent would open onto nothing instead of
+        // saying which of them did not answer.
+        let mut session = poison::lock(&SESSION, "session");
+        session.backends.remove(&daemon.id);
+        session.composition.detach_daemon(&daemon.id);
         return Err(format!(
             "the daemon {} did not send its state within {}s",
             daemon.id,
