@@ -36,8 +36,8 @@ pub struct Cost {
     /// How many bytes, keys or events one iteration processed.
     ///
     /// A rate divides this out, which is exactly what makes a rate comparable - and also what
-    /// hides a workload that moved underneath it. `frame.decode` replays whatever recorded
-    /// frames are in the corpus, and the corpus grew by a third between the baseline being
+    /// hides a workload that moved underneath it. A benchmark that replayed whatever recorded
+    /// frames were in the corpus once had the corpus grow by a third between the baseline being
     /// written and it next being judged, with nothing saying so. Recorded so that the next run
     /// can notice.
     ///
@@ -54,9 +54,9 @@ pub struct Cost {
     ///
     /// Per cost rather than one number for the file, because these benchmarks are not equally
     /// noisy and pretending otherwise makes the tolerance wrong for all of them at once.
-    /// `pane.channel` binds fifteen unix sockets and spawns fifteen reader threads per
-    /// iteration; `frame.decode` is arithmetic over a fixed byte array. Absent means "whatever
-    /// this run was told to use".
+    /// `pane.channel` binds fifteen unix sockets and spawns fifteen threads per iteration;
+    /// `output.vt_parse` is arithmetic over a fixed byte array. Absent means "whatever this run
+    /// was told to use".
     #[serde(default)]
     pub tolerance: Option<f64>,
 }

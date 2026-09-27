@@ -9,37 +9,33 @@
 //! gate gets ignored.
 
 use std::hint::black_box;
-use std::path::{Path, PathBuf};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use muster_core::AgentState;
 use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, View, ViewPane};
 use muster_core::input::{
-    Key, KeyEvent, Keymap, Modifiers, PaneInput, PaneInputSettings, Resolution, TerminalModeProfile,
+    InputEvent, InputSink, Key, KeyEvent, Modifiers, PaneInput, PaneInputSettings,
 };
 use muster_core::mirror::backend::{
-    Focus, Layout, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId, Workspace,
-    WorkspaceId,
+    AgentFacts, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
 };
 use muster_core::mirror::{BackendEvent, Mirror};
-use muster_core::names::{Mint, Names};
 use muster_core::roster::Roster;
-use muster_herdr::{
-    EventDecoder, FrameDecoder, PaneControlChannel, PaneFrame, PaneStreamEvent, Reports,
-};
 use muster_perf::{Baseline, Cost, Load, compare, context, measure, pending, table, verdict};
-use muster_vt::{KeyEncoder, Terminal};
+use muster_vt::{KeyEncoder, KeyModes, MouseEncoder, Terminal};
 use prost::Message;
 
 const USAGE: &str = "\
-usage: muster-perf [--record] [--baseline <path>] [--corpus <path>] [--tolerance <x>]
+usage: muster-perf [--record] [--baseline <path>] [--tolerance <x>]
                    [--load <one,five,fifteen>] [--cores <total,fast>]
 
 Measures the per-unit costs on Muster's hot paths and compares them to a baseline.
 
   --record       write this run's numbers as the new baseline instead of judging
   --baseline     where the baseline lives (default perf/baseline.json)
-  --corpus       recorded frames to replay (default corpus)
   --tolerance    how many times the recorded cost still passes, for a benchmark
                  whose baseline entry does not carry its own (default 2.0)
   --load         what the machine was doing, sampled by ./dev
@@ -69,34 +65,33 @@ const PENDING: [(&str, &str); 1] = [(
 /// One number for the whole file treated a benchmark that is arithmetic over a byte array and
 /// one that binds fifteen unix sockets as equally noisy, which they are not - and the number
 /// had to be loose enough for the noisiest of them, which left the quiet ones ungated. A 2.00x
-/// tolerance on `frame.decode` passes a change that doubles the cost of every byte Muster
-/// reads.
+/// tolerance on a per-byte parse passes a change that doubles the cost of every byte a pane
+/// prints.
 ///
 /// The numbers below come from eight consecutive runs of this harness on one unchanged tree,
 /// on a ten-core laptop sitting at a load average of about ten. Each benchmark's own
 /// worst-to-best spread across those runs was:
 ///
 /// ```text
-/// frame.decode 1.05x   frame.vt_parse 1.06x   mirror.apply 1.06x   roster.build 1.06x
-/// seam.dispatch 1.09x  view.build 1.09x       input.encode 1.14x
+/// mirror.apply 1.06x   roster.build 1.06x   seam.dispatch 1.09x   view.build 1.09x
 /// pane.encoder 1.27x   pane.channel 1.42x
 /// ```
 ///
-/// So the six arithmetic-over-a-buffer benchmarks are stable to within a tenth even on a busy
+/// The per-byte parse and the per-key path measured 1.06x and 1.14x in the shapes they had
+/// then. So the arithmetic-over-a-buffer benchmarks are stable to within a tenth even on a busy
 /// machine, and the two that touch the OS are not. A single 2.00x covered the noisiest of them
-/// and left the quiet ones ungated: a change doubling the cost of every byte Muster reads
-/// passed.
+/// and left the quiet ones ungated.
 ///
 /// Recorded into the baseline file rather than applied from here, so the number gating a cost
 /// sits beside the cost and can be argued with by editing one line.
 const TOLERANCES: [(&str, f64); 2] = [
-    // Fifteen bound unix sockets, fifteen reader threads and fifteen key encoders per
-    // iteration, at 90 µs/pane - three orders of magnitude above everything else here, and the
-    // only benchmark whose time is mostly the kernel's. Measured spread 1.42x, so 2.00x would
-    // have left it barely a margin at all.
+    // Fifteen bound unix sockets and fifteen threads parked in accept per iteration, at around
+    // 90 µs/pane - three orders of magnitude above everything else here, and the only
+    // benchmark whose time is mostly the kernel's. Measured spread 1.42x, so 2.00x would have
+    // left it barely a margin at all.
     ("pane.channel", 3.0),
-    // Builds a libghostty key encoder per pane, which crosses into a dylib and reads its mode
-    // tables. Cheaper than pane.channel and steadier, but not arithmetic either.
+    // Builds libghostty's key and mouse encoders per pane, which crosses into a dylib and reads
+    // its mode tables. Cheaper than pane.channel and steadier, but not arithmetic either.
     ("pane.encoder", 2.0),
 ];
 
@@ -112,19 +107,7 @@ fn with_tolerance(mut cost: Cost) -> Cost {
 
 fn main() {
     let options = Options::parse();
-    let streams = recorded_frame_streams(&options.corpus);
-    if streams.is_empty() {
-        eprint!(
-            "muster-perf: no recorded frames under {}.\n\
-             The per-byte budgets replay real daemon output, so without the corpus this run \
-             would report nothing while exiting 0 - which reads as a pass. Run from the repo \
-             root, or pass --corpus.\n\n",
-            options.corpus
-        );
-        std::process::exit(2);
-    }
-
-    let costs = measure_everything(&streams);
+    let costs = measure_everything();
 
     println!("{}", table(&costs));
     println!();
@@ -140,7 +123,6 @@ fn main() {
 struct Options {
     recording: bool,
     baseline: String,
-    corpus: String,
     tolerance: f64,
     /// What ./dev found the machine doing. Absent when the harness was run by hand, which is
     /// worth distinguishing from a quiet machine rather than defaulting to zero.
@@ -152,7 +134,6 @@ impl Options {
         let mut options = Options {
             recording: false,
             baseline: "perf/baseline.json".to_string(),
-            corpus: "corpus".to_string(),
             tolerance: 2.0,
             load: None,
         };
@@ -169,7 +150,6 @@ impl Options {
             match argument.as_str() {
                 "--record" => options.recording = true,
                 "--baseline" => options.baseline = value("--baseline"),
-                "--corpus" => options.corpus = value("--corpus"),
                 "--tolerance" => {
                     options.tolerance = value("--tolerance").parse().unwrap_or(options.tolerance);
                 }
@@ -214,27 +194,6 @@ fn pair(text: &str) -> Option<[usize; 2]> {
     }
 }
 
-/// Every recorded frame stream, concatenated.
-///
-/// Recorded from a real daemon rather than generated, so the shape being timed is the shape
-/// that actually arrives: one 35 KB attach repaint followed by small diffs. A synthetic
-/// stream of uniform frames would measure a workload Muster never sees.
-fn recorded_frame_streams(corpus: &str) -> Vec<Vec<u8>> {
-    let mut found: Vec<PathBuf> = Vec::new();
-    let Ok(versions) = std::fs::read_dir(Path::new(corpus)) else { return Vec::new() };
-    for version in versions.flatten() {
-        let Ok(captures) = std::fs::read_dir(version.path()) else { continue };
-        for capture in captures.flatten() {
-            let stream = capture.path().join("frames.ndjson");
-            if stream.is_file() {
-                found.push(stream);
-            }
-        }
-    }
-    found.sort();
-    found.iter().filter_map(|path| std::fs::read(path).ok()).collect()
-}
-
 /// What one structural change costs a window that is full.
 ///
 /// Every pane event republishes the whole view - that is what keeps the shell from holding a
@@ -249,21 +208,20 @@ fn view_cost() -> Cost {
     let daemon = DaemonId::new("local");
     measure("view.build", "ns/pane", BUDGETED_PANES * 200, 20, 5, || {
         for _ in 0..200 {
-            // The transport closure answers local here: what this measures is building a
-            // view, not reaching a machine. The pane closure answers without a lookup for the
-            // same reason - a registry behind a lock would put its cost in this number. Text
-            // size answers the configured one, which is what every pane in a window nobody has
+            // The daemon answers local here: what this measures is building a view, not
+            // reaching a machine. The pane closure answers without a lookup for the same
+            // reason - a registry behind a lock would put its cost in this number. Text size
+            // answers the configured one, which is what every pane in a window nobody has
             // sized reports, and so does the bridge count: a window measured mid-recovery is
             // not the window this budget is about.
             let view = View::of(
                 &composition,
                 |named| (named == &daemon).then_some(&mirror),
-                |_| None,
-                |_| Some("/tmp/herdr.sock".to_string()),
+                |_| Some("/tmp/muster-daemon.sock".to_string()),
+                |_| false,
                 |_, pane| ViewPane {
                     id: pane.clone(),
-                    control_socket_path: Some(pane.to_string()),
-                    backend_pane_id: Some(pane.to_string()),
+                    link_socket_path: Some(pane.to_string()),
                     font_size_offset: 0,
                     bridge_restarts: 0,
                 },
@@ -278,10 +236,10 @@ fn view_cost() -> Cost {
 ///
 /// A harness rewrites its terminal title as it works, and every such change republishes the
 /// whole roster - so this lands at frequency times cardinality, which is the shape this file
-/// exists to hold. The frequency half is already answered and is answered by the daemon: herdr
-/// announces only when the *stripped* title changes, so a rotating spinner produces nothing
-/// (`observations/herdr-0.8.0.md` section 16, and `pane_naming.rs` against a real one). What is
-/// left is the per-change cost, and this is it.
+/// exists to hold. The frequency half is the daemon's: muster-daemon announces a title only
+/// when it differs from the one it holds, so a program repeating its title costs nothing here,
+/// and one rotating a spinner through it costs this once per frame. What is left is the
+/// per-change cost, and this is it.
 ///
 /// Per pane rather than per roster, like `view.build` beside it, so the number stays comparable
 /// as the budgeted window size changes and a build that made it quadratic stops matching.
@@ -350,103 +308,61 @@ fn replay_costs() -> Vec<Cost> {
     costs
 }
 
-fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
-    let wire_bytes: usize = streams.iter().map(Vec::len).sum();
-    let frames: Vec<PaneFrame> = streams
-        .iter()
-        .flat_map(|stream| {
-            let mut decoder = FrameDecoder::new();
-            decoder.consume(stream).into_iter().filter_map(|event| match event {
-                PaneStreamEvent::Frame(frame) => Some(frame),
-                PaneStreamEvent::Closed { .. } => None,
-            })
-        })
-        .collect();
-    let ansi_bytes: usize = frames.iter().map(|frame| frame.bytes.len()).sum();
-
-    // Two separate budgets that a single "frame cost" would hide. Decoding scales with the
-    // wire bytes the bridge reads; VT parsing scales with the ANSI those unwrap to, which is
-    // smaller and far more expensive per byte.
-    let mut costs = vec![
-        measure("frame.decode", "ns/byte", wire_bytes, 50, 5, || {
-            for stream in streams {
-                let mut decoder = FrameDecoder::new();
-                black_box(decoder.consume(stream).len());
-            }
-        }),
-        measure("frame.vt_parse", "ns/byte", ansi_bytes.max(1), 20, 5, || {
-            // A fresh terminal per iteration: replaying a repaint into a terminal that
-            // already holds it measures a different, cheaper thing.
-            let Ok(mut terminal) = Terminal::new(80, 24) else { return };
-            for frame in &frames {
-                terminal.write(&frame.bytes);
-            }
-        }),
-    ];
+fn measure_everything() -> Vec<Cost> {
+    let output = agent_output();
+    let mut costs = vec![measure("output.vt_parse", "ns/byte", output.len(), 20, 5, || {
+        // A fresh terminal per iteration: replaying a repaint into a terminal that already
+        // holds it measures a different, cheaper thing.
+        let Ok(mut terminal) = Terminal::new(80, 24) else { return };
+        terminal.write(&output);
+    })];
 
     costs.extend(screen_reads());
     costs.extend(replay_costs());
 
-    // What every keystroke pays before it reaches a socket. Small by construction - the
-    // encoder is built once and holds the pane's modes - and worth a standing number because
-    // this is the one path where a regression is felt rather than measured.
-    match KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE) {
-        Err(error) => {
-            eprintln!(
-                "muster-perf: skipping input.encode - the key encoder would not build: {error}"
-            );
-        }
-        Ok(encoder) => {
-            let keymap = Keymap::default();
-            let keystrokes = [
-                typed(Key::KeyH, Modifiers::NONE, "h"),
-                typed(Key::KeyC, Modifiers::CONTROL, "c"),
-                typed(Key::Enter, Modifiers::SHIFT, "\r"),
-                typed(Key::Backspace, Modifiers::SUPER, "\u{7f}"),
-            ];
-            costs.push(measure("input.encode", "ns/key", keystrokes.len() * 100, 100, 5, || {
-                for _ in 0..100 {
-                    for key in &keystrokes {
-                        match keymap.resolve(key) {
-                            Resolution::Text(bytes) => black_box(bytes.len()),
-                            Resolution::Unbound => {
-                                black_box(encoder.encode(key).unwrap_or_default().len())
-                            }
-                            Resolution::ServerEncoded(_) | Resolution::Action(_) => 0,
-                        };
-                    }
-                }
-            }));
-        }
-    }
-
-    // The control plane's per-event cost, which is the half of "fast is a feature" that had
-    // never had a number. Measurable at all because the mirror has no I/O in it: this is the
-    // same fold a live subscription runs, with the socket left out.
+    // What every keystroke pays in the core before it leaves for the daemon: the keymap,
+    // option-as-alt, and building the event. The daemon encodes it against the pane's modes,
+    // so this is the whole of the core's share, and worth a standing number because this is
+    // the one path where a regression is felt rather than measured.
     //
-    // The stream is the recorded lifecycle capture rather than one shape repeated, so what
-    // is timed is the mix a real session produces - mostly upserts that change nothing,
-    // because the daemon replays and re-announces far more often than it changes anything.
-    let events =
-        recorded_backend_events(&PathBuf::from("corpus/herdr-0.8.0/lifecycle/events.ndjson"));
-    if events.is_empty() {
-        eprintln!(
-            "muster-perf: skipping mirror.apply - no recorded events under \
-             corpus/herdr-0.8.0/lifecycle/"
-        );
-    } else {
-        costs.push(measure("mirror.apply", "ns/event", events.len() * 20, 20, 5, || {
-            // A fresh mirror per iteration, because applying into one that already holds
-            // the session measures convergence rather than the first build, and the two
-            // differ by every insert.
-            let mut mirror = Mirror::new();
-            for _ in 0..20 {
-                for event in &events {
-                    black_box(mirror.apply(event.clone()).len());
-                }
+    // Into a sink that drops everything, because what a real sink does is queue the event
+    // for a socket, which is the daemon connection's cost rather than the core's.
+    let input = PaneInput::new(
+        PaneId::new("p1"),
+        Arc::new(Discarded) as Arc<dyn InputSink>,
+        &PaneInputSettings::default(),
+    );
+    let keystrokes = [
+        typed(Key::KeyH, Modifiers::NONE, "h"),
+        typed(Key::KeyC, Modifiers::CONTROL, "c"),
+        typed(Key::Enter, Modifiers::SHIFT, "\r"),
+        typed(Key::Backspace, Modifiers::SUPER, "\u{7f}"),
+    ];
+    costs.push(measure("input.route", "ns/key", keystrokes.len() * 100, 100, 5, || {
+        for _ in 0..100 {
+            for key in &keystrokes {
+                input.send(key);
             }
-        }));
-    }
+        }
+    }));
+
+    // The control plane's per-event cost. Measurable at all because the mirror has no I/O in
+    // it: this is the same fold a live subscription runs, with the socket left out.
+    let (_, mut mirror) = full_window(BUDGETED_PANES);
+    let events = window_at_work(&mirror);
+    costs.push(measure("mirror.apply", "ns/event", events.len() * 20, 20, 5, || {
+        // Into one mirror across iterations, which is only honest because the stream leaves
+        // the window as it found it: every event changes something on every pass, as a real
+        // one does.
+        //
+        // Cloned per apply, because the fold takes its event by value and a live one arrives
+        // freshly decoded; copying a whole pane record is part of what an event costs.
+        for _ in 0..20 {
+            for event in &events {
+                black_box(mirror.apply(event.clone()).len());
+            }
+        }
+    }));
 
     // What the shell/core boundary costs per keystroke: encode a request, decode it, answer,
     // encode the answer. MIP-1 argued this seam can afford protobuf because it carries
@@ -454,7 +370,7 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
     // the number that claim is checkable against.
     //
     // No pane is attached, so what is measured is the crossing itself rather than the
-    // encoder behind it, which `input.encode` already covers separately.
+    // routing behind it, which `input.route` already covers separately.
     let request = key_down_request();
     costs.push(measure("seam.dispatch", "ns/event", 100, 200, 5, || {
         for _ in 0..100 {
@@ -465,31 +381,84 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
     costs.push(view_cost());
     costs.push(roster_cost());
 
-    // What Muster holds open per pane, which is the half of "fast is a feature" that is fixed
-    // cost rather than throughput: a full window is fifteen bound sockets, fifteen threads
-    // waiting on them, and fifteen key encoders. None of it is visible in a per-byte number,
-    // because none of it happens per byte.
+    // What a full window holds open per pane, which is the half of "fast is a feature" that is
+    // fixed cost rather than throughput. None of it is visible in a per-byte number, because
+    // none of it happens per byte.
     //
-    // Two numbers rather than one, because they regress for unrelated reasons and a single
-    // one would not say which. The socket and its thread are Muster's own; the encoder is
-    // libghostty-vt's, and is the cost a replacement renderer would have to match.
+    // Two numbers rather than one, because they are paid in different processes and regress
+    // for unrelated reasons. The link socket and its thread are the window's; the encoders are
+    // the daemon's, and are libghostty-vt's cost that a replacement would have to match.
     costs.push(measure("pane.channel", "ns/pane", BUDGETED_PANES, 10, 3, || {
-        let held: Vec<_> = (0..BUDGETED_PANES).filter_map(bind_pane_socket).collect();
+        let held: Vec<_> = (0..BUDGETED_PANES).filter_map(open_channel).collect();
         black_box(held.len());
     }));
-    // Twenty windows' worth per iteration rather than one, so that the fastest sample is
-    // hundreds of microseconds instead of one. A full window of encoders costs about a
-    // microsecond, which was a single tick of the clock this harness used to read - so the
-    // number recorded for it was the clock's resolution over fifteen panes and nothing about
-    // the encoder. Still ns/pane, so the figure means what it always meant.
+    // Twenty windows' worth per iteration rather than one, so that the fastest sample is tens
+    // of microseconds instead of one or two, which is too close to the clock's resolution to
+    // judge. Still ns/pane, so the figure means what it always meant.
     let encoders = BUDGETED_PANES * 20;
     costs.push(measure("pane.encoder", "ns/pane", encoders, 10, 3, || {
         for _ in 0..encoders {
-            black_box(KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).is_ok());
+            black_box(KeyEncoder::new(KeyModes::default()).is_ok());
+            black_box(MouseEncoder::new().is_ok());
         }
     }));
 
     costs
+}
+
+/// What an agent's pane prints while it works.
+///
+/// Every such byte is parsed twice, by the daemon's terminal for the pane and by the surface
+/// drawing it (MIP-3, section 4), and this is the cost of one of those.
+///
+/// Built here rather than recorded, because the recordings in the corpus are herdr's repaints
+/// of a screen, which is not what muster-daemon relays: it sends a program's own bytes. So
+/// this is those bytes, shaped the way a coding agent writes them. Mostly styled lines of
+/// text, some of them drawn in box characters, and after every few lines a status block redrawn
+/// in place - cursor up, erase, a spinner frame and a line of progress - inside a synchronized
+/// update, which is how the harnesses Muster runs repaint without tearing. A stream of plain
+/// ASCII would measure the parser's fastest path and nothing an agent actually sends.
+fn agent_output() -> Vec<u8> {
+    const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let mut output = Vec::new();
+    for turn in 0..400 {
+        output.extend_from_slice(
+            format!(
+                "\x1b[1m\x1b[38;2;215;119;87m⏺\x1b[0m Reading \x1b[1msrc/turn_{turn}.rs\x1b[0m\r\n"
+            )
+            .as_bytes(),
+        );
+        output.extend_from_slice("  \x1b[2m⎿\x1b[0m  Read 120 lines\r\n".as_bytes());
+        output
+            .extend_from_slice(format!("\x1b[38;5;244m╭{}╮\x1b[0m\r\n", "─".repeat(76)).as_bytes());
+        for line in 0..4 {
+            output.extend_from_slice(
+                format!(
+                    "\x1b[38;5;244m│\x1b[0m \x1b[32m+\x1b[0m    let value_{line} = \
+                     \x1b[33mcompute\x1b[0m(\x1b[36m{turn}\x1b[0m, &mut state);{:>30}\
+                     \x1b[38;5;244m│\x1b[0m\r\n",
+                    ""
+                )
+                .as_bytes(),
+            );
+        }
+        output
+            .extend_from_slice(format!("\x1b[38;5;244m╰{}╯\x1b[0m\r\n", "─".repeat(76)).as_bytes());
+        for frame in 0..3 {
+            output.extend_from_slice(
+                format!(
+                    "\x1b[?2026h\x1b[2A\r\x1b[J\x1b[38;2;215;119;87m{}\x1b[0m \
+                     Thinking… \x1b[2m({}s · ↓ {} tokens · esc to interrupt)\x1b[0m\r\n\
+                     \x1b[2m  ? for shortcuts\x1b[0m\r\n\x1b[?2026l",
+                    SPINNER[(turn * 3 + frame) % SPINNER.len()],
+                    turn / 4,
+                    turn * 37 + frame
+                )
+                .as_bytes(),
+            );
+        }
+    }
+    output
 }
 
 /// A window as full as Muster budgets for: one region, one tab, `panes` panes in a tree.
@@ -499,11 +468,40 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
 /// make - so a walk that is worse than linear in depth shows up here rather than hiding
 /// behind a shape nobody builds by hand.
 fn full_window(panes: usize) -> (Composition, Mirror) {
-    let (workspace, tab) = (WorkspaceId::new("w1"), TabId::new("w1:t1"));
-    let ids: Vec<PaneId> = (0..panes).map(|index| PaneId::new(format!("w1:p{index}"))).collect();
+    let tab = TabId::new("t1");
+    let ids: Vec<PaneId> = (0..panes).map(|index| PaneId::new(format!("p{index}"))).collect();
 
-    let mut root = LayoutNode::Pane(ids[panes - 1].clone());
-    for id in ids.iter().rev().skip(1) {
+    let mut mirror = Mirror::new();
+    mirror.bootstrap(Snapshot {
+        seq: 1,
+        instance: 1,
+        tabs: vec![Tab {
+            id: tab.clone(),
+            label: Some("t1".to_string()),
+            generation: 1,
+            root: nested(&ids),
+            zoomed: None,
+        }],
+        panes: ids.iter().map(|id| agent_pane(id, &tab)).collect(),
+        restoring: false,
+    });
+
+    let daemon = DaemonId::new("local");
+    let mut composition = Composition::new();
+    composition.attach_daemon(Daemon {
+        id: daemon.clone(),
+        endpoint: Endpoint::Local { socket_path: Some("/tmp/muster-perf.sock".to_string()) },
+    });
+    composition.open_region(&daemon, tab);
+    composition.reconcile(&daemon, &mirror);
+    (composition, mirror)
+}
+
+/// Each pane split off the one before it, down one side.
+fn nested(ids: &[PaneId]) -> LayoutNode {
+    let (last, rest) = ids.split_last().expect("a window has at least one pane");
+    let mut root = LayoutNode::Pane(last.clone());
+    for id in rest.iter().rev() {
         root = LayoutNode::Split {
             axis: SplitAxis::Columns,
             ratio: 0.5,
@@ -511,85 +509,134 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
             second: Box::new(root),
         };
     }
-
-    let mut mirror = Mirror::new();
-    mirror.bootstrap(Snapshot {
-        workspaces: vec![Workspace { id: workspace.clone(), label: "w1".to_string() }],
-        tabs: vec![Tab { id: tab.clone(), workspace: workspace.clone(), label: "t1".to_string() }],
-        panes: ids
-            .iter()
-            .map(|id| Pane {
-                id: id.clone(),
-                tab: tab.clone(),
-                workspace: workspace.clone(),
-                agent_state: AgentState::Idle,
-                // A harness in every pane, and a title on every one, because that is the
-                // window this is budgeted for and it is also the expensive shape: the roster
-                // decides per row whether a title says anything the label does not, and a
-                // pane with neither would skip that work.
-                agent: Some("claude".to_string()),
-                cwd: "/tmp".to_string(),
-                name: None,
-                title: Some("first working build".to_string()),
-                revision: 1,
-            })
-            .collect(),
-        layouts: vec![Layout { tab: tab.clone(), root, focused: None, zoomed: None }],
-        focus: Focus::default(),
-        agent_state_seq: None,
-    });
-
-    let daemon = DaemonId::new("local");
-    let mut composition = Composition::new();
-    composition.attach_daemon(Daemon {
-        id: daemon.clone(),
-        endpoint: Endpoint::Local { socket_path: Some("/tmp/herdr-perf.sock".to_string()) },
-    });
-    composition.open_region(&daemon, tab);
-    composition.reconcile(&daemon, &mirror);
-    (composition, mirror)
+    root
 }
 
-/// One pane's socket, bound and listening, with the input path built over it.
+/// One pane of the window this is budgeted for: a harness in it, and a title on it.
 ///
-/// The daemon's own side is deliberately absent. What a herdr connection costs is herdr's
-/// number and belongs in an observation, not in a budget that gates this repo's builds.
-fn bind_pane_socket(index: usize) -> Option<(Arc<PaneControlChannel>, PaneInput)> {
+/// Also the expensive shape: the roster decides per row whether a title says anything the
+/// label does not, and a pane with neither would skip that work. Facts too, because an agent
+/// reporting itself is the common case and they travel in every record.
+fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
+    Pane {
+        id: id.clone(),
+        tab: tab.clone(),
+        agent_state: AgentState::Idle,
+        agent: Some("claude".to_string()),
+        cwd: "/tmp".to_string(),
+        name: None,
+        title: Some("first working build".to_string()),
+        command: Some("claude".to_string()),
+        facts: AgentFacts {
+            context_used: Some(12.0),
+            subagents: 0,
+            model: Some("opus".to_string()),
+            cost_usd: Some(0.42),
+            other: std::collections::BTreeMap::new(),
+        },
+    }
+}
+
+/// What a daemon says while a full window of agents works, in the mix it says it.
+///
+/// Built from the mirror's own panes, and ends where it began, so it can be applied over and
+/// over and change something every time. Per pane: it starts working, retitles itself, reports
+/// how much context it has used, and goes idle again - the agent-state and fact records that
+/// make up nearly everything a busy window hears. Once per pass, a pane is split off and closed
+/// again, which is the structural change: an opened pane, a tree naming it, the pane closed,
+/// the tree without it.
+fn window_at_work(mirror: &Mirror) -> Vec<BackendEvent> {
+    let panes: Vec<Pane> = mirror.panes().cloned().collect();
+    let tabs: Vec<Tab> = mirror.tabs().cloned().collect();
+    let mut events = Vec::new();
+    for pane in &panes {
+        let mut working = pane.clone();
+        working.agent_state = AgentState::Working;
+        events.push(BackendEvent::PaneChanged(working.clone()));
+        working.title = Some("running the suite".to_string());
+        events.push(BackendEvent::PaneChanged(working.clone()));
+        working.facts.context_used = Some(31.0);
+        working.facts.cost_usd = Some(0.97);
+        events.push(BackendEvent::PaneChanged(working));
+    }
+    if let (Some(tab), Some(beside)) = (tabs.first(), panes.last()) {
+        let extra = PaneId::new("p-extra");
+        let mut opened = beside.clone();
+        opened.id = extra.clone();
+        let mut split = tab.clone();
+        split.root = LayoutNode::Split {
+            axis: SplitAxis::Rows,
+            ratio: 0.5,
+            first: Box::new(tab.root.clone()),
+            second: Box::new(LayoutNode::Pane(extra.clone())),
+        };
+        events.push(BackendEvent::PaneOpened(opened));
+        events.push(BackendEvent::TabChanged(split));
+        events.push(BackendEvent::PaneClosed(extra));
+        events.push(BackendEvent::TabChanged(tab.clone()));
+    }
+    events.extend(panes.into_iter().map(BackendEvent::PaneChanged));
+    events
+}
+
+/// What the core opens for each pane it shows: the socket that pane's bridge reports on, a
+/// thread parked in `accept` on it, and the input path.
+///
+/// A stand-in for the seam's `PaneLink`, which is its own and out of reach from here. What it
+/// keeps is the part with a cost - the bind and the thread, which are the kernel's work - and
+/// what it drops is the reporting a link does once a bridge dials, which never happens here.
+/// `PaneInput::new` is the real one.
+fn open_channel(index: usize) -> Option<(Link, PaneInput)> {
     let path = std::env::temp_dir()
         .join(format!("muster-perf-{}-{index}.sock", std::process::id()))
         .to_string_lossy()
         .into_owned();
-    let control = Arc::new(
-        PaneControlChannel::bind(
-            path,
-            Reports {
-                connected: Box::new(|| {}),
-                exited: Box::new(|_| {}),
-                sized: Box::new(|_, _| {}),
-                painted: Box::new(|| {}),
-            },
-        )
-        .ok()?,
-    );
-    let encoder = Arc::new(KeyEncoder::new(TerminalModeProfile::UNKNOWN_PANE).ok()?);
+    let _ = std::fs::remove_file(&path);
+    let listener = UnixListener::bind(&path).ok()?;
+    let closing = Arc::new(AtomicBool::new(false));
+    let told = Arc::clone(&closing);
+    std::thread::spawn(move || {
+        while let Ok((_stream, _)) = listener.accept() {
+            if told.load(Ordering::Acquire) {
+                return;
+            }
+        }
+    });
     let input = PaneInput::new(
-        Arc::clone(&control) as Arc<_>,
-        None,
-        encoder,
+        PaneId::new(format!("p{index}")),
+        Arc::new(Discarded) as Arc<dyn InputSink>,
         &PaneInputSettings::default(),
     );
-    Some((control, input))
+    Some((Link { path, closing }, input))
 }
 
-/// Every event in a recorded subscription, already translated.
-///
-/// Decoded once, outside the timing loop: this budget is the mirror's fold, and the
-/// decoder that feeds it is a separate cost that would otherwise be folded in silently.
-fn recorded_backend_events(path: &Path) -> Vec<BackendEvent> {
-    let Ok(bytes) = std::fs::read(path) else { return Vec::new() };
-    // `Mint::Backend`, so decoding costs no draws: what this measures is the mirror's fold,
-    // and a minted name per pane would put a clock read and an entropy read inside it.
-    EventDecoder::new(Names::alone("local", Mint::Backend)).consume(&bytes)
+/// A bound link socket, closed the way the seam closes one.
+struct Link {
+    path: String,
+    closing: Arc<AtomicBool>,
+}
+
+impl Drop for Link {
+    fn drop(&mut self) {
+        // Knock, then take the door away: nothing else wakes a thread parked in `accept`.
+        self.closing.store(true, Ordering::Release);
+        let _ = UnixStream::connect(&self.path);
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// A daemon connection that takes every event and sends none of them.
+#[derive(Debug)]
+struct Discarded;
+
+impl InputSink for Discarded {
+    fn send(&self, _pane: &PaneId, event: InputEvent) {
+        black_box(event);
+    }
+
+    fn description(&self) -> &'static str {
+        "nowhere"
+    }
 }
 
 /// One press, encoded the way the shell encodes one.

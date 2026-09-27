@@ -607,8 +607,8 @@ dependencies = [
  "clap",
  "clap_complete",
  "conformance",
- "herdr-harness",
- "muster-herdr",
+ "muster-daemon-client",
+ "muster-harness",
  "muster-proto",
  "muster-seam",
  "prost",
@@ -731,10 +731,11 @@ dependencies = [
 name = "muster-perf"
 version = "0.9.0"
 dependencies = [
- "herdr-harness",
  "libc",
  "muster-core",
- "muster-herdr",
+ "muster-daemon-client",
+ "muster-daemon-proto",
+ "muster-harness",
  "muster-seam",
  "muster-vt",
  "prost",
@@ -756,11 +757,11 @@ dependencies = [
 name = "muster-seam"
 version = "0.9.0"
 dependencies = [
- "herdr-harness",
  "libc",
  "muster-core",
  "muster-daemon-client",
  "muster-daemon-proto",
+ "muster-harness",
  "muster-proto",
  "muster-ssh",
  "muster-vt",

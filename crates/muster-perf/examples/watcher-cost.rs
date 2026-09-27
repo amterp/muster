@@ -1,35 +1,41 @@
-//! What fifteen panes' worth of agent watchers cost this process.
+//! What following a daemon with fifteen panes costs this process, against following one pane.
 //!
-//! `pane.agent_status_changed` takes a `pane_id` and no session-wide subscription carries
-//! the same information (`docs/observations/herdr-0.8.0.md` section 11), so an overview of
-//! N panes is N held-open connections and N threads plus one of each for structure. That is
-//! the price of the founding desideratum, and nobody had put a number on it.
+//! Under herdr this was the price of agent state: its per-pane status event took a pane id and
+//! nothing session-wide carried the same thing, so an overview of N panes was N held-open
+//! connections and N threads. muster-daemon's subscription carries every pane's state on one
+//! connection (MIP-3, section 9), so the per-pane column should now read zero threads and zero
+//! descriptors, with memory growing only by what the mirror holds per pane. This is the check
+//! that it does.
 //!
-//! An example rather than a budget entry, for the reason `bind_pane_socket` in `main.rs`
-//! already gives: what a herdr connection costs is a fact about a dependency, and facts
-//! about dependencies live in `docs/observations/`, not in a baseline that fails builds.
-//! The gate compiles this (`cargo build --workspace --all-targets`) so it cannot rot, and
-//! never runs it, so no build ever fails over a memory reading.
+//! What it leaves out is what the window binds per pane beside the follower, the socket a
+//! pane's bridge reports on, which is the seam's and is budgeted as `pane.channel` in
+//! `src/main.rs`.
+//!
+//! An example rather than a budget entry, because a resident-memory reading is too noisy to
+//! fail a build over. The gate compiles this (`cargo build --workspace --all-targets`) so it
+//! cannot rot, and never runs it.
 //!
 //! Run it:
 //!
 //! ```text
-//! MUSTER_HERDR=deps/herdr/0.8.0/herdr \
-//!   cargo run --release -p muster-perf --example watcher-cost
+//! cargo build --release -p muster-daemon
+//! cargo run --release -p muster-perf --example watcher-cost
 //! ```
 //!
-//! Release because a debug binary's memory says nothing about the one anybody ships.
+//! Release because a debug binary's memory says nothing about the one anybody ships, and the
+//! daemon is built first because the harness starts the one beside this example.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use herdr_harness::{Daemon, until};
 use muster_core::mirror::Mirror;
-use muster_herdr::subscription::{Notice, Subscription};
-use serde_json::json;
+use muster_daemon_client::follow::{Follower, Following, Notice};
+use muster_daemon_proto as proto;
+use muster_harness::requests::{beside, create, create_request, in_new_tab};
+use muster_harness::{Control, Daemon, until};
 
-/// The window Muster budgets for, and the number section 11 asks about.
+/// The window Muster budgets for.
 const BUDGETED_PANES: usize = 15;
 
 /// How long the process is watched doing nothing, to answer the scheduling half.
@@ -39,45 +45,44 @@ const BUDGETED_PANES: usize = 15;
 const IDLE_WINDOW: Duration = Duration::from_secs(3);
 
 fn main() {
-    if std::env::var("MUSTER_HERDR").is_err() {
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    let first = "p0";
+    if !made(&mut control, create(first, in_new_tab("t1"))) {
         eprintln!(
-            "watcher-cost: MUSTER_HERDR is not set.\n\
-             \n\
-             Impact: this measures Muster against a real daemon and has no binary to start, \
-             so it would report nothing.\n\
-             Fix: run ./dev -t once to download the pinned herdr, then\n\
-             \n  \
-             MUSTER_HERDR=deps/herdr/0.8.0/herdr cargo run --release -p muster-perf \
-             --example watcher-cost\n"
+            "watcher-cost: the daemon would not make a first pane, so there is nothing to measure."
         );
-        std::process::exit(2);
+        std::process::exit(1);
     }
-
-    let daemon = Daemon::start();
-    daemon.call("workspace.create", &json!({ "cwd": "/tmp", "label": "cost", "focus": true }));
 
     let mirror = Arc::new(Mutex::new(Mirror::new()));
     let bootstraps = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&bootstraps);
-    let _subscription = Subscription::start(
-        daemon.socket_path().to_string_lossy().into_owned(),
+    let _follower = Follower::start(
+        Following {
+            socket: daemon.socket_path().to_path_buf(),
+            client: "watcher-cost".to_string(),
+            daemon: "local".to_string(),
+            remote: false,
+        },
         Arc::clone(&mirror),
         Arc::new(move |notice| {
             if matches!(notice, Notice::Bootstrapped { .. }) {
                 counter.fetch_add(1, Ordering::Relaxed);
             }
         }),
-        daemon.names(),
-    );
+    )
+    .unwrap_or_else(|error| {
+        eprintln!("watcher-cost: could not start following the daemon: {error}");
+        std::process::exit(1);
+    });
 
     until("the first bootstrap", || bootstraps.load(Ordering::Relaxed) > 0, ());
-    until("the first pane's watcher to settle", || panes(&mirror) == 1, ());
-    // The watcher is started from `follow()` after bootstrap and connects on its own
-    // thread, so the mirror holding the pane is not yet the watcher holding a socket.
+    until("the first pane to reach the mirror", || panes(&mirror) == 1, ());
     settle();
     let one = Stats::read();
 
-    let reached = grow_to(&daemon, &mirror, BUDGETED_PANES);
+    let reached = grow_to(&mut control, &mirror, BUDGETED_PANES);
     settle();
     let many = Stats::read();
 
@@ -86,20 +91,28 @@ fn main() {
     report(&one, &many, reached, idle);
 }
 
-/// Splits until the session holds `target` panes, or until herdr will not split again.
+/// Asks for a pane, and says whether the daemon made it.
+fn made(control: &mut Control, pane: proto::pane_request::Create) -> bool {
+    control.ask(create_request(pane)).outcome() == proto::Outcome::Done
+}
+
+/// Splits until the session holds `target` panes, or until the daemon will not split again.
 ///
-/// Reports what it reached rather than insisting: herdr sizes panes for a fixed 54x23
-/// viewport whether or not anybody is attached, so there is a pane count past which a split
-/// is legitimately refused. A rig that panicked there would turn a fact about the daemon
-/// into a broken tool.
-fn grow_to(daemon: &Daemon, mirror: &Arc<Mutex<Mirror>>, target: usize) -> usize {
+/// Reports what it reached rather than insisting: a daemon may refuse a split once panes would
+/// be too small to hold a terminal, and a rig that panicked there would turn a fact about the
+/// daemon into a broken tool.
+fn grow_to(control: &mut Control, mirror: &Arc<Mutex<Mirror>>, target: usize) -> usize {
     while panes(mirror) < target {
         let before = panes(mirror);
-        if daemon.client().request("pane.split", &json!({ "direction": "right" })).is_err() {
-            eprintln!("watcher-cost: herdr refused a split at {before} panes; reporting that.");
+        let name = format!("p{before}");
+        let previous = format!("p{}", before - 1);
+        if !made(control, create(&name, beside(&previous, proto::Side::Right))) {
+            eprintln!(
+                "watcher-cost: the daemon refused a split at {before} panes; reporting that."
+            );
             break;
         }
-        // One at a time, so the count below is the count the watchers were built for.
+        // One at a time, so the count below is the count the follower was measured at.
         until("the new pane to reach the mirror", || panes(mirror) > before, ());
     }
     panes(mirror)
@@ -109,11 +122,11 @@ fn panes(mirror: &Arc<Mutex<Mirror>>) -> usize {
     mirror.lock().expect("the mirror lock was poisoned").panes().count()
 }
 
-/// Long enough for every watcher `follow()` started to have connected.
+/// Long enough for anything the follower starts in reaction to a pane to have started.
 ///
-/// A sleep rather than a poll because what is being waited for is deliberately not
-/// observable: `AgentWatchers` is private, and exposing it so a benchmark could watch it
-/// would be measuring an API that exists for the benchmark.
+/// A sleep rather than a poll, because there should be nothing to wait for: a follower that
+/// started something per pane is exactly what this looks for, and it cannot poll for a thing
+/// it expects not to exist.
 fn settle() {
     std::thread::sleep(Duration::from_millis(500));
 }
@@ -245,7 +258,7 @@ fn run(command: &str, arguments: &[&str]) -> Option<String> {
 
 fn report(one: &Stats, many: &Stats, panes: usize, idle: Duration) {
     let added = u64::try_from(panes.saturating_sub(1)).unwrap_or(0);
-    println!("agent watchers: what {panes} panes cost this process\n");
+    println!("following a daemon: what {panes} panes cost this process\n");
     println!("{:<14} {:>12} {:>12} {:>12} {:>14}", "", "1 pane", "N panes", "delta", "per pane");
 
     row("rss", one.rss_kb, many.rss_kb, added, "KB");
@@ -262,7 +275,7 @@ fn report(one: &Stats, many: &Stats, panes: usize, idle: Duration) {
         None => println!("descriptor limit, a GUI-launched app inherits:      not applicable here"),
     }
     println!(
-        "idle CPU over {}s with {panes} watchers: {:.1} ms",
+        "idle CPU over {}s following {panes} panes: {:.1} ms",
         IDLE_WINDOW.as_secs(),
         idle.as_secs_f64() * 1000.0
     );
@@ -270,7 +283,7 @@ fn report(one: &Stats, many: &Stats, panes: usize, idle: Duration) {
     if panes < BUDGETED_PANES {
         println!(
             "\nNote: reached {panes} of the {BUDGETED_PANES} panes this window is budgeted \
-             for - herdr refused to split further. The per-pane column still holds; the \
+             for - the daemon refused to split further. The per-pane column still holds; the \
              totals are for {panes}."
         );
     }
