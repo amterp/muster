@@ -238,13 +238,21 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           archive=".build/Muster-${version}-arm64.zip"
           sha=$(shasum -a 256 "$archive" | cut -d' ' -f1)
+          # What somebody updating has to know, written for this version and
+          # read before the install lines. Most versions have none.
+          notes=""
+          if [ -f "packaging/release-notes/${version}.md" ]; then
+            notes="$(cat "packaging/release-notes/${version}.md")
+
+          "
+          fi
           # The number the Homebrew cask needs, in the release body rather than
           # only in a log that ages out - updating the tap is a separate step by
           # a person, possibly days later.
           gh release create "$GITHUB_REF_NAME" "$archive" \
             --title "Muster $version" \
             --generate-notes \
-            --notes "Apple Silicon, macOS 14 or newer. Notarized and stapled.
+            --notes "${notes}Apple Silicon, macOS 14 or newer. Notarized and stapled.
 
           \`\`\`
           brew install amterp/tap/muster
