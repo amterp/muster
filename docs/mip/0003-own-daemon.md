@@ -230,9 +230,12 @@ exactly the bytes the program wrote.
 
 **Nothing on this path waits for another pane or for a request.** No render loop, no shared thread,
 no throttle. The reader hands each chunk to a queue drained by the stream's own writer thread, which
-credit bounds, so a bridge that stops reading costs its own queue and never the reader. Requests,
-agent detection and attaching take the pane's lock briefly, and never while formatting a long
-history.
+credit bounds, so a bridge that stops reading costs its own queue and never the reader. Requests
+and agent detection take the pane's lock briefly, and `pane read` a batch of rows at a time.
+Attaching holds it while it formats the replay (section 5), which stalls only that pane's output.
+Nothing holding the session lock ever waits on a pane's lock: what a request does to panes'
+terminals - hanging one up, applying new settings - runs once the session lock is let go and before
+the request is answered, so a long replay never stalls another connection.
 
 **Flow control is by credit.** A bridge acknowledges the bytes it has written to the surface. The
 daemon keeps at most a fixed window of unacknowledged bytes per pane (256 KB to start, tuned by
@@ -341,7 +344,7 @@ no byte between the replay and the live stream is lost or sent twice, and it for
 under that lock. Measured on one pane, composing costs about 0.2 µs per 80-column row, and
 parsing it in a fresh headless terminal, standing in for the surface, about the same: 3 ms each for 10,000 rows, 30 ms each for 100,000, twice that
 at 200 columns. The lock stalls only the pane being attached, whose surface is waiting for the
-replay anyway, so no copy of the terminal is taken, and history is not capped: the pane's
+replay anyway, and nothing waits on it while holding the session lock (section 4), so no copy of the terminal is taken, and history is not capped: the pane's
 scrollback limit already bounds it. A replay can be larger than a frame may be, so it travels in
 pieces of 1 MiB that the bridge writes in order.
 

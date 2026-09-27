@@ -16,6 +16,7 @@ use std::io;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::path::PathBuf;
 use std::process::Child;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -28,7 +29,7 @@ use crate::effects::{self, Happened, Reported, Reports};
 use crate::process;
 use crate::pty;
 use crate::pty::Grid;
-use crate::screen::Screen;
+use crate::screen::{Screen, Settled};
 use crate::stream::{Bridge, Refusal};
 use crate::writer::{self, Encoding, Input, Writer};
 
@@ -47,6 +48,9 @@ pub(crate) struct PaneIo {
     master: Arc<OwnedFd>,
     /// The pane's lock: its terminal, and where its output stands.
     screen: Mutex<Screen>,
+    /// The pane's size ([`Grid::to_bits`]), written under the pane's lock and read without it,
+    /// so that nothing holding the session lock waits on a pane's.
+    grid: AtomicU64,
     /// The pane's modes as the writer encodes against them, refreshed under the pane's lock.
     encoding: Arc<Mutex<Encoding>>,
     input: SyncSender<Input>,
@@ -55,6 +59,29 @@ pub(crate) struct PaneIo {
 impl PaneIo {
     pub(crate) fn screen(&self) -> MutexGuard<'_, Screen> {
         poison::lock(&self.screen, "daemon.pane.screen")
+    }
+
+    pub(crate) fn grid(&self) -> Grid {
+        Grid::from_bits(self.grid.load(Ordering::Acquire))
+    }
+
+    /// Applies what the app last said to the pane's terminal, unless it has something newer.
+    pub(crate) fn settle(&self, settled: &Settled) {
+        let Some(settling) = self.screen().settle(settled) else { return };
+        if let Some(report) = settling.report {
+            self.queue(Input::Reply(report.to_vec()));
+        }
+        if let Err(error) = settling.scrollback {
+            log::warn(
+                "daemon.pane.scrollback_unchanged",
+                fields! {
+                    "serial" => self.serial,
+                    "error" => error,
+                    "impact" => "this pane keeps the history limit it had; new panes get the \
+                                 new one",
+                },
+            );
+        }
     }
 
     /// Queues something for the program to read. False when the queue is full or the pane has
@@ -89,7 +116,7 @@ impl PaneIo {
         takeover: bool,
     ) -> Result<(), Refusal> {
         let mut screen = self.screen();
-        if let Some(grid) = grid.filter(|&grid| grid != screen.grid()) {
+        if let Some(grid) = grid.filter(|&grid| grid != self.grid()) {
             self.resize_locked(&mut screen, grid);
         }
         screen.attach(bridge, takeover)
@@ -107,7 +134,7 @@ impl PaneIo {
     /// when its bridge goes.
     pub(crate) fn resize(&self, grid: Grid) {
         let mut screen = self.screen();
-        if grid != screen.grid() {
+        if grid != self.grid() {
             self.resize_locked(&mut screen, grid);
         }
     }
@@ -117,16 +144,19 @@ impl PaneIo {
         let resized = pty::set_size(self.master.as_fd(), grid)
             .map_err(|error| error.to_string())
             .and_then(|()| screen.resize(grid).map_err(|error| error.to_string()));
-        if let Err(error) = resized {
-            log::warn(
-                "daemon.pane.not_resized",
-                fields! {
-                    "serial" => self.serial,
-                    "error" => error,
-                    "impact" => "the pane's program and its surface may disagree about its size \
-                                 until the next resize",
-                },
-            );
+        match resized {
+            Ok(()) => self.grid.store(grid.to_bits(), Ordering::Release),
+            Err(error) => {
+                log::warn(
+                    "daemon.pane.not_resized",
+                    fields! {
+                        "serial" => self.serial,
+                        "error" => error,
+                        "impact" => "the pane's program and its surface may disagree about its size \
+                                     until the next resize",
+                    },
+                );
+            }
         }
     }
 
@@ -187,6 +217,7 @@ impl Pane {
         serial: u64,
         master: OwnedFd,
         screen: Screen,
+        grid: Grid,
         child: Option<Child>,
         watching: &Watching<'_>,
     ) -> io::Result<Pane> {
@@ -203,7 +234,7 @@ impl Pane {
         let (wake_read, wake) = pipe().map_err(failed)?;
         let writer_wake = writer::duplicate(&wake_read).map_err(failed)?;
         let master = Arc::new(master);
-        let encoding = Encoding::new(screen.terminal(), screen.grid())
+        let encoding = Encoding::new(screen.terminal(), grid)
             .map_err(|error| failed(io::Error::other(error.to_string())))?;
         let encoding = Arc::new(Mutex::new(encoding));
         let (input, queued) = writer::queue();
@@ -211,6 +242,7 @@ impl Pane {
             serial,
             master: Arc::clone(&master),
             screen: Mutex::new(screen),
+            grid: AtomicU64::new(grid.to_bits()),
             encoding: Arc::clone(&encoding),
             input,
         });

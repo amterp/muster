@@ -24,6 +24,24 @@ impl Grid {
     /// What a pane gets when nothing says how big it is: a terminal's traditional size.
     pub(crate) const FALLBACK: Grid = Grid { cols: 80, rows: 24, width_px: 0, height_px: 0 };
 
+    /// The grid as one word, so a pane can publish its size without a lock.
+    pub(crate) fn to_bits(self) -> u64 {
+        u64::from(self.cols)
+            | u64::from(self.rows) << 16
+            | u64::from(self.width_px) << 32
+            | u64::from(self.height_px) << 48
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn from_bits(bits: u64) -> Grid {
+        Grid {
+            cols: bits as u16,
+            rows: (bits >> 16) as u16,
+            width_px: (bits >> 32) as u16,
+            height_px: (bits >> 48) as u16,
+        }
+    }
+
     fn winsize(self) -> libc::winsize {
         libc::winsize {
             ws_row: self.rows,

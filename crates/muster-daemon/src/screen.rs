@@ -30,6 +30,19 @@ pub(crate) const DEFAULT_SCROLLBACK: usize = 10_000_000;
 /// The bytes are spent only by panes whose programs send images, which the surface holds too.
 const KITTY_IMAGE_BYTES: u64 = 320_000_000;
 
+/// Everything the app has said that each pane's terminal applies: what it draws with and
+/// allows, and how much history to keep.
+///
+/// Numbered, because it reaches panes after the session's lock is let go, and two changes in
+/// quick succession can reach a pane in either order: a pane applies a generation only if it is
+/// newer than the one it has.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Settled {
+    pub(crate) generation: u64,
+    pub(crate) appearance: Appearance,
+    pub(crate) scrollback: usize,
+}
+
 /// What the app draws with and allows, as the terminal is told it.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Appearance {
@@ -107,7 +120,10 @@ pub(crate) struct Screen {
     happened: Arc<Mutex<Vec<Happened>>>,
     /// Every byte the terminal has been fed, which is where a stream attached now picks up.
     offset: u64,
-    grid: Grid,
+    /// The settings last applied, by generation, with the two a newer one is compared with.
+    generation: u64,
+    scheme: Option<ColorScheme>,
+    scrollback: usize,
     /// The bridge drawing this pane, if one is attached.
     bridge: Option<Bridge>,
 }
@@ -117,22 +133,18 @@ impl std::fmt::Debug for Screen {
         formatter
             .debug_struct("Screen")
             .field("offset", &self.offset)
-            .field("grid", &self.grid)
+            .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
 }
 
 impl Screen {
-    pub(crate) fn new(
-        grid: Grid,
-        scrollback: usize,
-        appearance: &Appearance,
-    ) -> Result<Screen, TerminalError> {
+    pub(crate) fn new(grid: Grid, settled: &Settled) -> Result<Screen, TerminalError> {
         let mut terminal = Terminal::with_options(TerminalOptions {
             cell_pixels: cell_pixels(grid),
-            scrollback_bytes: Some(scrollback),
+            scrollback_bytes: Some(settled.scrollback),
             kitty_image_bytes: Some(KITTY_IMAGE_BYTES),
-            answers: appearance.answers(),
+            answers: settled.appearance.answers(),
             terminfo_name: Some(spawn::TERM.to_string()),
             ..TerminalOptions::new(grid.cols, grid.rows)
         })?;
@@ -141,8 +153,16 @@ impl Screen {
         terminal.set_effect_handler(move |effect| {
             poison::lock(&heard, "daemon.pane.effects").push(Happened::from_effect(&effect));
         });
-        let mut screen = Screen { terminal, happened, offset: 0, grid, bridge: None };
-        screen.appear(appearance);
+        let mut screen = Screen {
+            terminal,
+            happened,
+            offset: 0,
+            generation: settled.generation,
+            scheme: settled.appearance.scheme,
+            scrollback: settled.scrollback,
+            bridge: None,
+        };
+        screen.appear(&settled.appearance);
         Ok(screen)
     }
 
@@ -161,7 +181,33 @@ impl Screen {
         std::mem::take(&mut *poison::lock(&self.happened, "daemon.pane.effects"))
     }
 
-    pub(crate) fn appear(&mut self, appearance: &Appearance) {
+    /// Applies settings newer than the ones the terminal has, and says what changed: whether
+    /// the scheme turned for a program that asked to hear of it (mode 2031), and a scrollback
+    /// the terminal would not take. Older settings are ignored.
+    pub(crate) fn settle(&mut self, settled: &Settled) -> Option<Settling> {
+        if settled.generation <= self.generation {
+            return None;
+        }
+        self.generation = settled.generation;
+        self.appear(&settled.appearance);
+        let turned = settled.appearance.scheme.filter(|&scheme| self.scheme != Some(scheme));
+        self.scheme = settled.appearance.scheme;
+        let mut settling = Settling {
+            report: turned
+                .filter(|_| self.terminal.mode(muster_vt::Mode::COLOR_SCHEME_REPORT))
+                .map(scheme_report),
+            scrollback: Ok(()),
+        };
+        if settled.scrollback != self.scrollback {
+            settling.scrollback = self.terminal.set_scrollback_bytes(settled.scrollback);
+            if settling.scrollback.is_ok() {
+                self.scrollback = settled.scrollback;
+            }
+        }
+        Some(settling)
+    }
+
+    fn appear(&mut self, appearance: &Appearance) {
         self.terminal.set_default_palette(&appearance.palette);
         self.terminal.set_default_colors(
             appearance.foreground,
@@ -169,10 +215,6 @@ impl Screen {
             appearance.cursor,
         );
         self.terminal.set_answers(appearance.answers());
-    }
-
-    pub(crate) fn set_scrollback(&mut self, bytes: usize) -> Result<(), TerminalError> {
-        self.terminal.set_scrollback_bytes(bytes)
     }
 
     /// Attaches a bridge where the stream stands: told the offset, then a replay composed now,
@@ -218,9 +260,7 @@ impl Screen {
     }
 
     pub(crate) fn resize(&mut self, grid: Grid) -> Result<(), TerminalError> {
-        self.terminal.resize(grid.cols, grid.rows, cell_pixels(grid))?;
-        self.grid = grid;
-        Ok(())
+        self.terminal.resize(grid.cols, grid.rows, cell_pixels(grid))
     }
 
     /// Up to `count` rows of text from `first`, counted from the oldest history still held, one
@@ -244,10 +284,14 @@ impl Screen {
     pub(crate) fn terminal(&self) -> &Terminal {
         &self.terminal
     }
+}
 
-    pub(crate) fn grid(&self) -> Grid {
-        self.grid
-    }
+/// What applying new settings came to.
+#[derive(Debug)]
+pub(crate) struct Settling {
+    /// What to tell the program, which asked to hear when light turns dark or back.
+    pub(crate) report: Option<&'static [u8]>,
+    pub(crate) scrollback: Result<(), TerminalError>,
 }
 
 /// The most text one page of `pane read` holds: a quarter of the largest message, so an answer
@@ -322,6 +366,23 @@ fn cell_pixels(grid: Grid) -> (u32, u32) {
 mod tests {
     use super::*;
 
+    fn settled(generation: u64, settings: &proto::Settings) -> Settled {
+        Settled { generation, appearance: Appearance::of(settings), scrollback: DEFAULT_SCROLLBACK }
+    }
+
+    #[test]
+    fn settings_older_than_the_ones_applied_are_ignored() {
+        let grid = Grid { cols: 20, rows: 3, width_px: 0, height_px: 0 };
+        let mut screen =
+            Screen::new(grid, &settled(1, &proto::Settings::default())).expect("a terminal");
+        screen.feed(b"\x1b[?2031h");
+        let turned = screen.settle(&settled(3, &palette(proto::ColorScheme::Light)));
+        assert_eq!(turned.and_then(|settling| settling.report), Some(&b"\x1b[?997;2n"[..]));
+        assert!(screen.settle(&settled(2, &palette(proto::ColorScheme::Dark))).is_none());
+        let again = screen.settle(&settled(4, &palette(proto::ColorScheme::Light)));
+        assert_eq!(again.and_then(|settling| settling.report), None, "light was light already");
+    }
+
     fn palette(scheme: proto::ColorScheme) -> proto::Settings {
         proto::Settings {
             palette: Some(proto::Palette {
@@ -361,8 +422,7 @@ mod tests {
     fn a_page_of_text_counts_from_the_oldest_row() {
         let grid = Grid { cols: 20, rows: 3, width_px: 0, height_px: 0 };
         let mut screen =
-            Screen::new(grid, DEFAULT_SCROLLBACK, &Appearance::of(&proto::Settings::default()))
-                .expect("a terminal");
+            Screen::new(grid, &settled(0, &proto::Settings::default())).expect("a terminal");
         screen.feed(b"a\r\nb\r\nc\r\nd\r\ne");
         let read = |first_row, rows| page(first_row, rows, PAGE_BYTES, |at, n| screen.rows(at, n));
         let two = read(1, 2);
@@ -374,8 +434,7 @@ mod tests {
     fn a_page_has_a_line_for_every_row_even_a_blank_one() {
         let grid = Grid { cols: 20, rows: 3, width_px: 0, height_px: 0 };
         let mut screen =
-            Screen::new(grid, DEFAULT_SCROLLBACK, &Appearance::of(&proto::Settings::default()))
-                .expect("a terminal");
+            Screen::new(grid, &settled(0, &proto::Settings::default())).expect("a terminal");
         screen.feed(b"a\r\n\r\n\r\nb");
         assert_eq!(screen.rows(0, 3).0, ["a", "", ""]);
         assert_eq!(screen.rows(1, 2).0, ["", ""]);

@@ -17,7 +17,7 @@ use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, request::Service, session_request};
 use prost::Message;
 
-use crate::session::{Handled, Reading, Reply, Session, Shared, Starting};
+use crate::session::{Handled, Reply, Session, Shared};
 
 /// How many messages a connection may have waiting before the daemon gives up on it.
 ///
@@ -146,36 +146,24 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 request: Some(session_request::Request::Stop(_))
             }))
         );
-        let starting = {
-            let mut session = shared.lock();
-            let handled = match request.service {
-                Some(service) => session.handle(service, &outbox),
-                None => Handled::Reply(Reply::unsupported()),
-            };
-            match handled {
-                Handled::Reply(reply) => {
-                    answer(&session, &outbox, request.id, reply);
-                    None
-                }
-                Handled::Start(starting) => Some(Unlocked::Start(starting)),
-                Handled::Read(reading) => Some(Unlocked::Read(reading)),
-            }
+        // The events a request produces are queued under this lock. Its answer is queued under
+        // the next, once letting go of this one has done the work it left on panes' terminals,
+        // so an answer still means the request has taken effect.
+        let handled = match request.service {
+            Some(service) => shared.lock().handle(service, &outbox),
+            None => Handled::Reply(Reply::unsupported()),
         };
-        match starting {
+        let reply = match handled {
+            Handled::Reply(reply) => reply,
             // Outside the lock: starting a process waits for it to change directory and exec,
             // and a directory on a hung mount would otherwise stall every connection with it.
-            Some(Unlocked::Start(starting)) => {
+            Handled::Start(starting) => {
                 let started = starting.start();
-                let mut session = shared.lock();
-                let reply = session.started(*starting, started);
-                answer(&session, &outbox, request.id, reply);
+                shared.lock().started(*starting, started)
             }
-            Some(Unlocked::Read(reading)) => {
-                let reply = reading.read();
-                answer(&shared.lock(), &outbox, request.id, reply);
-            }
-            None => {}
-        }
+            Handled::Read(reading) => reading.read(),
+        };
+        answer(&shared.lock(), &outbox, request.id, reply);
         if stopping {
             outbox.flush(STOP_FLUSH);
             let _ = shared.stopping.send(());
@@ -188,14 +176,8 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
     log::info("daemon.connection.closed", fields! { "connection" => outbox.id });
 }
 
-/// A request's work to finish once the session is unlocked.
-enum Unlocked {
-    Start(Box<Starting>),
-    Read(Box<Reading>),
-}
-
 /// Queues the answer to request `id`. Called with the session locked, after the request's
-/// events, so they reach a subscriber first.
+/// events were queued, so they reach a subscriber first.
 fn answer(session: &Session, outbox: &Outbox, id: u64, reply: Reply) {
     let answer = proto::Answer {
         id,

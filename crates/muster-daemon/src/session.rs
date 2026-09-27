@@ -2,9 +2,14 @@
 //!
 //! One lock over all of it. A request takes the lock, changes what it changes, and emits its
 //! events to every subscriber's queue while still holding it; the connection then queues the
-//! answer under the same lock. That is the whole of the ordering the protocol promises: events
+//! answer, once any deferred work is done. That is the whole of the ordering the protocol promises: events
 //! before the answer that names the last of them, and a subscription's snapshot before any event
 //! after it. Nothing on a pane's output path takes this lock.
+//!
+//! Nothing holding this lock waits on a pane's lock, which attaching holds while it formats a
+//! replay of a pane's whole history. Work on a pane's terminal that a request causes - hanging
+//! it up, applying new settings - is left on the session as [`Deferred`] and done by the
+//! [`Locked`] guard once the lock is let go, before the connection answers.
 //!
 //! A pane create is the one request that lets go of the lock part way. Starting a process waits
 //! for it to change directory and exec, and a directory on a hung mount would otherwise stall
@@ -14,11 +19,12 @@
 
 use std::collections::HashSet;
 use std::ffi::OsString;
+use std::ops::{Deref, DerefMut};
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -34,10 +40,9 @@ use crate::data::Data;
 use crate::effects::{self, Report, Reported, Reports};
 use crate::pane::{Ended, Pane, PaneIo, Watching};
 use crate::pty::{self, Grid, Launch};
-use crate::screen::{self, Appearance, Screen};
+use crate::screen::{self, Appearance, Screen, Settled};
 use crate::spawn;
 use crate::tree::{self, Node, Resized};
-use crate::writer::Input;
 
 /// What every thread of the daemon shares.
 #[derive(Debug)]
@@ -78,16 +83,24 @@ impl Shared {
                     shared.lock().ended(serial, status);
                 }
             });
+            let settings = proto::Settings {
+                shell: Some(proto::Shell::default()),
+                ..proto::Settings::default()
+            };
+            let settled = Arc::new(Settled {
+                generation: 0,
+                appearance: Appearance::of(&settings),
+                scrollback: screen::DEFAULT_SCROLLBACK,
+            });
             Shared {
                 session: Mutex::new(Session {
                     instance,
                     seq: 0,
                     tabs: Vec::new(),
                     panes: Vec::new(),
-                    settings: proto::Settings {
-                        shell: Some(proto::Shell::default()),
-                        ..proto::Settings::default()
-                    },
+                    settings,
+                    settled,
+                    deferred: Vec::new(),
                     manifests: None,
                     subscribers: Vec::new(),
                     inherited,
@@ -106,8 +119,54 @@ impl Shared {
         })
     }
 
-    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, Session> {
-        poison::lock(&self.session, "daemon.session")
+    pub(crate) fn lock(&self) -> Locked<'_> {
+        Locked { session: Some(poison::lock(&self.session, "daemon.session")) }
+    }
+}
+
+/// The session, locked. Letting go of it does whatever work on panes' terminals the holder
+/// left deferred, once the lock is released.
+pub(crate) struct Locked<'a> {
+    session: Option<MutexGuard<'a, Session>>,
+}
+
+impl Deref for Locked<'_> {
+    type Target = Session;
+
+    fn deref(&self) -> &Session {
+        self.session.as_ref().expect("held until dropped")
+    }
+}
+
+impl DerefMut for Locked<'_> {
+    fn deref_mut(&mut self) -> &mut Session {
+        self.session.as_mut().expect("held until dropped")
+    }
+}
+
+impl Drop for Locked<'_> {
+    fn drop(&mut self) {
+        let Some(mut session) = self.session.take() else { return };
+        let deferred = std::mem::take(&mut session.deferred);
+        drop(session);
+        for work in deferred {
+            work.run();
+        }
+    }
+}
+
+/// Work on a pane's terminal that a request caused, done once the session is unlocked.
+enum Deferred {
+    HangUp(Pane, proto::DetachReason),
+    Settle(Arc<PaneIo>, Arc<Settled>),
+}
+
+impl Deferred {
+    fn run(self) {
+        match self {
+            Deferred::HangUp(pane, reason) => pane.hang_up(reason),
+            Deferred::Settle(io, settled) => io.settle(&settled),
+        }
     }
 }
 
@@ -120,6 +179,10 @@ pub(crate) struct Session {
     /// In the order they were opened. Every pane is in exactly one tab's tree.
     panes: Vec<Pane>,
     settings: proto::Settings,
+    /// What `settings` means for a pane's terminal, numbered: every pane has it or is about to.
+    settled: Arc<Settled>,
+    /// Work on panes' terminals to do once the lock is let go ([`Locked`]).
+    deferred: Vec<Deferred>,
     /// Held for agent detection, which is a later card.
     manifests: Option<proto::SendManifests>,
     subscribers: Vec<Outbox>,
@@ -404,7 +467,7 @@ impl Session {
         };
         let grid = match create.grid.map(grid) {
             Some(grid) => grid.map_err(Reply::refused)?,
-            None => neighbour.map_or(Grid::FALLBACK, |pane| pane.io.screen().grid()),
+            None => neighbour.map_or(Grid::FALLBACK, |pane| pane.io.grid()),
         };
         let cwd = match create.cwd.filter(|cwd| !cwd.is_empty()) {
             Some(cwd) => PathBuf::from(cwd),
@@ -482,19 +545,20 @@ impl Session {
             command: starting.command,
             ..proto::Pane::default()
         };
-        let screen =
-            match Screen::new(starting.grid, self.scrollback(), &Appearance::of(&self.settings)) {
-                Ok(screen) => screen,
-                Err(error) => {
-                    pty::abandon(child.id().cast_signed());
-                    let error = std::io::Error::other(error.to_string());
-                    return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
-                }
-            };
+        let screen = match Screen::new(starting.grid, &self.settled) {
+            Ok(screen) => screen,
+            Err(error) => {
+                pty::abandon(child.id().cast_signed());
+                let error = std::io::Error::other(error.to_string());
+                return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
+            }
+        };
         self.next_serial += 1;
         let serial = self.next_serial;
         let watching = Watching { ended: &self.ended, reports: &self.reports, host: &self.host };
-        let pane = match Pane::start(record, serial, master, screen, Some(child), &watching) {
+        let started =
+            Pane::start(record, serial, master, screen, starting.grid, Some(child), &watching);
+        let pane = match started {
             Ok(pane) => pane,
             Err(error) => {
                 return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
@@ -663,10 +727,11 @@ impl Session {
             reason: reason.into(),
             exit_status,
         }));
-        removed.hang_up(match reason {
+        let reason = match reason {
             proto::CloseReason::Exited => proto::DetachReason::Exited,
             _ => proto::DetachReason::Closed,
-        });
+        };
+        self.deferred.push(Deferred::HangUp(removed, reason));
     }
 
     fn resize(&mut self, resize: &pane_request::Resize) -> Reply {
@@ -838,20 +903,7 @@ impl Session {
             return Reply::already();
         }
         self.settings.scrollback_bytes = set.bytes;
-        let bytes = self.scrollback();
-        for pane in &self.panes {
-            if let Err(error) = pane.io.screen().set_scrollback(bytes) {
-                log::warn(
-                    "daemon.pane.scrollback_unchanged",
-                    fields! {
-                        "pane" => pane.record.pane,
-                        "error" => error,
-                        "impact" => "this pane keeps the history limit it had; new panes get \
-                                     the new one",
-                    },
-                );
-            }
-        }
+        self.resettle();
         self.settings_changed()
     }
 
@@ -862,19 +914,16 @@ impl Session {
         })
     }
 
-    /// Tells every pane's terminal what the app now draws with and allows, and tells each
-    /// program that asked (mode 2031) when light turned dark or back.
-    fn appearance_changed(&mut self, was: &Appearance) {
-        let appearance = Appearance::of(&self.settings);
-        let turned = appearance.scheme.filter(|&scheme| was.scheme != Some(scheme));
+    /// Numbers what the settings now mean for a pane's terminal, and has every pane apply it
+    /// once the lock is let go.
+    fn resettle(&mut self) {
+        self.settled = Arc::new(Settled {
+            generation: self.settled.generation + 1,
+            appearance: Appearance::of(&self.settings),
+            scrollback: self.scrollback(),
+        });
         for pane in &self.panes {
-            let mut screen = pane.io.screen();
-            screen.appear(&appearance);
-            let asked = screen.terminal().mode(muster_vt::Mode::COLOR_SCHEME_REPORT);
-            drop(screen);
-            if let Some(scheme) = turned.filter(|_| asked) {
-                pane.io.queue(Input::Reply(screen::scheme_report(scheme).to_vec()));
-            }
+            self.deferred.push(Deferred::Settle(Arc::clone(&pane.io), Arc::clone(&self.settled)));
         }
     }
 
@@ -891,9 +940,8 @@ impl Session {
         if self.settings.palette.as_ref() == Some(&palette) {
             return Reply::already();
         }
-        let was = Appearance::of(&self.settings);
         self.settings.palette = Some(palette);
-        self.appearance_changed(&was);
+        self.resettle();
         self.settings_changed()
     }
 
@@ -901,9 +949,8 @@ impl Session {
         if self.settings.clipboard_write.unwrap_or(true) == set.allowed {
             return Reply::already();
         }
-        let was = Appearance::of(&self.settings);
         self.settings.clipboard_write = Some(set.allowed);
-        self.appearance_changed(&was);
+        self.resettle();
         self.settings_changed()
     }
 
