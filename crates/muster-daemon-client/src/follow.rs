@@ -314,7 +314,14 @@ fn connect(
     let subscribed = control.subscribe().wait(PATIENCE);
     // Published by the snapshot's delivery, unless the subscribe failed.
     lock(&connection.connecting).take();
-    subscribed.map_err(|why| format!("the daemon did not answer a subscribe: {why}"))?;
+    let subscribed =
+        subscribed.map_err(|why| format!("the daemon did not answer a subscribe: {why}"))?;
+    if !matches!(subscribed.detail, Some(answer::Detail::Snapshot(_))) {
+        return Err(format!(
+            "the daemon answered a subscribe without its state ({})",
+            subscribed.reason
+        ));
+    }
 
     // After the snapshot, so the run's log reads connect, state, then the daemon's side. A
     // daemon run this window has not followed before is followed from as far back as it holds.

@@ -383,6 +383,16 @@ fn read_messages(
                     for (waiter, answer) in held_back.drain(..) {
                         let _ = waiter.answer.send(answer);
                     }
+                } else if waiter.subscribes && matches!(order, Order::Lost) {
+                    // Nothing else can bring the order back, so every event would be dropped and
+                    // every held answer kept waiting until the socket happened to end. Ending it
+                    // now has the follower reconnect in full.
+                    let reason = answer.reason.clone();
+                    let _ = waiter.answer.send(answer);
+                    break format!(
+                        "the daemon answered a subscribe after missed events without its state \
+                         ({reason})"
+                    );
                 } else if matches!(order, Order::Lost) {
                     held_back.push((waiter, answer));
                     continue;
@@ -525,6 +535,29 @@ mod tests {
 
         let seqs: Vec<String> = delivered.iter().take(4).map(|what| described(&what)).collect();
         assert_eq!(seqs, ["S5", "6", "gap 7->8", "S9"]);
+    }
+
+    /// A subscribe after a gap that is answered without a snapshot ends the connection at once,
+    /// since nothing else could bring the order back: every event after it would be dropped,
+    /// and every answer held until the socket happened to end.
+    #[test]
+    fn a_resubscribe_refused_during_a_gap_ends_the_connection() {
+        let (control, mut daemon, delivered) = connected();
+        let subscribed = control.subscribe();
+        subscribed_at(&mut daemon, 5);
+        subscribed.wait(PATIENCE).unwrap();
+        connection::send(&mut daemon, &event(7, "a")).unwrap();
+
+        let resubscribed = control.subscribe();
+        answer_to(&mut daemon, None);
+        resubscribed.wait(PATIENCE).expect("the refusal is still an answer");
+        let ended = std::iter::from_fn(|| delivered.recv_timeout(PATIENCE).ok())
+            .find_map(|what| match what {
+                Delivered::Ended(why) => Some(why),
+                _ => None,
+            })
+            .expect("the connection ends within the patience");
+        assert!(ended.contains("without its state"), "ended saying {ended:?}");
     }
 
     /// Nothing is delivered before the first snapshot: it is the whole picture, and an event
