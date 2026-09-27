@@ -938,6 +938,24 @@ fn an_idle_report_yields_to_a_screen_that_keeps_moving() {
     assert_eq!((last.state, last.reported), (State::Working, false), "{running:?}");
 }
 
+/// A detector resumed from one that recorded no conclusion of the rules, as a daemon from before
+/// they were recorded hands over, still lays a report over what was last published rather than
+/// holding every report back until the rules see a change.
+#[test]
+fn a_resumed_report_counts_without_a_recorded_conclusion() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    let mut carried = run.detector.carried(run.now);
+    carried.concluded = None;
+    carried.report = Some((claude(), State::Blocked, Duration::ZERO));
+    run.detector = Detector::resumed(SHELL, carried, run.now, 0);
+    // What the next tick lays the report over, before the rules conclude anything.
+    let effective = run.detector.effective(run.now).expect("a report with nothing concluded");
+    assert_eq!(effective, reported(State::Blocked));
+    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+}
+
 #[test]
 fn a_report_stops_counting_when_the_agent_leaves() {
     let mut run = Run::new();
