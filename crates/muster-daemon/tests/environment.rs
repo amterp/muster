@@ -70,6 +70,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
 #[test]
 fn a_daemon_without_its_data_directory_refuses_to_start() {
     let scratch = std::env::temp_dir().join(format!("muster-no-data-{}", std::process::id()));
+    std::fs::create_dir_all(&scratch).unwrap();
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
         .arg("--socket")
         .arg(scratch.join("daemon.sock"))
@@ -82,6 +83,7 @@ fn a_daemon_without_its_data_directory_refuses_to_start() {
     assert!(!output.status.success(), "it started: {stderr}");
     assert!(stderr.contains(&format!("{} is not a complete", scratch.display())), "{stderr}");
     assert!(!scratch.join("daemon.sock").exists(), "it claimed the socket anyway");
+    std::fs::remove_dir(&scratch).unwrap();
 }
 
 /// Where `name` is on this machine's PATH, leaving out Apple's /bin/bash, which Ghostty does not

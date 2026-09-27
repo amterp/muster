@@ -20,6 +20,10 @@ const REQUIRED: [&str; 7] = [
     "shell-integration/fish/vendor_conf.d/ghostty-shell-integration.fish",
 ];
 
+/// How to get a complete directory, for every error that lacks one.
+const FIX: &str = "Install the directory beside the daemon, or pass --data with its path; a \
+                   checkout builds it with ./dev -d, at deps/ghostty/zig-out/muster-daemon-data.";
+
 #[derive(Debug, Clone)]
 pub(crate) struct Data {
     dir: PathBuf,
@@ -33,18 +37,33 @@ impl Data {
         let dir = match named {
             Some(dir) => dir.to_path_buf(),
             None => std::env::current_exe()
-                .map_err(|error| format!("could not find its own executable: {error}"))?
+                .map_err(|error| {
+                    format!(
+                        "could not find its own executable ({error}), so it cannot look for \
+                         {NAME} beside it. The daemon has not started. Pass --data with the \
+                         directory's path."
+                    )
+                })?
                 .with_file_name(NAME),
         };
+        Data::check(dir)
+    }
+
+    fn check(dir: PathBuf) -> Result<Data, String> {
+        if !dir.is_dir() {
+            return Err(format!(
+                "{} does not exist, or is not a directory. The daemon has not started, because \
+                 its panes would run as xterm-ghostty with no terminfo entry for it. {FIX}",
+                dir.display()
+            ));
+        }
         let missing: Vec<&str> =
             REQUIRED.iter().copied().filter(|file| !dir.join(file).is_file()).collect();
         if !missing.is_empty() {
             return Err(format!(
                 "{} is not a complete {NAME} directory: it lacks {}. The daemon has not started, \
                  because its panes would run as xterm-ghostty with no terminfo entry for it, which \
-                 breaks every full-screen program in them. Install the directory beside the \
-                 daemon, or pass --data with its path; a checkout builds it with ./dev -d, at \
-                 deps/ghostty/zig-out/{NAME}.",
+                 breaks every full-screen program in them. {FIX}",
                 dir.display(),
                 missing.join(", ")
             ));
@@ -63,5 +82,25 @@ impl Data {
     /// to find each other.
     pub(crate) fn shell_integration(&self) -> PathBuf {
         self.dir.join("shell-integration")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_directory_is_called_missing() {
+        let dir = std::env::temp_dir().join("muster-data-that-does-not-exist");
+        let error = Data::locate(Some(&dir)).unwrap_err();
+        assert!(error.starts_with(&format!("{} does not exist", dir.display())), "{error}");
+        assert!(!error.contains("lacks"), "{error}");
+    }
+
+    #[test]
+    fn an_incomplete_directory_names_what_it_lacks() {
+        let error = Data::locate(Some(&std::env::temp_dir())).unwrap_err();
+        assert!(error.contains("is not a complete muster-daemon-data directory"), "{error}");
+        assert!(error.contains("terminfo/x/xterm-ghostty"), "{error}");
     }
 }
