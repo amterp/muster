@@ -6,6 +6,7 @@
 //! told to stop.
 
 mod control;
+mod descriptors;
 mod pane;
 mod process;
 mod pty;

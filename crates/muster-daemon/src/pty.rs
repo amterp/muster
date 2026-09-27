@@ -1,8 +1,7 @@
 //! Opening a pane's PTY and starting its process on it.
 //!
-//! Every call that forks happens while the session lock is held (`session.rs`), and nothing else
-//! in the daemon forks. That is what makes it safe to open a PTY and only then mark it
-//! close-on-exec: no other thread can fork a child in between and hand it a pane's master.
+//! A pane gets its terminal on stdin, stdout and stderr and no other descriptor of the daemon's,
+//! whatever another thread opened a moment before the fork (`descriptors.rs`).
 
 use std::io;
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
@@ -10,6 +9,7 @@ use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
+use crate::descriptors::Sealing;
 use crate::spawn;
 
 /// A pane's size in cells, and the pixels those cells cover.
@@ -59,11 +59,12 @@ pub(crate) fn start(launch: &Launch<'_>) -> io::Result<(OwnedFd, Child)> {
         .stdin(Stdio::from(slave.try_clone()?))
         .stdout(Stdio::from(slave.try_clone()?))
         .stderr(Stdio::from(slave));
+    let mut sealing = Sealing::prepare();
     // SAFETY: the closure runs in the child between fork and exec, where only async-signal-safe
-    // calls are allowed. sigemptyset, sigprocmask, setsid and ioctl all are, and it touches no
-    // memory the parent's other threads might have held locked at the fork.
+    // calls are allowed. sigemptyset, sigprocmask, setsid, ioctl and what `seal` calls all are,
+    // and it touches no memory the parent's other threads might have held locked at the fork.
     unsafe {
-        command.pre_exec(|| {
+        command.pre_exec(move || {
             // std passes the forking thread's signal mask on, and the daemon blocks SIGHUP,
             // SIGINT and SIGTERM for the thread that waits on them (`main.rs`). A pane started
             // with those blocked never hears its terminal hang up.
@@ -84,6 +85,7 @@ pub(crate) fn start(launch: &Launch<'_>) -> io::Result<(OwnedFd, Child)> {
             if libc::ioctl(0, libc::TIOCSCTTY as _, 0) == -1 {
                 return Err(io::Error::last_os_error());
             }
+            sealing.seal();
             Ok(())
         });
     }
