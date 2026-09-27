@@ -4,6 +4,7 @@
 
 pub mod control;
 pub mod input;
+pub mod launch;
 pub mod stream;
 
 use std::os::unix::net::UnixStream;
