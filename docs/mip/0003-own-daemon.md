@@ -790,6 +790,13 @@ any point, and at no point does no daemon hold the panes. A new daemon that fail
 have read some output the old one never sees. Once `Serving` arrives, the old daemon exits without
 closing a pane, writing its state or removing the socket.
 
+**A stop signal waits for the handoff.** A SIGTERM or SIGINT to the old daemon while a handoff runs
+closes nothing: if the handoff succeeds the old daemon exits as it would have anyway, leaving the new
+one serving every pane, and if it fails the old daemon then stops as it was asked. Closing a pane
+mid-handoff would end a process the new daemon may already hold, and removing the socket would leave
+the new daemon serving nobody. A signal to the new daemon before `Commit` waits, blocked, until it
+serves, and then stops it like any daemon.
+
 **Connections are dropped, not carried.** A bridge is told `Detached` with `REPLACED`, a subscriber
 hears `Replaced`, and every connection then ends as the old daemon exits. Input the old daemon had
 not yet written, a held paste among it, is lost. What the app does across a handoff:

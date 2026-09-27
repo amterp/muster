@@ -45,9 +45,50 @@ const LINK: RawFd = 3;
 /// How long the old daemon waits for what it told its subscribers to be written before exiting.
 const FLUSH: Duration = Duration::from_secs(1);
 
-/// Test-only faults, read by a daemon taking over: `refuse`, `exit-before-ready` and
-/// `exit-after-commit`.
+/// Test-only faults, a comma-separated list read by both daemons, each acting on its own: the
+/// daemon taking over `refuse`, `exit-before-ready`, `exit-after-commit`, `pause-after-accept`,
+/// `pause-before-ready` and `pause-before-serving`, and the daemon handing over
+/// `pause-after-serving`.
 const FAULT: &str = "MUSTER_DAEMON_HANDOFF_FAULT";
+
+/// The faults this daemon was started with. Read only by a debug build, which is what every test
+/// runs: a shipped daemon never reads the variable, so nothing in a user's environment can make
+/// one fail a handoff.
+#[derive(Debug, Default)]
+struct Faults(Vec<String>);
+
+impl Faults {
+    fn read() -> Faults {
+        if cfg!(debug_assertions) {
+            let faults = std::env::var(FAULT).unwrap_or_default();
+            Faults(faults.split(',').filter(|f| !f.is_empty()).map(str::to_string).collect())
+        } else {
+            Faults::default()
+        }
+    }
+
+    fn has(&self, fault: &str) -> bool {
+        self.0.iter().any(|named| named == fault)
+    }
+
+    /// With `pause-<step>`, writes this daemon's pid to `<socket>.handoff-paused` and waits
+    /// until a test removes it, so the test can land a signal or a kill at exactly this step.
+    fn pause(&self, step: &str, socket: &Path) {
+        if !self.has(&format!("pause-{step}")) {
+            return;
+        }
+        let mut marker = socket.as_os_str().to_owned();
+        marker.push(".handoff-paused");
+        let marker = std::path::PathBuf::from(marker);
+        if std::fs::write(&marker, std::process::id().to_string()).is_err() {
+            return;
+        }
+        let deadline = Instant::now() + Duration::from_mins(1);
+        while marker.exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
 
 fn send(link: &mut UnixStream, message: handoff::Message) -> Result<(), String> {
     connection::send(link, &proto::Handoff { message: Some(message) })
@@ -85,6 +126,7 @@ fn unexpected(awaited: &str, came: &handoff::Message) -> String {
 /// this daemon is to exit; anything short of that is undone, and refused with the reason.
 pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Reply {
     let started = Instant::now();
+    let faults = Faults::read();
     let handing = shared.lock().handing();
     log::info(
         "daemon.handoff.started",
@@ -99,6 +141,7 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
         Ok(accepted) => {
             let pid = successor.as_ref().map_or(0, Child::id);
             let subscribers = shared.lock().replaced(pid, accepted.daemon_version.clone());
+            faults.pause("after-serving", &shared.socket.path);
             for pane in &handing.panes {
                 pane.io.close(proto::DetachReason::Replaced);
             }
@@ -132,7 +175,7 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
             if let Some(log) = &handing.log {
                 log.write_file();
             }
-            shared.lock().not_replaced();
+            let stop_deferred = shared.lock().not_replaced();
             log::error(
                 "daemon.handoff.failed",
                 fields! {
@@ -144,6 +187,9 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
                                 the program is a muster-daemon of the same protocol major",
                 },
             );
+            if stop_deferred {
+                let _ = shared.stopping.send(Stop::Asked);
+            }
             Reply::refused(format!(
                 "could not hand over to {}: {why}",
                 replacement.program.display()
@@ -298,7 +344,7 @@ pub(crate) fn take_over(
     unsafe { libc::fcntl(link.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) };
     // Each pane's reader is held before its pane is sent, which takes up to a step.
     link.set_read_timeout(Some(STEP * 3)).map_err(|error| error.to_string())?;
-    let fault = std::env::var(FAULT).unwrap_or_default();
+    let faults = Faults::read();
     let log = DaemonLog::start(socket, true);
 
     let offer = match receive(&mut link, "the offer")? {
@@ -312,7 +358,7 @@ pub(crate) fn take_over(
             format!("this daemon speaks protocol {PROTOCOL}, and the one handing over {theirs}"),
         );
     }
-    if fault == "refuse" {
+    if faults.has("refuse") {
         return refuse(&mut link, format!("{FAULT}=refuse"));
     }
     let accept = handoff::Accept {
@@ -320,6 +366,7 @@ pub(crate) fn take_over(
         daemon_version: env!("CARGO_PKG_VERSION").to_string(),
     };
     send(&mut link, handoff::Message::Accept(accept))?;
+    faults.pause("after-accept", socket);
 
     let Built { shared, stopping, stop, persister, tabs, app_manifests } =
         build(&mut link, socket, data, log)?;
@@ -331,7 +378,8 @@ pub(crate) fn take_over(
     if let Err(problem) = tabs {
         return refuse(&mut link, problem);
     }
-    if fault == "exit-before-ready" {
+    faults.pause("before-ready", socket);
+    if faults.has("exit-before-ready") {
         std::process::exit(1);
     }
     send(&mut link, handoff::Message::Ready(handoff::Ready {}))?;
@@ -351,7 +399,8 @@ pub(crate) fn take_over(
     crate::serve(&shared, signals, stopping)?;
     persister.arm();
     persister.changed();
-    if fault == "exit-after-commit" {
+    faults.pause("before-serving", socket);
+    if faults.has("exit-after-commit") {
         std::process::exit(1);
     }
     send(&mut link, handoff::Message::Serving(handoff::Serving {}))?;

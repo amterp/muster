@@ -239,22 +239,77 @@ impl Daemon {
     /// handing over has exited, this handle is the new daemon: `pid`, `kill` and the cleanup on
     /// drop reach it.
     pub fn replace(&mut self, program: Option<&Path>) -> proto::Answer {
+        let replacing = self.start_replacing(program);
+        self.finish_replacing(replacing)
+    }
+
+    /// The same request, answered on a thread of its own, for a test that acts while the
+    /// handoff runs; [`Daemon::finish_replacing`] takes the answer.
+    pub fn start_replacing(&self, program: Option<&Path>) -> Replacing {
         let program = program.unwrap_or(&self.binary).display().to_string();
         let replace = session_request::Replace {
             program: Some(program),
             data: Some(DAEMON_DATA.to_string()),
         };
-        let answer = self
-            .connect()
-            .ask(Service::Session(proto::SessionRequest {
-                request: Some(session_request::Request::Replace(replace)),
-            }))
-            .answer;
+        let mut control = self.connect();
+        Replacing(std::thread::spawn(move || {
+            control
+                .ask(Service::Session(proto::SessionRequest {
+                    request: Some(session_request::Request::Replace(replace)),
+                }))
+                .answer
+        }))
+    }
+
+    pub fn finish_replacing(&mut self, replacing: Replacing) -> proto::Answer {
+        let answer = replacing.0.join().expect("the replace request's thread panicked");
         if answer.outcome() == proto::Outcome::Done {
             self.wait_for_exit();
             self.successor = Some(self.connect().welcome().pid.cast_signed());
         }
         answer
+    }
+
+    /// Where a daemon started with a `pause-<step>` handoff fault writes its pid while it waits.
+    fn paused_marker(&self) -> PathBuf {
+        let mut marker = self.socket_path.as_os_str().to_owned();
+        marker.push(".handoff-paused");
+        PathBuf::from(marker)
+    }
+
+    /// Waits until a daemon in a handoff pauses at the step its fault names, and returns the pid
+    /// of the one that paused.
+    pub fn paused(&self) -> i32 {
+        let marker = self.paused_marker();
+        let mut pid = 0;
+        until_within(
+            "the handoff to pause",
+            PATIENCE,
+            || {
+                pid = std::fs::read_to_string(&marker)
+                    .ok()
+                    .and_then(|text| text.trim().parse().ok())
+                    .unwrap_or(0);
+                pid != 0
+            },
+            (),
+        );
+        pid
+    }
+
+    /// Lets the paused handoff go on.
+    pub fn resume(&self) {
+        std::fs::remove_file(self.paused_marker()).expect("the handoff was paused");
+    }
+
+    /// The daemon at `pid` serves now, as after a handoff whose old daemon ended without
+    /// answering: this handle reaches it from here, and reaps the old one.
+    pub fn served_by(&mut self, pid: i32) {
+        if let Some(mut process) = self.process.take() {
+            let _ = process.kill();
+            let _ = process.wait();
+        }
+        self.successor = Some(pid);
     }
 
     /// Waits for the daemon to exit by itself, as a `stop` or a signal asks it to.
@@ -304,6 +359,10 @@ impl Daemon {
         }
     }
 }
+
+/// A replace request in flight.
+#[derive(Debug)]
+pub struct Replacing(std::thread::JoinHandle<proto::Answer>);
 
 impl Drop for Daemon {
     fn drop(&mut self) {

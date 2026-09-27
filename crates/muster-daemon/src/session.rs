@@ -169,6 +169,7 @@ impl Shared {
                     stopping: false,
                     restoring,
                     replacing: Replacing::No,
+                    stop_deferred: false,
                 }),
                 stopping,
                 instance,
@@ -315,6 +316,19 @@ pub(crate) struct Session {
     /// Set while the tabs a previous run saved are coming back.
     restoring: bool,
     replacing: Replacing,
+    /// Set when a stop was asked for while a handoff ran, to be carried out if it fails.
+    stop_deferred: bool,
+}
+
+/// What a stop asked for does, given where a handoff stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Stopping {
+    /// Every pane has been closed; the daemon goes on to stop.
+    Now,
+    /// A handoff is under way, and the stop waits for it to end.
+    Deferred,
+    /// Another daemon serves every pane, and this one exits touching none of them.
+    HandedOff,
 }
 
 /// Where the daemon stands in handing its panes to a new one.
@@ -1837,9 +1851,38 @@ impl Session {
         self.subscribers.clone()
     }
 
-    /// The handoff failed, and this daemon goes on as it was.
-    pub(crate) fn not_replaced(&mut self) {
+    /// The handoff failed, and this daemon goes on as it was. True when a stop was asked for
+    /// while it ran, which is the caller's to carry out now.
+    pub(crate) fn not_replaced(&mut self) -> bool {
         self.replacing = Replacing::No;
+        std::mem::take(&mut self.stop_deferred)
+    }
+
+    /// Stops the daemon unless a handoff has begun. Checked and done in one hold, so a handoff
+    /// cannot begin in between: it is refused once the daemon is stopping. While one is under
+    /// way, closing a pane would end a process the new daemon may already hold.
+    pub(crate) fn stop_unless_replacing(&mut self) -> Stopping {
+        match self.replacing {
+            Replacing::No => {
+                self.close_everything();
+                Stopping::Now
+            }
+            Replacing::Underway => {
+                if !self.stop_deferred {
+                    log::info(
+                        "daemon.stop.deferred",
+                        fields! {
+                            "why" => "a handoff is under way",
+                            "impact" => "if it succeeds this daemon exits and the new one serves \
+                                         every pane; if it fails this daemon stops as asked",
+                        },
+                    );
+                }
+                self.stop_deferred = true;
+                Stopping::Deferred
+            }
+            Replacing::HandedOff => Stopping::HandedOff,
+        }
     }
 
     /// Takes over a pane from the daemon this one replaces. Its terminal is rebuilt from

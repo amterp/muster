@@ -47,7 +47,7 @@ use muster_daemon_proto::install;
 use crate::daemon_log::DaemonLog;
 use crate::persist::Persister;
 use crate::server::Socket;
-use crate::session::{Places, Saved, Shared, Stop};
+use crate::session::{Places, Saved, Shared, Stop, Stopping};
 
 // musl's own allocator serializes every allocation on one lock, and the daemon allocates from a
 // thread per pane (MIP-3, section 12). macOS's allocator does not have that problem.
@@ -61,6 +61,10 @@ const ALREADY_SERVING: u8 = 3;
 
 /// How long a stopping daemon waits for its state to be written before it exits anyway.
 const LAST_WRITE: Duration = Duration::from_secs(5);
+
+/// How long a daemon that has handed its panes over, and is asked to stop, waits for the handoff
+/// thread to finish telling its subscribers: that thread's own flush, and its requester's.
+const HANDED_OFF_FLUSH: Duration = Duration::from_secs(4);
 
 const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n       muster-daemon report ...\n       \
     muster-daemon replace ...\n\n\
@@ -228,13 +232,33 @@ pub(crate) fn serve(
 }
 
 /// Serves until told to stop, then closes every pane, unless they were handed to another
-/// daemon: that one serves the socket now, so nothing of it is touched on the way out.
+/// daemon: that one serves the socket now, so nothing of it is touched on the way out. A stop
+/// asked for while a handoff runs waits for it to end.
 fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
     let socket = &shared.socket.path;
-    if stop.recv() == Ok(Stop::HandedOff) {
-        return;
+    loop {
+        match stop.recv() {
+            Ok(Stop::HandedOff) => return,
+            Ok(Stop::Asked) => {
+                // Bound first: the lock must not be held while waiting below.
+                let stopping = shared.lock().stop_unless_replacing();
+                match stopping {
+                    Stopping::Now => break,
+                    Stopping::Deferred => {}
+                    // The handoff thread is telling subscribers; its own word follows once it
+                    // has.
+                    Stopping::HandedOff => {
+                        let _ = stop.recv_timeout(HANDED_OFF_FLUSH);
+                        return;
+                    }
+                }
+            }
+            Err(_) => {
+                shared.lock().close_everything();
+                break;
+            }
+        }
     }
-    shared.lock().close_everything();
     persister.wait_until_stopped(LAST_WRITE);
     pane::wait_for_kills(pane::KILL_GRACE + Duration::from_secs(1));
     let _ = std::fs::remove_file(socket);

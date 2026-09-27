@@ -52,6 +52,25 @@ fn said(text: &str, what: &str) -> Option<String> {
     })
 }
 
+/// Each pane's shell, asked again on whichever daemon serves now, is the one that said `pids`.
+fn the_same_shells_answer(daemon: &Daemon, pids: &[String], context: &str) {
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    for (name, pid) in ["p1", "p2"].iter().zip(pids) {
+        type_line(&mut input, name, "echo again=$$.");
+        assert_eq!(&until_said(&mut control, name, "again"), pid, "{context}: {name}'s shell");
+    }
+}
+
+fn pids_of_both(control: &mut Control) -> Vec<String> {
+    ["p1", "p2"].iter().map(|name| until_said(control, name, "pid")).collect()
+}
+
+fn stop_signal(pid: u32) {
+    // SAFETY: kill signals one process this test started.
+    assert_eq!(unsafe { libc::kill(pid.cast_signed(), libc::SIGTERM) }, 0);
+}
+
 fn replaced(daemon: &mut Daemon) {
     let answer = daemon.replace(None);
     assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
@@ -300,4 +319,56 @@ fn a_pane_reaches_its_daemon_through_muster_daemon_after_the_old_copy_is_gone() 
     assert_eq!(model.as_deref(), Some("Linked"));
     drop(daemon);
     let _ = std::fs::remove_dir_all(new.parent().unwrap());
+}
+
+/// A stop signal to the daemon handing over, at any step of a handoff, ends no pane: the handoff
+/// finishes, and the old daemon exits touching nothing the new one now serves.
+#[test]
+fn a_stop_signal_during_a_handoff_ends_no_pane_whichever_step_it_lands_at() {
+    for step in ["after-accept", "before-ready", "before-serving", "after-serving"] {
+        let fault = format!("pause-{step}");
+        let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", &fault)]);
+        let (mut control, _input) = two_panes(&daemon);
+        let pids = pids_of_both(&mut control);
+        let old = daemon.pid();
+
+        let replacing = daemon.start_replacing(None);
+        daemon.paused();
+        stop_signal(old);
+        // Long enough for a daemon that acts on the signal at once to have hung its panes up.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        daemon.resume();
+        let answer = daemon.finish_replacing(replacing);
+
+        assert_eq!(answer.outcome(), proto::Outcome::Done, "{step}: {}", answer.reason);
+        assert_ne!(daemon.pid(), old, "{step}: the new daemon serves");
+        assert!(daemon.socket_path().exists(), "{step}: the socket is still there");
+        the_same_shells_answer(&daemon, &pids, step);
+    }
+}
+
+/// A stop signal waits for the handoff under way, and a handoff that then fails leaves the old
+/// daemon to stop as it was asked.
+#[test]
+fn a_stop_signal_during_a_handoff_that_fails_stops_the_daemon_after_it() {
+    let mut daemon =
+        daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready,exit-before-ready")]);
+    let (mut control, _input) = two_panes(&daemon);
+    let pids = pids_of_both(&mut control);
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    stop_signal(daemon.pid());
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let state = process_state(&pids[0]);
+    assert!(!state.is_empty() && !state.starts_with('Z'), "the stop waits for the handoff");
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+
+    assert_eq!(answer.outcome(), proto::Outcome::Refused, "{}", answer.reason);
+    daemon.wait_for_exit();
+    assert!(!daemon.socket_path().exists(), "a stopped daemon removes its socket");
+    for pid in &pids {
+        until_some("the pane's shell to end", || process_state(pid).is_empty().then_some(()));
+    }
 }

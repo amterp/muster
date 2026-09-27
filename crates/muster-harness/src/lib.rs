@@ -14,7 +14,7 @@ mod stream;
 mod until;
 
 pub use control::{Asked, Control};
-pub use daemon::{DAEMON_DATA, Daemon, FIRST_ANSWER_BUDGET};
+pub use daemon::{DAEMON_DATA, Daemon, FIRST_ANSWER_BUDGET, Replacing};
 pub use input::Input;
 pub use relay::{Holding, Pump, Relay};
 pub use stream::Stream;
