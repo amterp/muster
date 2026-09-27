@@ -742,6 +742,16 @@ debounce, and the pane's record says `state_reported`. The rules still read the 
 and take over the moment the report stops counting. herdr arbitrated hooks too; nothing of its
 arbitration was recorded here beyond its API, and this is written from scratch.
 
+**A report is taken on the pane it names, whoever sent it.** Any process with the pane's
+`$MUSTER_PANE` in its environment reports for that pane. A `claude -p` that the agent's Bash tool
+starts inherits it, and runs any plugin installed at user level, so its `Stop` reports the pane
+idle while the outer agent is mid-turn, and sets `finished_unseen`. A tmux server started in one
+pane does the same for every session it later runs. Such a report stands until the outer agent's
+next hook, or until the screen has moved for three seconds. Rejecting it would mean reading the
+sender's pid off the socket and walking its ancestors to the nearest process that is an agent,
+which has to be the pane's own; the process probe reads only a pane's foreground group, so that
+check is not built. Starting the nested agent with `MUSTER_DAEMON` unset keeps its hooks quiet.
+
 **Drift is shown, not guessed.** The rules also say when they have stopped reading an agent: for a
 minute, the screen changed in at least half the seconds while either no rule matched at all, or
 the agent reported working and the rules read every screen as idle. A still screen never counts,

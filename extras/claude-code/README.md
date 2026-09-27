@@ -40,6 +40,11 @@ and a background task can keep the screen busy after `Stop`. `SubagentStart` and
 count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
 `/clear` runs.
 
+Muster takes a report for the pane in `$MUSTER_PANE`, whichever process sent it. A `claude -p`
+that Claude Code starts from its Bash tool inherits that, and with the plugin installed at user
+level its own `Stop` reports the pane idle mid-turn. Start it as `env -u MUSTER_DAEMON claude -p
+...` and its hooks do nothing.
+
 A plugin cannot set a statusline, so that is a step of its own either way.
 
 ## The statusline: context, model and cost
