@@ -137,6 +137,11 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
 }
 
 fn spawn(launch: &Launch, errors: &Path) -> std::io::Result<Child> {
+    // The daemon makes its own directory when it claims the socket, but the stderr file beside
+    // the socket is opened first: on a machine that never ran a daemon it would not be there.
+    if let Some(directory) = launch.socket.parent() {
+        std::fs::create_dir_all(directory)?;
+    }
     let errors = std::fs::File::create(errors)?;
     let mut command = Command::new(launch.binary);
     command.arg("--socket").arg(launch.socket);

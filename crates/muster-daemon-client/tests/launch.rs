@@ -64,6 +64,14 @@ fn a_daemon_is_started_once_and_adopted_after() {
 }
 
 #[test]
+fn the_first_daemon_on_a_machine_makes_its_own_directory() {
+    let mut scratch = Scratch::new();
+    scratch.socket = scratch.root.join("fresh").join("daemon").join("d.sock");
+    let (reached, _) = ensure_running(&scratch.launch()).unwrap();
+    assert_eq!(reached, Reached::Started);
+}
+
+#[test]
 fn two_starting_at_once_end_with_one_daemon() {
     let scratch = Scratch::new();
     let launched = std::thread::scope(|scope| {
