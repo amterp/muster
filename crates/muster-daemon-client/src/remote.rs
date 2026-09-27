@@ -345,7 +345,9 @@ mod tests {
                 .unwrap();
             assert!(output.status.success(), "{shell}: {output:?}");
             assert!(started.elapsed() < Duration::from_secs(5), "{shell} waited on the daemon");
-            let deadline = Instant::now() + Duration::from_secs(5);
+            // Generous, for the same reason as the previous test's bound: at a load of nineteen
+            // the fake daemon has taken over five seconds to write its first line.
+            let deadline = Instant::now() + Duration::from_secs(20);
             while !told.exists() && Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(10));
             }
