@@ -495,9 +495,10 @@ every pane travels on this one stream. A client that sees a gap resubscribes.
 **Requests in the first version**: snapshot and subscribe; create a pane beside another on any of
 four sides, or in a new tab, with a ratio, grid, cwd, environment, command and name; close a pane or
 a tab; resize, zoom, swap and move panes; set a split ratio; rename a pane or tab; read a pane's
-text in pages addressed by absolute row, with no row cap (row 0 is the oldest row still held, so
-rows move up once history reaches the scrollback limit: libghostty does not say how many it has
-trimmed); set the palette, the shell and the
+text in pages addressed by absolute row, with no row cap but a 4 MiB cap on a page's text, so an
+answer never nears the largest message a client accepts, and the answer says how many rows it holds
+(row 0 is the oldest row still held, so rows move up once history reaches the scrollback limit:
+libghostty does not say how many it has trimmed); set the palette, the shell and the
 scrollback depth; send manifests; stop. There is no focus request: daemon focus existed for herdr's
 own clients, and Muster never routes by it. Configuration arrives over the protocol, so no daemon
 reads a Muster config file and `~/.muster/state/herdr.toml` has no successor. Requests are

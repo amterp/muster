@@ -61,6 +61,49 @@ fn a_pane_is_read_in_pages_counted_from_its_oldest_row() {
     expect(&mut control, read_request("missing", 0, 1), proto::Outcome::NotThere);
 }
 
+/// The most text one page holds, well under the largest message a client accepts.
+const PAGE_BYTES: usize = 4 << 20;
+
+#[test]
+fn a_long_history_is_read_in_pages_no_larger_than_a_message_may_be() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let set_scrollback = session(session_request::Request::SetScrollback(proto::SetScrollback {
+        bytes: Some(1 << 30),
+    }));
+    expect(&mut control, set_scrollback, proto::Outcome::Done);
+    // About 6.4 MB of text, one 70-character row per line.
+    let lines = 90_000;
+    let command = format!(
+        "awk 'BEGIN {{ for (i = 0; i < {lines}; i++) printf \"line%06d %s\\n\", i, \
+         \"{}\" }}'; echo finished",
+        "x".repeat(59)
+    );
+    make(&mut control, running("p1", "t1", command));
+    until_some("the pane to finish printing", || {
+        let total = read_text(&mut control, "p1", 0, 1).total_rows;
+        let tail = read_text(&mut control, "p1", total.saturating_sub(30), 0).text;
+        tail.contains("finished").then_some(())
+    });
+
+    let whole = read_text(&mut control, "p1", 0, 0);
+    assert!(whole.text.len() <= PAGE_BYTES, "a page of {} bytes", whole.text.len());
+    assert_eq!(whole.rows as usize, whole.text.split('\n').count(), "the page says its rows");
+
+    let mut seen = Vec::new();
+    let mut next = 0;
+    while next < whole.total_rows {
+        let page = read_text(&mut control, "p1", next, 0);
+        assert!(page.text.len() <= PAGE_BYTES, "a page of {} bytes", page.text.len());
+        assert!(page.rows > 0, "a page before the end holds something");
+        seen.extend(page.text.split('\n').filter_map(|line| {
+            line.strip_prefix("line").and_then(|rest| rest[..6].parse::<usize>().ok())
+        }));
+        next = page.first_row + u64::from(page.rows);
+    }
+    assert_eq!(seen, (0..lines).collect::<Vec<_>>(), "every line once, in order");
+}
+
 #[test]
 fn the_daemon_answers_a_programs_queries() {
     let daemon = daemon();

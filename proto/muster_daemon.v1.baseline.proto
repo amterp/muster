@@ -246,7 +246,8 @@ message PaneRequest {
   message Read {
     string pane = 1;
     uint64 first_row = 2;
-    // Zero reads to the last row.
+    // Zero reads to the last row. Either way a page stops at 4 MiB of text, well under the
+    // largest message, and the answer says how many rows it holds.
     uint32 rows = 3;
   }
 }
@@ -384,6 +385,9 @@ message PaneText {
   string text = 2;
   // Rows the pane holds in all, so a reader knows where the end is.
   uint64 total_rows = 3;
+  // Rows in this page, which can be fewer than were asked for: the next page starts at
+  // `first_row + rows`.
+  uint32 rows = 4;
 }
 
 message Event {

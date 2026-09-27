@@ -204,7 +204,34 @@ fn answer(session: &Session, outbox: &Outbox, id: u64, reply: Reply) {
         seq: session.seq(),
         detail: reply.detail.map(|detail| *detail),
     };
-    let message =
-        proto::ControlMessage { message: Some(proto::control_message::Message::Answer(answer)) };
-    outbox.push(message.encode_to_vec().into());
+    let wrap = |answer| proto::ControlMessage {
+        message: Some(proto::control_message::Message::Answer(answer)),
+    };
+    let mut frame = wrap(answer.clone()).encode_to_vec();
+    // The client would refuse the frame and drop the connection, and its subscription with it.
+    if frame.len() > connection::LARGEST_MESSAGE as usize {
+        let reason = format!(
+            "the answer would be {} bytes, more than the {} a message may be",
+            frame.len(),
+            connection::LARGEST_MESSAGE
+        );
+        log::error(
+            "daemon.connection.answer_too_large",
+            fields! {
+                "connection" => outbox.id,
+                "request" => id,
+                "bytes" => frame.len(),
+                "impact" => "the request is answered refused instead",
+                "check" => "this is a bug: whatever built the answer should have bounded it",
+            },
+        );
+        frame = wrap(proto::Answer {
+            outcome: proto::Outcome::Refused.into(),
+            reason,
+            detail: None,
+            ..answer
+        })
+        .encode_to_vec();
+    }
+    outbox.push(frame.into());
 }

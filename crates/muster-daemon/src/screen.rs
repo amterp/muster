@@ -223,12 +223,22 @@ impl Screen {
         Ok(())
     }
 
-    /// A page of the active screen's text, rows counted from the oldest history still held.
-    pub(crate) fn text(&self, first_row: u64, rows: u32) -> proto::PaneText {
-        let total_rows = self.terminal.total_rows() as u64;
-        let first = u32::try_from(first_row).unwrap_or(u32::MAX);
-        let last = if rows == 0 { u32::MAX } else { first.saturating_add(rows - 1) };
-        proto::PaneText { first_row, text: self.terminal.screen_text(first, last), total_rows }
+    /// Up to `count` rows of text from `first`, counted from the oldest history still held, one
+    /// line per row, with the rows the pane holds in all.
+    pub(crate) fn rows(&self, first: u64, count: u32) -> (Vec<String>, u64) {
+        let total = self.terminal.total_rows() as u64;
+        let covered = total.saturating_sub(first).min(u64::from(count));
+        if covered == 0 {
+            return (Vec::new(), total);
+        }
+        let start = u32::try_from(first).unwrap_or(u32::MAX);
+        let last = start.saturating_add(u32::try_from(covered - 1).unwrap_or(u32::MAX));
+        let text = self.terminal.screen_text(start, last);
+        // The formatter drops blank rows at the end of a range; a page keeps one line per row.
+        let mut lines: Vec<String> =
+            if text.is_empty() { Vec::new() } else { text.split('\n').map(String::from).collect() };
+        lines.resize(usize::try_from(covered).unwrap_or(usize::MAX), String::new());
+        (lines, total)
     }
 
     pub(crate) fn terminal(&self) -> &Terminal {
@@ -238,6 +248,66 @@ impl Screen {
     pub(crate) fn grid(&self) -> Grid {
         self.grid
     }
+}
+
+/// The most text one page of `pane read` holds: a quarter of the largest message, so an answer
+/// never comes near the size a client refuses, however deep the scrollback.
+pub(crate) const PAGE_BYTES: usize = 4 << 20;
+
+/// Rows formatted per hold of the pane's lock while a page is read, so a long page stalls the
+/// pane's output a batch at a time rather than for the whole page.
+const PAGE_BATCH: u32 = 256;
+
+/// A page of text from `first_row`: `rows` of them, or to the last row when `rows` is zero,
+/// stopping short at `limit` bytes. `read` returns a batch's lines and the rows held in all.
+pub(crate) fn page(
+    first_row: u64,
+    rows: u32,
+    limit: usize,
+    mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
+) -> proto::PaneText {
+    let end = if rows == 0 { u64::MAX } else { first_row.saturating_add(u64::from(rows)) };
+    let mut text = String::new();
+    let mut held: u32 = 0;
+    let mut total_rows = 0;
+    let mut batch = PAGE_BATCH;
+    loop {
+        let next = first_row + u64::from(held);
+        if next >= end {
+            break;
+        }
+        let count = u32::try_from(end - next).unwrap_or(u32::MAX).min(batch);
+        let (lines, total) = read(next, count);
+        total_rows = total;
+        if lines.is_empty() {
+            break;
+        }
+        let joined = lines.join("\n");
+        let separator = usize::from(!text.is_empty() || held > 0);
+        if text.len() + separator + joined.len() > limit {
+            if held > 0 {
+                break;
+            }
+            if count > 1 {
+                batch = count / 2;
+                continue;
+            }
+            // One row larger than a page on its own: as much of it as fits.
+            let mut cut = limit;
+            while !joined.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            text.push_str(&joined[..cut]);
+            held = 1;
+            break;
+        }
+        if separator == 1 {
+            text.push('\n');
+        }
+        text.push_str(&joined);
+        held += u32::try_from(lines.len()).unwrap_or(u32::MAX);
+    }
+    proto::PaneText { first_row, text, total_rows, rows: held }
 }
 
 /// One cell's size in pixels, zero while no surface has said.
@@ -294,8 +364,48 @@ mod tests {
             Screen::new(grid, DEFAULT_SCROLLBACK, &Appearance::of(&proto::Settings::default()))
                 .expect("a terminal");
         screen.feed(b"a\r\nb\r\nc\r\nd\r\ne");
-        let page = screen.text(1, 2);
-        assert_eq!((page.first_row, page.text.as_str(), page.total_rows), (1, "b\nc", 5));
-        assert_eq!(screen.text(3, 0).text, "d\ne", "zero rows reads to the end");
+        let read = |first_row, rows| page(first_row, rows, PAGE_BYTES, |at, n| screen.rows(at, n));
+        let two = read(1, 2);
+        assert_eq!((two.first_row, two.text.as_str(), two.total_rows, two.rows), (1, "b\nc", 5, 2));
+        assert_eq!(read(3, 0).text, "d\ne", "zero rows reads to the end");
+    }
+
+    #[test]
+    fn a_page_has_a_line_for_every_row_even_a_blank_one() {
+        let grid = Grid { cols: 20, rows: 3, width_px: 0, height_px: 0 };
+        let mut screen =
+            Screen::new(grid, DEFAULT_SCROLLBACK, &Appearance::of(&proto::Settings::default()))
+                .expect("a terminal");
+        screen.feed(b"a\r\n\r\n\r\nb");
+        assert_eq!(screen.rows(0, 3).0, ["a", "", ""]);
+        assert_eq!(screen.rows(1, 2).0, ["", ""]);
+    }
+
+    /// A pane of `rows` rows, each `width` bytes, read the way a pane's screen is.
+    fn rows_of(width: usize, rows: u64) -> impl FnMut(u64, u32) -> (Vec<String>, u64) {
+        move |first, count| {
+            let last = rows.min(first + u64::from(count));
+            ((first..last).map(|row| format!("{row:0width$}")).collect(), rows)
+        }
+    }
+
+    #[test]
+    fn a_page_stops_before_the_batch_that_would_take_it_past_its_limit() {
+        let full = page(0, 0, 10 * 1024, rows_of(9, 100_000));
+        assert!(full.text.len() <= 10 * 1024);
+        assert_eq!(full.rows as usize, full.text.split('\n').count());
+        assert_eq!(
+            full.text.split('\n').next_back(),
+            Some(format!("{:09}", full.rows - 1).as_str())
+        );
+        assert_eq!(full.total_rows, 100_000);
+    }
+
+    #[test]
+    fn a_first_batch_over_the_limit_is_halved_and_one_huge_row_is_cut() {
+        let halved = page(0, 0, 100, rows_of(9, 1_000));
+        assert_eq!(halved.rows, 8, "eight 9-byte rows and their newlines fit in 100 bytes");
+        let cut = page(5, 0, 100, rows_of(1_000, 10));
+        assert_eq!((cut.rows, cut.text.len()), (1, 100));
     }
 }

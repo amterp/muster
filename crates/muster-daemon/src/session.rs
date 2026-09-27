@@ -212,7 +212,7 @@ pub(crate) enum Handled {
     /// A pane to start with the session unlocked, then finish with [`Session::started`].
     Start(Box<Starting>),
     /// A pane's text to read with the session unlocked, since a long page takes a while to
-    /// format and holds only the pane's lock.
+    /// format. It holds the pane's lock a batch of rows at a time.
     Read(Box<Reading>),
 }
 
@@ -226,7 +226,9 @@ pub(crate) struct Reading {
 
 impl Reading {
     pub(crate) fn read(&self) -> Reply {
-        let text = self.io.screen().text(self.first_row, self.rows);
+        let text = screen::page(self.first_row, self.rows, screen::PAGE_BYTES, |first, count| {
+            self.io.screen().rows(first, count)
+        });
         Reply { detail: Some(Box::new(Detail::Text(text))), ..Reply::done() }
     }
 }
