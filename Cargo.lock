@@ -372,6 +372,7 @@ name = "herdr-harness"
 version = "0.9.0"
 dependencies = [
  "muster-core",
+ "muster-harness",
  "muster-herdr",
  "serde_json",
 ]
@@ -605,6 +606,10 @@ dependencies = [
 
 [[package]]
 name = "muster-frame"
+version = "0.9.0"
+
+[[package]]
+name = "muster-harness"
 version = "0.9.0"
 
 [[package]]

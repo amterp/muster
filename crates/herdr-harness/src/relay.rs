@@ -1,97 +1,31 @@
-//! A real daemon behind a socket that loses or delays some of its answers.
+//! herdr's half of the answer-withholding relay: which request on a connection is the one to
+//! withhold, and where its answer ends. The socket and the accept loop are
+//! `muster_harness::Relay`'s.
 //!
-//! What a loaded machine does to Muster's requests, on demand: herdr receives the request and
-//! acts on it, and the answer does not come back in time. No request can ask a daemon to do
-//! that, and waiting for a machine to be slow enough is a test that passes when it is not. So
-//! this relays every connection to the daemon unchanged, except that for the requests it was
-//! told about it reads herdr's answer and either never delivers it or delivers it late.
-//!
-//! Not a hand-written herdr (`docs/testing.md`): every byte a caller receives is one the real
-//! daemon sent, and the work behind a withheld answer is done by the real daemon. It stages a
-//! transport fault, the same kind as the silent listener in `muster-herdr`'s subscription
-//! tests.
+//! herdr answers one newline-terminated JSON request per connection and then hangs up, so the
+//! request is the first line a caller sends and the answer is the first line herdr sends back.
 
 use std::io::{Read, Write};
 use std::net::Shutdown;
-use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::{Path, PathBuf};
+use std::os::unix::net::UnixStream;
+use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
+use muster_harness::{Holding, Pump};
 use serde_json::Value;
-
-/// How long the relay keeps an answer to one of the requests it was told about.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum Holding {
-    /// Never delivered: a lost answer.
-    Forever,
-    /// Delivered this long after herdr gave it: a late one.
-    For(Duration),
-}
-
-/// A socket in front of one daemon, withholding or delaying the answers to some requests.
-///
-/// Stops accepting on drop. Connections already relayed end when either side hangs up, which
-/// for a test is when its daemon or its window goes.
-#[derive(Debug)]
-pub struct Relay {
-    socket_path: PathBuf,
-    config_path: PathBuf,
-    running: Arc<AtomicBool>,
-}
 
 /// Whether a relay withholds the answer to a request, asked of each request as herdr reads it.
 pub(crate) type Withheld = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
 
-impl Relay {
-    pub(crate) fn start(root: &Path, daemon: &Path, withheld: Withheld, holding: Holding) -> Relay {
-        let socket_path = root.join("relay.sock");
-        let _ = std::fs::remove_file(&socket_path);
-        let listener = UnixListener::bind(&socket_path).unwrap_or_else(|error| {
-            panic!("could not bind the relay at {}: {error}", socket_path.display())
-        });
-        let running = Arc::new(AtomicBool::new(true));
-        let daemon = daemon.to_path_buf();
-        let accepting = Arc::clone(&running);
-        std::thread::spawn(move || {
-            for client in listener.incoming() {
-                if !accepting.load(Ordering::Relaxed) {
-                    return;
-                }
-                let Ok(client) = client else { continue };
-                let daemon = daemon.clone();
-                let withheld = Arc::clone(&withheld);
-                std::thread::spawn(move || relay(client, &daemon, &withheld, holding));
-            }
-        });
-        Relay { config_path: root.join("muster-relay.toml"), socket_path, running }
-    }
-
-    /// A Muster config naming this relay as the daemon `local`, which is how a window is
-    /// pointed at it.
-    pub fn muster_config(&self) -> PathBuf {
-        let contents = format!(
-            "[[daemon]]\nid = \"local\"\nsocket = {:?}\n",
-            self.socket_path.to_string_lossy()
-        );
-        std::fs::write(&self.config_path, contents).unwrap_or_else(|error| {
-            panic!(
-                "could not write the relay's Muster config at {}: {error}",
-                self.config_path.display()
-            )
-        });
-        self.config_path.clone()
-    }
+/// Carries herdr's JSON lines, withholding the answers `withheld` picks out.
+pub(crate) struct HerdrPump {
+    pub(crate) withheld: Withheld,
+    pub(crate) holding: Holding,
 }
 
-impl Drop for Relay {
-    fn drop(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
-        // The accept loop is parked in `accept`, and a connection is the one thing that wakes it
-        // to read the flag.
-        let _ = UnixStream::connect(&self.socket_path);
-        let _ = std::fs::remove_file(&self.socket_path);
+impl Pump for HerdrPump {
+    fn carry(&self, client: UnixStream, daemon: &Path) {
+        relay(client, daemon, &self.withheld, self.holding);
     }
 }
 

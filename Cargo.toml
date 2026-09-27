@@ -8,6 +8,7 @@ members = [
     "crates/muster-core",
     "crates/muster-daemon-proto",
     "crates/muster-frame",
+    "crates/muster-harness",
     "crates/muster-herdr",
     "crates/muster-perf",
     "crates/muster-proto",
@@ -32,6 +33,7 @@ muster-cli = { path = "crates/muster-cli" }
 muster-core = { path = "crates/muster-core" }
 muster-daemon-proto = { path = "crates/muster-daemon-proto" }
 muster-frame = { path = "crates/muster-frame" }
+muster-harness = { path = "crates/muster-harness" }
 muster-herdr = { path = "crates/muster-herdr" }
 muster-proto = { path = "crates/muster-proto" }
 muster-seam = { path = "crates/muster-seam" }

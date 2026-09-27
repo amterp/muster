@@ -15,16 +15,15 @@
 //! moments - the probe records what herdr does, this drives what Muster does about it -
 //! and the facts they encode about isolation are kept the same on purpose.
 //!
-//! [`until`] is here for a related reason rather than the same one. It is not about daemons at
-//! all, but everything that waits on one already depends on this crate, so this is where one
-//! copy of it costs nothing - and one copy is the point (`until::PATIENCE`).
+//! [`until`] and [`Relay`] live in `muster-harness`, which is neutral between herdr and
+//! muster-daemon, and are re-exported here so the tests that use them through this crate do not
+//! change before the cut-over deletes it (MIP-3).
 
 mod relay;
-mod until;
 
-use relay::Holding;
-pub use relay::Relay;
-pub use until::{Detail, PATIENCE, until, until_file, until_some, until_within};
+use muster_harness::Holding;
+pub use muster_harness::{Detail, PATIENCE, Relay, until, until_file, until_some, until_within};
+use relay::HerdrPump;
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -336,7 +335,8 @@ impl Daemon {
         &self,
         withheld: impl Fn(&Value) -> bool + Send + Sync + 'static,
     ) -> Relay {
-        Relay::start(&self.root, &self.socket_path, std::sync::Arc::new(withheld), Holding::Forever)
+        let pump = HerdrPump { withheld: std::sync::Arc::new(withheld), holding: Holding::Forever };
+        Relay::start(&self.root, &self.socket_path, std::sync::Arc::new(pump))
     }
 
     /// The same, delivering the answer to any of `methods` only once `delay` has passed.
@@ -344,12 +344,11 @@ impl Daemon {
     /// For a test about an answer that arrives after the caller stopped waiting for it, which is
     /// the ordinary shape of a lost answer on a loaded machine.
     pub fn delaying_answers_to(&self, methods: &[&str], delay: Duration) -> Relay {
-        Relay::start(
-            &self.root,
-            &self.socket_path,
-            std::sync::Arc::new(any_of(methods)),
-            Holding::For(delay),
-        )
+        let pump = HerdrPump {
+            withheld: std::sync::Arc::new(any_of(methods)),
+            holding: Holding::For(delay),
+        };
+        Relay::start(&self.root, &self.socket_path, std::sync::Arc::new(pump))
     }
 
     pub fn client(&self) -> HerdrClient {
