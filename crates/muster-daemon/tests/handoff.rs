@@ -210,20 +210,66 @@ fn a_pane_whose_shell_exits_after_a_handoff_closes_and_its_process_is_reaped() {
     assert_eq!(tab_shape(&mut control, "t1"), "p2");
 }
 
-/// The log's file holds the old daemon's records up to its commit, then the new one's.
+/// The log's file holds the old daemon's records up to its commit, then the new one's, from its
+/// first: none lost, and never the two interleaved.
 #[test]
 fn the_log_holds_the_old_daemon_up_to_its_commit_and_then_the_new_one() {
     let mut daemon = daemon();
     let (_control, _input) = two_panes(&daemon);
+    let old = daemon.pid();
 
     replaced(&mut daemon);
+    let new = daemon.pid();
 
     let log = until_some("the new daemon's records", || {
         let log = std::fs::read_to_string(daemon.root().join("daemon.log")).ok()?;
         log.contains("daemon.handoff.serving").then_some(log)
     });
-    let committed = log.find("daemon.handoff.committed").expect("the old daemon's commit");
-    assert!(committed < log.find("daemon.handoff.serving").unwrap());
+    let records: Vec<(u32, &str)> = log
+        .lines()
+        .map(|line| {
+            let pid = line
+                .split("\"pid\":")
+                .nth(1)
+                .and_then(|rest| rest.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok());
+            let event = line.split("\"event\":\"").nth(1).and_then(|rest| rest.split('"').next());
+            (pid.expect("every record has a pid"), event.expect("every record has an event"))
+        })
+        .collect();
+    let first_new = records.iter().position(|(pid, _)| *pid == new).expect("the new daemon's");
+    let (before, after) = records.split_at(first_new);
+    assert!(before.iter().all(|(pid, _)| *pid == old), "only the old daemon before: {log}");
+    assert!(after.iter().all(|(pid, _)| *pid == new), "only the new daemon after: {log}");
+    let events = |records: &[(u32, &str)]| records.iter().map(|(_, e)| e.to_string()).collect();
+    let old_events: Vec<String> = events(before);
+    assert_eq!(old_events.first().map(String::as_str), Some("daemon.started"));
+    assert_eq!(old_events.last().map(String::as_str), Some("daemon.handoff.committed"));
+    let new_events: Vec<String> = events(after);
+    assert_eq!(
+        new_events.first().map(String::as_str),
+        Some("daemon.handoff.taking_over"),
+        "the new daemon's records from its first, kept until the commit"
+    );
+    assert!(new_events.iter().any(|event| event == "daemon.handoff.serving"));
+}
+
+/// A connection made while the old daemon has stopped accepting waits for whichever daemon
+/// serves next: the new one, once the handoff succeeds.
+#[test]
+fn a_connection_made_during_a_handoff_is_served_by_the_new_daemon() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready")]);
+    let (_control, _input) = two_panes(&daemon);
+
+    let replacing = daemon.start_replacing(None);
+    let new = daemon.paused();
+    let socket = daemon.socket_path().to_path_buf();
+    let waiting = std::thread::spawn(move || Control::connect(&socket).welcome().pid);
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+
+    assert_eq!(waiting.join().unwrap().cast_signed(), new);
 }
 
 /// The new daemon writes the state file from when it serves.
@@ -290,23 +336,46 @@ fn a_new_daemon_that_refuses_or_dies_at_any_step_leaves_the_old_one_serving() {
     }
 }
 
-/// A pane names its daemon through a link beside the socket, which the daemon taking over points
-/// at itself: a pane started before a handoff to a daemon elsewhere still reaches its daemon
-/// once the old one's copy is gone, as an upgrade leaves it.
-#[test]
-fn a_pane_reaches_its_daemon_through_muster_daemon_after_the_old_copy_is_gone() {
-    // Beside the build's own directory, as deep: a debug build on macOS finds libghostty-vt by
-    // a path relative to itself.
+/// Copies of the daemon beside the build's own directory, as deep: a debug build on macOS finds
+/// libghostty-vt by a path relative to itself.
+fn copies_of_the_daemon(names: [&str; 2]) -> [std::path::PathBuf; 2] {
     let built = std::path::Path::new(env!("CARGO_BIN_EXE_muster-daemon"));
     let target = built.parent().and_then(std::path::Path::parent).unwrap();
-    let copy = |name: &str| {
+    names.map(|name| {
         let path =
             target.join(format!("handoff-{}-{name}", std::process::id())).join("muster-daemon");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::copy(built, &path).unwrap();
         path
-    };
-    let (old, new) = (copy("old"), copy("new"));
+    })
+}
+
+/// A new daemon that dies after pointing the link at itself leaves it pointing back at the old
+/// daemon, which goes on serving.
+#[test]
+fn a_failed_handoff_points_the_link_back_at_the_old_daemon() {
+    let [old, new] = copies_of_the_daemon(["link-old", "link-new"]);
+    let mut daemon =
+        Daemon::start_with(&old, &[("MUSTER_DAEMON_HANDOFF_FAULT", "exit-after-commit")]);
+    let link = daemon.root().join("daemon.muster-daemon");
+    assert_eq!(std::fs::read_link(&link).unwrap(), old);
+
+    let answer = daemon.replace(Some(&new));
+    assert_eq!(answer.outcome(), proto::Outcome::Refused, "{}", answer.reason);
+
+    assert_eq!(std::fs::read_link(&link).unwrap(), old);
+    drop(daemon);
+    for copy in [old, new] {
+        let _ = std::fs::remove_dir_all(copy.parent().unwrap());
+    }
+}
+
+/// A pane names its daemon through a link beside the socket, which the daemon taking over points
+/// at itself: a pane started before a handoff to a daemon elsewhere still reaches its daemon
+/// once the old one's copy is gone, as an upgrade leaves it.
+#[test]
+fn a_pane_reaches_its_daemon_through_muster_daemon_after_the_old_copy_is_gone() {
+    let [old, new] = copies_of_the_daemon(["old", "new"]);
     let mut daemon = Daemon::start(&old);
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
