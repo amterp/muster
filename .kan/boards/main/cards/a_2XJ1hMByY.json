@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790469795194,
   "creator": "Alexander Terp",
   "description": "MIP-3 section 3. The daemon now spawns every shell, so what Ghostty sets up when it spawns one is Muster's job, or panes stop feeling like Ghostty once they have real scrollback.\n\n- `TERM=xterm-ghostty`, with the terminfo entry carried by the daemon and reached through `TERMINFO_DIRS` on both machines, so no host needs Ghostty installed. `GHOSTTY_TERMINAL_OPT_TERMINFO_NAME` must agree, or XTGETTCAP contradicts `TERM`.\n- Ghostty's shell integration for bash, zsh and fish, injected the way Ghostty does it, so prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work.\n\nOpen, per the MIP: what `TERM_PROGRAM` should say. Programs key features on it; `ghostty` matches what a pane is, and naming Muster is the alternative.",
   "id": "a_2XJ1hMByY",
   "parent": "a_2XJ1fUIyr",
-  "position": "ad",
+  "position": "Zp",
   "title": "Pane environment: TERM, terminfo, and Ghostty's shell integration",
   "type": "feature",
-  "updated_at_millis": 1790469797165,
+  "updated_at_millis": 1790486960405,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790469795194}
+    {"field":"column","value":"backlog-hi","at":1790469795194},
+    {"field":"column","value":"done","at":1790486960405}
   ]
 }

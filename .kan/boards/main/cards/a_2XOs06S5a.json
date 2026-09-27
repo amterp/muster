@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Shell integration now exists (round 3, a_2XJ1hMByY), so OSC 133 prompt marks reach the daemon's terminal; what remains is the C API for at-prompt state and eraseActive.",
+      "created_at_millis": 1790486960945,
+      "id": "c_2XQEG62Vf"
+    }
+  ],
   "created_at_millis": 1790483722085,
   "creator": "Alexander Terp",
   "description": "Ghostty's clear_screen binding, with shell integration on, erases the screen and scrollback but keeps the prompt, and asks the shell to redraw. muster-daemon defers it (round 2, slot 2) because it needs OSC 133 at-prompt state and Ghostty's eraseActive, neither of which libghostty-vt's C API exposes. Likely a small addition to deps/ghostty-patches (C API only, never upstreamed), after the pane environment card (a_2XJ1hMByY) lands shell integration.",
@@ -14,7 +22,7 @@
   "position": "aQ",
   "title": "muster-daemon: honor clear_screen with shell integration",
   "type": "feature",
-  "updated_at_millis": 1790483722085,
+  "updated_at_millis": 1790486960945,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790483722085}
   ]

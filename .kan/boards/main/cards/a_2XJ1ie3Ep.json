@@ -19,6 +19,12 @@
       "body": "From round 2 (slot 1): make muster-daemon a shipped root in tools/licenses.py when it ships - then regex and the herdr VENDORED entry (ported detection code + manifests) render into THIRD-PARTY.md, which they do not yet.",
       "created_at_millis": 1790482705084,
       "id": "c_2XORXonRn"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "From round 3: the daemon needs muster-daemon-data beside it (terminfo, shell integration, GPLv3 bash/zsh scripts as separate files). In the Mac bundle Contents/MacOS cannot hold a directory, so pass --data pointing into Contents/Resources or add a lookup rule; a remote install copies binary and directory together. When the daemon becomes a tools/licenses.py shipped root, filter for the musl targets too: mimalloc (MIT) is linked only there. The data directory's licenses are covered by NOTICE.",
+      "created_at_millis": 1790486960891,
+      "id": "c_2XQEG11Wr"
     }
   ],
   "created_at_millis": 1790469795995,
@@ -29,7 +35,7 @@
   "position": "ai",
   "title": "Ship muster-daemon: helper app, bundled Linux daemons, remote install",
   "type": "feature",
-  "updated_at_millis": 1790482705084,
+  "updated_at_millis": 1790486960891,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790469795995}
   ]
