@@ -129,6 +129,43 @@ fn zooming_twice_puts_the_tab_back() {
     assert_eq!(zoomed(&followed, &pane), None);
 }
 
+/// A pane holding more history than one answer carries reads back ending at its newest row,
+/// and says the older rows were left out. The newest rows are what a read is for: `--rows N`
+/// takes its tail, and an agent reads a neighbour to see what it just did.
+#[test]
+fn a_read_longer_than_one_answer_ends_at_the_newest_row() {
+    let daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+    let settings = DaemonSettings { scrollback_bytes: Some(1 << 30), ..DaemonSettings::default() };
+    followed.follower.configure(&settings);
+    let mut control = daemon.connect();
+    until_some("the scrollback setting to arrive", || {
+        let settings = snapshot(&mut control).settings.unwrap_or_default();
+        (settings.scrollback_bytes == Some(1 << 30)).then_some(())
+    });
+
+    // About 5.7 MB of text, past the daemon's 4 MiB page, in rows too short to wrap.
+    let run = "awk 'BEGIN { for (i = 0; i < 80000; i++) printf \"%070d\\n\", i; \
+               print \"THE-END\" }'";
+    let made = followed.backend.submit(&BackendIntent::CreateTab {
+        tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+        cwd: None,
+        run: Some(run.into()),
+        name: None,
+    });
+    let pane = made.unwrap().created.unwrap();
+
+    let read = until_some("the pane's last row to be read back", || {
+        let read = followed.backend.read(&pane).unwrap();
+        read.text.contains("THE-END").then_some(read)
+    });
+    assert!(read.truncated, "a read that left out the oldest rows has to say so");
+    assert!(
+        !read.text.contains(&format!("{:070}\n", 0)),
+        "the read began at the oldest row, so it holds more than one answer can"
+    );
+}
+
 /// A daemon that died and came back is followed again from a fresh snapshot, and the window
 /// was told it went stale in between.
 #[test]

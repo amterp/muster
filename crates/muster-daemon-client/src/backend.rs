@@ -85,6 +85,22 @@ impl DaemonBackend {
         self.ask(Service::Pane(proto::PaneRequest { request: Some(request) }))
     }
 
+    /// One page of a pane's history, from `first_row` to the last row or the daemon's 4 MiB.
+    fn read_page(&self, pane: &PaneId, first_row: u64) -> Result<proto::PaneText, Refusal> {
+        let answer = self.pane_request(pane_request::Request::Read(pane_request::Read {
+            pane: pane.to_string(),
+            first_row,
+            rows: 0,
+        }))?;
+        let Some(answer::Detail::Text(read)) = answer.detail else {
+            return Err(Refusal::Declined(format!(
+                "{} answered a read with no text; this is likely a bug in the daemon",
+                self.description
+            )));
+        };
+        Ok(read)
+    }
+
     fn tab_request(&self, request: tab_request::Request) -> Result<proto::Answer, Refusal> {
         self.ask(Service::Tab(proto::TabRequest { request: Some(request) }))
     }
@@ -151,6 +167,10 @@ impl DaemonBackend {
             .and_then(|held| mirror.tab(&held.tab))
             .is_some_and(|tab| tab.zoomed.as_ref() == Some(pane))
     }
+}
+
+fn reaches_the_end(page: &proto::PaneText) -> bool {
+    page.first_row + u64::from(page.rows) >= page.total_rows
 }
 
 fn beside(pane: &PaneId, side: Side) -> placement::Where {
@@ -253,21 +273,24 @@ impl BackendChannel for DaemonBackend {
     }
 
     fn read(&self, pane: &PaneId) -> Result<PaneText, Refusal> {
-        let answer = self.pane_request(pane_request::Request::Read(pane_request::Read {
-            pane: pane.to_string(),
-            first_row: 0,
-            rows: 0,
-        }))?;
-        let Some(answer::Detail::Text(read)) = answer.detail else {
-            return Err(Refusal::Declined(format!(
-                "{} answered a read with no text; this is likely a bug in the daemon",
-                self.description
-            )));
-        };
-        // A page stops at the daemon's 4 MiB, so it can end short of the last row.
-        let truncated =
-            read.first_row > 0 || read.first_row + u64::from(read.rows) < read.total_rows;
-        Ok(PaneText { text: read.text, truncated })
+        let whole = self.read_page(pane, 0)?;
+        if reaches_the_end(&whole) {
+            return Ok(PaneText { text: whole.text, truncated: false });
+        }
+        // A page stops at the daemon's 4 MiB, and what a read is for is the newest rows, so the
+        // page wanted is the one ending at the last row. Rows differ in length, so start as far
+        // from the end as the first page reached from the start, and move on by however far a
+        // page still falls short. A few tries settle it; the cap only bounds a pane printing
+        // faster than it can be read.
+        let mut newest = whole;
+        for _ in 0..8 {
+            let first_row = newest.total_rows.saturating_sub(u64::from(newest.rows));
+            newest = self.read_page(pane, first_row)?;
+            if reaches_the_end(&newest) || newest.rows == 0 {
+                break;
+            }
+        }
+        Ok(PaneText { text: newest.text, truncated: true })
     }
 
     fn description(&self) -> &str {
