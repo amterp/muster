@@ -869,10 +869,10 @@ impl Drop for Running {
 ///
 /// macOS holds the first exec of a binary it has not seen - which after a build is every one of
 /// them - while it scans it: a freshly built muster-daemon took 15.8 s to answer here, and 8 ms
-/// the next time. The app gives the daemon it starts ten seconds and then gives up on it, and
-/// the typeable watch accuses a bridge after five, so a first launch after every rebuild would
-/// fail for a reason that is neither Muster's nor one a user meets. So each helper is run first
-/// and asked for nothing it has to do: the exec is the point.
+/// the next time. The app waits a minute for the daemon it starts, which covers that, but the
+/// typeable watch accuses a bridge after five seconds, so every check after a rebuild would be
+/// judged on how long macOS took to scan rather than on what Muster did. So each helper is run
+/// first and asked for nothing it has to do: the exec is the point.
 fn warm(app: &Path) {
     static WARMED: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
     if !WARMED.lock().unwrap_or_else(PoisonError::into_inner).insert(app.to_path_buf()) {

@@ -22,9 +22,19 @@ use muster_core::fields;
 use muster_daemon_proto::connection::HandshakeError;
 use muster_daemon_proto::{ConnectionKind, Welcome};
 
-/// How long a daemon just started may take to answer. It answers in milliseconds; this is for a
-/// machine so loaded that starting any process is slow.
-const START_PATIENCE: Duration = Duration::from_secs(10);
+/// How long a daemon just started may take to answer.
+///
+/// It answers in milliseconds once it runs. The wait is for macOS, which holds a binary it has
+/// not run before while it scans it: 16 s for a debug daemon on the machine this was measured
+/// on, and 44 s for a freshly built app. That is every first launch after an install or an
+/// update, not only the first on a machine, so every start gets it: a start keyed on "no
+/// record yet" would still give up after an update, whose daemon is new to macOS but not to
+/// Muster.
+const START_PATIENCE: Duration = Duration::from_mins(1);
+
+/// How long a start goes quietly before the log says it is slow, which is where the patience
+/// stood before a first launch was known to need more.
+const SLOW_START: Duration = Duration::from_secs(10);
 
 /// How long a daemon that found the socket's lock held waits for the holder to answer before
 /// trying again. A rival's daemon answers in milliseconds; one that does not was exiting.
@@ -105,7 +115,9 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
         )
     })?;
 
-    let deadline = Instant::now() + START_PATIENCE;
+    let started = Instant::now();
+    let deadline = started + START_PATIENCE;
+    let mut said_slow = false;
     // When this start's daemon found the socket's lock held, and nothing answered yet.
     let mut lost_the_race: Option<Instant> = None;
     loop {
@@ -150,6 +162,21 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
                     said(&errors, &marker)
                 ));
             }
+        }
+        if !said_slow && started.elapsed() >= SLOW_START {
+            said_slow = true;
+            log::warn(
+                "daemon.start.slow",
+                fields! {
+                    "socket" => launch.socket.display(),
+                    "waited_s" => SLOW_START.as_secs(),
+                    "patience_s" => START_PATIENCE.as_secs(),
+                    "impact" => "this window has no panes until the daemon answers",
+                    "check" => "macOS holds a binary it has not run before while it scans it, \
+                                which is the usual cause on a first launch after an install or \
+                                update; on any other launch, whether the machine is overloaded",
+                },
+            );
         }
         if Instant::now() >= deadline {
             // It may yet answer, and must not be left to linger as a zombie when it ends.
