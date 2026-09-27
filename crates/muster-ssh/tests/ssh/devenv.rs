@@ -6,9 +6,9 @@
 //! and runs it, and fails if it discovers none - an ignored test that nobody notices is the
 //! silently-skipped suite in a different costume.
 //!
-//! Nothing here is herdr-shaped and nothing here needs a daemon, which is the point: this crate
-//! is a child process, a path, and the promise that the path keeps working. What a daemon does
-//! once it is over there belongs to `muster-herdr`'s own devenv test.
+//! Nothing here needs a daemon, which is the point: this crate is a child process, a path, and
+//! the promise that the path keeps working. What a daemon does once it is over there belongs to
+//! `muster-daemon-client`'s own devenv test.
 //!
 //! These write only under `/tmp` on the far machine, so they can run beside that one.
 
