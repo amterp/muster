@@ -15,6 +15,15 @@ pub enum Screen {
     Alternate,
 }
 
+impl Screen {
+    pub(crate) fn raw(self) -> ffi::GhosttyTerminalScreen {
+        match self {
+            Screen::Primary => ffi::GhosttyTerminalScreen_GHOSTTY_TERMINAL_SCREEN_PRIMARY,
+            Screen::Alternate => ffi::GhosttyTerminalScreen_GHOSTTY_TERMINAL_SCREEN_ALTERNATE,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Rgb {
     pub r: u8,

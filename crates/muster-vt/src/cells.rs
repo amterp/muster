@@ -37,7 +37,12 @@ impl Terminal {
         Row { cells, wraps }
     }
 
-    fn grid_ref(&self, tag: ffi::GhosttyPointTag, x: u16, y: u32) -> Option<ffi::GhosttyGridRef> {
+    pub(crate) fn grid_ref(
+        &self,
+        tag: ffi::GhosttyPointTag,
+        x: u16,
+        y: u32,
+    ) -> Option<ffi::GhosttyGridRef> {
         let point = ffi::GhosttyPoint {
             tag,
             value: ffi::GhosttyPointValue { coordinate: ffi::GhosttyPointCoordinate { x, y } },

@@ -1,0 +1,381 @@
+{
+  "concept": "terminal.replay",
+  "source": "authored",
+  "citation": "MIP-3 sections 5 and 13; the formatter probe against libghostty 9f9b8d1d recorded in docs/observations/libghostty-9f9b8d1d.md. The oracle is libghostty-vt itself at run time: each case compares the replayed terminal with the original, so no expected bytes are written here.",
+  "why": "A pane's surface, and a daemon taking the pane over, both start from a terminal that has seen none of its output, and the replay is all they get. Each case is a state a real program leaves a terminal in, and passes only when nothing either terminal can be asked tells the original and the replay apart - before and after both receive the same further bytes. The expectation is therefore always an empty list; what varies is the state.",
+  "cases": [
+    {
+      "name": "a shell prompt under history",
+      "why": "The baseline every other case varies: history above, a prompt on the screen, and typing that has to land after the prompt rather than somewhere the replay shifted it to.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 30,
+        "feed": "$ ls\r\nnotes.txt\r\n$ ",
+        "after": "typed"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "trailing blank rows under history",
+      "why": "A shell after `clear` has history above and a blank screen below its prompt. The formatter stops at the last row with text, so a replay that restores the cursor without padding the blank rows back scrolls short, and typing lands on a history row (probe case 1: `liTYPED` over `line 2`).",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 10,
+        "feed": "\u001b[H\u001b[J$ ",
+        "after": "TYPED"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "the alternate screen and then its exit",
+      "why": "An agent TUI or an editor on the alternate screen when the surface attaches. When it exits, the surface must show the shell history that was there before it started - the pinned C formatter reaches only the active screen, so without a route to the primary one this is a blank pane (probe case 2).",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 8,
+        "feed": "$ vim notes.txt\r\n\u001b[?1049h\u001b[H~ vim content\u001b[3;5H",
+        "after": "\u001b[?1049lback at the prompt"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "the legacy alternate screen, entered with mode 47",
+      "why": "Mode 47 switches screens without saving the cursor or clearing, so leaving it must not restore a cursor the program never saved. The replay enters the alternate screen the way the program did.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 3,
+        "feed": "$ old-tui\r\n\u001b[?47h\u001b[Hlegacy",
+        "after": "\u001b[?47lX"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "the alternate screen over a cleared primary screen",
+      "why": "The primary screen's rows have to line up while the alternate one is active too, and the C API reports row counts only for the active screen. A shell that cleared its screen and then started a TUI has history above and blank rows below its prompt; on exit, typing must land after that prompt.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 12,
+        "feed": "\u001b[H\u001b[J$ top\r\n\u001b[?1049h\u001b[Htop output",
+        "after": "\u001b[?1049ltyped"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "insert mode and autowrap off",
+      "why": "A program left insert mode on and wrapping off. If the replay set those before writing the content, every character would shift the row instead of overwriting it and long lines would be truncated (probe case 3); they must hold afterwards, for the program's next bytes.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "hello\r\nworld\u001b[4h\u001b[?7l",
+        "after": "\u001b[1;1HXY\u001b[2;1Hzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "origin mode inside a scrolling region",
+      "why": "With origin mode on, a cursor position is relative to the scrolling region. A replay that restores the cursor with an absolute position, or sets the region after the cursor (DECSTBM homes it), leaves the program's next relative move in the wrong place.",
+      "given": {
+        "columns": 20,
+        "rows": 8,
+        "feed": "\u001b[3;6r\u001b[?6h\u001b[2;3H",
+        "after": "here\u001b[1;1Htop"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a scrolling region",
+      "why": "Output inside a region scrolls only the region's rows, which is how a status line stays put under a scrolling log. Losing the region on replay makes the status line scroll away with the next line of output.",
+      "given": {
+        "columns": 20,
+        "rows": 6,
+        "feed": "status line\r\n\u001b[2;5r\u001b[5;1Hlog",
+        "after": "\n\n\nmore log"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "custom tabstops",
+      "why": "A program that set its own tabstops expects a tab to land on them. The formatter emits tabstops by moving the cursor and never moves it back, so content replayed after them starts at column 17 (probe case 1); after the replay, tabs must land where the program put them.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[3g\u001b[6G\u001bH\u001b[13G\u001bH\u001b[1G",
+        "after": "\tA\tB"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "an untouched palette, then a theme switch",
+      "why": "Writing all 256 palette entries (the formatter's palette extra, 5.5 KB) marks each as a program's override, so a replayed pane stops following the app's light/dark switch. A pane nobody recolored must keep following it.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[31mred\u001b[0m",
+        "theme": 40
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a palette entry a program set, then a theme switch",
+      "why": "The other half of the case above: an entry a program changed with OSC 4 is the program's, and keeps its color through a theme switch in both terminals.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b]4;1;rgb:12/34/56\u001b\\\u001b[31mred\u001b[0m",
+        "theme": 40
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a background color the program set with OSC 11",
+      "why": "OSC 10, 11 and 12 are not in the formatter's output at all. A program that set its own background (a TUI theme) would come back with the app's.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b]11;rgb:10/20/30\u001b\\\u001b]10;rgb:e0/e0/e0\u001b\\themed"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a wide character at the last column of a soft-wrapped row",
+      "why": "A wide character that does not fit in the last column leaves a spacer there and wraps. Replayed unwrapped at the same width it must wrap the same way, or every cell after it moves.",
+      "given": {
+        "columns": 10,
+        "rows": 5,
+        "feed": "123456789\u4f60\u597d",
+        "after": "x"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "kitty keyboard flags pushed by the program",
+      "why": "An agent TUI pushes kitty keyboard flags and pops them on exit, and the daemon encodes keys from them. The current flags replay; the stack beneath them is readable neither through the C API nor through the formatter, so a program that pushed twice and then pops once goes back to no flags rather than to its first push. Known gap, pinned: one push and one pop - what agents do - comes out right, and the nested case is the difference below.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[>1u\u001b[>5u",
+        "after": "\u001b[<u"
+      },
+      "expect": {
+        "differences": [
+          "after: kitty keyboard flags: original 1, replayed 0"
+        ]
+      }
+    },
+    {
+      "name": "kitty keyboard flags on both screens",
+      "why": "Each screen keeps its own kitty keyboard flags, so the shell's flags come back when an agent TUI on the alternate screen exits. A replay that set flags once, for whichever screen was active, would leave the shell encoding keys the TUI's way after it exits.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[>1u$ tui\r\n\u001b[?1049h\u001b[>5u",
+        "after": "\u001b[?1049l"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a saved cursor, then restored",
+      "why": "DECSC saves the cursor and DECRC brings it back. The cursor the alternate screen saves on entry is replayed by construction (the primary screen's cursor is set before `?1049h`), but a cursor a program saved explicitly on the screen it is still on is readable neither through the C API nor through the formatter. Known gap, pinned: a program that saves and restores inside one burst of output - the usual way to draw a status line - is unaffected, and one that holds a saved cursor across an attach restores to the top-left instead.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[3;4H\u001b7\u001b[1;1Hstatus",
+        "after": "\u001b8X"
+      },
+      "expect": {
+        "differences": [
+          "after: cursor: original Cursor { column: 4, row: 2, is_visible: true }, replayed Cursor { column: 1, row: 0, is_visible: true }",
+          "after: row 0: \"status\" vs \"Xtatus\", cell 0 text \"s\", replayed \"X\""
+        ]
+      }
+    },
+    {
+      "name": "the cursor pending a wrap at the last column",
+      "why": "After a character in the last column the cursor waits to wrap until the next character arrives. A replay that positions the cursor there with CUP clears that state, and the next character overwrites the last column instead of starting a new row.",
+      "given": {
+        "columns": 10,
+        "rows": 5,
+        "feed": "0123456789",
+        "after": "X"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a status bar filled with a background color",
+      "why": "An erase under a background color paints the whole row, with text only at its start. The replayed row must be painted to the edge too. The formatter writes the painted cells after the text as spaces in that background, which draws the same; the driver forgives exactly that difference and no other.",
+      "given": {
+        "columns": 20,
+        "rows": 4,
+        "feed": "\u001b[4;1H\u001b[44m\u001b[2K status\u001b[0m\u001b[1;1H"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a row painted with a background and no text",
+      "why": "Known gap, pinned. The formatter treats a row with no text as blank whatever its colors, so a band a TUI painted with no text in it - an empty panel, a divider made of background - replays unpainted until the program draws again. Fixing it changes the formatter's existing output, which the carried patch does not do.",
+      "given": {
+        "columns": 20,
+        "rows": 4,
+        "feed": "\u001b[2;1H\u001b[41m\u001b[2K\u001b[0m\u001b[1;1H"
+      },
+      "expect": {
+        "differences": [
+          "row 1: \"\" vs \"\", cell 0 background Some(Palette(1)), replayed None"
+        ]
+      }
+    },
+    {
+      "name": "a style and a hyperlink left open by the program",
+      "why": "A program in the middle of writing a link in bold green expects the next characters it writes to be bold, green and linked too. This is the pen, which the replay restores; links on text already written are the next case.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[1;32m\u001b]8;;https://example.com\u001b\\",
+        "after": " more"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "hyperlinked text already on the screen",
+      "why": "Known gap, pinned so a fix shows up here. The formatter writes OSC 8 only for HTML (upstream says so at the spot, formatter.zig), so text that was a link replays as plain text and stops being clickable in the surface until the program writes it again. Fixing it changes the formatter's existing VT output, which the carried patch does not do (it only adds API). Detection and `muster pane read` are unaffected: they read the daemon's own terminal, not a replay.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b]8;;https://example.com\u001b\\link\u001b]8;;\u001b\\"
+      },
+      "expect": {
+        "differences": [
+          "row 0: \"link\" vs \"link\", cell 0 hyperlink Some(\"https://example.com\"), replayed None"
+        ]
+      }
+    },
+    {
+      "name": "the DEC special graphics character set",
+      "why": "A TUI that designated line-drawing characters draws `qqq` as a horizontal line. After a replay the same bytes must still draw a line.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b(0lqqk\u001b(B\r\n\u001b(0",
+        "after": "qqq"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a title and working directory",
+      "why": "A daemon taking a pane over in a handoff rebuilds it from the replay alone; the pane's title and directory are part of what it reports.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b]2;build: 3 of 7\u001b\\\u001b]7;file://host/tmp/project\u001b\\"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "mouse reporting and bracketed paste",
+      "why": "The daemon decides from these what a program gets for a click, a wheel turn and a paste. A handoff that dropped them would send a TUI raw scroll arrows and unfenced pastes.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[?1002h\u001b[?1006h\u001b[?2004h\u001b[?1004h"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "application cursor and keypad modes",
+      "why": "Arrow keys encode differently in application cursor mode; a pager or an editor that set it must keep getting the encoding it asked for.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[?1h\u001b="
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a hidden cursor",
+      "why": "A TUI hides the cursor while it draws. The receiving surface must not draw one where the program chose not to.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "drawing\u001b[?25l"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "protected cells on the screen",
+      "why": "DECSCA marks cells a selective erase must skip. The formatter writes no per-cell protection, so replayed cells lose it and the next selective erase wipes them. Known gap, pinned: selective erase is rare enough that no carried patch is worth it, and the pen's protection - what the program writes next - is the case after this one.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[1\"qkeep\u001b[0\"q lose",
+        "after": "\u001b[1;1H\u001b[?2K"
+      },
+      "expect": {
+        "differences": [
+          "row 0: \"keep lose\" vs \"keep lose\", cell 0 protected true, replayed false",
+          "after: row 0: \"keep\" vs \"\", cell 0 text \"k\", replayed \"\""
+        ]
+      }
+    },
+    {
+      "name": "protection left on by the program",
+      "why": "A program that turned DECSCA on expects what it writes next to be protected from a selective erase. That is the pen, which the replay restores.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b[1\"q",
+        "after": "keep\u001b[0\"q lose\u001b[1;1H\u001b[?2K"
+      },
+      "expect": {
+        "differences": []
+      }
+    }
+  ]
+}

@@ -12,11 +12,12 @@ mod grid;
 mod key_encoder;
 mod key_mapping;
 mod modes;
+mod replay;
 mod state;
 mod terminal;
 
 pub use build_info::engine_version;
-pub use formatter::{Extras, Format, FormatOptions};
+pub use formatter::{Extras, Format, FormatOptions, ScreenExtras, ScreenFormatOptions, Selection};
 pub use grid::{Cell, Color, Cursor, Grid, Row, Style, Width};
 pub use key_encoder::{EncoderError, KeyEncoder};
 pub use modes::Mode;
