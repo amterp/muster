@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "muster-daemon-can",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790487710044,
+  "creator": "Alexander Terp",
+  "description": "Each pane's environment carries MUSTER_DAEMON, the daemon executable's path, so agents can run muster-daemon report. The socket path is per install and stable, but an upgrade that moves the executable leaves long-lived panes pointing at a path that no longer exists, and their reports fail. Options: a stable launcher path per install, or resolving the executable through the socket.",
+  "id": "a_2XQXkImwB",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aW",
+  "title": "MUSTER_DAEMON can name a vanished binary after an upgrade",
+  "type": "bug",
+  "updated_at_millis": 1790487710044,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790487710044}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "re-read-muster-agent",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790487710143,
+  "creator": "Alexander Terp",
+  "description": "muster-daemon reads a person's detection overrides at start and whenever the app sends manifests. Editing an override while the daemon runs has no effect until the next app connect. Muster's configuration reloads on save elsewhere; overrides could too (a file watch, then the same reset-only-changed path send_manifests uses).",
+  "id": "a_2XQXkSlDI",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aX",
+  "title": "Re-read ~/.muster/agent-detection/ when it changes",
+  "type": "feature",
+  "updated_at_millis": 1790487710143,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790487710143}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "extras-claude-code",
+  "alias_explicit": false,
+  "area": [
+    "devenv"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790487710242,
+  "creator": "Alexander Terp",
+  "description": "The Claude Code statusline wrapper reads the statusline JSON with jq. A devenv without jq silently reports nothing (it still draws the person's statusline). Either document installing jq, or make the reporting path jq-free (e.g. the report verb reading Claude Code's JSON on stdin itself).",
+  "id": "a_2XQXkbIHd",
+  "parent": "a_2XJ1fUIyr",
+  "position": "aY",
+  "title": "extras/claude-code/statusline.sh needs jq on a Linux devenv",
+  "type": "chore",
+  "updated_at_millis": 1790487710242,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790487710242}
+  ]
+}

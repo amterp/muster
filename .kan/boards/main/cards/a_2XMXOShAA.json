@@ -6,13 +6,20 @@
     "backend",
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Design settled 2026-09-26 (integrator), from what Claude Code documents (code.claude.com/docs/en/statusline.md, hooks.md, agent-view.md):\n- Claude Code's statusline command receives JSON on every assistant message (and on a refreshInterval timer): context_window.used_percentage / remaining_percentage / total_input_tokens / context_window_size, model.id / display_name, cost.total_cost_usd, session_id, transcript_path, rate_limits. No sub-agent count.\n- Hooks SubagentStart / SubagentStop fire per sub-agent (with its type), so a running count is start minus stop.\n- `claude agents --json` (stable) gives state working|blocked|done|failed|stopped and waitingFor (permission prompt | input needed | dialog open ...) per session pid - a stronger blocked/done signal for Claude than screen reading, e.g. for the plan-approval dialog Muster reads as done.\n- All of these can run a shell command, so an agent can report its own facts.\nDecision for v1: agent-reported facts, stored and published by the daemon (view = f(daemon state); they survive app quits and work on the devenv with no window). A verb run from inside the pane reports to the daemon that owns it, named by $MUSTER_PANE - e.g. `muster agent report --context 31 --model opus --cost 1.2` and `--subagent-started / --subagent-stopped`. A small vocabulary of well-known facts the view renders (context used %, sub-agents running, model, cost) plus free-form key/values passed through. Reported facts are per pane and cleared when the agent in the pane changes (detection sees a new agent). Screen-captured facts via manifests are a later addition, not v1 (statuslines are user-configurable). Harness wiring (statusline snippet, hook config) ships as docs/skill in extras/, not Muster code. Open for the implementer: the verb's transport (the pane needs the daemon socket: a MUSTER_DAEMON_SOCKET env var in every pane, and a reporting subcommand available on Linux where no muster CLI exists yet - possibly the daemon binary itself), and how the sidebar shows facts without clutter. Sequenced with the detection wiring (a_2XORXgBGa).",
       "created_at_millis": 1790482899577,
       "id": "c_2XOWbVD6N"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Daemon side done in round 3: muster-daemon report subcommand, MUSTER_DAEMON/MUSTER_DAEMON_SOCKET in each pane, Pane.facts on the record, extras/claude-code/ statusline and hooks, checked against Claude Code 2.1.283. Rendering (mirror, sidebar, muster window, pane wait) is a_2XQXk8sou, after the cut-over.",
+      "created_at_millis": 1790487709845,
+      "id": "c_2XQXk0jZw",
+      "updated_at_millis": 1790487718699
     }
   ],
   "created_at_millis": 1790478163397,
@@ -20,11 +27,12 @@
   "description": "Raised by amterp 2026-09-26: when you look at an agent in Muster - `muster window`, `muster pane` output, the sidebar - you should see at a glance not only whether it is working/blocked/idle/done, but how full its context is, whether it has sub-agents running, and similar detail. Muster should have a concept of rich agent state, not just the four states.\n\nWhy now: MIP-3 moves agent detection into muster-daemon (a_2XJ1gk34C ports herdr's engine), so the daemon becomes the place that reads every agent's screen on a cadence. Extracting facts is the same machinery as detecting state.\n\nDirections to weigh (not decided):\n- Screen facts through the manifests: a rule gains named captures (e.g. a statusline region matching `(\\d+)%` as `context_percent`, a 'N agents running' line as `subagents`), published as key/value facts beside the state on the daemon's event stream and in the protocol's Pane record. Cheap and harness-agnostic in mechanism, but statuslines are user-configurable (amterp's is custom), so screen parsing alone is fragile.\n- Agent-reported facts: the agent (via a hook, or its statusline command) reports its own facts to the daemon, e.g. `muster agent report --context 31% --subagents 2` from inside the pane (`$MUSTER_PANE` names it). Authoritative and survives UI changes; needs per-harness wiring (a skill or hook config, not Muster code), which fits 'one thing we support, never the thing we are'. Worth checking what Claude Code hands its statusline command and hooks (context window usage, sub-agent/task activity) before designing.\n- Likely both: reported facts win, screen facts fill in.\n\nShape to settle: a small vocabulary of well-known facts Muster understands and renders (context used, sub-agents, current task/title, cost?) plus free-form key/values passed through; how the sidebar shows it without clutter; `muster window --json` carrying it; `muster pane wait` able to wait on a fact (e.g. context over 80%).\n\nSequencing: after the detection port lands in the daemon (MIP-3 round 3), and before or alongside the cut-over so the protocol's Pane record is shaped once. Also relevant to the message service (a_2Rtd0Ed0l), whose presence adapter wants the same facts.",
   "id": "a_2XMXOShAA",
   "parent": "a_2XJ1fUIyr",
-  "position": "ap",
+  "position": "Zn",
   "title": "An agent says more than its state: context used, sub-agents running, and what it is doing",
   "type": "feature",
-  "updated_at_millis": 1790482899577,
+  "updated_at_millis": 1790487718699,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790478163397}
+    {"field":"column","value":"backlog-hi","at":1790478163397},
+    {"field":"column","value":"done","at":1790487709790}
   ]
 }
