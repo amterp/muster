@@ -7,6 +7,7 @@
 //! else.
 
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 use muster_core::diagnostics::poison;
 use muster_daemon_proto as proto;
@@ -35,6 +36,10 @@ pub(crate) const DEFAULT_SCROLLBACK: usize = 10_000_000;
 /// an id the surface no longer has. If the app ever exposes Ghostty's `image-storage-limit`, this
 /// takes the same value.
 const KITTY_IMAGE_BYTES: u64 = 320_000_000;
+
+/// How long a kitty image still arriving may go without a chunk before the daemon takes its
+/// program to be gone.
+const LOADING_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Everything the app has said that each pane's terminal applies: what it draws with and
 /// allows, and how much history to keep.
@@ -154,6 +159,8 @@ pub(crate) struct Screen {
     scrollback: usize,
     /// The bridge drawing this pane, if one is attached.
     bridge: Option<Bridge>,
+    /// The size a kitty image still arriving had reached, and when it last grew.
+    arriving: Option<(u64, Instant)>,
 }
 
 impl std::fmt::Debug for Screen {
@@ -191,6 +198,7 @@ impl Screen {
             scheme: settled.appearance.scheme,
             scrollback: settled.scrollback,
             bridge: None,
+            arriving: None,
         };
         screen.appear(&settled.appearance);
         Ok(screen)
@@ -208,6 +216,10 @@ impl Screen {
     fn feed(&mut self, bytes: &[u8]) -> Vec<Happened> {
         self.terminal.write(bytes);
         self.offset += bytes.len() as u64;
+        let arrived = self.terminal.kitty_image_loading_bytes();
+        if self.arriving.is_none_or(|(bytes, _)| bytes != arrived) {
+            self.arriving = (arrived > 0).then(|| (arrived, Instant::now()));
+        }
         if !bytes.is_empty() {
             self.content_seq += 1;
         }
@@ -277,7 +289,7 @@ impl Screen {
         }
         bridge.attached(self.offset);
         bridge.replay(&self.terminal.replay());
-        self.terminal.forget_kitty_images();
+        self.forget_kitty_images(Instant::now());
         self.bridge = Some(bridge);
         Ok(())
     }
@@ -293,7 +305,7 @@ impl Screen {
         let at_prompt = self.terminal.clear_screen();
         if let Some(bridge) = &self.bridge {
             bridge.replay(&self.terminal.replay());
-            self.terminal.forget_kitty_images();
+            self.forget_kitty_images(Instant::now());
         }
         if at_prompt { Cleared::AtPrompt } else { Cleared::Elsewhere }
     }
@@ -323,8 +335,21 @@ impl Screen {
         let Some(bridge) = self.bridge.as_mut().filter(|bridge| bridge.id() == id) else { return };
         if bridge.acknowledge(bytes) {
             bridge.replay(&self.terminal.catch_up());
-            self.terminal.forget_kitty_images();
+            self.forget_kitty_images(Instant::now());
         }
+    }
+
+    /// Forgets the kitty images, since the surface a replay was just sent to holds none.
+    ///
+    /// An image still arriving is spared, since forgetting it would fail the chunks to come,
+    /// unless it has not grown for [`LOADING_GRACE`]: its program was cut off mid-upload, and
+    /// libghostty would keep it arriving, and the images known, until the pane is reset.
+    fn forget_kitty_images(&mut self, now: Instant) {
+        if self.arriving.is_some_and(|(_, grew)| now.duration_since(grew) >= LOADING_GRACE) {
+            self.terminal.drop_kitty_image_loading();
+            self.arriving = None;
+        }
+        self.terminal.forget_kitty_images();
     }
 
     pub(crate) fn resize(&mut self, grid: Grid) -> Result<(), TerminalError> {
@@ -450,6 +475,37 @@ mod tests {
         assert!(screen.settle(&settled(2, &palette(proto::ColorScheme::Dark))).is_none());
         let again = screen.settle(&settled(4, &palette(proto::ColorScheme::Light)));
         assert_eq!(again.and_then(|settling| settling.report), None, "light was light already");
+    }
+
+    /// A pane whose image upload was cut off between two chunks, with the shell back at its
+    /// prompt.
+    fn upload_cut_off() -> Screen {
+        let grid = Grid { cols: 20, rows: 3, width_px: 200, height_px: 60 };
+        let mut screen =
+            Screen::new(grid, &settled(1, &proto::Settings::default())).expect("a terminal");
+        screen.feed(b"\x1b_Ga=t,f=32,s=1,v=1,i=7,q=2,m=1;AAAA\x1b\\");
+        screen.feed(b"\r\n$ ");
+        assert!(screen.terminal.kitty_image_loading(), "libghostty keeps it arriving");
+        screen
+    }
+
+    #[test]
+    fn an_upload_cut_off_is_let_go_once_it_has_stopped_growing_for_a_while() {
+        let mut screen = upload_cut_off();
+        screen.forget_kitty_images(Instant::now() + LOADING_GRACE / 2);
+        assert!(screen.terminal.kitty_image_loading(), "a pause is not a program gone");
+
+        screen.forget_kitty_images(Instant::now() + LOADING_GRACE);
+        assert!(!screen.terminal.kitty_image_loading(), "the upload was let go");
+    }
+
+    #[test]
+    fn an_upload_still_growing_is_spared() {
+        let mut screen = upload_cut_off();
+        let paused = Instant::now() + LOADING_GRACE;
+        screen.feed(b"\x1b_Gm=1;AAAA\x1b\\");
+        screen.forget_kitty_images(paused);
+        assert!(screen.terminal.kitty_image_loading(), "it grew just now");
     }
 
     fn palette(scheme: proto::ColorScheme) -> proto::Settings {

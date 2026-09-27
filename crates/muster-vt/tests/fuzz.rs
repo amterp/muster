@@ -278,6 +278,9 @@ fn interleave(rng: &mut Rng, terminal: &mut Terminal) {
         }
         2 => {
             let replay = terminal.replay();
+            if rng.below(2) == 0 {
+                terminal.drop_kitty_image_loading();
+            }
             terminal.forget_kitty_images();
             let mut other = terminal_like(terminal);
             other.write(&replay);
@@ -318,6 +321,7 @@ fn interleave(rng: &mut Rng, terminal: &mut Terminal) {
             let _ = terminal.mouse_tracking();
             let _ = terminal.kitty_keyboard_flags();
             let _ = terminal.kitty_image_loading();
+            let _ = terminal.kitty_image_loading_bytes();
             for mode in Mode::all() {
                 let _ = terminal.mode(mode);
             }

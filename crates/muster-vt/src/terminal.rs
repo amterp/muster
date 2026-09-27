@@ -225,6 +225,23 @@ impl Terminal {
         loading
     }
 
+    /// How many bytes of the kitty images still arriving have arrived: 0 when none is. It
+    /// grows with every chunk that carries data.
+    pub fn kitty_image_loading_bytes(&self) -> u64 {
+        let mut bytes = 0u64;
+        // SAFETY: the terminal is live for as long as self, and the out pointer is a local the
+        // call writes a u64 to, as muster.h documents.
+        unsafe { ffi::ghostty_terminal_kitty_image_loading_bytes(self.terminal, &raw mut bytes) };
+        bytes
+    }
+
+    /// Drops the kitty images still arriving, as a full reset does, for one whose program
+    /// stopped sending: nothing else ends it but another transmission, which is appended to it.
+    pub fn drop_kitty_image_loading(&mut self) {
+        // SAFETY: the terminal is live and exclusively borrowed.
+        unsafe { ffi::ghostty_terminal_kitty_image_drop_loading(self.terminal) };
+    }
+
     fn set(
         &mut self,
         option: ffi::GhosttyTerminalOption,

@@ -47,6 +47,11 @@ include/ghostty/vt/muster.h, terminal state the C API does not reach:
   the binding on a terminal with no Termio.
 - ghostty_terminal_kitty_image_loading: whether a chunked kitty image is
   still arriving, so a caller forgetting images can wait for its end.
+- ghostty_terminal_kitty_image_loading_bytes and
+  ghostty_terminal_kitty_image_drop_loading: how much of that image has
+  arrived, and dropping it. A program cut off between two chunks leaves
+  its image arriving until a full reset, so a caller that sees it stop
+  growing can let it go.
 
 Additive only: new functions, one struct, options that default to the
 existing output, no existing behavior changed.
@@ -176,10 +181,10 @@ index 5cdcd11a..e6e3200b 100644
   *
 diff --git a/include/ghostty/vt/muster.h b/include/ghostty/vt/muster.h
 new file mode 100644
-index 00000000..556656e3
+index 00000000..150eb755
 --- /dev/null
 +++ b/include/ghostty/vt/muster.h
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,114 @@
 +/**
 + * @file muster.h
 + *
@@ -266,16 +271,39 @@ index 00000000..556656e3
 +    GhosttyTerminal terminal,
 +    bool* out);
 +
++/**
++ * How many bytes of the kitty images still arriving have arrived, across
++ * both screens: 0 when none is arriving. It grows with every chunk, so a
++ * caller can tell an upload still under way from one whose program
++ * stopped sending.
++ *
++ * @return GHOSTTY_SUCCESS, or GHOSTTY_INVALID_VALUE for a NULL argument
++ */
++GHOSTTY_API GhosttyResult ghostty_terminal_kitty_image_loading_bytes(
++    GhosttyTerminal terminal,
++    uint64_t* out);
++
++/**
++ * Drops the kitty images still arriving on both screens, as a full reset
++ * does. Nothing else does: a program cut off between two chunks leaves
++ * its image arriving until another transmission ends it, and that one is
++ * appended to it.
++ *
++ * @return GHOSTTY_SUCCESS, or GHOSTTY_INVALID_VALUE for a NULL terminal
++ */
++GHOSTTY_API GhosttyResult ghostty_terminal_kitty_image_drop_loading(
++    GhosttyTerminal terminal);
++
 +#ifdef __cplusplus
 +}
 +#endif
 +
 +#endif /* GHOSTTY_VT_MUSTER_H */
 diff --git a/src/lib_vt.zig b/src/lib_vt.zig
-index 5b78b8cb..f8babe71 100644
+index 5b78b8cb..5ed7391c 100644
 --- a/src/lib_vt.zig
 +++ b/src/lib_vt.zig
-@@ -262,9 +262,16 @@ comptime {
+@@ -262,9 +262,18 @@ comptime {
          @export(&c.sgr_attribute_tag, .{ .name = "ghostty_sgr_attribute_tag" });
          @export(&c.sgr_attribute_value, .{ .name = "ghostty_sgr_attribute_value" });
          @export(&c.formatter_terminal_new, .{ .name = "ghostty_formatter_terminal_new" });
@@ -289,6 +317,8 @@ index 5b78b8cb..f8babe71 100644
 +        @export(&c.muster_mouse_shift_capture, .{ .name = "ghostty_terminal_mouse_shift_capture" });
 +        @export(&c.muster_clear_screen, .{ .name = "ghostty_terminal_clear_screen" });
 +        @export(&c.muster_kitty_image_loading, .{ .name = "ghostty_terminal_kitty_image_loading" });
++        @export(&c.muster_kitty_image_loading_bytes, .{ .name = "ghostty_terminal_kitty_image_loading_bytes" });
++        @export(&c.muster_kitty_image_drop_loading, .{ .name = "ghostty_terminal_kitty_image_drop_loading" });
          @export(&c.terminal_selection_format_buf, .{ .name = "ghostty_terminal_selection_format_buf" });
          @export(&c.terminal_selection_format_alloc, .{ .name = "ghostty_terminal_selection_format_alloc" });
          @export(&c.render_state_new, .{ .name = "ghostty_render_state_new" });
@@ -966,10 +996,10 @@ index 9b3c143a..b1464f67 100644
 +    );
 +}
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
-index d6f9e665..ef45b258 100644
+index d6f9e665..57950c56 100644
 --- a/src/terminal/c/main.zig
 +++ b/src/terminal/c/main.zig
-@@ -78,10 +78,19 @@ pub const focus_encode = focus.encode;
+@@ -78,10 +78,21 @@ pub const focus_encode = focus.encode;
  pub const mode_report_encode = modes.report_encode;
  
  pub const formatter_terminal_new = formatter.terminal_new;
@@ -985,11 +1015,13 @@ index d6f9e665..ef45b258 100644
 +pub const muster_mouse_shift_capture = muster.mouse_shift_capture;
 +pub const muster_clear_screen = muster.clear_screen;
 +pub const muster_kitty_image_loading = muster.kitty_image_loading;
++pub const muster_kitty_image_loading_bytes = muster.kitty_image_loading_bytes;
++pub const muster_kitty_image_drop_loading = muster.kitty_image_drop_loading;
 +
  pub const render_state_new = render.new;
  pub const render_state_free = render.free;
  pub const render_state_update = render.update;
-@@ -260,6 +269,7 @@ test {
+@@ -260,6 +271,7 @@ test {
      _ = focus;
      _ = formatter;
      _ = modes;
@@ -999,13 +1031,13 @@ index d6f9e665..ef45b258 100644
      _ = selection;
 diff --git a/src/terminal/c/muster.zig b/src/terminal/c/muster.zig
 new file mode 100644
-index 00000000..b67a8a41
+index 00000000..ce044226
 --- /dev/null
 +++ b/src/terminal/c/muster.zig
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,297 @@
 +//! Terminal state and actions Muster needs that the rest of the C API does not reach: each
 +//! screen's cursor style, the mouse tracking mode in effect, the shift-capture flag, and the
-+//! terminal half of Ghostty's clear_screen. Kept in a file of its own so a re-pin rebases only
++//! terminal half of Ghostty's clear_screen, and the kitty image still arriving. Kept in a file of its own so a re-pin rebases only
 +//! the lines that export it.
 +
 +const std = @import("std");
@@ -1125,6 +1157,42 @@ index 00000000..b67a8a41
 +    return .success;
 +}
 +
++/// How many bytes of the kitty images still arriving have arrived, across both screens: 0 when
++/// none is arriving. It grows with every chunk, so a caller can tell an upload still under way
++/// from one whose program stopped sending.
++pub fn kitty_image_loading_bytes(
++    terminal_: terminal_c.Terminal,
++    out: ?*u64,
++) callconv(lib.calling_conv) Result {
++    const t = (terminal_ orelse return .invalid_value).terminal;
++    const bytes = out orelse return .invalid_value;
++    bytes.* = 0;
++    if (comptime build_options.kitty_graphics) {
++        for ([_]ScreenSet.Key{ .primary, .alternate }) |key| {
++            const screen = t.screens.get(key) orelse continue;
++            if (screen.kitty_images.loading) |loading| bytes.* += loading.data.items.len;
++        }
++    }
++    return .success;
++}
++
++/// Drops the kitty images still arriving on both screens, as a full reset does. Nothing else
++/// does: a program cut off between two chunks leaves its image arriving until another
++/// transmission ends it, and that one is appended to it.
++pub fn kitty_image_drop_loading(terminal_: terminal_c.Terminal) callconv(lib.calling_conv) Result {
++    const t = (terminal_ orelse return .invalid_value).terminal;
++    if (comptime build_options.kitty_graphics) {
++        for ([_]ScreenSet.Key{ .primary, .alternate }) |key| {
++            const screen = t.screens.get(key) orelse continue;
++            if (screen.kitty_images.loading) |loading| {
++                loading.destroy(screen.alloc);
++                screen.kitty_images.loading = null;
++            }
++        }
++    }
++    return .success;
++}
++
 +test "screen_cursor_style reads each screen's own style" {
 +    var t: terminal_c.Terminal = null;
 +    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 4));
@@ -1222,6 +1290,31 @@ index 00000000..b67a8a41
 +    terminal_c.vt_write(t, last, last.len);
 +    try testing.expectEqual(Result.success, kitty_image_loading(t, &loading));
 +    try testing.expect(!loading);
++}
++
++test "kitty_image_drop_loading ends an upload whose program stopped sending" {
++    var t: terminal_c.Terminal = null;
++    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 3));
++    defer terminal_c.free(t);
++
++    var bytes: u64 = 1;
++    try testing.expectEqual(Result.success, kitty_image_loading_bytes(t, &bytes));
++    try testing.expectEqual(@as(u64, 0), bytes);
++
++    const first = "\x1b_Ga=t,f=32,s=1,v=1,i=7,q=2,m=1;AAAA\x1b\\";
++    terminal_c.vt_write(t, first, first.len);
++    const prompt = "\r\n$ ";
++    terminal_c.vt_write(t, prompt, prompt.len);
++    try testing.expectEqual(Result.success, kitty_image_loading_bytes(t, &bytes));
++    if (!build_options.kitty_graphics) return;
++    try testing.expect(bytes > 0);
++
++    try testing.expectEqual(Result.success, kitty_image_drop_loading(t));
++    var loading = true;
++    try testing.expectEqual(Result.success, kitty_image_loading(t, &loading));
++    try testing.expect(!loading);
++    try testing.expectEqual(Result.success, kitty_image_loading_bytes(t, &bytes));
++    try testing.expectEqual(@as(u64, 0), bytes);
 +}
 +
 +test "clear_screen leaves the alternate screen alone" {
