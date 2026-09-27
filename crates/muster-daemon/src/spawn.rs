@@ -19,13 +19,16 @@ pub(crate) const PANE_COMMAND: &str = "MUSTER_PANE_COMMAND";
 /// The daemon's own executable and its socket, so a program in the pane can reach the daemon
 /// that owns it with no window involved: `"$MUSTER_DAEMON" report` is how an agent's hooks say
 /// what it is doing. The executable rather than a `muster` on `PATH`, because it is the one
-/// program certain to be on every machine with panes, a devenv included.
+/// program certain to be on every machine with panes, a devenv included. Named through a link
+/// beside the socket (`server::point_link`), which follows the pane to whichever daemon holds it
+/// after a handoff, so a daemon's directory can go once no daemon runs from it.
 pub(crate) const DAEMON: &str = "MUSTER_DAEMON";
 pub(crate) const DAEMON_SOCKET: &str = "MUSTER_DAEMON_SOCKET";
 
 /// How a pane's programs reach the daemon that owns it.
 #[derive(Debug, Clone)]
 pub(crate) struct Reachable {
+    /// The link beside the socket, or the executable itself where the link could not be made.
     /// Absent when the daemon could not find its own executable.
     pub(crate) daemon: Option<std::path::PathBuf>,
     pub(crate) socket: std::path::PathBuf,

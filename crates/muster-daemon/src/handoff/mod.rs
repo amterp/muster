@@ -126,6 +126,8 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
                 pane.io.release_reader();
             }
             shared.socket.accepting.release();
+            // A new daemon that died after committing had pointed it at itself.
+            shared.point_link();
             handing.persister.resume();
             if let Some(log) = &handing.log {
                 log.write_file();
@@ -345,6 +347,7 @@ pub(crate) fn take_over(
         log.write_file();
     }
     shared.lock().release_readers();
+    shared.point_link();
     crate::serve(&shared, signals, stopping)?;
     persister.arm();
     persister.changed();

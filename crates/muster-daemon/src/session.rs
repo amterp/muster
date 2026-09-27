@@ -60,6 +60,8 @@ pub(crate) struct Places {
     /// A person's detection manifests, `~/.muster/agent-detection/`.
     pub(crate) overrides: Option<PathBuf>,
     pub(crate) reachable: spawn::Reachable,
+    /// The daemon's own executable, which a `replace` starts unless told otherwise.
+    pub(crate) executable: Option<PathBuf>,
     /// What the daemon gives its shells: the terminfo entry and the shell integration.
     pub(crate) data: Data,
     /// The daemon's own log, which a client can follow. None when logging is off.
@@ -105,7 +107,7 @@ impl Shared {
         saved: Saved,
         socket: Socket,
     ) -> Arc<Shared> {
-        let Places { home, overrides, reachable, data, log } = places;
+        let Places { home, overrides, reachable, executable, data, log } = places;
         let Saved { persister, settings, restoring } = saved;
         Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
@@ -156,6 +158,7 @@ impl Shared {
                     home,
                     data,
                     reachable,
+                    executable,
                     next_serial: 0,
                     ended,
                     reports,
@@ -178,6 +181,18 @@ impl Shared {
         Locked { session: Some(poison::lock(&self.session, "daemon.session")) }
     }
 
+    /// Points the link beside the socket at this daemon, and tells panes started from now the
+    /// link. The link is written with the session unlocked.
+    pub(crate) fn point_link(&self) {
+        let (socket, executable) = {
+            let session = self.lock();
+            (session.reachable.socket.clone(), session.executable.clone())
+        };
+        let Some(executable) = executable else { return };
+        let daemon = crate::server::point_link(&socket, &executable);
+        self.lock().reachable.daemon = Some(daemon);
+    }
+
     /// Puts in use the manifests the app sent the daemon this one replaced.
     pub(crate) fn adopt_manifests(&self, manifests: Vec<proto::Manifest>) {
         let sent = proto::SendManifests { engine: 0, manifests };
@@ -198,9 +213,10 @@ impl Places {
         let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
         let overrides = muster_daemon_proto::install::muster_home(|name| std::env::var(name).ok())
             .map(|muster_home| muster_home.join("agent-detection"));
+        let executable = std::env::current_exe().ok();
         let reachable =
-            spawn::Reachable { daemon: std::env::current_exe().ok(), socket: socket.to_path_buf() };
-        Places { home, overrides, reachable, data, log }
+            spawn::Reachable { daemon: executable.clone(), socket: socket.to_path_buf() };
+        Places { home, overrides, reachable, executable, data, log }
     }
 }
 
@@ -280,6 +296,7 @@ pub(crate) struct Session {
     data: Data,
     /// How a pane's programs reach this daemon, which every pane's environment says.
     reachable: spawn::Reachable,
+    executable: Option<PathBuf>,
     next_serial: u64,
     ended: Ended,
     /// Where panes send what their programs asked for, for the publisher to apply here.
@@ -1738,8 +1755,7 @@ impl Session {
         if let Some(why) = refused {
             return Handled::Reply(Reply::refused(why));
         }
-        let Some(program) =
-            replace.program.map(PathBuf::from).or_else(|| self.reachable.daemon.clone())
+        let Some(program) = replace.program.map(PathBuf::from).or_else(|| self.executable.clone())
         else {
             return Handled::Reply(Reply::refused(
                 "this daemon could not find its own executable; name the program to replace it with",
@@ -1963,6 +1979,7 @@ mod tests {
             home: PathBuf::from("/"),
             overrides: None,
             reachable: spawn::Reachable { daemon: None, socket: file.with_extension("sock") },
+            executable: None,
             data: Data::unchecked(PathBuf::from("/nonexistent")),
             log: None,
         };

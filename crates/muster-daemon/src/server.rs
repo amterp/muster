@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -40,6 +40,38 @@ impl Socket {
     pub(crate) fn new(path: PathBuf, listener: UnixListener, lock: File) -> io::Result<Socket> {
         listener.set_nonblocking(true)?;
         Ok(Socket { path, listener, lock, accepting: Hold::new(false)? })
+    }
+}
+
+/// Points the link beside `socket`, `<socket stem>.muster-daemon`, at `executable`, replacing what
+/// it named in one rename, and returns what a pane is told the daemon's executable is: the link,
+/// or `executable` itself when the link could not be made. Each daemon points it at itself as it
+/// starts to serve, a daemon taking over included.
+pub(crate) fn point_link(socket: &Path, executable: &Path) -> PathBuf {
+    let link = socket.with_extension("muster-daemon");
+    let mut temporary = link.as_os_str().to_owned();
+    temporary.push(format!(".{}", std::process::id()));
+    let temporary = PathBuf::from(temporary);
+    let _ = std::fs::remove_file(&temporary);
+    let pointed = std::os::unix::fs::symlink(executable, &temporary)
+        .and_then(|()| std::fs::rename(&temporary, &link));
+    match pointed {
+        Ok(()) => link,
+        Err(error) => {
+            let _ = std::fs::remove_file(&temporary);
+            log::warn(
+                "daemon.link.not_pointed",
+                fields! {
+                    "link" => link.display(),
+                    "executable" => executable.display(),
+                    "error" => error,
+                    "impact" => "panes started from now are told this executable's own path, \
+                                 which a handoff to a daemon elsewhere leaves them naming",
+                    "check" => "the permissions on the socket's directory",
+                },
+            );
+            executable.to_path_buf()
+        }
     }
 }
 

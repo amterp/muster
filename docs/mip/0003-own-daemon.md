@@ -286,7 +286,12 @@ in, plus:
   parts are what stay true;
 - `MUSTER_PANE` and `MUSTER_SOCKET`;
 - `MUSTER_DAEMON` and `MUSTER_DAEMON_SOCKET`, the daemon's own executable and its socket, which
-  is how a program in the pane reaches the daemon that owns it (section 2, an agent's own facts);
+  is how a program in the pane reaches the daemon that owns it (section 2, an agent's own facts).
+  The executable is named through a link beside the socket, `<socket stem>.muster-daemon`, which
+  each daemon points at itself as it starts to serve, a daemon taking over by handoff included
+  (section 10): a pane outlives the daemon that started it, and the directory an older daemon ran
+  from can go once none runs from it. Where the link cannot be made, a pane is told the
+  executable's own path;
 - Ghostty's shell integration for bash, zsh and fish, injected the way Ghostty injects it, so
   prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work. Its
   `path` and `title` features are on, as in Ghostty. Its `cursor` feature, which sets a bar at

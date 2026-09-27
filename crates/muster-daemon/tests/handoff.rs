@@ -265,3 +265,39 @@ fn a_new_daemon_that_refuses_or_dies_at_any_step_leaves_the_old_one_serving() {
         assert!(written(&daemon.root().join("daemon.log")).contains("daemon.handoff.failed"));
     }
 }
+
+/// A pane names its daemon through a link beside the socket, which the daemon taking over points
+/// at itself: a pane started before a handoff to a daemon elsewhere still reaches its daemon
+/// once the old one's copy is gone, as an upgrade leaves it.
+#[test]
+fn a_pane_reaches_its_daemon_through_muster_daemon_after_the_old_copy_is_gone() {
+    // Beside the build's own directory, as deep: a debug build on macOS finds libghostty-vt by
+    // a path relative to itself.
+    let built = std::path::Path::new(env!("CARGO_BIN_EXE_muster-daemon"));
+    let target = built.parent().and_then(std::path::Path::parent).unwrap();
+    let copy = |name: &str| {
+        let path =
+            target.join(format!("handoff-{}-{name}", std::process::id())).join("muster-daemon");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::copy(built, &path).unwrap();
+        path
+    };
+    let (old, new) = (copy("old"), copy("new"));
+    let mut daemon = Daemon::start(&old);
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+
+    let answer = daemon.replace(Some(&new));
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    std::fs::remove_dir_all(old.parent().unwrap()).unwrap();
+
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    type_line(&mut input, "p1", "\"$MUSTER_DAEMON\" report --model Linked && echo reported");
+    until_text(&mut control, "p1", "\nreported");
+    let record = snapshot(&mut control).panes.into_iter().find(|record| record.pane == "p1");
+    let model = record.and_then(|record| record.facts).and_then(|facts| facts.model);
+    assert_eq!(model.as_deref(), Some("Linked"));
+    drop(daemon);
+    let _ = std::fs::remove_dir_all(new.parent().unwrap());
+}

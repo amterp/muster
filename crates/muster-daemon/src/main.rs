@@ -165,6 +165,7 @@ fn run(socket: &Path, data: Option<&Path>, signals: libc::sigset_t) -> Result<()
     let (saved, state) = saved(&socket.path);
     let persister = Arc::clone(&saved.persister);
     let shared = Shared::new(instance(), stopping.clone(), inherited, places, saved, socket);
+    shared.point_link();
     serve(&shared, signals, stopping).map_err(Failure::Other)?;
 
     // Once the socket is served: a shell starting in a directory on a hung mount must not keep
