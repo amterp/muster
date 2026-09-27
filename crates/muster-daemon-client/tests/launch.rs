@@ -102,3 +102,17 @@ fn a_stopped_daemon_stops_answering() {
     let (reached, _) = ensure_running(&scratch.launch()).unwrap();
     assert_eq!(reached, Reached::Started, "nothing was left answering");
 }
+
+/// A daemon that accepts and never answers, as a stopped or deadlocked one does, fails the
+/// dial within the handshake's bound and is never taken for an empty socket.
+#[test]
+fn a_daemon_that_accepts_and_never_answers_is_not_waited_on_for_ever() {
+    let scratch = Scratch::new();
+    let listener = std::os::unix::net::UnixListener::bind(&scratch.socket).unwrap();
+    let held = std::thread::spawn(move || listener.accept().map(|(stream, _)| stream));
+    let started = std::time::Instant::now();
+    let error = ensure_running(&scratch.launch()).unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(8), "took {:?}", started.elapsed());
+    assert!(error.contains("is not answering"), "{error}");
+    drop(held.join().unwrap());
+}

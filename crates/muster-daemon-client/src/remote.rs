@@ -57,6 +57,16 @@ pub fn ensure_running(
     match probe(local_socket) {
         Ok(welcome) => return Ok((Reached::Adopted, welcome)),
         Err(HandshakeError::Unreachable(_)) => {}
+        Err(HandshakeError::Stalled(why)) => {
+            return Err(format!(
+                "the daemon on {} is not answering through the ssh forward: {why}. Its panes \
+                 are absent from this window until it answers. Either the connection to {} has \
+                 stalled (a VPN that dropped with the ssh master still up), or the daemon there \
+                 is stopped or stuck; its log is beside its socket there.",
+                remote.host(),
+                remote.host()
+            ));
+        }
         Err(error) => {
             return Err(format!(
                 "the daemon on {} would not talk to this app: {error}. Its panes are still \

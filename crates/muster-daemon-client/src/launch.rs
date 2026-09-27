@@ -59,6 +59,15 @@ pub fn ensure_running(launch: &Launch) -> Result<(Reached, Welcome), String> {
     match probe(launch.socket) {
         Ok(welcome) => return Ok((Reached::Adopted, welcome)),
         Err(HandshakeError::Unreachable(_)) => {}
+        Err(HandshakeError::Stalled(why)) => {
+            return Err(format!(
+                "a daemon holds {} and is not answering: {why}. Its panes are absent from this \
+                 window, and starting another daemon would not help, since the socket is \
+                 taken. Check whether it is stopped or stuck (`ps -o stat,pid,command` on the \
+                 pid its log names), and look at its log beside the socket.",
+                launch.socket.display()
+            ));
+        }
         Err(error) => {
             return Err(format!(
                 "the daemon on {} would not talk to this app: {error}. Its panes are still \

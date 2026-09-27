@@ -10,12 +10,18 @@ pub mod stream;
 
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use muster_daemon_proto::connection::{self, HandshakeError};
 use muster_daemon_proto::{ConnectionKind, Welcome};
 
+/// How long a daemon has to finish the handshake. A daemon answers in milliseconds, and so does
+/// one at the far end of an ssh forward; this is for one that accepted and then stalled.
+const HANDSHAKE_PATIENCE: Duration = Duration::from_secs(5);
+
 /// Dials a daemon and opens a connection of `kind`, on a socket whose writes cannot kill the
-/// process.
+/// process. The handshake is bounded, so a daemon that accepts and never answers fails the dial
+/// rather than holding its caller for ever.
 ///
 /// The app hosts these connections, and a Swift process does not ignore SIGPIPE the way a Rust
 /// binary does: a write to a daemon that has just died would end the window, and every pane's
@@ -29,8 +35,35 @@ fn dial(
         HandshakeError::Unreachable(format!("could not connect to {}: {error}", socket.display()))
     })?;
     silence_sigpipe(&stream);
-    let welcome = connection::open(&mut stream, kind, client)?;
+    bounded(&stream, Some(HANDSHAKE_PATIENCE)).map_err(|error| {
+        HandshakeError::Unreachable(format!("could not bound the handshake: {error}"))
+    })?;
+    let started = Instant::now();
+    let welcome = match connection::open(&mut stream, kind, client) {
+        Ok(welcome) => welcome,
+        // A timeout reads as an error like any other, so the clock says which it was.
+        Err(HandshakeError::Unreachable(why) | HandshakeError::Garbled(why))
+            if started.elapsed() >= HANDSHAKE_PATIENCE =>
+        {
+            return Err(HandshakeError::Stalled(format!(
+                "{} accepted the connection and did not answer within {}s ({why})",
+                socket.display(),
+                HANDSHAKE_PATIENCE.as_secs()
+            )));
+        }
+        Err(error) => return Err(error),
+    };
+    // From here the connection's own reader waits as long as the daemon is quiet, which on a
+    // control connection is most of the time.
+    bounded(&stream, None).map_err(|error| {
+        HandshakeError::Unreachable(format!("could not unbound the connection: {error}"))
+    })?;
     Ok((stream, welcome))
+}
+
+fn bounded(stream: &UnixStream, patience: Option<Duration>) -> std::io::Result<()> {
+    stream.set_read_timeout(patience)?;
+    stream.set_write_timeout(patience)
 }
 
 #[cfg(target_vendor = "apple")]

@@ -49,6 +49,9 @@ pub enum HandshakeError {
     Refused(HelloRefused),
     /// Something answered that did not speak this protocol.
     Garbled(String),
+    /// Something accepted the connection and did not finish the handshake in the time the
+    /// client gave it: a daemon stopped or deadlocked, or an ssh forward whose far end stalled.
+    Stalled(String),
 }
 
 impl std::fmt::Display for HandshakeError {
@@ -63,6 +66,9 @@ impl std::fmt::Display for HandshakeError {
             ),
             HandshakeError::Garbled(why) => {
                 write!(formatter, "what answered does not speak the daemon's protocol: {why}")
+            }
+            HandshakeError::Stalled(why) => {
+                write!(formatter, "the connection was accepted and the handshake stalled: {why}")
             }
         }
     }
