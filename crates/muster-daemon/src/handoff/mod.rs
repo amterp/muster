@@ -145,6 +145,20 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
             faults.pause("after-serving", &shared.socket.path);
             for pane in &handing.panes {
                 pane.io.close(proto::DetachReason::Replaced);
+                let dropped = pane.io.dropped_at_handoff();
+                if !dropped.is_empty() {
+                    log::warn(
+                        "daemon.handoff.perform_dropped",
+                        fields! {
+                            "pane" => pane.record.pane,
+                            "dropped" => format!("{dropped:?}"),
+                            "impact" => "a reset or clear_screen asked of the pane while it was \
+                                         handed over was not done; its surface and terminal \
+                                         agree, and still show what was there",
+                            "check" => "nothing is wrong; asking again now does it",
+                        },
+                    );
+                }
             }
             let deadline = Instant::now() + FLUSH;
             for subscriber in subscribers {

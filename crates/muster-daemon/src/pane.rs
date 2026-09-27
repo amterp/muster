@@ -140,8 +140,10 @@ pub(crate) struct PaneIo {
     persister: Option<Arc<Persister>>,
     /// Stops the reader while the pane is handed to another daemon.
     hold: Hold,
-    /// The size a bridge asked for while the pane was held, applied only if the handoff fails.
-    deferred_resize: Mutex<Option<Grid>>,
+    /// What was asked of the pane while it was held, done only if the handoff fails. Taken
+    /// only under the pane's lock, so a request sees the hold and records itself, or the
+    /// release sees the record, and never neither.
+    deferred: Mutex<Deferred>,
     /// Where the reader's agent detection stood when it was last held.
     carried: Mutex<Option<proto::handoff::Detection>>,
 }
@@ -262,7 +264,10 @@ impl PaneIo {
     /// Output for the pane, from its program or on its behalf: to its bridge and its terminal,
     /// then the modes it left read out for the writer.
     fn output(&self, bytes: &[u8]) -> Vec<Happened> {
-        let mut screen = self.screen();
+        self.output_locked(self.screen(), bytes)
+    }
+
+    fn output_locked(&self, mut screen: MutexGuard<'_, Screen>, bytes: &[u8]) -> Vec<Happened> {
         let mut happened = screen.output(bytes);
         let mut encoding = poison::lock(&self.encoding, "daemon.pane.encoding");
         if encoding.refresh(screen.terminal()) {
@@ -272,15 +277,37 @@ impl PaneIo {
     }
 
     /// Resets the pane's terminal and its surface's, as Ghostty's `reset` does. The program is
-    /// not told.
+    /// not told. Not while the pane is held for a handoff, as [`PaneIo::resize`] says.
     pub(crate) fn reset(&self) {
-        self.output(b"\x1bc");
+        let screen = self.screen();
+        if !self.deferred_while_held(Performed::Reset) {
+            drop(self.output_locked(screen, b"\x1bc"));
+        }
     }
 
     /// Clears the pane's screen as Ghostty's clear_screen does. True at a prompt, where the
-    /// shell is to be sent a form feed.
+    /// shell is to be sent a form feed. Not while the pane is held for a handoff, as
+    /// [`PaneIo::resize`] says.
     pub(crate) fn clear_screen(&self) -> bool {
-        self.screen().clear_screen()
+        let mut screen = self.screen();
+        !self.deferred_while_held(Performed::ClearScreen) && screen.clear_screen()
+    }
+
+    /// Records `what` to be done if the handoff holding the pane fails. Called under the pane's
+    /// lock; false, and nothing recorded, when the pane is not held.
+    fn deferred_while_held(&self, what: Performed) -> bool {
+        if !self.hold.is_held() {
+            return false;
+        }
+        poison::lock(&self.deferred, "daemon.pane.deferred").performed.push(what);
+        true
+    }
+
+    /// What was asked of the pane while it was held, for a handoff that succeeded to say it
+    /// dropped: the new daemon's terminal was rebuilt without it.
+    pub(crate) fn dropped_at_handoff(&self) -> Vec<Performed> {
+        let _screen = self.screen();
+        std::mem::take(&mut poison::lock(&self.deferred, "daemon.pane.deferred").performed)
     }
 
     /// Attaches a bridge to the pane, at `grid` when it says one.
@@ -328,12 +355,25 @@ impl PaneIo {
         self.hold.hold(within)
     }
 
-    /// Lets the reader go on, and applies a resize asked for while it was held.
+    /// Lets the reader go on, and does what was asked of the pane while it was held.
     pub(crate) fn release_reader(&self) {
-        self.hold.release();
-        let deferred = poison::lock(&self.deferred_resize, "daemon.pane.deferred_resize").take();
-        if let Some(grid) = deferred {
+        let deferred = {
+            let _screen = self.screen();
+            self.hold.release();
+            std::mem::take(&mut *poison::lock(&self.deferred, "daemon.pane.deferred"))
+        };
+        if let Some(grid) = deferred.resize {
             self.resize(grid);
+        }
+        for performed in deferred.performed {
+            match performed {
+                Performed::Reset => self.reset(),
+                Performed::ClearScreen => {
+                    if self.clear_screen() {
+                        self.queue(Input::Reply(vec![0x0c]));
+                    }
+                }
+            }
         }
     }
 
@@ -368,7 +408,7 @@ impl PaneIo {
     pub(crate) fn resize(&self, grid: Grid) {
         let mut screen = self.screen();
         if self.hold.is_held() {
-            *poison::lock(&self.deferred_resize, "daemon.pane.deferred_resize") = Some(grid);
+            poison::lock(&self.deferred, "daemon.pane.deferred").resize = Some(grid);
             return;
         }
         if grid != self.grid() {
@@ -433,6 +473,20 @@ impl PaneIo {
             }
         }
     }
+}
+
+/// What was asked of a pane while a handoff held it.
+#[derive(Debug, Default)]
+struct Deferred {
+    resize: Option<Grid>,
+    performed: Vec<Performed>,
+}
+
+/// A binding the daemon performs on a pane's terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Performed {
+    Reset,
+    ClearScreen,
 }
 
 #[derive(Debug)]
@@ -538,7 +592,7 @@ impl Pane {
             flow: Flow::default(),
             persister: Some(Arc::clone(watching.persister)),
             hold,
-            deferred_resize: Mutex::new(None),
+            deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
         });
         let pane = record.pane.clone();
@@ -910,7 +964,7 @@ impl PaneIo {
             flow: Flow::default(),
             persister: None,
             hold: Hold::new(false).expect("a pipe"),
-            deferred_resize: Mutex::new(None),
+            deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
         })
     }

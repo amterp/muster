@@ -589,6 +589,64 @@ fn a_resize_during_a_handoff_that_fails_takes_effect_after_it() {
     assert_eq!(tty_size(&daemon, "p1", "after"), "30x100");
 }
 
+fn clear_screen(input: &mut Input, pane: &str) {
+    let clear = input_event::perform::Action::ClearScreen(input_event::perform::ClearScreen {});
+    input.send(pane, Event::Perform(input_event::Perform { action: Some(clear) }));
+}
+
+/// A pane with history, attached to a surface that has drawn it.
+fn drawn_with_history(daemon: &Daemon, input: &mut Input) -> (Stream, Surface) {
+    let mut control = daemon.connect();
+    type_line(input, "p1", "seq 1 60");
+    until_text(&mut control, "p1", "\n60\n");
+    let mut stream = attached(daemon, "p1", false);
+    let mut surface = Surface::new(100, 30);
+    surface.follow(&mut stream, "the replay", true, |surface| surface.replays > 0);
+    (stream, surface)
+}
+
+/// clear_screen asked of a pane while it is held waits, as a resize does: its replay may be
+/// composed already, and a clear the new daemon never hears of would come back at the next
+/// attach. When the handoff succeeds the clear is dropped, and the surface is left as it was.
+#[test]
+fn clear_screen_during_a_handoff_waits_and_is_dropped_when_it_succeeds() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready")]);
+    let (_control, mut input) = two_panes(&daemon);
+    let (mut stream, mut surface) = drawn_with_history(&daemon, &mut input);
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    clear_screen(&mut input, "p1");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+
+    surface.follow(&mut stream, "the detach", true, |surface| surface.detached.is_some());
+    assert!(surface.text().contains("\n59\n"), "the surface was not cleared: {}", surface.text());
+    let mut control = daemon.connect();
+    assert!(read_text(&mut control, "p1", 0, 0).text.contains("\n59\n"), "nor the new terminal");
+}
+
+/// The same clear, when the handoff fails, is done once the old daemon goes on.
+#[test]
+fn clear_screen_during_a_handoff_that_fails_is_done_after_it() {
+    let mut daemon =
+        daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready,exit-before-ready")]);
+    let (mut control, mut input) = two_panes(&daemon);
+    let (_stream, _surface) = drawn_with_history(&daemon, &mut input);
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    clear_screen(&mut input, "p1");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Refused, "{}", answer.reason);
+
+    until("the history to go", || !read_text(&mut control, "p1", 0, 0).text.contains("\n59\n"), ());
+}
+
 /// A new daemon that fails before the commit never wrote the log's file, and what it logged is
 /// still there afterwards: the old daemon writes it in, ahead of its own word on the failure.
 #[test]
