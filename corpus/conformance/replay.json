@@ -348,6 +348,18 @@
       }
     },
     {
+      "name": "a link across cells nobody wrote",
+      "why": "A cursor move inside a link skips cells that were never written, and those cells belong to no link. The replay writes them as spaces, so it closes the link before them and opens it again after, or the spaces would become part of it.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "feed": "\u001b]8;;https://example.com\u001b\\ab\u001b[3Ccd\r\n\u001b[2Cef\u001b]8;;\u001b\\"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
       "name": "the DEC special graphics character set",
       "why": "A TUI that designated line-drawing characters draws `qqq` as a horizontal line. After a replay the same bytes must still draw a line.",
       "given": {

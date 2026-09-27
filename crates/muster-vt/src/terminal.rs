@@ -197,10 +197,13 @@ impl Terminal {
     /// Forgets every kitty image on both screens, placements and all, keeping the limit: what
     /// a terminal that has only seen a replay holds, since a replay carries no images. A program
     /// that places one by id from then on is told it is not there, and sends it again.
+    ///
+    /// Not while an image is still arriving, which forgetting would cut off: the images stay
+    /// known until the next replay forgets them.
     pub fn forget_kitty_images(&mut self) {
         let limit = self
             .get(ffi::GhosttyTerminalData_GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_STORAGE_LIMIT, 0u64);
-        if limit == 0 {
+        if limit == 0 || self.kitty_image_loading() {
             return;
         }
         // A limit of zero empties each screen's store, as libghostty disables images; the
@@ -211,6 +214,15 @@ impl Terminal {
                 (&raw mut bytes).cast(),
             );
         }
+    }
+
+    /// Whether a chunked kitty image has begun arriving on either screen and not ended.
+    pub fn kitty_image_loading(&self) -> bool {
+        let mut loading = false;
+        // SAFETY: the terminal is live for as long as self, and the out pointer is a local the
+        // call writes a bool to, as muster.h documents.
+        unsafe { ffi::ghostty_terminal_kitty_image_loading(self.terminal, &raw mut loading) };
+        loading
     }
 
     fn set(

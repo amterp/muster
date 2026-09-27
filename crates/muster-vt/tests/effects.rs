@@ -210,3 +210,26 @@ fn images_named_by_a_path_are_refused_and_inline_ones_accepted() {
     }
     assert_eq!(query("d", "AAAA"), "\x1b_Gi=31;OK\x1b\\");
 }
+
+/// A replay can land between two chunks of an image the program is still sending. Forgetting
+/// the images then would drop the chunks already here and fail the rest, so an image that is
+/// still arriving is kept, and the program hears it arrived.
+#[test]
+fn forgetting_kitty_images_spares_one_still_arriving() {
+    let mut options = grid();
+    options.kitty_image_bytes = Some(1 << 20);
+    let (mut terminal, seen) = recording(options);
+    terminal.write(b"\x1b_Ga=t,f=32,s=1,v=1,i=7,m=1;AAAA\x1b\\");
+    terminal.forget_kitty_images();
+    terminal.write(b"\x1b_Gm=0;/w==\x1b\\");
+    let replies: String = seen
+        .lock()
+        .expect("the lock is free")
+        .iter()
+        .filter_map(|seen| match seen {
+            Seen::Reply(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
+            _ => None,
+        })
+        .collect();
+    assert!(replies.contains("i=7;OK"), "the image arrived whole: {replies:?}");
+}
