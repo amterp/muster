@@ -65,16 +65,6 @@ pub struct Saved {
     pub tabs: Vec<SavedTab>,
     /// Which of them was on screen.
     pub showing: Option<TabId>,
-    /// Tabs a migration folded into another, as pairs of the tab that stayed and the tab that
-    /// became a member of it.
-    ///
-    /// Empty for every file this Muster wrote. A version 3 arrangement is a column per machine
-    /// and each column named a tab of its own, so reading one back as a window holding one tab
-    /// per column would take away the side-by-side view somebody was using. It becomes one
-    /// Muster tab holding all of it instead, which needs those tabs grouped under one name - and
-    /// that was the name registry's to write, not this file's. So the file says what it implied.
-    /// Nothing applies it now: the registry went with herdr.
-    pub grouped: Vec<(TabId, TabId)>,
     /// The window's own chrome, which needs no checking against a daemon.
     ///
     /// The only part of this file no daemon has an opinion about: nobody else knows whether a
@@ -111,7 +101,6 @@ impl Saved {
             font_sizes: font_sizes.clone(),
             daemons: composition.daemons().cloned().collect(),
             showing: composition.showing().cloned(),
-            grouped: Vec::new(),
             tabs: composition
                 .tabs()
                 .map(|tab| {
@@ -186,15 +175,17 @@ impl Saved {
 /// says which one it is in (MIP-2). A version 2 file would parse and restore correctly with the
 /// key ignored, so this bump buys less than the last one - what it buys is that the file on
 /// disk and the format this reads never differ silently, which is the property a version is for.
-const VERSION: i64 = 4;
-
-/// The version that wrote a column per machine, which this one still reads.
 ///
-/// Version 3 named a tab on every `[[region]]` and had no notion of a window's tab list, because
-/// the window was the columns. Read rather than refused, and read as one Muster tab holding every
-/// column, so the first launch after this lands looks like the last launch before it - see
-/// [`into_one_tab`].
-const COLUMN_PER_MACHINE: i64 = 3;
+/// **5 because the tabs it names moved to another daemon.** Versions 3 and 4 were written by a
+/// Muster running its panes on herdr, and name tabs herdr held. muster-daemon holds none of
+/// them - herdr's sessions are not carried across - so such a file parses and every region
+/// fails its check, which is the silent loss version 2 existed to prevent. Refused by version,
+/// the log says what was lost: which tabs the window held and in what order, and any tab
+/// grouped across machines.
+const VERSION: i64 = 5;
+
+/// The versions a Muster running on herdr wrote.
+const ON_HERDR: [i64; 2] = [3, 4];
 
 /// The arrangement as the text that gets written to disk.
 ///
@@ -327,8 +318,16 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
     let root: toml::Table = toml::from_str(text)
         .map_err(|error| format!("the saved arrangement is not TOML: {error}"))?;
 
-    let version = match root.get("version").and_then(toml::Value::as_integer) {
-        Some(version @ (VERSION | COLUMN_PER_MACHINE)) => version,
+    match root.get("version").and_then(toml::Value::as_integer) {
+        Some(VERSION) => {}
+        Some(other) if ON_HERDR.contains(&other) => {
+            return Err(format!(
+                "the saved arrangement is version {other}, written by a Muster that ran its panes \
+                 on herdr, and the tabs it names are not on muster-daemon. It will open as a \
+                 first launch does. Lost with it: which tabs the window held and in what order, \
+                 and any tab grouped across machines - `muster pane move` groups them again."
+            ));
+        }
         Some(other) => {
             return Err(format!(
                 "the saved arrangement is version {other} and this Muster writes version \
@@ -337,7 +336,7 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
             ));
         }
         None => return Err("the saved arrangement does not say what version it is".to_string()),
-    };
+    }
 
     let daemons = root
         .get("daemon")
@@ -349,10 +348,7 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
         .and_then(toml::Value::as_array)
         .map(|entries| entries.iter().filter_map(read_region).collect())
         .unwrap_or_default();
-    let (mut tabs, grouped) = match version {
-        COLUMN_PER_MACHINE => into_one_tab(rows, &root),
-        _ => (into_tabs(rows), Vec::new()),
-    };
+    let mut tabs = into_tabs(rows);
     let showing = root
         .get("showing")
         .and_then(toml::Value::as_str)
@@ -388,7 +384,7 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
         .map(|entries| entries.iter().filter_map(read_pane_font_size).collect())
         .unwrap_or_default();
 
-    Ok(Saved { daemons, tabs, showing, grouped, presentation, font_sizes })
+    Ok(Saved { daemons, tabs, showing, presentation, font_sizes })
 }
 
 /// Says so when a file remembers a text size for the whole window.
@@ -486,50 +482,6 @@ fn into_tabs(rows: Vec<(TabId, SavedRegion)>) -> Vec<SavedTab> {
         }
     }
     tabs
-}
-
-/// A column-per-machine arrangement, read as the one Muster tab holding all of it.
-///
-/// The decision this implements is that an upgrade does not take away what somebody is looking
-/// at: a window showing a laptop column beside a devenv column comes back showing both, side by
-/// side, in one tab. Splitting that into a tab per machine is something to do afterwards and on
-/// purpose, once the new model is on screen to do it in.
-///
-/// The tab that stays is the first column's, and the rest become members of it - which is the
-/// grouping reported in `Saved::grouped`. Two
-/// columns on one machine collapse into one region, which is what a file written by a window
-/// that had drawn a pane twice looks like (kan a_2Ht74jTXV).
-fn into_one_tab(
-    rows: Vec<(TabId, SavedRegion)>,
-    root: &toml::Table,
-) -> (Vec<SavedTab>, Vec<(TabId, TabId)>) {
-    let focused = root
-        .get("focused")
-        .and_then(toml::Value::as_integer)
-        .and_then(|place| usize::try_from(place).ok())
-        .unwrap_or_default();
-    let Some(into) = rows.first().map(|(tab, _)| tab.clone()) else {
-        return (Vec::new(), Vec::new());
-    };
-
-    let mut regions: Vec<SavedRegion> = Vec::new();
-    let mut grouped: Vec<(TabId, TabId)> = Vec::new();
-    for (place, (tab, mut region)) in rows.into_iter().enumerate() {
-        if tab != into && !grouped.iter().any(|(_, absorbed)| absorbed == &tab) {
-            grouped.push((into.clone(), tab));
-        }
-        if regions.iter().any(|held| held.daemon == region.daemon) {
-            continue;
-        }
-        region.keyboard = place == focused;
-        regions.push(region);
-    }
-    if !regions.iter().any(|region| region.keyboard)
-        && let Some(first) = regions.first_mut()
-    {
-        first.keyboard = true;
-    }
-    (vec![SavedTab { id: into, regions }], grouped)
 }
 
 fn text(table: &toml::Table, key: &str) -> Option<String> {

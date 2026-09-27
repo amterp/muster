@@ -3860,18 +3860,12 @@ fn report(daemon: &DaemonId, change: &Change) {
             let attended = session.attention.observed(&key, *from, *to);
             attended.map(|attend| (key, attend))
         }
-        // A pane that was already finished when this window arrived. Muster saw no transition
-        // for it and the daemon did, so first sight takes the daemon's answer; everything
-        // after it is Muster's own (`muster_core::attention`).
-        //
-        // No notification for one, and that is deliberate: this is a pane that finished before
-        // the window existed, so a banner would be Muster announcing history at launch. The
-        // roster and the border say it, which is what they are for.
+        // A pane this window is meeting for the first time. Muster saw no transition for it,
+        // so nothing is asked of anybody: a banner would be Muster announcing history at launch.
         Change::PaneAdded(pane) => {
             let key = PaneKey::new(daemon, pane);
             let mut session = poison::lock(&SESSION, "session");
-            if let Some(backend) = session.agent_state(&key) {
-                session.attention.first_seen(&key, backend);
+            if session.agent_state(&key).is_some() {
                 session.state_since.entry(key).or_insert_with(clock::wall_clock_millis);
             }
             None

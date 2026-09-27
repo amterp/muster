@@ -126,7 +126,6 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
         if event.get("appeared").is_some() {
             let pane = read_pane(event, "appeared")?;
             let state = read_state(event, "state")?;
-            run.attention.first_seen(&pane, state);
             run.backend.insert(pane, state);
             continue;
         }

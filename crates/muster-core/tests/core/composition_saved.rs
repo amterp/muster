@@ -221,51 +221,27 @@ fn a_file_from_a_format_nobody_knows_is_refused_by_name() {
     assert!(refusal.contains("version"), "the refusal should say what is missing: {refusal}");
 }
 
-/// A column-per-machine arrangement comes back as one tab holding all of it.
+/// An arrangement a Muster on herdr wrote is refused, and says what is lost with it.
 ///
-/// The decision behind this is that an upgrade does not take away what somebody is looking at.
-/// Version 3 was a column per machine, each column naming a tab of its own; read as a tab per
-/// column, the first launch after this landed would replace a laptop beside a devenv with one of
-/// them alone. Read as one tab, it looks exactly like the launch before it, and splitting it up
-/// is something to do afterwards and on purpose.
+/// Its tabs were herdr's, and muster-daemon holds none of them, so read as it stands every
+/// region would fail its check and the arrangement would vanish with nothing said.
 #[test]
-fn a_column_per_machine_arrangement_becomes_one_tab_holding_all_of_it() {
-    let read = from_toml(
-        "version = 3\n\
-         focused = 1\n\
-         [[region]]\n\
-         daemon = \"local\"\n\
-         tab = \"t1w3r07bsd\"\n\
-         weight = 2.0\n\
-         pane = \"p1w3r07bsd\"\n\
-         [[region]]\n\
-         daemon = \"devenv\"\n\
-         tab = \"t1w3r0a4a9\"\n\
-         weight = 1.0\n",
-    )
-    .expect("the format before this one is read rather than refused");
-
-    assert_eq!(read.tabs.len(), 1, "the columns did not become one tab: {:?}", read.tabs);
-    let tab = &read.tabs[0];
-    assert_eq!(tab.id.as_str(), "t1w3r07bsd", "the tab kept is the first column's");
-    assert_eq!(
-        tab.regions.iter().map(|region| region.daemon.to_string()).collect::<Vec<_>>(),
-        ["local", "devenv"],
-        "the columns did not come back side by side, in the order they were in"
-    );
-    assert_eq!(read.showing.as_ref().map(TabId::as_str), Some("t1w3r07bsd"));
-    // The keyboard follows the column that had it, which version 3 recorded as an index.
-    assert!(tab.regions[1].keyboard, "the keyboard did not follow the column it was in");
-    // And the tab the second column named is now a member of the first, which only the name
-    // registry can act on - so the file says what it implied and whoever holds the registry
-    // does the grouping.
-    assert_eq!(
-        read.grouped
-            .iter()
-            .map(|(into, absorbed)| format!("{absorbed} -> {into}"))
-            .collect::<Vec<_>>(),
-        ["t1w3r0a4a9 -> t1w3r07bsd"]
-    );
+fn an_arrangement_from_a_muster_on_herdr_is_refused_saying_what_is_lost() {
+    for version in [3, 4] {
+        let refusal = from_toml(&format!(
+            "version = {version}\n\
+             [[region]]\n\
+             daemon = \"local\"\n\
+             tab = \"t1w3r07bsd\"\n"
+        ))
+        .expect_err("a file whose tabs no daemon holds is refused");
+        assert!(
+            refusal.contains(&format!("version {version}"))
+                && refusal.contains("herdr")
+                && refusal.contains("grouped across machines"),
+            "the refusal should say which version, why, and what is lost, and said: {refusal}"
+        );
+    }
 }
 
 /// One case's `given`, as the arrangement it describes.
@@ -295,7 +271,6 @@ fn saved(given: &Value) -> Result<Saved, CaseError> {
         daemons: Vec::new(),
         tabs,
         showing: given.get("showing").and_then(Value::as_str).map(TabId::new),
-        grouped: Vec::new(),
         // Not what these cases are about: they judge which tabs survive a check against the
         // daemons, and nothing here is checked against anything.
         presentation: Presentation::default(),
