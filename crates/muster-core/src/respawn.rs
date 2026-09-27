@@ -8,16 +8,16 @@
 //! spawns processes until somebody quits the app.
 //!
 //! Whether the daemon still holds the pane is asked before this and is not the answer: after a
-//! network change the daemon holds it and the far machine refuses the attach anyway, because
-//! the herdr client from before the change is still there with the terminal. So the thing that
+//! network change the daemon holds it and refuses the attach anyway, because the stream from
+//! before the change is still open on the far machine until its ssh notices. So the thing that
 //! separates them is how long the last bridge lasted. One that ran for an hour and then died
 //! is a connection; one that died on sight, three times inside half a minute, is not going to
 //! work on the fourth try either.
 //!
 //! Dialing back cannot be the health signal, which is worth stating because it is the obvious
 //! candidate. A bridge whose attach is refused still reaches the app first - it dials, then
-//! runs herdr, then reports the refusal and exits - so a rule that reset on a dial would reset
-//! on exactly the failure it is meant to stop.
+//! asks the daemon, then reports the refusal and exits - so a rule that reset on a dial would
+//! reset on exactly the failure it is meant to stop.
 //!
 //! **A bridge that never started is a third case, and for two releases nothing here could see
 //! it.** Every rule above is driven by a bridge *ending*, and a replacement that was decided on
@@ -52,7 +52,7 @@ pub const SETTLED_NS: u64 = 30_000_000_000;
 /// Why a bridge stopped, in Muster's words rather than the daemon's.
 ///
 /// Four, because they are the four the app has to answer differently. The daemon says only
-/// what happened, in prose; `muster_herdr::bridge_report` is where that becomes one of these.
+/// why a stream ended; `muster_core::bridge_link` is where that becomes one of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ending {
     /// The stream carrying it ended, and nothing said why. A route that changed, a daemon that
@@ -61,14 +61,14 @@ pub enum Ending {
     /// the pane is still there.
     Lost,
 
-    /// The attach was refused: something else already holds this pane's terminal.
+    /// The attach was refused: something else is already drawing this pane.
     ///
-    /// Ordinary after a relaunch. A herdr client whose transport died goes on holding the
-    /// terminal, so the first attach of a fresh app is refused by a machine that is otherwise
-    /// perfectly healthy (kan a_2I76eCrjw).
+    /// Ordinary after a relaunch. A stream whose transport died stays open on the far machine
+    /// until its ssh notices, so the first attach of a fresh app is refused by a machine that is
+    /// otherwise perfectly healthy (kan a_2I76eCrjw). A replacement takes the pane over.
     Refused,
 
-    /// Another client attached and herdr handed the terminal over.
+    /// Another client took the pane over, and the daemon handed it the stream.
     ///
     /// The one ending that must not be answered by attaching again. Somebody asked for this
     /// pane somewhere else and got it; taking it back would be answered the same way, and two
@@ -340,8 +340,8 @@ pub fn yielded(pane: &PaneKey) -> String {
     format!(
         "Another client attached to the pane {pane} and took its terminal, so this window has \
          stopped drawing it - most often a second Muster window that was opened onto the same \
-         machine. Only one client may hold a herdr terminal, so nothing here can show it while \
-         that one does; the agent itself is untouched and every other pane in this window is \
+         machine. The daemon lets one client draw a pane at a time, so nothing here can show it \
+         while that one does; the agent itself is untouched and every other pane in this window is \
          unaffected. Whichever window is showing it now is the one to type into. To bring it \
          back here instead, run {} - that asks for a bridge, and a bridge after the first takes \
          the terminal the way the other window's did.",
@@ -352,58 +352,26 @@ pub fn yielded(pane: &PaneKey) -> String {
 /// What the run log should say about a pane Muster has stopped rebuilding.
 ///
 /// Three things, because a warning that only says what happened leaves the reader starting
-/// cold: what stopped, what it costs, and the causes worth checking first. The orphaned client
-/// is named because it is the one this was written for and the one nobody guesses - a herdr
-/// client whose ssh died goes on holding its terminal, so every later attach is refused by a
-/// machine that looks perfectly healthy.
+/// cold: what stopped, what it costs, and the cause worth checking first.
 ///
 /// The roster is not told here, and does not need to be. The typeable watch restarts whenever a
 /// bridge exits, so a pane nothing is dialing says so on its own row five seconds later - and
 /// since it is told how the last bridge ended, it says this much there too.
-pub fn gave_up(pane: &PaneKey, tried: u32, backend_pane: &str) -> String {
+pub fn gave_up(pane: &PaneKey, tried: u32) -> String {
     format!(
         "Muster started {tried} bridges for the pane {pane} and each one ended within \
          {} seconds, so it has stopped. This pane shows what it last painted and takes no \
          keystrokes; every other pane in the window is unaffected. The run log says why each \
-         one ended - a `bridge.attach.failed` there means the pane's terminal is still held by \
-         a client from before, most often one on the far machine whose ssh died with the \
-         network, and {} releases it. Then {} asks for another bridge, which is the way back \
-         that keeps the agent - closing the pane also gets a fresh bridge, by ending what is \
-         running in it.",
+         one ended - most often the bridge could not reach the daemon, which for a pane on \
+         another machine is the ssh connection to it being down. Once that is fixed, {} asks \
+         for another bridge, which is the way back that keeps the agent - closing the pane also \
+         gets a fresh bridge, by ending what is running in it.",
         SETTLED_NS / 1_000_000_000,
-        release_command(backend_pane),
         reattach_command(&pane.pane),
     )
 }
 
-/// How to free a terminal a client from before is still holding, over ssh.
-///
-/// One home, because two sentences carry it - the run log's and the roster's - and a command
-/// somebody is going to paste has to be right in both. `pkill -f` matches the client and not
-/// its own ssh session, since the pattern names the pane and the ssh command line does not.
-///
-/// **The backend's name for the pane, not Muster's.** What is being matched is a herdr client's
-/// command line, and the bridge spells the pane the backend's way when it runs one - so a
-/// pattern built from the name in this window matches nothing at all, which is the worst
-/// possible outcome for a remedy: it runs, it exits, and the terminal is still held.
-pub fn release_command(backend_pane: &str) -> String {
-    if backend_pane.is_empty() {
-        // Nothing here holds a channel for this pane, so the name the pattern needs is not
-        // known. Saying so beats emitting a pattern with a hole in it, which would match every
-        // client on the machine - a remedy that costs somebody else's pane is worse than one
-        // that asks for a lookup.
-        return "an ssh `pkill -f` against the client holding it, matched on the daemon's own \
-                name for the pane - which `muster window --json` gives as `backend_pane_id`"
-            .to_string();
-    }
-    format!("`ssh <host> 'pkill -f \"terminal session control {backend_pane}\"'`")
-}
-
 /// How to ask this window for another bridge, as somebody would type it.
-///
-/// Muster's name for the pane, which is the opposite of [`release_command`] and for the same
-/// reason: this one is read by the CLI, which speaks Muster's vocabulary, and that one is
-/// matched against a herdr process, which does not.
 ///
 /// The name alone rather than a whole key, because the CLI finds a pane by name on every
 /// machine a window shows - and because the bridge prints this too, and a bridge is told

@@ -1,18 +1,18 @@
 //! Panes waiting for a bridge, and which of them have waited too long.
 //!
-//! A pane becomes typeable when its bridge dials the socket Muster bound for it. Until then
-//! it renders, paints, and discards every keystroke - and three separate bugs in this repo's
-//! history all ended in exactly that state: the bridge failed to dial, the socket path had
-//! moved, the channel could not be opened. One symptom, three causes, and nothing said so
-//! until somebody typed.
+//! A pane becomes typeable when its bridge says, on the socket Muster bound for it, that it has
+//! attached to the pane. Until then the pane shows what it last drew and nothing typed into it
+//! appears - and three separate bugs in this repo's history all ended in exactly that state:
+//! the bridge failed to dial, the socket path had moved, the channel could not be opened. One
+//! symptom, three causes, and nothing said so until somebody typed.
 //!
 //! What makes it reportable is that both ends of the wait are already known. The core binds
-//! the socket, so it knows when the wait started, and it runs the callback the accept fires,
-//! so it knows when the wait ended. The only thing missing was a deadline between them.
+//! the socket, so it knows when the wait started, and it runs the callback the bridge's
+//! report fires, so it knows when the wait ended. The only thing missing was a deadline between them.
 //!
 //! And a third thing, which the deadline alone got wrong: whether anybody is looking. The
-//! accusation is that a pane renders and swallows what is typed into it, and a pane nothing is
-//! drawing renders nothing - so a wait is only counted while the window is showing that pane,
+//! accusation is that a pane looks alive and shows nothing of what is typed into it, and a pane
+//! nothing is drawing shows nothing - so a wait is only counted while the window is showing that pane,
 //! and a pane that comes back waits again from the moment it is drawn.
 //!
 //! **What waits here also asks.** Saying so was the whole of this at first, and saying so was
@@ -127,14 +127,6 @@ struct Wait {
     /// has nothing to explain beyond the wait itself.
     last: Option<Ended>,
 
-    /// What the backend calls this pane, for the one sentence that is not about Muster.
-    ///
-    /// Carried rather than derived because this module has no registry and the difference is
-    /// invisible from here: `PaneKey` spells the pane the way everything above the adapter
-    /// does, and the remedy for a held terminal is matched against a herdr client's command
-    /// line, which spells it the backend's way. Empty is a pane whose channel was never
-    /// opened, and the sentence says to look the name up rather than naming the wrong one.
-    backend: String,
 }
 
 /// Every pane whose socket is bound and whose bridge has not dialed.
@@ -176,10 +168,10 @@ impl Waiting {
     ///
     /// Also how a wait restarts. A pane keeps its channel while its surface is thrown away
     /// and built again, so a bridge that exited is a bridge whose replacement has to dial
-    /// too - and that second wait is the one `control_socket.rs` calls out as the exact
+    /// too - and that second wait is the one the seam's `bridge_link.rs` calls out as the exact
     /// failure the accept loop exists to prevent.
-    pub fn opened(&mut self, pane: PaneKey, at: u64, backend: String) {
-        self.waits.insert(pane, Wait { since: at, asked: at, last: None, backend });
+    pub fn opened(&mut self, pane: PaneKey, at: u64) {
+        self.waits.insert(pane, Wait { since: at, asked: at, last: None });
     }
 
     /// A bridge for this pane has ended, so the wait starts again knowing why.
@@ -198,10 +190,7 @@ impl Waiting {
             self.closed(&pane);
             return;
         }
-        // The backend's name for the pane is carried over rather than asked for again: a
-        // bridge ending is a bridge that had a channel, so the wait this replaces knows it.
-        let backend = self.waits.get(&pane).map(|wait| wait.backend.clone()).unwrap_or_default();
-        self.waits.insert(pane, Wait { since: at, asked: at, last: Some(ended), backend });
+        self.waits.insert(pane, Wait { since: at, asked: at, last: Some(ended) });
     }
 
     /// A bridge dialed in, so this pane can be typed into.
@@ -283,9 +272,8 @@ impl Waiting {
             raise: overdue
                 .difference(&self.reported)
                 .map(|pane| {
-                    let wait = self.waits.get(pane);
-                    let backend = wait.map_or("", |wait| wait.backend.as_str());
-                    (key(pane), detail(pane, deadline, wait.and_then(|w| w.last.as_ref()), backend))
+                    let last = self.waits.get(pane).and_then(|wait| wait.last.as_ref());
+                    (key(pane), detail(pane, deadline, last))
                 })
                 .collect(),
             clear: self
@@ -393,7 +381,7 @@ pub fn key(pane: &PaneKey) -> String {
 /// thing to do differs in every one. Until this, every one of them read as "look in the run
 /// log", which is a file nobody has open at the moment their pane stops answering - and the
 /// run log itself had the impact and the remedy on the same line all along.
-fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>, backend_pane: &str) -> String {
+fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>) -> String {
     let waited = describe(deadline);
     let asking = describe(deadline.saturating_mul(ASK_AFTER_DEADLINES));
     let reattach = respawn::reattach_command(&pane.pane);
@@ -405,29 +393,26 @@ fn detail(pane: &PaneKey, deadline: u64, last: Option<&Ended>, backend_pane: &st
         // `Gone` never waits, because `Waiting::ended` drops it, so it shares the sentence that
         // claims the least.
         None | Some(Ending::Gone) => format!(
-            "The pane {pane} has had a socket open for over {waited}, and nothing has dialed \
-             it - the bridge carrying this pane's keystrokes either never started or cannot \
-             reach the socket. Everything typed into this pane is discarded and it goes on \
-             rendering, so it looks frozen rather than broken; every other pane in the window \
+            "The pane {pane} has had a socket open for over {waited}, and no bridge has \
+             attached - the bridge that draws this pane either never started or cannot reach \
+             the socket or its daemon. The pane shows what it last drew and nothing typed into \
+             it appears, so it looks frozen rather than broken; every other pane in the window \
              is unaffected. Muster asks for another bridge every {asking} and keeps asking; \
-             {reattach} asks now. The run log has the cause: look for \
-             `channel.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`."
+             {reattach} asks now. The run log has the cause: look for `link.accept.failed`, \
+             `bridge.exited.reported` and `pane.channel.unavailable`."
         ),
 
         // Somebody else has it, and Muster left it to them on purpose.
         Some(Ending::TakenOver) => respawn::yielded(pane),
 
-        // The one nobody guesses, and the one that cost a working day: a herdr client whose
-        // transport died goes on holding the terminal, and every attach after that is refused
-        // by a machine that is otherwise perfectly healthy.
+        // Something else was drawing it when this window's bridge asked. Only one stream may
+        // draw a pane, and a first bridge does not displace one, because the holder is most
+        // often a window somebody is looking at. Every replacement does.
         Some(Ending::Refused) => format!(
-            "The pane {pane} has been dark for over {waited}: something else is holding its \
-             terminal, and every bridge Muster started for it was refused. Only one client may \
-             hold a herdr terminal, and one whose connection died goes on holding it without \
-             noticing - most often a previous Muster's client, still on the far machine. The \
-             agent behind this pane is untouched and every other pane in the window is \
-             unaffected. {} releases it, and {reattach} then asks for a bridge that attaches.",
-            respawn::release_command(backend_pane),
+            "The pane {pane} has been dark for over {waited}: something else was drawing it when \
+             this window asked, and the daemon lets one client draw a pane at a time. The agent \
+             behind it is untouched and every other pane in the window is unaffected. {reattach} \
+             takes it over from whatever holds it."
         ),
 
         // The connection went, Muster started another bridge, and that one has not dialed

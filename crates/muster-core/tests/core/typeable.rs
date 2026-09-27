@@ -28,11 +28,7 @@ fn typeable_conformance() {
 
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
             if let Some(pane) = step.get("opened").and_then(Value::as_str) {
-                // The backend's own name for the pane, which only the remedy for a held
-                // terminal uses. Defaulted, because it is a detail of one sentence and every
-                // case here that is not about that sentence would otherwise have to say it.
-                let backend = step.get("backend").and_then(Value::as_str).unwrap_or("w1:p1");
-                waiting.opened(pane_key(pane)?, number(step, "at")?, backend.to_string());
+                waiting.opened(pane_key(pane)?, number(step, "at")?);
             } else if let Some(pane) = step.get("ended").and_then(Value::as_str) {
                 waiting.ended(pane_key(pane)?, number(step, "at")?, ended(step)?);
             } else if let Some(pane) = step.get("typeable").and_then(Value::as_str) {
