@@ -1070,7 +1070,10 @@ public enum Core {
   ///
   /// Annotated rather than merely called from a main-actor task, so that touching a view
   /// from here is checked rather than assumed. The hop happens in `coreEventArrived`.
-  @MainActor fileprivate static func deliver(_ event: Muster_Event) {
+  ///
+  /// `pasteboard` is where a program's clipboard write lands, and is a parameter so a test can
+  /// hand over one of its own rather than overwriting whatever the developer last copied.
+  @MainActor static func deliver(_ event: Muster_Event, pasteboard: NSPasteboard = .general) {
     switch event.payload {
     case .paneTypeable(let typeable):
       info("pane.typeable", ["daemon": typeable.daemonID, "pane": typeable.paneID])
@@ -1175,8 +1178,12 @@ public enum Core {
       window.hold(
         HeldPaste(pane: PaneKey(daemon: held.daemonID, pane: held.paneID), text: held.text))
     case .clipboardWrite(let write):
-      info(
-        "clipboard.write.received",
+      // No check here: the core sends this only when `clipboard_write` allows it.
+      pasteboard.clearContents()
+      pasteboard.setString(write.text, forType: .string)
+      // The size, never the text: a program writing the clipboard is often copying a secret.
+      debug(
+        "clipboard.written",
         ["daemon": write.daemonID, "pane": write.paneID, "bytes": String(write.text.utf8.count)])
     case .reopenWindow(let reopen):
       // Going to a tab a closed window holds is going to that window, and opening one is
