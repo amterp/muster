@@ -113,14 +113,6 @@ jobs:
           # artifact, ./dev rebuilds it on every run, and a key that hit is never saved again.
           key: ghostty-${{ runner.os }}-${{ runner.arch }}-linux-musl-${{ hashFiles('deps/ghostty.pin', 'deps/ghostty-patches/*.patch') }}
 
-      # Small, and it saves a GitHub release round trip. ./dev re-verifies the checksum on
-      # every run, so a cache that came back truncated is caught rather than trusted.
-      - name: Cache the pinned herdr
-        uses: actions/cache@v4
-        with:
-          path: deps/herdr
-          key: herdr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/herdr.pin') }}
-
       - name: Cache the Rust build
         uses: actions/cache@v4
         with:

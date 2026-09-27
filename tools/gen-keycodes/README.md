@@ -61,4 +61,4 @@ fails to resolve is a hard error.
 ## Why Python
 
 No third-party dependencies, and nothing else in the repo needs this table shape; it
-is a dev tool, not a component, in the same spirit as `tools/herdr-probe`.
+is a dev tool, not a component.

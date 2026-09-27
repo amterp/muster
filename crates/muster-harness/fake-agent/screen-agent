@@ -1,12 +1,11 @@
 #!/bin/sh
-# A fake agent that herdr detects by reading its screen.
+# A fake agent that the daemon detects by reading its screen.
 #
-# The companion to probe-agent, which reports its state through the API instead. This
-# one paints a marker line and says nothing, so it exercises the path a real coding
-# agent takes: the daemon analyzes the pane against a detection manifest and decides.
-# Install fake-agent/claude.toml as the override manifest for the markers to mean
-# anything, and invoke this script under a name herdr knows - it detects the agent
-# from the pane's foreground process name.
+# It paints a marker line and says nothing, so it exercises the path a real coding agent
+# takes: the daemon analyzes the pane against a detection manifest and decides. Install
+# fake-agent/claude.toml as the override manifest for the markers to mean anything, and
+# run this script as `claude` - the daemon identifies the agent from the pane's foreground
+# process name (crates/muster-harness/src/agents.rs does both).
 #
 # Commands, one per line: working | blocked | idle | quit
 

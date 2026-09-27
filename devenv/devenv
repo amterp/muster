@@ -7,13 +7,10 @@
 #   ./devenv/devenv down            stop and remove it
 #   ./devenv/devenv ssh             shell in as dev
 #   ./devenv/devenv status          is it up, and is there a daemon in it
-#   ./devenv/devenv install-daemon  put a herdr binary in it, for the corpus probe
 #   ./devenv/devenv rebuild         rebuild the image from scratch, then up
 #
-# Nothing here installs a daemon on its own. The image ships without one, because that
-# absence is what makes the remote tests test Muster's install path rather than its adopt
-# path. `install-daemon` exists for the corpus probe, which starts a herdr of its own
-# rather than going through Muster.
+# Nothing here installs a daemon. The image ships without one, because that absence is what
+# makes the remote tests test Muster's install path rather than its adopt path.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -127,24 +124,12 @@ case "${1:-up}" in
         # What is reported is what is there, rather than what ought to be. An empty
         # container is the correct state before Muster attaches, so a missing daemon is
         # news rather than a failure.
-        if ssh "${SSH_OPTS[@]}" dev@localhost 'command -v herdr' >/dev/null 2>&1; then
-            ssh "${SSH_OPTS[@]}" dev@localhost 'herdr --version' | sed 's/^/devenv: /'
+        installed="$(ssh "${SSH_OPTS[@]}" dev@localhost 'ls -d ~/.muster/daemon/*/muster-daemon 2>/dev/null' || true)"
+        if [[ -n "$installed" ]]; then
+            echo "$installed" | sed 's/^/devenv: installed by muster: /'
         else
-            echo "devenv: no herdr on PATH - Muster installs its own under ~/.muster on attach"
+            echo "devenv: no muster-daemon yet - Muster installs its own under ~/.muster on attach"
         fi
-        ssh "${SSH_OPTS[@]}" dev@localhost 'ls -d ~/.muster/herdr/*/herdr 2>/dev/null' \
-            | sed 's/^/devenv: installed by muster: /' || true
-        ;;
-    install-daemon)
-        need_docker
-        binary="${2:-}"
-        [[ -n "$binary" && -f "$binary" ]] || die \
-            "install-daemon needs the path to a Linux herdr binary." \
-            "  Impact: nothing was installed, so the corpus probe has no daemon to record against." \
-            "  ./dev --ssh fetches the pinned one from deps/herdr.pin and passes it here."
-        docker cp "$binary" "$CONTAINER:/usr/local/bin/herdr"
-        docker exec "$CONTAINER" chmod 0755 /usr/local/bin/herdr
-        echo "devenv: installed $(basename "$binary") at /usr/local/bin/herdr"
         ;;
     rebuild)
         need_docker
@@ -153,6 +138,6 @@ case "${1:-up}" in
         exec "$0" up
         ;;
     *)
-        die "unknown command: $1" "  Try: build | up | down | ssh | status | install-daemon | rebuild"
+        die "unknown command: $1" "  Try: build | up | down | ssh | status | rebuild"
         ;;
 esac

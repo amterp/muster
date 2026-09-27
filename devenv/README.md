@@ -8,7 +8,6 @@ else, reachable at `ssh -p 2222 dev@localhost`.
 ./devenv/devenv up              build and start it
 ./devenv/devenv status          is it up, and is there a daemon in it
 ./devenv/devenv ssh             shell in as dev
-./devenv/devenv install-daemon  put a herdr binary in it, for the corpus probe
 ./devenv/devenv down            stop and remove it
 ./devenv/devenv rebuild         rebuild from scratch
 ```
@@ -27,21 +26,12 @@ whatever was running in it, and locking out the worktree that started it until t
 cannot use the tier at once; whether each gets its own container or all share one key is
 open (kan a_2Ky2ptlug).
 
-`dev` has one sudo rule, and all it allows is pointing `/bin/sh` at bash and back at dash.
-Muster runs its remote scripts through `sh`, which is dash here and bash on a RHEL-family box,
-and whether a backgrounded daemon lets go of ssh depends on which. So
-`crates/muster-herdr/tests/devenv_forking_shell.rs` swaps it for one attach.
-
 ## One artifact, two jobs
 
-It stands in for the work devenv during development, and it is the fixture the remote
-path is tested against - locally and in CI. Keeping those the same container is the
-point: the environment that gets developed against and the one CI asserts on cannot
-drift apart if there is only one of them.
-
-`tools/herdr-probe/probe --remote` runs the same scenarios here that it runs against a
-local daemon, recording into `corpus/herdr-<version>-linux/`. Diffing that against the
-macOS corpus is how "local and remote render identically" stops being an aspiration.
+It stands in for the work devenv during development, and it is the fixture `./dev --ssh`
+tests the remote path against. Keeping those the same container is the point: the
+environment that gets developed against and the one the tests assert on cannot drift apart
+if there is only one of them.
 
 ## No daemon is installed here
 
@@ -49,26 +39,6 @@ That absence is the fixture. Muster puts its own daemon on a machine it attaches
 container that arrived with one would exercise the adopt path and never the install path -
 and a person setting up a real devenv installs nothing either.
 
-Two things put a daemon in, and neither is the image. Muster does it on attach, under
-`~/.muster/daemon/<version>/`, copying the Linux build the app carries over the ssh master;
-`./dev --ssh`'s remote tests go through that same install. And `./dev --ssh` puts a herdr in
-with `install-daemon` afterwards, for the corpus probe, which starts a herdr of its own rather
-than going through Muster, with the version and checksum from `deps/herdr.pin`.
-
-Update checks are off in `devenv/config.toml` and in the file Muster writes, so a container
-that has been up for a week behaves like one started this morning.
-
-## The fake agents
-
-Copied from `tools/herdr-probe/fake-agent/`, so local and remote fixtures are the same
-scripts rather than two that drift:
-
-- `probe-agent` reports its lifecycle through herdr's API. State is driven, so a test
-  asserts immediately.
-- `claude` (installed from `screen-agent`) says nothing and paints marker lines that
-  the bundled override manifest matches. It exercises the path a real coding agent
-  takes. It installs under the name `claude` because herdr identifies an agent from the
-  pane's foreground process name, and only names it already knows can carry an override
-  manifest.
-
-Both take `working`, `blocked`, `idle`, and `quit` on stdin.
+Muster puts one in on attach, under `~/.muster/daemon/<version>/`, copying the Linux build
+the app carries over the ssh master, and `./dev --ssh`'s remote tests go through that same
+install. The image itself never does.

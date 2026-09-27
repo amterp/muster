@@ -1,3 +1,0 @@
-[  2362ms] attach: 1 frame(s), first full=True 80x24 35605B
-[  3873ms] mode sequences surviving into frames: none
-[  4829ms] observer attach: 1 frame(s), first full=True

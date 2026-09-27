@@ -75,8 +75,7 @@ Muster's principles, adapted to that evidence:
 
   Nothing consults PATH for a daemon: a test that resolved its own could quietly run against one nobody built
   from this commit. The contract tier (`crates/muster-contract`) is no exception: it launches the app against a
-  daemon built from the same commit, whether the harness started it or the app did. herdr is still pinned (`deps/herdr.pin`, fetched
-  into `deps/herdr/` and verified) for the corpus probe until it moves to muster-daemon, and no Rust test runs it.
+  daemon built from the same commit, whether the harness started it or the app did.
 - **Detect wire drift mechanically, not by waiting for a test to fail.** herdr generates a canonical JSON Schema of
   its whole API from its own request types, fails its own build when the two disagree, and embeds it in the binary
   (`herdr api schema --json`). A copy sits in `corpus/herdr-<version>/api-schema.json`, and `./dev` diffs the two
@@ -154,11 +153,11 @@ Muster's principles, adapted to that evidence:
   surface, `SearchGUITests`, which skips itself in an ordinary run and says so - `--latency` and `--perf`
   measure timing and would be flaky as
   assertions (`--latency` prints verdicts against MIP-3's targets and fails only when it cannot measure),
-  `--corpus-linux` and the SSH tier need the devenv container - which holds no muster-daemon, so the SSH tier's
-  tests install this build's the way the app does - `--linux`, which runs the daemon's and detection's suites on
-  Linux, needs docker, and `--claude-code` needs the network and a model: it drives the Claude Code installed here
-  for one turn, in a pane with Muster's hooks and one without, and checks both read working and then idle. It runs
-  with `ANTHROPIC_API_KEY` and `--bare` when that is set, and otherwise with `claude`'s own login and only project
+  the SSH tier needs the devenv container - which holds no muster-daemon, so the SSH tier's tests install this
+  build's the way the app does - `--linux`, which runs the daemon's and detection's suites on Linux, needs docker,
+  and `--claude-code` needs the network and a model: it drives the Claude Code installed here for one turn, in a
+  pane with Muster's hooks and one without, and checks both read working and then idle. It runs with
+  `ANTHROPIC_API_KEY` and `--bare` when that is set, and otherwise with `claude`'s own login and only project
   settings, so nobody's own hooks take part; with neither it fails and says which is missing. The gate still
   compiles the Linux daemons and lints their Linux code,
   so what `--linux` alone catches is behavior: dash as `/bin/sh`, `/proc`, `close_range`. That is the real line, and it is

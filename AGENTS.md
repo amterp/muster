@@ -155,8 +155,7 @@ skill that points an agent at them and nothing more.
 
 `./dev` is the only supported way to build, test, and lint. With no flags it takes the full gate, and
 `.github/workflows/gate.yml` runs that one command on every push and pull request - so a contributor's green and a
-merge gate's green cannot drift apart. A second workflow, `corpus-linux.yml`, runs `./dev --corpus-linux` beside it
-on a Linux runner. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints,
+merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints,
 `./dev -h` lists them all.
 
 **A narrowed flag still takes what it cannot run without**, so `./dev -t` on a checkout nothing has been built in
@@ -201,16 +200,9 @@ was green against the other layout.
 
 `./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it needs docker rather than a GUI
 session. It recreates the devenv container, which holds no muster-daemon, so the remote tests install this build's
-there the way the app does and then run against it; after them it drops the pinned Linux herdr in for the corpus half
-below. It
-leaves that container running, deliberately: a devenv is a thing you keep, and recreating it per run is what `up` is
+there the way the app does and then run against it. It leaves that container running, deliberately: a devenv is a thing you keep, and recreating it per run is what `up` is
 for. The tier says so on the way out, because the thing most likely to run next is `--perf`, and a container running
 beside a benchmark is enough to move the numbers it judges - `./devenv/devenv down` when you are finished with it.
-
-`./dev --corpus-linux` is that corpus half on its own: record the probe's scenarios against the container's Linux
-daemon and diff them against the macOS recording, which is what catches a herdr re-pin that moves one platform and
-not the other. Docker and python3 are the whole toolchain, no Rust, Swift or Zig - so this one *is* in CI, as the
-`corpus-linux` workflow, where the rest of the remote tier is not.
 
 **The gate builds `muster-daemon` for Linux too**, for `x86_64-unknown-linux-musl` and
 `aarch64-unknown-linux-musl`, cross-compiled from the Mac: libghostty-vt from the same patched checkout into a prefix
@@ -293,10 +285,9 @@ archive beside the daemon, and a machine holding any other build gets this one i
 share a version, and a version alone would start whichever was there first. A SwiftPM build stages the gate's debug
 Linux daemons beside the app, in `daemons/`.
 
-herdr is still pinned, for the two things that have not moved off it: `./dev --corpus-linux` and `./dev --doctor`.
-`deps/herdr.pin` names a release and a checksum per platform. The corpus diff downloads the container's asset once
-and verifies it, which is the one step that touches the network; `--doctor` reads a Mac herdr only if one is already
-on disk.
+Nothing about herdr is built or fetched any more. What it was recorded doing stays in `corpus/herdr-0.8.0/`, with
+a verdict per fact in `MIGRATION.json` that `crates/muster-daemon/tests/migration.rs` keeps current, and its license
+stays in `licenses/` because muster-detect is a port of its agent detection.
 
 The seam's types are generated from `proto/muster.proto` on both sides and committed on neither, so a checkout
 cannot hold a shell and a core that disagree. Neither generator is a thing you install: Rust compiles the schema

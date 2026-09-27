@@ -1,3 +1,0 @@
-[  1848ms] snapshot panes=3 tabs=2 agents=0
-[  1848ms] live fields on pane: ['agent_status', 'focused', 'foreground_cwd', 'scroll', 'revision']
-[  2966ms] events.subscribe replayed 9 events for an already-populated session

@@ -17,12 +17,11 @@ use crate::until::until_some;
 
 /// A shell script that paints `PROBE-STATE:<STATE>` and reads `working`, `blocked`, `idle`
 /// or `quit`, one per line.
-const FAKE_AGENT: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/herdr-probe/fake-agent/screen-agent");
+const FAKE_AGENT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fake-agent/screen-agent");
 
 /// Detection rules for `claude` that read the fake agent's markers. An override replaces the
 /// built-in rules for its agent, which is safe because this daemon's home is the test's own.
-const MANIFEST: &str = include_str!("../../../tools/herdr-probe/fake-agent/claude.toml");
+const MANIFEST: &str = include_str!("../fake-agent/claude.toml");
 
 /// What the fake agent is called in a daemon's home. Detection keys on the foreground
 /// process's name, and the manifest is for `claude`.

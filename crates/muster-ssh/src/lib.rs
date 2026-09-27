@@ -4,9 +4,9 @@
 //! speaks the same protocol on the same kind of socket a local one does, so forwarding that
 //! socket to a path on this machine leaves every layer above unable to tell the difference:
 //! the follower, every request and every pane's bridge take a socket path and none of them
-//! inspects it. The bet was made against herdr, and `corpus/herdr-0.8.0-linux` was the
-//! evidence for it - the same recordings against a Linux daemon differed in nothing
-//! (`docs/observations/herdr-0.8.0.md` section 8).
+//! inspects it. The bet was made against herdr, where the same recordings against a Linux
+//! daemon differed in nothing (`docs/observations/herdr-0.8.0.md` section 8), and
+//! `./dev --ssh` holds muster-daemon to it.
 //!
 //! Transport only, with nothing daemon-shaped in it. What lives on the far end of the socket
 //! is the adapter's business; what this owns is a child process, a path, and the promise that

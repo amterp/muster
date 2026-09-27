@@ -1,12 +1,12 @@
 # Detection manifest for the fake agent, installed as an override.
 #
-# herdr looks for overrides at <config>/agent-detection/<agent>.toml, and the agent
-# name has to be one it already knows (src/detect/manifest.rs:1097 keys the path on
-# its known-agent enum). A fixture cannot introduce its own id, so it borrows claude's
-# and replaces the rules with markers a script can paint on demand.
+# muster-daemon reads overrides from $MUSTER_HOME/agent-detection/<agent>.toml. This one
+# borrows claude's id, as the herdr probe's had to, and replaces the rules with markers a
+# script can paint on demand - so the recorded detection scenario in corpus/herdr-0.8.0
+# runs unchanged against the daemon.
 #
-# Safe because the probe's daemon is a throwaway under a scratch config dir; it never
-# sees a real claude session.
+# Safe because a test's daemon is a throwaway under a scratch home; it never sees a real
+# claude session.
 
 id = "claude"
 version = "2026.08.11.1"

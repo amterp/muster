@@ -1,7 +1,7 @@
 //! Agent detection in the daemon (MIP-3 section 8): which agent each pane runs and what state
 //! it is in, published on the pane's record.
 //!
-//! The first test is the herdr probe's `detection` scenario (`tools/herdr-probe`, recorded in
+//! The first test is the herdr probe's `detection` scenario (recorded in
 //! `corpus/herdr-0.8.0/detection/`), run against this daemon: the same fake agent, the same
 //! override manifest, the same four states with and without a viewer. It is the check that
 //! moving detection out of herdr kept what herdr did.
@@ -17,8 +17,8 @@ use proto::input_event::{self, Input as Event};
 use proto::stream_message::Message as Streamed;
 
 const FAKE_AGENT: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/herdr-probe/fake-agent/screen-agent");
-const PROBE_MANIFEST: &str = include_str!("../../../../tools/herdr-probe/fake-agent/claude.toml");
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../muster-harness/fake-agent/screen-agent");
+const PROBE_MANIFEST: &str = include_str!("../../../muster-harness/fake-agent/claude.toml");
 
 /// How long herdr v0.8.0 took to settle each state in the probe's run
 /// (`corpus/herdr-0.8.0/detection/FACTS.json`), with no viewer and with one.
