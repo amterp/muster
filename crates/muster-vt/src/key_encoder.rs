@@ -2,17 +2,15 @@
 //!
 //! This is libghostty-vt's own key encoder, which matters more than it sounds: it is the
 //! same code the pane's terminal would have used if the pane's terminal were doing the
-//! encoding, and the same code herdr's TUI path runs (`src/ghostty/mod.rs:2552`). Muster is
-//! not writing a second implementation that has to agree with a first one.
+//! encoding. Muster is not writing a second implementation that has to agree with a first one.
 //!
-//! What it cannot supply is the state to encode against. See `TerminalModeProfile`.
+//! The modes to encode against come from the pane's own terminal (`configure_from`), which the
+//! daemon holds. [`KeyModes`] states them outright, for an encoder with no terminal behind it.
 
 use std::ffi::c_void;
 use std::fmt;
 
-use muster_core::input::{
-    EncodeError, KeyAction, KeyEncoding, KeyEvent, OptionAsAlt, TerminalModeProfile,
-};
+use muster_core::input::{Key, KeyAction, KeyEvent, OptionAsAlt};
 
 use crate::ffi;
 use crate::key_mapping::ghostty_key;
@@ -61,6 +59,49 @@ pub struct RawKeyEvent<'a> {
     pub composing: bool,
 }
 
+/// Kitty keyboard protocol flag bits.
+pub mod kitty_flags {
+    pub const DISAMBIGUATE: u8 = 1;
+    pub const REPORT_EVENT_TYPES: u8 = 2;
+    pub const REPORT_ALTERNATE_KEYS: u8 = 4;
+    pub const REPORT_ALL_KEYS_AS_ESCAPE_CODES: u8 = 8;
+    pub const REPORT_ASSOCIATED_TEXT: u8 = 16;
+}
+
+/// The input modes a keystroke is encoded against, stated rather than read from a terminal.
+///
+/// The default is a terminal no program has changed: no kitty flags, normal cursor and keypad
+/// keys, alt sending an escape prefix, no modifyOtherKeys.
+// Five independent modes a program negotiates one at a time; a bitmask would lose the names.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyModes {
+    pub kitty_flags: u8,
+    pub application_cursor_keys: bool,
+    pub application_keypad: bool,
+    pub alt_sends_escape_prefix: bool,
+    pub modify_other_keys: bool,
+    pub option_acts_as_alt: OptionAsAlt,
+}
+
+impl Default for KeyModes {
+    fn default() -> KeyModes {
+        KeyModes {
+            kitty_flags: 0,
+            application_cursor_keys: false,
+            application_keypad: false,
+            alt_sends_escape_prefix: true,
+            modify_other_keys: false,
+            option_acts_as_alt: OptionAsAlt::Never,
+        }
+    }
+}
+
+/// libghostty's key code for a key: what a daemon's input connection carries for a keystroke.
+pub fn key_code(key: Key) -> u32 {
+    ghostty_key(key)
+}
+
 /// An encoder fixed to one set of pane modes.
 ///
 /// Fixed rather than per-call because a pane's modes change rarely and a keystroke happens
@@ -78,7 +119,7 @@ pub struct KeyEncoder {
 unsafe impl Send for KeyEncoder {}
 
 impl KeyEncoder {
-    pub fn new(profile: TerminalModeProfile) -> Result<KeyEncoder, EncoderError> {
+    pub fn new(modes: KeyModes) -> Result<KeyEncoder, EncoderError> {
         let mut encoder: ffi::GhosttyKeyEncoder = std::ptr::null_mut();
         // SAFETY: a null allocator asks for libghostty's default, and the out parameter is
         // a handle we own.
@@ -98,12 +139,12 @@ impl KeyEncoder {
         }
 
         let encoder = KeyEncoder { encoder, event };
-        encoder.apply(profile);
+        encoder.apply(modes);
         Ok(encoder)
     }
 
     /// Takes the pane's real input modes from its terminal - cursor and keypad application
-    /// modes, alt-escape, modifyOtherKeys and kitty flags - instead of a profile. Option as
+    /// modes, alt-escape, modifyOtherKeys and kitty flags - instead of stated ones. Option as
     /// alt is not terminal state, so it is set again from `option_as_alt`.
     pub fn configure_from(&mut self, terminal: &Terminal, option_as_alt: OptionAsAlt) {
         let mut option_as_alt = ghostty_option_as_alt(option_as_alt);
@@ -132,13 +173,13 @@ impl KeyEncoder {
         }
     }
 
-    fn apply(&self, profile: TerminalModeProfile) {
-        let mut kitty_flags = profile.kitty_flags;
-        let mut cursor_keys = profile.application_cursor_keys;
-        let mut keypad = profile.application_keypad;
-        let mut alt_escape = profile.alt_sends_escape_prefix;
-        let mut modify_other_keys = profile.modify_other_keys;
-        let mut option_as_alt = ghostty_option_as_alt(profile.option_acts_as_alt);
+    fn apply(&self, modes: KeyModes) {
+        let mut kitty_flags = modes.kitty_flags;
+        let mut cursor_keys = modes.application_cursor_keys;
+        let mut keypad = modes.application_keypad;
+        let mut alt_escape = modes.alt_sends_escape_prefix;
+        let mut modify_other_keys = modes.modify_other_keys;
+        let mut option_as_alt = ghostty_option_as_alt(modes.option_acts_as_alt);
 
         // SAFETY: each option's pointer is to a local of the type libghostty documents for
         // that option, and the call copies it. Getting one of these types wrong is the real
@@ -261,21 +302,6 @@ impl Drop for KeyEncoder {
         }
     }
 }
-
-/// The encoder the core asks for.
-///
-/// Implemented here rather than on the trait's own side because the dependency runs this
-/// way: the core must not know libghostty-vt exists.
-impl KeyEncoding for KeyEncoder {
-    fn encode(&self, key: &KeyEvent) -> Result<Vec<u8>, EncodeError> {
-        KeyEncoder::encode(self, key).map_err(|error| EncodeError(error.to_string()))
-    }
-}
-
-// SAFETY: `KeyEncoding` requires Sync, and the handles are only reachable through this
-// type's own methods. PaneInput serializes every send through one lock, which is the
-// external synchronization libghostty's encoder expects.
-unsafe impl Sync for KeyEncoder {}
 
 fn ghostty_action(action: KeyAction) -> ffi::GhosttyKeyAction {
     match action {

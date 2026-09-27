@@ -49,11 +49,6 @@ pub enum Resolution {
     Action(KeymapAction),
     /// Muster substitutes these bytes for whatever the encoder would have produced.
     Text(Vec<u8>),
-    /// The backend encodes this one, under this name.
-    ///
-    /// For the keys where encoding locally is known to be wrong. Muster guesses the pane's
-    /// terminal modes and the daemon does not have to.
-    ServerEncoded(String),
     /// Not bound. Report it to the pane.
     Unbound,
 }
@@ -98,15 +93,8 @@ impl Keymap {
 
 impl Default for Keymap {
     /// What Muster binds out of the box.
-    ///
-    /// The mode-sensitive keys go in first and the local bindings overwrite them, so a
-    /// collision goes to the local one: a chord someone chose to bind should not lose to a
-    /// key that merely wants encoding help.
     fn default() -> Keymap {
-        let mut bindings = HashMap::new();
-        bindings.extend(mode_sensitive_keys());
-        bindings.extend(macos_text_editing());
-        Keymap::new(bindings)
+        Keymap::new(macos_text_editing().into_iter().collect())
     }
 }
 
@@ -121,9 +109,6 @@ impl Default for Keymap {
 /// text editing" (`src/config/Config.zig`, in the macOS keybind defaults). Matching it is
 /// the point rather than a coincidence: Muster promises the platform's own keybindings, and
 /// a person moving between the two terminals should not have to learn which is which.
-///
-/// They also sidestep the mode problem, since a control code means the same thing whatever
-/// the pane has negotiated.
 ///
 /// Each carries what it does in plain words, because a `[keymap]` action rebound onto one of
 /// these is refused and the refusal has to name the behaviour it would have cost
@@ -148,24 +133,4 @@ fn macos_text_editing() -> Vec<(Binding, Resolution)> {
             (Binding::new(*key, *modifiers), Resolution::Text(bytes.to_vec()))
         })
         .collect()
-}
-
-/// The keys whose correct encoding depends on a mode Muster cannot see.
-///
-/// The arrows, and only the arrows, for a measured reason. Application cursor mode decides
-/// between `ESC O A` and `ESC [ A`, and a program that trusts terminfo accepts only the
-/// first: `less` calls `smkx` on startup and then rings the bell at anything else. `vim`
-/// accepts both, which is why one program is not a survey. Nothing else in the guess was
-/// measured to break - shift+enter, dead keys and control chords all survive - so nothing
-/// else is routed the slow way.
-///
-/// Unmodified only. herdr's key vocabulary does accept chords like `shift+up`, but a
-/// modified arrow is not what a pager reads, and every routed key costs a round trip.
-fn mode_sensitive_keys() -> Vec<(Binding, Resolution)> {
-    vec![
-        (Binding::new(Key::ArrowUp, Modifiers::NONE), Resolution::ServerEncoded("up".into())),
-        (Binding::new(Key::ArrowDown, Modifiers::NONE), Resolution::ServerEncoded("down".into())),
-        (Binding::new(Key::ArrowLeft, Modifiers::NONE), Resolution::ServerEncoded("left".into())),
-        (Binding::new(Key::ArrowRight, Modifiers::NONE), Resolution::ServerEncoded("right".into())),
-    ]
 }

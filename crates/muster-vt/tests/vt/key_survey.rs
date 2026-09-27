@@ -15,8 +15,9 @@ use std::fmt::Write as _;
 use crate::support::expect_snapshot;
 use crate::support::keys::{key_event, named_profile};
 use conformance::Conformance;
-use muster_core::input::{KeyEvent, TerminalModeProfile};
+use muster_core::input::KeyEvent;
 use muster_vt::KeyEncoder;
+use muster_vt::KeyModes;
 use serde_json::Value;
 
 /// What the keys people press constantly put on a pane, under every profile the survey names.
@@ -25,9 +26,6 @@ use serde_json::Value;
 /// are: a third added there and not here would be data nothing reads, which is the
 /// silently-skipped suite in its newest costume.
 ///
-/// `herdrTUI` is not reachable today - it needs mode state herdr does not expose - and is
-/// rendered anyway, because the difference between the two files is exactly what the upstream
-/// ask is worth.
 #[test]
 fn what_the_keys_people_press_constantly_put_on_a_pane() {
     let corpus = Conformance::load("key-encoder.json");
@@ -59,7 +57,7 @@ fn keystrokes(survey: &Value) -> Vec<(String, KeyEvent)> {
         .collect()
 }
 
-fn render(profile: TerminalModeProfile, keystrokes: &[(String, KeyEvent)]) -> String {
+fn render(profile: KeyModes, keystrokes: &[(String, KeyEvent)]) -> String {
     let encoder = KeyEncoder::new(profile).expect("libghostty-vt should give us an encoder");
     let width = keystrokes.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
     let mut out = String::new();

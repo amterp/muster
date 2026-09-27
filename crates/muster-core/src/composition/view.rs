@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 
 use crate::composition::record::{Composition, DaemonId, PaneKey, Region, RegionId};
 use crate::mirror::Mirror;
-use crate::mirror::backend::{Layout, LayoutNode, PaneId, SplitAxis, TabId};
+use crate::mirror::backend::{LayoutNode, PaneId, SplitAxis, Tab, TabId};
 
 /// Everything one window is showing.
 #[derive(Debug, Clone, PartialEq)]
@@ -200,7 +200,7 @@ impl View {
             .regions()
             .filter_map(|region| {
                 let held = mirror(&region.daemon)?;
-                let layout = held.layout(&tab).filter(|layout| arranges(held, &tab, layout));
+                let layout = held.tab(&tab).filter(|layout| arranges(held, &tab, layout));
                 // What this region has on screen, which is the tab it shows rather than the
                 // tree it was last told about. The tree decides the arrangement and a zoom
                 // decides what is covered; neither absence puts a pane away, and reading this
@@ -221,24 +221,9 @@ impl View {
                     pane: region.pane.clone(),
                     weight: region.weight,
                     root: layout.map(|layout| {
-                        // Resolved here rather than flagged for the shell. herdr keeps
-                        // publishing every pane's ordinary rect while a tab is zoomed, so a
-                        // renderer handed the whole tree paints all of them while the daemon
-                        // is showing one (`observations/herdr-0.8.0.md` section 13).
-                        //
-                        // Which pane fills it is this window's own answer, not the daemon's.
-                        // The backend spells zoom as a bare flag beside the tab's focused
-                        // pane, and daemon focus is one value shared with every client - so
-                        // reading it here would let another client decide what this window
-                        // renders, against the rule that cursors are written and not read
-                        // (`architecture.md`). It is also the only answer that keeps the
-                        // window honest: the keyboard feeds `region.pane`, and a zoom showing
-                        // anything else is somebody typing into a pane they cannot see.
-                        //
-                        // Not hypothetical. herdr emits `layout_updated` when a pane appears
-                        // or goes and never for a focus change (`observations/herdr-0.8.0.md`
-                        // section 10), so the flag's companion cursor goes stale the moment
-                        // ⌘2 moves the keyboard inside a zoomed tab.
+                        // Resolved here rather than flagged for the shell, so a renderer
+                        // handed a zoomed tab paints the one pane that fills it. Which pane
+                        // that is is `zoom_filling`'s answer.
                         let zoomed = zoom_filling(region, Some(layout)).map(LayoutNode::Pane);
                         build(zoomed.as_ref().unwrap_or(&layout.root), &region.daemon, &pane)
                     }),
@@ -577,16 +562,10 @@ impl ViewNode {
 
 /// The one pane filling a region, when its tab is zoomed.
 ///
-/// Which pane that is is this window's own answer, not the daemon's. The backend spells zoom as
-/// a bare flag beside the tab's focused pane, and daemon focus is one value shared with every
-/// client - so reading it here would let another client decide what this window renders, against
-/// the rule that cursors are written and not read (`architecture.md`). It is also the only
-/// answer that keeps the window honest: the keyboard feeds `region.pane`, and a zoom showing
-/// anything else is somebody typing into a pane they cannot see.
-///
-/// Not hypothetical. herdr emits `layout_updated` when a pane appears or goes and never for a
-/// focus change (`observations/herdr-0.8.0.md` section 10), so the flag's companion cursor goes
-/// stale the moment ⌘2 moves the keyboard inside a zoomed tab.
+/// Which pane that is is this window's own answer first: the keyboard feeds `region.pane`, and a
+/// zoom showing anything else is somebody typing into a pane they cannot see. So moving the
+/// keyboard inside a zoomed tab moves what fills it, and the daemon's zoomed pane decides only
+/// for a region whose keyboard is on no pane.
 ///
 /// `None` for a region that is not zoomed and for one whose tree the daemon has not published -
 /// which is the same answer for a different reason, and the right one for both: a zoom is the
@@ -596,7 +575,7 @@ impl ViewNode {
 /// Public because the seam asks the same question about the same region: a socket is bound per
 /// pane a shell will build a surface for, so the narrowing here and the binding there have to
 /// be one answer rather than two that agree.
-pub fn zoom_filling(region: &Region, layout: Option<&Layout>) -> Option<PaneId> {
+pub fn zoom_filling(region: &Region, layout: Option<&Tab>) -> Option<PaneId> {
     let layout = layout?;
     layout.zoomed.as_ref()?;
     region.pane.clone().or_else(|| layout.zoomed.clone())
@@ -604,11 +583,9 @@ pub fn zoom_filling(region: &Region, layout: Option<&Layout>) -> Option<PaneId> 
 
 /// Whether a tab's tree describes the panes that tab actually holds.
 ///
-/// A backend publishes a tab's pane list and its arrangement as separate events, and nothing
-/// orders them against each other. Two ways that shows up, both measured against herdr 0.8.0:
-/// a tab mid-split briefly has a tree naming fewer panes than it holds, and a subscription
-/// that has just bootstrapped replays layout events, walking a tab backwards through
-/// arrangements it had minutes ago.
+/// A pane moving between two tabs changes both trees, in two events: between them the pane is
+/// named by the tree it now sits in and still counted in the tab it left, so that tab's tree
+/// names fewer panes than it holds.
 ///
 /// A tree that disagrees is withheld rather than repaired. Repairing it means inventing a
 /// place to put a pane no daemon put anywhere, and rendering it as it stands means dropping
@@ -616,7 +593,7 @@ pub fn zoom_filling(region: &Region, layout: Option<&Layout>) -> Option<PaneId> 
 /// that feed them. Withholding is a state the shell already understands and already has the
 /// right answer to: it leaves what it is showing alone, and the real tree arrives on its own
 /// event a moment later.
-fn arranges(mirror: &Mirror, tab: &TabId, layout: &Layout) -> bool {
+fn arranges(mirror: &Mirror, tab: &TabId, layout: &Tab) -> bool {
     let mut arranged: Vec<&PaneId> = layout.root.panes();
     arranged.sort_unstable();
     let mut held: Vec<&PaneId> = mirror.panes_in_tab(tab).map(|pane| &pane.id).collect();

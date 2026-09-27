@@ -1,34 +1,14 @@
-//! A map that iterates in the order the backend stated, rather than the order its ids sort.
+//! A map that iterates in the order its entries arrived, rather than the order its ids sort.
 //!
-//! The mirror keys everything by id, and those ids are opaque strings the backend spells -
-//! `w1:t1`, `w1:p2` ([`super::backend`]). Keyed by them a `BTreeMap` iterates
-//! lexicographically, and lexicographic order on those strings is *numeric order right up
-//! until there are ten of something*: `w1:t10` sorts between `w1:t1` and `w1:t2`. A window
-//! with ten tabs drew them 1, 10, 11, 2, 3 - and since ⌘1 to ⌘9 name places in that list,
-//! the chords named the wrong panes. Fifteen panes is this project's own reference workload,
-//! so the bug sat exactly where the design says to look.
+//! The mirror keys everything by id, and ids sort by their spelling rather than by anything a
+//! person means: a window drew ten tabs 1, 10, 11, 2, 3 when ids were numbered, and since
+//! the chords name places in that list, they named the wrong panes. Parsing an order out of an
+//! id would be a rule invented here about a string documented as opaque, so the order is
+//! remembered instead: for a bootstrap it is the order the daemon listed things in, and
+//! afterwards the order events announced them.
 //!
-//! **The fix is to stop deriving order from the id at all.** Parsing a digit out of one to
-//! sort it numerically would be the obvious repair and it is the wrong one: the ids are
-//! documented as opaque, and a backend that spelled them `alpha`/`beta` would be sorted by a
-//! rule invented here. The order was never ours to derive - a snapshot hands over its tabs in
-//! an order, and collecting them into a map keyed by id threw that away. So this remembers
-//! it: entries iterate in the order they first arrived, which for a bootstrap is the order
-//! the backend listed them and afterwards is the order events announced them.
-//!
-//! An upsert keeps the place its entry already had. A backend replays its whole session on
-//! every reconnect ([`super::state::Mirror::bootstrap`]), so re-stating a tab must not move
-//! it to the end of the list.
-//!
-//! An order somebody rearranged is stated rather than derived, and [`Ordered::reorder`] takes
-//! it. herdr's `tab_moved` carries the whole new order for one workspace as a list
-//! (`observations/herdr-0.8.0.md` section 21), so there is nothing to compute from a place and
-//! an offset - the sequence arrives and is adopted.
-//!
-//! What is still arrival order is the order *between* workspaces. A reorder names one
-//! workspace's tabs, and this permutes only the places those already hold, so another
-//! workspace's tabs stay exactly where they were even when the two interleave. Nothing states
-//! a cross-workspace order, so nothing here invents one.
+//! An upsert keeps the place its entry already had, so re-stating a tab does not move it to
+//! the end of the list.
 
 use std::collections::BTreeMap;
 
@@ -66,39 +46,6 @@ impl<K: Ord + Clone, V> Ordered<K, V> {
         self.next += 1;
         self.held.insert(key, (place, value));
         None
-    }
-
-    /// Puts these keys in this order, among the places they already hold.
-    ///
-    /// Their current places are collected and handed back out in the stated sequence, so an
-    /// entry this was not told about does not move at all - not even relative to the ones that
-    /// did. That is the property a payload scoped to one workspace needs: reordering its tabs
-    /// must not reshuffle another workspace's tabs that happen to sit between them.
-    ///
-    /// A key this does not hold is skipped rather than added, because the sequence is an order
-    /// and not a census: a tab the mirror has never heard of arrives on its own event, and
-    /// inventing an entry from a position would be an entry with no value to put in it.
-    ///
-    /// Returns whether anything actually moved, so a caller can stay quiet about a reorder that
-    /// reordered nothing - which herdr does not send, but a snapshot re-stating the same order
-    /// is the same question.
-    pub fn reorder(&mut self, order: &[K]) -> bool {
-        // Only the keys this holds, so that a place is never handed to a key that has no entry
-        // to put it on - which would shift every key after it by one and silently invent an
-        // order nobody stated.
-        let named: Vec<&K> = order.iter().filter(|key| self.held.contains_key(key)).collect();
-        let mut places: Vec<u64> =
-            named.iter().filter_map(|key| self.held.get(key).map(|(place, _)| *place)).collect();
-        places.sort_unstable();
-
-        let mut moved = false;
-        for (key, place) in named.into_iter().zip(places) {
-            if let Some((held, _)) = self.held.get_mut(key) {
-                moved |= *held != place;
-                *held = place;
-            }
-        }
-        moved
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
@@ -166,63 +113,14 @@ impl<K: Ord + Clone, V> FromIterator<(K, V)> for Ordered<K, V> {
 mod tests {
     use super::Ordered;
 
-    /// Values are `()` because every question here is about keys and their places. A value would
-    /// be a second thing each assertion could be wrong about.
-    fn held(entries: &[&str]) -> Ordered<String, ()> {
-        entries.iter().map(|key| ((*key).to_string(), ())).collect()
-    }
-
-    fn order(held: &Ordered<String, ()>) -> Vec<&str> {
-        held.keys().map(String::as_str).collect()
-    }
-
-    fn names(keys: &[&str]) -> Vec<String> {
-        keys.iter().map(|key| (*key).to_string()).collect()
-    }
-
     #[test]
-    fn a_stated_order_is_the_order() {
-        let mut tabs = held(&["a", "b", "c"]);
-        assert!(tabs.reorder(&names(&["c", "a", "b"])));
-        assert_eq!(order(&tabs), vec!["c", "a", "b"]);
-    }
-
-    /// Reported as unchanged, because reporting it republishes the whole window and a
-    /// subscription replays a session's orders on every reconnect.
-    #[test]
-    fn restating_the_order_it_already_had_moves_nothing() {
-        let mut tabs = held(&["a", "b", "c"]);
-        assert!(!tabs.reorder(&names(&["a", "b", "c"])));
-        assert_eq!(order(&tabs), vec!["a", "b", "c"]);
-    }
-
-    /// The property that makes a payload scoped to one workspace safe to apply. `b` belongs to
-    /// nobody in this order and has to come out sitting exactly where it went in - not merely
-    /// somewhere between the two, which a naive reassignment would also satisfy.
-    #[test]
-    fn an_entry_the_order_does_not_name_does_not_move() {
-        let mut tabs = held(&["a", "b", "c", "d"]);
-        assert!(tabs.reorder(&names(&["d", "c", "a"])));
-        assert_eq!(order(&tabs), vec!["d", "b", "c", "a"]);
-    }
-
-    /// A key with no entry cannot be given a place, and must not consume one either: taking a
-    /// place for it would shift every key after it and produce an order nobody stated.
-    #[test]
-    fn a_key_nothing_is_held_under_is_skipped_rather_than_placed() {
-        let mut tabs = held(&["a", "b", "c"]);
-        assert!(tabs.reorder(&names(&["gone", "c", "a", "b"])));
-        assert_eq!(order(&tabs), vec!["c", "a", "b"]);
-        assert_eq!(tabs.len(), 3, "a name with no entry became one");
-    }
-
-    /// Places are never reused, so a reorder after a removal has a gap in the places it is
-    /// permuting. It permutes the places that exist rather than the range they span.
-    #[test]
-    fn a_reorder_after_a_removal_uses_the_places_that_are_left() {
-        let mut tabs = held(&["a", "b", "c"]);
-        tabs.remove(&"b".to_string());
-        assert!(tabs.reorder(&names(&["c", "a"])));
-        assert_eq!(order(&tabs), vec!["c", "a"]);
+    fn entries_iterate_in_arrival_order_and_keep_their_place_when_restated() {
+        let mut held: Ordered<String, u32> =
+            ["b", "a", "c"].iter().map(|key| ((*key).to_string(), 0)).collect();
+        held.insert("a".to_string(), 1);
+        held.remove(&"b".to_string());
+        held.insert("b".to_string(), 2);
+        let order: Vec<&str> = held.keys().map(String::as_str).collect();
+        assert_eq!(order, ["a", "c", "b"], "a restated entry stays, a returning one is new");
     }
 }

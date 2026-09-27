@@ -9,9 +9,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::support::*;
-use muster_core::input::{Key, KeyAction, KeyEvent, OptionAsAlt, TerminalModeProfile};
+use muster_core::input::{Key, KeyAction, KeyEvent, OptionAsAlt};
 use muster_harness::Input;
-use muster_vt::{KeyEncoder, MouseEncoder, MouseGeometry, Terminal, encode_paste};
+use muster_vt::{KeyEncoder, KeyModes, MouseEncoder, MouseGeometry, Terminal, encode_paste};
 use proto::event::Event as Payload;
 use proto::input_event::{self, Input as Event};
 
@@ -92,7 +92,7 @@ fn wheel_up() -> Event {
 }
 
 fn key_encoder(terminal: &Terminal) -> KeyEncoder {
-    let mut encoder = KeyEncoder::new(TerminalModeProfile::default()).expect("an encoder");
+    let mut encoder = KeyEncoder::new(KeyModes::default()).expect("an encoder");
     encoder.configure_from(terminal, OptionAsAlt::Never);
     encoder
 }

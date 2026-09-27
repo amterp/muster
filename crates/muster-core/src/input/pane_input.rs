@@ -1,177 +1,70 @@
-//! One pane's input path: keymap first, then encode, then out.
+//! One pane's input path: keymap first, then out to the daemon.
 //!
 //! The whole of "what happens when you type" in one place, so the shell above only has to
 //! decide *that* a key was pressed and this decides what it means. It lives in the core
 //! rather than beside the window because every decision here is testable and none of it is
-//! about macOS - the two things it needs from the outside, an encoder and a channel, arrive
-//! as traits.
+//! about macOS - what it needs from the outside, a way to reach the pane's daemon, arrives as
+//! a trait.
 
-use std::collections::VecDeque;
-use std::sync::{Arc, Condvar, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
-use super::{
-    Delivery, KeyEncoding, KeyEvent, Keymap, PaneChannel, PaneInputSettings, PaneIntent,
-    Resolution, ScrollDirection,
-};
-use crate::diagnostics::{log, poison};
+use super::{InputEvent, InputSink, KeyEvent, Keymap, PaneInputSettings, Resolution};
+use crate::diagnostics::log;
 use crate::fields;
+use crate::mirror::backend::PaneId;
 
+/// The input path into one pane.
 pub struct PaneInput {
-    channel: Arc<dyn PaneChannel>,
-    server_channel: Option<Arc<dyn PaneChannel>>,
-    /// Everything a config file decides about typing, replaceable together.
-    ///
-    /// Behind one lock rather than three, and behind a lock at all because a reload has to
-    /// reach panes that already exist. The alternative the card for this rejected was leaving
-    /// open panes on the settings they were attached with, which makes a window's behaviour
-    /// depend on when each pane happened to be opened - worse than needing a relaunch.
-    ///
-    /// One read per keystroke, uncontended in every ordinary case: the only writer is a reload,
-    /// which happens when somebody saves a file. What comes out of the guard is owned or an
-    /// `Arc` clone, so nothing is held across the send.
+    pane: PaneId,
+    sink: Arc<dyn InputSink>,
     typing: RwLock<Typing>,
-
-    /// Everything leaves through here, in order.
-    ///
-    /// Two channels reach the same PTY by different routes: control-stream bytes travel app
-    /// → bridge → daemon, while a server-encoded key goes app → daemon directly and skips a
-    /// hop. Left concurrent, `abc<up>def` can deliver the arrow out of place. So sends are
-    /// serialized and a server-encoded intent completes its round trip before the next item
-    /// goes out - which is what makes mixing the two routes safe at all.
-    ///
-    /// But not on the caller's thread. The caller is the window's main thread, and the daemon
-    /// answers a server-encoded key on the thread that renders every pane it streams: 154 ms
-    /// at p90 in one busy session, and a 500 ms timeout thirteen times, with the window
-    /// frozen for each. So a server-encoded intent goes to a worker, and anything sent while
-    /// the worker is busy queues behind it. Everything else is written inline, as before,
-    /// whenever nothing is queued - typing pays for no thread.
-    ///
-    /// The one-shot warning lives inside the same lock because it is written on exactly the
-    /// path this serializes.
-    outbound: Arc<Outbox>,
-
-    /// Run after each intent that actually reached the pane.
-    ///
-    /// Here rather than at the six call sites above this, because what it records is a fact
-    /// about the path rather than about any one of them: something reached this pane and a
-    /// frame is now owed. A call site that forgot would be a pane the window never notices has
-    /// frozen, which is a silence rather than a failure and so is never found.
-    ///
-    /// On delivery rather than on intent, and that is the whole of where it sits: input that
-    /// went nowhere is a pane that cannot be typed into, which `typeable` already reports with
-    /// a sentence naming its own cause. Counting it here would accuse the pane of not painting
-    /// an answer to something it was never asked.
+    /// Told whenever something reaches the pane, so that a pane asked for something and
+    /// painting nothing can be noticed (`crate::painting`).
     delivered: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 struct Typing {
-    encoder: Arc<dyn KeyEncoding>,
     keymap: Keymap,
-
-    /// Held beside the encoder rather than only inside it, because option-as-alt takes two
-    /// steps and they must be the same answer: the encoder's flag opens the alt-prefix
-    /// branch, and this decides whether the keystroke arrives in a shape that reaches it.
-    /// Both come from one [`PaneInputSettings`] for that reason.
     settings: PaneInputSettings,
-}
-
-#[derive(Default)]
-struct Outbox {
-    state: Mutex<Outbound>,
-    /// Signalled when a worker has emptied the queue.
-    drained: Condvar,
-}
-
-#[derive(Default)]
-struct Outbound {
-    warned_about_dropped_input: bool,
-    queue: VecDeque<Queued>,
-    /// A worker is delivering, so whatever is sent now goes behind it.
-    draining: bool,
-}
-
-struct Queued {
-    intent: PaneIntent,
-    target: Arc<dyn PaneChannel>,
-    fallback: Option<PaneIntent>,
-}
-
-/// What a delivery needs besides the intent, cloned out so a worker can outlive the call.
-#[derive(Clone)]
-struct Route {
-    channel: Arc<dyn PaneChannel>,
-    delivered: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl std::fmt::Debug for PaneInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PaneInput")
-            .field("channel", &self.channel.description())
-            .field("server_channel", &self.server_channel.as_ref().map(|c| c.description()))
+            .field("pane", &self.pane)
+            .field("sink", &self.sink.description())
             .finish_non_exhaustive()
     }
 }
 
 impl PaneInput {
-    /// The encoder is passed in rather than built here because building one is I/O-adjacent
-    /// and fallible, but it must come from `settings.profile()` - an encoder built from
-    /// anything else disagrees with the keystrokes this will hand it.
-    pub fn new(
-        channel: Arc<dyn PaneChannel>,
-        server_channel: Option<Arc<dyn PaneChannel>>,
-        encoder: Arc<dyn KeyEncoding>,
-        settings: &PaneInputSettings,
-    ) -> PaneInput {
+    pub fn new(pane: PaneId, sink: Arc<dyn InputSink>, settings: &PaneInputSettings) -> PaneInput {
         PaneInput {
-            channel,
-            server_channel,
-            typing: RwLock::new(Typing {
-                encoder,
-                keymap: settings.keymap(),
-                settings: settings.clone(),
-            }),
-            outbound: Arc::new(Outbox::default()),
+            pane,
+            sink,
+            typing: RwLock::new(Typing { keymap: settings.keymap(), settings: settings.clone() }),
             delivered: None,
         }
     }
 
-    /// Says what to run after each intent that reaches the pane.
-    ///
-    /// A step after construction rather than another argument, because the two callers who do
-    /// not want one - a benchmark and a test of the encoding - would otherwise carry an empty
-    /// closure apiece to say so.
     #[must_use]
     pub fn delivering_to(mut self, watcher: Arc<dyn Fn() + Send + Sync>) -> PaneInput {
         self.delivered = Some(watcher);
         self
     }
 
-    /// Points this pane at a config file that has been read again.
-    ///
-    /// Every pane or none. A reload that reached only the panes opened since would leave a
-    /// window whose panes disagree about what `option_as_alt` means, and which of them is
-    /// right would depend on when each was opened - a thing nobody can see and nobody can
-    /// debug.
-    ///
-    /// The encoder is passed in for the reason it is at construction: building one is fallible,
-    /// and a pane that kept typing on its old settings is a better outcome than a pane that
-    /// stops typing at all.
-    pub fn resettle(&self, encoder: Arc<dyn KeyEncoding>, settings: &PaneInputSettings) {
+    /// Takes a reloaded config's settings for keystrokes from now on.
+    pub fn resettle(&self, settings: &PaneInputSettings) {
         let mut typing = self.typing.write().expect("a panicking sender poisoned the settings");
-        *typing = Typing { encoder, keymap: settings.keymap(), settings: settings.clone() };
+        *typing = Typing { keymap: settings.keymap(), settings: settings.clone() };
     }
 
+    /// Sends one keystroke, unless the keymap takes it.
     pub fn send(&self, key: &KeyEvent) {
-        // One read of the settings for the whole keystroke, so a reload landing mid-send
-        // cannot resolve the keymap under one file and encode under the next. What comes out
-        // is owned or an `Arc` clone, so the guard is gone before anything is delivered.
-        let (resolution, resolved, encoder) = {
+        let (resolution, as_alt, option_as_alt) = {
             let typing = self.typing.read().expect("a panicking sender poisoned the settings");
-            (typing.keymap.resolve(key), typing.settings.as_alt(key), Arc::clone(&typing.encoder))
+            (typing.keymap.resolve(key), typing.settings.as_alt(key), typing.settings.option_as_alt)
         };
-
-        // Precedence: the keymap gets first refusal, and the encoder only sees what it
-        // declines (architecture.md, input precedence).
         match resolution {
             Resolution::Text(bytes) => {
                 log::debug(
@@ -182,20 +75,8 @@ impl PaneInput {
                         "bytes" => bytes.len(),
                     },
                 );
-                self.deliver(&PaneIntent::Input(bytes));
-                return;
+                self.deliver(InputEvent::Bytes(bytes));
             }
-            Resolution::ServerEncoded(name) => {
-                self.send_server_encoded(&name, key);
-                return;
-            }
-            // Unreachable while `keymap::KeymapAction` has no variants, which is deliberate and
-            // not this arm's doing. Note which type that is: `super::Action` is the window's
-            // own 44-item vocabulary and is a different thing entirely (kan a_2LMRCWP00). So no
-            // bound action is logged here, and looking for one here is how an evening went
-            // missing: on macOS a chord is dispatched by a menu item's key equivalent, and
-            // `input.bound.action` is written where that happens, in the shell
-            // (`AppMenu.swift`, kan a_2KHGYh7xD).
             Resolution::Action(_) => {
                 log::debug(
                     "input.bound",
@@ -204,54 +85,25 @@ impl PaneInput {
                         "mods" => key.modifiers.names().join("+"),
                     },
                 );
-                return;
             }
-            Resolution::Unbound => {}
+            Resolution::Unbound => {
+                let key = as_alt.unwrap_or_else(|| key.clone());
+                log::debug(
+                    "input.key",
+                    fields! {
+                        "key" => key.key.as_str(),
+                        "mods" => key.modifiers.names().join("+"),
+                        "action" => key.action.as_str(),
+                    },
+                );
+                self.deliver(InputEvent::Key { key, option_as_alt });
+            }
         }
-
-        // After the keymap and before the encoder. A chord bound in the config is bound
-        // whatever option means, because the keymap matches on which modifiers are held and
-        // never on what the layout did with them.
-        let key = resolved.as_ref().unwrap_or(key);
-
-        let Ok(bytes) = encoder.encode(key) else {
-            log::warn(
-                "input.encode.failed",
-                fields! {
-                    "key" => key.key.as_str(),
-                    "mods" => key.modifiers.names().join("+"),
-                    "impact" => "this keystroke reaches the pane as nothing at all",
-                },
-            );
-            return;
-        };
-        // An empty encoding is normal and frequent - modifiers alone, and every key while an
-        // input method is composing - so it is not a warning, but a silence worth being able
-        // to tell apart from a dropped one.
-        if bytes.is_empty() {
-            log::trace(
-                "input.key.empty",
-                fields! { "key" => key.key.as_str(), "action" => key.action.as_str() },
-            );
-            return;
-        }
-        log::debug(
-            "input.key",
-            fields! {
-                "key" => key.key.as_str(),
-                "mods" => key.modifiers.names().join("+"),
-                "action" => key.action.as_str(),
-                "bytes" => bytes.len(),
-                "encoded" => if log::includes_input() {
-                    format!("{:?}", String::from_utf8_lossy(&bytes))
-                } else {
-                    String::new()
-                },
-            },
-        );
-        self.deliver(&PaneIntent::Input(bytes));
     }
 
+    /// Text an input method committed, written as it stands: neither a keystroke for the
+    /// encoder to reinterpret nor a paste to fence, which is what Ghostty's own surface does
+    /// with a commit.
     pub fn send_text(&self, text: &str) {
         log::debug(
             "input.text",
@@ -260,21 +112,12 @@ impl PaneInput {
                 "text" => if log::includes_input() { format!("{text:?}") } else { String::new() },
             },
         );
-        self.deliver(&PaneIntent::Input(text.as_bytes().to_vec()));
+        self.deliver(InputEvent::Bytes(text.as_bytes().to_vec()));
     }
 
-    /// Sends the clipboard to the pane.
-    ///
-    /// Server-encoded when there is a channel that can: a program which enabled DEC 2004
-    /// wants the text fenced by paste markers so it can tell pasting from very fast typing,
-    /// and a shell uses the same fence to stop a multi-line paste running as it arrives.
-    /// Only the daemon knows whether that mode is on. A paste is one action rather than one
-    /// per keystroke, so the round trip it costs is free.
-    ///
-    /// Without such a channel the text goes raw and unfenced, which is right for a single
-    /// line and wrong for several. Guessing the fence on would be worse: markers sent to a
-    /// program that never asked arrive as literal `[200~` on its input.
-    pub fn paste(&self, text: &str) {
+    /// A paste, which the daemon holds for confirmation when writing it would run several
+    /// lines as typed. `confirmed` is somebody saying yes to one it held.
+    pub fn paste(&self, text: &str, confirmed: bool) {
         if text.is_empty() {
             return;
         }
@@ -282,230 +125,17 @@ impl PaneInput {
             "input.paste",
             fields! {
                 "characters" => text.chars().count(),
-                "server_encoded" => self.server_channel.is_some(),
+                "confirmed" => confirmed,
                 "text" => if log::includes_input() { format!("{text:?}") } else { String::new() },
             },
         );
-        let Some(server) = self.server_channel.clone() else {
-            self.deliver(&PaneIntent::Input(text.as_bytes().to_vec()));
-            return;
-        };
-        self.deliver_over(
-            PaneIntent::Text(text.to_string()),
-            server,
-            Some(PaneIntent::Input(text.as_bytes().to_vec())),
-        );
+        self.deliver(InputEvent::Paste { text: text.to_string(), confirmed });
     }
 
-    pub fn scroll(&self, direction: ScrollDirection, lines: u16) {
-        self.deliver(&PaneIntent::Scroll { direction, lines });
-    }
-
-    /// Sets the pane's grid size, and says whether the daemon heard.
-    ///
-    /// The one thing here that is not input. It travels on this channel because a pane's size
-    /// follows whichever client is driving it, and this is the channel that drives - the
-    /// window's own resizes never reach here, because the surface's PTY carries those straight
-    /// to the bridge. The one caller is Muster on its way out, handing a pane back.
-    ///
-    /// Answers rather than logs its own failure, unlike everything above: a keystroke that does
-    /// not arrive is a keystroke, and a pane not handed back is worth naming in one record
-    /// beside the others rather than in fifteen.
-    pub fn resize(&self, columns: u16, rows: u16) -> bool {
-        self.flush();
-        self.channel.deliver(&PaneIntent::Resize { columns, rows }).arrived()
-    }
-
-    /// Waits until everything sent so far has been delivered or given up on.
-    ///
-    /// For whoever needs the pane to have had its input before acting - a test reading what
-    /// went out, and a pane being handed back at quit.
-    pub fn flush(&self) {
-        let mut outbound = poison::lock(&self.outbound.state, "pane-outbound");
-        while outbound.draining {
-            outbound = self
-                .outbound
-                .drained
-                .wait(outbound)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-        }
-    }
-
-    /// Hands a key to the daemon to encode, because we would get it wrong.
-    ///
-    /// Falls back to local encoding when the daemon never got the key: a guessed arrow beats
-    /// no arrow, and a daemon that has gone away must not take the keyboard with it. One that
-    /// got it and has not answered may still deliver it, so that one is not sent twice.
-    fn send_server_encoded(&self, name: &str, key: &KeyEvent) {
-        let Some(server) = self.server_channel.clone() else {
-            self.send_locally_encoded(key);
-            return;
-        };
-        log::debug("input.key.server", fields! { "key" => key.key.as_str(), "name" => name });
-        let local = self.encoder().encode(key).unwrap_or_default();
-        self.deliver_over(
-            PaneIntent::Key { name: name.to_string() },
-            server,
-            Some(PaneIntent::Input(local)),
-        );
-    }
-
-    fn send_locally_encoded(&self, key: &KeyEvent) {
-        match self.encoder().encode(key) {
-            Ok(bytes) if !bytes.is_empty() => self.deliver(&PaneIntent::Input(bytes)),
-            _ => {}
-        }
-    }
-
-    /// The encoder in force, cloned out rather than borrowed so no lock is held across a send.
-    fn encoder(&self) -> Arc<dyn KeyEncoding> {
-        Arc::clone(&self.typing.read().expect("a panicking sender poisoned the settings").encoder)
-    }
-
-    fn deliver(&self, intent: &PaneIntent) {
-        self.deliver_over(intent.clone(), Arc::clone(&self.channel), None);
-    }
-
-    fn deliver_over(
-        &self,
-        intent: PaneIntent,
-        target: Arc<dyn PaneChannel>,
-        fallback: Option<PaneIntent>,
-    ) {
-        let route = Route { channel: Arc::clone(&self.channel), delivered: self.delivered.clone() };
-        let mut outbound = poison::lock(&self.outbound.state, "pane-outbound");
-        // Inline while holding the lock, so a watcher told of the delivery is told in order.
-        if !outbound.draining && !target.encodes_server_side() {
-            if !attempt(&route, &intent, target.as_ref(), fallback.as_ref()) {
-                report_dropped(target.as_ref(), &mut outbound);
-            }
-            return;
-        }
-        outbound.queue.push_back(Queued { intent, target, fallback });
-        if outbound.draining {
-            return;
-        }
-        outbound.draining = true;
-        drop(outbound);
-
-        let outbox = Arc::clone(&self.outbound);
-        let worker = route.clone();
-        let spawned = std::thread::Builder::new()
-            .name("pane-input".into())
-            .spawn(move || drain(&outbox, &worker));
-        if let Err(error) = spawned {
-            log::warn(
-                "input.worker.failed",
-                fields! {
-                    "error" => error.to_string(),
-                    "impact" => "this keystroke waits for the daemon on the window's own \
-                                 thread, which freezes the window until the daemon answers",
-                    "check" => "the process is out of threads; `ps -M` on the app shows how many \
-                                it holds",
-                },
-            );
-            drain(&self.outbound, &route);
-        }
-    }
-}
-
-/// Delivers what is queued, in order, until nothing is.
-fn drain(outbox: &Outbox, route: &Route) {
-    loop {
-        let next = {
-            let mut outbound = poison::lock(&outbox.state, "pane-outbound");
-            let Some(next) = outbound.queue.pop_front() else {
-                outbound.draining = false;
-                outbox.drained.notify_all();
-                return;
-            };
-            next
-        };
-        if !attempt(route, &next.intent, next.target.as_ref(), next.fallback.as_ref()) {
-            report_dropped(next.target.as_ref(), &mut poison::lock(&outbox.state, "pane-outbound"));
-        }
-    }
-}
-
-/// Sends one intent, falling back to a local encoding if the target refuses it.
-///
-/// False only when nothing reached the pane and nothing may yet.
-fn attempt(
-    route: &Route,
-    intent: &PaneIntent,
-    target: &dyn PaneChannel,
-    fallback: Option<&PaneIntent>,
-) -> bool {
-    match target.deliver(intent) {
-        Delivery::Arrived => {
-            route.arrived();
-            return true;
-        }
-        // Not also sent the local way, which would deliver it twice if the daemon gets to it:
-        // an arrow moving two lines, or a paste run line by line and then pasted again. Not
-        // counted as arrived either, since no frame is owed for input that may never land.
-        Delivery::Unconfirmed => {
-            log::warn(
-                "input.unconfirmed",
-                fields! {
-                    "channel" => target.description(),
-                    "impact" => "this key or paste reaches the pane late or not at all; it is \
-                                 not sent again, because the daemon may still deliver it",
-                    "check" => "a daemon slow to answer; `server_channel.failed` beside this \
-                                says how long it was given",
-                },
-            );
-            return true;
-        }
-        Delivery::Refused => {}
-    }
-    if let Some(fallback) = fallback.filter(|f| *f != intent) {
-        log::warn(
-            "input.fallback",
-            fields! {
-                "channel" => target.description(),
-                "impact" => "sent with a guessed encoding instead, which may be wrong for this pane",
-            },
-        );
-        if route.channel.deliver(fallback).arrived() {
-            route.arrived();
-            return true;
-        }
-    }
-    false
-}
-
-impl Route {
-    /// Something reached the pane, so a frame is owed.
-    ///
-    /// Called only on the path `outbound` serializes, which is deliberate: a watcher told out
-    /// of order would record a pane as owing a frame it had already been given.
-    fn arrived(&self) {
+    fn deliver(&self, event: InputEvent) {
+        self.sink.send(&self.pane, event);
         if let Some(delivered) = self.delivered.as_ref() {
             delivered();
         }
     }
-}
-
-fn report_dropped(target: &dyn PaneChannel, outbound: &mut Outbound) {
-    log::warn(
-        "input.dropped",
-        fields! {
-            "channel" => target.description(),
-            "impact" => "the pane looks frozen but is fine; nothing typed here reached it",
-        },
-    );
-    // Once on stderr, not per keystroke: a pane that swallows input produces a lot of them,
-    // and a log that scrolls is a log nobody reads. The record above is per event.
-    if outbound.warned_about_dropped_input {
-        return;
-    }
-    outbound.warned_about_dropped_input = true;
-    eprint!(
-        "muster: the pane bridge is not connected, so input is going nowhere.\n\
-         The pane keeps rendering, which makes this look like a frozen program rather than a \
-         broken channel. Usual causes: muster-bridge failed to start (its own error is above), \
-         or it could not reach {}.\n\n",
-        target.description()
-    );
 }

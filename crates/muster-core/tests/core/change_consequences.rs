@@ -7,8 +7,8 @@
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::AgentState;
-use muster_core::mirror::Change;
-use muster_core::mirror::backend::{PaneId, TabId, WorkspaceId};
+use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::mirror::{Change, Restored};
 use serde_json::{Value, json};
 
 #[test]
@@ -52,12 +52,11 @@ fn every_change_is_in_the_corpus() {
         "agentStateChanged",
         "paneRelabelled",
         "tabAdded",
+        "tabRelabelled",
         "tabRemoved",
         "layoutChanged",
-        "workspaceAdded",
-        "workspaceRemoved",
-        "focusChanged",
-        "agentTransitionsMissed",
+        "restored",
+        "pasteHeld",
     ] {
         assert!(
             covered.contains(&kind),
@@ -74,19 +73,9 @@ fn read_change(given: &Value) -> Result<Change, CaseError> {
             .map(ToString::to_string)
             .ok_or_else(|| CaseError::new(format!("the case has no `{key}`")))
     };
-    let number = |key: &str| -> Result<u64, CaseError> {
-        given
-            .get(key)
-            .and_then(Value::as_u64)
-            .ok_or_else(|| CaseError::new(format!("the case has no `{key}`")))
-    };
-
     Ok(match text("change")?.as_str() {
         "paneAdded" => Change::PaneAdded(PaneId::new(text("pane")?)),
-        "paneRemoved" => Change::PaneRemoved {
-            pane: PaneId::new(text("pane")?),
-            cascaded: given.get("cascaded").and_then(Value::as_bool).unwrap_or(false),
-        },
+        "paneRemoved" => Change::PaneRemoved(PaneId::new(text("pane")?)),
         "agentStateChanged" => Change::AgentStateChanged {
             pane: PaneId::new(text("pane")?),
             from: AgentState::from_backend(&text("from")?),
@@ -94,15 +83,11 @@ fn read_change(given: &Value) -> Result<Change, CaseError> {
         },
         "paneRelabelled" => Change::PaneRelabelled(PaneId::new(text("pane")?)),
         "tabAdded" => Change::TabAdded(TabId::new(text("tab")?)),
+        "tabRelabelled" => Change::TabRelabelled(TabId::new(text("tab")?)),
         "tabRemoved" => Change::TabRemoved(TabId::new(text("tab")?)),
         "layoutChanged" => Change::LayoutChanged(TabId::new(text("tab")?)),
-        "workspaceAdded" => Change::WorkspaceAdded(WorkspaceId::new(text("workspace")?)),
-        "workspaceRelabelled" => Change::WorkspaceRelabelled(WorkspaceId::new(text("workspace")?)),
-        "workspaceRemoved" => Change::WorkspaceRemoved(WorkspaceId::new(text("workspace")?)),
-        "focusChanged" => Change::FocusChanged,
-        "agentTransitionsMissed" => {
-            Change::AgentTransitionsMissed { expected: number("expected")?, saw: number("saw")? }
-        }
+        "restored" => Change::Restored(Restored::default()),
+        "pasteHeld" => Change::PasteHeld { pane: PaneId::new(text("pane")?), text: String::new() },
         other => return Err(CaseError::new(format!("no change is spelled `{other}`"))),
     })
 }

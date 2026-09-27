@@ -74,10 +74,6 @@ fn act(holders: &mut Holders, step: &Value) -> Result<(), CaseError> {
         "close" => holders.closed(&window(step)),
         "focus" => holders.focused(&window(step), number(step, "at")),
         "take" => holders.take(TabId::new(text(step, "tab")), &window(step)),
-        "expect" => {
-            holders.expect(&window(step), &DaemonId::new(text(step, "daemon")), number(step, "at"));
-        }
-        "answered" => holders.expected(&window(step), &DaemonId::new(text(step, "daemon"))),
         "forget" => {
             let gone = strings(step, "windows");
             holders.forget(|window| gone.iter().any(|name| name == window.name.as_str()));
@@ -101,13 +97,11 @@ fn act(holders: &mut Holders, step: &Value) -> Result<(), CaseError> {
 /// one's socket - so a case names them rather than the record deciding from a pid.
 fn taker(holders: &Holders, asked: &Value) -> String {
     let open = strings(asked, "open");
-    let answer =
-        holders.taker(&DaemonId::new(text(asked, "daemon")), number(asked, "now"), |window| {
-            open.iter().any(|name| name == window.name.as_str())
-        });
+    let answer = holders.taker(&DaemonId::new(text(asked, "daemon")), |window| {
+        open.iter().any(|name| name == window.name.as_str())
+    });
     match answer {
         Taker::Window(window) => window.to_string(),
-        Taker::Waiting(window) => format!("waiting on {window}"),
         Taker::Nobody => "nobody".to_string(),
     }
 }

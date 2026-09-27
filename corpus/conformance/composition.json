@@ -50,7 +50,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -64,7 +64,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -81,45 +81,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -132,6 +97,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -143,7 +125,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -162,7 +144,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -186,45 +168,10 @@
       "given": {
         "worlds": {
           "reordered": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -237,6 +184,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -248,7 +212,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -267,7 +231,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p3",
         "focusedRegion": "r0",
@@ -286,124 +250,28 @@
       }
     },
     {
-      "name": "a tab whose tree has not arrived still gets a pane",
-      "why": "herdr publishes a tab's tree on its own event, which may follow the panes it names, so a tab with panes and no tree is an ordinary moment rather than a broken one. A region that waited for the tree would be untypeable for as long as it lasted, and on a quiet tab that is until something else happens. And both panes are on screen while that tree is missing. A region shows a tab and a tab on screen has its panes on screen; the tree says how they are arranged, so a tree that has not arrived yet hides nothing.",
-      "given": {
-        "worlds": {
-          "no tree yet": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": []
-          }
-        },
-        "steps": [
-          {
-            "do": "hold",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "attachDaemon",
-            "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
-          },
-          {
-            "do": "openRegion",
-            "daemon": "local",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "reconcile",
-            "daemon": "local",
-            "world": "no tree yet"
-          }
-        ],
-        "attached": [
-          "w1:p1"
-        ]
-      },
-      "expect": {
-        "daemons": [
-          "local local=/tmp/herdr-local.sock"
-        ],
-        "focusedPane": "w1:p1",
-        "focusedRegion": "r0",
-        "regions": [
-          "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "showing": [
-          "local/w1:p1",
-          "local/w1:p2"
-        ],
-        "showingTab": "w1:t1",
-        "view": [
-          "r0 tab=w1:t1 (no tree)"
-        ]
-      }
-    },
-    {
       "name": "a tree naming a pane the mirror has not got skips it",
       "why": "The tree and the pane list arrive on separate events, so a tree can name a pane the mirror has not been told about yet. Pointing the keyboard at one would give the window a focused pane that nothing can render and nothing can type into, which looks exactly like a hung terminal. The view withholds that tree rather than rendering it without the missing pane: an arrangement that disagrees with the tab's pane list is one no daemon published, and rendering it would tear down the surfaces it omits. On screen is the pane the tab holds, and only that one: a pane the mirror has not been told about is not one the window can be drawing.",
       "given": {
         "worlds": {
           "tree ran ahead": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
                   "first": "w1:p1",
                   "second": "w1:p2"
                 }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
               }
             ]
           }
@@ -416,7 +284,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -435,7 +303,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p2",
         "focusedRegion": "r0",
@@ -457,45 +325,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -508,6 +341,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -519,7 +369,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -548,7 +398,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p2",
         "focusedRegion": "r0",
@@ -572,45 +422,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -623,47 +438,48 @@
                   }
                 }
               }
-            ]
-          },
-          "p2 exited": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               }
-            ],
-            "layouts": [
+            ]
+          },
+          "p2 exited": {
+            "tabs": [
               {
-                "tab": "w1:t1",
+                "id": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
                   "first": "w1:p1",
                   "second": "w1:p3"
                 }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
               }
             ]
           }
@@ -676,7 +492,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -700,7 +516,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -723,45 +539,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -774,18 +555,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           },
           "tab closed": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [],
-            "panes": [],
-            "layouts": []
+            "panes": []
           }
         },
         "steps": [
@@ -796,7 +587,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -820,7 +611,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "regions": [],
         "view": [],
@@ -833,45 +624,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -884,18 +640,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           },
           "tab closed": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [],
-            "panes": [],
-            "layouts": []
+            "panes": []
           }
         },
         "steps": [
@@ -906,12 +672,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -945,8 +711,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r1",
@@ -970,45 +736,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -1021,6 +752,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -1032,12 +780,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -1070,7 +818,7 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock"
+          "devenv local=/tmp/daemon-devenv.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r1",
@@ -1094,45 +842,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -1145,6 +858,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -1156,7 +886,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -1188,7 +918,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -1212,45 +942,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -1263,6 +958,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -1274,7 +986,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -1306,7 +1018,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -1330,45 +1042,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -1381,6 +1058,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -1392,7 +1086,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -1420,7 +1114,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r1",
@@ -1444,45 +1138,10 @@
       "given": {
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -1495,6 +1154,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -1506,7 +1182,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -1521,7 +1197,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-restarted.sock"
+            "socketPath": "/tmp/daemon-restarted.sock"
           }
         ],
         "attached": [
@@ -1530,7 +1206,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-restarted.sock"
+          "local local=/tmp/daemon-restarted.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -1549,157 +1225,6 @@
       }
     },
     {
-      "name": "a tree that has not caught up does not move the keyboard",
-      "why": "The pane list and the tree are published separately, so a tab that is mid-split briefly has a tree naming fewer panes than it holds. Reading the tree as evidence that a pane is gone hands the keyboard to another pane and keeps it there, because the tree that arrives a moment later makes the wrong answer valid. It cost an afternoon as a test that passed alone and failed in the suite; the real symptom is a keyboard that jumps to the first pane when you split, sometimes. Both panes the tab still holds are on screen throughout. The tree going backwards is the daemon describing an arrangement, not withdrawing panes, and a window that reported them hidden here would be telling an agent to go and surface what is already in front of somebody.",
-      "given": {
-        "attached": [
-          "w1:p1"
-        ],
-        "worlds": {
-          "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": {
-                  "axis": "columns",
-                  "ratio": 0.5,
-                  "first": "w1:p1",
-                  "second": {
-                    "axis": "columns",
-                    "ratio": 0.5,
-                    "first": "w1:p2",
-                    "second": "w1:p3"
-                  }
-                }
-              }
-            ]
-          },
-          "tree behind": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              }
-            ]
-          }
-        },
-        "steps": [
-          {
-            "do": "hold",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "attachDaemon",
-            "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
-          },
-          {
-            "do": "openRegion",
-            "daemon": "local",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "reconcile",
-            "daemon": "local",
-            "world": "three panes"
-          },
-          {
-            "do": "focusPane",
-            "region": "r0",
-            "pane": "w1:p2"
-          },
-          {
-            "do": "reconcile",
-            "daemon": "local",
-            "world": "tree behind"
-          }
-        ]
-      },
-      "expect": {
-        "daemons": [
-          "local local=/tmp/herdr-local.sock"
-        ],
-        "focusedPane": "w1:p2",
-        "focusedRegion": "r0",
-        "regions": [
-          "r0 daemon=local tab=w1:t1 pane=w1:p2"
-        ],
-        "showing": [
-          "local/w1:p1",
-          "local/w1:p2"
-        ],
-        "showingTab": "w1:t1",
-        "view": [
-          "r0 tab=w1:t1 (no tree)"
-        ]
-      }
-    },
-    {
       "name": "a zoomed tab shows the pane this window's keyboard is on",
       "why": "herdr spells zoom as a flag and keeps publishing every pane at its ordinary unzoomed rect, so a renderer handed the tree paints all of them while the daemon is showing one. Resolving it here rather than flagging it for the shell is what keeps the shell renderable-as-told; the flag survives only so the chrome can say so, because a zoomed tab and a one-pane tab look identical. Which pane fills it is this window's own answer and not the daemon's: herdr's flag sits beside its focused pane, and daemon focus is one value shared with every client, so reading it would let another client decide what this window renders. Here that other client zoomed p2 while this window's keyboard is on p1, and p1 is what fills the region - anything else is somebody typing into a pane they cannot see.",
       "given": {
@@ -1709,45 +1234,10 @@
         ],
         "worlds": {
           "zoomed on p2": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -1761,6 +1251,23 @@
                 },
                 "zoomed": "w1:p2"
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -1772,7 +1279,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -1788,7 +1295,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -1814,44 +1321,28 @@
         ],
         "worlds": {
           "two panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
                   "first": "w1:p1",
                   "second": "w1:p2"
                 }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
               }
             ]
           }
@@ -1864,7 +1355,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -1893,7 +1384,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p2",
         "focusedRegion": "r0",
@@ -1920,44 +1411,28 @@
         ],
         "worlds": {
           "two panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
                   "first": "w1:p1",
                   "second": "w1:p2"
                 }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
               }
             ]
           }
@@ -1970,7 +1445,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -2003,7 +1478,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p2",
         "focusedRegion": "r0",
@@ -2031,45 +1506,10 @@
         ],
         "worlds": {
           "zoomed on p2": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -2083,6 +1523,23 @@
                 },
                 "zoomed": "w1:p2"
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -2094,7 +1551,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -2115,7 +1572,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p3",
         "focusedRegion": "r0",
@@ -2140,45 +1597,10 @@
         ],
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -2191,6 +1613,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -2202,12 +1641,12 @@
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -2233,8 +1672,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -2266,45 +1705,10 @@
         ],
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -2317,6 +1721,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -2328,7 +1749,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -2348,7 +1769,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p2",
         "focusedRegion": "r0",
@@ -2375,45 +1796,10 @@
         ],
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -2426,6 +1812,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -2437,7 +1840,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -2462,7 +1865,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -2489,45 +1892,10 @@
         ],
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -2540,6 +1908,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -2551,7 +1936,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -2571,7 +1956,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p3",
         "focusedRegion": "r0",
@@ -2598,45 +1983,10 @@
         ],
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -2649,6 +1999,23 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -2660,12 +2027,12 @@
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -2700,8 +2067,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r1",
@@ -2734,7 +2101,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "step",
@@ -2744,165 +2111,11 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "regions": [],
         "view": [],
         "showing": []
-      }
-    },
-    {
-      "name": "a tree that disagrees with the tab's panes is not published",
-      "why": "A backend publishes a tab's pane list and its arrangement as separate events, and nothing orders them against each other - a tab mid-split briefly has a tree naming fewer panes than it holds, and a subscription that has just bootstrapped replays layout events and walks a tab backwards through arrangements it had minutes ago. Both were measured against herdr 0.8.0. Rendering the stale tree drops every pane it omits, and a dropped pane costs its surface and the bridge feeding it - which then cannot reconnect, so the pane comes back rendering and swallowing every keystroke. Withholding is a state the shell already answers correctly by leaving what it shows alone. All three stay on screen. Withholding the tree leaves the shell drawing what it had, so the answer that says nothing is on screen is the one that would be false.",
-      "given": {
-        "attached": [
-          "w1:p1"
-        ],
-        "worlds": {
-          "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": {
-                  "axis": "columns",
-                  "ratio": 0.5,
-                  "first": "w1:p1",
-                  "second": {
-                    "axis": "columns",
-                    "ratio": 0.5,
-                    "first": "w1:p2",
-                    "second": "w1:p3"
-                  }
-                }
-              }
-            ]
-          },
-          "one in the tree": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              }
-            ]
-          }
-        },
-        "steps": [
-          {
-            "do": "hold",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "attachDaemon",
-            "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
-          },
-          {
-            "do": "openRegion",
-            "daemon": "local",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "reconcile",
-            "daemon": "local",
-            "world": "three panes"
-          },
-          {
-            "do": "reconcile",
-            "daemon": "local",
-            "world": "one in the tree"
-          }
-        ]
-      },
-      "expect": {
-        "daemons": [
-          "local local=/tmp/herdr-local.sock"
-        ],
-        "focusedPane": "w1:p1",
-        "focusedRegion": "r0",
-        "regions": [
-          "r0 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "showing": [
-          "local/w1:p1",
-          "local/w1:p2",
-          "local/w1:p3"
-        ],
-        "showingTab": "w1:t1",
-        "view": [
-          "r0 tab=w1:t1 (no tree)"
-        ]
       }
     },
     {
@@ -2914,45 +2127,46 @@
         ],
         "worlds": {
           "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               }
-            ],
-            "layouts": [
+            ]
+          },
+          "one closed": {
+            "tabs": [
               {
-                "tab": "w1:t1",
+                "id": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -2964,53 +2178,18 @@
                     "second": "w1:p3"
                   }
                 }
-              }
-            ]
-          },
-          "one closed": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": {
-                  "axis": "columns",
-                  "ratio": 0.5,
-                  "first": "w1:p1",
-                  "second": {
-                    "axis": "columns",
-                    "ratio": 0.5,
-                    "first": "w1:p2",
-                    "second": "w1:p3"
-                  }
-                }
               }
             ]
           }
@@ -3023,7 +2202,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -3044,7 +2223,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -3062,223 +2241,33 @@
       }
     },
     {
-      "name": "a step out of a region with no arrangement lands in one that has it",
-      "why": "While a region's tree is withheld there is nothing in it to step through, and the keyboard is standing somewhere the window's reading order does not contain. Refusing would make the key look dead for as long as that lasts, which is unpredictable; going to the first pane the window does know about is an answer that is always available and always somewhere the user can see. Every pane in both regions is on screen, the withheld tree included: what is missing there is the order to step through, not the panes themselves.",
-      "given": {
-        "attached": [
-          "w1:p1"
-        ],
-        "worlds": {
-          "three panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": {
-                  "axis": "columns",
-                  "ratio": 0.5,
-                  "first": "w1:p1",
-                  "second": {
-                    "axis": "columns",
-                    "ratio": 0.5,
-                    "first": "w1:p2",
-                    "second": "w1:p3"
-                  }
-                }
-              }
-            ]
-          },
-          "one in the tree": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              }
-            ]
-          }
-        },
-        "steps": [
-          {
-            "do": "hold",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "attachDaemon",
-            "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
-          },
-          {
-            "do": "attachDaemon",
-            "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
-          },
-          {
-            "do": "openRegion",
-            "daemon": "devenv",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "openRegion",
-            "daemon": "local",
-            "tab": "w1:t1"
-          },
-          {
-            "do": "reconcile",
-            "daemon": "devenv",
-            "world": "one in the tree"
-          },
-          {
-            "do": "reconcile",
-            "daemon": "local",
-            "world": "three panes"
-          },
-          {
-            "do": "step",
-            "direction": "next"
-          }
-        ]
-      },
-      "expect": {
-        "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
-        ],
-        "focusedPane": "w1:p1",
-        "focusedRegion": "r1",
-        "regions": [
-          "r0 daemon=devenv tab=w1:t1 pane=w1:p1",
-          "r1 daemon=local tab=w1:t1 pane=w1:p1"
-        ],
-        "showing": [
-          "devenv/w1:p1",
-          "devenv/w1:p2",
-          "devenv/w1:p3",
-          "local/w1:p1",
-          "local/w1:p2",
-          "local/w1:p3"
-        ],
-        "showingTab": "w1:t1",
-        "view": [
-          "r0 tab=w1:t1 (no tree)",
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
-        ]
-      }
-    },
-    {
       "name": "a daemon reached over ssh is a daemon like any other",
       "why": "The whole bet of 'local and remote in one window' is that the transport stops at the adapter and nothing above it can tell the difference. This case is where that stops being an aspiration: an ssh endpoint opens a region, reconciles, holds the keyboard and renders the same way a local one does, and the only line anywhere that differs is the one describing how it is reached. If this case ever needs a branch, the bet was wrong. It carries a second thing worth pinning, because both daemons here hold a pane called w1:p1: the step lands on the other pane of the region it was already in, rather than on the identically named pane in the region before it. Position in the order is a (region, pane) pair, and a step that matched on the pane id alone would jump machines.",
       "given": {
         "worlds": {
           "two panes": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
                   "first": "w1:p1",
                   "second": "w1:p2"
                 }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
               }
             ]
           }
@@ -3367,7 +2356,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -3384,7 +2373,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r1",
         "regions": [
@@ -3404,7 +2393,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -3421,7 +2410,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -3440,12 +2429,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -3471,8 +2460,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r2",
         "regions": [
@@ -3493,12 +2482,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -3515,8 +2504,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -3536,7 +2525,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -3562,7 +2551,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r2",
         "regions": [
@@ -3581,48 +2570,28 @@
       "given": {
         "worlds": {
           "two tabs": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p9"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              },
-              {
-                "tab": "w1:t2",
-                "root": "w1:p9"
               }
             ]
           }
@@ -3639,7 +2608,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -3661,7 +2630,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p9",
         "focusedRegion": "r1",
@@ -3686,12 +2655,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -3708,8 +2677,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -3729,12 +2698,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -3756,8 +2725,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -3777,17 +2746,17 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "builder",
-            "socketPath": "/tmp/herdr-builder.sock"
+            "socketPath": "/tmp/daemon-builder.sock"
           },
           {
             "do": "openRegion",
@@ -3814,9 +2783,9 @@
       },
       "expect": {
         "daemons": [
-          "builder local=/tmp/herdr-builder.sock",
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "builder local=/tmp/daemon-builder.sock",
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -3837,12 +2806,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -3864,8 +2833,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -3885,12 +2854,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -3912,8 +2881,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -3933,12 +2902,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -3960,8 +2929,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r0",
         "regions": [
@@ -3981,12 +2950,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -4012,8 +2981,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedRegion": "r1",
         "regions": [
@@ -4030,52 +2999,10 @@
       "given": {
         "worlds": {
           "grid": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p4",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -4093,6 +3020,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -4104,7 +3053,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -4130,7 +3079,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p2",
         "focusedRegion": "r0",
@@ -4155,52 +3104,10 @@
       "given": {
         "worlds": {
           "grid": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p4",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -4218,6 +3125,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -4229,7 +3158,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -4255,7 +3184,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -4280,52 +3209,10 @@
       "given": {
         "worlds": {
           "grid": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p4",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -4343,6 +3230,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -4354,7 +3263,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -4380,7 +3289,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p3",
         "focusedRegion": "r0",
@@ -4405,52 +3314,10 @@
       "given": {
         "worlds": {
           "grid": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p4",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -4468,6 +3335,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -4479,7 +3368,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -4505,7 +3394,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -4530,52 +3419,10 @@
       "given": {
         "worlds": {
           "grid": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p4",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -4593,6 +3440,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -4604,7 +3473,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -4630,7 +3499,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -4655,52 +3524,10 @@
       "given": {
         "worlds": {
           "skew": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p4",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -4718,6 +3545,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -4729,7 +3578,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -4755,7 +3604,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p4",
         "focusedRegion": "r0",
@@ -4780,52 +3629,10 @@
       "given": {
         "worlds": {
           "skew": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              },
-              {
-                "id": "w1:p4",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "agentState": "idle",
-                "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
@@ -4843,6 +3650,28 @@
                   }
                 }
               }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
             ]
           }
         },
@@ -4854,7 +3683,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "openRegion",
@@ -4880,7 +3709,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p2",
         "focusedRegion": "r0",
@@ -4906,78 +3735,44 @@
         "attached": [],
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p9"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              },
-              {
-                "tab": "w1:t2",
-                "root": "w1:p9"
               }
             ]
           },
           "devenv": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w2:t1",
-                "root": "w2:p1"
               }
             ]
           }
@@ -4998,12 +3793,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "reconcile",
@@ -5019,8 +3814,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",
@@ -5045,78 +3840,44 @@
         "attached": [],
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p9"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              },
-              {
-                "tab": "w1:t2",
-                "root": "w1:p9"
               }
             ]
           },
           "devenv": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w2:t1",
-                "root": "w2:p1"
               }
             ]
           }
@@ -5137,12 +3898,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "reconcile",
@@ -5162,8 +3923,8 @@
       },
       "expect": {
         "daemons": [
-          "devenv local=/tmp/herdr-devenv.sock",
-          "local local=/tmp/herdr-local.sock"
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w2:p1",
         "focusedRegion": "r2",
@@ -5183,53 +3944,33 @@
     },
     {
       "name": "a window lists the tabs it holds and no others",
-      "why": "Two windows follow the same daemon and both hear about every tab it holds, so a daemon describing a tab says nothing about whose it is. A window listing another window's tab is one whose ⌘ chord or click takes that tab's terminals from the window showing them - measured on 0.7.0 (kan a_2Mhi0EZlv).",
+      "why": "Two windows follow the same daemon and both hear about every tab it holds, so a daemon describing a tab says nothing about whose it is. A window listing another window's tab is one whose \u2318 chord or click takes that tab's terminals from the window showing them - measured on 0.7.0 (kan a_2Mhi0EZlv).",
       "given": {
         "attached": [],
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p9"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              },
-              {
-                "tab": "w1:t2",
-                "root": "w1:p9"
               }
             ]
           }
@@ -5242,7 +3983,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "reconcile",
@@ -5253,7 +3994,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p9",
         "focusedRegion": "r0",
@@ -5276,78 +4017,44 @@
         "attached": [],
         "worlds": {
           "one tab": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
               }
             ]
           },
           "two tabs": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p9"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              },
-              {
-                "tab": "w1:t2",
-                "root": "w1:p9"
               }
             ]
           }
@@ -5360,7 +4067,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "reconcile",
@@ -5376,7 +4083,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p9",
         "focusedRegion": "r0",
@@ -5399,32 +4106,18 @@
         "attached": [],
         "worlds": {
           "one tab": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
               }
             ]
           }
@@ -5433,7 +4126,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "reconcile",
@@ -5444,7 +4137,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "regions": [],
         "showing": [],
@@ -5458,110 +4151,64 @@
         "attached": [],
         "worlds": {
           "three tabs": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p9"
               },
               {
                 "id": "w1:t3",
-                "workspace": "w1",
-                "label": "t3"
+                "label": "t3",
+                "root": "w1:p5"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t3",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              },
-              {
-                "tab": "w1:t2",
-                "root": "w1:p9"
-              },
-              {
-                "tab": "w1:t3",
-                "root": "w1:p5"
               }
             ]
           },
           "without the second": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t3",
-                "workspace": "w1",
-                "label": "t3"
+                "label": "t3",
+                "root": "w1:p5"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t3",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              },
-              {
-                "tab": "w1:t3",
-                "root": "w1:p5"
               }
             ]
           }
@@ -5582,7 +4229,7 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "reconcile",
@@ -5602,7 +4249,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p5",
         "focusedRegion": "r2",
@@ -5626,48 +4273,28 @@
         "attached": [],
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "w1"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p9"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "agentState": "idle",
                 "cwd": "/tmp"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
-              },
-              {
-                "tab": "w1:t2",
-                "root": "w1:p9"
               }
             ]
           }
@@ -5684,12 +4311,12 @@
           {
             "do": "attachDaemon",
             "daemon": "local",
-            "socketPath": "/tmp/herdr-local.sock"
+            "socketPath": "/tmp/daemon-local.sock"
           },
           {
             "do": "attachDaemon",
             "daemon": "devenv",
-            "socketPath": "/tmp/herdr-devenv.sock"
+            "socketPath": "/tmp/daemon-devenv.sock"
           },
           {
             "do": "openRegion",
@@ -5714,7 +4341,7 @@
       },
       "expect": {
         "daemons": [
-          "local local=/tmp/herdr-local.sock"
+          "local local=/tmp/daemon-local.sock"
         ],
         "focusedPane": "w1:p1",
         "focusedRegion": "r0",

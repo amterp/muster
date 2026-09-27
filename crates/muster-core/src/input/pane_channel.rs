@@ -1,134 +1,41 @@
-//! What Muster wants to happen in a pane, in Muster's own words.
+//! What Muster sends a pane's program, in Muster's own words.
 //!
-//! The core does not know herdr exists. It produces intents; an adapter turns them into
-//! whatever the backend of the day speaks (architecture.md, the backend seam). Keeping the
-//! vocabulary here rather than reusing herdr's wire types is what makes the adapter a
-//! translation rather than a passthrough, and what lets a test assert on intent without a
-//! daemon.
+//! The core does not encode a keystroke: the daemon does, against the pane's own terminal
+//! modes, and is the only writer to the pane (MIP-3, section 6). So what leaves here is the
+//! keystroke itself, as libghostty carried it, and an adapter spells it in the daemon's
+//! protocol.
 
-use super::KeyEvent;
+use super::{KeyEvent, OptionAsAlt};
+use crate::mirror::backend::PaneId;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScrollDirection {
-    Up,
-    Down,
-}
-
-impl ScrollDirection {
-    pub fn parse(name: &str) -> Option<ScrollDirection> {
-        match name {
-            "up" => Some(ScrollDirection::Up),
-            "down" => Some(ScrollDirection::Down),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ScrollDirection::Up => "up",
-            ScrollDirection::Down => "down",
-        }
-    }
-}
-
+/// One thing for one pane's program.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaneIntent {
-    /// Bytes for the pane's PTY, already encoded.
-    Input(Vec<u8>),
-
-    /// Text for the pane, left for the backend to encode.
-    ///
-    /// Distinct from `Input` because the backend can do this better than we can: it knows
-    /// the pane's real terminal modes, so it fences a paste correctly where Muster would
-    /// have to guess (`docs/observations/herdr-0.8.0.md` section 5).
-    Text(String),
-
-    /// A named key, left for the backend to encode against the pane's real modes.
-    ///
-    /// The escape hatch for the keys where guessing is known to be wrong - the arrows above
-    /// all, since a program that called `smkx` wants `SS3` and one that did not wants `CSI`,
-    /// and nothing on the control stream says which.
-    Key { name: String },
-
-    /// A wheel movement, which the backend routes against the pane's mouse mode.
-    Scroll { direction: ScrollDirection, lines: u16 },
-
-    /// How big the pane's grid should be, in cells.
-    ///
-    /// Not on the input path at all, and here anyway because this is the one channel that can
-    /// carry it: a pane's size follows whichever client is driving it, and driving it is what
-    /// this channel does. The window's own resizes never come through here - the surface's PTY
-    /// carries those, which is why the bridge needs no channel for them - so the one caller is
-    /// Muster letting go, handing a pane back at a size the daemon will lay it out at rather
-    /// than at the size of a window that no longer exists.
-    Resize { columns: u16, rows: u16 },
+pub enum InputEvent {
+    /// A keystroke the keymap did not take, with option-as-alt already applied to its
+    /// modifiers and text, and the setting beside it so the daemon's encoder applies the same
+    /// one.
+    Key { key: KeyEvent, option_as_alt: OptionAsAlt },
+    /// A paste. The daemon fences it when the program asked for bracketed paste, and holds one
+    /// that would run several lines as typed until somebody confirms it; `confirmed` is that
+    /// confirmation.
+    Paste { text: String, confirmed: bool },
+    /// Text an agent or a script sends, as a paste that is never held, then Return if asked.
+    Send { text: String, enter: bool },
+    /// Bytes written as they are, with no encoding at all: what a `text:` binding in the
+    /// config writes, and what an input method commits.
+    Bytes(Vec<u8>),
 }
 
-/// What became of an intent a channel was asked to deliver.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Delivery {
-    /// It reached the pane.
-    Arrived,
-    /// Nothing was done with it, so sending it another way is safe.
-    Refused,
-    /// It was handed over and no answer came back. It may still arrive, so sending it another
-    /// way risks sending it twice.
-    Unconfirmed,
-}
-
-impl Delivery {
-    pub fn arrived(self) -> bool {
-        self == Delivery::Arrived
-    }
-}
-
-impl From<bool> for Delivery {
-    fn from(arrived: bool) -> Delivery {
-        if arrived { Delivery::Arrived } else { Delivery::Refused }
-    }
-}
-
-/// Where a pane's intents go.
+/// Where one daemon's panes take their input from this window.
 ///
-/// Two implementations exist and they differ in a way the core must not care about: one
-/// writes bytes onto a control stream the pane already holds open, the other asks the
-/// daemon to encode and costs a round trip. `deliver` saying what became of the intent is
-/// what lets the caller degrade instead of silently swallowing input, and not degrade when
-/// the first attempt may yet land.
-pub trait PaneChannel: Send + Sync {
-    /// Sends one intent, and says what became of it.
-    fn deliver(&self, intent: &PaneIntent) -> Delivery;
+/// One per daemon rather than one per pane: the daemon routes each event to its pane, and a
+/// connection per pane would be fifteen for a full window.
+///
+/// **Never blocks.** Sending happens on the window's own thread, so an event that cannot be
+/// queued is dropped rather than waited for, and the implementation says so in the log.
+pub trait InputSink: Send + Sync + std::fmt::Debug {
+    fn send(&self, pane: &PaneId, event: InputEvent);
 
-    /// Whether this channel can encode an intent the client cannot - text and named keys.
-    ///
-    /// A control stream alone cannot: it is a raw pipe to the PTY, so anything sent on it
-    /// has already been encoded by us, against a guess.
-    fn encodes_server_side(&self) -> bool;
-
-    /// Named for logs, so a failure says which channel dropped the input.
+    /// What this sink is talking to, for the log.
     fn description(&self) -> &str;
-}
-
-/// Why a keystroke could not be turned into bytes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EncodeError(pub String);
-
-impl std::fmt::Display for EncodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for EncodeError {}
-
-/// Turns a keystroke into the bytes a terminal program expects.
-///
-/// A trait so the core can own the input pipeline without owning an encoder: the real one
-/// is libghostty-vt's, and a test wants a table it can read. Encoding is the one part of
-/// input that must agree exactly with a published implementation, so the seam is here
-/// rather than a reimplementation.
-pub trait KeyEncoding: Send + Sync {
-    /// The bytes for this keystroke, or empty when the keystroke produces none - a bare
-    /// modifier, or any key while an input method is composing.
-    fn encode(&self, key: &KeyEvent) -> Result<Vec<u8>, EncodeError>;
 }

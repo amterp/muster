@@ -16,9 +16,6 @@ fn keymap_conformance() {
             Resolution::Text(bytes) => {
                 fields([("kind", Some(json!("text"))), ("bytes_hex", Some(json!(hex(&bytes))))])
             }
-            Resolution::ServerEncoded(name) => {
-                fields([("kind", Some(json!("serverEncoded"))), ("key", Some(json!(name)))])
-            }
             Resolution::Action(_) => fields([("kind", Some(json!("action")))]),
             Resolution::Unbound => fields([("kind", Some(json!("unbound")))]),
         })

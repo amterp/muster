@@ -489,23 +489,21 @@ impl Roster {
                         }
                     })
                     .collect();
-                // The first machine holding panes in it answers for the tab's caption. A tab
-                // that spans two is one tab with one name, and its members are renamed together
-                // - so which of them is read is a question only about which has answered.
-                let first = tab.daemons().next().and_then(|daemon| Some((daemon, mirror(daemon)?)));
-                let own = first.and_then(|(_, held)| held.tab(&tab.id));
+                // A tab spanning two machines holds its name on each, and the part with the
+                // highest generation has the current one; a lagging part is renamed when its
+                // daemon reconnects (MIP-3, section 2).
+                let own = tab
+                    .daemons()
+                    .filter_map(|daemon| mirror(daemon)?.tab(&tab.id))
+                    .max_by_key(|part| part.generation);
+                let name = own.and_then(tab_name);
                 RosterTab {
                     id: tab.id.clone(),
                     daemons: tab.daemons().cloned().collect(),
                     place: tab_place,
-                    label: match (first, own) {
-                        (Some((_, held)), Some(own)) => {
-                            tab_label(held, own, names_its_workspaces(held), tab_place)
-                        }
-                        _ => format!("Tab {tab_place}"),
-                    },
+                    label: name.map_or_else(|| format!("Tab {tab_place}"), str::to_string),
                     on_screen: on_screen.as_ref() == Some(&tab.id),
-                    given_name: own.and_then(tab_own_name).and_then(|name| given_name(Some(name))),
+                    given_name: name.map(str::to_string),
                     panes,
                 }
             })
@@ -602,71 +600,18 @@ impl Roster {
     }
 }
 
-/// Whether this daemon's workspaces have names worth putting in front of a tab.
+/// What somebody named a tab, trimmed, and nothing for a tab nobody named.
 ///
-/// herdr labels a workspace with its directory, which is the useful half of a tab's name, and
-/// labels a tab with its number within that workspace. So a daemon holding one workspace would
-/// repeat that directory down the whole list, and a daemon holding several needs it on every
-/// row to tell `muster · 1` from `rad · 1`.
-fn names_its_workspaces(mirror: &Mirror) -> bool {
-    mirror.workspaces().filter(|workspace| !workspace.label.is_empty()).count() > 1
-}
-
-/// The part of a tab's backend label that is somebody's name for it rather than its number.
-///
-/// herdr gives every tab a label whether or not anyone named it, filling in the tab's
-/// position within its workspace, so "is this named" cannot be asked of presence. The
-/// all-digits test is what separates the two, and it is why a tab somebody names `42`
-/// reads as unnamed: herdr's `TabInfo` offers no way to tell those apart
-/// (`observations/herdr-0.8.0.md` section 16).
-fn tab_own_name(tab: &crate::mirror::backend::Tab) -> Option<&str> {
-    let own = tab.label.trim();
-    (!own.is_empty() && !own.chars().all(|c| c.is_ascii_digit())).then_some(own)
+/// **A tab nobody has named is captioned `Tab <place>`, which Muster writes rather than reads.**
+/// Muster's own place counts across the whole window, so the caption is unique and agrees with
+/// the order the list is read in, where two machines would each have a first tab.
+fn tab_name(tab: &crate::mirror::backend::Tab) -> Option<&str> {
+    tab.label.as_deref().map(str::trim).filter(|name| !name.is_empty())
 }
 
 /// Trims a backend's answer and reads blank as absent, so "has a name" is one question.
 fn given_name(name: Option<&str>) -> Option<String> {
     name.map(str::trim).filter(|name| !name.is_empty()).map(str::to_string)
-}
-
-/// What to call a tab to somebody who did not open it.
-///
-/// The workspace first, because it is the project the tab belongs to and the only part of a
-/// tab's name that means anything on sight - and only when the daemon holds more than one,
-/// since repeating one project's name down every row says nothing and costs a word off every
-/// label.
-///
-/// **A tab nobody has named is called `Tab <place>`, which Muster writes rather than reads.**
-/// herdr labels an unnamed tab with its position inside its workspace, so the label of the
-/// second tab is literally `2`, and [`tab_own_name`] drops it - a bare digit is not a name,
-/// and two daemons would each contribute a `1`. Muster's own place counts across the whole
-/// window, so the caption is unique and agrees with the order the list is read in.
-///
-/// This used to be empty, back when a number was drawn beside every caption and the row was
-/// never blank. The numbers now name panes, so an empty answer here would be a row with
-/// nothing on it - which is a worse failure than a wrong one, because there is nothing to
-/// notice.
-fn tab_label(
-    mirror: &Mirror,
-    tab: &crate::mirror::backend::Tab,
-    named: bool,
-    place: usize,
-) -> String {
-    let own = tab_own_name(tab).unwrap_or_default();
-    let workspace = named
-        .then(|| mirror.workspaces().find(|held| held.id == tab.workspace))
-        .flatten()
-        .map(|workspace| workspace.label.trim())
-        .filter(|label| !label.is_empty())
-        .unwrap_or_default();
-    match (workspace, own) {
-        // Nothing to call it, so Muster writes one. The place is not a chord any more - the
-        // numbers name panes - so this is a name rather than a second thing to press.
-        ("", "") => format!("Tab {place}"),
-        ("", own) => own.to_string(),
-        (workspace, "") => workspace.to_string(),
-        (workspace, own) => format!("{workspace} · {own}"),
-    }
 }
 
 /// One tab's panes, in the order they are laid out.
@@ -678,7 +623,7 @@ fn tab_label(
 /// disagrees with its tab is not an arrangement).
 fn ordered_panes<'a>(mirror: &'a Mirror, tab: &'a TabId) -> Vec<&'a Pane> {
     let held: Vec<&Pane> = mirror.panes_in_tab(tab).collect();
-    let Some(layout) = mirror.layout(tab) else { return held };
+    let Some(layout) = mirror.tab(tab) else { return held };
     let arranged: Vec<&PaneId> = layout.root.panes();
     if arranged.len() != held.len() {
         return held;

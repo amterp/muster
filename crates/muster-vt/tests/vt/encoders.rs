@@ -4,10 +4,10 @@
 //! them, which is the whole reason the daemon encodes input rather than the app guessing
 //! at a profile (MIP-3 section 6).
 
-use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers, OptionAsAlt, TerminalModeProfile};
+use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers, OptionAsAlt};
 use muster_vt::{
-    EncoderError, KeyEncoder, MouseAction, MouseButton, MouseEncoder, MouseEvent, MouseGeometry,
-    RawKeyEvent, Terminal, encode_paste, paste_is_safe,
+    EncoderError, KeyEncoder, KeyModes, MouseAction, MouseButton, MouseEncoder, MouseEvent,
+    MouseGeometry, RawKeyEvent, Terminal, encode_paste, paste_is_safe,
 };
 
 fn terminal_after(bytes: &[u8]) -> Terminal {
@@ -18,7 +18,7 @@ fn terminal_after(bytes: &[u8]) -> Terminal {
 
 fn key_from(terminal: &Terminal, key: Key) -> Vec<u8> {
     let mut encoder =
-        KeyEncoder::new(TerminalModeProfile::default()).expect("libghostty-vt gives us an encoder");
+        KeyEncoder::new(KeyModes::default()).expect("libghostty-vt gives us an encoder");
     encoder.configure_from(terminal, OptionAsAlt::Never);
     encoder.encode(&KeyEvent::press(key)).expect("the key encodes")
 }
@@ -54,7 +54,7 @@ fn raw_escape(code: u32) -> RawKeyEvent<'static> {
 fn a_key_numbered_as_libghostty_numbers_it_encodes_as_the_same_key() {
     let terminal = terminal_after(b"\x1b[>1u");
     let mut encoder =
-        KeyEncoder::new(TerminalModeProfile::default()).expect("libghostty-vt gives us an encoder");
+        KeyEncoder::new(KeyModes::default()).expect("libghostty-vt gives us an encoder");
     encoder.configure_from(&terminal, OptionAsAlt::Never);
     assert_eq!(encoder.encode_raw(&raw_escape(ESCAPE)), Ok(key_from(&terminal, Key::Escape)));
     assert_eq!(

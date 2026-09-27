@@ -23,7 +23,7 @@ pub use build_info::engine_version;
 pub use effects::{Answers, ClipboardContent, ClipboardLocation, ColorScheme, Effect, Progress};
 pub use formatter::{Extras, Format, FormatOptions, ScreenExtras, ScreenFormatOptions, Selection};
 pub use grid::{Cell, Color, Cursor, Grid, Row, Style, Width};
-pub use key_encoder::{EncoderError, KeyEncoder, RawKeyEvent};
+pub use key_encoder::{EncoderError, KeyEncoder, KeyModes, RawKeyEvent, key_code, kitty_flags};
 pub use modes::Mode;
 pub use mouse_encoder::{MouseAction, MouseButton, MouseEncoder, MouseEvent, MouseGeometry};
 pub use paste::{encode_paste, paste_is_safe};

@@ -52,22 +52,7 @@
       "why": "A region may have been showing it, so composition has to look. There is no state to announce because there is no longer a pane to have one, and a shell told a state for a pane it has just been told to drop would have to guess which message won.",
       "given": {
         "change": "paneRemoved",
-        "pane": "w1:p1",
-        "cascaded": false
-      },
-      "expect": {
-        "movesStructure": true,
-        "republishes": true,
-        "announcesAgentState": null
-      }
-    },
-    {
-      "name": "a pane removed by a cascade is still a removal",
-      "why": "Closing a tab takes its panes with it and herdr announces none of them, so the mirror infers these. An inference is still a pane leaving the arrangement, and treating it as lesser is how an exited pane renders forever.",
-      "given": {
-        "change": "paneRemoved",
-        "pane": "w1:p1",
-        "cascaded": true
+        "pane": "w1:p1"
       },
       "expect": {
         "movesStructure": true,
@@ -128,24 +113,11 @@
       }
     },
     {
-      "name": "a workspace that appears moves the arrangement",
-      "why": "Composition names a workspace as well as a tab, so the same argument as a tab reaches one level up.",
+      "name": "a tab renamed redraws its caption without moving the arrangement",
+      "why": "A caption is in the roster and nowhere composition looks, the same as a pane's name.",
       "given": {
-        "change": "workspaceAdded",
-        "workspace": "w1"
-      },
-      "expect": {
-        "movesStructure": true,
-        "republishes": true,
-        "announcesAgentState": null
-      }
-    },
-    {
-      "name": "a workspace renamed redraws the captions without moving the arrangement",
-      "why": "The same shape as a pane renamed, one level up and less obviously: nothing draws a workspace on its own, so this looks like a change with no reader. It has one per tab. A caption leads with the workspace holding it whenever a daemon holds more than one, so renaming a workspace restyles every row under it - and nothing about which region holds which tab has moved, so reconciling would be waste. Reported because the alternative was measured: the mirror stored the new label and told nobody, and every caption read the old name until some unrelated event happened along.",
-      "given": {
-        "change": "workspaceRelabelled",
-        "workspace": "w1"
+        "change": "tabRelabelled",
+        "tab": "w1:t1"
       },
       "expect": {
         "movesStructure": false,
@@ -154,11 +126,10 @@
       }
     },
     {
-      "name": "a workspace that goes away moves the arrangement",
-      "why": "It takes every tab and pane under it, none of which is announced separately.",
+      "name": "a daemon that finished restoring is reconciled",
+      "why": "Until it finishes, a daemon holding nothing is not an empty one, so nothing asks it for a first tab. Finishing is when that question is asked, which is a reconcile.",
       "given": {
-        "change": "workspaceRemoved",
-        "workspace": "w1"
+        "change": "restored"
       },
       "expect": {
         "movesStructure": true,
@@ -167,24 +138,11 @@
       }
     },
     {
-      "name": "the daemon's own focus cursor moves nothing",
-      "why": "Daemon focus is a single value shared with every client, which Muster writes and never reads - a herdr TUI moving it must not move this window's keyboard. Reconciling on it would make another client's cursor into Muster's, which is the exact confusion `architecture.md` keeps the two apart to avoid.",
+      "name": "a held paste moves nothing",
+      "why": "A question for whoever is looking, passed through to the shell. Nothing about the arrangement or the roster changed.",
       "given": {
-        "change": "focusChanged"
-      },
-      "expect": {
-        "movesStructure": false,
-        "republishes": false,
-        "announcesAgentState": null
-      }
-    },
-    {
-      "name": "transitions that ran while nobody was listening move nothing and name no pane",
-      "why": "It reports an interval, not a pane - the counter is session-wide and the transitions may have run on panes this mirror has never heard of. There is nothing to reconcile because the bootstrap that emitted it has already made the mirror correct, and no pane to announce because it cannot say which one. It still has to reach the log, which is a separate question from either of these.",
-      "given": {
-        "change": "agentTransitionsMissed",
-        "expected": 4,
-        "saw": 9
+        "change": "pasteHeld",
+        "pane": "w1:p1"
       },
       "expect": {
         "movesStructure": false,

@@ -9,8 +9,7 @@ use std::fmt::Write as _;
 use muster_core::AgentState;
 use muster_core::composition::{Daemon, Endpoint};
 use muster_core::mirror::backend::{
-    Focus, Layout, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId, Workspace,
-    WorkspaceId,
+    AgentFacts, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
 };
 use serde_json::Value;
 
@@ -49,26 +48,15 @@ pub(crate) fn optional(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
+/// A daemon's snapshot: its tabs, each with its tree, and its panes. A pane's tab is whichever
+/// tree names it, so a case does not say it twice.
 pub(crate) fn read_snapshot(given: &Value) -> Snapshot {
-    let focus = given.get("focus").cloned().unwrap_or(Value::Null);
     Snapshot {
-        workspaces: collect(given, "workspaces", |w| Workspace {
-            id: WorkspaceId::new(text(w, "id")),
-            label: text(w, "label"),
-        }),
-        tabs: collect(given, "tabs", |t| Tab {
-            id: TabId::new(text(t, "id")),
-            workspace: WorkspaceId::new(text(t, "workspace")),
-            label: text(t, "label"),
-        }),
+        seq: given.get("seq").and_then(Value::as_u64).unwrap_or_default(),
+        instance: given.get("instance").and_then(Value::as_u64).unwrap_or(1),
+        tabs: collect(given, "tabs", read_tab),
         panes: collect(given, "panes", read_pane),
-        layouts: collect(given, "layouts", read_layout),
-        focus: Focus {
-            workspace: optional(&focus, "workspace").map(WorkspaceId::new),
-            tab: optional(&focus, "tab").map(TabId::new),
-            pane: optional(&focus, "pane").map(PaneId::new),
-        },
-        agent_state_seq: given.get("agentStateSeq").and_then(Value::as_u64),
+        restoring: given.get("restoring").and_then(Value::as_bool).unwrap_or(false),
     }
 }
 
@@ -76,29 +64,28 @@ fn collect<T>(given: &Value, key: &str, read: impl Fn(&Value) -> T) -> Vec<T> {
     given.get(key).and_then(Value::as_array).into_iter().flatten().map(read).collect()
 }
 
+pub(crate) fn read_tab(given: &Value) -> Tab {
+    Tab {
+        id: TabId::new(text(given, "id")),
+        label: optional(given, "label"),
+        generation: given.get("generation").and_then(Value::as_u64).unwrap_or_default(),
+        root: read_node(given.get("root").unwrap_or(&Value::Null)),
+        zoomed: optional(given, "zoomed").map(PaneId::new),
+    }
+}
+
 pub(crate) fn read_pane(given: &Value) -> Pane {
     Pane {
         id: PaneId::new(text(given, "id")),
-        tab: TabId::new(text(given, "tab")),
-        workspace: WorkspaceId::new(text(given, "workspace")),
+        // Set by the mirror from the trees; a case never has to.
+        tab: TabId::new(""),
         agent_state: AgentState::from_backend(&text(given, "agentState")),
         agent: optional(given, "agent"),
         cwd: text(given, "cwd"),
         name: optional(given, "name"),
         title: optional(given, "title"),
-        // Absent is zero, so a case that is not about ordering does not have to number every
-        // pane it mentions. Two payloads at zero are equally current, which is what a backend
-        // that counts nothing would look like.
-        revision: given.get("revision").and_then(Value::as_u64).unwrap_or_default(),
-    }
-}
-
-pub(crate) fn read_layout(given: &Value) -> Layout {
-    Layout {
-        tab: TabId::new(text(given, "tab")),
-        root: read_node(given.get("root").unwrap_or(&Value::Null)),
-        focused: optional(given, "focused").map(PaneId::new),
-        zoomed: optional(given, "zoomed").map(PaneId::new),
+        command: optional(given, "command"),
+        facts: AgentFacts::default(),
     }
 }
 

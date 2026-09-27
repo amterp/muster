@@ -1,183 +1,42 @@
 //! Muster's own names for panes and tabs. Cases live in corpus/conformance/pane-names.json and
 //! corpus/conformance/tab-names.json.
 //!
-//! The corpus pins the sequence a seed produces, because a name that changed shape between
+//! The corpus pins the spelling a seed produces, because a name that changed shape between
 //! versions would strand every pane that already carries one in its environment. The
-//! properties a name has to have - and which no single sequence can state - are asserted
+//! properties a name has to have - and which no single spelling can state - are asserted
 //! natively below.
-//!
-//! One driver file for both nouns, because the registry is one mechanism and the date helpers at
-//! the foot are the awkward part of driving it. Two corpus files rather than one, because the two
-//! nouns are named for different reasons and a case should say which it is about.
 
 use std::collections::BTreeSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::composition::DaemonId;
-use muster_core::mirror::backend::{PaneId, TabId};
-use muster_core::names::{
-    BackendPaneId, BackendTabId, Mint, PaneNames, TabNames, from_toml, to_toml,
-};
-use serde_json::{Map, Value, json};
+use muster_core::names::{Mint, Minter};
+use serde_json::{Value, json};
 
 #[test]
 fn pane_names_conformance() {
-    let corpus = Conformance::load("pane-names.json");
-
-    let ran = corpus.run(|given| {
-        let mut names = PaneNames::new(mint(given)?);
-        let mut trace: Vec<String> = Vec::new();
-        let mut labelled: Map<String, Value> = Map::new();
-
-        for step in given.get("do").and_then(Value::as_array).into_iter().flatten() {
-            if let Some(at) = step.get("see").and_then(Value::as_str) {
-                let (daemon, backend) = split(at)?;
-                trace.push(names.name(&daemon, &backend).to_string());
-            } else if let Some(label) = step.get("reserve").and_then(Value::as_str) {
-                let reserved = names.reserve();
-                labelled.insert(label.to_string(), json!(reserved.to_string()));
-                trace.push(reserved.to_string());
-            } else if let Some(settle) = step.get("settle") {
-                let label = settle["as"].as_str().unwrap_or_default();
-                let name = PaneId::new(
-                    labelled
-                        .get(label)
-                        .and_then(Value::as_str)
-                        .ok_or_else(|| CaseError::new(format!("nothing reserved as {label:?}")))?,
-                );
-                let (daemon, backend) = split(settle["at"].as_str().unwrap_or_default())?;
-                names.settle(&name, &daemon, &backend);
-            } else if let Some(label) = step.get("release").and_then(Value::as_str) {
-                let name = PaneId::new(
-                    labelled
-                        .get(label)
-                        .and_then(Value::as_str)
-                        .ok_or_else(|| CaseError::new(format!("nothing reserved as {label:?}")))?,
-                );
-                names.release(&name);
-            } else if let Some(moved) = step.get("moved") {
-                // What a pane moved into another workspace produces: the same pane on the same
-                // daemon, under an id it did not have.
-                let daemon = DaemonId::new(moved["daemon"].as_str().unwrap_or_default());
-                let from = BackendPaneId::new(moved["from"].as_str().unwrap_or_default());
-                let to = BackendPaneId::new(moved["to"].as_str().unwrap_or_default());
-                names.moved(&daemon, &from, &to);
-            } else if let Some(at) = step.get("resolve").and_then(Value::as_str) {
-                // `local/p1w3r07bsd` - a daemon, and a name Muster minted. The outward
-                // direction, which is what every request and every CLI argument needs and
-                // which the trace of minted names cannot say anything about.
-                let (daemon, name) = at
-                    .split_once('/')
-                    .ok_or_else(|| CaseError::new(format!("{at:?} names no daemon")))?;
-                let resolved = names.backend(&DaemonId::new(daemon), &PaneId::new(name));
-                trace.push(
-                    resolved.map_or_else(|| "(nothing)".to_string(), |backend| backend.to_string()),
-                );
-            } else if let Some(prune) = step.get("prune") {
-                let daemon = DaemonId::new(prune["daemon"].as_str().unwrap_or_default());
-                let holds: BTreeSet<BackendPaneId> = prune["holds"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .map(BackendPaneId::new)
-                    .collect();
-                names.prune(&daemon, &holds);
-            } else {
-                return Err(CaseError::new(format!("no step this driver knows in {step}")));
-            }
-        }
-
-        let located: Map<String, Value> = names
-            .entries()
-            .map(|(name, daemon, backend)| (name.to_string(), json!(format!("{daemon}/{backend}"))))
-            .collect();
-
-        Ok(fields([("trace", Some(json!(trace))), ("located", Some(Value::Object(located)))]))
-    });
-
-    assert_eq!(ran, corpus.cases.len());
-    assert!(ran > 0);
+    run("pane-names.json");
 }
 
 #[test]
 fn tab_names_conformance() {
-    let corpus = Conformance::load("tab-names.json");
+    run("tab-names.json");
+}
 
+fn run(file: &str) {
+    let corpus = Conformance::load(file);
     let ran = corpus.run(|given| {
-        let mut names = TabNames::new(mint(given)?);
-        let mut trace: Vec<String> = Vec::new();
-
+        let mut minter = Minter::new(mint(given)?);
+        let mut trace = Vec::new();
         for step in given.get("do").and_then(Value::as_array).into_iter().flatten() {
-            if let Some(at) = step.get("see").and_then(Value::as_str) {
-                let (daemon, backend) = split(at)?;
-                trace.push(names.name(&daemon, &BackendTabId::new(backend.as_str())).to_string());
-            } else if let Some(at) = step.get("answered").and_then(Value::as_str) {
-                // What `tab.create` produces: a tab named from a reply, before anything has
-                // announced it. Its own step because the only difference is invisible until a
-                // prune runs.
-                let (daemon, backend) = split(at)?;
-                trace.push(
-                    names
-                        .name_from_answer(&daemon, &BackendTabId::new(backend.as_str()))
-                        .to_string(),
-                );
-            } else if let Some(group) = step.get("group") {
-                // What makes a tab span machines: this daemon's tab joins the Muster tab named
-                // instead of being one of its own. `into` is a place in the trace so far, so a
-                // case does not have to know what the mint drew.
-                let (daemon, backend) = split(group["tab"].as_str().unwrap_or_default())?;
-                let at = usize::try_from(group["into"].as_u64().unwrap_or_default())
-                    .map_err(|_| CaseError::new(format!("{step} names no place in the trace")))?;
-                let into = TabId::new(
-                    trace
-                        .get(at)
-                        .ok_or_else(|| CaseError::new(format!("nothing named yet in {step}")))?
-                        .clone(),
-                );
-                names.group(&into, &daemon, &BackendTabId::new(backend.as_str()));
-                trace.push(into.to_string());
-            } else if let Some(at) = step.get("resolve").and_then(Value::as_str) {
-                // `local/t1w3r07bsd` - the outward direction, which is what every request about a
-                // tab needs and which the trace of minted names cannot say anything about.
-                let (daemon, name) = at
-                    .split_once('/')
-                    .ok_or_else(|| CaseError::new(format!("{at:?} names no daemon")))?;
-                let resolved = names.backend(&DaemonId::new(daemon), &TabId::new(name));
-                trace.push(
-                    resolved.map_or_else(|| "(nothing)".to_string(), |backend| backend.to_string()),
-                );
-            } else if let Some(prune) = step.get("prune") {
-                let daemon = DaemonId::new(prune["daemon"].as_str().unwrap_or_default());
-                let holds: BTreeSet<BackendTabId> = prune["holds"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .map(BackendTabId::new)
-                    .collect();
-                names.prune(&daemon, &holds);
-            } else {
-                return Err(CaseError::new(format!("no step this driver knows in {step}")));
+            match step.get("draw").and_then(Value::as_str) {
+                Some("pane") => trace.push(minter.pane().to_string()),
+                Some("tab") => trace.push(minter.tab().to_string()),
+                _ => return Err(CaseError::new(format!("a step that draws nothing: {step}"))),
             }
         }
-
-        // One entry per name, with a grouped tab's members joined by a space. A tab with one
-        // member reads exactly as it did before tabs could span machines, which is every tab
-        // in this file that is not about grouping.
-        let mut located: Map<String, Value> = Map::new();
-        for (name, daemon, backend) in names.entries() {
-            let at = format!("{daemon}/{backend}");
-            match located.get(name.as_str()).and_then(Value::as_str) {
-                Some(held) => located.insert(name.to_string(), json!(format!("{held} {at}"))),
-                None => located.insert(name.to_string(), json!(at)),
-            };
-        }
-
-        Ok(fields([("trace", Some(json!(trace))), ("located", Some(Value::Object(located)))]))
+        Ok(fields([("trace", Some(json!(trace)))]))
     });
-
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
 }
@@ -193,11 +52,10 @@ fn tab_names_conformance() {
 fn a_drawn_name_is_short_typeable_and_unmistakable() {
     const ALPHABET: &str = "0123456789abcdefghjkmnpqrstvwxyz";
 
-    let mut names = PaneNames::new(Mint::Drawn);
+    let mut minter = Minter::new(Mint::Drawn);
     let mut seen = BTreeSet::new();
-    for pane in 0..200 {
-        let drawn = names.name(&DaemonId::new("local"), &BackendPaneId::new(format!("w1:p{pane}")));
-        let spelling = drawn.to_string();
+    for _ in 0..200 {
+        let spelling = minter.pane().to_string();
 
         // Ten until 2036, when the tick count crosses 32^5 and gains a character - the test
         // below pins that date. Pinned rather than derived, because "a name is ten characters"
@@ -226,12 +84,9 @@ fn a_drawn_name_is_short_typeable_and_unmistakable() {
 #[test]
 fn a_pane_made_later_is_named_after_one_made_earlier() {
     let mint = |unix_seconds| {
-        PaneNames::new(Mint::Replayed {
-            at: UNIX_EPOCH + Duration::from_secs(unix_seconds),
-            seed: 7,
-        })
-        .name(&DaemonId::new("local"), &BackendPaneId::new("w1:p1"))
-        .to_string()
+        Minter::new(Mint::Replayed { at: UNIX_EPOCH + Duration::from_secs(unix_seconds), seed: 7 })
+            .pane()
+            .to_string()
     };
 
     // One tick apart, then five years apart: a tick is the smallest step a name can tell
@@ -249,86 +104,22 @@ fn a_pane_made_later_is_named_after_one_made_earlier() {
     assert!(after < before, "and that is the boundary the ordering does not cross");
 }
 
-/// A name that has been handed out is not handed out again while its pane is being made.
+/// A minter never hands out one name twice, even when its entropy repeats.
 ///
-/// The window is one request wide and the odds are tiny, which is exactly what makes it the
-/// kind of bug nobody reproduces: two panes would be born believing the same thing about
-/// themselves, and every later command from one of them would act on the other.
+/// Two panes born believing the same thing about themselves would have every later command
+/// from one of them act on the other.
 #[test]
-fn a_reserved_name_is_not_drawn_twice() {
-    let mut names = PaneNames::new(replayed(4));
-    let mut reserved = Vec::new();
+fn a_name_is_never_drawn_twice() {
+    let mut minter = Minter::new(replayed(4));
+    let mut drawn = BTreeSet::new();
     for _ in 0..100 {
-        let name = names.reserve();
-        assert!(!reserved.contains(&name), "{name} was reserved twice");
-        reserved.push(name);
+        let name = minter.pane().to_string();
+        assert!(drawn.insert(name.clone()), "{name} was drawn twice");
     }
-}
-
-#[test]
-fn what_is_written_is_what_comes_back() {
-    // The file is the only thing between one run and the next. A pane that loses its name on
-    // restart is an agent that can no longer say which pane it is - and it has no way to
-    // find out again, because nothing else in its environment says. A tab that loses its name
-    // is a region the saved arrangement can no longer find, so the window opens fresh.
-    let mut names = PaneNames::new(replayed(99));
-    let first = names.name(&DaemonId::new("local"), &BackendPaneId::new("w1:p1"));
-    let second = names.name(&DaemonId::new("devenv"), &BackendPaneId::new("w1:p1"));
-    let mut tabs = TabNames::new(replayed(99));
-    let tab = tabs.name(&DaemonId::new("local"), &BackendTabId::new("w1:t1"));
-
-    let (read, read_tabs) =
-        from_toml(&to_toml(&names, &tabs), replayed(1)).expect("what this wrote, it can read");
-
-    assert_eq!(
-        read.locate(&first).map(|at| at.backend.to_string()),
-        Some("w1:p1".to_string()),
-        "a name did not survive the file"
-    );
-    assert_eq!(read.locate(&first).map(|at| at.daemon.to_string()), Some("local".to_string()));
-    assert_eq!(read.locate(&second).map(|at| at.daemon.to_string()), Some("devenv".to_string()));
-    assert_ne!(first, second, "one backend id on two daemons is two panes");
-
-    assert_eq!(
-        read_tabs.members(&tab).next().map(|at| at.backend.to_string()),
-        Some("w1:t1".to_string()),
-        "a tab name did not survive the file"
-    );
-    assert_ne!(tab.to_string(), first.to_string(), "a tab and a pane never share a name");
-}
-
-/// A name read back from the file is not handed out again to a different pane.
-///
-/// The sharp edge of persisting them: the mint knows nothing about what a previous run drew,
-/// so the check has to be against everything the registry holds rather than against this
-/// run's draws.
-#[test]
-fn a_name_read_back_is_not_drawn_again() {
-    let mut before = PaneNames::new(replayed(11));
-    let taken = before.name(&DaemonId::new("local"), &BackendPaneId::new("w1:p1"));
-
-    // The same instant and the same seed, so the next run draws the same first name - which is
-    // the collision this is about, and the one a mint nobody could replay would hide rather
-    // than fix.
-    let (mut after, _) = from_toml(&to_toml(&before, &TabNames::default()), replayed(11))
-        .expect("it can read its own file");
-    let drawn = after.name(&DaemonId::new("local"), &BackendPaneId::new("w1:p2"));
-
-    assert_ne!(drawn, taken, "a name was handed to a second pane after being read back");
-}
-
-#[test]
-fn a_file_from_a_format_nobody_knows_is_refused_by_name() {
-    let refusal = from_toml("version = 99\n", Mint::Backend).expect_err("version 99 is not this");
-    assert!(
-        refusal.contains("version 99") && refusal.contains("made again"),
-        "the refusal should name the version and say what it costs, and said: {refusal}"
-    );
 }
 
 fn mint(given: &Value) -> Result<Mint, CaseError> {
     match given.get("mint").and_then(Value::as_str) {
-        Some("backend") => Ok(Mint::Backend),
         Some("replayed") | None => Ok(Mint::Replayed {
             at: instant(given.get("at").and_then(Value::as_str).unwrap_or(DEFAULT_INSTANT))?,
             seed: given.get("seed").and_then(Value::as_u64).unwrap_or(1),
@@ -379,12 +170,4 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let day_of_year = (153 * shifted_month + 2) / 5 + day - 1;
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     era * 146_097 + day_of_era - 719_468
-}
-
-/// `local/w1:p1`, which is how a case spells a pane in one string.
-fn split(at: &str) -> Result<(DaemonId, BackendPaneId), CaseError> {
-    let (daemon, backend) = at.split_once('/').ok_or_else(|| {
-        CaseError::new(format!("{at:?} does not name a daemon and something in it"))
-    })?;
-    Ok((DaemonId::new(daemon), BackendPaneId::new(backend)))
 }

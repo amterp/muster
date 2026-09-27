@@ -1,23 +1,12 @@
-//! Reading the recorded corpus, and comparing against a checked-in rendering.
+//! Comparing against a checked-in rendering.
 //!
-//! Both live in `corpus/`, resolved by walking up from this crate rather than through any
+//! Renderings live in `corpus/`, resolved by walking up from this crate rather than through any
 //! build system's resource copying: reading a case and running it should be the same file,
 //! and a copy is a thing that can go stale.
 
 pub(crate) mod keys;
 
 use std::path::{Path, PathBuf};
-
-/// Bytes of a file under `corpus/`.
-pub(crate) fn corpus_file(path: &str) -> Vec<u8> {
-    let full = corpus_dir().join(path);
-    std::fs::read(&full)
-        .unwrap_or_else(|error| panic!("corpus file {} is unreadable: {error}", full.display()))
-}
-
-pub(crate) fn corpus_text(path: &str) -> String {
-    String::from_utf8(corpus_file(path)).expect("this corpus file should be UTF-8")
-}
 
 /// Compares against a checked-in file, or writes it when asked.
 ///

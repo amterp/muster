@@ -10,42 +10,26 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "cwd": "/src/beta"
-              },
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "cwd": "/src/alpha"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
+                "label": "t1",
                 "root": {
                   "axis": "columns",
                   "ratio": 0.5,
                   "first": "w1:p2",
                   "second": "w1:p1"
                 }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p2",
+                "cwd": "/src/beta"
+              },
+              {
+                "id": "w1:p1",
+                "cwd": "/src/alpha"
               }
             ]
           }
@@ -82,99 +66,26 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/alpha"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/beta"
-              }
-            ],
-            "layouts": []
-          }
-        },
-        "daemons": [
-          {
-            "id": "local",
-            "world": "laptop"
-          }
-        ],
-        "regions": [
-          {
-            "daemon": "local",
-            "tab": "w1:t1"
-          }
-        ]
-      },
-      "expect": {
-        "machines": [
-          "local connected 2 panes"
-        ],
-        "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" hidden"
-        ],
-        "tabs": [
-          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
-        ]
-      }
-    },
-    {
-      "name": "a tree that disagrees with its tab does not lose a pane from the list",
-      "why": "The view withholds a disagreeing tree rather than repairing it, because rendering one would tear down surfaces. A list has no surfaces to lose and the opposite failure: a pane missing from the roster is a pane nobody can be routed to. So the panes decide what exists and the tree only decides order, which is the same rule read the other way round.",
-      "given": {
-        "worlds": {
-          "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "cwd": "/src/alpha"
-              },
-              {
-                "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "cwd": "/src/beta"
-              }
-            ],
-            "layouts": [
-              {
-                "tab": "w1:t1",
-                "root": "w1:p1"
               }
             ]
           }
@@ -211,29 +122,20 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/muster",
                 "agent": "claude"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -267,28 +169,19 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/rad"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -322,34 +215,28 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": ""
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -384,28 +271,19 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -439,39 +317,28 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p9"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/shown"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/elsewhere"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -510,52 +377,34 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/here"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/there"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -600,34 +449,23 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/shown"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [],
             "tabs": [],
-            "panes": [],
-            "layouts": []
+            "panes": []
           }
         },
         "daemons": [
@@ -666,28 +504,19 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/here"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -725,52 +554,34 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/laptop"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/devenv"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -818,74 +629,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/second"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               },
               {
                 "id": "w2:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w2:p2"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w2:p2",
-                "tab": "w2:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -934,34 +723,28 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/zoomed"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/behind"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -994,105 +777,23 @@
       }
     },
     {
-      "name": "a tab in a daemon holding several workspaces is named by the workspace",
-      "why": "herdr labels a workspace with its directory and labels a tab with its number inside that workspace, so `1` on its own tells two projects' first tabs apart not at all. The workspace is the useful half of a tab's name and goes in front of it - but only when there is more than one, because repeating one project's name down every row of the list says nothing and costs a word off every label.",
-      "given": {
-        "worlds": {
-          "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "muster"
-              },
-              {
-                "id": "w2",
-                "label": "rad"
-              }
-            ],
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "workspace": "w1",
-                "label": "1"
-              },
-              {
-                "id": "w2:t1",
-                "workspace": "w2",
-                "label": "1"
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
-                "cwd": "/src/muster"
-              },
-              {
-                "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w2",
-                "cwd": "/src/rad"
-              }
-            ],
-            "layouts": []
-          }
-        },
-        "daemons": [
-          {
-            "id": "local",
-            "world": "laptop"
-          }
-        ],
-        "regions": [
-          {
-            "daemon": "local",
-            "tab": "w1:t1"
-          }
-        ]
-      },
-      "expect": {
-        "machines": [
-          "local connected 2 panes"
-        ],
-        "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden",
-          "local/w2:p1 place=2 tab=w2:t1 label=\"rad\" hidden"
-        ],
-        "tabs": [
-          "w1:t1 on=local place=1 label=\"muster\" on-screen",
-          "w2:t1 on=local place=2 label=\"rad\" hidden"
-        ]
-      }
-    },
-    {
       "name": "a tab nobody has named is called after its place in the window",
-      "why": "herdr labels an unnamed tab with its position inside its workspace, so the second tab's label is literally `2`, and two daemons would each contribute a `1`. That is not a name, so it is dropped - and something has to take its place, because the caption is now the whole of the row. Muster writes `Tab <place>` from its own numbering, which counts across the window and so cannot collide.\n\nThis used to be empty, back when a number was drawn beside every caption. The numbers moved onto the pane rows, and an empty caption became a row with nothing on it at all - which is worse than a wrong one, because there is nothing to notice.",
+      "why": "A tab nobody named has no label, and the caption is the whole of its row, so something has to take its place. Muster writes `Tab <place>` from its own numbering, which counts across the window and so cannot collide the way two machines' own first tabs would.\n\nThis used to be empty, back when a number was drawn beside every caption. The numbers moved onto the pane rows, and an empty caption became a row with nothing on it at all - which is worse than a wrong one, because there is nothing to notice.",
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": ""
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "7"
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/nameless"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -1126,74 +827,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/second"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               },
               {
                 "id": "w2:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w2:p2"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w2:p2",
-                "tab": "w2:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -1247,74 +926,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/second"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               },
               {
                 "id": "w2:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w2:p2"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w2:p2",
-                "tab": "w2:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -1368,74 +1025,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/second"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               },
               {
                 "id": "w2:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w2:p2"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w2:p2",
-                "tab": "w2:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -1489,74 +1124,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/second"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               },
               {
                 "id": "w2:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w2:p2"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w2:p2",
-                "tab": "w2:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -1610,74 +1223,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/second"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               },
               {
                 "id": "w2:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w2:p2"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w2:p2",
-                "tab": "w2:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -1730,74 +1321,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/second"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               },
               {
                 "id": "w2:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w2:p2"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w2:p2",
-                "tab": "w2:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -1848,74 +1417,52 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/second"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w2:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               },
               {
                 "id": "w2:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w2:p2"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w2:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w2:p2",
-                "tab": "w2:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -1966,30 +1513,21 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/muster",
                 "agent": "claude",
                 "title": "first working build"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2019,33 +1557,24 @@
     },
     {
       "name": "a pane with no harness gets no second line, whatever it calls itself",
-      "why": "A shell sets a title too. oh-my-zsh's default is `<user>@<host>:<path>`, which is the row's own first line spelled longer, and most panes in a window are a shell somebody left open - so a rule of 'draw it when it exists' would double the height of the list to repeat it.\n\nRequiring a detected harness is a fact the daemon reports, where suppressing shell titles by shape would be a guess about somebody's dotfiles. The cost is real and is accepted here rather than hidden: a pane running something that titles itself usefully, which herdr recognized no agent in, stays on one line.",
+      "why": "A shell sets a title too. oh-my-zsh's default is `<user>@<host>:<path>`, which is the row's own first line spelled longer, and most panes in a window are a shell somebody left open - so a rule of 'draw it when it exists' would double the height of the list to repeat it.\n\nRequiring a detected harness is a fact the daemon reports, where suppressing shell titles by shape would be a guess about somebody's dotfiles. The cost is real and is accepted here rather than hidden: a pane running something that titles itself usefully, in which the daemon recognized no agent, stays on one line.",
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/muster",
                 "title": "amterp@Mac:~/src/muster"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2079,30 +1608,21 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/muster",
                 "agent": "claude",
                 "title": "muster"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2132,35 +1652,26 @@
     },
     {
       "name": "a name somebody gave a pane replaces the directory and the harness",
-      "why": "A person running fifteen agents wants to say which is which in their own words. Their name wins over anything derived because it is the only line here that was written for this pane rather than worked out from where it happens to be - and it is the durable one: herdr writes a name down, so it survives a daemon restart, where the directory and the harness are re-derived each time (observations/herdr-0.8.0.md section 16).\n\nThe raw text travels beside the label so that asking to rename can start from what was typed rather than from a composed label nobody chose.",
+      "why": "A person running fifteen agents wants to say which is which in their own words. Their name wins over anything derived because it is the only line here that was written for this pane rather than worked out from where it happens to be - and it is the durable one: the daemon writes a name down, so it survives a daemon restart, where the directory and the harness are re-derived each time.\n\nThe raw text travels beside the label so that asking to rename can start from what was typed rather than from a composed label nobody chose.",
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/muster",
                 "agent": "claude",
                 "name": "\ud83d\udd25 payments spike",
                 "title": "first working build"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2190,35 +1701,26 @@
     },
     {
       "name": "naming a pane does not cost you the ability to see what it is doing",
-      "why": "The two lines answer different questions and both stay: a name is durable identity and a title is volatile status. herdr keeps them as separate fields and setting one never touches the other, so a row that dropped the title on being named would be throwing away something the daemon still holds.\n\nThe comparison that suppresses a repeated title now runs against the name, not the directory, because the first line is what the reader actually read.",
+      "why": "The two lines answer different questions and both stay: a name is durable identity and a title is volatile status. the daemon keeps them as separate fields and setting one never touches the other, so a row that dropped the title on being named would be throwing away something the daemon still holds.\n\nThe comparison that suppresses a repeated title now runs against the name, not the directory, because the first line is what the reader actually read.",
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/muster",
                 "agent": "claude",
                 "name": "payments spike",
                 "title": "payments spike"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2248,43 +1750,31 @@
     },
     {
       "name": "a tab carries the name it was given, and an unnamed one carries none",
-      "why": "Renaming a tab has to start from what somebody typed, and that is not recoverable from the caption: the caption may carry the tab's workspace in front of the name, and it drops a name that is only digits.\n\nThat last rule is why an unnamed tab reports no name at all rather than reporting herdr's own label. herdr labels an unnamed tab with its position inside its workspace, so presence cannot answer 'is this named' - and the same test means a tab somebody names `42` reads as unnamed, which is a limit of herdr's TabInfo rather than a choice made here.",
+      "why": "Renaming a tab has to start from what somebody typed, and that is not recoverable from the caption, which for an unnamed tab is Muster's `Tab <place>`. So an unnamed tab reports no name at all, and a named one reports exactly what it was called.",
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "release"
+                "label": "release",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "2"
+                "root": "w1:p2"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/muster"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/Users/a/src/muster"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2320,138 +1810,109 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p2"
               },
               {
                 "id": "w1:t3",
-                "workspace": "w1",
-                "label": "t3"
+                "label": "t3",
+                "root": "w1:p3"
               },
               {
                 "id": "w1:t4",
-                "workspace": "w1",
-                "label": "t4"
+                "label": "t4",
+                "root": "w1:p4"
               },
               {
                 "id": "w1:t5",
-                "workspace": "w1",
-                "label": "t5"
+                "label": "t5",
+                "root": "w1:p5"
               },
               {
                 "id": "w1:t6",
-                "workspace": "w1",
-                "label": "t6"
+                "label": "t6",
+                "root": "w1:p6"
               },
               {
                 "id": "w1:t7",
-                "workspace": "w1",
-                "label": "t7"
+                "label": "t7",
+                "root": "w1:p7"
               },
               {
                 "id": "w1:t8",
-                "workspace": "w1",
-                "label": "t8"
+                "label": "t8",
+                "root": "w1:p8"
               },
               {
                 "id": "w1:t9",
-                "workspace": "w1",
-                "label": "t9"
+                "label": "t9",
+                "root": "w1:p9"
               },
               {
                 "id": "w1:t10",
-                "workspace": "w1",
-                "label": "t10"
+                "label": "t10",
+                "root": "w1:p10"
               },
               {
                 "id": "w1:t11",
-                "workspace": "w1",
-                "label": "t11"
+                "label": "t11",
+                "root": "w1:p11"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/p1"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p2"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t3",
-                "workspace": "w1",
                 "cwd": "/src/p3"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t4",
-                "workspace": "w1",
                 "cwd": "/src/p4"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t5",
-                "workspace": "w1",
                 "cwd": "/src/p5"
               },
               {
                 "id": "w1:p6",
-                "tab": "w1:t6",
-                "workspace": "w1",
                 "cwd": "/src/p6"
               },
               {
                 "id": "w1:p7",
-                "tab": "w1:t7",
-                "workspace": "w1",
                 "cwd": "/src/p7"
               },
               {
                 "id": "w1:p8",
-                "tab": "w1:t8",
-                "workspace": "w1",
                 "cwd": "/src/p8"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t9",
-                "workspace": "w1",
                 "cwd": "/src/p9"
               },
               {
                 "id": "w1:p10",
-                "tab": "w1:t10",
-                "workspace": "w1",
                 "cwd": "/src/p10"
               },
               {
                 "id": "w1:p11",
-                "tab": "w1:t11",
-                "workspace": "w1",
                 "cwd": "/src/p11"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2505,57 +1966,55 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p3",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p4",
+                    "second": "w1:p5"
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/second"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fifth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2614,40 +2073,37 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/second"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/third"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2700,57 +2156,55 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p3",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p4",
+                    "second": "w1:p5"
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/second"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fifth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2809,57 +2263,55 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p3",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p4",
+                    "second": "w1:p5"
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/second"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fifth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -2918,57 +2370,55 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p3",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p4",
+                    "second": "w1:p5"
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/second"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fifth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -3029,62 +2479,55 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": "w1:p3"
               },
               {
                 "id": "w1:t3",
-                "workspace": "w1",
-                "label": "t3"
+                "label": "t3",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p4",
+                  "second": "w1:p5"
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/second"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t3",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t3",
-                "workspace": "w1",
                 "cwd": "/src/fifth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -3145,57 +2588,55 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p3",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p4",
+                    "second": "w1:p5"
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/second"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fifth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -3256,99 +2697,118 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p3",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p4",
+                    "second": {
+                      "axis": "columns",
+                      "ratio": 0.5,
+                      "first": "w1:p5",
+                      "second": {
+                        "axis": "columns",
+                        "ratio": 0.5,
+                        "first": "w1:p6",
+                        "second": {
+                          "axis": "columns",
+                          "ratio": 0.5,
+                          "first": "w1:p7",
+                          "second": {
+                            "axis": "columns",
+                            "ratio": 0.5,
+                            "first": "w1:p8",
+                            "second": {
+                              "axis": "columns",
+                              "ratio": 0.5,
+                              "first": "w1:p9",
+                              "second": {
+                                "axis": "columns",
+                                "ratio": 0.5,
+                                "first": "w1:p10",
+                                "second": {
+                                  "axis": "columns",
+                                  "ratio": 0.5,
+                                  "first": "w1:p11",
+                                  "second": "w1:p12"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/p1"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/p2"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p3"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p4"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p5"
               },
               {
                 "id": "w1:p6",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p6"
               },
               {
                 "id": "w1:p7",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p7"
               },
               {
                 "id": "w1:p8",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p8"
               },
               {
                 "id": "w1:p9",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p9"
               },
               {
                 "id": "w1:p10",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p10"
               },
               {
                 "id": "w1:p11",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p11"
               },
               {
                 "id": "w1:p12",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/p12"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -3421,57 +2881,55 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
               },
               {
                 "id": "w1:t2",
-                "workspace": "w1",
-                "label": "t2"
+                "label": "t2",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p3",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p4",
+                    "second": "w1:p5"
+                  }
+                }
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/first"
               },
               {
                 "id": "w1:p2",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/second"
               },
               {
                 "id": "w1:p3",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/third"
               },
               {
                 "id": "w1:p4",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fourth"
               },
               {
                 "id": "w1:p5",
-                "tab": "w1:t2",
-                "workspace": "w1",
                 "cwd": "/src/fifth"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [
@@ -3530,52 +2988,34 @@
       "given": {
         "worlds": {
           "laptop": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w1:p1"
               }
             ],
             "panes": [
               {
                 "id": "w1:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/here"
               }
-            ],
-            "layouts": []
+            ]
           },
           "box": {
-            "workspaces": [
-              {
-                "id": "w1",
-                "label": "one"
-              }
-            ],
             "tabs": [
               {
                 "id": "w1:t1",
-                "workspace": "w1",
-                "label": "t1"
+                "label": "t1",
+                "root": "w2:p1"
               }
             ],
             "panes": [
               {
                 "id": "w2:p1",
-                "tab": "w1:t1",
-                "workspace": "w1",
                 "cwd": "/src/there"
               }
-            ],
-            "layouts": []
+            ]
           }
         },
         "daemons": [

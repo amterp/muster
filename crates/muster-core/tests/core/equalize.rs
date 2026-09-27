@@ -5,7 +5,7 @@ use crate::support::backend::{read_node, text};
 use conformance::{CaseError, Conformance, fields};
 use muster_core::equalize::{self, Divider, Evenly};
 use muster_core::intent::Branch;
-use muster_core::mirror::backend::{Layout, PaneId, TabId};
+use muster_core::mirror::backend::PaneId;
 use serde_json::{Value, json};
 
 #[test]
@@ -13,20 +13,12 @@ fn equalize_conformance() {
     let corpus = Conformance::load("equalize.json");
 
     let ran = corpus.run(|given| {
-        // The tab and its cursors are not part of the question: which dividers to move is
-        // decided by the tree and the pane, and a case carrying a focused pane it never reads
-        // would be a case somebody has to check.
-        let layout = Layout {
-            tab: TabId::new("w1:t1"),
-            root: read_node(given.get("root").unwrap_or(&Value::Null)),
-            focused: None,
-            zoomed: None,
-        };
+        let root = read_node(given.get("root").unwrap_or(&Value::Null));
         let named = text(given, "evenly");
         let evenly = Evenly::parse(&named).ok_or_else(|| {
             CaseError::new(format!("the case asks to even out a `{named}`, which is not a scope"))
         })?;
-        let evened = equalize::dividers(&layout, &PaneId::new(text(given, "pane")), evenly);
+        let evened = equalize::dividers(&root, &PaneId::new(text(given, "pane")), evenly);
         Ok(fields([(
             "evened",
             Some(match evened {

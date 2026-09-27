@@ -279,7 +279,6 @@
         ],
         "taker": {
           "daemon": "local",
-          "now": 1000,
           "open": [
             "window-1",
             "window-2"
@@ -329,7 +328,6 @@
         ],
         "taker": {
           "daemon": "local",
-          "now": 1000,
           "open": [
             "window-1"
           ]
@@ -379,7 +377,6 @@
         ],
         "taker": {
           "daemon": "local",
-          "now": 1000,
           "open": [
             "window-1",
             "window-2"
@@ -426,7 +423,6 @@
         ],
         "taker": {
           "daemon": "devenv",
-          "now": 1000,
           "open": [
             "window-1",
             "window-2"
@@ -480,7 +476,6 @@
         ],
         "taker": {
           "daemon": "devenv",
-          "now": 1000,
           "open": [
             "window-1",
             "window-2"
@@ -515,7 +510,6 @@
         ],
         "taker": {
           "daemon": "devenv",
-          "now": 1000,
           "open": [
             "window-1"
           ]
@@ -548,7 +542,6 @@
         ],
         "taker": {
           "daemon": "local",
-          "now": 1000,
           "open": []
         }
       },
@@ -558,319 +551,6 @@
         ],
         "tabs": [],
         "taker": "nobody"
-      }
-    },
-    {
-      "name": "a window waiting on a machine keeps that machine's new tab from the others",
-      "why": "Measured on 0.8.1 (kan a_2Mhi0EZlv): the daemon describes a new tab to every window before the one that asked hears the answer naming it. Without this, the window in front would take a tab another window asked for - which is the failure the card was raised for, arrived at by a different rule.",
-      "given": {
-        "steps": [
-          {
-            "do": "open",
-            "window": "window-1",
-            "arrangement": "/s/windows/window-1.toml",
-            "socket": "/s/command-11.sock",
-            "pid": 11,
-            "focused": 100,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "open",
-            "window": "window-2",
-            "arrangement": "/s/windows/window-2.toml",
-            "socket": "/s/command-22.sock",
-            "pid": 22,
-            "focused": 200,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "expect",
-            "window": "window-1",
-            "daemon": "local",
-            "at": 1000
-          }
-        ],
-        "taker": {
-          "daemon": "local",
-          "now": 2000,
-          "open": [
-            "window-1",
-            "window-2"
-          ]
-        }
-      },
-      "expect": {
-        "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
-        ],
-        "tabs": [],
-        "taker": "waiting on window-1"
-      }
-    },
-    {
-      "name": "a window waiting on one machine does not hold up another",
-      "why": "What is expected is a tab on the machine the request went to. A tab on another machine at the same moment is somebody else's doing and joins the window in front as usual.",
-      "given": {
-        "steps": [
-          {
-            "do": "open",
-            "window": "window-1",
-            "arrangement": "/s/windows/window-1.toml",
-            "socket": "/s/command-11.sock",
-            "pid": 11,
-            "focused": 100,
-            "daemons": [
-              "devenv",
-              "local"
-            ]
-          },
-          {
-            "do": "open",
-            "window": "window-2",
-            "arrangement": "/s/windows/window-2.toml",
-            "socket": "/s/command-22.sock",
-            "pid": 22,
-            "focused": 200,
-            "daemons": [
-              "devenv",
-              "local"
-            ]
-          },
-          {
-            "do": "expect",
-            "window": "window-1",
-            "daemon": "local",
-            "at": 1000
-          }
-        ],
-        "taker": {
-          "daemon": "devenv",
-          "now": 2000,
-          "open": [
-            "window-1",
-            "window-2"
-          ]
-        }
-      },
-      "expect": {
-        "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=devenv,local",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=devenv,local"
-        ],
-        "tabs": [],
-        "taker": "window-2"
-      }
-    },
-    {
-      "name": "the answer arriving ends the wait",
-      "why": "The window that asked writes the tab it got and clears its expectation in the same write, and every other window hears the record move and decides again - so a tab made outside Muster in the meantime is only held up, not lost.",
-      "given": {
-        "steps": [
-          {
-            "do": "open",
-            "window": "window-1",
-            "arrangement": "/s/windows/window-1.toml",
-            "socket": "/s/command-11.sock",
-            "pid": 11,
-            "focused": 100,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "open",
-            "window": "window-2",
-            "arrangement": "/s/windows/window-2.toml",
-            "socket": "/s/command-22.sock",
-            "pid": 22,
-            "focused": 200,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "expect",
-            "window": "window-1",
-            "daemon": "local",
-            "at": 1000
-          },
-          {
-            "do": "answered",
-            "window": "window-1",
-            "daemon": "local"
-          }
-        ],
-        "taker": {
-          "daemon": "local",
-          "now": 2000,
-          "open": [
-            "window-1",
-            "window-2"
-          ]
-        }
-      },
-      "expect": {
-        "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
-        ],
-        "tabs": [],
-        "taker": "window-2"
-      }
-    },
-    {
-      "name": "a closed window's wait is over",
-      "why": "A window that quit or crashed mid-request will never write the answer, so what it was waiting for joins an open window rather than waiting on it forever.",
-      "given": {
-        "steps": [
-          {
-            "do": "open",
-            "window": "window-1",
-            "arrangement": "/s/windows/window-1.toml",
-            "socket": "/s/command-11.sock",
-            "pid": 11,
-            "focused": 100,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "open",
-            "window": "window-2",
-            "arrangement": "/s/windows/window-2.toml",
-            "socket": "/s/command-22.sock",
-            "pid": 22,
-            "focused": 200,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "expect",
-            "window": "window-1",
-            "daemon": "local",
-            "at": 1000
-          }
-        ],
-        "taker": {
-          "daemon": "local",
-          "now": 2000,
-          "open": [
-            "window-2"
-          ]
-        }
-      },
-      "expect": {
-        "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
-        ],
-        "tabs": [],
-        "taker": "window-2"
-      }
-    },
-    {
-      "name": "a wait lasts thirty seconds",
-      "why": "Far past any answer a daemon gives. An open window whose expectation is older than that lost the answer, and a tab should not wait on it forever.",
-      "given": {
-        "steps": [
-          {
-            "do": "open",
-            "window": "window-1",
-            "arrangement": "/s/windows/window-1.toml",
-            "socket": "/s/command-11.sock",
-            "pid": 11,
-            "focused": 100,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "open",
-            "window": "window-2",
-            "arrangement": "/s/windows/window-2.toml",
-            "socket": "/s/command-22.sock",
-            "pid": 22,
-            "focused": 200,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "expect",
-            "window": "window-1",
-            "daemon": "local",
-            "at": 1000
-          }
-        ],
-        "taker": {
-          "daemon": "local",
-          "now": 31000,
-          "open": [
-            "window-1",
-            "window-2"
-          ]
-        }
-      },
-      "expect": {
-        "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
-        ],
-        "tabs": [],
-        "taker": "window-2"
-      }
-    },
-    {
-      "name": "closing ends a window's wait",
-      "why": "A window writes its own close, so it clears what it was waiting on then rather than leaving other windows to find out by dialing it.",
-      "given": {
-        "steps": [
-          {
-            "do": "open",
-            "window": "window-1",
-            "arrangement": "/s/windows/window-1.toml",
-            "socket": "/s/command-11.sock",
-            "pid": 11,
-            "focused": 100,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "open",
-            "window": "window-2",
-            "arrangement": "/s/windows/window-2.toml",
-            "socket": "/s/command-22.sock",
-            "pid": 22,
-            "focused": 200,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "expect",
-            "window": "window-1",
-            "daemon": "local",
-            "at": 1000
-          },
-          {
-            "do": "close",
-            "window": "window-1"
-          }
-        ]
-      },
-      "expect": {
-        "windows": [
-          "window-1 pid=0 socket= arrangement=/s/windows/window-1.toml focused=100 daemons=local",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
-        ],
-        "tabs": []
       }
     },
     {

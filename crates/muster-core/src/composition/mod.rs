@@ -38,7 +38,7 @@ pub mod record;
 pub mod saved;
 pub mod view;
 
-pub use holding::{Expecting, HeldWindow, Holders, Taker, WindowName};
+pub use holding::{HeldWindow, Holders, Taker, WindowName};
 pub use presentation::{FontSizeChange, FontSizes, Frame, Presentation};
 pub use record::{
     Composition, Daemon, DaemonId, Endpoint, MusterTab, PaneKey, Region, RegionId, TabKey,

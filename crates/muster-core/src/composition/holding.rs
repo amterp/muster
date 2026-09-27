@@ -2,10 +2,9 @@
 //!
 //! **Every tab belongs to exactly one window** (kan a_2Mhi0EZlv). A window lists the tabs it
 //! holds and no others, so its sidebar, its numbered chords and its notifications are about its
-//! own work. No tab is ever in two windows: herdr allows one client per terminal, so a tab
-//! listed in two windows is a tab whose terminals one of them takes from the other at the first
-//! click. Measured that way on 0.7.0 and again on 0.8.1, where a window holding nothing drew the
-//! tab another window had asked for.
+//! own work. No tab is ever in two windows: a pane is drawn by one bridge at a time, so a tab
+//! listed in two windows is a tab whose panes one of them takes from the other at the first
+//! click.
 //!
 //! No daemon can hold this, because a daemon does not know which windows exist. So it is
 //! Muster's own record, shared by every window the way pane names are (`crate::shared`), and
@@ -49,28 +48,11 @@ pub struct HeldWindow {
     pub daemons: BTreeSet<DaemonId>,
 }
 
-/// A window about to ask a machine for a tab it has not been told the name of yet.
-///
-/// Written before the request and cleared once the answer names the tab. Between the two the
-/// daemon may already have described that tab to every window, and without this, the rule for
-/// a tab nobody holds would hand it to whichever window came to the front last - which is the
-/// window that did not ask for it, as often as not.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Expecting {
-    pub window: WindowName,
-    pub daemon: DaemonId,
-    /// When it was written, in milliseconds since the epoch.
-    pub since: i64,
-}
-
 /// Who takes a tab nobody holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Taker {
     /// The window that came to the front most recently, of the ones that are open.
     Window(WindowName),
-    /// Nobody yet: a window is waiting on an answer from this machine, and the tab may be its.
-    /// Decided again once that window writes what it got.
-    Waiting(WindowName),
     /// No window is open. The next one to open takes it.
     Nobody,
 }
@@ -80,7 +62,6 @@ pub enum Taker {
 pub struct Holders {
     windows: BTreeMap<WindowName, HeldWindow>,
     tabs: BTreeMap<TabId, WindowName>,
-    expecting: Vec<Expecting>,
 }
 
 impl Holders {
@@ -137,7 +118,6 @@ impl Holders {
             window.socket.clear();
             window.pid = 0;
         }
-        self.expecting.retain(|expecting| &expecting.window != name);
     }
 
     /// Says which machines a window follows now, which changes when it attaches one.
@@ -153,22 +133,6 @@ impl Holders {
         }
     }
 
-    /// Says this window is about to ask this machine for a tab.
-    pub fn expect(&mut self, window: &WindowName, daemon: &DaemonId, at: i64) {
-        self.expected(window, daemon);
-        self.expecting.push(Expecting {
-            window: window.clone(),
-            daemon: daemon.clone(),
-            since: at,
-        });
-    }
-
-    /// Says the answer arrived, whether or not it named a tab.
-    pub fn expected(&mut self, window: &WindowName, daemon: &DaemonId) {
-        self.expecting
-            .retain(|expecting| &expecting.window != window || &expecting.daemon != daemon);
-    }
-
     /// Forgets the windows that can never come back, and lets their tabs go.
     ///
     /// A window whose arrangement is gone - pruned, deleted, or never written because it was
@@ -180,7 +144,6 @@ impl Holders {
             self.windows.values().filter(|window| gone(window)).map(|w| w.name.clone()).collect();
         for name in &forgotten {
             self.windows.remove(name);
-            self.expecting.retain(|expecting| &expecting.window != name);
         }
         self.tabs.retain(|_, holder| !forgotten.contains(holder));
     }
@@ -196,27 +159,17 @@ impl Holders {
     /// Which window takes a tab nobody holds on this machine, at this moment.
     ///
     /// The window most recently brought to the front, of the open ones that follow this machine.
-    /// A tab made outside Muster - in herdr's own TUI, say - has nothing else to say where it
-    /// belongs, and the window somebody was last looking at is where they will look for it. It
+    /// A tab made by another client, or one a window asked for and then lost, has nothing else
+    /// to say where it belongs, and the window somebody was last looking at is where they will look for it. It
     /// is also the upgrade path: the first window to open after this record existed is the only
     /// one open, so it takes every tab, as a single window always did.
     ///
     /// Only windows following the machine are asked, because a window that cannot see a tab
     /// cannot show it, and waiting on one would leave the tab held by nobody.
     ///
-    /// Unless a window is waiting on this machine. Then nobody takes it yet, because it is very
-    /// likely that window's tab and the answer saying so is on its way. An expectation from a
-    /// window that has closed, or older than [`Holders::EXPECTATION_LASTS`], is a request that
-    /// is never going to be answered, and is ignored.
-    pub fn taker(&self, daemon: &DaemonId, now: i64, open: impl Fn(&HeldWindow) -> bool) -> Taker {
-        let waiting = self.expecting.iter().find(|expecting| {
-            &expecting.daemon == daemon
-                && now.saturating_sub(expecting.since) < Holders::EXPECTATION_LASTS
-                && self.windows.get(&expecting.window).is_some_and(&open)
-        });
-        if let Some(expecting) = waiting {
-            return Taker::Waiting(expecting.window.clone());
-        }
+    /// A window making a tab names it before asking, and takes it then, so the tab it asked
+    /// for is never one nobody holds.
+    pub fn taker(&self, daemon: &DaemonId, open: impl Fn(&HeldWindow) -> bool) -> Taker {
         self.in_front(daemon, open).map_or(Taker::Nobody, |window| Taker::Window(window.clone()))
     }
 
@@ -236,13 +189,6 @@ impl Holders {
             .max_by(|a, b| a.focused.cmp(&b.focused).then_with(|| b.name.cmp(&a.name)))
             .map(|window| &window.name)
     }
-
-    /// How long a window may be waiting on an answer before its expectation is ignored.
-    ///
-    /// Thirty seconds, which is far beyond any answer a daemon gives - `pane new --run` waits on
-    /// a shell and still answers in a few. Past it, the window that wrote it crashed or lost
-    /// the answer, and a tab it would have taken should not wait forever on it.
-    pub const EXPECTATION_LASTS: i64 = 30_000;
 }
 
 /// The version this format is on.
@@ -296,21 +242,6 @@ pub fn to_toml(holders: &Holders) -> String {
         .collect();
     if !tabs.is_empty() {
         root.insert("tab".to_string(), toml::Value::Array(tabs));
-    }
-
-    let expecting: Vec<toml::Value> = holders
-        .expecting
-        .iter()
-        .map(|expecting| {
-            let mut table = toml::Table::new();
-            table.insert("window".to_string(), toml::Value::String(expecting.window.to_string()));
-            table.insert("daemon".to_string(), toml::Value::String(expecting.daemon.to_string()));
-            table.insert("since".to_string(), toml::Value::Integer(expecting.since));
-            toml::Value::Table(table)
-        })
-        .collect();
-    if !expecting.is_empty() {
-        root.insert("expecting".to_string(), toml::Value::Array(expecting));
     }
 
     toml::to_string_pretty(&toml::Value::Table(root))
@@ -377,17 +308,6 @@ pub fn from_toml(text: &str) -> Result<Holders, String> {
             continue;
         };
         holders.take(TabId::new(name), &WindowName::new(window));
-    }
-    for table in rows(&root, "expecting") {
-        let (Some(window), Some(daemon)) = (text_at(table, "window"), text_at(table, "daemon"))
-        else {
-            continue;
-        };
-        holders.expecting.push(Expecting {
-            window: WindowName::new(window),
-            daemon: DaemonId::new(daemon),
-            since: table.get("since").and_then(toml::Value::as_integer).unwrap_or(0),
-        });
     }
     Ok(holders)
 }

@@ -35,32 +35,14 @@
       "expect": { "kind": "text", "bytes_hex": "1b66" }
     },
     {
-      "name": "a bare arrow is handed to the daemon",
-      "why": "The measured loss. Application cursor mode decides between SS3 and CSI, Muster cannot see which is on, and a program that trusts terminfo rejects the wrong one - `less` calls smkx on startup and then rings the bell instead of scrolling. The daemon knows the pane's real modes, so it encodes these four.",
+      "name": "a bare arrow is the pane's",
+      "why": "The daemon encodes every key against the pane's own modes, so a bare arrow needs nothing from the keymap: application cursor mode decides between SS3 and CSI, and the daemon can see which is on. It is left to the pane like any other key.",
       "given": { "key": "ArrowUp", "modifiers": [] },
-      "expect": { "kind": "serverEncoded", "key": "up" }
+      "expect": { "kind": "unbound" }
     },
     {
-      "name": "bare arrow down is handed to the daemon",
-      "why": "Same as arrow up. Named separately because a table that only covers one direction has been wrong before.",
-      "given": { "key": "ArrowDown", "modifiers": [] },
-      "expect": { "kind": "serverEncoded", "key": "down" }
-    },
-    {
-      "name": "bare arrow left is handed to the daemon",
-      "why": "Same as arrow up, and the one that collides with cmd+left below - so the pair proves the modifier is what selects between them.",
-      "given": { "key": "ArrowLeft", "modifiers": [] },
-      "expect": { "kind": "serverEncoded", "key": "left" }
-    },
-    {
-      "name": "bare arrow right is handed to the daemon",
-      "why": "Same as arrow up.",
-      "given": { "key": "ArrowRight", "modifiers": [] },
-      "expect": { "kind": "serverEncoded", "key": "right" }
-    },
-    {
-      "name": "shift+arrow is unbound and takes the local encoder",
-      "why": "Only unmodified arrows are routed. herdr's key vocabulary does accept chords like shift+up, but a modified arrow is not what a pager reads, and every routed key costs a socket round trip. So this falls through to the encoder like any other chord.",
+      "name": "shift+arrow is the pane's",
+      "why": "The same as a bare arrow, and the pair with cmd+left and alt+left above: those are bound, so the modifier is what selects between the keymap and the pane.",
       "given": { "key": "ArrowUp", "modifiers": ["shift"] },
       "expect": { "kind": "unbound" }
     },

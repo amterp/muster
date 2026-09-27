@@ -674,15 +674,10 @@ impl Composition {
 
 /// A tab's panes, in the order its tree lays them out.
 ///
-/// Tree order when there is a tree and id order when there is not, because a tab whose
-/// layout has not arrived yet is a real state - herdr publishes the tree on its own event,
-/// which may follow the panes it names - and "the first pane" has to mean something in it.
-///
-/// Panes the tree names but the mirror does not hold are skipped either way: a tree that
-/// arrived ahead of its panes would otherwise put the keyboard on one nothing can type
-/// into.
+/// Tree order, skipping any pane the mirror does not hold, and the mirror's own order when
+/// that leaves nothing, so that "the first pane" always means something.
 fn panes_of(mirror: &Mirror, tab: &TabId) -> Vec<PaneId> {
-    let ordered: Vec<PaneId> = match mirror.layout(tab) {
+    let ordered: Vec<PaneId> = match mirror.tab(tab) {
         Some(layout) => layout
             .root
             .panes()

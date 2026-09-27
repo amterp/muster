@@ -12,7 +12,7 @@
 //! no world behind it and nothing to stand up in order to test it.
 
 use crate::intent::Branch;
-use crate::mirror::backend::{Layout, LayoutNode, PaneId, SplitAxis};
+use crate::mirror::backend::{LayoutNode, PaneId, SplitAxis};
 
 /// Which panes an equalize evens out.
 ///
@@ -87,19 +87,19 @@ const SETTLED: f32 = 1e-3;
 /// A tree that does not name the pane is worth refusing rather than working around. It means the
 /// arrangement in hand is behind the tab it describes - a tab publishes its panes and its tree on
 /// separate events - and moving dividers by a stale tree puts them somewhere nobody asked for.
-pub fn dividers(layout: &Layout, pane: &PaneId, evenly: Evenly) -> Option<Vec<Divider>> {
-    let path = path_to(&layout.root, pane)?;
+pub fn dividers(root: &LayoutNode, pane: &PaneId, evenly: Evenly) -> Option<Vec<Divider>> {
+    let path = path_to(root, pane)?;
     let mut found = Vec::new();
     match evenly.axis() {
         // Every divider, both axes, by how many panes hang off each side. Each subtree then gets
         // the share of its parent that its pane count deserves, so by the time it reaches a leaf
         // every pane holds the same area however the tree above it mixes rows and columns.
         None => {
-            even(&layout.root, &mut Vec::new(), &mut found);
+            even(root, &mut Vec::new(), &mut found);
             Some(found)
         }
         Some(axis) => {
-            let (start, run) = run_holding(&layout.root, &path, axis)?;
+            let (start, run) = run_holding(root, &path, axis)?;
             even_along(run, axis, &mut start.to_vec(), &mut found);
             Some(found)
         }

@@ -7,15 +7,16 @@
 //! nobody could account for.
 
 use conformance::{CaseError, strings};
-use muster_core::input::{Key, KeyEvent, Modifiers, OptionAsAlt, TerminalModeProfile};
+use muster_core::input::{Key, KeyEvent, Modifiers, OptionAsAlt};
+use muster_vt::{KeyModes, kitty_flags};
 use serde_json::Value;
 
-/// A named profile, or the conservative default with named fields overridden.
+/// A named set of modes, or a terminal no program has changed with named fields overridden.
 ///
-/// Overrides rather than a whole profile per case: what each case is about is the one
-/// setting it changes, and spelling out all seven fields would bury it.
-pub(crate) fn profile(given: Option<&Value>) -> Result<TerminalModeProfile, CaseError> {
-    let mut profile = TerminalModeProfile::UNKNOWN_PANE;
+/// Overrides rather than a whole set per case: what each case is about is the one setting it
+/// changes, and spelling out all six fields would bury it.
+pub(crate) fn profile(given: Option<&Value>) -> Result<KeyModes, CaseError> {
+    let mut profile = KeyModes::default();
     match given {
         None => Ok(profile),
         Some(Value::String(name)) => named_profile(name),
@@ -38,7 +39,6 @@ pub(crate) fn profile(given: Option<&Value>) -> Result<TerminalModeProfile, Case
                     "modifyOtherKeys" => {
                         profile.modify_other_keys = value.as_bool().unwrap_or(false);
                     }
-                    "bracketedPaste" => profile.bracketed_paste = value.as_bool().unwrap_or(false),
                     "optionActsAsAlt" => {
                         profile.option_acts_as_alt =
                             value.as_str().and_then(OptionAsAlt::parse).ok_or_else(|| {
@@ -56,11 +56,17 @@ pub(crate) fn profile(given: Option<&Value>) -> Result<TerminalModeProfile, Case
     }
 }
 
-/// One of the two profiles the corpus names, by name.
-pub(crate) fn named_profile(name: &str) -> Result<TerminalModeProfile, CaseError> {
+/// One of the two sets of modes the corpus names, by name: a terminal nothing has changed, and
+/// one a program put in kitty's keyboard protocol, as a full-screen TUI does.
+pub(crate) fn named_profile(name: &str) -> Result<KeyModes, CaseError> {
     match name {
-        "unknownPane" => Ok(TerminalModeProfile::UNKNOWN_PANE),
-        "herdrTUI" => Ok(TerminalModeProfile::HERDR_TUI),
+        "xtermModes" => Ok(KeyModes::default()),
+        "kittyModes" => Ok(KeyModes {
+            kitty_flags: kitty_flags::DISAMBIGUATE
+                | kitty_flags::REPORT_EVENT_TYPES
+                | kitty_flags::REPORT_ALTERNATE_KEYS,
+            ..KeyModes::default()
+        }),
         other => Err(CaseError::new(format!("`{other}` is not a named profile"))),
     }
 }

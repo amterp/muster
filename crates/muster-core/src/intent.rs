@@ -6,18 +6,16 @@
 //! has just made, arriving on the request channel instead of the event stream - so what comes
 //! back here may be applied, and nothing here may be assumed.
 //!
-//! Named for what a view wants rather than for what a backend offers, like every other noun
-//! Muster owns. herdr spells a split as the direction the new pane went; a window asks for a
-//! side, because that is the question a person answered when they pressed the key.
+//! Named for what a view wants rather than for what a daemon offers, like every other noun
+//! Muster owns: a window asks for a side, because that is the question a person answered when
+//! they pressed the key.
 
-use crate::find::{Found, Needle};
-use crate::mirror::backend::{Layout, PaneId, PaneText, TabId, Viewport};
+use crate::mirror::backend::{PaneId, TabId};
+use crate::pane_text::PaneText;
 
 /// A direction on screen, as a person means it.
 ///
-/// Muster's own word rather than a backend's, on the same terms as `SplitAxis`: herdr spells
-/// these the same way today, and a second backend spelling them `west` costs one match arm in
-/// its adapter rather than a rename through the core.
+/// Muster's own word rather than the daemon's, on the same terms as `SplitAxis`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Left,
@@ -50,11 +48,6 @@ impl Side {
 
 /// Where a pane being moved is going.
 ///
-/// Muster's own two answers rather than a backend's list of them. herdr's `pane.move` takes a
-/// tagged union with three arms and Muster reaches two; a backend offering one arm would build
-/// the second out of two requests in its own adapter, which is where that belongs (MIP-1: the
-/// core speaks Muster's vocabulary).
-///
 /// Three rather than one because a person means three different things. "Put this beside that"
 /// is what dragging a row onto another row is, and it needs somewhere that already exists to
 /// land. "Give this a tab of its own" names nowhere, and used to cost three commands and a login
@@ -66,8 +59,8 @@ pub enum MoveDestination {
     ///
     /// `after` is the pane it lands behind in the order the tab lays its panes out - which is
     /// the order the agent list reads. An ordering rather than a side, because that is what
-    /// dragging a row down a list means; the adapter spells it in whatever geometry its backend
-    /// has.
+    /// dragging a row down a list means; the adapter places it to the right of `after`, which
+    /// is the next place in that order.
     Beside { tab: TabId, after: PaneId },
 
     /// Into a tab of its own, which the move makes.
@@ -87,10 +80,10 @@ pub enum MoveDestination {
     /// it is a process and stays where it is - what moves is which Muster tab it belongs to, and
     /// a tab is a grouping Muster made rather than anything a daemon holds.
     ///
-    /// The adapter does the work in two shapes. A tab that already has a member on this pane's
-    /// machine takes the pane into it, which is an ordinary move. A tab that does not gets one:
-    /// the pane goes into a new backend tab there, and that tab is bound as this Muster tab's
-    /// member on this machine.
+    /// The adapter does the work in two shapes. A tab that already has a part on this pane's
+    /// machine takes the pane into it, beside that part's last pane. A tab that does not gets
+    /// one: the pane goes into a new tab there under the same Muster name, which is what makes
+    /// the two machines' parts one tab (MIP-3, section 2).
     ///
     /// Distinct from [`MoveDestination::Beside`] rather than a second meaning for its `tab`,
     /// because the two are different requests: `Beside` orders one pane against another and both
@@ -101,9 +94,8 @@ pub enum MoveDestination {
 /// Which child a step down a tree takes.
 ///
 /// A tree is addressed by the turns taken to reach a node, because the nodes have no names -
-/// a divider is not a thing a backend hands out an id for, it is a position in a shape that
-/// changes under it. Turns stay meaningful as the tree around them changes shape, and they
-/// are what the reconstruction in the adapter already produces.
+/// a divider is not a thing a daemon hands out an id for, it is a position in a shape that
+/// changes under it. Turns stay meaningful as the tree around them changes shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Branch {
     First,
@@ -113,36 +105,26 @@ pub enum Branch {
 /// One requested change.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BackendIntent {
-    /// Splits a pane, putting the new one on the named side of it.
-    ///
-    /// All four sides, which is not what every backend offers: herdr places a new pane on the
-    /// `second` side and has only `right` and `down`, so two of these are a split and a swap
-    /// rather than one request. That is the adapter's problem, deliberately - the question a
-    /// person answered when they pressed the key was "which side", and a core that only had
-    /// two of the four answers would be a core shaped by one daemon's spelling.
+    /// Splits a pane, putting the new one on the named side of it. The adapter mints the new
+    /// pane's name and says it in [`Outcome::created`].
     SplitPane {
         pane: PaneId,
         side: Side,
-        /// The existing pane's share afterwards. `None` takes the backend's own default,
+        /// The existing pane's share afterwards. `None` takes the daemon's own default,
         /// which is what a keybinding wants; a drag-to-split would say.
         ///
         /// The existing pane's rather than the first child's, so that one number means one
-        /// thing on all four sides. An adapter whose backend counts from the other end
-        /// inverts it.
+        /// thing on all four sides.
         ratio: Option<f32>,
-        /// Where the new pane starts. `None` takes the backend's own rule, which for herdr
-        /// means the directory the split came from - what somebody splitting a pane mid-task
-        /// means, and the reason this is not resolved here.
+        /// Where the new pane starts. `None` takes the daemon's own rule, the directory the
+        /// split came from - what somebody splitting a pane mid-task means, and the reason
+        /// this is not resolved here.
         cwd: Option<String>,
         /// What to run in it, as somebody would have typed it. `None` runs whatever a new pane
         /// runs anyway.
         ///
-        /// Part of making the pane, not a thing to do afterwards, and that is a decision about
-        /// where a cost belongs rather than a convenience. A backend that can spawn a program
-        /// with a pane does this in one request; herdr cannot, so its adapter waits for the
-        /// pane's shell to draw a prompt and then types. Either way one caller asked for a pane
-        /// running something and got one, instead of every caller racing a prompt it cannot
-        /// see.
+        /// Part of making the pane, not a thing to do afterwards: the daemon starts it with the
+        /// pane, so no caller races a shell prompt it cannot see.
         run: Option<String>,
         /// What to call it. `None` leaves it unnamed.
         ///
@@ -154,69 +136,20 @@ pub enum BackendIntent {
     ClosePane {
         pane: PaneId,
     },
-    /// Moves the *backend's* focus, which is not the same as moving Muster's keyboard.
+    /// Makes a tab, with one pane of its own in it. The adapter mints both names and says them
+    /// in the [`Outcome`].
     ///
-    /// Muster routes input by its own view-local cursor and writes this as a side effect, so
-    /// that a daemon computing seen-ness has been told somebody looked (`architecture.md`,
-    /// cursors are written, not read).
-    FocusPane {
-        pane: PaneId,
-    },
-    /// Types into a pane, whether or not anything is showing it.
-    ///
-    /// Not the keyboard. [`PaneInput`](crate::input::PaneInput) encodes a keystroke against the
-    /// live modes of the pane this window's keyboard feeds and writes it down that pane's own
-    /// channel; this goes out through the daemon and names the pane, so it reaches one in a tab
-    /// nobody is looking at. An agent instructing another agent needs exactly that, and no
-    /// keystroke can do it.
-    SendText {
-        pane: PaneId,
-        text: String,
-        /// Whether to press Return afterwards.
-        ///
-        /// Its own flag rather than a newline in the text. Once a program is reading, the two
-        /// are different things: Return is encoded against the pane's modes, and a bare newline
-        /// inside a bracketed paste is text rather than a submission. A harness that reads one
-        /// and not the other is the common case.
-        enter: bool,
-    },
-    /// Makes a tab beside a pane, with one pane of its own in it.
-    ///
-    /// A tab rather than a workspace, because a workspace is a backend's unit for a whole
-    /// project and a tab is the unit somebody reaches for several times an hour.
-    ///
-    /// `beside` says where in Muster's terms: the new tab goes wherever that pane already is.
-    /// A backend that groups tabs into something larger works out which group that means, from
-    /// the pane, in its own adapter - herdr's `tab.create` takes a workspace and ignores keys
-    /// it does not know, so naming the pane to it directly would put the tab wherever that
-    /// daemon last had focus (`observations/herdr-0.8.0.md` section 6). That defence is one
-    /// backend's behaviour and belongs where that backend does (MIP-2).
+    /// The one intent that needs nothing to exist, so it is also what is asked for when there
+    /// is nothing: a daemon Muster just started holds no panes, and a window showing none of
+    /// them is not a window.
     CreateTab {
-        beside: PaneId,
         /// Where its pane starts. Unlike a split, this is resolved before it is sent - a new
-        /// tab has nothing to inherit from, and the backend's own answer is a home directory
+        /// tab has nothing to inherit from, and the daemon's own answer is a home directory
         /// nobody asked for.
         cwd: Option<String>,
         /// What to run in the tab's pane, and what to call it. Both mean what they mean on
         /// [`BackendIntent::SplitPane`], because a tab is the other way to make a pane and a
         /// caller equipping one and not the other would have to race a shell prompt itself.
-        run: Option<String>,
-        name: Option<String>,
-    },
-    /// Makes a workspace, with one tab and one pane in it.
-    ///
-    /// The only intent that names nothing existing, because it is the one asked for when
-    /// there is nothing: a daemon Muster just started holds no panes, and a window showing
-    /// none of them is not a window. Every other verb here needs a pane to point at.
-    CreateWorkspace {
-        /// Where its first pane starts. `None` takes the daemon's own default rather than
-        /// this process's directory - Muster's cwd is wherever the app was launched from,
-        /// which is meaningless to whoever is looking at the window.
-        cwd: Option<String>,
-        /// What to run in its first pane, and what to call that pane. As on
-        /// [`BackendIntent::SplitPane`]. Here because this is what asking for a tab means in a
-        /// window showing nothing, and a caller that asked for a tab running something should
-        /// get one either way.
         run: Option<String>,
         name: Option<String>,
     },
@@ -227,30 +160,22 @@ pub enum BackendIntent {
     /// somebody holding a chord down wants this pane bigger, and which divider moves to
     /// achieve that is a question about a tree they are not looking at.
     ///
-    /// The backend resolves it, and it is the only verb here that could not be built from the
-    /// mirror - deciding which divider a direction refers to needs the rects, which are the
-    /// daemon's own and change under a viewport this window does not control.
+    /// The daemon resolves which divider a direction refers to.
     ResizePane {
         pane: PaneId,
         direction: Side,
-        /// How far, as a share of the region between 0 and 1. `None` takes the backend's own
+        /// How far, as a share of the region between 0 and 1. `None` takes the daemon's own
         /// step, which is what a keybinding wants.
         ///
-        /// A fraction rather than a distance, and named for it, because a distance is not
-        /// something the far side of this seam can act on: what moves is a divider's ratio,
-        /// and the backend has no idea how many points a cell is. This field said "cells" for
-        /// one release and the backend read it as a fraction the whole time, which made every
-        /// step a person could write land on the same maximal jump - a disagreement two doc
-        /// comments could hold at once precisely because `amount` named neither.
+        /// A fraction rather than a distance, and named for it, because what moves is a
+        /// divider's ratio and the daemon has no idea how many points a cell is.
         fraction: Option<f32>,
     },
 
     /// Makes one pane fill its tab, or puts it back.
     ///
-    /// A toggle rather than a state, because that is what one key does. What is zoomed is
-    /// daemon truth and arrives on the mirror; asking for `on` or `off` would mean reading it
-    /// back first, which is a round trip to answer a question the daemon is about to answer
-    /// anyway.
+    /// A toggle, because that is what one key does. The adapter reads what is zoomed now from
+    /// its mirror and asks the daemon for the other.
     ZoomPane {
         pane: PaneId,
     },
@@ -262,11 +187,7 @@ pub enum BackendIntent {
     /// mean rebuilding the arrangement around it, and there is no reading of that a person
     /// dragging one row expects.
     ///
-    /// Both panes are in the same tab. Crossing tabs is [`BackendIntent::MovePane`], which is a
-    /// different request to the backend and answers with two arrangements rather than one.
-    ///
-    /// The adapter already issues its backend's swap as the invisible second half of a leftward
-    /// split; this is the same request asked for on its own.
+    /// Both panes are in the same tab. Crossing tabs is [`BackendIntent::MovePane`].
     SwapPanes {
         pane: PaneId,
         with: PaneId,
@@ -286,9 +207,8 @@ pub enum BackendIntent {
     /// Closes a tab, and every pane in it with it.
     ///
     /// The one verb here that destroys more than it names. Muster sends it rather than closing
-    /// the panes one at a time because a backend closing its own tab is one act somebody can
-    /// undo nothing of, where N closes is N chances to be interrupted half way and left with a
-    /// tab holding one pane and no reason.
+    /// the panes one at a time because a daemon closing its own tab is one act, where N closes
+    /// is N chances to be interrupted half way and left with a tab holding one pane.
     CloseTab {
         tab: TabId,
     },
@@ -304,10 +224,10 @@ pub enum BackendIntent {
 
     /// Calls a pane what somebody wants to call it.
     ///
-    /// The name is the backend's to keep, which is the whole reason this is an intent rather
-    /// than something Muster remembers: any client can set one, herdr writes it down, and it
-    /// comes back after a daemon restart. Muster holding its own would be a second answer that
-    /// no other client could see and that a restart would strand.
+    /// The name is the daemon's to keep, which is the whole reason this is an intent rather
+    /// than something Muster remembers: any client can set one, the daemon writes it down, and
+    /// it comes back after a daemon restart. Muster holding its own would be a second answer
+    /// that no other client could see and that a restart would strand.
     RenamePane {
         pane: PaneId,
         /// `None` takes the name away, leaving the pane called after its directory again.
@@ -317,16 +237,15 @@ pub enum BackendIntent {
     /// Calls a tab what somebody wants to call it.
     ///
     /// Separate from [`BackendIntent::RenamePane`] rather than one verb over a target, because
-    /// the two are not the same operation underneath: herdr announces a tab rename and says
-    /// nothing at all about a pane one, and only the pane's can be undone.
+    /// a tab's name is held on every machine the tab spans and is ordered by a generation.
     RenameTab {
         tab: TabId,
-        /// `None` asks for the name to be taken away, which no backend has to be able to do
-        /// completely. herdr cannot: its `tab.rename` takes a required string, so the adapter
-        /// sends an empty one and the tab is left nameless rather than renumbered
-        /// (`observations/herdr-0.8.0.md` section 16). The intent says what was asked for; how
-        /// far a backend can honour it is the adapter's to report.
+        /// `None` takes the name away, leaving the tab numbered again.
         name: Option<String>,
+        /// Higher than any this tab's name has had on any machine, so that every part adopts
+        /// it and a part that missed it is renamed when its daemon reconnects (MIP-3, section
+        /// 2). The daemon refuses a lower one.
+        generation: u64,
     },
 }
 
@@ -346,23 +265,20 @@ impl BackendIntent {
             BackendIntent::RenamePane { pane, name } => {
                 format!("RenamePane {{ pane: {pane}, name: {} }}", named(name.as_deref()))
             }
-            BackendIntent::RenameTab { tab, name } => {
-                format!("RenameTab {{ tab: {tab}, name: {} }}", named(name.as_deref()))
-            }
-            // What somebody types into their own terminal, on the same terms as a find needle
-            // and a pane's name: the length says whether it arrived and how much of it, which
-            // is what a log is read for, and the words are theirs.
-            BackendIntent::SendText { pane, text, enter } => {
-                format!(
-                    "SendText {{ pane: {pane}, text: {}, enter: {enter} }}",
-                    counted(Some(text))
-                )
-            }
+            BackendIntent::RenameTab { tab, name, generation } => format!(
+                "RenameTab {{ tab: {tab}, name: {}, generation: {generation} }}",
+                named(name.as_deref())
+            ),
             // A command line, for the reason above and one more: an environment set on the way
             // to a program is a normal thing to type, and a token is a normal thing to set.
             BackendIntent::SplitPane { pane, side, ratio, cwd, run, name } => format!(
                 "SplitPane {{ pane: {pane}, side: {side:?}, ratio: {ratio:?}, cwd: {cwd:?}, \
                  run: {}, name: {} }}",
+                counted(run.as_ref()),
+                named(name.as_deref())
+            ),
+            BackendIntent::CreateTab { cwd, run, name } => format!(
+                "CreateTab {{ cwd: {cwd:?}, run: {}, name: {} }}",
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),
@@ -387,57 +303,21 @@ fn named(name: Option<&str>) -> &'static str {
     }
 }
 
-/// An arrangement a daemon stated in its answer, and what that answer left behind.
+/// What a daemon said about a change it just made.
 ///
-/// Daemon truth on the same terms as an event, and the reason it is worth taking here is
-/// timing: herdr answers a swap with the settled tree in about a millisecond and broadcasts
-/// the same tree about a hundred milliseconds later
-/// (`observations/herdr-0.8.0.md` section 14). A window that waits to be told twice is a
-/// window that renders the arrangement it was moving away from.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SettledLayout {
-    /// How the tab is arranged now, as the daemon said when it was asked.
-    pub layout: Layout,
-    /// An arrangement the daemon published on its way here, which has not reached the
-    /// subscription yet and is already out of date when it does.
-    ///
-    /// Only a backend that needs two requests for one intent has one of these, and only its
-    /// adapter can know what it looked like. `None` everywhere else, including the case the
-    /// mirror handles for itself: what a tab was arranged as *before* this answer is
-    /// something the mirror is already holding, and does not have to be told.
-    pub stale: Option<Layout>,
-}
-
-/// What a backend said about a change it just made.
-///
-/// Two kinds of thing, and the difference is who they are for. `created` and `created_tab`
-/// answer what no event can - *which* of the things that appeared is the one this request
-/// made - and are Muster's own state, used to point its keyboard. `settled` is daemon truth,
-/// and is here because a daemon answers faster than it broadcasts.
+/// Only what no event can say: *which* of the things that appeared is the one this request
+/// made, which Muster uses to point its keyboard. Everything the change did arrived as events
+/// before the answer, so by the time a submit returns the mirror already shows it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Outcome {
-    /// The pane a split made, when the request made one.
+    /// The pane a request made, when it made one.
     pub created: Option<PaneId>,
     /// The tab a request made, when it made one.
     ///
     /// Needed for the same reason and by a different part of the window: a new tab is
-    /// somewhere no region is looking, and Muster decides what a region shows without ever
-    /// reading the daemon's own focus (`architecture.md`, cursors are written, not read). So
-    /// the answer has to come back with the request that caused it.
+    /// somewhere no region is looking, and Muster decides what a region shows itself
+    /// (`architecture.md`, cursors are written, not read).
     pub created_tab: Option<TabId>,
-    /// How a tab is arranged now, when the daemon's answer said.
-    pub settled: Option<SettledLayout>,
-    /// What a pane is called now, when the request renamed one.
-    ///
-    /// The only route there is. A backend need not announce a rename, and herdr does not:
-    /// there is no event for one and no counter that moves, so a reply is the whole of what
-    /// a client learns (`observations/herdr-0.8.0.md` section 16). Without taking it here,
-    /// naming a pane changes the daemon and not the window, and stays that way until the
-    /// connection next re-snapshots.
-    ///
-    /// The inner `Option` is the name itself, absent when the rename took one away, so that
-    /// "no rename happened" and "the name is now nothing" are different answers.
-    pub renamed: Option<(PaneId, Option<String>)>,
 }
 
 /// Why a backend did not come back saying a change was made.
@@ -447,34 +327,23 @@ pub struct Outcome {
 /// rather than to answer as though it had. Two kinds are different, and are why this is not
 /// just a string.
 ///
-/// A backend that answers a change it declined with an ordinary success has to produce one of
-/// these itself, which is a reading of its own vocabulary: a request whose state already holds
-/// is a success, and one that did not happen is a refusal. herdr needs it - see
-/// `muster_herdr::considered` - and `architecture.md` states the rule under degradation.
+/// A request whose state already holds is a success, not one of these (`architecture.md`,
+/// degradation).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     /// The window's picture of what the request named is stale.
     ///
     /// Not a failure of the request so much as a report about Muster: the window is showing
     /// something that is not there, and every later request about it will be refused the same
-    /// way. A daemon can drop a pane without saying so - herdr does, when a pane's terminal
-    /// goes - so this is sometimes the only account of it there is, and it is worth acting on
-    /// rather than logging.
-    ///
-    /// Usually a thing the backend does not hold at all. It also covers a thing it holds
-    /// somewhere else, when the refusal proves that much: Muster picks between swapping two
-    /// panes and moving one by reading which tabs they are in, so a backend refusing that
-    /// choice has said the window has a pane in the wrong tab. Either way the answer is to ask
-    /// what it does hold, because it will not volunteer it.
+    /// way. The answer is to ask the daemon what it does hold.
     NotThere(String),
 
     /// The backend was asked and never said what came of it.
     ///
     /// Not a refusal at all, and the one answer here that must not be reported as one: the
-    /// request reached the backend, so the change may well have happened and only the answer
-    /// was lost. herdr does this on a loaded machine - a message delivered and a pane closed
-    /// were both reported refused, and a caller told so sends the request again (kan
-    /// a_2LOHfLmsL). Whatever did happen arrives on the backend's own events.
+    /// request may have reached the daemon, so the change may well have happened and only the
+    /// answer was lost - a caller told it was refused sends the request again (kan
+    /// a_2LOHfLmsL). Whatever did happen arrives on the daemon's own events.
     Unanswered(String),
 
     /// Anything else. The request did not happen, and saying so is all there is to do.
@@ -508,39 +377,14 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
 
     /// Reads a pane's history back, and changes nothing.
     ///
-    /// As far back as the backend will go, always. How much of that a caller wanted is
-    /// [`PaneText::tail`] and happens after, because a backend counts rows in the grid it
-    /// draws - the blank remainder of an idle viewport is rows to it, and a small number
-    /// asked for here buys those and nothing else. [`PaneText::truncated`] is how a caller
-    /// learns there was more. A pane's output never enters the core, so this is the only way
-    /// anything above the seam sees what a pane has printed.
+    /// As far back as the daemon holds, always. How much of that a caller wanted is
+    /// [`PaneText::tail`] and happens after. A pane's output never enters the core, so this is
+    /// the only way anything above the seam sees what a pane has printed.
     ///
     /// A read rather than an intent because nothing changes: `BackendIntent` is what Muster
-    /// asks a backend to *do*, and putting a question in it would make `Outcome` - a
-    /// statement about a change just made - carry answers to things that changed nothing.
+    /// asks a daemon to *do*, and putting a question in it would make `Outcome` - a statement
+    /// about a change just made - carry answers to things that changed nothing.
     fn read(&self, pane: &PaneId) -> Result<PaneText, Refusal>;
-
-    /// Looks for text in a pane, and changes nothing.
-    ///
-    /// The one place find is swappable. A backend that searches its own history answers this
-    /// directly; one that does not reads the history back with [`BackendChannel::read`] and
-    /// matches it with `find::found_in`, which is what herdr's adapter does today. Either way
-    /// the answer is the same shape and everything above it is the same code, so gaining a
-    /// daemon-side search is one function body rather than a feature rewritten.
-    ///
-    /// The answer carries the pane's viewport, so an implementation has to establish it -
-    /// `Found`'s offsets are about that viewport, and a caller landing on a hit scrolls
-    /// against the same one rather than asking a second time.
-    fn find(&self, pane: &PaneId, needle: &Needle) -> Result<Found, Refusal>;
-
-    /// Where a pane is looking, so that something found can be scrolled to.
-    ///
-    /// Asked at the moment it is needed rather than followed, because the change to it is
-    /// announced only to a subscription that names the pane - fifteen panes would be fifteen
-    /// held connections for a number nothing renders. A wheel touched between this answer
-    /// and the scroll that follows it makes the landing approximate, which is the honest
-    /// cost of a backend that scrolls by steps rather than to a place.
-    fn viewport(&self, pane: &PaneId) -> Result<Viewport, Refusal>;
 
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;

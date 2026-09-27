@@ -787,7 +787,6 @@ dependencies = [
  "conformance",
  "libc",
  "muster-core",
- "muster-herdr",
  "serde_json",
 ]
 

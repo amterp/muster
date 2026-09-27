@@ -1,130 +1,71 @@
-//! What a backend tells Muster changed.
+//! What a daemon tells Muster changed.
 //!
-//! Upsert rather than created-and-updated, deliberately. `events.subscribe` replays the
-//! daemon's recent events, which on a fresh session are the creations of everything in it, so
-//! a client that snapshots and then subscribes is told every existing entity was just created
-//! (`docs/observations/herdr-0.8.0.md` sections 1 and 10). Collapsing the two makes
-//! convergence a property of the vocabulary rather than a rule each adapter has to remember.
-//!
-//! **Where the two carry different information, they stay two.** That replay is a log of
-//! past events rather than a statement of the present, so a creation says what an entity
-//! was called when it was made and a rename says what it is called now - and a mirror that
-//! read them as one lets a reconnect put an old name back. `TabRenamed` is that case; a
-//! pane's name has no announcement at all and so is taken only from a snapshot (section 16).
-//!
-//! **And where they carry different authority.** A creation says a pane exists; an update only
-//! describes one, as it was when the event was built, and can arrive after the pane has closed.
-//! So a pane has `PaneUpdated` beside its upsert, and only the upsert may put a pane in the
-//! mirror (kan a_2Mi2uGGxX).
+//! The daemon's own events: whole records rather than deltas, numbered and delivered in order,
+//! from a snapshot onwards with nothing replayed from before it (MIP-3, section 9). So an event
+//! is applied as it stands, and a mirror never has to decide whether one is old news.
 
 use crate::AgentState;
-use crate::mirror::backend::{Layout, Pane, PaneId, Tab, TabId, Workspace, WorkspaceId};
+use crate::mirror::backend::{Pane, PaneId, Tab, TabId};
 
-/// One thing a backend says happened.
+/// One thing a daemon says happened.
 ///
-/// Every variant carries absolute values rather than deltas, so applying one twice is
-/// applying it once, and applying a stale one costs at most a redundant write.
+/// Every variant carries absolute values rather than deltas, so applying one twice is applying
+/// it once.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BackendEvent {
-    WorkspaceUpserted(Workspace),
-    WorkspaceRemoved(WorkspaceId),
-    TabUpserted(Tab),
-    /// A tab somebody renamed, which is a different fact from a tab existing.
-    ///
-    /// Two events rather than one upsert because a backend may replay the first forever and
-    /// the second is news. herdr's creation event carries the label the tab was made with -
-    /// its position - so a replay of it puts back a number over whatever the tab is now
-    /// called, and the caption then drops that number as a number and the row goes blank.
-    /// Renaming is announced separately and only when it happens, so it can be trusted.
-    TabRenamed {
-        tab: TabId,
-        label: String,
-    },
-    TabRemoved(TabId),
-    /// One workspace's tabs, in the order they now sit.
-    ///
-    /// The whole order rather than the tab that moved and where it went, because that is what
-    /// the backend states: herdr's `tab_moved` carries the settled list and is the only thing
-    /// that says a tab moved at all - a client that has not named the event sees nothing while
-    /// the order changes under it (`observations/herdr-0.8.0.md` section 21).
-    ///
-    /// Order only. The payload carries a whole description of every tab, and taking anything
-    /// else from it would make this a second writer for a field that has one: an unnamed tab's
-    /// backend label is its position, so every one of them is relabelled by a move, and those
-    /// are the same numbers [`BackendEvent::TabRenamed`] exists to keep out.
-    TabsReordered {
-        workspace: WorkspaceId,
-        order: Vec<TabId>,
-    },
-    /// A pane exists, as its creation or a move stated it. The only event that may introduce one.
-    PaneUpserted(Pane),
-    /// What a pane already held now looks like. Never introduces one.
-    ///
-    /// An update is built from a pane as it stood at the time, and herdr delivers at most one
-    /// event of a kind per poll, so a busy stream of updates arrives behind the close of the pane
-    /// it describes. Read as an upsert, one of those put a closed pane back for the life of the
-    /// window (`observations/herdr-0.8.0.md` section 10).
-    PaneUpdated(Pane),
-    /// A pane is gone, however it went. The backend distinguishes a pane a client closed
-    /// from one whose program ended, and Muster does not: both mean the surface should
-    /// stop existing, and keeping the difference would invite handling only one
-    /// (`observations/herdr-0.8.0.md` section 10).
-    PaneRemoved(PaneId),
-    /// No sequence stamp, because no backend sends one on an event. herdr's
-    /// `state_change_seq` appears in exactly one place in its whole schema - the `agents[]`
-    /// of a `session.snapshot` - so ordering is something a snapshot carries and a stream
-    /// does not (`observations/herdr-0.8.0.md` section 10).
-    AgentStateChanged {
+    /// A pane exists. Its tab is whichever tree names it; the daemon names a pane in a tree only
+    /// after it has opened it.
+    PaneOpened(Pane),
+    /// A pane's whole record, as it is now.
+    PaneChanged(Pane),
+    /// A pane is gone, however it went: closed by a request, or its program ended.
+    PaneClosed(PaneId),
+    TabOpened(Tab),
+    /// A tab's whole record: its label, its tree, its zoom.
+    TabChanged(Tab),
+    TabClosed(TabId),
+    /// The daemon has finished bringing back its saved tabs, and says what it could not.
+    Restored(Restored),
+    /// A paste the daemon held back, because the pane's program did not ask for bracketed
+    /// paste and the text holds a newline, so writing it would run every line as typed. It
+    /// is written once somebody confirms it.
+    PasteHeld {
         pane: PaneId,
-        state: AgentState,
+        text: String,
     },
-    AgentDetected {
-        pane: PaneId,
-        agent: String,
-    },
-    /// A whole tab's tree, as it stands now.
-    ///
-    /// Whole rather than incremental because that is how it arrives: herdr's
-    /// `layout_updated` carries the entire tab in absolute values, so applying it twice is
-    /// applying it once. It follows every pane change and **no** tab or workspace change,
-    /// so nothing may treat it as the only structural signal
-    /// (`observations/herdr-0.8.0.md` section 10).
-    LayoutUpserted(Layout),
-    /// A focus cursor moved. Each field is absolute and independent: `None` means this
-    /// event says nothing about that cursor, not that the cursor was cleared.
-    FocusMoved {
-        workspace: Option<WorkspaceId>,
-        tab: Option<TabId>,
-        pane: Option<PaneId>,
-    },
+}
+
+/// What a daemon could not bring back from its saved state.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Restored {
+    pub lost_tabs: Vec<TabId>,
+    /// Every pane that did not come back, a lost tab's among them.
+    pub lost_panes: Vec<PaneId>,
+    /// The daemon stopped saving, so what changes from now on is not written down.
+    pub saving_stopped: bool,
 }
 
 /// What applying an event actually changed.
 ///
 /// Returned so that rendering costs the change rather than a walk of every pane
-/// (`architecture.md`: fast is a feature, the per-event half). An event that changed
-/// nothing - a replayed creation, a repeated state - produces nothing here, which is what
-/// makes idempotence observable rather than merely intended.
+/// (`architecture.md`: fast is a feature, the per-event half). An event that changed nothing
+/// produces nothing here, which is what makes idempotence observable rather than merely
+/// intended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
     PaneAdded(PaneId),
-    /// A pane is gone. `cascaded` is true when nothing announced it: closing a tab or a
-    /// workspace removes its panes silently, so this is the mirror's own inference rather
-    /// than something the backend said.
-    PaneRemoved {
-        pane: PaneId,
-        cascaded: bool,
-    },
+    PaneRemoved(PaneId),
     AgentStateChanged {
         pane: PaneId,
         from: AgentState,
         to: AgentState,
     },
-    /// What this pane is called has moved - its directory, or the harness detected in it.
+    /// What this pane is called has moved - its name, its directory, or the harness detected
+    /// in it.
     ///
     /// Not a state change: an agent that has just been recognized was already doing whatever
     /// it was doing, and a pane that changed directory is the same pane. It is reported
-    /// because a list of panes names them by exactly these two things, and a name that never
+    /// because a list of panes names them by exactly these things, and a name that never
     /// updates is a pane the user cannot find twice.
     PaneRelabelled(PaneId),
     TabAdded(TabId),
@@ -133,34 +74,18 @@ pub enum Change {
     /// find again.
     TabRelabelled(TabId),
     TabRemoved(TabId),
-    /// This workspace's tabs sit in a different order than they did.
-    ///
-    /// Carries the workspace rather than the order, on the same terms
-    /// [`Change::LayoutChanged`] carries a tab rather than a tree: every reader has the mirror
-    /// in hand, and the one that cares walks it.
-    TabsReordered(WorkspaceId),
-    /// This tab's tree is not the one it was. Carries the tab rather than the tree,
-    /// because every reader has the mirror in hand and only some of them want to walk it.
+    /// This tab's tree, or which of its panes is zoomed, is not what it was. Carries the tab
+    /// rather than the tree, because every reader has the mirror in hand and only some of
+    /// them want to walk it.
     LayoutChanged(TabId),
-    WorkspaceAdded(WorkspaceId),
-    /// What this workspace is called has moved. The same shape as [`Change::TabRelabelled`]
-    /// and reported for a less obvious reason: nothing draws a workspace on its own, but a
-    /// tab caption leads with the workspace holding it whenever a daemon holds more than one
-    /// ([`crate::roster::Roster`]), so one workspace's label moving restyles a row per tab.
-    WorkspaceRelabelled(WorkspaceId),
-    WorkspaceRemoved(WorkspaceId),
-    FocusChanged,
-    /// Between the last snapshot and this one, the backend ran more agent transitions than
-    /// this mirror was told about - possibly on panes it has never heard of.
-    ///
-    /// An attention signal rather than a consistency one. The mirror is already correct by
-    /// the time this is emitted, because it is emitted by the bootstrap that made it
-    /// correct. What it says is that an agent may have asked for the user while nobody was
-    /// listening, and a product whose reason to exist is routing attention should not let
-    /// that pass silently (`README.md`, attention routing).
-    AgentTransitionsMissed {
-        expected: u64,
-        saw: u64,
+    /// The daemon finished restoring. A daemon still restoring is not an empty one, so
+    /// nothing asks it for a first tab until this arrives.
+    Restored(Restored),
+    /// A paste is waiting for somebody to confirm it. Passed through rather than held: the
+    /// mirror is what the daemon holds, and this is a question for whoever is looking.
+    PasteHeld {
+        pane: PaneId,
+        text: String,
     },
 }
 
@@ -169,29 +94,22 @@ impl Change {
     pub fn kind(&self) -> &'static str {
         match self {
             Change::PaneAdded(_) => "pane_added",
-            Change::PaneRemoved { .. } => "pane_removed",
+            Change::PaneRemoved(_) => "pane_removed",
             Change::AgentStateChanged { .. } => "agent_state",
             Change::PaneRelabelled(_) => "pane_relabelled",
             Change::TabAdded(_) => "tab_added",
             Change::TabRelabelled(_) => "tab_relabelled",
             Change::TabRemoved(_) => "tab_removed",
-            Change::TabsReordered(_) => "tabs_reordered",
             Change::LayoutChanged(_) => "layout_changed",
-            Change::WorkspaceAdded(_) => "workspace_added",
-            Change::WorkspaceRelabelled(_) => "workspace_relabelled",
-            Change::WorkspaceRemoved(_) => "workspace_removed",
-            Change::FocusChanged => "focus_changed",
-            Change::AgentTransitionsMissed { .. } => "agent_transitions_missed",
+            Change::Restored(_) => "restored",
+            Change::PasteHeld { .. } => "paste_held",
         }
     }
 
     /// Whether this can have moved something composition names.
     ///
-    /// Agent state and daemon focus cannot: one is a property of a pane that still exists,
-    /// and the other is a cursor Muster writes and never reads. A reorder cannot either -
-    /// composition names a tab, and every tab it named is still there and still in the same
-    /// workspace. Everything else moves a tab or a pane, and both are things a region is
-    /// holding on to.
+    /// Agent state cannot: it is a property of a pane that still exists. Everything else that
+    /// moves a tab or a pane can, and both are things a region is holding on to.
     ///
     /// A false positive costs a reconcile and a republish that change nothing. A false
     /// negative leaves a region pointing at a tab the daemon has closed, which is why the
@@ -200,12 +118,9 @@ impl Change {
         !matches!(
             self,
             Change::AgentStateChanged { .. }
-                | Change::AgentTransitionsMissed { .. }
                 | Change::PaneRelabelled(_)
                 | Change::TabRelabelled(_)
-                | Change::TabsReordered(_)
-                | Change::WorkspaceRelabelled(_)
-                | Change::FocusChanged
+                | Change::PasteHeld { .. }
         )
     }
 
@@ -223,13 +138,7 @@ impl Change {
     /// case rather than the rare one.
     pub fn republishes(&self) -> bool {
         self.moves_structure()
-            || matches!(
-                self,
-                Change::PaneRelabelled(_)
-                    | Change::TabRelabelled(_)
-                    | Change::TabsReordered(_)
-                    | Change::WorkspaceRelabelled(_)
-            )
+            || matches!(self, Change::PaneRelabelled(_) | Change::TabRelabelled(_))
     }
 
     /// The pane whose agent state the shell has to be told about, if any.

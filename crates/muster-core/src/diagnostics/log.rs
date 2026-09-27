@@ -88,6 +88,10 @@ impl LogRecord {
 
 pub trait LogSink: Send + Sync {
     fn write(&self, record: &LogRecord);
+
+    /// Writes a line another process already wrote, newline included (see [`relay`]). A sink
+    /// holding only its own process's records has nowhere to put one, and drops it.
+    fn write_line(&self, _line: &str) {}
 }
 
 struct Installed {
@@ -184,6 +188,64 @@ pub fn emit(level: LogLevel, event: &str, fields: BTreeMap<String, String>) {
     installed.sink.write(&LogRecord::now(level, &installed.process, pid, event, fields));
 }
 
+/// Appends a record a daemon wrote to this run's log, as the daemon wrote it.
+///
+/// A daemon outlives the run that started it, so it writes a log of its own and each run
+/// follows it (MIP-3, section 1): its records arrive here already encoded. `daemon` names which
+/// daemon wrote it, since a window may follow several. `received` is this machine's monotonic
+/// clock when the record arrived, for a daemon on another machine: two machines' monotonic
+/// clocks do not compare, so the record takes this one's and keeps its own as `daemon_mono_ns`.
+///
+/// Not filtered by this run's level: the daemon applied its own.
+pub fn relay(line: &str, daemon: &str, received: Option<u64>) {
+    let slot = recovered!(INSTALLED.read());
+    let Some(installed) = slot.as_ref() else {
+        return;
+    };
+    if let Some(mut line) = relabelled(line, daemon, received) {
+        line.push('\n');
+        installed.sink.write_line(&line);
+        return;
+    }
+    // SAFETY: getpid is always safe to call and reads no memory we own.
+    let pid = unsafe { libc::getpid() };
+    let fields = crate::fields! {
+        "daemon" => daemon,
+        "line" => line,
+        "impact" => "one of the daemon's records is in this log as text rather than as a \
+                     record; the daemon's own file beside its socket has it whole",
+        "check" => "whether the daemon and this app are the same build; this is likely \
+                    a bug, since the daemon writes records in this format",
+    };
+    installed.sink.write(&LogRecord::now(
+        LogLevel::Warn,
+        &installed.process,
+        pid,
+        "daemon.log.unreadable",
+        fields,
+    ));
+}
+
+/// A daemon's record, naming the daemon, and with this machine's clock when `received` says.
+/// None for a line that is not one of the records this log writes.
+pub fn relabelled(line: &str, daemon: &str, received: Option<u64>) -> Option<String> {
+    const CLOCK: &str = ",\"mono_ns\":";
+    let body = line.trim_end().strip_prefix('{')?.strip_suffix('}')?;
+    let body = match received {
+        Some(received) => {
+            let at = body.find(CLOCK)? + CLOCK.len();
+            let digits = body[at..].bytes().take_while(u8::is_ascii_digit).count();
+            if digits == 0 {
+                return None;
+            }
+            let theirs = &body[at..at + digits];
+            format!("{}{received},\"daemon_mono_ns\":{theirs}{}", &body[..at], &body[at + digits..])
+        }
+        None => body.to_string(),
+    };
+    Some(format!("{{{body},\"daemon\":{}}}", crate::diagnostics::sink::quote(daemon)))
+}
+
 /// Builds the field map from pairs, so a call site reads as a list rather than as
 /// map plumbing.
 ///
@@ -212,3 +274,35 @@ at_level!(debug, LogLevel::Debug);
 at_level!(info, LogLevel::Info);
 at_level!(warn, LogLevel::Warn);
 at_level!(error, LogLevel::Error);
+
+#[cfg(test)]
+mod tests {
+    use super::relabelled;
+
+    const LINE: &str = "{\"time\":\"2026-09-27T03:00:00.000Z\",\"mono_ns\":5000,\"level\":\"info\",\
+                        \"process\":\"daemon\",\"pid\":7,\"event\":\"pane.created\"}\n";
+
+    #[test]
+    fn a_daemons_record_says_which_daemon_wrote_it() {
+        let line = relabelled(LINE, "devenv", None).unwrap();
+        assert!(
+            line.starts_with("{\"time\":") && line.ends_with(",\"daemon\":\"devenv\"}"),
+            "{line}"
+        );
+        assert!(line.contains("\"mono_ns\":5000,"), "a local daemon's clock is this machine's");
+    }
+
+    /// Two machines' monotonic clocks do not compare, so a remote record takes the receipt time
+    /// and keeps its own beside it.
+    #[test]
+    fn a_remote_record_takes_this_machines_clock() {
+        let line = relabelled(LINE, "devenv", Some(99)).unwrap();
+        assert!(line.contains("\"mono_ns\":99,\"daemon_mono_ns\":5000,\"level\""), "{line}");
+    }
+
+    #[test]
+    fn a_line_that_is_not_a_record_is_not_relabelled() {
+        assert_eq!(relabelled("not json", "d", None), None);
+        assert_eq!(relabelled("{\"time\":\"x\"}", "d", Some(1)), None, "no clock to replace");
+    }
+}

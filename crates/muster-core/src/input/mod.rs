@@ -5,7 +5,7 @@ mod composition;
 mod key;
 mod key_event;
 mod keymap;
-mod mode_profile;
+mod option_as_alt;
 mod pane_channel;
 mod pane_input;
 mod settings;
@@ -15,9 +15,7 @@ pub use composition::{Outcome as CompositionOutcome, outcome as composition_outc
 pub use key::Key;
 pub use key_event::{KeyAction, KeyEvent, Modifiers};
 pub use keymap::{Binding, Keymap, Resolution, TEXT_EDITING};
-pub use mode_profile::{OptionAsAlt, TerminalModeProfile, kitty_flags};
-pub use pane_channel::{
-    Delivery, EncodeError, KeyEncoding, PaneChannel, PaneIntent, ScrollDirection,
-};
+pub use option_as_alt::OptionAsAlt;
+pub use pane_channel::{InputEvent, InputSink};
 pub use pane_input::PaneInput;
 pub use settings::PaneInputSettings;

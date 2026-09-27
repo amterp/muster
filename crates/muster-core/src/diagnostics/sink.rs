@@ -52,7 +52,10 @@ impl Drop for JsonLinesSink {
 
 impl LogSink for JsonLinesSink {
     fn write(&self, record: &LogRecord) {
-        let line = line(record);
+        self.write_line(&line(record));
+    }
+
+    fn write_line(&self, line: &str) {
         let bytes = line.as_bytes();
         let mut written = 0;
         while written < bytes.len() {

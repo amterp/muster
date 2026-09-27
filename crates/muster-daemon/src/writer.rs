@@ -18,9 +18,9 @@ use std::time::Instant;
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
-use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers, OptionAsAlt, TerminalModeProfile};
+use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers, OptionAsAlt};
 use muster_vt::{
-    EncoderError, KeyEncoder, Mode, MouseAction, MouseButton, MouseEncoder, MouseEvent,
+    EncoderError, KeyEncoder, KeyModes, Mode, MouseAction, MouseButton, MouseEncoder, MouseEvent,
     MouseGeometry, RawKeyEvent, Screen as Active, Terminal, encode_paste, paste_is_safe,
 };
 
@@ -147,7 +147,7 @@ pub(crate) struct Encoding {
 impl Encoding {
     pub(crate) fn new(terminal: &Terminal, grid: Grid) -> Result<Encoding, EncoderError> {
         let mut encoding = Encoding {
-            key: KeyEncoder::new(TerminalModeProfile::default())?,
+            key: KeyEncoder::new(KeyModes::default())?,
             mouse: MouseEncoder::new()?,
             modes: InputModes::default(),
             grid,
