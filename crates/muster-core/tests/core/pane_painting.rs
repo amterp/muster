@@ -34,10 +34,6 @@ fn pane_painting_conformance() {
                 painting.painted(&pane_key(pane)?);
             } else if let Some(pane) = step.get("closed").and_then(Value::as_str) {
                 painting.closed(&pane_key(pane)?);
-            } else if let Some(pane) = step.get("explained").and_then(Value::as_str) {
-                painting.explained(&pane_key(pane)?, true);
-            } else if let Some(pane) = step.get("fits").and_then(Value::as_str) {
-                painting.explained(&pane_key(pane)?, false);
             } else if let Some(daemon) = step.get("away").and_then(Value::as_str) {
                 painting.daemon_away(&DaemonId::new(daemon), true);
             } else if let Some(daemon) = step.get("back").and_then(Value::as_str) {

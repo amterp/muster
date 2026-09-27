@@ -1,9 +1,6 @@
 //! Panes that were asked for something and have painted nothing since.
 //!
-//! The wider net under [`crate::grid`]. That one names a single cause of a pane that has stopped
-//! updating - a frame too big for the daemon to send - and can say exactly what to do about it,
-//! because Muster asked for the grid and knows the number. Every other way a pane goes silent
-//! leaves the same picture and nothing to read it by: the client stays connected, the bridge is
+//! Every way a pane goes silent leaves the same picture and nothing to read it by: the client stays connected, the bridge is
 //! still a process, the agent goes on working, and `muster window` reports the pane `idle`. A
 //! wedged bridge, a transport that dropped without closing, a daemon still answering requests
 //! while one of its terminals stopped painting - all of them are sixteen minutes of a frozen pane
@@ -17,7 +14,7 @@
 //! thing that knows the second, because frames go from its stdout into a surface and never past
 //! the app. Both arrive here as facts and the rule is here.
 //!
-//! Three guards, each because the sentence would be false without it.
+//! Two guards, each because the sentence would be false without it.
 //!
 //! **Only while the window is drawing the pane**, which is [`crate::typeable`]'s guard and holds
 //! for the same reason: a pane nothing is drawing paints nothing, and its bridge belongs to a
@@ -26,18 +23,12 @@
 //! That guard is about saying something new. A warning already raised stays raised when its pane
 //! leaves the screen, because looking away does not make it untrue: a wedged bridge used to lose
 //! its warning to a tab switch and stay frozen for three more minutes with nobody told (kan
-//! a_2LWqtPd8E). It goes when something answers it - a frame, the pane closing, its machine going
-//! away, or another sentence naming the cause - so a warning that went away says one of those
-//! happened.
+//! a_2LWqtPd8E). It goes when something answers it - a frame, the pane closing, or its machine
+//! going away - so a warning that went away says which of those happened.
 //!
 //! **Only while the pane's daemon is answering.** A machine that has gone away already raises one
 //! problem naming itself; accusing each of its eight panes as well is the nagging that keying a
 //! problem by its condition exists to end.
-//!
-//! **Not when something else has already named this pane's silence.** A pane over the grid ceiling
-//! is silent for a reason with a remedy in it - make the text bigger - and a second sentence
-//! beside it saying only that the pane stopped would send the reader away from the answer they
-//! already had.
 //!
 //! Pure - no clock, no sockets, no processes. Time arrives as a number, so every rule here is
 //! driven by a recorded case.
@@ -50,7 +41,7 @@ use crate::respawn::reattach_command;
 
 /// What the problem list should be told, having compared the unanswered panes against the clock.
 ///
-/// A diff, on the same terms as `typeable::Reported` and `grid::Reported` and for the same reason:
+/// A diff, on the same terms as `typeable::Reported` and for the same reason:
 /// the caller's job is to raise and clear, and a pane that stays silent is not news twice. The
 /// watch asks repeatedly about a condition that stays true, so a reading that reported every
 /// silent pane every time would republish the roster for as long as one stayed quiet.
@@ -79,8 +70,8 @@ pub enum Cleared {
     /// The pane's daemon stopped answering, and the machine's own problem says so instead.
     DaemonAway,
 
-    /// Something else has named this pane's silence - today, a grid too big to draw.
-    Explained,
+    /// The watch was switched off, so nothing it said stands.
+    Off,
 }
 
 impl Cleared {
@@ -90,7 +81,7 @@ impl Cleared {
             Cleared::Painted => "painted",
             Cleared::Closed => "closed",
             Cleared::DaemonAway => "daemon_away",
-            Cleared::Explained => "explained",
+            Cleared::Off => "off",
         }
     }
 }
@@ -117,9 +108,6 @@ pub struct Painting {
     /// thing a reading cannot see afterwards.
     settled: BTreeMap<PaneKey, Cleared>,
 
-    /// Panes whose silence something else has already explained.
-    explained: BTreeSet<PaneKey>,
-
     /// Daemons that have stopped answering, whose panes cannot paint and are not at fault.
     away: BTreeSet<DaemonId>,
 
@@ -137,7 +125,6 @@ impl Painting {
             asked: BTreeMap::new(),
             reported: BTreeSet::new(),
             settled: BTreeMap::new(),
-            explained: BTreeSet::new(),
             away: BTreeSet::new(),
             visible: None,
         }
@@ -209,19 +196,6 @@ impl Painting {
         }
     }
 
-    /// Whether something else has already said why this pane is silent.
-    ///
-    /// The grid ceiling is the one that does today: a pane too big to draw stops painting for a
-    /// reason that carries its own remedy, and this net saying "and it stopped painting" beside
-    /// it would be a second row sending the reader away from the answer.
-    pub fn explained(&mut self, pane: &PaneKey, explained: bool) {
-        if explained {
-            self.explained.insert(pane.clone());
-        } else {
-            self.explained.remove(pane);
-        }
-    }
-
     /// The pane is gone, so nothing is owed about it.
     ///
     /// Nothing is returned, and the problem is taken back by the next [`Painting::reconcile`]:
@@ -230,7 +204,6 @@ impl Painting {
     /// which is what lets a caller hold this while holding whatever it was already holding.
     pub fn closed(&mut self, pane: &PaneKey) {
         self.asked.remove(pane);
-        self.explained.remove(pane);
         self.settle(pane, Cleared::Closed);
     }
 
@@ -259,8 +232,9 @@ impl Painting {
                 .reported
                 .difference(&overdue)
                 .map(|pane| {
-                    // Still owed and no longer overdue: something else has named its silence.
-                    let why = self.settled.get(pane).copied().unwrap_or(Cleared::Explained);
+                    // Every other way out of `overdue` settles first, so this is a deadline of
+                    // zero.
+                    let why = self.settled.get(pane).copied().unwrap_or(Cleared::Off);
                     (key(pane), why)
                 })
                 .collect(),
@@ -310,7 +284,6 @@ impl Painting {
         let drawn = self.visible.as_ref().is_none_or(|visible| visible.contains(pane));
         (drawn || self.reported.contains(pane))
             && !self.away.contains(&pane.daemon)
-            && !self.explained.contains(pane)
     }
 }
 
@@ -331,8 +304,7 @@ pub fn key(pane: &PaneKey) -> String {
 /// gives: an elapsed count differs on every reading, every reading would count as news, and the
 /// roster would republish itself for as long as the pane stayed quiet.
 ///
-/// It cannot name the cause, which is the difference between this and the sentence the grid
-/// ceiling writes - that is what a wider net costs. What it can do is say which layer is
+/// It cannot name the cause - that is what a wide net costs. What it can do is say which layer is
 /// implicated, where the records that separate the causes are, and what puts the pane back
 /// without touching the agent behind it.
 ///
