@@ -12,6 +12,7 @@ bindgen = "0.72"
 
 [dev-dependencies]
 conformance.workspace = true
+libc.workspace = true
 muster-herdr.workspace = true
 serde_json.workspace = true
 

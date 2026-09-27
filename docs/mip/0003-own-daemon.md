@@ -980,8 +980,30 @@ kitty keyboard flags on both screens. The gaps section 5 lists are cases too, ea
 exact difference.
 
 **The headless terminal is fuzzed** with recorded pane output. It parses every pane's untrusted
-output in one process, so a crash in it ends every agent on the machine; the optimize mode it is
-built with is chosen for that.
+output in one process, so a crash in it ends every agent on the machine. `muster-vt`'s
+`tests/fuzz.rs` mutates herdr's recorded frames and every string the replay and catch-up cases
+feed, splices in the sequences where a parser keeps state across bytes or allocates on the
+sender's say-so, and feeds the result in random chunks between the resizes, replays, catch-ups,
+clears and formats the daemon interleaves with output. It passes when nothing crashes. It runs in
+the gate on stable Rust with a fixed seed, 15,000 cases in about 3 s; `MUSTER_FUZZ_SEED` and
+`MUSTER_FUZZ_ITERATIONS` run others. A case that crashes is written to `target/fuzz-crash.bin`,
+and one placed in `corpus/fuzz/` runs first from then on. cargo-fuzz was not used because it needs
+nightly, and `rust-toolchain.toml` pins stable.
+
+libghostty-vt is built ReleaseFast, not ReleaseSafe. ReleaseSafe keeps Zig's safety checks, so a
+bug the parser reaches aborts the daemon instead of running on past it, and muster-perf measured
+what that costs, best of two runs each:
+
+| cost | ReleaseFast | ReleaseSafe |
+|---|---|---|
+| `frame.vt_parse`, ns/byte | 3.72 | 5.02 - 5.21 |
+| `vt.replay_compose`, ns/row | 233 - 239 | 297 - 311 |
+| `vt.replay_parse`, ns/row | 219 - 224 | 268 - 289 |
+| `vt.text_read`, ns/row | 188 - 198 | 240 - 241 |
+| `input.encode`, ns/key | 39.3 - 39.4 | 49.3 - 50.6 |
+
+Parsing, which every byte of every pane pays, costs about 35% more. 600,000 fuzz cases against a
+ReleaseSafe build tripped no check.
 
 **Responsiveness is measured against the floor.** The latency tier launches the daemon the way the
 app does, through Launch Services, keeps its bare-PTY row, and gains a daemon row in place of

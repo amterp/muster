@@ -1515,7 +1515,8 @@ fn build_deps():
 
     // Two builds, because -Demit-lib-vt turns the xcframework off: the surface API that
     // the shell renders through, then the VT that the core encodes keys with and the
-    // tests read grids from.
+    // tests read grids from. The VT stays ReleaseFast for the daemon too: ReleaseSafe parsed
+    // every byte about 35% slower (docs/mip/0003-own-daemon.md, section 13).
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-terminfo=true`
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
     for zig_target in LINUX_DAEMONS.values():
