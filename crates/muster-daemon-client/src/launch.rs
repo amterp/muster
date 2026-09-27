@@ -188,7 +188,7 @@ fn reap_later(mut child: Child) {
 
 /// Ends the daemon on `socket` and every pane in it, and waits up to `patience` for it to go.
 pub fn stop(socket: &Path, patience: Duration) -> Result<(), String> {
-    let control = crate::control::Control::open(socket, "muster stop", |_| {})
+    let control = crate::control::Control::open(socket, "muster stop", |_, _| {})
         .map_err(|error| format!("could not reach the daemon to stop it: {error}"))?;
     control
         .stop()

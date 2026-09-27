@@ -10,7 +10,7 @@ use muster_harness::{Daemon, PATIENCE};
 
 fn open(daemon: &Daemon) -> (Control, Receiver<Delivered>) {
     let (tell, delivered) = channel();
-    let control = Control::open(daemon.socket_path(), "test", move |what| {
+    let control = Control::open(daemon.socket_path(), "test", move |what, _| {
         let _ = tell.send(what);
     })
     .expect("the daemon welcomes a control connection");
@@ -37,6 +37,10 @@ fn a_subscription_starts_at_its_snapshot_and_a_request_is_answered_after_its_eve
         panic!("a subscribe answers with a snapshot: {subscribed:?}");
     };
     assert!(snapshot.panes.is_empty());
+    match delivered.recv_timeout(PATIENCE) {
+        Ok(Delivered::Subscribed(given)) => assert_eq!(*given, snapshot, "the same snapshot"),
+        other => panic!("the snapshot is delivered before any event: {other:?}"),
+    }
 
     let created = answered(&control.ask(create_request(create("p1", in_new_tab("t1")))));
     assert_eq!(created.outcome(), proto::Outcome::Done, "{}", created.reason);

@@ -29,6 +29,10 @@ use muster_daemon_proto::{
 pub enum Delivered {
     /// Boxed because a pane's record makes an event far larger than the other variants.
     Event(Box<proto::Event>),
+    /// The snapshot a subscribe was answered with, which every event delivered after it
+    /// applies to. Delivered whether or not anyone still waits for the answer, so the events
+    /// that follow always land on a picture the caller was given.
+    Subscribed(Box<proto::Snapshot>),
     /// An event arrived out of order, so the caller's picture is missing something. Nothing
     /// more is delivered until the caller subscribes again, and the snapshot that answers says
     /// where things stand.
@@ -68,11 +72,48 @@ impl Pending {
 /// An open control connection. Dropping it hangs up.
 #[derive(Debug)]
 pub struct Control {
-    requests: Sender<proto::Request>,
-    waiting: Arc<Mutex<Waiting>>,
-    next_id: AtomicU64,
+    requests: Requests,
     welcome: Welcome,
     socket: UnixStream,
+}
+
+/// What `deliver` is handed to send requests with.
+///
+/// It sends and never offers an answer to wait for, because `deliver` runs on the one thread
+/// that hands answers over: waiting there for an answer would wait on itself. A snapshot a
+/// subscribe sent from here brings arrives through `deliver` as [`Delivered::Subscribed`].
+#[derive(Debug, Clone)]
+pub struct Requests {
+    to_send: Sender<proto::Request>,
+    waiting: Arc<Mutex<Waiting>>,
+    next_id: Arc<AtomicU64>,
+}
+
+impl Requests {
+    /// Subscribes again, as a [`Delivered::Gap`] asks.
+    pub fn subscribe(&self) {
+        self.send(subscribe(), true);
+    }
+
+    /// Follows the daemon's log from after record `after`.
+    pub fn follow_log(&self, after: Option<u64>) {
+        self.send(follow_log(after), false);
+    }
+
+    fn send(&self, service: Service, subscribes: bool) -> Pending {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+        let (answer, answered) = mpsc::channel();
+        {
+            let mut waiting = self.waiting.lock().unwrap_or_else(PoisonError::into_inner);
+            // Left out once the connection has ended: dropping the sender answers `Ended`.
+            if !waiting.ended {
+                waiting.answers.insert(id, Waiter { answer, subscribes });
+            }
+        }
+        // Registered before it is sent, so the answer cannot arrive before its waiter.
+        let _ = self.to_send.send(proto::Request { id, service: Some(service) });
+        Pending { answer: answered }
+    }
 }
 
 /// Requests sent and not yet answered.
@@ -93,11 +134,17 @@ struct Waiter {
 
 impl Control {
     /// Dials `socket` and opens a control connection. `client` says who is asking, for the
-    /// daemon's log; `deliver` hears every event and log line, on the connection's own thread.
+    /// daemon's log.
+    ///
+    /// `deliver` hears every event, snapshot and log line, on the connection's own thread, and
+    /// an answer is handed to its waiter only once `deliver` has returned from the events before
+    /// it. So `deliver` must never wait on a [`Pending`]: the answer could only come from the
+    /// thread it is holding. What it needs to ask, such as subscribing again after a gap, it
+    /// sends through the [`Requests`] it is given.
     pub fn open(
         socket: &Path,
         client: &str,
-        deliver: impl FnMut(Delivered) + Send + 'static,
+        deliver: impl FnMut(Delivered, &Requests) + Send + 'static,
     ) -> Result<Control, HandshakeError> {
         let (stream, welcome) = crate::dial(socket, ConnectionKind::Control, client)?;
         log::info(
@@ -118,20 +165,24 @@ impl Control {
     fn over(
         stream: UnixStream,
         welcome: Welcome,
-        deliver: impl FnMut(Delivered) + Send + 'static,
+        deliver: impl FnMut(Delivered, &Requests) + Send + 'static,
     ) -> std::io::Result<Control> {
-        let waiting = Arc::new(Mutex::new(Waiting::default()));
-        let (requests, to_send) = mpsc::channel();
+        let (sender, to_send) = mpsc::channel();
+        let requests = Requests {
+            to_send: sender,
+            waiting: Arc::new(Mutex::new(Waiting::default())),
+            next_id: Arc::new(AtomicU64::new(0)),
+        };
         let writer_end = stream.try_clone()?;
         std::thread::Builder::new()
             .name("muster-daemon-control-writer".into())
             .spawn(move || write_requests(writer_end, &to_send))?;
         let reader_end = stream.try_clone()?;
-        let answers = Arc::clone(&waiting);
+        let for_reader = requests.clone();
         std::thread::Builder::new()
             .name("muster-daemon-control-reader".into())
-            .spawn(move || read_messages(reader_end, &answers, deliver))?;
-        Ok(Control { requests, waiting, next_id: AtomicU64::new(0), welcome, socket: stream })
+            .spawn(move || read_messages(reader_end, &for_reader, deliver))?;
+        Ok(Control { requests, welcome, socket: stream })
     }
 
     /// Who answered: the daemon's version, install, process and lifetime.
@@ -141,13 +192,13 @@ impl Control {
 
     /// Sends a request. Never blocks.
     pub fn ask(&self, service: Service) -> Pending {
-        self.send(service, false)
+        self.requests.send(service, false)
     }
 
-    /// The daemon's state now, and every event after it, delivered as it happens. The answer
-    /// carries the snapshot.
+    /// The daemon's state now, and every event after it, delivered as it happens. The snapshot
+    /// is delivered as [`Delivered::Subscribed`], and the answer carries it as well.
     pub fn subscribe(&self) -> Pending {
-        self.send(session(session_request::Request::Subscribe(session_request::Subscribe {})), true)
+        self.requests.send(subscribe(), true)
     }
 
     /// The daemon's state now, without subscribing.
@@ -163,7 +214,7 @@ impl Control {
     /// The daemon's log from after record `after` of this daemon run, or all it still holds,
     /// and every record after that, delivered as [`Delivered::Log`].
     pub fn follow_log(&self, after: Option<u64>) -> Pending {
-        self.ask(session(session_request::Request::FollowLog(session_request::FollowLog { after })))
+        self.ask(follow_log(after))
     }
 
     pub fn set_palette(&self, palette: proto::Palette) -> Pending {
@@ -200,21 +251,6 @@ impl Control {
             manifests,
         })))
     }
-
-    fn send(&self, service: Service, subscribes: bool) -> Pending {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-        let (answer, answered) = mpsc::channel();
-        {
-            let mut waiting = self.waiting.lock().unwrap_or_else(PoisonError::into_inner);
-            // Left out once the connection has ended: dropping the sender answers `Ended`.
-            if !waiting.ended {
-                waiting.answers.insert(id, Waiter { answer, subscribes });
-            }
-        }
-        // Registered before it is sent, so the answer cannot arrive before its waiter.
-        let _ = self.requests.send(proto::Request { id, service: Some(service) });
-        Pending { answer: answered }
-    }
 }
 
 impl Drop for Control {
@@ -226,6 +262,14 @@ impl Drop for Control {
 
 fn session(request: session_request::Request) -> Service {
     Service::Session(proto::SessionRequest { request: Some(request) })
+}
+
+fn subscribe() -> Service {
+    session(session_request::Request::Subscribe(session_request::Subscribe {}))
+}
+
+fn follow_log(after: Option<u64>) -> Service {
+    session(session_request::Request::FollowLog(session_request::FollowLog { after }))
 }
 
 fn write_requests(mut stream: UnixStream, requests: &Receiver<proto::Request>) {
@@ -249,9 +293,10 @@ enum Order {
 
 fn read_messages(
     mut stream: UnixStream,
-    waiting: &Mutex<Waiting>,
-    mut deliver: impl FnMut(Delivered),
+    requests: &Requests,
+    mut deliver: impl FnMut(Delivered, &Requests),
 ) {
+    let waiting = &requests.waiting;
     let mut order = Order::Unsubscribed;
     let why = loop {
         let message = match connection::receive::<proto::ControlMessage>(&mut stream) {
@@ -263,7 +308,7 @@ fn read_messages(
             Some(control_message::Message::Event(event)) => match order {
                 Order::Next(expected) if event.seq == expected => {
                     order = Order::Next(expected + 1);
-                    deliver(Delivered::Event(Box::new(event)));
+                    deliver(Delivered::Event(Box::new(event)), requests);
                 }
                 // Already in the snapshot a new subscribe answered with.
                 Order::Next(expected) if event.seq < expected => {}
@@ -280,10 +325,10 @@ fn read_messages(
                         },
                     );
                     order = Order::Lost;
-                    deliver(Delivered::Gap { expected, got: event.seq });
+                    deliver(Delivered::Gap { expected, got: event.seq }, requests);
                 }
                 Order::Lost => {}
-                Order::Unsubscribed => deliver(Delivered::Event(Box::new(event))),
+                Order::Unsubscribed => deliver(Delivered::Event(Box::new(event)), requests),
             },
             Some(control_message::Message::Answer(answer)) => {
                 let waiter = waiting
@@ -305,12 +350,17 @@ fn read_messages(
                 if waiter.subscribes
                     && let Some(answer::Detail::Snapshot(snapshot)) = &answer.detail
                 {
+                    // The order moves only together with a snapshot the caller is given, so
+                    // the events after it can never land on a picture that never had it.
                     order = Order::Next(snapshot.seq + 1);
+                    deliver(Delivered::Subscribed(Box::new(snapshot.clone())), requests);
                 }
                 // A caller that stopped waiting has dropped its receiver.
                 let _ = waiter.answer.send(answer);
             }
-            Some(control_message::Message::LogLine(line)) => deliver(Delivered::Log(line)),
+            Some(control_message::Message::LogLine(line)) => {
+                deliver(Delivered::Log(line), requests);
+            }
             None => {}
         }
     };
@@ -321,7 +371,7 @@ fn read_messages(
         waiting.answers.clear();
     }
     log::info("daemon.control.ended", fields! { "why" => why });
-    deliver(Delivered::Ended(why));
+    deliver(Delivered::Ended(why), requests);
 }
 
 #[cfg(test)]
@@ -330,13 +380,28 @@ mod tests {
 
     /// A control connection over a socket pair, and the daemon's end of it.
     fn connected() -> (Control, UnixStream, Receiver<Delivered>) {
-        let (ours, theirs) = UnixStream::pair().unwrap();
         let (tell, delivered) = mpsc::channel();
-        let control = Control::over(ours, Welcome::default(), move |what| {
+        let (control, theirs) = connected_with(move |what, _| {
             let _ = tell.send(what);
-        })
-        .unwrap();
+        });
         (control, theirs, delivered)
+    }
+
+    fn connected_with(
+        deliver: impl FnMut(Delivered, &Requests) + Send + 'static,
+    ) -> (Control, UnixStream) {
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        (Control::over(ours, Welcome::default(), deliver).unwrap(), theirs)
+    }
+
+    /// What was delivered, in order, as short words: `S5` a snapshot at 5, `6` an event.
+    fn described(what: &Delivered) -> String {
+        match what {
+            Delivered::Subscribed(snapshot) => format!("S{}", snapshot.seq),
+            Delivered::Event(event) => event.seq.to_string(),
+            Delivered::Gap { expected, got } => format!("gap {expected}->{got}"),
+            other => panic!("{other:?}"),
+        }
     }
 
     fn event(seq: u64, tab: &str) -> proto::ControlMessage {
@@ -385,34 +450,70 @@ mod tests {
             connection::send(&mut daemon, &message).unwrap();
         }
 
-        let seqs: Vec<String> = delivered
-            .iter()
-            .take(3)
-            .map(|what| match what {
-                Delivered::Event(event) => event.seq.to_string(),
-                Delivered::Gap { expected, got } => format!("gap {expected}->{got}"),
-                other => panic!("{other:?}"),
-            })
-            .collect();
-        assert_eq!(seqs, ["6", "gap 7->8", "10"]);
+        let seqs: Vec<String> = delivered.iter().take(5).map(|what| described(&what)).collect();
+        assert_eq!(seqs, ["S5", "6", "gap 7->8", "S9", "10"]);
     }
 
+    /// A caller that stopped waiting for its subscribe still gets the snapshot, so the events
+    /// after it are never applied to a picture that did not have it.
     #[test]
-    fn a_waiter_is_answered_after_the_events_before_its_answer() {
+    fn a_subscribe_nobody_waits_for_still_delivers_its_snapshot_first() {
         let (control, mut daemon, delivered) = connected();
+        drop(control.subscribe());
+        subscribed_at(&mut daemon, 5);
+        for message in [event(6, "a"), event(7, "b")] {
+            connection::send(&mut daemon, &message).unwrap();
+        }
+        let seqs: Vec<String> = delivered.iter().take(3).map(|what| described(&what)).collect();
+        assert_eq!(seqs, ["S5", "6", "7"]);
+    }
+
+    /// A gap is answered from inside `deliver`, which cannot wait, and the order recovers.
+    #[test]
+    fn a_gap_is_recovered_by_a_subscribe_sent_from_deliver() {
+        let (tell, delivered) = mpsc::channel();
+        let (control, mut daemon) = connected_with(move |what, requests| {
+            if matches!(what, Delivered::Gap { .. }) {
+                requests.subscribe();
+            }
+            let _ = tell.send(what);
+        });
+        let subscribed = control.subscribe();
+        subscribed_at(&mut daemon, 5);
+        subscribed.wait(PATIENCE).unwrap();
+        for message in [event(6, "a"), event(8, "b")] {
+            connection::send(&mut daemon, &message).unwrap();
+        }
+        subscribed_at(&mut daemon, 8);
+        connection::send(&mut daemon, &event(9, "c")).unwrap();
+        let seqs: Vec<String> = delivered.iter().take(5).map(|what| described(&what)).collect();
+        assert_eq!(seqs, ["S5", "6", "gap 7->8", "S8", "9"]);
+    }
+
+    /// An answer waits for `deliver` to finish with the events before it, so a caller that
+    /// applies events in `deliver` sees its request take effect before the answer.
+    #[test]
+    fn a_waiter_is_answered_only_once_the_events_before_its_answer_are_delivered() {
+        let (release, released) = mpsc::channel::<()>();
+        let (control, mut daemon) = connected_with(move |what, _| {
+            if matches!(what, Delivered::Event(_)) {
+                let _ = released.recv();
+            }
+        });
         let subscribed = control.subscribe();
         subscribed_at(&mut daemon, 0);
         subscribed.wait(PATIENCE).unwrap();
 
-        let pending =
-            control.ask(session(session_request::Request::Snapshot(session_request::Snapshot {})));
+        let pending = control.snapshot();
         connection::send(&mut daemon, &event(1, "a")).unwrap();
         answer_to(&mut daemon, None);
-        pending.wait(PATIENCE).unwrap();
-        assert!(
-            matches!(delivered.try_recv(), Ok(Delivered::Event(_))),
-            "the event was delivered by the time its answer was"
+        assert_eq!(
+            pending.wait(Duration::from_millis(200)).unwrap_err(),
+            Unanswered::TimedOut,
+            "answered while the event before it was still being delivered"
         );
+        release.send(()).unwrap();
+        pending.wait(PATIENCE).unwrap();
     }
 
     #[test]
