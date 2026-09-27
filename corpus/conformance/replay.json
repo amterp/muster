@@ -217,7 +217,8 @@
       "expect": {
         "differences": [
           "after: cursor: original Cursor { column: 4, row: 2, is_visible: true }, replayed Cursor { column: 1, row: 0, is_visible: true }",
-          "after: row 0: \"status\" vs \"Xtatus\", cell 0 text \"s\", replayed \"X\""
+          "after: row 0: \"status\" vs \"Xtatus\", 1 of 20 cells differ, first cell 0 text \"s\", replayed \"X\"",
+          "after: row 2: \"   X\" vs \"\", 1 of 20 cells differ, first cell 3 text \"X\", replayed \"\""
         ]
       }
     },
@@ -256,7 +257,7 @@
       },
       "expect": {
         "differences": [
-          "row 1: \"\" vs \"\", cell 0 background Some(Palette(1)), replayed None"
+          "row 1: \"\" vs \"\", 20 of 20 cells differ, first cell 0 background Some(Palette(1)), replayed None"
         ]
       }
     },
@@ -283,7 +284,7 @@
       },
       "expect": {
         "differences": [
-          "row 0: \"link\" vs \"link\", cell 0 hyperlink Some(\"https://example.com\"), replayed None"
+          "row 0: \"link\" vs \"link\", 4 of 20 cells differ, first cell 0 hyperlink Some(\"https://example.com\"), replayed None"
         ]
       }
     },
@@ -359,8 +360,8 @@
       },
       "expect": {
         "differences": [
-          "row 0: \"keep lose\" vs \"keep lose\", cell 0 protected true, replayed false",
-          "after: row 0: \"keep\" vs \"\", cell 0 text \"k\", replayed \"\""
+          "row 0: \"keep lose\" vs \"keep lose\", 4 of 20 cells differ, first cell 0 protected true, replayed false",
+          "after: row 0: \"keep\" vs \"\", 4 of 20 cells differ, first cell 0 text \"k\", replayed \"\""
         ]
       }
     },

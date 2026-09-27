@@ -83,7 +83,7 @@ fn differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
     compare("background", format!("{:?}", a.background()), format!("{:?}", b.background()));
     compare("cursor color", format!("{:?}", a.cursor_color()), format!("{:?}", b.cursor_color()));
     let (pa, pb) = (a.palette(), b.palette());
-    if let Some(index) = (0..256).find(|&i| pa[i] != pb[i]) {
+    for index in (0..256).filter(|&i| pa[i] != pb[i]) {
         compare(
             &format!("palette {index}"),
             format!("{:?}", pa[index]),
@@ -91,8 +91,10 @@ fn differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
         );
     }
 
+    // Every row that differs, not the first: a case pinning a known gap on one row must
+    // still fail when something else breaks further down.
     let (ra, rb) = (a.screen(), b.screen());
-    if let Some(index) = (0..ra.len().max(rb.len())).find(|&i| !same_row(ra.get(i), rb.get(i))) {
+    for index in (0..ra.len().max(rb.len())).filter(|&i| !same_row(ra.get(i), rb.get(i))) {
         found
             .push(format!("{prefix}row {index}: {}", row_difference(ra.get(index), rb.get(index))));
     }
@@ -129,7 +131,8 @@ fn same_cell(a: &Cell, b: &Cell) -> bool {
         && a.hyperlink == b.hyperlink
 }
 
-/// The first thing that differs in a row, short enough to read in a case's expectation.
+/// The first cell that differs in a row and how many do, short enough to read in a case's
+/// expectation. The count is what catches a second difference on a row already pinned.
 fn row_difference(a: Option<&Row>, b: Option<&Row>) -> String {
     let (Some(a), Some(b)) = (a, b) else {
         return format!(
@@ -141,11 +144,18 @@ fn row_difference(a: Option<&Row>, b: Option<&Row>) -> String {
     if a.wraps != b.wraps {
         return format!("{:?} wraps={}, replayed wraps={}", text(a), a.wraps, b.wraps);
     }
-    let Some((column, (x, y))) =
-        a.cells.iter().zip(&b.cells).enumerate().find(|(_, (x, y))| !same_cell(x, y))
-    else {
+    let differing: Vec<usize> = a
+        .cells
+        .iter()
+        .zip(&b.cells)
+        .enumerate()
+        .filter(|(_, (x, y))| !same_cell(x, y))
+        .map(|(column, _)| column)
+        .collect();
+    let Some(&column) = differing.first() else {
         return format!("{} cells, replayed {}", a.cells.len(), b.cells.len());
     };
+    let (x, y) = (&a.cells[column], &b.cells[column]);
     let field = if x.text != y.text {
         format!("text {:?}, replayed {:?}", x.text, y.text)
     } else if x.width != y.width {
@@ -157,7 +167,13 @@ fn row_difference(a: Option<&Row>, b: Option<&Row>) -> String {
     } else {
         format!("hyperlink {:?}, replayed {:?}", x.hyperlink, y.hyperlink)
     };
-    format!("{:?} vs {:?}, cell {column} {field}", text(a), text(b))
+    format!(
+        "{:?} vs {:?}, {} of {} cells differ, first cell {column} {field}",
+        text(a),
+        text(b),
+        differing.len(),
+        a.cells.len()
+    )
 }
 
 /// Only the style fields that differ, since a whole style is a line of noise.
