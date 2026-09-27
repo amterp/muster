@@ -22,9 +22,14 @@ public enum ConfirmSheet {
   ///
   /// `confirm` is the button's words and should name the act - "Quit and Close Sessions", not
   /// "OK". Somebody reading only the buttons should still know what they picked.
+  ///
+  /// `preview` is the thing being agreed to, shown as it is: in a monospaced font, scrollable,
+  /// and not editable, because what is confirmed is exactly what was shown. `otherwise` is
+  /// called on cancel, for a caller that has something waiting on the answer either way.
   public static func ask(
     on host: NSWindow, question: String, body: String, confirm: String,
-    then act: @escaping () -> Void
+    preview: String? = nil, then act: @escaping () -> Void,
+    otherwise cancelled: @escaping () -> Void = {}
   ) {
     let sheet = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 420, height: 10),
@@ -51,7 +56,8 @@ public enum ConfirmSheet {
     buttons.orientation = .horizontal
     buttons.spacing = 12
 
-    let stack = NSStackView(views: [heading, detail, buttons])
+    let previewed = preview.map { [shown($0)] } ?? []
+    let stack = NSStackView(views: [heading, detail] + previewed + [buttons])
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 12
@@ -73,7 +79,7 @@ public enum ConfirmSheet {
     buttons.leadingAnchor.constraint(greaterThanOrEqualTo: stack.leadingAnchor).isActive = true
     buttons.trailingAnchor.constraint(equalTo: stack.trailingAnchor).isActive = true
 
-    let finish = Finisher(host: host, sheet: sheet, act: act)
+    let finish = Finisher(host: host, sheet: sheet, act: act, cancelled: cancelled)
     cancel.target = finish
     cancel.action = #selector(Finisher.cancel)
     confirming.target = finish
@@ -87,20 +93,44 @@ public enum ConfirmSheet {
 
   private static var held: [ObjectIdentifier: Finisher] = [:]
 
+  /// What is being agreed to, as text nobody can change on the way.
+  private static func shown(_ text: String) -> NSView {
+    let scroll = NSTextView.scrollableTextView()
+    scroll.hasVerticalScroller = true
+    scroll.borderType = .bezelBorder
+    if let view = scroll.documentView as? NSTextView {
+      view.string = text
+      view.isEditable = false
+      view.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+    }
+    scroll.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      scroll.widthAnchor.constraint(equalToConstant: 380),
+      scroll.heightAnchor.constraint(equalToConstant: 160),
+    ])
+    return scroll
+  }
+
   @MainActor
   private final class Finisher: NSObject {
     private let host: NSWindow
     private let sheet: NSWindow
     private let act: () -> Void
+    private let cancelled: () -> Void
 
-    init(host: NSWindow, sheet: NSWindow, act: @escaping () -> Void) {
+    init(
+      host: NSWindow, sheet: NSWindow, act: @escaping () -> Void,
+      cancelled: @escaping () -> Void
+    ) {
       self.host = host
       self.sheet = sheet
       self.act = act
+      self.cancelled = cancelled
     }
 
     @objc func cancel() {
       host.endSheet(sheet)
+      cancelled()
     }
 
     @objc func confirm() {

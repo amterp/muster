@@ -137,6 +137,23 @@ public final class MusterWindow: NSObject {
   /// Reports where the window has settled, one request at a time.
   private lazy var frames = WindowFrameSender()
 
+  /// Pastes a daemon held, asked about on this window one at a time.
+  ///
+  /// This window rather than whichever shows the pane, because it is the window the paste was
+  /// made in: a paste goes from a window to its own core, and the daemon answers the core that
+  /// sent it. The pane may be on another tab by now, and a yes still lands in it, since the
+  /// confirmed paste names it.
+  private lazy var heldPastes = HeldPastes { [weak self] held, answer in
+    guard let self else { return answer(false) }
+    ConfirmSheet.ask(
+      on: self.window,
+      question: "Paste text that may run commands?",
+      body: "It has a line break, and the program in this pane did not ask for pasted text to "
+        + "be marked as a paste, so each line may run as a command as it arrives.",
+      confirm: "Paste", preview: held.text,
+      then: { answer(true) }, otherwise: { answer(false) })
+  }
+
   public init(renderer: Renderer, executable: String) {
     self.renderer = renderer
     self.executable = executable
@@ -584,6 +601,11 @@ public final class MusterWindow: NSObject {
   public func report(problem: String) {
     self.problem = problem
     applyTitle()
+  }
+
+  /// Asks whether to send a paste the pane's daemon held, and sends it on a yes.
+  public func hold(_ held: HeldPaste) {
+    heldPastes.hold(held)
   }
 
   /// Comes to the front, with its window made key.

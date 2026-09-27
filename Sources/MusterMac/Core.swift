@@ -250,9 +250,17 @@ public enum Core {
     Core.send(request)
   }
 
-  public static func paste(text: String) {
+  /// The clipboard, on its way to a pane: the one with the keyboard, or for a paste its daemon
+  /// held and somebody has since said yes to, the pane that held it - the keyboard may have
+  /// moved while they read the question.
+  public static func paste(text: String, confirmedFor pane: PaneKey? = nil) {
     var paste = Muster_Paste()
     paste.text = text
+    if let pane {
+      paste.confirmed = true
+      paste.daemonID = pane.daemon
+      paste.paneID = pane.pane
+    }
     var request = Muster_Request()
     request.paste = paste
     send(request)
@@ -1153,6 +1161,19 @@ public enum Core {
       info(
         "paste.held",
         ["daemon": held.daemonID, "pane": held.paneID, "bytes": String(held.text.utf8.count)])
+      guard let window else {
+        warn(
+          "paste.held.unasked",
+          [
+            "pane": held.paneID,
+            "impact": "the paste was not sent and nobody was asked about it, so it is gone; "
+              + "pasting again asks again",
+            "check": "whether this window was closing when the daemon answered",
+          ])
+        break
+      }
+      window.hold(
+        HeldPaste(pane: PaneKey(daemon: held.daemonID, pane: held.paneID), text: held.text))
     case .clipboardWrite(let write):
       info(
         "clipboard.write.received",
