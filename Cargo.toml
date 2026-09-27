@@ -4,6 +4,7 @@ members = [
     "crates/conformance",
     "crates/muster-bridge",
     "crates/muster-cli",
+    "crates/muster-contract",
     "crates/muster-core",
     "crates/muster-daemon",
     "crates/muster-daemon-client",

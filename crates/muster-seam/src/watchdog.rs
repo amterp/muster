@@ -48,11 +48,11 @@ use crate::session;
 
 /// How long a pane may wait for a bridge before saying so, in milliseconds.
 ///
-/// `tools/smoke-launch.py` waits 2.0s after `app.ready` for a healthy bridge to "start, dial
-/// back and paint", so five seconds is about two and a half times the budget a working launch
-/// is already known to fit inside - long enough that a machine under load does not get
-/// accused, short enough that nobody has typed into a deaf pane and drawn their own
-/// conclusions first.
+/// The contract tier (`crates/muster-contract/tests/launch.rs`) gives a healthy launch 2.0s after
+/// `app.ready` for every bridge to start, attach and paint, so five seconds is about two and a
+/// half times the budget a working launch is already known to fit inside - long enough that a
+/// machine under load does not get accused, short enough that nobody has typed into a deaf pane
+/// and drawn their own conclusions first.
 const DEADLINE_MS: u64 = 5_000;
 
 /// The deadline this run is using, in nanoseconds, read from the environment once.

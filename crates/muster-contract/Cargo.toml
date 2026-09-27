@@ -1,0 +1,18 @@
+[package]
+name = "muster-contract"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# Nothing here ships: the crate is its tests, which launch the app the shell builds. So every
+# dependency is a dev-dependency, and none of them reaches a binary in the bundle.
+[dev-dependencies]
+libc.workspace = true
+muster-core.workspace = true
+muster-daemon-client.workspace = true
+muster-daemon-proto.workspace = true
+muster-harness.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

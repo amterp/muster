@@ -19,7 +19,7 @@ args:
     proto bool     # Regenerate the seam's Swift types, whether or not the schema changed.
     bundle bool    # Assemble muster.app around the built binary. Not in the gate.
     notarize bool  # Sign for release, send it to Apple, and staple. Needs credentials; not in the gate.
-    contract bool  # Run the app against a real herdr. Needs a GUI session; not in the gate.
+    contract bool  # Run the app against a real muster-daemon. Needs a GUI session; not in the gate.
     ssh bool       # Run the remote tier against the devenv container. Needs docker; not in the gate.
     claude_code bool  # Drive the installed Claude Code for one turn through its hooks and its screen. Reaches the network; not in the gate.
     linux bool     # Run the daemon's and detection's suites on Linux, in docker. Not in the gate.
@@ -392,9 +392,9 @@ fn fail_empty_suite(language, cure):
 // What the default gate is expected to skip, and what runs it instead.
 //
 // A suite that stops running is invisible in a count, which makes it worse than a red one:
-// `swift test` reports the same total whether ClickRedriveTests is there and skipping or has
-// been deleted, and cargo keeps its ignored tests in a per-binary line nothing reads. So the
-// whole of what said ClickRedriveTests still existed was one hand-written print - a second
+// `swift test` reports the same total whether a GUI suite is there and skipping or has been
+// deleted, and cargo keeps its ignored tests in a per-binary line nothing reads. So the whole
+// of what once said such a suite still existed was one hand-written print - a second
 // such suite needed a second line, and the day somebody wrote neither, a suite would stop
 // running behind a green gate.
 //
@@ -424,7 +424,9 @@ SKIPPED_SUITES = [
       "note": "a measurement, not a property; cargo test --release -p muster-daemon --test daemon -- flood::echo_latency --ignored --nocapture prints it" },
     { "language": "Rust", "suite": "muster-daemon's live Claude Code check", "skipped": 1,
       "note": "reaches the network and spends a model turn; ./dev --claude-code runs it" },
-    { "language": "Swift", "suite": "ClickRedriveTests", "skipped": 1,
+    { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 9,
+      "note": "need a logged-in session; ./dev --contract runs them" },
+    { "language": "Swift", "suite": "SearchGUITests", "skipped": 1,
       "note": "needs a logged-in session; ./dev --contract runs it" },
 ]
 
@@ -515,7 +517,10 @@ fn run_ssh_tier():
     // Spelled out at both call sites rather than built into a variable first: Rad quotes an
     // interpolated value as one shell word, so a variable holding the whole prefix arrives as
     // a command name nothing can run.
-    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root} cargo test --workspace -- --ignored --list`
+    //
+    // muster-contract is left out because its ignored tests are the contract tier's: they
+    // launch the app, and need a GUI session rather than a container.
+    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root} cargo test --workspace --exclude muster-contract -- --ignored --list`
     names = stdout.split("\n").filter(fn(line) line.ends_with(": test"))
     if len(names) == 0:
         print_err(red("The remote tier discovered no tests."))
@@ -526,7 +531,7 @@ fn run_ssh_tier():
         exit(1)
     print(dim("{len(names)} remote test(s) discovered"))
 
-    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root} cargo test --workspace -- --ignored`
+    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} MUSTER_DEVENV_CACHE={cache_root} cargo test --workspace --exclude muster-contract -- --ignored`
 
     run_linux_corpus_diff(root, version)
 
@@ -1626,14 +1631,14 @@ fn assemble_daemon_data():
         exit(1)
     quiet $`rm -rf {staged}.old`
 
-// The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
-// and a logged-in GUI session, and the default suite must stay offline and deterministic
+// The contract tier is opt-in and never part of the gate: it launches the real app, which
+// needs a logged-in GUI session, and the default suite must stay offline and deterministic
 // (docs/testing.md). Asking for it alone should not also take the whole gate.
 //
 // It takes a bundle as well as a build, because one of its checks launches the app as it
-// ships rather than as SwiftPM leaves it. Those are different layouts - the daemon moves into
-// a helper bundle - and the difference cost a release (kan a_2Hnh3g0Y5). Skipping the check
-// when no bundle happened to be lying about is how a check quietly stops running.
+// ships rather than as SwiftPM leaves it. Those are different layouts - muster-daemon moves
+// into a helper bundle - and the difference cost a release (kan a_2Hnh3g0Y5). Skipping the
+// check when no bundle happened to be lying about is how a check quietly stops running.
 if contract:
     build = true
     bundle = true
@@ -1904,21 +1909,24 @@ if test:
 
 if contract:
     announce("contract")
-    // The only check that runs the app itself. Everything else fakes one side or the
-    // other; this spawns a real herdr, launches the real binary against it, and reads the
-    // run log to see what actually connected.
-    stdout, stderr, code = $`python3 tools/smoke-launch.py` catch:
+    // The only checks that run the app itself. Everything else stops short of the shell or
+    // of a window; these launch the real binary against a real muster-daemon and read the
+    // run log to see what actually connected. The gate compiles them and skips them, so this
+    // asks for its ignored tests, one at a time: each times a launch, and nine launching at
+    // once would time the machine instead. The paths are handed over rather than worked out
+    // by the tests, so the app they judge is the one this run just built.
+    swift_bin = $`swift build --show-bin-path`.stdout.trim()
+    root = $`pwd`.stdout.trim()
+    $`MUSTER_CONTRACT_APP={swift_bin}/muster MUSTER_CONTRACT_BUNDLE={root}/{BUNDLE}/Contents/MacOS/muster cargo test -p muster-contract --test launch -- --ignored --test-threads=1` catch:
         print_err(red("The app did not launch cleanly against a real daemon."))
-        print_err(stdout.trim())
-        print_err(stderr.trim())
+        print_err("Each check's run log is under /tmp/muster-contract/<check>/run.jsonl.")
         exit(1)
-    print(stdout.trim())
 
     // And the Swift tests that need a real libghostty surface, which is a Metal layer on a
     // view and so wants the same logged-in session the launch above does. They are ordinary
     // tests otherwise, and they skip themselves without this variable rather than failing -
     // the default gate lists them as skipped, which is how a reader knows they exist.
-    $`MUSTER_GUI_TESTS=1 swift test --filter ClickRedriveTests`
+    $`MUSTER_GUI_TESTS=1 swift test --filter SearchGUITests`
 
 if ssh:
     announce("ssh")

@@ -472,8 +472,9 @@ fn start_a_window(daemon: &Daemon, name: &str) {
 
 /// Two tabs on the daemon before any window opens: one split three ways, and one of a single pane.
 ///
-/// What `tools/smoke-launch.py` stages, and what Alex's machine looks like at his first launch of
-/// the release that brought this record: every tab already there, and no record saying whose.
+/// What the contract tier's split check stages (`crates/muster-contract/tests/launch.rs`), and
+/// what Alex's machine looks like at his first launch of the release that brought this record:
+/// every tab already there, and no record saying whose.
 fn tabs_already_running(daemon: &Daemon) {
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));

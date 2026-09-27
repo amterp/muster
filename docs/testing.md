@@ -71,9 +71,9 @@ Muster's principles, adapted to that evidence:
   invention.
 
   Nothing consults PATH for a daemon: a test that resolved its own could quietly run against one nobody built
-  from this commit. herdr is still pinned (`deps/herdr.pin`, fetched into `deps/herdr/` and verified) for the
-  app the shell builds, the contract tier and the corpus probe until they move to muster-daemon, and
-  no Rust test runs it.
+  from this commit. The contract tier (`crates/muster-contract`) is no exception: it launches the app against a
+  daemon built from the same commit, whether the harness started it or the app did. herdr is still pinned (`deps/herdr.pin`, fetched
+  into `deps/herdr/` and verified) for the corpus probe until it moves to muster-daemon, and no Rust test runs it.
 - **Detect wire drift mechanically, not by waiting for a test to fail.** herdr generates a canonical JSON Schema of
   its whole API from its own request types, fails its own build when the two disagree, and embeds it in the binary
   (`herdr api schema --json`). A copy sits in `corpus/herdr-<version>/api-schema.json`, and `./dev` diffs the two

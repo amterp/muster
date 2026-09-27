@@ -600,6 +600,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "muster-contract"
+version = "0.9.0"
+dependencies = [
+ "libc",
+ "muster-core",
+ "muster-daemon-client",
+ "muster-daemon-proto",
+ "muster-harness",
+ "serde_json",
+]
+
+[[package]]
 name = "muster-core"
 version = "0.9.0"
 dependencies = [
