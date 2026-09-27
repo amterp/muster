@@ -17,7 +17,7 @@ mod tree;
 
 use std::fs::File;
 use std::os::fd::AsRawFd;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -93,6 +93,7 @@ enum Failure {
 }
 
 fn run(socket: &Path, signals: libc::sigset_t) -> Result<(), Failure> {
+    refuse_anything_but_a_socket(socket)?;
     let _claim = claim(socket)?;
     let listener = listen(socket)?;
 
@@ -125,6 +126,19 @@ fn run(socket: &Path, signals: libc::sigset_t) -> Result<(), Failure> {
     let _ = std::fs::remove_file(socket);
     log::info("daemon.stopped", fields! { "socket" => socket.display() });
     Ok(())
+}
+
+/// Refuses a path that holds something other than a socket, because binding replaces what is
+/// there: a mistyped `--socket` must not delete somebody's file.
+fn refuse_anything_but_a_socket(socket: &Path) -> Result<(), Failure> {
+    match std::fs::symlink_metadata(socket) {
+        Ok(found) if !found.file_type().is_socket() => Err(Failure::Other(format!(
+            "{} is not a socket, and listening there would replace it; name a path that is \
+             free or holds a socket",
+            socket.display()
+        ))),
+        _ => Ok(()),
+    }
 }
 
 /// Takes the lock that makes this the one daemon on `socket`, held until the process exits.
