@@ -102,6 +102,8 @@ pub struct Daemon {
     socket_path: PathBuf,
     /// What was added to the daemon's environment, which a restart starts it with again.
     environment: Vec<(String, String)>,
+    /// Arguments beyond the socket and the data directory, which a restart passes again.
+    arguments: Vec<String>,
     process: Option<Child>,
     /// The daemon a handoff started, which serves the socket once `process` has exited. Not the
     /// harness's child, so it is known by its pid.
@@ -125,24 +127,31 @@ impl Daemon {
 
     /// The same, with more in the daemon's environment - which every pane's starts from.
     pub fn start_with(binary: impl AsRef<Path>, environment: &[(&str, &str)]) -> Daemon {
-        Daemon::launch(binary, environment, None, |_| {})
+        Daemon::launch(binary, environment, &[], None, |_| {})
+    }
+
+    /// The same, started with `--launch token`, as a launcher that cannot see the daemon's pid
+    /// starts it.
+    pub fn start_launched(binary: impl AsRef<Path>, token: &str) -> Daemon {
+        Daemon::launch(binary, &[], &["--launch", token], None, |_| {})
     }
 
     /// The same, with the daemon holding `descriptor` open and inheritable, as a launcher that
     /// leaks one leaves it. For a test that nothing the daemon holds reaches a pane unasked.
     pub fn start_holding(binary: impl AsRef<Path>, descriptor: i32) -> Daemon {
-        Daemon::launch(binary, &[], Some(descriptor), |_| {})
+        Daemon::launch(binary, &[], &[], Some(descriptor), |_| {})
     }
 
     /// The built daemon, able to detect the fake agent a test runs with [`Daemon::run_agent`]
     /// and drives with [`Daemon::set_agent_state`].
     pub fn start_detecting() -> Daemon {
-        Daemon::launch(built_daemon(), &[], None, crate::agents::install)
+        Daemon::launch(built_daemon(), &[], &[], None, crate::agents::install)
     }
 
     fn launch(
         binary: impl AsRef<Path>,
         environment: &[(&str, &str)],
+        arguments: &[&str],
         held: Option<i32>,
         prepare_home: fn(&Path),
     ) -> Daemon {
@@ -165,6 +174,7 @@ impl Daemon {
                 .iter()
                 .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
                 .collect(),
+            arguments: arguments.iter().map(ToString::to_string).collect(),
             process: None,
             successor: None,
             paused: None,
@@ -220,6 +230,7 @@ impl Daemon {
             .arg(&self.socket_path)
             .arg("--data")
             .arg(DAEMON_DATA)
+            .args(&self.arguments)
             .env_clear()
             .env("PATH", std::env::var("PATH").unwrap_or_default())
             .env("HOME", self.root.join("home"))
