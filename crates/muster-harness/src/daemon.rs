@@ -281,6 +281,9 @@ impl Daemon {
 
     pub fn finish_replacing(&mut self, replacing: Replacing) -> proto::Answer {
         let answer = replacing.0.join().expect("the replace request's thread panicked");
+        // The handoff is over, so whichever daemon paused is served, reaped or tracked from here;
+        // its pid may be reused by the time this handle drops.
+        self.paused = None;
         if answer.outcome() == proto::Outcome::Done {
             self.wait_for_exit();
             self.successor = Some(self.connect().welcome().pid.cast_signed());
@@ -324,6 +327,7 @@ impl Daemon {
     /// The daemon at `pid` serves now, as after a handoff whose old daemon ended without
     /// answering: this handle reaches it from here, and reaps the old one.
     pub fn served_by(&mut self, pid: i32) {
+        self.paused = None;
         if let Some(mut process) = self.process.take() {
             let _ = process.kill();
             let _ = process.wait();

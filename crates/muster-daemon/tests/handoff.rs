@@ -696,3 +696,33 @@ fn a_kill_under_way_at_a_handoff_still_happens() {
     }
     assert_eq!(left, "", "the closed pane's program outlived the handoff");
 }
+
+/// An adopted pane, closed while its program ignores the hang-up, is killed after the grace as
+/// a pane of the new daemon's own would be: its program still leads the session its terminal
+/// belongs to, which is what lets the new daemon signal a group it did not start.
+#[test]
+fn an_adopted_pane_whose_program_ignores_the_hang_up_is_killed_when_closed() {
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let deaf = pane_request::Create {
+        command: Some("echo pid=$$.; trap '' HUP; while :; do sleep 1; done".to_string()),
+        ..create("p9", in_new_tab("t9"))
+    };
+    make(&mut control, deaf);
+    let pid = until_said(&mut control, "p9", "pid");
+
+    replaced(&mut daemon);
+    let mut control = daemon.connect();
+    expect(&mut control, close_request("p9"), proto::Outcome::Done);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(6);
+    while !process_state(&pid).is_empty() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let left = process_state(&pid);
+    if !left.is_empty() {
+        let _ = std::process::Command::new("kill").args(["-9", &pid]).status();
+    }
+    assert_eq!(left, "", "the closed adopted pane's program outlived its close");
+}
