@@ -216,3 +216,37 @@ fn no_agent_is_unknown_and_a_vanished_one_is_idle() {
     assert_eq!(manifests.detect(None, Input::default()).state, State::Unknown);
     assert_eq!(detect(&manifests, "gone", "anything").state, State::Idle);
 }
+
+#[test]
+fn loading_the_same_manifests_again_changes_no_agent() {
+    let app = [("codex.toml".to_string(), codex("9999.1.1.1", "working", "x"))];
+    let (before, _) = Manifests::load(&app, None);
+    let (after, _) = Manifests::load(&app, None);
+    assert_eq!(after.changed_since(&before), []);
+    assert_eq!(Manifests::built_in().changed_since(&Manifests::built_in()), []);
+}
+
+#[test]
+fn an_app_manifest_shadowed_by_an_override_changes_nothing_in_use() {
+    let overrides = Overrides::new("shadowed", &[("codex.toml", &codex("1", "blocked", "o"))]);
+    let (before, _) = Manifests::load(&[], Some(&overrides.0));
+    let app = [("codex.toml".to_string(), codex("9999.1.1.1", "working", "x"))];
+    let (after, _) = Manifests::load(&app, Some(&overrides.0));
+    assert_eq!(after.changed_since(&before), []);
+}
+
+#[test]
+fn a_changed_added_or_removed_manifest_is_that_agents_change_alone() {
+    let (before, _) = Manifests::load(&[], None);
+    let app = [("codex.toml".to_string(), codex("9999.1.1.1", "working", "x"))];
+    let (changed, _) = Manifests::load(&app, None);
+    assert_eq!(changed.changed_since(&before), [Agent::new("codex")]);
+
+    let sprite = "id = \"sprite\"\n\
+                  [[rules]]\nid = \"busy\"\nstate = \"working\"\ncontains = [\"busy\"]\n";
+    let overrides = Overrides::new("added", &[("sprite.toml", sprite)]);
+    let (added, warnings) = Manifests::load(&[], Some(&overrides.0));
+    assert_eq!(warnings, []);
+    assert_eq!(added.changed_since(&before), [Agent::new("sprite")]);
+    assert_eq!(before.changed_since(&added), [Agent::new("sprite")], "and removed again");
+}

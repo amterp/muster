@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::manifest::{ENGINE_VERSION, Manifest};
 use crate::{Agent, Detection, Input, State};
@@ -94,6 +95,8 @@ struct Entry {
     agent: Agent,
     manifest: Manifest,
     source: Source,
+    /// The manifest as written, which is what decides whether two loads differ for an agent.
+    text: Arc<str>,
 }
 
 /// The agents a daemon recognises, and the rules for each.
@@ -116,7 +119,12 @@ impl Manifests {
                 // failure here is this crate's own bug, not an input to handle.
                 let manifest = Manifest::parse(text)
                     .unwrap_or_else(|error| panic!("built-in manifest {file} is invalid: {error}"));
-                Entry { agent: Agent::new(manifest.id()), manifest, source: Source::BuiltIn }
+                Entry {
+                    agent: Agent::new(manifest.id()),
+                    manifest,
+                    source: Source::BuiltIn,
+                    text: Arc::from(*text),
+                }
             })
             .collect();
         Manifests::indexed(entries)
@@ -131,7 +139,7 @@ impl Manifests {
         for (name, text) in app {
             let source = Source::App(name.clone());
             match app_manifest(text, &entries) {
-                Ok(manifest) => place(&mut entries, manifest, source),
+                Ok(manifest) => place(&mut entries, manifest, source, text),
                 Err(problem) => warnings.push(Warning { source, problem }),
             }
         }
@@ -139,8 +147,12 @@ impl Manifests {
         if let Some(dir) = overrides {
             for (path, read) in override_files(dir, &mut warnings) {
                 let source = Source::Override(path.clone());
-                match read.and_then(|text| override_manifest(&path, &text)) {
-                    Ok(manifest) => place(&mut entries, manifest, source),
+                let placed = read.and_then(|text| {
+                    let manifest = override_manifest(&path, &text)?;
+                    Ok((manifest, text))
+                });
+                match placed {
+                    Ok((manifest, text)) => place(&mut entries, manifest, source, &text),
                     Err(problem) => warnings.push(Warning { source, problem }),
                 }
             }
@@ -172,6 +184,26 @@ impl Manifests {
     /// Every agent, in no particular order.
     pub fn agents(&self) -> impl Iterator<Item = &Agent> {
         self.entries.iter().map(|entry| &entry.agent)
+    }
+
+    /// The agents whose manifest in use differs from the one `before` used: added, removed, or
+    /// written differently. A pane running any other agent is detected exactly as it was, so
+    /// only these need their detection started over when the manifests are reloaded.
+    pub fn changed_since(&self, before: &Manifests) -> Vec<Agent> {
+        let mut changed: Vec<Agent> = self
+            .entries
+            .iter()
+            .filter(|entry| before.entry(&entry.agent).is_none_or(|old| old.text != entry.text))
+            .map(|entry| entry.agent.clone())
+            .collect();
+        changed.extend(
+            before
+                .entries
+                .iter()
+                .filter(|old| self.entry(&old.agent).is_none())
+                .map(|old| old.agent.clone()),
+        );
+        changed
     }
 
     /// Where the manifest in use for an agent came from.
@@ -215,8 +247,8 @@ impl Manifests {
 }
 
 /// Replaces the manifest with the same id, or adds a new agent.
-fn place(entries: &mut Vec<Entry>, manifest: Manifest, source: Source) {
-    let entry = Entry { agent: Agent::new(manifest.id()), manifest, source };
+fn place(entries: &mut Vec<Entry>, manifest: Manifest, source: Source, text: &str) {
+    let entry = Entry { agent: Agent::new(manifest.id()), manifest, source, text: Arc::from(text) };
     match entries.iter_mut().find(|existing| existing.agent == entry.agent) {
         Some(existing) => *existing = entry,
         None => entries.push(entry),
