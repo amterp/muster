@@ -7,6 +7,17 @@
 
 use std::collections::BTreeMap;
 
+/// What a pane reads to find out which pane it is. The daemon sets it from the name in the
+/// request that made the pane; renaming it breaks every pane already running.
+pub const PANE_NAME: &str = "MUSTER_PANE";
+
+/// What a pane reads to find the window it is in, which the window sets on every pane it makes.
+///
+/// The pair with [`PANE_NAME`], and useless without it: knowing which Muster to ask is half of
+/// being able to say "this pane". Set per window rather than looked up, because a machine can
+/// have several Musters open and a pane belongs to exactly one.
+pub const WINDOW_SOCKET: &str = "MUSTER_SOCKET";
+
 /// The whole environment to start this machine's daemon with: what it may carry from
 /// `environment`, then what Muster supplies on top.
 pub fn for_daemon(

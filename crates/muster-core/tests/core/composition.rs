@@ -11,7 +11,7 @@ use crate::support::backend::{describe_daemon, optional, ratio, read_snapshot, t
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, MusterTab, PaneKey, Region,
-    RegionId, Step, Transport, View, ViewPane,
+    RegionId, Step, View, ViewPane,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -285,29 +285,20 @@ fn view_of(
         composition,
         |daemon| worlds.get(current.get(daemon)?),
         // How a daemon is reached is the runtime's answer, and a case has no runtime. What a
-        // case does say is how a daemon was asked for, so this reads the endpoint back: a
-        // region on an ssh daemon carries a transport, and one on a local daemon does not.
-        |daemon| match composition.daemon(daemon).map(|held| &held.endpoint) {
-            Some(Endpoint::Ssh { host, .. }) => {
-                Some(Transport { host: host.clone(), control_path: format!("/tmp/{daemon}.ctl") })
-            }
-            _ => None,
-        },
-        // The mirror image, and read back the same way: a local daemon says where its frames
-        // come from, and a remote one does not, because that bridge asks the far machine.
-        |daemon| match composition.daemon(daemon).map(|held| &held.endpoint) {
-            Some(Endpoint::Ssh { .. }) => None,
-            _ => Some(format!("/tmp/{daemon}.sock")),
+        // case does say is how a daemon was asked for, so the socket a bridge dials is made up
+        // from its name, and a daemon asked for over ssh is remote.
+        |daemon| Some(format!("/tmp/{daemon}.sock")),
+        |daemon| {
+            matches!(
+                composition.daemon(daemon).map(|held| &held.endpoint),
+                Some(Endpoint::Ssh { .. })
+            )
         },
         |daemon, pane| ViewPane {
             id: pane.clone(),
-            control_socket_path: attached
+            link_socket_path: attached
                 .contains(&pane.to_string())
                 .then(|| format!("/tmp/{daemon}-{pane}.sock")),
-            // A case's panes are named the way the backend names them, so the two spellings
-            // agree and neither the cases nor this driver has to know the registry exists.
-            // What the translation does is `pane-names.json`'s subject.
-            backend_pane_id: Some(pane.to_string()),
             font_size_offset: sizes.offset(&PaneKey::new(daemon, pane)),
             // Zero, because no case here is about a bridge that had to be replaced - what a
             // replacement does to a window is `respawn.json`'s subject, and a number in this

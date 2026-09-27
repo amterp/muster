@@ -60,8 +60,8 @@ pub struct ViewRegion {
     pub weight: f32,
     /// `None` while the daemon has not said how this tab is arranged.
     ///
-    /// A real state rather than a failure - herdr publishes the tree on its own event,
-    /// which may follow the panes it names - and a distinct one from an empty region: a
+    /// A real state rather than a failure - a pane moving between tabs is counted in the tab
+    /// it left until that tab's tree changes - and a distinct one from an empty region: a
     /// shell told `None` leaves what it has alone, where a shell told "no panes" would tear
     /// down surfaces that are about to be described.
     pub root: Option<ViewNode>,
@@ -71,43 +71,13 @@ pub struct ViewRegion {
     /// renders the right thing; what the flag is for is saying so in the chrome, because a
     /// zoomed tab and a tab with one pane are otherwise indistinguishable on screen.
     pub zoomed: bool,
-    /// How a pane's frames get here, when they come from another machine.
-    ///
-    /// On the region rather than on each of its panes because it is a property of the daemon,
-    /// and every pane in a region belongs to one. `None` is a daemon on this machine, which is
-    /// the only difference a shell ever has to notice between local and remote.
-    pub transport: Option<Transport>,
-    /// Which daemon this region's frame streams should come from, on this machine.
-    ///
-    /// A pane's frames arrive from a herdr CLI rather than over the control socket, and that
-    /// CLI finds a daemon the way any other client does. That stopped being good enough when
-    /// Muster started running its own daemon under a session of its own: a bridge left to
-    /// find one reaches whatever the user last started, does not find the pane there, and the
-    /// stream ends before a single frame - a pane that renders nothing.
-    ///
-    /// `None` for a remote region, deliberately. That bridge runs its CLI on the far machine,
-    /// where a path from this one names nothing, and it finds the daemon over there the
-    /// ordinary way.
-    /// Named for the backend rather than for herdr, though herdr is what fills it today.
-    /// This type is the core's own vocabulary and a second backend would populate the same
-    /// field, so a name carrying one backend's spelling would be a field lying about which
-    /// daemon it points at (`architecture.md`, swappable organs). The bridge's `--herdr-socket`
-    /// flag keeps herdr's name, because that flag is herdr's CLI being invoked.
-    pub backend_socket: Option<String>,
-}
-
-/// What a pane's bridge needs in order to reach another machine.
-///
-/// Carried across the seam rather than worked out by the shell, for the same reason a pane's
-/// control socket is: it names something the core opened, and a shell that recomputed it
-/// would be guessing at a path only the core knows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Transport {
-    /// The ssh destination, as ssh spells it.
-    pub host: String,
-    /// The master's control socket, so a pane's frame stream rides the connection the control
-    /// plane already opened instead of paying for a handshake of its own.
-    pub control_path: String,
+    /// The socket a pane's bridge dials to draw it: the daemon's own, or for a daemon on
+    /// another machine the local end of the ssh forward to it. `None` for a daemon this window
+    /// has not reached.
+    pub daemon_socket: Option<String>,
+    /// Whether the daemon is on another machine, which is where a bridge asks for a window of
+    /// unacknowledged output sized for the link.
+    pub remote: bool,
 }
 
 /// A region's tree, with the panes filled in.
@@ -127,24 +97,12 @@ pub enum ViewNode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewPane {
     pub id: PaneId,
-    /// Where this pane's bridge should dial the core, once there is one to dial.
+    /// The socket this pane's bridge reports on, once the core has bound one.
     ///
-    /// `None` means no channel is open for this pane yet, which is what a surface built
-    /// from it would render and never be typeable in. Absent rather than empty so that a
-    /// shell cannot spawn a bridge pointed at nothing and then wait for it.
-    pub control_socket_path: Option<String>,
-
-    /// What the pane's own daemon calls it, for the shell to hand its bridge.
-    ///
-    /// The bridge streams frames from the daemon directly, so it is the one thing above the
-    /// adapter that has to speak the backend's vocabulary - and the only reason this leaves
-    /// the core. A handle to relay, on the same terms as `ViewRegion::backend_socket`, and
-    /// never something to address a pane by: `id` above is what Muster means by a pane
-    /// everywhere else, and the two disagree the moment two daemons are attached.
-    ///
-    /// `None` for a pane whose daemon no longer holds it, which is a pane no bridge should be
-    /// started for.
-    pub backend_pane_id: Option<String>,
+    /// `None` means none is bound yet, and a surface built from it would have a bridge the
+    /// window cannot hear from. Absent rather than empty so that a shell cannot spawn a bridge
+    /// pointed at nothing and then wait for it.
+    pub link_socket_path: Option<String>,
 
     /// How big this pane's text is, in points away from what the config file asked for.
     ///
@@ -176,11 +134,9 @@ impl View {
     /// there is no tab to render and no honest thing to say about it.
     ///
     /// `pane` answers everything about one pane that the layout cannot: the socket its bridge
-    /// dials, the backend's own name for it, the size somebody chose, and how many times its
-    /// bridge has been replaced. One closure rather than one per field, because four of the
-    /// same shape in a row is a call site nobody can check - two of them return
-    /// `Option<String>`, and a caller that swapped those two would compile and render every
-    /// pane's bridge pointed at the wrong thing.
+    /// reports on, the size somebody chose, and how many times its bridge has been replaced.
+    /// One closure rather than one per field, because several of the same shape in a row is a
+    /// call site nobody can check.
     ///
     /// It answers with the id it was handed. Not enforced here, because putting it back would
     /// cost a clone per pane on a path with a budget against it (`perf/baseline.json`,
@@ -188,8 +144,8 @@ impl View {
     pub fn of<'a>(
         composition: &Composition,
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
-        transport: impl Fn(&DaemonId) -> Option<Transport>,
-        backend_socket: impl Fn(&DaemonId) -> Option<String>,
+        daemon_socket: impl Fn(&DaemonId) -> Option<String>,
+        remote: impl Fn(&DaemonId) -> bool,
         pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
     ) -> View {
         let mut showing = BTreeSet::new();
@@ -228,8 +184,8 @@ impl View {
                         build(zoomed.as_ref().unwrap_or(&layout.root), &region.daemon, &pane)
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
-                    transport: transport(&region.daemon),
-                    backend_socket: backend_socket(&region.daemon),
+                    daemon_socket: daemon_socket(&region.daemon),
+                    remote: remote(&region.daemon),
                 })
             })
             .collect();
@@ -629,7 +585,7 @@ impl std::fmt::Display for ViewNode {
                 write!(f, "{}", pane.id)?;
                 // Marked rather than printed: the path carries a pid and a temporary
                 // directory, so a case asserting one would assert this machine.
-                if pane.control_socket_path.is_some() {
+                if pane.link_socket_path.is_some() {
                     f.write_str("*")?;
                 }
                 // Only when somebody has sized it, so that every case not about text size

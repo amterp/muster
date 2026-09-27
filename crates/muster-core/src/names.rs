@@ -73,6 +73,13 @@ pub struct Minter {
     drawn: BTreeSet<String>,
 }
 
+impl Default for Minter {
+    /// The clock and the machine's entropy, which is what a running Muster draws with.
+    fn default() -> Minter {
+        Minter::new(Mint::Drawn)
+    }
+}
+
 impl Minter {
     pub fn new(mint: Mint) -> Minter {
         Minter { mint, drawn: BTreeSet::new() }

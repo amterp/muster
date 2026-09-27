@@ -93,10 +93,6 @@ impl DaemonBackend {
         self.minter.lock().unwrap_or_else(PoisonError::into_inner).pane()
     }
 
-    fn mint_tab(&self) -> TabId {
-        self.minter.lock().unwrap_or_else(PoisonError::into_inner).tab()
-    }
-
     fn create(
         &self,
         placement: placement::Where,
@@ -136,8 +132,7 @@ impl DaemonBackend {
     fn destination(&self, to: MoveDestination) -> (placement::Where, Option<TabId>) {
         match to {
             MoveDestination::Beside { after, .. } => (beside(&after, Side::Right), None),
-            MoveDestination::NewTab { name } => {
-                let tab = self.mint_tab();
+            MoveDestination::NewTab { tab, name } => {
                 let label = proto::Label { generation: u64::from(name.is_some()), text: name };
                 let placement = placement::Where::NewTab(placement::NewTab {
                     tab: tab.to_string(),
@@ -179,8 +174,7 @@ impl BackendChannel for DaemonBackend {
                 let created = self.create(placement, cwd, run, name)?;
                 Ok(Outcome { created: Some(created), created_tab: None })
             }
-            BackendIntent::CreateTab { cwd, run, name } => {
-                let tab = self.mint_tab();
+            BackendIntent::CreateTab { tab, cwd, run, name } => {
                 let placement = placement::Where::NewTab(placement::NewTab {
                     tab: tab.to_string(),
                     label: Some(proto::Label::default()),

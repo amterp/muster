@@ -71,7 +71,7 @@ pub enum MoveDestination {
     ///
     /// `name` is what to call the new tab, or nothing to leave it unnamed. The dance this
     /// replaces could not name it at all.
-    NewTab { name: Option<String> },
+    NewTab { tab: TabId, name: Option<String> },
 
     /// Into a Muster tab that exists, wherever in it this pane's machine lands.
     ///
@@ -136,13 +136,17 @@ pub enum BackendIntent {
     ClosePane {
         pane: PaneId,
     },
-    /// Makes a tab, with one pane of its own in it. The adapter mints both names and says them
-    /// in the [`Outcome`].
+    /// Makes a tab, with one pane of its own in it. The adapter mints the pane's name and says
+    /// it in [`Outcome::created`].
     ///
     /// The one intent that needs nothing to exist, so it is also what is asked for when there
     /// is nothing: a daemon Muster just started holds no panes, and a window showing none of
     /// them is not a window.
     CreateTab {
+        /// What to call the tab, which the window mints and takes before it asks: the daemon
+        /// announces the tab before it answers, and a window that did not already hold it could
+        /// lose it to another window in that moment.
+        tab: TabId,
         /// Where its pane starts. Unlike a split, this is resolved before it is sent - a new
         /// tab has nothing to inherit from, and the daemon's own answer is a home directory
         /// nobody asked for.
@@ -277,8 +281,8 @@ impl BackendIntent {
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),
-            BackendIntent::CreateTab { cwd, run, name } => format!(
-                "CreateTab {{ cwd: {cwd:?}, run: {}, name: {} }}",
+            BackendIntent::CreateTab { tab, cwd, run, name } => format!(
+                "CreateTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {} }}",
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),

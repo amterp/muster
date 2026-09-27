@@ -79,6 +79,9 @@ pub struct Connection {
     /// Why the current connection ended, once it has, which is what the follower waits on.
     ended: Mutex<Option<String>>,
     wake: Condvar,
+    /// How many snapshots the mirror has been rebuilt from, for a caller waiting on the first.
+    snapshots: Mutex<u64>,
+    snapshot_arrived: Condvar,
 }
 
 impl Connection {
@@ -94,6 +97,16 @@ impl Connection {
         if let Some(input) = lock(&self.input).as_ref() {
             input.send(event);
         }
+    }
+
+    /// Waits up to `patience` for the mirror's first snapshot, and says whether it came.
+    pub fn wait_for_snapshot(&self, patience: Duration) -> bool {
+        let snapshots = lock(&self.snapshots);
+        let (snapshots, _) = self
+            .snapshot_arrived
+            .wait_timeout_while(snapshots, patience, |count| *count == 0)
+            .unwrap_or_else(PoisonError::into_inner);
+        *snapshots > 0
     }
 
     fn end(&self, generation: u64, why: String) {
@@ -311,6 +324,8 @@ fn delivery(
             if std::mem::take(&mut reconnected) {
                 notify(Notice::Reconnected);
             }
+            *lock(&connection.snapshots) += 1;
+            connection.snapshot_arrived.notify_all();
         }
         Delivered::Event(event) => {
             let Some(event) = convert::event(*event) else { return };

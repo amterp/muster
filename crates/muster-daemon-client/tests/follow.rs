@@ -7,7 +7,11 @@ use muster_core::config::{Cursor, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::intent::{BackendChannel, BackendIntent, Side};
 use muster_core::mirror::Mirror;
-use muster_core::mirror::backend::PaneId;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use muster_core::mirror::backend::{PaneId, TabId};
+
+static NEXT_TAB: AtomicU32 = AtomicU32::new(10);
 use muster_core::names::{Mint, Minter};
 use muster_daemon_client::backend::DaemonBackend;
 use muster_daemon_client::follow::{Follower, Following, Notice};
@@ -70,9 +74,14 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
 
     let made = followed
         .backend
-        .submit(&BackendIntent::CreateTab { cwd: None, run: None, name: Some("first".into()) })
+        .submit(&BackendIntent::CreateTab {
+            tab: TabId::new("t1"),
+            cwd: None,
+            run: None,
+            name: Some("first".into()),
+        })
         .unwrap();
-    let (pane, tab) = (made.created.unwrap(), made.created_tab.unwrap());
+    let (pane, tab) = (made.created.unwrap(), TabId::new("t1"));
     {
         let mirror = followed.mirror.lock().unwrap();
         let held = mirror.pane(&pane).expect("the new pane is in the mirror already");
@@ -103,8 +112,12 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
 fn zooming_twice_puts_the_tab_back() {
     let daemon = Daemon::start_built();
     let followed = follow(&daemon);
-    let made =
-        followed.backend.submit(&BackendIntent::CreateTab { cwd: None, run: None, name: None });
+    let made = followed.backend.submit(&BackendIntent::CreateTab {
+        tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+        cwd: None,
+        run: None,
+        name: None,
+    });
     let pane = made.unwrap().created.unwrap();
     let zoomed = |followed: &Followed, pane: &PaneId| {
         let mirror = followed.mirror.lock().unwrap();
@@ -124,7 +137,12 @@ fn a_daemon_that_comes_back_is_followed_again() {
     let followed = follow(&daemon);
     followed
         .backend
-        .submit(&BackendIntent::CreateTab { cwd: None, run: None, name: None })
+        .submit(&BackendIntent::CreateTab {
+            tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+            cwd: None,
+            run: None,
+            name: None,
+        })
         .unwrap();
 
     daemon.kill();
@@ -138,8 +156,12 @@ fn a_daemon_that_comes_back_is_followed_again() {
         let heard = followed.notices.lock().unwrap();
         heard.iter().any(|n| matches!(n, Notice::Reconnected)).then_some(())
     });
-    let made =
-        followed.backend.submit(&BackendIntent::CreateTab { cwd: None, run: None, name: None });
+    let made = followed.backend.submit(&BackendIntent::CreateTab {
+        tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+        cwd: None,
+        run: None,
+        name: None,
+    });
     assert!(made.is_ok(), "requests work again: {made:?}");
     drop(followed.follower);
 }
@@ -174,7 +196,12 @@ fn the_census_asks_each_daemon_what_it_holds() {
     let followed = follow(&daemon);
     followed
         .backend
-        .submit(&BackendIntent::CreateTab { cwd: None, run: None, name: None })
+        .submit(&BackendIntent::CreateTab {
+            tab: TabId::new(format!("t{}", NEXT_TAB.fetch_add(1, Ordering::Relaxed))),
+            cwd: None,
+            run: None,
+            name: None,
+        })
         .unwrap();
     let records = daemon.root().join("records");
     let socket = daemon.socket_path().display().to_string();
