@@ -6,6 +6,7 @@ use std::path::Path;
 
 use muster_daemon_proto as proto;
 
+use crate::data::Data;
 use crate::shell_integration::{self, Integration};
 
 /// Variables the daemon sets itself on every pane, which an inherited or requested copy never
@@ -174,7 +175,10 @@ pub(crate) const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
 /// The features Ghostty's shell integration is told to use, which its scripts read, and which
 /// Ghostty sets whether or not a script was loaded. `sudo` wraps `sudo` so that it keeps
 /// `$TERMINFO`, which sudo's reset environment would drop, so a root shell still finds the
-/// pane's terminal on a machine whose own database has no xterm-ghostty.
+/// pane's terminal on a machine whose own database has no xterm-ghostty. `ssh-terminfo` and
+/// `ssh-env` wrap `ssh` so that the host it reaches is given the entry and the terminal's
+/// name, through `$GHOSTTY_BIN_DIR/ghostty +ssh`, which is Muster's stand-in (`data.rs`).
+/// `path`, which would put that directory on the PATH, stays off: it holds no Ghostty.
 ///
 /// `cursor` makes every prompt set a bar cursor, blinking or steady as `cursor-style-blink` is,
 /// which is Ghostty's rule and applies here while the app's `[cursor]` names no shape. A shape it
@@ -185,9 +189,9 @@ fn shell_features(cursor: Option<&proto::Cursor>) -> String {
     let named = cursor.is_some_and(|cursor| cursor.style() != proto::CursorStyle::Unspecified);
     let blink = cursor.and_then(|cursor| cursor.blink).unwrap_or(true);
     match (named, blink) {
-        (true, _) => "path,sudo,title",
-        (false, true) => "cursor:blink,path,sudo,title",
-        (false, false) => "cursor:steady,path,sudo,title",
+        (true, _) => "ssh-env,ssh-terminfo,sudo,title",
+        (false, true) => "cursor:blink,ssh-env,ssh-terminfo,sudo,title",
+        (false, false) => "cursor:steady,ssh-env,ssh-terminfo,sudo,title",
     }
     .to_string()
 }
@@ -206,7 +210,7 @@ pub(crate) fn environment(
     requested: &HashMap<String, String>,
     pane: &str,
     command: Option<&str>,
-    terminfo: &Path,
+    data: &Data,
     reachable: &Reachable,
     cursor: Option<&proto::Cursor>,
 ) -> Vec<(OsString, OsString)> {
@@ -224,7 +228,8 @@ pub(crate) fn environment(
         }
     }
     let existing = environment.iter().find(|(name, _)| name == "TERMINFO_DIRS");
-    let dirs = terminfo_dirs(terminfo, existing.map(|(_, dirs)| dirs.as_os_str()));
+    let terminfo = data.terminfo();
+    let dirs = terminfo_dirs(&terminfo, existing.map(|(_, dirs)| dirs.as_os_str()));
     put(&mut environment, "TERMINFO_DIRS", dirs);
     put(&mut environment, "TERM", TERM);
     put(&mut environment, "COLORTERM", "truecolor");
@@ -239,7 +244,8 @@ pub(crate) fn environment(
     environment.retain(|(name, _)| name != "VTE_VERSION");
     // Replacing whatever was inherited or asked for: Ghostty.app sets it in its shells, and one
     // from elsewhere would decide which xterm-ghostty entry a pane gets.
-    put(&mut environment, "TERMINFO", terminfo);
+    put(&mut environment, "TERMINFO", &terminfo);
+    put(&mut environment, "GHOSTTY_BIN_DIR", data.bin());
     if let Some(daemon) = &reachable.daemon {
         put(&mut environment, DAEMON, daemon);
     }
@@ -317,7 +323,7 @@ mod tests {
         environment
     }
 
-    const TERMINFO: &str = "/data/terminfo";
+    const DATA: &str = "/data";
 
     fn reachable() -> Reachable {
         Reachable {
@@ -348,7 +354,7 @@ mod tests {
             &requested,
             "p1",
             None,
-            Path::new(TERMINFO),
+            &Data::unchecked(std::path::PathBuf::from(DATA)),
             &reachable(),
             None,
         );
@@ -363,10 +369,11 @@ mod tests {
                 ("PATH", "/usr/bin"),
                 ("TERM", "xterm-ghostty"),
                 ("TERMINFO", "/data/terminfo"),
+                ("GHOSTTY_BIN_DIR", "/data/bin"),
                 ("TERMINFO_DIRS", "/data/terminfo:"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
-                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,sudo,title"),
+                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,ssh-env,ssh-terminfo,sudo,title"),
             ]))
         );
     }
@@ -391,7 +398,7 @@ mod tests {
             &requested,
             "p1",
             None,
-            Path::new(TERMINFO),
+            &Data::unchecked(std::path::PathBuf::from(DATA)),
             &reachable(),
             None,
         );
@@ -405,10 +412,11 @@ mod tests {
                 ("MUSTER_PANE", "p1"),
                 ("TERM", "xterm-ghostty"),
                 ("TERMINFO", "/data/terminfo"),
+                ("GHOSTTY_BIN_DIR", "/data/bin"),
                 ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo:"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
-                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,sudo,title"),
+                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,ssh-env,ssh-terminfo,sudo,title"),
             ]))
         );
     }
@@ -417,21 +425,29 @@ mod tests {
     fn the_prompt_cursor_follows_the_apps_cursor_as_ghostty_does() {
         let cursor = |style, blink| proto::Cursor { style: style as i32, blink };
         let unnamed = proto::CursorStyle::Unspecified;
-        assert_eq!(shell_features(None), "cursor:blink,path,sudo,title");
-        assert_eq!(shell_features(Some(&cursor(unnamed, None))), "cursor:blink,path,sudo,title");
+        assert_eq!(shell_features(None), "cursor:blink,ssh-env,ssh-terminfo,sudo,title");
+        assert_eq!(
+            shell_features(Some(&cursor(unnamed, None))),
+            "cursor:blink,ssh-env,ssh-terminfo,sudo,title"
+        );
         assert_eq!(
             shell_features(Some(&cursor(unnamed, Some(false)))),
-            "cursor:steady,path,sudo,title"
+            "cursor:steady,ssh-env,ssh-terminfo,sudo,title"
         );
         let block = cursor(proto::CursorStyle::Block, Some(false));
-        assert_eq!(shell_features(Some(&block)), "path,sudo,title");
-        assert_eq!(shell_features(Some(&cursor(proto::CursorStyle::Bar, None))), "path,sudo,title");
+        assert_eq!(shell_features(Some(&block)), "ssh-env,ssh-terminfo,sudo,title");
+        assert_eq!(
+            shell_features(Some(&cursor(proto::CursorStyle::Bar, None))),
+            "ssh-env,ssh-terminfo,sudo,title"
+        );
     }
 
     #[test]
     fn the_systems_terminfo_is_still_searched_after_the_daemons() {
         let dirs = |existing: Option<&str>| {
-            terminfo_dirs(Path::new(TERMINFO), existing.map(OsStr::new)).into_string().unwrap()
+            terminfo_dirs(Path::new("/data/terminfo"), existing.map(OsStr::new))
+                .into_string()
+                .unwrap()
         };
         assert_eq!(dirs(None), "/data/terminfo:");
         assert_eq!(dirs(Some("")), "/data/terminfo:");

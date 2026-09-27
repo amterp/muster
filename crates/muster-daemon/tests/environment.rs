@@ -45,7 +45,10 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
             std::fs::read_to_string(&out).ok().filter(|text| text.ends_with('\n'))
         })
     };
-    assert_eq!(features(&mut control, "p1", "t1"), "cursor:blink,path,sudo,title\n");
+    assert_eq!(
+        features(&mut control, "p1", "t1"),
+        "cursor:blink,ssh-env,ssh-terminfo,sudo,title\n"
+    );
 
     let steady =
         proto::Cursor { style: proto::CursorStyle::Unspecified.into(), blink: Some(false) };
@@ -55,7 +58,10 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
         session(proto::session_request::Request::SetCursor(set)),
         proto::Outcome::Done,
     );
-    assert_eq!(features(&mut control, "p2", "t2"), "cursor:steady,path,sudo,title\n");
+    assert_eq!(
+        features(&mut control, "p2", "t2"),
+        "cursor:steady,ssh-env,ssh-terminfo,sudo,title\n"
+    );
 
     let bar = proto::Cursor { style: proto::CursorStyle::Bar.into(), blink: None };
     let set = proto::SetCursor { cursor: Some(bar) };
@@ -64,7 +70,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
         session(proto::session_request::Request::SetCursor(set)),
         proto::Outcome::Done,
     );
-    assert_eq!(features(&mut control, "p3", "t3"), "path,sudo,title\n");
+    assert_eq!(features(&mut control, "p3", "t3"), "ssh-env,ssh-terminfo,sudo,title\n");
 }
 
 #[test]
@@ -245,9 +251,10 @@ fn shell_says(shell: &str, line: &str, wanted: &str) -> String {
 
 /// Ghostty's `sudo` feature wraps sudo to keep `$TERMINFO`, which sudo's reset environment
 /// would drop, so a root shell on a machine without xterm-ghostty still finds the terminal. The
-/// daemon sets `$TERMINFO` to its own entry, as Ghostty.app sets it to its own.
+/// daemon sets `$TERMINFO` to its own entry, as Ghostty.app sets it to its own. Its `ssh-*`
+/// features wrap ssh to give the host the entry (`tests/ssh_terminfo.rs`).
 #[test]
-fn sudo_in_a_pane_keeps_the_panes_terminfo() {
+fn sudo_and_ssh_in_a_pane_are_wrapped_to_carry_the_terminal() {
     let data = std::path::Path::new(DAEMON_DATA).canonicalize().unwrap();
     for shell in ["zsh", "bash"] {
         let Some(path) = installed(shell) else {
@@ -255,10 +262,11 @@ fn sudo_in_a_pane_keeps_the_panes_terminfo() {
             continue;
         };
         let line = format!(
-            "type sudo; [ \"$TERMINFO\" -ef '{}' ] && echo terminfo-ours",
+            "type sudo ssh; [ \"$TERMINFO\" -ef '{}' ] && echo terminfo-ours",
             data.join("terminfo").display()
         );
         let text = shell_says(&path, &line, "\nterminfo-ours");
         assert!(text.contains("sudo is a"), "{shell}: sudo is not wrapped: {text}");
+        assert!(text.contains("ssh is a"), "{shell}: ssh is not wrapped: {text}");
     }
 }

@@ -1063,7 +1063,7 @@ impl Session {
             requested,
             pane,
             command,
-            &self.data.terminfo(),
+            &self.data,
             &self.reachable,
             self.settings.cursor.as_ref(),
         );

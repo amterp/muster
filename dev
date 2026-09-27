@@ -62,6 +62,8 @@ DEP_ARTIFACTS = [
     "deps/ghostty/zig-out/x86_64-linux-musl/lib/libghostty-vt.a",
     "deps/ghostty/zig-out/aarch64-linux-musl/lib/libghostty-vt.a",
     "deps/ghostty/zig-out/share/terminfo/78/xterm-ghostty",
+    // The entry's source, which a pane's ssh installs on a host without it.
+    "deps/ghostty/zig-out/share/terminfo/ghostty.terminfo",
 ]
 // The session backend is a runtime dependency of the suite, not just of the app. Tests
 // that speak to a daemon speak to a real one: a hand-written stand-in would be Muster's
@@ -1511,7 +1513,7 @@ fn build_deps():
     // Two builds, because -Demit-lib-vt turns the xcframework off: the surface API that
     // the shell renders through, then the VT that the core encodes keys with and the
     // tests read grids from.
-    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native`
+    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-terminfo=true`
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
     for zig_target in LINUX_DAEMONS.values():
         $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dtarget={zig_target} --prefix zig-out/{zig_target}`
@@ -1544,6 +1546,11 @@ fn assemble_daemon_data():
     for dir in ["67", "g"]:
         quiet $`mkdir -p {staged}/terminfo/{dir}`
         quiet $`cp {compiled}/67/ghostty {staged}/terminfo/{dir}/ghostty`
+    quiet $`cp {compiled}/ghostty.terminfo {staged}/terminfo/ghostty.terminfo`
+    // Muster's own, beside Ghostty's files rather than in them (the README says which is which).
+    quiet $`mkdir -p {staged}/bin`
+    quiet $`cp packaging/muster-daemon-data/bin/ghostty {staged}/bin/ghostty`
+    quiet $`chmod 755 {staged}/bin/ghostty`
     quiet $`mkdir -p {staged}/shell-integration/fish`
     quiet $`cp -R {integration}/bash {integration}/zsh {staged}/shell-integration/`
     quiet $`cp -R {integration}/fish/vendor_conf.d {staged}/shell-integration/fish/`

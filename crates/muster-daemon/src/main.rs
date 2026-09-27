@@ -26,6 +26,7 @@ mod server;
 mod session;
 mod shell_integration;
 mod spawn;
+mod ssh;
 mod stream;
 mod tree;
 mod writer;
@@ -80,6 +81,7 @@ fn main() -> ExitCode {
     match std::env::args().nth(1).as_deref() {
         Some("report") => return report::run(std::env::args().skip(2)),
         Some("replace") => return replace::run(std::env::args().skip(2)),
+        Some("ssh") => return ssh::run(std::env::args().skip(2)),
         _ => {}
     }
     let mut arguments = std::env::args().skip(1);

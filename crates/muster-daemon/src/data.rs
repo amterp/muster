@@ -10,7 +10,7 @@ pub(crate) const NAME: &str = "muster-daemon-data";
 
 /// What a pane needs from it. Checked once at start, because a pane started without them runs
 /// as a terminal no program in it can find.
-const REQUIRED: [&str; 7] = [
+const REQUIRED: [&str; 8] = [
     "terminfo/x/xterm-ghostty",
     "terminfo/78/xterm-ghostty",
     "shell-integration/bash/ghostty.bash",
@@ -18,6 +18,8 @@ const REQUIRED: [&str; 7] = [
     "shell-integration/zsh/.zshenv",
     "shell-integration/zsh/ghostty-integration",
     "shell-integration/fish/vendor_conf.d/ghostty-shell-integration.fish",
+    // What the integration's ssh wrapper runs; without it, `ssh` in a pane fails outright.
+    "bin/ghostty",
 ];
 
 /// How to get a complete directory, for every error that lacks one.
@@ -76,6 +78,12 @@ impl Data {
 
     pub(crate) fn terminfo(&self) -> PathBuf {
         self.dir.join("terminfo")
+    }
+
+    /// Where the integration finds `ghostty`, as `GHOSTTY_BIN_DIR` tells it: Muster's stand-in
+    /// for its ssh features.
+    pub(crate) fn bin(&self) -> PathBuf {
+        self.dir.join("bin")
     }
 
     /// Laid out as Ghostty lays out `<resources>/shell-integration`, which its scripts rely on

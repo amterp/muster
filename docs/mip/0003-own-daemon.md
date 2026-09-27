@@ -298,8 +298,15 @@ in, plus:
   executable's own path;
 - Ghostty's shell integration for bash, zsh and fish, injected the way Ghostty injects it, so
   prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work. Its
-  `path` and `title` features are on, as in Ghostty, and so is `sudo`, which Ghostty leaves off
-  by default and which is what makes `TERMINFO` survive sudo. Its `cursor` feature, which sets a bar at
+  `title` feature is on, as in Ghostty, and so are three Ghostty leaves off by default: `sudo`,
+  which makes `TERMINFO` survive sudo, and `ssh-terminfo` and `ssh-env`, whose `ssh` wrapper
+  installs the entry on the host it reaches and forwards the terminal's name. That wrapper runs
+  `$GHOSTTY_BIN_DIR/ghostty +ssh`, and a pane has no Ghostty, so `GHOSTTY_BIN_DIR` names a
+  directory of the daemon's data holding Muster's own `ghostty`, which handles `+ssh` with
+  `muster-daemon ssh`, a port of Ghostty's: install the entry in the host's `~/.terminfo` over a
+  connection of its own unless the host is remembered as having it, then connect as
+  xterm-ghostty, or as xterm-256color where the install failed. `path`, which would put that
+  directory on the `PATH`, is off, since it holds no Ghostty. Its `cursor` feature, which sets a bar at
   every prompt, follows the app's `[cursor]`: blinking or steady as `blink` says while no style
   is named, as Ghostty decides from `cursor-style-blink`, and off when a style is named, because
   Muster turns the integration on without being asked and a named shape is what the person

@@ -1,0 +1,25 @@
+#!/bin/sh
+# Muster's stand-in for the one thing Ghostty's shell integration asks of the `ghostty` binary:
+# `ghostty +ssh`, which its ssh-terminfo and ssh-env features call from their `ssh` wrapper.
+# Muster's own file, beside Ghostty's scripts and not one of them (README.md). It is not Ghostty:
+# `+ssh` is muster-daemon's port of it, and anything else goes to a real ghostty if one is on
+# the PATH.
+if [ "$1" = "+ssh" ]; then
+    shift
+    if [ -n "$MUSTER_DAEMON" ]; then
+        exec "$MUSTER_DAEMON" ssh --terminfo-source "$(dirname "$0")/../terminfo/ghostty.terminfo" "$@"
+    fi
+    # No daemon to ask, so no entry to install: what Ghostty falls back to when it cannot.
+    while [ $# -gt 0 ] && [ "$1" != "--" ]; do shift; done
+    [ "$1" = "--" ] && shift
+    TERM=xterm-256color exec ssh "$@"
+fi
+self=$(cd "$(dirname "$0")" && pwd -P)/ghostty
+IFS=:
+for dir in $PATH; do
+    if [ -x "$dir/ghostty" ] && [ "$(cd "$dir" 2>/dev/null && pwd -P)/ghostty" != "$self" ]; then
+        exec "$dir/ghostty" "$@"
+    fi
+done
+echo "ghostty: this is Muster's stand-in for Ghostty's ssh helper, and no Ghostty is installed" >&2
+exit 64
