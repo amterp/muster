@@ -292,7 +292,8 @@ mod tests {
         let installed = Installed { binary, socket: root.join("daemon").join("d.sock") };
         let started = Instant::now();
         let error = ensure_running(&Here, &installed, &installed.socket).unwrap_err();
-        assert!(started.elapsed() < Duration::from_secs(2), "took {:?}", started.elapsed());
+        // Far inside the start's own 30 seconds, with room for a loaded machine's slow shells.
+        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
         assert!(error.contains("no data directory beside me"), "{error}");
         assert!(error.contains("exited before it answered"), "{error}");
         let _ = std::fs::remove_dir_all(&root);
