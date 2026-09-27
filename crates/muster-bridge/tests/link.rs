@@ -83,10 +83,10 @@ fn drawn(child: &mut Child) -> Receiver<Vec<u8>> {
 fn until_drawn(drawn: &Receiver<Vec<u8>>, wanted: &str) {
     let mut seen = Vec::new();
     while !String::from_utf8_lossy(&seen).contains(wanted) {
-        match drawn.recv_timeout(PATIENCE) {
-            Ok(bytes) => seen.extend(bytes),
-            Err(_) => panic!("{wanted:?} never drew; saw {:?}", String::from_utf8_lossy(&seen)),
-        }
+        let Ok(bytes) = drawn.recv_timeout(PATIENCE) else {
+            panic!("{wanted:?} never drew; saw {:?}", String::from_utf8_lossy(&seen));
+        };
+        seen.extend(bytes);
     }
 }
 
@@ -115,6 +115,7 @@ fn a_bridge_says_it_attached_painted_and_was_taken_over() {
     assert_eq!(ending, Ending::TakenOver);
     assert!(one.wait().unwrap().success());
     let _ = two.kill();
+    let _ = two.wait();
 }
 
 /// An attach the daemon refuses says why, so the window can tell a pane somebody else is
@@ -139,6 +140,7 @@ fn a_refused_attach_says_whether_the_pane_is_held_or_gone() {
     assert_eq!(exiting(nowhere.next()), Ending::Gone);
     let _ = gone.wait();
     let _ = holding.kill();
+    let _ = holding.wait();
 }
 
 /// A keystroke goes to the daemon on the window's input connection, and what the program

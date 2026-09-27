@@ -12,6 +12,8 @@
 
 use crate::support::{Typing, restarts, until};
 
+/// A bridge shot where it stands is noticed from its link to the window closing, and the view
+/// the shell reads asks for exactly one replacement.
 #[test]
 fn a_bridge_that_dies_is_noticed_and_replaced() {
     let mut typing = Typing::start("");
@@ -28,9 +30,10 @@ fn a_bridge_that_dies_is_noticed_and_replaced() {
                 "  Impact: nothing noticed this pane's bridge die, so no replacement was asked \
                  for and the pane stays dark until the app is relaunched - which is the whole \
                  of kan a_2IRcMjFs0.\n  The last thing the core published about {pane}: \
-                 {:?}\n  Look for `channel.bridge.gone` and `bridge.ended` in the run log; \
+                 {:?}\n  Look for `link.bridge.gone` and `bridge.ended` in the run log at {}; \
                  neither appearing means the exit never reached the core at all.",
-                restarts(&pane)
+                restarts(&pane),
+                typing.log.display()
             )
         },
     );

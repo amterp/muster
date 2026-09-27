@@ -23,7 +23,6 @@ muster-harness.workspace = true
 muster-seam.workspace = true
 muster-vt.workspace = true
 prost.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true

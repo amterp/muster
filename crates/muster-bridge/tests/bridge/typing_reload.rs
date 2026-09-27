@@ -1,16 +1,17 @@
 //! Whether reading the config file again reaches a pane that was already open.
 //!
 //! This is the whole of what made a reload worth not half-doing. Bindings are easy - the menu
-//! is rebuilt from the answer - but a pane's key encoder is built once, when the pane is
-//! attached, from the settings in force at that moment. A reload that only replaced the
+//! is rebuilt from the answer - but each attached pane carries its own typing settings, taken
+//! from the ones in force when it was attached. A reload that only replaced the window's
 //! settings would take effect on panes opened afterwards and leave the rest alone, so what
 //! `option_as_alt` meant would depend on when each pane happened to be opened: a window that
 //! disagrees with itself, invisibly, with no way to tell which pane is right.
 //!
 //! So the pane here is opened *before* the file changes, and typed into *after*. Both halves of
 //! the typing settings are exercised, because they take two different routes into a pane - the
-//! keymap answers `[text]` before any encoder is consulted, and `option_as_alt` is the encoder's
-//! own flag plus the step that decides whether a keystroke arrives in a shape that reaches it.
+//! keymap answers `[text]` with bytes before any encoder is consulted, and `option_as_alt`
+//! travels with each keystroke to the daemon's encoder, after the core has decided whether
+//! option arrives as a modifier at all.
 //!
 //! `cat -v` renders what arrived, so the difference is visible rather than inferred: `^[t` is an
 //! escape prefix and a meta chord, where the dagger the layout composed instead arrives as the
@@ -19,11 +20,13 @@
 use crate::support::{Press, Typing, answer, assert_ok};
 use muster::proto::{ReloadConfig, request};
 
+/// A reloaded config changes what keystrokes deliver to a pane opened before the reload, for
+/// both `option_as_alt` and `[text]`.
 #[test]
 fn reading_the_config_again_reaches_a_pane_that_was_already_open() {
     // Started on the defaults: option composes, and no chord stands for bytes.
     let typing = Typing::start("");
-    typing.run("cat -v", "cat");
+    typing.run("cat -v");
 
     // The pane exists and is typeable before anything changes, which is the point.
     Press::new("KeyT", "†").modifiers(&["alt"], &["alt"]).without_option("t").send();
@@ -45,8 +48,8 @@ fn reading_the_config_again_reaches_a_pane_that_was_already_open() {
     typing.expect_on_screen(
         "^[t",
         "opt+t still arrived as the composed dagger after the config was read again, so the \
-         reload replaced the settings and never rebuilt the encoder this pane was attached \
-         with - which is the half-done reload this test exists to prevent",
+         reload replaced the window's settings and never reached the ones this pane was \
+         attached with - which is the half-done reload this test exists to prevent",
     );
 
     // And the other route in, which the keymap answers before any encoder sees it. ctrl+g
