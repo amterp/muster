@@ -278,3 +278,21 @@ fn a_kitty_image_is_forgotten_once_a_replay_is_sent() {
     let placed = String::from_utf8_lossy(&bytes_in(&after)).into_owned();
     assert!(placed.contains("i=7;ENOENT"), "placed after the replay: {placed:?}");
 }
+
+/// XTVERSION is answered as Ghostty answers it, with the version a pane's TERM_PROGRAM_VERSION
+/// gives, so a program asking either way hears the same.
+#[test]
+fn xtversion_is_answered_as_ghostty_with_term_program_version() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let (version, answer) = (daemon.root().join("version"), daemon.root().join("answer"));
+    let script = format!(
+        "printf %s \"$TERM_PROGRAM_VERSION\" > {}; {}",
+        version.display(),
+        answer_to("\\033[>q", &answer)
+    );
+    make(&mut control, running("p1", "t1", script));
+    let version = String::from_utf8(bytes_in(&version)).unwrap();
+    let answered = String::from_utf8_lossy(&bytes_in(&answer)).into_owned();
+    assert_eq!(answered, format!("\x1bP>|ghostty {version}\x1b\\"));
+}

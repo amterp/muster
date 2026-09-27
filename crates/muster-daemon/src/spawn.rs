@@ -168,7 +168,8 @@ impl Language {
 pub(crate) const TERM: &str = "xterm-ghostty";
 
 /// The Ghostty a pane runs in, as far as a program is concerned: the pinned one (`build.rs`).
-const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
+/// XTVERSION answers with it too (`screen.rs`), so the two agree.
+pub(crate) const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
 
 /// The features Ghostty's shell integration is told to use, which its scripts read, and which
 /// Ghostty sets whether or not a script was loaded. `sudo` and the `ssh-*` features stay off, as

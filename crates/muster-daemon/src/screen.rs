@@ -89,7 +89,12 @@ impl Appearance {
     }
 
     fn answers(&self) -> Answers {
-        let mut answers = Answers { color_scheme: self.scheme, ..Answers::default() };
+        let mut answers = Answers {
+            color_scheme: self.scheme,
+            // As Ghostty answers XTVERSION, and from the version TERM_PROGRAM_VERSION gives.
+            version: format!("ghostty {}", spawn::GHOSTTY_VERSION),
+            ..Answers::default()
+        };
         // Clipboard access (52) is claimed only while writes are allowed, as Ghostty claims it.
         if !self.clipboard_write {
             answers.primary_attributes.1.retain(|&feature| feature != 52);
