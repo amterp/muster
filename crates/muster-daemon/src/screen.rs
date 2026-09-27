@@ -276,8 +276,13 @@ impl Screen {
         }
     }
 
+    /// Whether the attached bridge's window is full: output waits for its credit.
+    pub(crate) fn bridge_is_full(&self) -> bool {
+        self.bridge.as_ref().is_some_and(Bridge::is_full)
+    }
+
     /// Takes a bridge's acknowledgement, and catches it up with the screen once a bridge that
-    /// fell behind has room in its window again.
+    /// fell behind has half its window free again.
     pub(crate) fn acknowledge(&mut self, id: u64, bytes: u64) {
         let Some(bridge) = self.bridge.as_mut().filter(|bridge| bridge.id() == id) else { return };
         if bridge.acknowledge(bytes) {

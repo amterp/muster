@@ -248,7 +248,8 @@ exactly the bytes the program wrote.
 
 **Nothing on this path waits for another pane or for a request.** No render loop, no shared thread,
 no throttle. The reader hands each chunk to a queue drained by the stream's own writer thread, which
-credit bounds, so a bridge that stops reading costs its own queue and never the reader. Requests
+credit bounds, so a bridge that stops reading costs its own queue and holds the reader for one
+grace period at most (below). Requests
 and agent detection take the pane's lock briefly, and `pane read` a batch of rows at a time.
 Attaching holds it while it formats the replay (section 5), which stalls only that pane's output.
 Nothing holding the session lock ever waits on a pane's lock: what a request does to panes'
@@ -256,20 +257,32 @@ terminals - hanging one up, applying new settings - runs once the session lock i
 the request is answered, so a long replay never stalls another connection.
 
 **Flow control is by credit.** A bridge acknowledges the bytes it has written to the surface. The
-daemon keeps at most a fixed window of unacknowledged bytes per pane (256 KB to start, tuned by
-measurement), and when the window is full it stops sending and marks the pane as behind. Credit
-detects a slow reader on the far side of ssh, where the daemon's own queue depth does not, because
-sshd and TCP buffer megabytes before the daemon's writes block. Credit counts output only, not a
-replay's bytes: a replay is bounded by the pane's scrollback and comes once per attach, and counting
-it would put every large attach straight behind. A bridge is told once that it is behind, and gets
-no output until its acknowledgements bring the unacknowledged bytes below the window again; then it
-is caught up with the screen only, not its history (section 5), and output resumes. Below the
-window, not at zero: a bridge may acknowledge in batches, and one that is behind is sent nothing
-more to finish its last batch with, so waiting for every byte would leave its pane blank for good.
-The window is the condition output already flows under, so any bridge that acknowledges at all
-before a window's worth waits on it is never wedged, and the daemon depends on nothing more. Bytes that scrolled off during a flood are
-in the daemon, where `muster pane read` reaches them, and not in the surface's scrollback. The PTY
-reader never blocks on a bridge.
+daemon lets a fixed window of unacknowledged output per pane (256 KiB) reach the bridge, and when
+the window is full the pane's reader waits for credit, for at most a grace period (100 ms), holding
+no lock. Credit that arrives in time lets it go on: the program is slowed to the bridge's pace and
+nothing is lost, which is what Ghostty's own reader does when it waits for its parser. Without the
+wait, any burst larger than the window reached a surface only in part, however fast the bridge
+was, because four of the reader's reads fill the window before the first credit can come back: in
+the vertical slice a bridge crediting every message at once received 80% of a 3 MB burst, fell
+behind 5,621 times, and was caught up as often. With it, the same bridge receives every byte and
+never falls behind. Credit, counted this way, also detects a slow reader on the far side of ssh,
+where the daemon's own queue depth does not, because sshd and TCP buffer megabytes before the
+daemon's writes block. It counts output only, not a replay's bytes: a replay is bounded by the
+pane's scrollback and comes once per attach, and counting it would put every large attach
+straight behind.
+
+A bridge still short of room when the grace ends is behind: it is told once, gets no output, and
+the reader does not wait on it again until it is caught up, so a stalled or far-away bridge holds
+its program up by one grace per episode and no more. It is caught up once its acknowledgements
+free half the window: with the screen only, not its history (section 5), and then output resumes.
+Half, so a slow bridge is not flipped between behind and caught up at the window's edge, each flip
+a catch-up composed under the pane's lock. Not zero: a bridge may acknowledge in batches, and one
+that is behind is sent nothing more to finish its last batch with, so waiting for every byte
+would leave its pane blank for good. Any bridge that acknowledges at all reaches half, so none is
+wedged. Bytes that scrolled off while a bridge was behind are in the daemon, where `muster pane
+read` reaches them, and not in the surface's scrollback. The wait ends as soon as anything about
+the bridge changes - credit, a detach, a takeover, the pane closing - and a pane with no bridge
+never waits.
 
 **One bridge per pane.** A bridge holds a pane at a time, and its grid is the pane's size. A second
 attach must ask for takeover or is refused; the displaced bridge is told why. A pane keeps its last

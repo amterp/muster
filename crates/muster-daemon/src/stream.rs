@@ -1,11 +1,12 @@
 //! A stream connection: one pane's bytes, for the one bridge drawing it.
 //!
 //! A bridge attaches and gets a replay composed from the pane's terminal, then every chunk the
-//! program writes, sent by the pane's reader before the terminal parses it. Nothing the bridge
-//! does can make the reader wait: frames go to a queue drained by a writer thread of the
-//! stream's own, and credit bounds that queue. A bridge that stops acknowledging what it has
-//! written to its surface falls behind, stops receiving output, and is caught up with the
-//! screen once its acknowledgements make room in its window again (MIP-3 section 4).
+//! program writes, sent by the pane's reader before the terminal parses it. Frames go to a queue
+//! drained by a writer thread of the stream's own, and credit bounds that queue: when a window of
+//! output is unacknowledged, the reader waits for credit for a grace period, so a burst reaches a
+//! bridge that keeps up whole. A bridge still short of room after the grace falls behind, stops
+//! receiving output, and is caught up with the screen once its acknowledgements free half its
+//! window (MIP-3 section 4).
 
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
@@ -23,8 +24,14 @@ use prost::Message;
 use crate::pane::PaneIo;
 use crate::session::{self, Shared};
 
-/// Output a bridge may have unacknowledged before the pane counts as behind.
+/// Output a bridge may have unacknowledged before the pane's program waits for it.
 pub(crate) const WINDOW: u64 = 256 * 1024;
+
+/// How long a pane's reader waits for its bridge to make room in a full window before the bridge
+/// counts as behind. Long enough that a bridge keeping up locally never falls behind a burst,
+/// which reaches the surface whole as it does in Ghostty; short enough that a stalled or
+/// far-away bridge holds its program up only this long per episode.
+pub(crate) const GRACE: Duration = Duration::from_millis(100);
 
 /// The most replay one message carries. A replay spans the pane's whole history, which can be
 /// larger than a frame may be, and the bridge writes the pieces to its surface in order.
@@ -54,8 +61,15 @@ impl Credit {
         Credit { window, unacknowledged: 0, behind: false }
     }
 
+    /// Whether the window is full and the bridge is not yet behind: the pane's reader waits for
+    /// credit before offering more (`PaneIo::wait_for_room`).
+    pub(crate) fn is_full(&self) -> bool {
+        !self.behind && self.unacknowledged >= self.window
+    }
+
     /// Whether a chunk of `length` bytes goes to the bridge. While there is room it does, even
-    /// past the window's edge, so the window is overshot by at most one read.
+    /// past the window's edge, so the window is overshot by at most one read. A full window here
+    /// means the reader already waited out its grace.
     pub(crate) fn offer(&mut self, length: usize) -> Offer {
         if self.behind {
             return Offer::Skip;
@@ -69,15 +83,16 @@ impl Credit {
     }
 
     /// Takes the bridge's word that it has written `bytes` more to its surface. True when a
-    /// bridge that fell behind has room in its window again, which is when it is caught up.
+    /// bridge that fell behind has half its window free again, which is when it is caught up.
     ///
-    /// Room, not an empty window: a bridge may acknowledge in batches, and one that fell behind
-    /// is sent nothing more to complete its last batch with, so waiting for every byte would
-    /// leave it blank for good. Room is the condition output already flows under, so a bridge
-    /// that works at all is never wedged.
+    /// Half, so that a slow bridge is not flipped between behind and caught up at the window's
+    /// edge, each flip a catch-up composed under the pane's lock. Not an empty window: a bridge
+    /// may acknowledge in batches, and one that fell behind is sent nothing more to complete its
+    /// last batch with, so waiting for every byte would leave it blank for good. Any bridge that
+    /// acknowledges at all reaches half, so none is wedged.
     pub(crate) fn acknowledge(&mut self, bytes: u64) -> bool {
         self.unacknowledged = self.unacknowledged.saturating_sub(bytes);
-        if self.behind && self.unacknowledged < self.window {
+        if self.behind && self.unacknowledged <= self.window / 2 {
             self.behind = false;
             return true;
         }
@@ -118,6 +133,10 @@ impl Bridge {
             }
             Offer::Skip => {}
         }
+    }
+
+    pub(crate) fn is_full(&self) -> bool {
+        self.credit.is_full()
     }
 
     /// True when the acknowledgement caught the bridge up, and it is owed a catch-up.
@@ -315,7 +334,9 @@ mod tests {
         assert_eq!(credit.offer(1), Offer::FallBehind);
         assert!(!credit.acknowledge(20), "a hundred bytes still unacknowledged: a full window");
         assert_eq!(credit.offer(1), Offer::Skip);
-        assert!(credit.acknowledge(1));
+        assert!(!credit.acknowledge(1), "room at the edge is not enough to catch up with");
+        assert!(!credit.acknowledge(48), "fifty-one bytes: still more than half the window");
+        assert!(credit.acknowledge(1), "half the window free");
         assert_eq!(credit.offer(1), Offer::Send, "caught up, output flows again");
     }
 
@@ -337,6 +358,20 @@ mod tests {
         assert!(caught_up, "a bridge that acknowledged {} of {sent} bytes is still behind", {
             sent / BATCH * BATCH
         });
+    }
+
+    #[test]
+    fn a_full_window_is_waited_on_until_the_bridge_is_behind() {
+        let mut credit = Credit::new(100);
+        credit.offer(99);
+        assert!(!credit.is_full());
+        credit.offer(1);
+        assert!(credit.is_full(), "the reader waits for credit");
+        credit.acknowledge(1);
+        assert!(!credit.is_full());
+        credit.offer(1);
+        assert_eq!(credit.offer(1), Offer::FallBehind, "the grace ran out");
+        assert!(!credit.is_full(), "a bridge behind is not waited on again");
     }
 
     #[test]

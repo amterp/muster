@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::{log, poison};
@@ -31,7 +31,7 @@ use crate::process;
 use crate::pty;
 use crate::pty::Grid;
 use crate::screen::{Screen, Settled};
-use crate::stream::{Bridge, Refusal};
+use crate::stream::{self, Bridge, Refusal};
 use crate::writer::{self, Encoding, Input, Writer};
 
 /// Told when a pane's process has ended, with the pane's serial and, when this daemon saw the
@@ -61,6 +61,45 @@ pub(crate) struct PaneIo {
     /// Set when the manifests this pane's agent is detected by have changed, for its reader to
     /// start detection over on its next tick.
     reset_detection: AtomicBool,
+    /// Wakes the reader waiting for its bridge's credit.
+    flow: Flow,
+}
+
+/// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
+/// waiting for credit sleeps on. Its own lock, apart from the pane's, so the reader waits holding
+/// neither.
+#[derive(Debug, Default)]
+struct Flow {
+    changes: Mutex<u64>,
+    changed: Condvar,
+}
+
+impl Flow {
+    fn seen(&self) -> u64 {
+        *poison::lock(&self.changes, "daemon.pane.flow")
+    }
+
+    fn change(&self) {
+        *poison::lock(&self.changes, "daemon.pane.flow") += 1;
+        self.changed.notify_all();
+    }
+
+    /// Sleeps until something changes after `seen`, or `deadline`. False at the deadline.
+    fn wait(&self, seen: u64, deadline: Instant) -> bool {
+        let mut changes = poison::lock(&self.changes, "daemon.pane.flow");
+        while *changes == seen {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return false;
+            }
+            changes = self
+                .changed
+                .wait_timeout(changes, left)
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .0;
+        }
+        true
+    }
 }
 
 impl PaneIo {
@@ -121,6 +160,24 @@ impl PaneIo {
         }
     }
 
+    /// Waits for the pane's bridge to have room for more output, for at most `grace`, holding no
+    /// lock while it waits. Returns at once with no bridge attached, or one already behind; past
+    /// the grace the output goes on, and the bridge falls behind.
+    ///
+    /// This is what lets a burst reach a surface that keeps up whole, as Ghostty's own reader
+    /// waits for its parser: the program is slowed to the bridge's pace instead of the bridge
+    /// missing output. A bridge that has stopped reading holds the program only for the grace.
+    fn wait_for_room(&self, grace: Duration) {
+        let deadline = Instant::now() + grace;
+        loop {
+            // Read before looking, so a change between the look and the sleep ends the sleep.
+            let seen = self.flow.seen();
+            if !self.screen().bridge_is_full() || !self.flow.wait(seen, deadline) {
+                return;
+            }
+        }
+    }
+
     /// Output for the pane, from its program or on its behalf: to its bridge and its terminal,
     /// then the modes it left read out for the writer.
     fn output(&self, bytes: &[u8]) -> Vec<Happened> {
@@ -152,15 +209,26 @@ impl PaneIo {
         if let Some(grid) = grid.filter(|&grid| grid != self.grid()) {
             self.resize_locked(&mut screen, grid);
         }
-        screen.attach(bridge, takeover)
+        let attached = screen.attach(bridge, takeover);
+        drop(screen);
+        self.flow.change();
+        attached
     }
 
     pub(crate) fn detach(&self, bridge: u64) {
         self.screen().detach(bridge);
+        self.flow.change();
     }
 
     pub(crate) fn acknowledge(&self, bridge: u64, bytes: u64) {
         self.screen().acknowledge(bridge, bytes);
+        self.flow.change();
+    }
+
+    /// Tells the pane's bridge why the pane is going, and lets go of it.
+    fn close(&self, reason: proto::DetachReason) {
+        self.screen().close(reason);
+        self.flow.change();
     }
 
     /// The pane's program and its terminal, both at a new size. A pane keeps its last size
@@ -281,6 +349,7 @@ impl Pane {
             input,
             closed: AtomicBool::new(false),
             reset_detection: AtomicBool::new(false),
+            flow: Flow::default(),
         });
         let pane = record.pane.clone();
 
@@ -340,7 +409,7 @@ impl Pane {
     /// the connections that looked it up let go of it. Its bridge's connection lets go at once
     /// (`Bridge::detach`); an input connection holds it only weakly.
     pub(crate) fn hang_up(self, reason: proto::DetachReason) {
-        self.io.screen().close(reason);
+        self.io.close(reason);
         let foreground = self.io.foreground_group().filter(|group| Some(*group) != self.process);
         for group in self.process.into_iter().chain(foreground) {
             pty::hang_up(group);
@@ -430,6 +499,7 @@ impl Reader {
             let read = unsafe { libc::read(master, buffer.as_mut_ptr().cast(), buffer.len()) };
             if read > 0 {
                 let chunk = &buffer[..read.cast_unsigned()];
+                self.io.wait_for_room(stream::GRACE);
                 self.detection.observe(chunk);
                 let happened = self.io.output(chunk);
                 self.io.dispatch(happened, &mut self.heard, &self.reports);
@@ -558,6 +628,7 @@ impl PaneIo {
             input,
             closed: AtomicBool::new(false),
             reset_detection: AtomicBool::new(false),
+            flow: Flow::default(),
         })
     }
 }
@@ -573,5 +644,73 @@ mod tests {
         let (bridge, _frames) = Bridge::for_test();
         let refused = io.attach(bridge, None, false).expect_err("a closed pane takes no bridge");
         assert!(refused.reason.contains("closed"), "{}", refused.reason);
+    }
+
+    /// A pane whose bridge's window is full, and the bridge's id.
+    fn full() -> (Arc<PaneIo>, u64, std::sync::mpsc::Receiver<Vec<u8>>) {
+        let io = PaneIo::idle(1);
+        let (bridge, frames) = Bridge::for_test();
+        let id = bridge.id();
+        io.attach(bridge, None, false).expect("attached");
+        io.output(&vec![b'x'; usize::try_from(stream::WINDOW).unwrap()]);
+        assert!(io.screen().bridge_is_full());
+        (io, id, frames)
+    }
+
+    /// How long a reader waits on a full window, with a grace far longer than the test, when
+    /// `change` happens a moment after it starts waiting.
+    fn waited(io: &Arc<PaneIo>, change: impl FnOnce()) -> Duration {
+        let waiting = Arc::clone(io);
+        let reader = std::thread::spawn(move || {
+            let started = Instant::now();
+            waiting.wait_for_room(Duration::from_secs(30));
+            started.elapsed()
+        });
+        std::thread::sleep(Duration::from_millis(20));
+        change();
+        reader.join().expect("the reader")
+    }
+
+    const PROMPT: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn a_reader_with_no_bridge_or_room_does_not_wait() {
+        let io = PaneIo::idle(1);
+        let started = Instant::now();
+        io.wait_for_room(Duration::from_secs(30));
+        assert!(started.elapsed() < PROMPT, "no bridge, nobody to wait for");
+    }
+
+    #[test]
+    fn a_reader_waits_out_the_grace_when_nothing_changes() {
+        let (io, _, _frames) = full();
+        let started = Instant::now();
+        io.wait_for_room(Duration::from_millis(50));
+        assert!(started.elapsed() >= Duration::from_millis(50));
+    }
+
+    #[test]
+    fn credit_ends_the_wait() {
+        let (io, id, _frames) = full();
+        assert!(waited(&io, || io.acknowledge(id, 1)) < PROMPT);
+    }
+
+    #[test]
+    fn a_bridge_going_ends_the_wait() {
+        let (io, id, _frames) = full();
+        assert!(waited(&io, || io.detach(id)) < PROMPT);
+    }
+
+    #[test]
+    fn a_takeover_ends_the_wait() {
+        let (io, _, _frames) = full();
+        let (another, _more) = Bridge::for_test();
+        assert!(waited(&io, || io.attach(another, None, true).expect("taken over")) < PROMPT);
+    }
+
+    #[test]
+    fn the_pane_closing_ends_the_wait() {
+        let (io, _, _frames) = full();
+        assert!(waited(&io, || io.close(proto::DetachReason::Closed)) < PROMPT);
     }
 }

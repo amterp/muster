@@ -204,3 +204,99 @@ fn a_closed_pane_lets_go_of_its_terminal_even_when_its_bridge_has_stopped_readin
         || "the daemon still holds the pane's master".to_string(),
     );
 }
+
+/// Output messages and behind notices from a stream, as a bridge that credits in batches of
+/// `batch` bytes, pausing `pause` before each, would see them. Stops at `until` in the output.
+fn read_crediting(
+    stream: &mut Stream,
+    batch: u64,
+    pause: std::time::Duration,
+    until: &str,
+) -> (Vec<u8>, u32) {
+    let (mut output, mut behind, mut owed) = (Vec::new(), 0, 0);
+    let deadline = std::time::Instant::now() + muster_harness::PATIENCE;
+    while !String::from_utf8_lossy(&output[output.len().saturating_sub(4096)..]).contains(until) {
+        assert!(std::time::Instant::now() < deadline, "{until:?} never arrived");
+        match stream.next_within(std::time::Duration::from_millis(100)) {
+            Some(Some(proto::stream_message::Message::Output(bytes))) => {
+                owed += bytes.len() as u64;
+                output.extend_from_slice(&bytes);
+            }
+            Some(Some(proto::stream_message::Message::Behind(_))) => behind += 1,
+            Some(Some(proto::stream_message::Message::Replay(bytes))) => {
+                output.extend_from_slice(&bytes);
+            }
+            Some(None) => panic!("the daemon hung up"),
+            _ => {}
+        }
+        while owed >= batch {
+            std::thread::sleep(pause);
+            stream.credit(batch);
+            owed -= batch;
+        }
+    }
+    (output, behind)
+}
+
+/// A bridge that stops acknowledging holds its program for a grace period and no longer: then it
+/// is behind, and the program goes on.
+#[test]
+fn a_bridge_that_stops_acknowledging_is_behind_after_a_grace_and_the_program_goes_on() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let flag = daemon.root().join("go");
+    make(
+        &mut control,
+        running("p1", "t1", &after(&flag, "yes | head -c 3000000; echo; echo flooded")),
+    );
+    let mut stream = attached(&daemon, "p1", false);
+    raise(&flag);
+    // Timed on the raw frames: parsing them as it went would take long enough to hide the wait.
+    // What is timed is the silence between the last output sent and the notice: the program
+    // waiting for credit that never comes.
+    let (mut last, mut owed) = (None, 0);
+    let held = loop {
+        match stream.next_within(muster_harness::PATIENCE) {
+            Some(Some(proto::stream_message::Message::Output(bytes))) => {
+                last = Some(std::time::Instant::now());
+                owed += bytes.len() as u64;
+            }
+            Some(Some(proto::stream_message::Message::Behind(_))) => {
+                break last.expect("output before falling behind").elapsed();
+            }
+            Some(Some(_)) => {}
+            Some(None) | None => panic!("never behind"),
+        }
+    };
+    assert!(
+        held >= std::time::Duration::from_millis(80),
+        "behind {held:?} after the last output: the program should have waited out a grace \
+         for credit first"
+    );
+    stream.credit(owed);
+    until_text(&mut control, "p1", "flooded");
+    let mut surface = Surface::new(80, 24);
+    surface.follow(&mut stream, "the catch-up", true, |surface| surface.replays > 0);
+    assert_eq!(surface.behind, 0, "told once");
+}
+
+/// A slow bridge that credits in small batches keeps its program waiting on it rather than
+/// falling behind, and a bridge that does fall behind is caught up only once half its window
+/// is free, so it is not flipped between the two.
+#[test]
+fn a_slow_bridge_crediting_in_batches_is_not_thrashed() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let flag = daemon.root().join("go");
+    make(
+        &mut control,
+        running("p1", "t1", &after(&flag, "yes | head -c 3000000; echo; echo flooded")),
+    );
+    let mut stream = attached(&daemon, "p1", false);
+    raise(&flag);
+    let (_, behind) =
+        read_crediting(&mut stream, 16 * 1024, std::time::Duration::from_millis(2), "flooded");
+    // The burst is some eighteen windows; a bridge flipped at every window's edge would be told
+    // that many times or more.
+    assert!(behind <= 2, "behind {behind} times");
+}

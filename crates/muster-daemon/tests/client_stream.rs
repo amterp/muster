@@ -106,22 +106,34 @@ fn a_replay_then_the_panes_output_reach_the_surface_until_the_pane_closes() {
     assert_eq!(pumping.ended.join().unwrap(), Ended::Detached(proto::DetachReason::Closed));
 }
 
+/// A burst far larger than the window reaches a surface that keeps up whole, because the pane's
+/// program waits for the surface's credit rather than the surface missing output.
 #[test]
-fn a_surface_that_keeps_up_is_never_behind() {
+fn a_burst_reaches_a_surface_that_keeps_up_whole() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    // Two megabytes, in bursts smaller than the window: without credit the surface would be
-    // behind after the first quarter of a megabyte.
-    let paced = "for i in $(seq 20); do yes | head -c 100000; sleep 0.05; done; echo; echo flooded";
-    make(&mut control, running("p1", "t1", paced));
+    let flag = daemon.root().join("go");
+    let burst = format!(
+        "while [ ! -e {} ]; do sleep 0.02; done; yes | head -c 3000000; echo; echo flooded",
+        flag.display()
+    );
+    make(&mut control, running("p1", "t1", &burst));
 
     let surface = Surface::default();
     let pumping = pump(open(&daemon, "p1", false), &surface);
-    until("the flood to end on the surface", || surface.shows("flooded"), || surface.screen());
+    until("the replay", || !surface.written.lock().unwrap().is_empty(), || surface.screen());
+    let replayed = surface.written.lock().unwrap().len();
+    std::fs::write(&flag, "").unwrap();
+    until("the burst to end on the surface", || surface.shows("flooded"), || surface.screen());
     expect(&mut control, close_request("p1"), proto::Outcome::Done);
     pumping.ended.join().unwrap();
+
     let happened: Vec<Happened> = pumping.happened.try_iter().collect();
-    assert_eq!(happened, [], "a surface that writes at once acknowledges in time");
+    assert_eq!(happened, [], "a surface that writes at once is never behind");
+    let written = surface.written.lock().unwrap();
+    // "y\n" reaches the terminal as "y\r\n".
+    let ys = String::from_utf8_lossy(&written[replayed..]).matches('y').count();
+    assert_eq!(ys, 1_500_000, "every line of the burst reached the surface");
 }
 
 #[test]
