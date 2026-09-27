@@ -653,6 +653,7 @@ dependencies = [
  "muster-core",
  "muster-daemon-proto",
  "muster-harness",
+ "muster-ssh",
  "muster-vt",
 ]
 

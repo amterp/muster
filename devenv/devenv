@@ -8,6 +8,8 @@
 #   ./devenv/devenv ssh             shell in as dev
 #   ./devenv/devenv status          is it up, and is there a daemon in it
 #   ./devenv/devenv install-daemon  put a herdr binary in it, for the corpus probe
+#   ./devenv/devenv place-muster-daemon BINARY DATA VERSION
+#                                   put a muster-daemon where Muster looks for it on a remote
 #   ./devenv/devenv rebuild         rebuild the image from scratch, then up
 #
 # Nothing here installs a daemon on its own. The image ships without one, because that
@@ -146,6 +148,25 @@ case "${1:-up}" in
         docker exec "$CONTAINER" chmod 0755 /usr/local/bin/herdr
         echo "devenv: installed $(basename "$binary") at /usr/local/bin/herdr"
         ;;
+    place-muster-daemon)
+        # Where a remote machine keeps this version's daemon, with its data directory beside
+        # it (MIP-3, section 12). Muster starts it from there but does not yet copy it over
+        # itself, so the remote tier puts this build's there first.
+        need_docker
+        binary="${2:-}" data="${3:-}" version="${4:-}"
+        [[ -f "$binary" && -d "$data" && -n "$version" ]] || die \
+            "place-muster-daemon needs a Linux muster-daemon, its data directory and a version." \
+            "  Impact: nothing was placed, so the remote tier has no muster-daemon to start." \
+            "  ./dev --ssh builds both and passes them here."
+        target="/home/dev/.muster/daemon/$version"
+        docker exec -u dev "$CONTAINER" rm -rf "$target"
+        docker exec -u dev "$CONTAINER" mkdir -p "$target"
+        docker cp "$binary" "$CONTAINER:$target/muster-daemon"
+        docker cp "$data" "$CONTAINER:$target/muster-daemon-data"
+        docker exec "$CONTAINER" chown -R dev "$target"
+        docker exec "$CONTAINER" chmod 0755 "$target/muster-daemon"
+        echo "devenv: placed muster-daemon $version at $target"
+        ;;
     rebuild)
         need_docker
         docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
@@ -153,6 +174,6 @@ case "${1:-up}" in
         exec "$0" up
         ;;
     *)
-        die "unknown command: $1" "  Try: build | up | down | ssh | status | install-daemon | rebuild"
+        die "unknown command: $1" "  Try: build | up | down | ssh | status | install-daemon | place-muster-daemon | rebuild"
         ;;
 esac

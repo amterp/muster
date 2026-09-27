@@ -414,6 +414,8 @@ fn fail_empty_suite(language, cure):
 SKIPPED_SUITES = [
     { "language": "Rust", "suite": "muster-ssh's devenv tests", "skipped": 7,
       "note": "need the devenv container; ./dev --ssh runs them" },
+    { "language": "Rust", "suite": "muster-daemon-client's devenv test", "skipped": 1,
+      "note": "needs the devenv container; ./dev --ssh runs it" },
     { "language": "Rust", "suite": "muster-herdr's devenv test", "skipped": 1,
       "note": "needs the devenv container; ./dev --ssh runs it" },
     { "language": "Rust", "suite": "muster-herdr's forking-shell devenv test", "skipped": 1,
@@ -508,6 +510,7 @@ fn run_ssh_tier():
 
     version = pinned_version()
     cache_root = container_cache(root, version)[1]
+    place_muster_daemon()
 
     // The cache is handed over so that the tier proves the install over ssh and still reaches
     // nothing itself. `./dev` is the one thing in this repo that downloads anything, and this
@@ -582,6 +585,20 @@ fn run_linux_tier():
 
 // The pinned daemon built for the container rather than for this machine, on this machine.
 //
+// This build's Linux muster-daemon, where a remote machine keeps it: Muster starts it from there
+// over ssh, and does not yet copy it over itself. The build step has cross-built it for both
+// architectures; which one goes in is asked of the container, as for herdr below.
+fn place_muster_daemon():
+    machine = $`./devenv/devenv ssh uname -m`.stdout.trim()
+    target = machine == "arm64" or machine == "aarch64" ? "aarch64-unknown-linux-musl" : "x86_64-unknown-linux-musl"
+    binary = "target/{target}/debug/muster-daemon"
+    version = workspace_version()
+    $`./devenv/devenv place-muster-daemon {binary} {DAEMON_DATA} {version}` catch:
+        print_err(red("This build's muster-daemon could not be put in the devenv container."))
+        print_err("Impact: the remote tests for muster-daemon have no daemon to start.")
+        print_err("Check that {binary} was built: ./dev -b cross-builds it.")
+        exit(1)
+
 // Not deps/herdr/<version>/herdr - that one is this laptop's, and the container is Linux.
 // Two things want this, and both want it here: the tests want a cache Muster can install
 // from without reaching the network, and the corpus probe wants a binary to put in the
