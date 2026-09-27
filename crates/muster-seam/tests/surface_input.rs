@@ -31,7 +31,8 @@ fn a_press_says_whether_the_pane_got_it() {
 }
 
 /// A wheel turn over a program on the alternate screen that asked for no mouse reaches it as
-/// arrow keys, scaled by `scroll_multiplier` as the surface scales its own scrolling.
+/// arrow keys, scaled by `scroll_multiplier` as the surface scales its own scrolling, which the
+/// daemon learns from the config.
 #[test]
 fn a_wheel_over_a_full_screen_program_reaches_it_as_arrows() {
     let _turn = muster::testing::fresh_session();

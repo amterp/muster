@@ -52,6 +52,8 @@ pub(crate) struct Settled {
     pub(crate) generation: u64,
     pub(crate) appearance: Appearance,
     pub(crate) scrollback: usize,
+    /// How far a wheel turn scrolls the program, as a multiple of Ghostty's own distances.
+    pub(crate) scroll_multiplier: f64,
 }
 
 /// What the app draws with and allows, as the terminal is told it.
@@ -157,6 +159,7 @@ pub(crate) struct Screen {
     generation: u64,
     scheme: Option<ColorScheme>,
     scrollback: usize,
+    scroll_multiplier: f64,
     /// The bridge drawing this pane, if one is attached.
     bridge: Option<Bridge>,
     /// The size a kitty image still arriving had reached, and when it last grew.
@@ -197,6 +200,7 @@ impl Screen {
             generation: settled.generation,
             scheme: settled.appearance.scheme,
             scrollback: settled.scrollback,
+            scroll_multiplier: settled.scroll_multiplier,
             bridge: None,
             arriving: None,
         };
@@ -238,6 +242,11 @@ impl Screen {
         self.title_writes
     }
 
+    /// How far a wheel turn scrolls the program, as the settings last applied say.
+    pub(crate) fn scroll_multiplier(&self) -> f64 {
+        self.scroll_multiplier
+    }
+
     /// Applies settings newer than the ones the terminal has, and says what changed: whether
     /// the scheme turned for a program that asked to hear of it (mode 2031), and a scrollback
     /// the terminal would not take. Older settings are ignored.
@@ -246,6 +255,7 @@ impl Screen {
             return None;
         }
         self.generation = settled.generation;
+        self.scroll_multiplier = settled.scroll_multiplier;
         self.appear(&settled.appearance);
         let turned = settled.appearance.scheme.filter(|&scheme| self.scheme != Some(scheme));
         self.scheme = settled.appearance.scheme;
@@ -462,7 +472,12 @@ mod tests {
     use super::*;
 
     fn settled(generation: u64, settings: &proto::Settings) -> Settled {
-        Settled { generation, appearance: Appearance::of(settings), scrollback: DEFAULT_SCROLLBACK }
+        Settled {
+            generation,
+            appearance: Appearance::of(settings),
+            scrollback: DEFAULT_SCROLLBACK,
+            scroll_multiplier: 1.0,
+        }
     }
 
     #[test]

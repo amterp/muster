@@ -71,6 +71,9 @@ fn set_the_other_settings(control: &mut Control) {
         proto::Cursor { style: proto::CursorStyle::Unspecified.into(), blink: Some(false) };
     let set = proto::SetCursor { cursor: Some(cursor) };
     expect(control, session(session_request::Request::SetCursor(set)), proto::Outcome::Done);
+    let set = proto::SetScrollMultiplier { multiplier: 0.5 };
+    let request = session_request::Request::SetScrollMultiplier(set);
+    expect(control, session(request), proto::Outcome::Done);
 }
 
 #[test]

@@ -567,7 +567,8 @@ fn paste_into(paste: &proto::Paste) -> Response {
     }
 }
 
-/// A wheel turn over a pane, scaled as the surface scales its own scrolling.
+/// A wheel turn over a pane. Its daemon scales it by `scroll_multiplier`, which it was told
+/// with the rest of the config.
 fn wheel_over(wheel: &proto::Wheel) -> Response {
     let Some(modifiers) = Modifiers::parse(&wheel.modifiers) else {
         return unknown_modifiers(&wheel.modifiers, "wheel turn");
@@ -581,11 +582,7 @@ fn wheel_over(wheel: &proto::Wheel) -> Response {
         x: wheel.x,
         y: wheel.y,
     };
-    pointer(
-        &wheel.daemon_id,
-        &wheel.pane_id,
-        InputEvent::Wheel(event.scaled(session::feel().scroll_multiplier)),
-    )
+    pointer(&wheel.daemon_id, &wheel.pane_id, InputEvent::Wheel(event))
 }
 
 fn mouse_over(mouse: &proto::Mouse) -> Response {

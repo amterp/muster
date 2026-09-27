@@ -481,6 +481,11 @@ fn send_settings(control: &Control, previous: Option<&DaemonSettings>, settings:
     if previous.is_none_or(|previous| previous.clipboard_write != settings.clipboard_write) {
         control.set_clipboard_write(settings.clipboard_write.allowed());
     }
+    if previous.is_none_or(|previous| {
+        previous.scroll_multiplier.to_bits() != settings.scroll_multiplier.to_bits()
+    }) {
+        control.set_scroll_multiplier(settings.scroll_multiplier);
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

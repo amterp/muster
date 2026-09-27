@@ -32,7 +32,7 @@ use crate::screen::Cleared;
 /// How much may wait for a pane's program to read it.
 const QUEUE_DEPTH: usize = 1024;
 
-/// Ghostty's default `mouse-scroll-multiplier`.
+/// Ghostty's default `mouse-scroll-multiplier`, which the app's `scroll_multiplier` scales.
 const PRECISE_MULTIPLIER: f64 = 1.0;
 const DISCRETE_MULTIPLIER: f64 = 3.0;
 
@@ -142,6 +142,7 @@ pub(crate) struct Encoding {
     mouse: MouseEncoder,
     modes: InputModes,
     grid: Grid,
+    scroll_multiplier: f64,
 }
 
 impl Encoding {
@@ -151,6 +152,7 @@ impl Encoding {
             mouse: MouseEncoder::new()?,
             modes: InputModes::default(),
             grid,
+            scroll_multiplier: 1.0,
         };
         encoding.refresh(terminal);
         Ok(encoding)
@@ -174,6 +176,10 @@ impl Encoding {
 
     pub(crate) fn resize(&mut self, grid: Grid) {
         self.grid = grid;
+    }
+
+    pub(crate) fn set_scroll_multiplier(&mut self, multiplier: f64) {
+        self.scroll_multiplier = multiplier;
     }
 
     fn cell(&self) -> (f64, f64) {
@@ -302,7 +308,7 @@ impl Writer {
                 self.encoded(encoding.mouse.encode(&event))
             }
             Input::Wheel(wheel) => {
-                let lines = self.scroll.lines(&wheel, encoding.cell());
+                let lines = self.scroll.lines(&wheel, encoding.cell(), encoding.scroll_multiplier);
                 match decide(modes, lines) {
                     Wheeled::Arrows(bytes) => bytes,
                     Wheeled::Report(buttons) => {
@@ -422,20 +428,27 @@ pub(crate) struct Scroll {
 impl Scroll {
     /// Whole columns and rows a turn comes to, keeping what is left over, as Ghostty's
     /// `scrollCallback` counts them: precise deltas are pixels, and a discrete tick is at least
-    /// one, times the multiplier, rows of the cell's height.
-    pub(crate) fn lines(&mut self, wheel: &Wheel, (width, height): (f64, f64)) -> (i32, i32) {
+    /// one, times the multiplier, rows of the cell's height. `multiplier` scales both after
+    /// that rounding, as Ghostty's own does, so one below 1 slows a notch rather than being
+    /// rounded away.
+    ///
+    /// The rounding is Ghostty's on macOS, where a slow notch arrives as a tenth of one, and it
+    /// is applied whatever the daemon runs on: a Linux daemon serves a Mac's window over ssh,
+    /// and a Linux window reports whole notches, which it leaves alone.
+    pub(crate) fn lines(
+        &mut self,
+        wheel: &Wheel,
+        (width, height): (f64, f64),
+        multiplier: f64,
+    ) -> (i32, i32) {
         let y = if wheel.dy == 0.0 {
             0
         } else {
             let adjusted = if wheel.precise {
-                wheel.dy * PRECISE_MULTIPLIER
+                wheel.dy * PRECISE_MULTIPLIER * multiplier
             } else {
-                let tick = if cfg!(target_os = "macos") {
-                    if wheel.dy > 0.0 { wheel.dy.max(1.0) } else { wheel.dy.min(-1.0) }
-                } else {
-                    wheel.dy
-                };
-                tick * height * DISCRETE_MULTIPLIER
+                let tick = if wheel.dy > 0.0 { wheel.dy.max(1.0) } else { wheel.dy.min(-1.0) };
+                tick * height * DISCRETE_MULTIPLIER * multiplier
             };
             accumulate(&mut self.pending_y, adjusted, height)
         };
@@ -574,10 +587,22 @@ mod tests {
     #[test]
     fn a_discrete_tick_is_three_rows_and_a_precise_turn_waits_for_a_whole_row() {
         let mut scroll = Scroll::default();
-        assert_eq!(scroll.lines(&wheel(1.0, false), (10.0, 20.0)), (0, 3));
-        assert_eq!(scroll.lines(&wheel(-1.0, false), (10.0, 20.0)), (0, -3));
-        assert_eq!(scroll.lines(&wheel(15.0, true), (10.0, 20.0)), (0, 0), "under a row");
-        assert_eq!(scroll.lines(&wheel(15.0, true), (10.0, 20.0)), (0, 1), "thirty pixels");
+        assert_eq!(scroll.lines(&wheel(1.0, false), (10.0, 20.0), 1.0), (0, 3));
+        assert_eq!(scroll.lines(&wheel(-1.0, false), (10.0, 20.0), 1.0), (0, -3));
+        assert_eq!(scroll.lines(&wheel(15.0, true), (10.0, 20.0), 1.0), (0, 0), "under a row");
+        assert_eq!(scroll.lines(&wheel(15.0, true), (10.0, 20.0), 1.0), (0, 1), "thirty pixels");
+    }
+
+    /// A slow notch arrives on a Mac as a tenth of one, and counts as a whole one, which the
+    /// multiplier then scales: at a half, a notch is a row and a half, so a row, where scaling
+    /// first would round it back up to a whole notch and send three.
+    #[test]
+    fn the_multiplier_scales_a_notch_after_it_is_rounded_up() {
+        let mut scroll = Scroll::default();
+        assert_eq!(scroll.lines(&wheel(0.1, false), (10.0, 20.0), 1.0), (0, 3), "a slow notch");
+        assert_eq!(scroll.lines(&wheel(1.0, false), (10.0, 20.0), 0.5), (0, 1));
+        assert_eq!(scroll.lines(&wheel(0.1, false), (10.0, 20.0), 0.5), (0, 1));
+        assert_eq!(scroll.lines(&wheel(30.0, true), (10.0, 20.0), 2.0), (0, 3), "sixty pixels");
     }
 
     #[test]

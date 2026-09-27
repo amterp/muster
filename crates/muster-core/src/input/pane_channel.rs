@@ -47,15 +47,6 @@ pub struct Wheel {
     pub y: f64,
 }
 
-impl Wheel {
-    /// The turn as `scroll_multiplier` scales it, which is the scale the surface applies to its
-    /// own scrolling, so the program and the surface move the same distance.
-    #[must_use]
-    pub fn scaled(self, multiplier: f64) -> Wheel {
-        Wheel { dx: self.dx * multiplier, dy: self.dy * multiplier, ..self }
-    }
-}
-
 /// A button pressed or released, or the pointer moving.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mouse {

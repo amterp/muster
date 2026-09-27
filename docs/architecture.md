@@ -323,7 +323,8 @@ between "bytes" and "control":
 - **The control plane is not one connection.** A window holds two per daemon: one for requests, their answers
   and the daemon's events, in order, and one for input alone, so typing never queues behind a request.
 - **The wheel goes to both.** The surface scrolls its own scrollback, by `scroll_multiplier`. The same event goes
-  to the daemon for the pane under the pointer, which gives it to the program only where a terminal would: as a
+  to the daemon for the pane under the pointer, which scales it by the same multiplier after rounding a notch up to
+  one, as Ghostty does, and gives it to the program only where a terminal would: as a
   mouse report when the program tracks the mouse, as arrow keys when it is on the alternate screen, and otherwise
   not at all. Clicks and drags take the same path, except that a shift-click is never reported, so it always
   selects.

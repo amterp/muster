@@ -16,7 +16,7 @@ const DEFAULT_BACKGROUND: Rgb = Rgb { red: 0x28, green: 0x2c, blue: 0x34 };
 const DEFAULT_FOREGROUND: Rgb = Rgb { red: 0xff, green: 0xff, blue: 0xff };
 
 /// Everything one daemon is told, as of one config.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DaemonSettings {
     pub shell: Shell,
     pub scrollback_bytes: Option<u64>,
@@ -27,6 +27,9 @@ pub struct DaemonSettings {
     /// Whether programs may set the clipboard. The window applies a write; the daemon is told
     /// so that a program asking what the terminal supports gets the truth.
     pub clipboard_write: ClipboardWrite,
+    /// How far a wheel turn scrolls a program, which the daemon applies after rounding a notch
+    /// up to one, as the surface applies it to its own scrolling.
+    pub scroll_multiplier: f64,
 }
 
 /// The colours programs are told the terminal has, when they ask.
@@ -40,6 +43,13 @@ pub struct Palette {
     /// Whether the background is dark, which is what a program asking for the colour scheme
     /// (mode 2031) is told.
     pub dark: bool,
+}
+
+impl Default for DaemonSettings {
+    /// What an empty config file says.
+    fn default() -> DaemonSettings {
+        DaemonSettings::from(&Config::default())
+    }
 }
 
 impl DaemonSettings {
@@ -67,6 +77,7 @@ impl DaemonSettings {
             palette,
             cursor: config.appearance.cursor,
             clipboard_write: config.panes.clipboard_write,
+            scroll_multiplier: config.feel.scroll_multiplier,
         }
     }
 }

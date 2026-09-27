@@ -254,6 +254,12 @@ impl Control {
         })))
     }
 
+    pub fn set_scroll_multiplier(&self, multiplier: f64) -> Pending {
+        self.ask(session(session_request::Request::SetScrollMultiplier(
+            proto::SetScrollMultiplier { multiplier },
+        )))
+    }
+
     pub fn send_manifests(&self, engine: u32, manifests: Vec<proto::Manifest>) -> Pending {
         self.ask(session(session_request::Request::SendManifests(proto::SendManifests {
             engine,

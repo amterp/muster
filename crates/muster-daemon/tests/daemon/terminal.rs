@@ -152,6 +152,22 @@ fn colors_come_from_the_apps_palette_and_clipboard_access_from_its_setting() {
     assert_eq!(bytes_in(&attributes), b"\x1b[?62;22c", "no clipboard access claimed");
 }
 
+/// A multiplier of zero or less would stop the wheel reaching programs at all, and one that
+/// is not a number would scroll by nothing anyone could predict.
+#[test]
+fn a_scroll_multiplier_that_cannot_scale_is_refused() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    for multiplier in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        let set = proto::SetScrollMultiplier { multiplier };
+        let request = session(session_request::Request::SetScrollMultiplier(set));
+        expect(&mut control, request, proto::Outcome::Refused);
+    }
+    let set = proto::SetScrollMultiplier { multiplier: 1.0 };
+    let request = session(session_request::Request::SetScrollMultiplier(set));
+    expect(&mut control, request, proto::Outcome::AlreadySo);
+}
+
 #[test]
 fn a_program_that_asked_is_told_when_the_appearance_turns() {
     let daemon = daemon();

@@ -1596,8 +1596,8 @@ message Paste {
 message Wheel {
   string daemon_id = 1;
   string pane_id = 2;
-  // Positive is right and up, as Ghostty's scroll callback takes them, and not yet scaled by
-  // `scroll_multiplier`: the core scales them.
+  // Positive is right and up, as Ghostty's scroll callback takes them, and not scaled by
+  // `scroll_multiplier`: the daemon scales them, after rounding a notch up to one.
   double dx = 3;
   double dy = 4;
   // A trackpad's pixel deltas rather than a wheel's notches.

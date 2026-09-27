@@ -154,6 +154,7 @@ message SessionRequest {
     // one exits. REFUSED with the reason when it cannot be done, and then this daemon goes on
     // serving as before. While it runs, a request that changes anything is refused.
     Replace replace = 11;
+    SetScrollMultiplier set_scroll_multiplier = 12;
   }
 
   message Snapshot {}
@@ -382,6 +383,15 @@ message SetScrollback {
 // needs to know so that a program asking what the terminal supports is told the truth.
 message SetClipboardWrite {
   bool allowed = 1;
+}
+
+// How far a wheel turn scrolls a program that gets it as arrow keys or wheel reports, as a
+// multiple of Ghostty's own distances: 1 is Ghostty's, 2 is twice as far. Applied after a
+// notch is rounded up to at least one, as Ghostty applies its `mouse-scroll-multiplier`, so
+// a multiplier below 1 slows a wheel as it slows the window's own scrolling. Finite and above
+// zero, or refused.
+message SetScrollMultiplier {
+  double multiplier = 1;
 }
 
 message SetPalette {
@@ -782,6 +792,8 @@ message Settings {
   optional bool clipboard_write = 4;
   // Absent: none sent, which the daemon treats as nothing named.
   optional Cursor cursor = 5;
+  // Absent: 1.
+  optional double scroll_multiplier = 6;
 }
 
 // ---------------------------------------------------------------------------------------------

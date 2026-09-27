@@ -241,6 +241,8 @@ impl PaneIo {
     /// Applies what the app last said to the pane's terminal, unless it has something newer.
     pub(crate) fn settle(&self, settled: &Settled) {
         let Some(settling) = self.screen().settle(settled) else { return };
+        poison::lock(&self.encoding, "daemon.pane.encoding")
+            .set_scroll_multiplier(settled.scroll_multiplier);
         if let Some(report) = settling.report {
             self.queue(Input::Reply(report.to_vec()));
         }
@@ -621,8 +623,9 @@ impl Pane {
         let (wake_read, wake) = pipe().map_err(failed)?;
         let writer_wake = writer::duplicate(&wake_read).map_err(failed)?;
         let master = Arc::new(master);
-        let encoding = Encoding::new(screen.terminal(), grid)
+        let mut encoding = Encoding::new(screen.terminal(), grid)
             .map_err(|error| failed(io::Error::other(error.to_string())))?;
+        encoding.set_scroll_multiplier(screen.scroll_multiplier());
         let encoding = Arc::new(Mutex::new(encoding));
         let (input, queued) = writer::queue();
         let io = Arc::new(PaneIo {
@@ -1005,6 +1008,7 @@ impl PaneIo {
             generation: 0,
             appearance: Appearance::of(&proto::Settings::default()),
             scrollback: DEFAULT_SCROLLBACK,
+            scroll_multiplier: 1.0,
         };
         let grid = Grid::FALLBACK;
         let screen = Screen::new(grid, &settled).expect("a terminal");

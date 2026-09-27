@@ -741,8 +741,10 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 1] =
-        [("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"])];
+    const FIXTURES: [(&str, &[&str]); 2] = [
+        ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
+        ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
+    ];
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)

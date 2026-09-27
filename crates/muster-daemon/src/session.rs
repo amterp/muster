@@ -139,6 +139,7 @@ impl Shared {
                 generation: 0,
                 appearance: Appearance::of(&settings),
                 scrollback: scrollback(&settings),
+                scroll_multiplier: settings.scroll_multiplier.unwrap_or(1.0),
             });
             Shared {
                 session: Mutex::new(Session {
@@ -869,6 +870,7 @@ impl Session {
                 S::SendManifests(manifests) => return self.send_manifests(manifests),
                 S::SetClipboardWrite(set) => self.set_clipboard_write(set),
                 S::SetCursor(set) => self.set_cursor(set),
+                S::SetScrollMultiplier(set) => self.set_scroll_multiplier(set.multiplier),
                 S::FollowLog(follow) => self.follow_log(asker, follow.after),
                 S::Replace(replace) => return self.replace(replace),
                 S::Stop(_) => {
@@ -1647,6 +1649,7 @@ impl Session {
             generation: self.settled.generation + 1,
             appearance: Appearance::of(&self.settings),
             scrollback: scrollback(&self.settings),
+            scroll_multiplier: self.settings.scroll_multiplier.unwrap_or(1.0),
         });
         for pane in &self.panes {
             self.deferred.push(Deferred::Settle(Arc::clone(&pane.io), Arc::clone(&self.settled)));
@@ -1676,6 +1679,20 @@ impl Session {
             return Reply::already();
         }
         self.settings.clipboard_write = Some(set.allowed);
+        self.resettle();
+        self.settings_changed()
+    }
+
+    fn set_scroll_multiplier(&mut self, multiplier: f64) -> Reply {
+        if !multiplier.is_finite() || multiplier <= 0.0 {
+            return Reply::refused(format!(
+                "a scroll multiplier is finite and above zero, and this one is {multiplier}"
+            ));
+        }
+        if self.settings.scroll_multiplier.unwrap_or(1.0).to_bits() == multiplier.to_bits() {
+            return Reply::already();
+        }
+        self.settings.scroll_multiplier = Some(multiplier);
         self.resettle();
         self.settings_changed()
     }
