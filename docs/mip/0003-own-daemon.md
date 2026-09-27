@@ -276,11 +276,12 @@ A pane's environment is the daemon's own (launchd's minimal environment on the M
 shell builds on), less any `GHOSTTY_*` and `VTE_VERSION` it inherited from the terminal it was started
 in, plus:
 
-- `TERM=xterm-ghostty`, with the terminfo entry carried by the daemon and reached through
-  `TERMINFO_DIRS`, on both machines, so no host needs Ghostty installed. The daemon's entry comes
-  first and an empty entry after it, so the system database is still searched and a person's
-  `~/.terminfo` still wins. `TERMINFO` is dropped, inherited or requested: ncurses searches it
-  before anything else, and Ghostty.app sets it to its own copy of the entry;
+- `TERM=xterm-ghostty`, with the terminfo entry carried by the daemon, on both machines, so no
+  host needs Ghostty installed. `TERMINFO` names the daemon's entry, replacing one inherited or
+  requested, as Ghostty.app sets it to its own: ncurses searches it before anything else, and
+  Ghostty's `sudo` feature carries it through sudo's reset environment, so `sudo vim` finds the
+  terminal on a host whose database lacks it. `TERMINFO_DIRS` names it too, first, with an empty
+  entry after it so the system database is still searched by a program that drops `TERMINFO`;
 - `COLORTERM=truecolor`;
 - `TERM_PROGRAM=ghostty`, because a pane is a Ghostty terminal and programs key features on the
   name; Muster's identity is already in `MUSTER_PANE` and `MUSTER_SOCKET`. `TERM_PROGRAM_VERSION`
@@ -297,7 +298,8 @@ in, plus:
   executable's own path;
 - Ghostty's shell integration for bash, zsh and fish, injected the way Ghostty injects it, so
   prompts carry OSC 133 marks and `jump_to_prompt` and prompt-aware selection work. Its
-  `path` and `title` features are on, as in Ghostty. Its `cursor` feature, which sets a bar at
+  `path` and `title` features are on, as in Ghostty, and so is `sudo`, which Ghostty leaves off
+  by default and which is what makes `TERMINFO` survive sudo. Its `cursor` feature, which sets a bar at
   every prompt, follows the app's `[cursor]`: blinking or steady as `blink` says while no style
   is named, as Ghostty decides from `cursor-style-blink`, and off when a style is named, because
   Muster turns the integration on without being asked and a named shape is what the person

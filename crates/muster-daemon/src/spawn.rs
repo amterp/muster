@@ -172,9 +172,9 @@ pub(crate) const TERM: &str = "xterm-ghostty";
 pub(crate) const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
 
 /// The features Ghostty's shell integration is told to use, which its scripts read, and which
-/// Ghostty sets whether or not a script was loaded. `sudo` and the `ssh-*` features stay off, as
-/// they do in Ghostty: `sudo` works by carrying `$TERMINFO` through sudo's reset environment,
-/// and a pane finds its entry through `TERMINFO_DIRS` instead, which sudo drops.
+/// Ghostty sets whether or not a script was loaded. `sudo` wraps `sudo` so that it keeps
+/// `$TERMINFO`, which sudo's reset environment would drop, so a root shell still finds the
+/// pane's terminal on a machine whose own database has no xterm-ghostty.
 ///
 /// `cursor` makes every prompt set a bar cursor, blinking or steady as `cursor-style-blink` is,
 /// which is Ghostty's rule and applies here while the app's `[cursor]` names no shape. A shape it
@@ -185,9 +185,9 @@ fn shell_features(cursor: Option<&proto::Cursor>) -> String {
     let named = cursor.is_some_and(|cursor| cursor.style() != proto::CursorStyle::Unspecified);
     let blink = cursor.and_then(|cursor| cursor.blink).unwrap_or(true);
     match (named, blink) {
-        (true, _) => "path,title",
-        (false, true) => "cursor:blink,path,title",
-        (false, false) => "cursor:steady,path,title",
+        (true, _) => "path,sudo,title",
+        (false, true) => "cursor:blink,path,sudo,title",
+        (false, false) => "cursor:steady,path,sudo,title",
     }
     .to_string()
 }
@@ -197,9 +197,10 @@ fn shell_features(cursor: Option<&proto::Cursor>) -> String {
 ///
 /// The pane says it is Ghostty (`TERM_PROGRAM`), because it is a Ghostty terminal and programs
 /// key features on that name; `MUSTER_PANE` and `MUSTER_SOCKET` are what say it is Muster's.
-/// Its terminfo entry is found through `TERMINFO_DIRS`, ahead of whatever else was there, with an
-/// empty entry after it so the system's database is still searched and a person's own
-/// `~/.terminfo` still comes first.
+/// Its terminfo entry is the daemon's, through `TERMINFO` as Ghostty.app's panes have Ghostty's,
+/// which ncurses searches before anything else and which the `sudo` feature carries through
+/// sudo. `TERMINFO_DIRS` names it too, ahead of whatever else was there, with an empty entry
+/// after it so the system's database is still searched, for a program that drops `TERMINFO`.
 pub(crate) fn environment(
     inherited: &[(OsString, OsString)],
     requested: &HashMap<String, String>,
@@ -236,9 +237,9 @@ pub(crate) fn environment(
     }
     // Another terminal's claim, which Ghostty drops for the same reason.
     environment.retain(|(name, _)| name != "VTE_VERSION");
-    // ncurses searches TERMINFO before anything else, and Ghostty.app sets it in its shells, so
-    // one inherited or asked for would decide which xterm-ghostty entry a pane gets.
-    environment.retain(|(name, _)| name != "TERMINFO");
+    // Replacing whatever was inherited or asked for: Ghostty.app sets it in its shells, and one
+    // from elsewhere would decide which xterm-ghostty entry a pane gets.
+    put(&mut environment, "TERMINFO", terminfo);
     if let Some(daemon) = &reachable.daemon {
         put(&mut environment, DAEMON, daemon);
     }
@@ -361,10 +362,11 @@ mod tests {
                 ("MUSTER_SOCKET", "/window.sock"),
                 ("PATH", "/usr/bin"),
                 ("TERM", "xterm-ghostty"),
+                ("TERMINFO", "/data/terminfo"),
                 ("TERMINFO_DIRS", "/data/terminfo:"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
-                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,title"),
+                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,sudo,title"),
             ]))
         );
     }
@@ -402,10 +404,11 @@ mod tests {
                 ("MUSTER_DAEMON_SOCKET", "/run/daemon.sock"),
                 ("MUSTER_PANE", "p1"),
                 ("TERM", "xterm-ghostty"),
+                ("TERMINFO", "/data/terminfo"),
                 ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo:"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
-                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,title"),
+                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,sudo,title"),
             ]))
         );
     }
@@ -414,12 +417,15 @@ mod tests {
     fn the_prompt_cursor_follows_the_apps_cursor_as_ghostty_does() {
         let cursor = |style, blink| proto::Cursor { style: style as i32, blink };
         let unnamed = proto::CursorStyle::Unspecified;
-        assert_eq!(shell_features(None), "cursor:blink,path,title");
-        assert_eq!(shell_features(Some(&cursor(unnamed, None))), "cursor:blink,path,title");
-        assert_eq!(shell_features(Some(&cursor(unnamed, Some(false)))), "cursor:steady,path,title");
+        assert_eq!(shell_features(None), "cursor:blink,path,sudo,title");
+        assert_eq!(shell_features(Some(&cursor(unnamed, None))), "cursor:blink,path,sudo,title");
+        assert_eq!(
+            shell_features(Some(&cursor(unnamed, Some(false)))),
+            "cursor:steady,path,sudo,title"
+        );
         let block = cursor(proto::CursorStyle::Block, Some(false));
-        assert_eq!(shell_features(Some(&block)), "path,title");
-        assert_eq!(shell_features(Some(&cursor(proto::CursorStyle::Bar, None))), "path,title");
+        assert_eq!(shell_features(Some(&block)), "path,sudo,title");
+        assert_eq!(shell_features(Some(&cursor(proto::CursorStyle::Bar, None))), "path,sudo,title");
     }
 
     #[test]

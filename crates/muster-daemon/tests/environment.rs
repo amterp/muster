@@ -45,7 +45,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
             std::fs::read_to_string(&out).ok().filter(|text| text.ends_with('\n'))
         })
     };
-    assert_eq!(features(&mut control, "p1", "t1"), "cursor:blink,path,title\n");
+    assert_eq!(features(&mut control, "p1", "t1"), "cursor:blink,path,sudo,title\n");
 
     let steady =
         proto::Cursor { style: proto::CursorStyle::Unspecified.into(), blink: Some(false) };
@@ -55,7 +55,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
         session(proto::session_request::Request::SetCursor(set)),
         proto::Outcome::Done,
     );
-    assert_eq!(features(&mut control, "p2", "t2"), "cursor:steady,path,title\n");
+    assert_eq!(features(&mut control, "p2", "t2"), "cursor:steady,path,sudo,title\n");
 
     let bar = proto::Cursor { style: proto::CursorStyle::Bar.into(), blink: None };
     let set = proto::SetCursor { cursor: Some(bar) };
@@ -64,7 +64,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
         session(proto::session_request::Request::SetCursor(set)),
         proto::Outcome::Done,
     );
-    assert_eq!(features(&mut control, "p3", "t3"), "path,title\n");
+    assert_eq!(features(&mut control, "p3", "t3"), "path,sudo,title\n");
 }
 
 #[test]
@@ -213,4 +213,52 @@ fn a_shell_whose_path_has_an_equals_sign_runs_a_command_and_becomes_itself() {
     let linked = dir.join("zsh");
     std::os::unix::fs::symlink(zsh, &linked).unwrap();
     shell_prompts_are_marked(&daemon, &linked.display().to_string(), Some("echo ran"));
+}
+
+/// Starts `shell` with its integration and types `line` until the pane shows `wanted`: the
+/// integration defines its functions only once the shell has drawn a prompt.
+fn shell_says(shell: &str, line: &str, wanted: &str) -> String {
+    let daemon = daemon();
+    std::fs::write(daemon.root().join("home/.zshrc"), "").unwrap();
+    let mut control = daemon.connect();
+    let set = proto::SetShell {
+        shell: Some(proto::Shell {
+            command: Some(shell.to_string()),
+            mode: proto::ShellMode::Login.into(),
+        }),
+    };
+    expect(
+        &mut control,
+        session(proto::session_request::Request::SetShell(set)),
+        proto::Outcome::Done,
+    );
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let mut input = muster_harness::Input::connect(daemon.socket_path());
+    until_some(&format!("{shell} to say {wanted:?}"), || {
+        let send = proto::input_event::Send { text: line.to_string(), enter: true };
+        input.send("p1", proto::input_event::Input::Send(send));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let text = read_text(&mut control, "p1", 0, 0).text;
+        text.contains(wanted).then_some(text)
+    })
+}
+
+/// Ghostty's `sudo` feature wraps sudo to keep `$TERMINFO`, which sudo's reset environment
+/// would drop, so a root shell on a machine without xterm-ghostty still finds the terminal. The
+/// daemon sets `$TERMINFO` to its own entry, as Ghostty.app sets it to its own.
+#[test]
+fn sudo_in_a_pane_keeps_the_panes_terminfo() {
+    let data = std::path::Path::new(DAEMON_DATA).canonicalize().unwrap();
+    for shell in ["zsh", "bash"] {
+        let Some(path) = installed(shell) else {
+            eprintln!("skipped: {shell} with integration is not installed here");
+            continue;
+        };
+        let line = format!(
+            "type sudo; [ \"$TERMINFO\" -ef '{}' ] && echo terminfo-ours",
+            data.join("terminfo").display()
+        );
+        let text = shell_says(&path, &line, "\nterminfo-ours");
+        assert!(text.contains("sudo is a"), "{shell}: sudo is not wrapped: {text}");
+    }
 }

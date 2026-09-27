@@ -176,7 +176,7 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
     // The kept cursor reaches a pane made after the restart, as the app's [cursor] would.
     make(&mut control, create("p4", in_new_tab("t3")));
     type_line(&mut input, "p4", "echo \"features=$GHOSTTY_SHELL_FEATURES\"");
-    until_text(&mut control, "p4", "features=cursor:steady,path,title\n");
+    until_text(&mut control, "p4", "features=cursor:steady,path,sudo,title\n");
 }
 
 #[test]
