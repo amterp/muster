@@ -55,6 +55,22 @@ fn until_saved(daemon: &Daemon, needle: &str) {
     );
 }
 
+/// Every setting but the palette, each away from its default.
+fn set_the_other_settings(control: &mut Control) {
+    let shell = proto::Shell { command: None, mode: proto::ShellMode::NonLogin.into() };
+    let set = proto::SetShell { shell: Some(shell) };
+    expect(control, session(session_request::Request::SetShell(set)), proto::Outcome::Done);
+    let set = proto::SetScrollback { bytes: Some(2_000_000) };
+    expect(control, session(session_request::Request::SetScrollback(set)), proto::Outcome::Done);
+    let set = proto::SetClipboardWrite { allowed: false };
+    let request = session_request::Request::SetClipboardWrite(set);
+    expect(control, session(request), proto::Outcome::Done);
+    let cursor =
+        proto::Cursor { style: proto::CursorStyle::Unspecified.into(), blink: Some(false) };
+    let set = proto::SetCursor { cursor: Some(cursor) };
+    expect(control, session(session_request::Request::SetCursor(set)), proto::Outcome::Done);
+}
+
 #[test]
 fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() {
     let mut daemon = daemon();
@@ -106,6 +122,15 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
     };
     let set = proto::SetPalette { palette: Some(palette.clone()) };
     expect(&mut control, session(session_request::Request::SetPalette(set)), proto::Outcome::Done);
+    set_the_other_settings(&mut control);
+    // A size its bridge gave it.
+    let mut stream = attached(&daemon, "p3", false);
+    stream.resize(proto::Grid { cols: 100, rows: 30, width_px: 1000, height_px: 600 });
+    until_some("p3 to take its bridge's size", || {
+        type_line(&mut input, "p3", "stty size");
+        read_text(&mut control, "p3", 0, 0).text.contains("30 100").then_some(())
+    });
+    drop(stream);
     let report = pane_request::Report {
         pane: "p1".to_string(),
         model: Some("Opus".to_string()),
@@ -138,6 +163,7 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
         assert_eq!(is.facts, None, "what an agent said about itself is not kept");
         assert_eq!((is.agent.as_deref(), is.agent_state()), (None, proto::AgentState::Unknown));
     }
+    assert_eq!(after.settings, before.settings, "every setting");
     assert_eq!(after.settings.and_then(|settings| settings.palette), Some(palette));
 
     type_line(&mut input, "p3", "pwd");
@@ -145,6 +171,12 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
     type_line(&mut input, "p2", "echo p2-is-a-shell");
     until_text(&mut control, "p2", "p2-is-a-shell\n");
     assert_eq!(written(&ran), "ran\n", "the command ran once, before the restart and not after");
+    type_line(&mut input, "p3", "clear; stty size");
+    until_text(&mut control, "p3", "30 100\n");
+    // The kept cursor reaches a pane made after the restart, as the app's [cursor] would.
+    make(&mut control, create("p4", in_new_tab("t3")));
+    type_line(&mut input, "p4", "echo \"features=$GHOSTTY_SHELL_FEATURES\"");
+    until_text(&mut control, "p4", "features=cursor:steady,path,title\n");
 }
 
 #[test]

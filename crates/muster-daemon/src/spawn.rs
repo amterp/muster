@@ -34,8 +34,11 @@ pub(crate) struct Reachable {
 /// Variables dropped from what the daemon inherited. A daemon a developer started by hand from
 /// inside a Muster pane carries that pane's name, window and command, and a pane that inherited
 /// them would drive the wrong window. The requested environment supplies the right
-/// `MUSTER_SOCKET`; the daemon supplies the others.
-const NOT_INHERITED: [&str; 5] = [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND, DAEMON, DAEMON_SOCKET];
+/// `MUSTER_SOCKET`; the daemon supplies the others. `MUSTER_LOG_FILE` names the log of the run
+/// that started the daemon, which the daemon outlives: a `muster` run in a pane would write
+/// into that run's file, so only a pane's create may name one.
+const NOT_INHERITED: [&str; 6] =
+    [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND, DAEMON, DAEMON_SOCKET, "MUSTER_LOG_FILE"];
 
 /// Variables from a Ghostty the daemon was started in - its resources, its binary, its surface -
 /// which describe that terminal rather than this pane. A requested copy is still honored.
@@ -326,6 +329,7 @@ mod tests {
             ("MUSTER_SOCKET", "/stale.sock"),
             ("MUSTER_PANE_COMMAND", "stale"),
             ("MUSTER_DAEMON_SOCKET", "/stale-daemon.sock"),
+            ("MUSTER_LOG_FILE", "/stale-run.jsonl"),
             ("COLORTERM", "24bit"),
         ]);
         let requested = HashMap::from([

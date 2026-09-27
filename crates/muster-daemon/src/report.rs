@@ -88,8 +88,17 @@ fn parse(
                     Some(given.parse().map_err(|_| format!("--cost-usd {given} is not a number"))?);
             }
             "--subagent-started" | "--subagent-stopped" => {
-                if report.subagent() != proto::SubagentChange::None {
-                    return Err("--subagent-started or --subagent-stopped, not both".to_string());
+                let started = report.subagent() == proto::SubagentChange::Started;
+                match report.subagent() {
+                    proto::SubagentChange::None => {}
+                    _ if started == (argument == "--subagent-started") => {
+                        return Err(format!("{argument} is given twice"));
+                    }
+                    _ => {
+                        return Err(
+                            "--subagent-started or --subagent-stopped, not both".to_string()
+                        );
+                    }
                 }
                 report.set_subagent(if argument == "--subagent-started" {
                     proto::SubagentChange::Started
@@ -202,6 +211,8 @@ mod tests {
         assert!(parsed(&["--cost-usd", "lots"], Some("p1")).unwrap_err().contains("--cost-usd"));
         assert!(parsed(&["--fact", "novalue"], Some("p1")).unwrap_err().contains("KEY=VALUE"));
         assert!(parsed(&["--model"], Some("p1")).unwrap_err().contains("needs a value"));
+        let twice = parsed(&["--subagent-stopped", "--subagent-stopped"], Some("p1"));
+        assert!(twice.unwrap_err().contains("given twice"));
         let both = parsed(&["--subagent-started", "--subagent-stopped"], Some("p1"));
         assert!(
             both.unwrap_err().contains("not both"),
@@ -217,7 +228,9 @@ mod tests {
             std::env::temp_dir().join(format!("muster-report-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket);
         let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
-        let step = Duration::from_millis(300);
+        // Each step inside the patience, both together well past it, and wide apart enough that
+        // a loaded machine cannot blur the two outcomes.
+        let step = Duration::from_secs(1);
         std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let _ = connection::receive::<proto::Hello>(&mut stream);
@@ -244,10 +257,10 @@ mod tests {
         });
 
         let started = std::time::Instant::now();
-        let sent = send_within(socket.clone(), parsed(&[], Some("p1")).unwrap(), step + step / 3);
+        let sent = send_within(socket.clone(), parsed(&[], Some("p1")).unwrap(), step + step / 5);
         let took = started.elapsed();
         let _ = std::fs::remove_file(&socket);
         assert!(sent.unwrap_err().contains("did not answer"));
-        assert!(took < step * 2, "the report waited {took:?}");
+        assert!(took < step * 9 / 5, "the report waited {took:?}");
     }
 }

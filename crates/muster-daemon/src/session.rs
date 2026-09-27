@@ -845,6 +845,7 @@ impl Session {
             reports: &self.reports,
             host: &self.host,
             detecting: &self.detecting,
+            persister: &self.persister,
         };
         let pane = Pane::start(record, serial, master, screen, grid, Some(child), &watching)
             .map_err(|error| Self::could_not_start(&name, program, &cwd, &error))?;
@@ -1302,8 +1303,9 @@ impl Session {
     /// each working agent idle through a startup grace, then working again.
     pub(crate) fn manifests_loaded(&mut self, loading: Loading, loaded: Manifests) -> Reply {
         if loading.load < self.manifests_adopted {
-            // A later send already put its manifests in use, and they supersede these.
-            return Reply::done();
+            // A later send already put its manifests in use, and they supersede these: nothing
+            // this send asked for was put in use.
+            return Reply::already();
         }
         self.manifests_adopted = loading.load;
         let changed = self.detecting.adopt(loaded);

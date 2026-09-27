@@ -59,9 +59,10 @@ const LAST_WRITE: Duration = Duration::from_secs(5);
 const USAGE: &str = "usage: muster-daemon [--socket PATH] [--data DIR]\n       muster-daemon report ...\n\n\
     Serves Muster's panes on this machine. Without --socket, listens where this install's \
     daemon listens: $MUSTER_HOME/daemon/<install>.sock. Its log and its saved tabs are beside \
-    the socket, as <name>.log and <name>.state.json; MUSTER_LOG=0 turns the log off. Without --data, gives its shells the \
-    muster-daemon-data directory beside its executable. `report` tells the daemon of the pane \
-    it runs in what the agent there says about itself; `muster-daemon report --help` says how.";
+    the socket, as <name>.log and <name>.state.json; MUSTER_LOG=0 turns the log off. Without \
+    --data, gives its shells the muster-daemon-data directory beside its executable. `report` \
+    tells the daemon of the pane it runs in what the agent there says about itself; \
+    `muster-daemon report --help` says how.";
 
 fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("report") {
@@ -131,10 +132,8 @@ fn run(socket: &Path, data: Option<&Path>, signals: libc::sigset_t) -> Result<()
     // Only once the socket is this daemon's: the log beside it has one writer, and a second
     // daemon turned away must not touch it.
     let log = DaemonLog::start(socket);
-    let data = data::Data::locate(data).map_err(|message| {
-        log::error("daemon.no_data", fields! { "error" => message });
-        Failure::Other(message)
-    })?;
+    // Logged as daemon.failed on the way out, with the message saying what is missing.
+    let data = data::Data::locate(data).map_err(Failure::Other)?;
     let listener = listen(socket)?;
 
     let (stopping, stop) = mpsc::channel();

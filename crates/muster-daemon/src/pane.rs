@@ -27,6 +27,7 @@ use muster_daemon_proto as proto;
 
 use crate::detect::{self, Detecting, Detection};
 use crate::effects::{self, Happened, Reported, Reports};
+use crate::persist::Persister;
 use crate::process;
 use crate::pty;
 use crate::pty::Grid;
@@ -63,6 +64,8 @@ pub(crate) struct PaneIo {
     reset_detection: AtomicBool,
     /// Wakes the reader waiting for its bridge's credit.
     flow: Flow,
+    /// Told when the pane's size changes, which a restart keeps. None in tests of a lone pane.
+    persister: Option<Arc<Persister>>,
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -246,7 +249,14 @@ impl PaneIo {
             .map_err(|error| error.to_string())
             .and_then(|()| screen.resize(grid).map_err(|error| error.to_string()));
         match resized {
-            Ok(()) => self.grid.store(grid.to_bits(), Ordering::Release),
+            Ok(()) => {
+                self.grid.store(grid.to_bits(), Ordering::Release);
+                // A size is no event, so nothing else would tell the persister. Its lock is
+                // taken last by everything that takes it, so taking it under the pane's is safe.
+                if let Some(persister) = &self.persister {
+                    persister.changed();
+                }
+            }
             Err(error) => {
                 log::warn(
                     "daemon.pane.not_resized",
@@ -311,6 +321,7 @@ pub(crate) struct Watching<'a> {
     pub(crate) reports: &'a Reports,
     pub(crate) host: &'a str,
     pub(crate) detecting: &'a Arc<Detecting>,
+    pub(crate) persister: &'a Arc<Persister>,
 }
 
 impl Pane {
@@ -355,6 +366,7 @@ impl Pane {
             closed: AtomicBool::new(false),
             reset_detection: AtomicBool::new(false),
             flow: Flow::default(),
+            persister: Some(Arc::clone(watching.persister)),
         });
         let pane = record.pane.clone();
 
@@ -673,6 +685,7 @@ impl PaneIo {
             closed: AtomicBool::new(false),
             reset_detection: AtomicBool::new(false),
             flow: Flow::default(),
+            persister: None,
         })
     }
 }

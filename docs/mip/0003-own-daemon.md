@@ -290,8 +290,9 @@ in, plus:
   every prompt, follows the app's `[cursor]`: blinking or steady as `blink` says while no style
   is named, as Ghostty decides from `cursor-style-blink`, and off when a style is named, because
   Muster turns the integration on without being asked and a named shape is what the person
-  asked for. A daemon no app has sent a cursor to uses Ghostty's default, a blinking bar. A
-  command pane's own shell runs the command
+  asked for. A daemon no app has sent a cursor to uses Ghostty's default, a blinking bar, unless
+  a previous run's is saved (section 2), which it uses from the start. A command pane's own shell
+  runs the command
   without it, and its `exec` hands it to the interactive shell after: zsh's and fish's
   integrations each undo their injection as they load, so the first shell would use it up.
 
