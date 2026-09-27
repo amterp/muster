@@ -46,10 +46,11 @@ pane's history on the wire per read, which is the price of the flag meaning what
 daemon counts rows of the *grid*, so the blank space under a quiet pane is rows to it, and asking
 it for a small number would buy those and answer with nothing at all.
 
-## A send that exits 0 was taken, not necessarily received
+## A send that exits 0 was queued, not necessarily received
 
-`muster pane send` exits 0 when the daemon took the request. That is not the same as the
-program in the pane having received the text, and two things routinely make them differ.
+`muster pane send` exits 0 when the window queued the text for the pane's daemon, and the daemon
+answers nothing about it (below). That is not the same as the program in the pane having received
+the text, and two things routinely make them differ.
 
 A terminal in **canonical mode** - anything reading stdin without a line editor of its own,
 `cat` and a shell script's `read` among them - accepts a line of at most 1024 bytes including

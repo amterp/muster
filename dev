@@ -745,13 +745,19 @@ fn build_bundle():
 
     // The rpaths compiled in are loader-relative to target/release and to the ghostty
     // checkout (Package.swift, .cargo/config.toml), and neither exists inside a bundle. So
-    // each binary that loads a dylib learns where the bundle keeps them, and all are re-signed
-    // afterwards: editing a Mach-O invalidates its signature, and macOS refuses to launch the
-    // result. The daemon reaches the app's Frameworks from inside its helper bundle rather than
-    // carrying a second copy of libghostty-vt.
-    $`install_name_tool -add_rpath @executable_path/../Frameworks {contents}/MacOS/muster`
-    $`install_name_tool -add_rpath @loader_path {contents}/Frameworks/libmuster.dylib`
-    $`install_name_tool -add_rpath @executable_path/../../../../Frameworks {contents}/Library/{DAEMON_BUNDLE}/Contents/MacOS/muster-daemon`
+    // each binary that loads a dylib learns where the bundle keeps them instead, and all are
+    // re-signed afterwards: editing a Mach-O invalidates its signature, and macOS refuses to
+    // launch the result. The daemon reaches the app's Frameworks from inside its helper bundle
+    // rather than carrying a second copy of libghostty-vt.
+    daemon = "{contents}/Library/{DAEMON_BUNDLE}/Contents/MacOS/muster-daemon"
+    rpaths = [
+        ["{contents}/MacOS/muster", "@executable_path/../Frameworks"],
+        ["{contents}/Frameworks/libmuster.dylib", "@loader_path"],
+        [daemon, "@executable_path/../../../../Frameworks"],
+    ]
+    for pair in rpaths:
+        drop_checkout_rpaths(pair[0])
+        $`install_name_tool -add_rpath {pair[1]} {pair[0]}`
 
     // Before signing, which touches most of the same paths and would otherwise report a missing
     // daemon as a codesign error naming a file - true, and several steps away from what to do
@@ -761,8 +767,8 @@ fn build_bundle():
 
     // Run once, because a file being in place says nothing about whether it loads: a daemon
     // that cannot find libghostty-vt is present, signed and dead at launch, and a window
-    // shows that only as panes that never render.
-    daemon = "{contents}/Library/{DAEMON_BUNDLE}/Contents/MacOS/muster-daemon"
+    // shows that only as panes that never render. With the checkout's rpaths gone, this is
+    // the bundle's own copy loading, even on the machine that built it.
     quiet $`{daemon} --version` catch:
         print_err(red("The bundled muster-daemon does not start."))
         print_err("Impact: every pane in this bundle's window stays blank.")
@@ -770,6 +776,20 @@ fn build_bundle():
         print_err("the rpaths build_bundle adds are the usual cause.")
         exit(1)
     print("assembled {BUNDLE} - open it, or drag it to the Dock")
+
+// Deletes the rpaths that point into this checkout, so a bundled binary loads only what the
+// bundle carries. Left in, the binary would load from target/ or the ghostty checkout on the
+// machine that built it, and a bundle missing a dylib would pass every check here and fail on
+// anybody else's.
+fn drop_checkout_rpaths(binary):
+    listing, _, _ = quiet $`otool -l {binary}`
+    for line in listing.split("\n"):
+        text = line.trim()
+        if not text.starts_with("path "):
+            continue
+        path = text[5:].split(" (offset")[0]
+        if "target/" in path or "deps/ghostty" in path:
+            $`install_name_tool -delete_rpath {path} {binary}`
 
 // Everything a launched bundle has to be able to reach, checked at the moment it is assembled.
 //

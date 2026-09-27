@@ -326,8 +326,9 @@ between "bytes" and "control":
   to the daemon for the pane under the pointer, which scales it by the same multiplier after rounding a notch up to
   one, as Ghostty does, and gives it to the program only where a terminal would: as a
   mouse report when the program tracks the mouse, as arrow keys when it is on the alternate screen, and otherwise
-  not at all. Clicks and drags take the same path, except that a shift-click is never reported, so it always
-  selects.
+  not at all. Clicks and drags take the same path, and a shift-click is reported only to a program that asked for
+  shift with XTSHIFTESCAPE; otherwise it selects, as it does in Ghostty. The daemon decides that, since it is the one
+  holding the program's modes.
 
 ## The shell/core seam
 

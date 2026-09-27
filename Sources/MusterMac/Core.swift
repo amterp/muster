@@ -270,7 +270,7 @@ public enum Core {
   ///
   /// The surface scrolls its own history; this is for the pane's daemon, which decides from the
   /// program's modes whether the program gets arrow keys, a mouse report or nothing. Carried
-  /// whole rather than turned into lines here, because the core scales it by
+  /// whole rather than turned into lines here, because the daemon scales it by
   /// `scroll_multiplier` and a shell that did the arithmetic would be a second place that lives.
   public struct Wheel: Equatable, Sendable {
     /// Positive is right and up, the same numbers the surface was handed.

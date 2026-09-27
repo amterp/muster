@@ -217,9 +217,10 @@ fn exit(ended: &Ended, rendered: bool) -> Exit {
 
 /// What the window is told about an attach the daemon refused.
 ///
-/// Only a pane the daemon no longer holds is gone, and only another bridge drawing it is a
-/// refusal the window should respect. Every other refusal says nothing about the pane, so the
-/// window may start another bridge for it.
+/// Only a pane the daemon no longer holds is gone. Another bridge drawing it is a refusal, which
+/// the window answers with a bridge that takes the pane over, since the one drawing it is most
+/// often a stream whose transport died and whose far end has not noticed yet. Every other
+/// refusal says nothing about the pane, so the window may start another bridge for it.
 fn refusal(error: &AttachError) -> Exit {
     let ending = match error {
         AttachError::Refused {
