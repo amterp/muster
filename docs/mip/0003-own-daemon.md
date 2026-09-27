@@ -486,17 +486,21 @@ The replay is, in order:
 2. the primary screen and its history, always, with soft wraps unwrapped and down to its last
    row, blank rows included, so the receiver's history holds the same number of rows. While
    the alternate screen is active, the primary screen's cursor and pen come with it, because
-   entering the alternate screen saved them and leaving it restores them;
+   entering the alternate screen saved them and leaving it restores them, and so does its
+   cursor shape, which is its own;
 3. if the alternate screen is active, the mode the program entered it with (1049, 1047 or
    47), the cursor home, and its content;
 4. every terminal mode stated outright, after the content so insert mode and wrapping off do
    not apply to it; stated rather than diffed, because the defaults that matter are the
    receiver's. Left out: the screen switches, already made in step 3; 1048, which saves the
    cursor rather than holding a state; DECCOLM, which resizes; synchronized output, which would
-   freeze the receiver; and origin mode, which comes in step 5. Then the cursor's shape, when a
-   program changed it from a block: no formatter writes DECSCUSR, and a shell with Ghostty's
-   integration sets a bar at every prompt. Left out otherwise, so the surface keeps the shape it
-   is configured with;
+   freeze the receiver; and origin mode, which comes in step 5. Then the mouse tracking mode
+   and format in effect, set again last, since the bits in order would leave the highest in
+   effect. Then the active screen's cursor shape, when a program changed it from a block: no
+   formatter writes DECSCUSR, and a shell with Ghostty's integration sets a bar at every prompt.
+   Left out otherwise, so the surface keeps the shape it is configured with - except on the
+   alternate screen when the primary's shape is not a block, where `CSI 0 q` makes sure the
+   primary's does not stay;
 5. tabstops, the scrolling region and modifyOtherKeys, then origin mode, which is relative to
    that region;
 6. only the palette entries and OSC 10/11/12 colors a program changed, then the title and the
@@ -510,23 +514,26 @@ The primary screen while the alternate is active, and state without content, nee
 formatters the pinned C API does not expose, although the Zig formatter has both
 (`formatter.zig:301-304` asks for them). Muster carries them as a patch on the pin,
 `deps/ghostty-patches/0001`, for good and not for upstream: it only adds C API and changes
-nothing that exists, and stays small so that a re-pin rebases it. It also carries one formatter
-option, off by default and turned on only by the screen formatter: the formatter writes the gap
-before the next text on a row in whatever style the previous text left open, so a background
-or underline would bleed across it, and the option closes the style first. The snapshot API was the
+nothing that exists, and stays small so that a re-pin rebases it. It also carries three formatter
+options, each off by default and turned on only by the screen formatter. The formatter writes the
+gap before the next text on a row in whatever style the previous text left open, so a background
+or underline would bleed across it, and the first option closes the style first. It drops a row
+with no text as blank whatever its colors, and the second keeps a painted one, so a band a TUI
+painted with no text in it replays painted. It writes OSC 8 only for HTML, and the third writes
+it for VT, so text that was a link stays one. And the patch adds getters for what the C API does
+not reach: each screen's cursor shape, since DECSCUSR sets only the active screen's, so the replay
+states the primary's before entering the alternate screen and the alternate's after; and the
+mouse tracking mode and format in effect, which the mode bits cannot say, since setting one
+replaces the last without clearing its bit - the replay sets the one in effect last, so a program
+that enabled 1002 and then 1000 does not come back reporting motion. The snapshot API was the
 alternative, and reaches the primary screen but still cannot emit state without content.
 
-Six things are not replayed, and the oracle pins each as its exact difference so a fix shows
-up as a failing case: OSC 8 links on text already written (the formatter writes them for HTML
-only), per-cell DECSCA protection, a row painted with a background and no text, the kitty
-keyboard stack beneath its current flags, a cursor saved with DECSC, and the primary screen's
-cursor shape while the alternate screen is active. Carrying the first three would change the
-formatter's existing output, which the patch does not do; the next two are not readable at all;
-and the last is readable only for the active screen, through a render state or `terminal_get`,
-so closing it takes one more getter in the patch. The first three last until the program
-redraws those cells, the next two until it next pushes kitty flags or saves the cursor, and the
-last until the shell's next prompt sets the shape again: a pane attached while vim is open shows
-the surface's default shape once vim exits, then the prompt's.
+Three things are not replayed, and the oracle pins each as its exact difference so a fix shows up
+as a failing case: per-cell DECSCA protection, the kitty keyboard stack beneath its current
+flags, and a cursor saved with DECSC. The first would take the formatter writing protection per
+cell, as it now writes links, in both paths of its content loop; the other two are not readable
+at all. They last until the program next protects those cells, pushes kitty flags or saves the
+cursor.
 `docs/observations/libghostty-9f9b8d1d.md` section 14 has the evidence.
 
 The daemon registers the bridge at the recorded stream offset while holding the pane's lock, so

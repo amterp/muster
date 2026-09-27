@@ -202,40 +202,39 @@ impl Terminal {
         String::from_utf8_lossy(bytes).into_owned()
     }
 
-    /// The cursor's shape. Only a render state reads it, so this builds one for the question:
-    /// cheap next to the replay it serves, and never on a path that runs per byte.
-    pub fn cursor_shape(&self) -> CursorShape {
-        let mut state: ffi::GhosttyRenderState = std::ptr::null_mut();
-        let mut style =
-            ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK;
-        // SAFETY: a render state is created with the default allocator, updated from a terminal
-        // this borrow keeps alive, read into a local of the type the header documents for
-        // CURSOR_VISUAL_STYLE, and freed before return on every path.
+    /// The mouse tracking mode in effect and its report format, as the DEC private mode numbers
+    /// that set them (0 for no tracking, and for the default format). Not the mode bits: setting
+    /// a tracking mode replaces the one before without clearing its bit.
+    pub fn mouse_in_effect(&self) -> (u16, u16) {
+        let (mut event, mut format) = (0u16, 0u16);
+        // SAFETY: the terminal is live for this borrow, and both outputs are the types muster.h
+        // documents.
         unsafe {
-            if ffi::ghostty_render_state_new(std::ptr::null(), &raw mut state)
-                != ffi::GhosttyResult_GHOSTTY_SUCCESS
-            {
-                return CursorShape::Block;
-            }
-            if ffi::ghostty_render_state_update(state, self.handle())
-                == ffi::GhosttyResult_GHOSTTY_SUCCESS
-            {
-                ffi::ghostty_render_state_get(
-                    state,
-                    ffi::GhosttyRenderStateData_GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE,
-                    (&raw mut style).cast(),
-                );
-            }
-            ffi::ghostty_render_state_free(state);
+            ffi::ghostty_terminal_mouse_tracking(self.handle(), &raw mut event, &raw mut format);
+        }
+        (event, format)
+    }
+
+    /// The cursor's shape on the active screen.
+    pub fn cursor_shape(&self) -> CursorShape {
+        self.cursor_shape_of(self.active_screen())
+    }
+
+    /// The cursor's shape on `screen`. DECSCUSR sets only the active screen's, so the primary
+    /// keeps its own while a program holds the alternate one.
+    pub fn cursor_shape_of(&self, screen: Screen) -> CursorShape {
+        let mut style = ffi::GhosttyTerminalCursorStyle_GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK;
+        // SAFETY: the terminal is live for this borrow, and the output is the type muster.h
+        // documents.
+        unsafe {
+            ffi::ghostty_terminal_screen_cursor_style(self.handle(), screen.raw(), &raw mut style);
         }
         match style {
-            ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR => {
-                CursorShape::Bar
-            }
-            ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE => {
+            ffi::GhosttyTerminalCursorStyle_GHOSTTY_TERMINAL_CURSOR_STYLE_BAR => CursorShape::Bar,
+            ffi::GhosttyTerminalCursorStyle_GHOSTTY_TERMINAL_CURSOR_STYLE_UNDERLINE => {
                 CursorShape::Underline
             }
-            ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW => {
+            ffi::GhosttyTerminalCursorStyle_GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK_HOLLOW => {
                 CursorShape::HollowBlock
             }
             _ => CursorShape::Block,

@@ -312,16 +312,14 @@
     },
     {
       "name": "a row painted with a background and no text",
-      "why": "Known gap, pinned. The formatter treats a row with no text as blank whatever its colors, so a band a TUI painted with no text in it - an empty panel, a divider made of background - replays unpainted until the program draws again. Fixing it changes the formatter's existing output, which the carried patch does not do.",
+      "why": "A band a TUI painted with no text in it - an empty panel, a divider made of background - is written with its background. The formatter drops a row with no text as blank whatever its colors; the carried patch's styled_blank_rows option, on in the replay's screen formatter, keeps a painted one.",
       "given": {
         "columns": 20,
         "rows": 4,
         "feed": "\u001b[2;1H\u001b[41m\u001b[2K\u001b[0m\u001b[1;1H"
       },
       "expect": {
-        "differences": [
-          "row 1: \"\" vs \"\", 20 of 20 cells differ, first cell 0 background Some(Palette(1)), replayed None"
-        ]
+        "differences": []
       }
     },
     {
@@ -339,16 +337,14 @@
     },
     {
       "name": "hyperlinked text already on the screen",
-      "why": "Known gap, pinned so a fix shows up here. The formatter writes OSC 8 only for HTML (upstream says so at the spot, formatter.zig), so text that was a link replays as plain text and stops being clickable in the surface until the program writes it again. Fixing it changes the formatter's existing VT output, which the carried patch does not do (it only adds API). Detection and `muster pane read` are unaffected: they read the daemon's own terminal, not a replay.",
+      "why": "Text that was a link stays one, so it is clickable in the surface without the program writing it again. The formatter writes OSC 8 only for HTML; the carried patch's vt_hyperlinks option, on in the replay's screen formatter, writes it for VT too.",
       "given": {
         "columns": 20,
         "rows": 5,
         "feed": "\u001b]8;;https://example.com\u001b\\link\u001b]8;;\u001b\\"
       },
       "expect": {
-        "differences": [
-          "row 0: \"link\" vs \"link\", 4 of 20 cells differ, first cell 0 hyperlink Some(\"https://example.com\"), replayed None"
-        ]
+        "differences": []
       }
     },
     {
@@ -383,6 +379,30 @@
         "columns": 20,
         "rows": 5,
         "feed": "\u001b[?1002h\u001b[?1006h\u001b[?2004h\u001b[?1004h"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a mouse tracking mode set after a higher one",
+      "why": "Setting a tracking mode replaces the one in effect without clearing its mode bit, so a program that enabled 1002 and then 1000 has both bits set and 1000 in effect. Writing the bits in order would leave 1002 in effect, and the program would get motion it never asked for; the replay sets the one in effect last.",
+      "given": {
+        "columns": 20,
+        "rows": 4,
+        "feed": "\u001b[?1002h\u001b[?1006h\u001b[?1000h"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "a mouse tracking mode reset while another stays set",
+      "why": "Resetting any tracking mode ends tracking, whichever was in effect, and leaves the other bits as they were: 1000 still set, nothing in effect. The replay resets a mode that is not set, which ends tracking without clearing 1000.",
+      "given": {
+        "columns": 20,
+        "rows": 4,
+        "feed": "\u001b[?1000h\u001b[?1002h\u001b[?1002l"
       },
       "expect": {
         "differences": []
@@ -442,7 +462,7 @@
     },
     {
       "name": "the primary screen's cursor shape while the alternate screen is active",
-      "why": "Each screen keeps its own cursor shape, and a replay states only the active one's: libghostty-vt reads the shape through a render state or terminal_get, and both read the active screen. So a pane attached while vim holds the alternate screen shows the receiver's default shape once vim exits, until the shell's next prompt sets it again. Known gap, pinned: it heals at the next prompt, and closing it needs a getter for the inactive screen's shape in the carried patch.",
+      "why": "Each screen keeps its own cursor shape, and DECSCUSR sets only the active one's, so the replay states the primary's before entering the alternate screen and the alternate's after. A pane attached while vim holds the alternate screen shows the shell's shape again once vim exits. The carried patch's ghostty_terminal_screen_cursor_style reads the inactive screen's.",
       "given": {
         "columns": 20,
         "rows": 5,
@@ -451,9 +471,7 @@
         "after": "\u001b[?1049l"
       },
       "expect": {
-        "differences": [
-          "after: cursor shape: original Bar, replayed Block"
-        ]
+        "differences": []
       }
     },
     {

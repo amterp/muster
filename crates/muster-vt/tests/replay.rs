@@ -152,7 +152,17 @@ fn state_differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
         format!("{:?}", b.active_screen()),
     );
     compare("cursor", format!("{:?}", a.cursor()), format!("{:?}", b.cursor()));
-    compare("cursor shape", format!("{:?}", a.cursor_shape()), format!("{:?}", b.cursor_shape()));
+    // The alternate screen's only while it is active: a replay recreates no alternate screen a
+    // program has left.
+    let alternate = a.active_screen() == Screen::Alternate;
+    for screen in [Screen::Primary, Screen::Alternate].into_iter().take(1 + usize::from(alternate))
+    {
+        compare(
+            &format!("{screen:?} cursor shape"),
+            format!("{:?}", a.cursor_shape_of(screen)),
+            format!("{:?}", b.cursor_shape_of(screen)),
+        );
+    }
     compare("pending wrap", a.pending_wrap().to_string(), b.pending_wrap().to_string());
     for mode in Mode::all() {
         compare(&format!("mode {mode}"), a.mode(mode).to_string(), b.mode(mode).to_string());
@@ -163,6 +173,11 @@ fn state_differences(a: &Terminal, b: &Terminal, prefix: &str) -> Vec<String> {
         b.kitty_keyboard_flags().to_string(),
     );
     compare("mouse tracking", a.mouse_tracking().to_string(), b.mouse_tracking().to_string());
+    compare(
+        "mouse mode and format in effect",
+        format!("{:?}", a.mouse_in_effect()),
+        format!("{:?}", b.mouse_in_effect()),
+    );
     compare("title", format!("{:?}", a.title()), format!("{:?}", b.title()));
     compare("pwd", format!("{:?}", a.pwd()), format!("{:?}", b.pwd()));
     compare("foreground", format!("{:?}", a.foreground()), format!("{:?}", b.foreground()));

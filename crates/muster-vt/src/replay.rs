@@ -92,6 +92,7 @@ impl Terminal {
             if alternate { ScreenExtras { cursor: true, ..PEN } } else { ScreenExtras::default() };
         out.extend(self.format_screen(Screen::Primary, content(primary_extras, history)));
         if alternate {
+            self.cursor_shape_statement(out, Screen::Primary, None);
             out.extend(sequence(self.alternate_entry(), true));
             // The alternate screen starts with the cursor where the primary left it.
             out.extend_from_slice(HOME);
@@ -108,7 +109,13 @@ impl Terminal {
         // whatever the program left them as. Origin mode waits: setting it moves the cursor
         // into the scrolling region, which does not exist yet.
         self.modes(out);
-        self.cursor_shape_statement(out);
+        self.mouse_in_effect_statement(out);
+        if alternate {
+            let primary = self.cursor_shape_of(Screen::Primary);
+            self.cursor_shape_statement(out, Screen::Alternate, Some(primary));
+        } else {
+            self.cursor_shape_statement(out, Screen::Primary, None);
+        }
         let movers = self.format_state(FormatOptions {
             extras: Extras {
                 tabstops: true,
@@ -136,15 +143,44 @@ impl Terminal {
         }));
     }
 
-    /// The cursor's shape, when a program changed it from the block a terminal starts with,
-    /// which no formatter writes. Left out otherwise, so the receiver keeps the shape it is
-    /// configured with rather than taking this terminal's default. DECSCUSR sets the blink as
+    /// `screen`'s cursor shape, written while that screen is the receiver's active one, since
+    /// DECSCUSR sets only the active screen's. Left out when it is the block a terminal starts
+    /// with, so the receiver keeps the shape it is configured with rather than taking this
+    /// terminal's default, unless `after` - the shape the screen before it was given - may have
+    /// carried over: then `CSI 0 q` puts the receiver's default back. DECSCUSR sets the blink as
     /// well, so it is written with the blink mode 12 already has.
-    fn cursor_shape_statement(&self, out: &mut Vec<u8>) {
-        let shape = self.cursor_shape();
+    fn cursor_shape_statement(
+        &self,
+        out: &mut Vec<u8>,
+        screen: Screen,
+        after: Option<CursorShape>,
+    ) {
+        let shape = self.cursor_shape_of(screen);
         if shape != CursorShape::Block {
             let blinking = self.mode(Mode::CURSOR_BLINKING);
             out.extend_from_slice(format!("\x1b[{} q", shape.decscusr(blinking)).as_bytes());
+        } else if after.is_some_and(|before| before != CursorShape::Block) {
+            out.extend_from_slice(b"\x1b[0 q");
+        }
+    }
+
+    /// The mouse tracking mode and format in effect, which the mode bits written in order do not
+    /// say: setting either kind of mode replaces the last one set without clearing its bit, and
+    /// resetting any clears the one in effect. So the one in effect is set again last, or, when
+    /// none is though a bit is set, one that is not set is reset.
+    fn mouse_in_effect_statement(&self, out: &mut Vec<u8>) {
+        const EVENTS: [u16; 4] = [9, 1000, 1002, 1003];
+        const FORMATS: [u16; 4] = [1005, 1006, 1015, 1016];
+        let (event, format) = self.mouse_in_effect();
+        for (in_effect, kind) in [(event, EVENTS), (format, FORMATS)] {
+            let set = |number: u16| self.mode(Mode::dec(number));
+            if in_effect != 0 {
+                out.extend(sequence(Mode::dec(in_effect), true));
+            } else if kind.iter().any(|&number| set(number))
+                && let Some(&unset) = kind.iter().find(|&&number| !set(number))
+            {
+                out.extend(sequence(Mode::dec(unset), false));
+            }
         }
     }
 
