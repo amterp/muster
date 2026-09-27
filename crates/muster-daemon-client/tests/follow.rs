@@ -8,7 +8,7 @@ use muster_core::daemon_settings::DaemonSettings;
 use muster_core::input::NotSent;
 use muster_core::intent::{BackendChannel, BackendIntent, Side};
 use muster_core::mirror::Mirror;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use muster_core::mirror::backend::{PaneId, TabId};
 
@@ -19,7 +19,7 @@ use muster_daemon_client::follow::{Follower, Following, Notice};
 use muster_daemon_client::records;
 use muster_daemon_proto as proto;
 use muster_harness::requests::{snapshot, until_text};
-use muster_harness::{Daemon, until_some};
+use muster_harness::{Daemon, until, until_some};
 
 struct Followed {
     follower: Follower,
@@ -336,4 +336,48 @@ fn a_paste_too_large_to_send_leaves_typing_working() {
     assert!(matches!(refused, Err(NotSent::TooLarge { .. })), "{refused:?}");
     connection.send_input(typed(&pane, "echo AFTER-THE-PASTE")).unwrap();
     until_text(&mut control, pane.as_str(), "AFTER-THE-PASTE\n");
+}
+
+/// Letting go of a daemon that never answers its subscribe hangs the connection up rather than
+/// waiting out the subscribe's patience, since whoever lets go may be holding what every other
+/// daemon's events need.
+#[test]
+fn letting_go_of_a_daemon_mid_connect_is_prompt() {
+    let daemon = Daemon::start_built();
+    let subscribing = Arc::new(AtomicBool::new(false));
+    let seen = Arc::clone(&subscribing);
+    let relay = daemon.withholding_answers_where(move |request| {
+        let subscribe = matches!(
+            &request.service,
+            Some(proto::request::Service::Session(proto::SessionRequest {
+                request: Some(proto::session_request::Request::Subscribe(_)),
+            }))
+        );
+        seen.fetch_or(subscribe, Ordering::Relaxed);
+        subscribe
+    });
+    let follower = Follower::start(
+        Following {
+            socket: relay.socket_path().to_path_buf(),
+            client: "test".to_string(),
+            daemon: "silent".to_string(),
+            remote: false,
+        },
+        Arc::new(Mutex::new(Mirror::new())),
+        Arc::new(|_| {}),
+    )
+    .unwrap();
+    until(
+        "the follower to be waiting on its subscribe",
+        || subscribing.load(Ordering::Relaxed),
+        (),
+    );
+
+    let started = std::time::Instant::now();
+    drop(follower);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "letting go took {:?}",
+        started.elapsed()
+    );
 }

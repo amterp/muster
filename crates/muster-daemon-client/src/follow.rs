@@ -73,6 +73,10 @@ pub struct Following {
 #[derive(Debug, Default)]
 pub struct Connection {
     control: Mutex<Option<Arc<Control>>>,
+    /// A control connection still being set up, which is published as `control` by its own
+    /// reader once its snapshot is in the mirror. Held so that letting go of the daemon can hang
+    /// it up.
+    connecting: Mutex<Option<Arc<Control>>>,
     input: Mutex<Option<Input>>,
     /// What the daemon should be told, sent at every connect and whenever it changes.
     settings: Mutex<Option<DaemonSettings>>,
@@ -209,6 +213,9 @@ fn notifier(daemon: &str, connection: &Arc<Connection>, notify: Notify) -> std::
 impl Drop for Follower {
     fn drop(&mut self) {
         self.connection.stopping.store(true, Ordering::Relaxed);
+        if let Some(connecting) = lock(&self.connection.connecting).take() {
+            connecting.hang_up();
+        }
         lock(&self.connection.control).take();
         lock(&self.connection.input).take();
         let current = self.connection.generation.load(Ordering::Relaxed);
@@ -299,12 +306,15 @@ fn connect(
             .map_err(|error| format!("could not open a control connection: {error}"))?,
     );
     let instance = control.welcome().instance;
-    *lock(&connection.control) = Some(Arc::clone(&control));
+    *lock(&connection.connecting) = Some(Arc::clone(&control));
+    if connection.stopping.load(Ordering::Relaxed) {
+        return Err("this window stopped following the daemon".to_string());
+    }
 
-    control
-        .subscribe()
-        .wait(PATIENCE)
-        .map_err(|why| format!("the daemon did not answer a subscribe: {why}"))?;
+    let subscribed = control.subscribe().wait(PATIENCE);
+    // Published by the snapshot's delivery, unless the subscribe failed.
+    lock(&connection.connecting).take();
+    subscribed.map_err(|why| format!("the daemon did not answer a subscribe: {why}"))?;
 
     // After the snapshot, so the run's log reads connect, state, then the daemon's side. A
     // daemon run this window has not followed before is followed from as far back as it holds.
@@ -371,6 +381,14 @@ fn delivery(
         Delivered::Subscribed(snapshot) => {
             let (snapshot, unreadable) = convert::snapshot(*snapshot);
             let changes = mirror.lock().unwrap_or_else(PoisonError::into_inner).bootstrap(snapshot);
+            // Published here, between the snapshot and the notice: a request made before it is
+            // refused as not connected, where it could be answered while the mirror still held
+            // the picture from before, and one made in answer to the notice finds it connected.
+            if connection.generation.load(Ordering::Relaxed) == generation
+                && let Some(control) = lock(&connection.connecting).take()
+            {
+                *lock(&connection.control) = Some(control);
+            }
             notify(Notice::Bootstrapped { changes, unreadable });
             if std::mem::take(&mut reconnected) {
                 notify(Notice::Reconnected);

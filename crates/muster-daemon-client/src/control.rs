@@ -262,6 +262,14 @@ impl Control {
     }
 }
 
+impl Control {
+    /// Hangs up now, whoever else holds this connection: a request waiting on it is answered
+    /// with its end rather than waiting out its patience.
+    pub fn hang_up(&self) {
+        let _ = self.socket.shutdown(Shutdown::Both);
+    }
+}
+
 impl Drop for Control {
     fn drop(&mut self) {
         // Both threads hold their own handles on the socket; shutting it down ends them.
@@ -307,6 +315,9 @@ fn read_messages(
 ) {
     let waiting = &requests.waiting;
     let mut order = Order::Unsubscribed;
+    // Answers that arrived while events were being dropped, handed over once a new snapshot
+    // has been delivered: the events that carried their effects are in it, and not before.
+    let mut held_back: Vec<(Waiter, proto::Answer)> = Vec::new();
     let why = loop {
         let message = match connection::receive::<proto::ControlMessage>(&mut stream) {
             Ok(Some(message)) => message.message,
@@ -336,8 +347,8 @@ fn read_messages(
                     order = Order::Lost;
                     deliver(Delivered::Gap { expected, got: event.seq }, requests);
                 }
-                Order::Lost => {}
-                Order::Unsubscribed => deliver(Delivered::Event(Box::new(event)), requests),
+                // A subscribe's snapshot supersedes both: what the dropped events said is in it.
+                Order::Lost | Order::Unsubscribed => {}
             },
             Some(control_message::Message::Answer(answer)) => {
                 let waiter = waiting
@@ -363,6 +374,12 @@ fn read_messages(
                     // the events after it can never land on a picture that never had it.
                     order = Order::Next(snapshot.seq + 1);
                     deliver(Delivered::Subscribed(Box::new(snapshot.clone())), requests);
+                    for (waiter, answer) in held_back.drain(..) {
+                        let _ = waiter.answer.send(answer);
+                    }
+                } else if matches!(order, Order::Lost) {
+                    held_back.push((waiter, answer));
+                    continue;
                 }
                 // A caller that stopped waiting has dropped its receiver.
                 let _ = waiter.answer.send(answer);
@@ -475,6 +492,47 @@ mod tests {
         }
         let seqs: Vec<String> = delivered.iter().take(3).map(|what| described(&what)).collect();
         assert_eq!(seqs, ["S5", "6", "7"]);
+    }
+
+    /// An answer that arrives while events are being dropped waits for the snapshot that holds
+    /// them, so a request's effect is in the caller's picture by the time it returns.
+    #[test]
+    fn an_answer_during_a_gap_waits_for_the_next_snapshot() {
+        let (control, mut daemon, delivered) = connected();
+        let subscribed = control.subscribe();
+        subscribed_at(&mut daemon, 5);
+        subscribed.wait(PATIENCE).unwrap();
+        for message in [event(6, "a"), event(8, "b")] {
+            connection::send(&mut daemon, &message).unwrap();
+        }
+
+        let asked = control.snapshot();
+        answer_to(&mut daemon, None);
+        assert!(
+            asked.wait(Duration::from_millis(200)).is_err(),
+            "answered while the events behind the answer were being dropped"
+        );
+        let resubscribed = control.subscribe();
+        subscribed_at(&mut daemon, 9);
+        resubscribed.wait(PATIENCE).unwrap();
+        asked.wait(PATIENCE).expect("answered once the snapshot is delivered");
+
+        let seqs: Vec<String> = delivered.iter().take(4).map(|what| described(&what)).collect();
+        assert_eq!(seqs, ["S5", "6", "gap 7->8", "S9"]);
+    }
+
+    /// Nothing is delivered before the first snapshot: it is the whole picture, and an event
+    /// ahead of it would be applied to none.
+    #[test]
+    fn an_event_before_the_first_snapshot_is_not_delivered() {
+        let (control, mut daemon, delivered) = connected();
+        connection::send(&mut daemon, &event(3, "early")).unwrap();
+        let subscribed = control.subscribe();
+        subscribed_at(&mut daemon, 5);
+        subscribed.wait(PATIENCE).unwrap();
+        connection::send(&mut daemon, &event(6, "a")).unwrap();
+        let seqs: Vec<String> = delivered.iter().take(2).map(|what| described(&what)).collect();
+        assert_eq!(seqs, ["S5", "6"]);
     }
 
     /// A gap is answered from inside `deliver`, which cannot wait, and the order recovers.
