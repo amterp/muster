@@ -32,7 +32,6 @@ message Request {
     KeyUp key_up = 5;
     SendText send_text = 6;
     Paste paste = 7;
-    Scroll scroll = 8;
     SplitPane split_pane = 9;
     ClosePane close_pane = 10;
     FocusPane focus_pane = 11;
@@ -56,9 +55,6 @@ message Request {
     RenameTab rename_tab = 29;
     FocusTab focus_tab = 30;
     ArrangePane arrange_pane = 31;
-    Find find = 32;
-    FindStep find_step = 33;
-    EndFind end_find = 34;
     ReadWindow read_window = 35;
     SendToPane send_to_pane = 36;
     ReadWindowFrame read_window_frame = 37;
@@ -68,7 +64,6 @@ message Request {
     EndNumberedChord end_numbered_chord = 41;
     ReadPane read_pane = 42;
     CloseTab close_tab = 43;
-    ReadViewport read_viewport = 44;
     ReadDaemons read_daemons = 45;
     ReattachPane reattach_pane = 46;
     EqualizePanes equalize_panes = 47;
@@ -77,6 +72,11 @@ message Request {
     Carried carried = 50;
     MoveTab move_tab = 51;
   }
+
+  // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
+  // Each pane's own libghostty surface holds its history now, so the renderer does all four
+  // without asking the core.
+  reserved 8, 32, 33, 34, 44;
 }
 
 // A request another window carried here, because it is about a tab this window holds.
@@ -232,63 +232,6 @@ message SetWindowFrame {
 // Answered from the same builders the events come from, so there is one account of what a
 // window is rather than a read that can disagree with what is on screen.
 message ReadWindow {}
-
-// Looks for text in a pane, and puts the first match on screen.
-//
-// Sent per keystroke in the find bar, so the needle is the whole request rather than
-// something built up: what is being asked is always "find this", never "find this as well".
-//
-// **What it searches is a pane's recent history, not what is on screen.** A surface is
-// repainted from a frame stream and keeps no scrollback, so the renderer's own find would
-// cover one screen. The daemon holds the history and answers at most a thousand rows of it,
-// which is why the answer says how far it reached (`observations/herdr-0.8.0.md` section 17).
-message Find {
-  string daemon_id = 1;
-
-  // Empty means the pane this window's keyboard is on, as everywhere else. A find bar is
-  // drawn over that pane, so empty is the ordinary case here rather than a shorthand.
-  string pane_id = 2;
-
-  // Plain text. Matched as a substring with ASCII case folding and nothing else, because
-  // that is what the renderer highlighting these does, and two matchers that disagreed would
-  // put a count over a screen contradicting it.
-  string needle = 3;
-}
-
-// Where a pane is looking, and how much history it holds.
-//
-// The one fact a shell cannot work out for itself and needs in order to keep a selection on
-// the text it was made on. A pane is scrolled somewhere else - the daemon holds the history
-// and repaints the screen in place, so a surface's own buffer never moves
-// (`observations/libghostty-9f9b8d1d.md` section 12) - and a selection made at screen row 4
-// is at screen row 4 forever unless something says how far the pane has travelled since.
-//
-// Asked at the moment it is wanted rather than followed: the change to it is announced only
-// to a subscription that names the pane, so fifteen panes would be fifteen held connections
-// for a number nothing renders.
-message ReadViewport {
-  string daemon_id = 1;
-
-  // Empty means the pane this window's keyboard is on, as everywhere else. A wheel scrolls
-  // whatever the pointer is over rather than whatever has the keyboard, so a caller asking
-  // about a scrolled pane names it.
-  string pane_id = 2;
-}
-
-// Goes to the next match, or the previous one, and puts it on screen.
-//
-// Names no pane, unlike every other request here: there is one search at a time, and which
-// pane it is about was settled when somebody typed into the bar. Naming one again would
-// invite a step against a pane the search is not about.
-message FindStep {
-  // `next` or `previous`. Next climbs the pane, because the first match is the newest one
-  // and the ones before it are further up - which is also why the bar draws next as an
-  // upward chevron.
-  string direction = 1;
-}
-
-// Forgets the search, which is what closing the find bar means.
-message EndFind {}
 
 // Calls a pane what somebody wants to call it.
 //
@@ -802,8 +745,7 @@ message PaneClosed {
 // The half of a pane an agent could not see. `muster window` says every pane's state and what
 // its agent claims to be doing; neither of those is the output, and a pane's output never
 // enters the core - it goes from the daemon to a surface through a bridge (architecture.md,
-// data plane). So this is a round trip to the daemon at the moment somebody asks, on the same
-// terms as Find, which reads the same rows in order to match them.
+// data plane). So this is a round trip to the daemon at the moment somebody asks.
 //
 // Answered with PaneText. How far back is the daemon's own limit rather than a promise made
 // here, and `truncated` is how a caller learns it did not get everything.
@@ -1110,18 +1052,19 @@ message Response {
     Attached attached = 3;
     Bindings bindings = 4;
     Appearance appearance = 5;
-    Findings findings = 6;
     Window window = 7;
     Made made = 8;
     WindowFrame window_frame = 9;
     PaneText pane_text = 10;
-    PaneViewport pane_viewport = 11;
     Daemons daemons = 12;
     PaneStateChanged pane_state = 13;
     PaneClosed pane_closed = 14;
     Unanswered unanswered = 15;
     BackendHealth backend_health = 16;
   }
+
+  // What a find and a viewport read answered, which the renderer now answers for itself.
+  reserved 6, 11;
 }
 
 // The pane a request made.
@@ -1335,64 +1278,6 @@ message Machine {
   string detail = 8;
 }
 
-// What a search found, which is everything a find bar draws.
-//
-// Counts rather than the matches themselves. The bar shows "3 of 47" and the renderer
-// highlights what is on screen by looking for the needle again itself, so nothing above the
-// core needs to know where a match is - and a common needle over a thousand rows would be
-// thousands of positions crossing this seam per keystroke.
-message Findings {
-  uint32 total = 1;
-
-  // Which match is selected, counting from one. Zero when nothing matched, which is already
-  // the answer to "which of nothing" and needs no separate flag.
-  uint32 selected = 2;
-
-  // How many rows of text were looked at, which is what the bar can honestly claim to have
-  // covered.
-  uint32 rows_searched = 3;
-
-  // How much of the pane that was: `whole`, `capped` or `screen_only`.
-  //
-  // Three answers rather than a flag, because "no results" means something different under
-  // each and a bar cannot work out which from a row count. `whole` is every row the pane
-  // holds, and wants no caveat drawn at all. `capped` is a pane deeper than the daemon will
-  // hand over, with `rows_held` saying how deep. `screen_only` is a pane showing a
-  // full-screen program, which keeps no history behind what is drawn - the search was
-  // complete and covered one screen, and it is the case somebody is most likely to read as
-  // find being broken.
-  string reach = 4;
-
-  // How many rows the pane holds in all. Set only for `capped`, where it is the other half
-  // of the sentence; zero otherwise, since "of 0 rows" is not something to draw.
-  uint32 rows_held = 5;
-
-  // Whether landing on the selected match moved the pane.
-  //
-  // A wheel goes through the window, so a shell knows about that scroll. A landing is written
-  // onto the pane's own channel by the core, so a shell hears nothing - and anything it is
-  // drawing over the pane's text is over the wrong text until the next wheel notch.
-  bool scrolled = 6;
-}
-
-// Where a pane is looking, in the rows the daemon scrolls in.
-//
-// The same three numbers a search's landing is worked out from, and the same unit: a row is a
-// grid row of the pane, counted up from the bottom of its history.
-message PaneViewport {
-  // How far above the bottom of the history the lowest visible row sits. Zero is a pane
-  // showing its newest output, which is where a pane nobody has scrolled always is.
-  uint32 rows_from_bottom = 1;
-
-  // How many rows the daemon is drawing. Not the grid a shell laid out, which is the number
-  // to use for anything about that shell's own screen - the two differ for a frame while a
-  // resize settles.
-  uint32 rows = 2;
-
-  // The furthest up this pane can go, which is zero until something has scrolled off it.
-  uint32 deepest = 3;
-}
-
 // Every action Muster has, and the chord asking for it.
 //
 // In menu order rather than alphabetical: a menu is read top to bottom, and making something
@@ -1500,29 +1385,6 @@ message Startup {
   // rather than an answer; `daemon::supplied` says why Muster gives its own.
   string locale = 7;
 
-  // Where Muster writes the config file its own daemon reads, or empty for nowhere.
-  //
-  // The backend's half of the arrangement the renderer already has. herdr takes a value only
-  // as a file, so Muster derives one from its own config and names it with HERDR_CONFIG_PATH -
-  // which moves the file the daemon reads without moving the socket it binds. That is what
-  // stops a `default_shell` somebody set for their own terminal deciding what every Muster
-  // pane runs, and what keeps a daemon pinned by checksum from looking for its own updates.
-  //
-  // The shell decides where it goes for the same reason it decides where the arrangement does.
-  // Empty is a real state: the daemon then reads the user's own herdr config, which is what it
-  // did before this existed, and the run log names which file is in play.
-  string daemon_config_path = 8;
-
-  // Where Muster remembers what it calls each pane, or empty for nowhere.
-  //
-  // Panes outlive the app, so an agent that has been running since before Muster was last
-  // quit still has a name in its environment - and if this file is not read back, that name
-  // resolves to nothing and every command from inside that pane is refused.
-  //
-  // The same division as state_path, and beside it in the same directory. Empty is a real
-  // state: names then last exactly one launch, which is what they did before this existed.
-  string pane_names_path = 9;
-
   // Where to listen for requests from outside this process, or empty for nowhere.
   //
   // The same Request the shell sends over the C ABI, arriving on a unix socket instead. That
@@ -1548,25 +1410,17 @@ message Startup {
   // the window works exactly as it did before this existed.
   string commands_path = 11;
 
-  // Where Muster keeps what it downloaded, or empty for nowhere.
-  //
-  // One thing needs this, and it is the daemon on a machine that is not this one. Muster runs
-  // the herdr it pinned rather than whatever is installed, and four platforms are pinned while
-  // a build carries one - so attaching an SSH endpoint means fetching that machine's asset and
-  // pushing it over the connection already open. Downloaded here rather than over there because
-  // whoever is running Muster demonstrably has web access and a devenv often has no route out.
-  //
-  // The shell decides where it goes for the same reason it decides where the arrangement does.
-  // Empty is a real state and not a failure: the fetch then goes to a temporary that is thrown
-  // away, so a machine with nowhere to cache pays for the download on every launch that has to
-  // install - slow rather than broken.
-  string cache_path = 12;
-
   // Was whether somebody asked for this window. Which tabs a window opens onto is now which tabs
   // it holds (tab_holders_path), so a window somebody asked for holds nothing until it asks for
   // a tab of its own, and the core has no use for being told.
   reserved 13;
   reserved "fresh";
+
+  // Were the daemon's config file, the pane names file and the download cache. The daemon is
+  // configured over its socket, it names panes by the names Muster gives them, and a remote
+  // daemon is not installed by the window.
+  reserved 8, 9, 12;
+  reserved "daemon_config_path", "pane_names_path", "cache_path";
 
   // Where Muster writes down the daemons it starts, or empty for nowhere.
   //
@@ -1632,14 +1486,13 @@ message AttachPane {
 
 // The pane is attached, and here is what the shell needs to finish standing it up.
 message Attached {
-  // Where the bridge should dial back. Chosen by the core because it is the core's
+  // Where the pane's bridge reports to the window. Chosen by the core because it is the core's
   // listener; the shell only relays it onto the bridge's command line.
-  string control_socket_path = 1;
+  string link_socket_path = 1;
 
-  // What the backend calls the pane that was attached, for the reason
-  // `ViewPane.backend_pane_id` carries one: the bridge talks to the daemon directly. Answered
-  // here so whatever asked for the attachment has both spellings without a second lookup.
-  string backend_pane_id = 2;
+  // Was the daemon's own id for the pane, which is now the name Muster gave it.
+  reserved 2;
+  reserved "backend_pane_id";
 }
 
 // A keystroke, with the fidelity a terminal encoder needs and nothing else.
@@ -1721,29 +1574,9 @@ message SendText {
 // The clipboard, on its way to the pane.
 message Paste {
   string text = 1;
-}
 
-// A wheel movement, which the daemon routes against the pane's mouse mode. Never encoded
-// here: a frame stream has no history, so surfaces hold no scrollback.
-// A wheel notch or a trackpad gesture, as the device reported it.
-//
-// The magnitude is the device's own number and stays that way across the seam: a trackpad
-// reports many small deltas and a wheel mouse a few large ones, and how many lines that is
-// worth is a decision - `scroll_multiplier` scales it and the core rounds it. A shell that
-// turned a delta into lines for itself would be a second place that answer lives, and the
-// two would drift the moment either changed.
-//
-// The pane is named because a wheel moves what the pointer is over rather than what the
-// keyboard is in - reading one agent's output while typing into another is the ordinary case
-// in a window of fifteen. That is the one thing separating this from every other input
-// message here, all of which mean the focused pane. The daemon comes with it because two
-// daemons hand out the same pane ids.
-message Scroll {
-  string daemon_id = 3;
-  string pane_id = 4;
-
-  string direction = 1;  // up or down
-  double delta = 2;
+  // Somebody has already said yes to this paste, after its daemon held it (PasteHeld).
+  bool confirmed = 2;
 }
 
 // What the core tells the shell without being asked.
@@ -1764,7 +1597,18 @@ message Event {
     AttentionChanged attention_changed = 10;
     RaiseWindow raise_window = 11;
     ReopenWindow reopen_window = 12;
+    PasteHeld paste_held = 13;
   }
+}
+
+// A paste the pane's daemon did not write, waiting for somebody to confirm it.
+//
+// One with a newline, to a pane that has not asked for bracketed paste: the shell asks whether
+// to send it anyway, as Ghostty does, and a yes pastes it again confirmed.
+message PasteHeld {
+  string daemon_id = 1;
+  string pane_id = 2;
+  string text = 3;
 }
 
 // Open a closed window again, onto one of its tabs.
@@ -2169,40 +2013,17 @@ message ViewRegion {
   // client, so which pane fills the region is Muster's answer rather than the daemon's.
   bool zoomed = 6;
 
-  // How this region's panes are reached, when they are on another machine. Both empty means
-  // a daemon on this machine, which is the only difference a shell has to notice between
-  // local and remote: it relays these onto the bridge's command line and nothing else here
-  // changes.
-  //
-  // On the region rather than on each pane because it is a property of the daemon, and every
-  // pane in a region belongs to one.
-  string ssh_host = 7;
+  // Where this region's bridges dial to draw its panes: the daemon's own socket, or for a
+  // daemon on another machine the local end of the ssh forward to it. Relayed onto the bridge's
+  // command line and never interpreted. Empty for a daemon this window has not reached.
+  string daemon_socket = 10;
 
-  // The ssh master's control socket. A pane's frames come from a command rather than from
-  // the forwarded socket - herdr publishes them through its CLI - so the bridge runs that
-  // command through the connection the control plane already opened, instead of paying for a
-  // handshake per pane.
-  string ssh_control_path = 8;
+  // Whether that daemon is on another machine, which is where a bridge asks for a window of
+  // unacknowledged output sized for the link.
+  bool remote = 11;
 
-  // Which daemon this region's frame streams should come from, on this machine.
-  //
-  // Where the backend holding this region listens, for the bridge that will dial it.
-  //
-  // Named for the backend rather than for the one Muster ships, on the rule the renderer
-  // seam already follows: nothing herdr-shaped reaches the schema, because a replacement
-  // would otherwise inherit a field lying about which daemon it names. The bridge's own CLI
-  // flag still says herdr, and belongs to the adapter that spawns it.
-  //
-  // A bridge finds a daemon the same way any other client does - which is not good enough
-  // now that Muster runs its own on a session of its own. A bridge left to find one for itself reaches whatever the user last
-  // started, does not find the pane there, and the stream ends before a single frame: a pane
-  // that renders nothing, which is this project's most expensive failure shape.
-  //
-  // Empty for a remote region, and not an oversight: that bridge runs its CLI on the far
-  // machine, where this path names nothing. It finds the daemon over there the ordinary way,
-  // which is the same asymmetry the control plane already has until Muster ships a daemon to
-  // the far end too.
-  string backend_socket = 10;
+  reserved 7, 8;
+  reserved "ssh_host", "ssh_control_path";
 }
 
 message ViewNode {
@@ -2236,20 +2057,13 @@ message ViewPane {
   // Unique across every attached machine, so it is an answer on its own.
   string pane_id = 1;
 
-  // Where this pane's bridge should dial the core. Empty means no channel is open for this
-  // pane yet, and a surface built from it would render and never be typeable - so a shell
-  // must not spawn a bridge pointed at it.
-  string control_socket_path = 2;
+  // The socket this pane's bridge reports on: that it attached, that it is painting, and why
+  // it exits - and, by closing, that it died. Empty means none is bound yet, so a shell must
+  // not spawn a bridge for it.
+  string link_socket_path = 2;
 
-  // What the *backend* calls this pane, for the one thing the shell does that reaches a backend
-  // rather than the core: spawning the bridge, which streams frames straight from the daemon and
-  // is given this on its command line.
-  //
-  // Here on exactly the terms `ViewRegion.backend_socket` is - a handle the shell relays and
-  // never interprets. Addressing a pane by it would be a second vocabulary, and the two disagree
-  // the moment two daemons are attached: herdr numbers panes per session, so a laptop and a
-  // devenv both hold a `w1:p1`.
-  string backend_pane_id = 3;
+  reserved 3;
+  reserved "backend_pane_id";
 
   // Points to add to the font size this pane's text is drawn at.
   //

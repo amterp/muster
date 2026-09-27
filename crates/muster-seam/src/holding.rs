@@ -110,10 +110,14 @@ impl Holding {
 
     /// Says this window is open, and settles what the record says about windows that are not.
     ///
-    /// `known` is whether a tab's name still resolves anywhere, which is how rows for tabs long
-    /// gone stop accumulating. Once per launch is enough for that, and it is the one moment
-    /// every window reliably passes through.
-    pub(crate) fn open(&mut self, known: impl Fn(&TabId) -> bool) {
+    /// `answered` and `described` are what the machines this window follows hold, which is how
+    /// rows for tabs long gone stop accumulating (`Holders::prune`). Once per launch is enough
+    /// for that, and it is the one moment every window reliably passes through.
+    pub(crate) fn open(
+        &mut self,
+        answered: &BTreeSet<DaemonId>,
+        described: impl Fn(&TabId) -> bool,
+    ) {
         let me = self.me.clone();
         let window = self.this_window(now());
         self.change(move |holders| {
@@ -126,7 +130,7 @@ impl Holding {
                     && (window.arrangement.is_empty() || !Path::new(&window.arrangement).exists())
             });
             holders.opened(window);
-            holders.prune(known);
+            holders.prune(answered, described);
         });
         self.open = true;
     }
@@ -192,24 +196,14 @@ impl Holding {
         true
     }
 
-    /// Says this window is about to ask a machine for a tab.
-    pub(crate) fn expect(&mut self, daemon: &DaemonId) {
-        let me = self.me.clone();
-        self.change(|holders| holders.expect(&me, daemon, now()));
-    }
-
-    /// Says the answer came back, and takes the tab it named, if it named one.
+    /// Takes a tab this window is about to ask a daemon to make.
     ///
-    /// One write for both, so no window ever reads a record where this window has stopped
-    /// waiting and has not yet taken what it was waiting for.
-    pub(crate) fn answered(&mut self, daemon: &DaemonId, tab: Option<&TabId>) {
+    /// Before the request rather than after its answer: the daemon announces the tab before it
+    /// answers, and every window hears it, so a tab nobody held in that moment would go to
+    /// whichever window came to the front last.
+    pub(crate) fn making(&mut self, tab: &TabId) {
         let me = self.me.clone();
-        self.change(|holders| {
-            if let Some(tab) = tab {
-                holders.take(tab.clone(), &me);
-            }
-            holders.expected(&me, daemon);
-        });
+        self.change(|holders| holders.take(tab.clone(), &me));
     }
 
     /// Takes the tabs among these that nobody holds, in one write.
@@ -306,7 +300,7 @@ impl Holding {
             }
             return unheld;
         }
-        match self.holders.taker(daemon, now(), |window| is_open(&me, window)) {
+        match self.holders.taker(daemon, |window| is_open(&me, window)) {
             Taker::Window(taker) if taker == me => {}
             other => {
                 log::debug(
@@ -316,7 +310,6 @@ impl Holding {
                         "tabs" => join(&unheld),
                         "taker" => match other {
                             Taker::Window(window) => window.to_string(),
-                            Taker::Waiting(window) => format!("waiting on {window}"),
                             Taker::Nobody => "nobody".to_string(),
                         },
                     },

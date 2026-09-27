@@ -760,7 +760,7 @@ dependencies = [
  "libc",
  "muster-core",
  "muster-daemon-client",
- "muster-herdr",
+ "muster-daemon-proto",
  "muster-proto",
  "muster-ssh",
  "muster-vt",

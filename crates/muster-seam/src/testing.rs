@@ -48,8 +48,7 @@ static TURN: Mutex<()> = Mutex::new(());
 ///
 /// The environment is not reset, and cannot be: it belongs to the process, which every test in
 /// a binary shares. The settings it is read for once per process - the typeable and painting
-/// deadlines and the frame-cell ceiling - are set here instead, and go back to the
-/// environment's on every reset. A file a test writes is its own business; every helper here
+/// deadlines - are set here instead, and go back to the environment's on every reset. A file a test writes is its own business; every helper here
 /// already puts one under the daemon's scratch root.
 #[must_use]
 pub fn fresh_session() -> Turn {
@@ -68,12 +67,6 @@ pub fn set_typeable_deadline(deadline: Duration) {
 /// `MUSTER_PAINTING_DEADLINE_MS`, until the next reset. Zero switches the watch off.
 pub fn set_painting_deadline(deadline: Duration) {
     watchdog::set_painting_deadline(deadline);
-}
-
-/// The cells a pane may hold before it is reported too big to draw, in place of
-/// `MUSTER_FRAME_CELLS`, until the next reset. Zero switches the ceiling off.
-pub fn set_frame_cells(cells: u32) {
-    session::set_frame_cells(Some(cells));
 }
 
 /// How many callers are watching agent states right now.

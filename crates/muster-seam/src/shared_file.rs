@@ -1,11 +1,8 @@
 //! A file two Musters write, and the lock that stops them doing it at once.
 //!
-//! Two records are kept this way: the names in `panes.toml`, and which window holds each tab.
-//! The names were first, and they are why this exists. `panes.toml` was a file one window wrote and the next one read. A second window makes it
-//! something else: both are attached to the same daemon, both see every pane it holds, and both
-//! would name a pane nobody had named yet. Measured before this existed, two windows on one
-//! daemon agreed about exactly one pane - the one that was already there when the second opened -
-//! and the window that saved last took the other's bindings with it.
+//! The record kept this way is which window holds each tab. Every window reads it and any of them
+//! may change it, so a window that read, changed and wrote it without a hold would write over
+//! what another window changed in between.
 //!
 //! So the core reads, changes and writes inside one hold, and this is the hold. Everything about
 //! where the file is and how a lock is taken is here, because those are OS questions and the
@@ -32,19 +29,6 @@ pub(crate) struct About {
     pub(crate) unsaved: &'static str,
     pub(crate) unsaved_impact: &'static str,
 }
-
-/// The names Muster gives panes and tabs.
-pub(crate) const NAMES: About = About {
-    unlocked: "names.unlocked",
-    unlocked_impact: "names are still written, and a second Muster naming the same pane at the \
-                      same moment could win the race - the two windows would then call one pane \
-                      two things",
-    unsaved: "names.save.failed",
-    unsaved_impact: "these names last until this Muster quits. Every pane open at that moment \
-                     keeps a name in its environment that the next launch will not know, so \
-                     commands from inside them are refused - and the next launch cannot find the \
-                     tabs its saved arrangement names, so it opens fresh",
-};
 
 /// Which window holds each tab.
 pub(crate) const HOLDERS: About = About {
@@ -200,112 +184,5 @@ impl Drop for Hold {
     fn drop(&mut self) {
         // SAFETY: as above - still open, because dropping the file happens after this.
         unsafe { libc::flock(self.0.as_raw_fd(), libc::LOCK_UN) };
-    }
-}
-
-/// Inline rather than in `tests/`, because what is being tested is this file's own hold and
-/// `SharedFile` is not public. Two registries over one record is what two Musters are, and the
-/// only thing standing in for a second process is the second registry.
-#[cfg(test)]
-mod tests {
-    use std::sync::{Arc, Mutex};
-
-    use muster_core::mirror::backend::PaneId;
-    use muster_core::names::{Mint, Names, PaneNames, TabNames};
-    use muster_core::shared::SharedRecord;
-
-    use super::SharedFile;
-
-    /// A window, as far as naming is concerned.
-    ///
-    /// Its own registries *and* its own `SharedFile` over the same path, because that is what a
-    /// second window is: another process, holding its own idea of what the record last said.
-    /// Sharing one `SharedFile` between the two would share the very thing that tells a window
-    /// the record has moved, and the test would pass without proving anything.
-    fn window(at: &std::path::Path, daemon: &str) -> Names {
-        Names::sharing(
-            muster_core::composition::DaemonId::new(daemon),
-            Arc::new(Mutex::new(PaneNames::new(Mint::Drawn))),
-            Arc::new(Mutex::new(TabNames::new(Mint::Drawn))),
-            Arc::new(SharedFile::at(&at.to_string_lossy(), &super::NAMES)) as Arc<dyn SharedRecord>,
-        )
-    }
-
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let at = std::env::temp_dir().join(format!("muster-names-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&at);
-        std::fs::create_dir_all(&at).expect("a scratch directory can be made");
-        at.join("panes.toml")
-    }
-
-    /// Two windows meeting the same pane call it the same thing.
-    ///
-    /// The failure this exists for was measured rather than imagined: before the record was
-    /// held across naming, two Musters on one daemon agreed about exactly one pane - the one
-    /// that existed before the second window opened - and every pane made afterwards had two
-    /// names, one per window. Every `muster --socket` command that named a pane then reached
-    /// the wrong window's idea of it.
-    #[test]
-    fn two_windows_naming_one_pane_agree_about_it() {
-        let at = scratch("agree");
-        let (first, second) = (window(&at, "local"), window(&at, "local"));
-
-        let theirs = second.pane("w1:p7");
-        let ours = first.pane("w1:p7");
-
-        assert_eq!(
-            ours, theirs,
-            "two windows named one pane two things, which is what makes `muster --socket` \
-             unable to address a pane across windows"
-        );
-    }
-
-    /// A window naming a pane does not lose the names another window already wrote.
-    ///
-    /// The second half of the same failure: the record was written whole from memory, so
-    /// whichever window saved last replaced the other's bindings - and the next launch resolved
-    /// only the survivor's, leaving the other window's saved arrangement naming tabs nothing
-    /// knew.
-    #[test]
-    fn naming_keeps_what_another_window_wrote() {
-        let at = scratch("keep");
-        let (first, second) = (window(&at, "local"), window(&at, "local"));
-
-        let theirs = second.pane("w1:p1");
-        let ours = first.pane("w1:p2");
-
-        let written = std::fs::read_to_string(&at).expect("the record is written");
-        for name in [&theirs, &ours] {
-            assert!(
-                written.contains(&name.to_string()),
-                "{name} is not in the record after the other window wrote to it:\n{written}"
-            );
-        }
-        assert_eq!(second.pane("w1:p2"), ours, "the other window did not take on the new name");
-    }
-
-    /// A name a window reserved is the one that survives, because a pane is already holding it.
-    ///
-    /// `MUSTER_PANE` is set in the request that creates a pane, so a reserved name is spoken
-    /// before anything can be written down. Another window that met the pane first and named it
-    /// has to give way, or a `muster` run inside that pane names something no window agrees is
-    /// there.
-    #[test]
-    fn a_reserved_name_beats_one_another_window_guessed() {
-        let at = scratch("reserved");
-        let (maker, other) = (window(&at, "local"), window(&at, "local"));
-
-        let reserved: PaneId = maker.reserve();
-        let guessed = other.pane("w1:p4");
-        assert_ne!(reserved, guessed, "the two started out agreeing, so this proves nothing");
-
-        maker.settle(&reserved, "w1:p4");
-
-        assert_eq!(
-            other.pane("w1:p4"),
-            reserved,
-            "the window that did not make the pane kept its own guess, so the name in that \
-             pane's environment resolves nowhere over there"
-        );
     }
 }

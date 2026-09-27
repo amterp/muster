@@ -179,12 +179,8 @@ static PAINTING_DEADLINE: LazyLock<u64> = LazyLock::new(|| {
 });
 
 /// A pane's socket is bound, so its bridge is expected from now.
-///
-/// `backend` is what the daemon calls this pane, taken here because this is where the seam has
-/// it. The one remedy that is about a herdr process rather than about Muster is matched against
-/// that client's command line, and a pattern built from the name in this window matches nothing.
-pub(crate) fn opened(pane: PaneKey, backend: String) {
-    poison::lock(&WAITING, "typeable").opened(pane, clock::monotonic_now(), backend);
+pub(crate) fn opened(pane: PaneKey) {
+    poison::lock(&WAITING, "typeable").opened(pane, clock::monotonic_now());
     start();
 }
 
@@ -226,16 +222,6 @@ pub(crate) fn painted(pane: &PaneKey) {
     if news {
         KNOCK.notify_all();
     }
-}
-
-/// Whether something else has already said why this pane is silent.
-///
-/// The grid ceiling is the one that does: a pane too big to draw has a remedy in its own
-/// sentence, and a second row saying only that it stopped painting would send its reader away
-/// from the answer they already had.
-pub(crate) fn explained(pane: &PaneKey, explained: bool) {
-    poison::lock(&PAINTING, "painting").explained(pane, explained);
-    KNOCK.notify_all();
 }
 
 /// Whether this daemon is answering, so that its panes are not blamed for a machine's silence.

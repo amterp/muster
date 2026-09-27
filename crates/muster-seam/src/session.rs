@@ -18,38 +18,37 @@ use muster_core::AgentState;
 use muster_core::attention::{Attend, Attention, Notifications};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
-    MusterTab, PaneKey, Presentation, RegionId, Saved, Step, Transport, View, ViewPane, WindowName,
-    saved, zoom_filling,
+    MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
+    zoom_filling,
 };
-use muster_core::config::{Appearance, Config, Feel, Panes};
+use muster_core::config::{Appearance, Config, Feel};
+use muster_core::daemon_settings::DaemonSettings;
 use muster_core::diagnostics::{clock, log, poison};
 use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
-use muster_core::find::{Found, Needle, Reach};
-use muster_core::grid::{self, Grids};
-use muster_core::input::{Bindings, PaneInput, PaneInputSettings, ScrollDirection};
+use muster_core::input::{Bindings, InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal};
-use muster_core::mirror::backend::{PaneId, PaneText, Snapshot, TabId, Viewport};
-use muster_core::mirror::{Change, Health, Mirror};
-use muster_core::names::{self, Mint, Names, PaneNames, TabNames};
+use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::mirror::{Change, Health, Mirror, Restored};
+use muster_core::names::Minter;
+use muster_core::pane_text::PaneText;
 use muster_core::problems::{Problem, Problems, Severity};
 use muster_core::reconnect;
 use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
-use muster_herdr::subscription::{Notice, Subscription};
-use muster_herdr::{
-    HerdrBackend, HerdrClient, HerdrPaneChannel, PaneControlChannel, PaneEnvironment, Reports,
-    daemon, fetch_snapshot, own_socket_path, records, remote,
-};
-use muster_ssh::{Forward, Remote, State as TunnelState, Tunnel, remote_environment};
-use muster_vt::KeyEncoder;
+use muster_daemon_client::backend::{DaemonBackend, DaemonInput};
+use muster_daemon_client::follow::{Follower, Following, Notice};
+use muster_daemon_client::{environment, launch, records, remote};
+use muster_daemon_proto::install;
+use muster_ssh::{Forward, State as TunnelState, Tunnel, remote_environment};
 
+use crate::bridge_link::{PaneLink, Reports};
 use crate::holding::Holding;
 use crate::proto::{
-    AttentionChanged, Event, PaneTypeable, PresentationChanged, Problem as ProblemMessage,
-    ProblemsChanged, RaiseWindow, ReopenWindow, RosterChanged, ViewChanged, event,
+    AttentionChanged, Event, PaneTypeable, PasteHeld, PresentationChanged,
+    Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReopenWindow, RosterChanged,
+    ViewChanged, event,
 };
-use crate::shared_file::SharedFile;
 use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
 
@@ -132,25 +131,6 @@ pub(crate) fn daemon_records_path() -> Option<String> {
     poison::lock(&DAEMON_RECORDS, "daemon-records").clone()
 }
 
-/// Where Muster keeps what it downloaded, for the one thing that downloads anything.
-///
-/// Held on the same terms as the three above, and needed in the same place: attaching a daemon on
-/// another machine means having that machine's herdr to hand, and the pinned release asset is
-/// fetched here rather than over there.
-///
-/// None means the shell found nowhere, and then a fetch goes to a temporary that is thrown away -
-/// slow on every launch that has to install, rather than broken.
-static CACHE: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_cache_path(path: &str) {
-    let mut held = poison::lock(&CACHE, "cache");
-    *held = if path.is_empty() { None } else { Some(path.to_string()) };
-}
-
-fn cache_path() -> Option<String> {
-    poison::lock(&CACHE, "cache").clone()
-}
-
 /// Where this window's arrangement is remembered, and what was last written there.
 ///
 /// The text rather than the record, so that deciding whether to write is a string compare
@@ -193,19 +173,6 @@ fn opened() -> bool {
     OPENED.load(Ordering::Relaxed)
 }
 
-/// Where the name registries are written, and the text last written there.
-///
-/// Beside [`STATE`] and for the same reasons, including the string compare: the names change
-/// only when a pane or a tab appears or goes, and a publish follows every agent transition.
-static NAMES_FILE: Mutex<Option<(String, String)>> = Mutex::new(None);
-
-/// That same file as the record two Musters name things in, rather than as somewhere to save.
-///
-/// Kept apart from [`NAMES_FILE`] above because they answer different questions: that one is
-/// "has anything changed since the last write", which is a cache and belongs to this process,
-/// and this one is the hold every naming goes through, which belongs to whoever else is open.
-static SHARED_NAMES: Mutex<Option<Arc<SharedFile>>> = Mutex::new(None);
-
 /// Which chord asks for which action, as the config file left it.
 ///
 /// Held rather than passed, for the reason the daemon binary and the state path are: a shell
@@ -242,36 +209,18 @@ pub(crate) fn pane_input() -> PaneInputSettings {
     poison::lock(&PANE_INPUT, "input-settings").clone().unwrap_or_default()
 }
 
-/// What a pane should be, held for the daemon that is about to be started.
-///
-/// Beside [`FEEL`] and read in one place: the moment a local daemon is reached, which is
-/// where the derived config file has to exist before a spawn that takes no arguments.
-static PANES: Mutex<Option<Panes>> = Mutex::new(None);
+/// What each daemon is told about this window's settings (`muster_core::daemon_settings`),
+/// held for daemons reached later and sent to every one followed now whenever it changes.
+static SETTINGS: Mutex<Option<DaemonSettings>> = Mutex::new(None);
 
-pub(crate) fn set_panes(panes: Panes) {
-    *poison::lock(&PANES, "pane-settings") = Some(panes);
-}
-
-/// What a pane should be, which with no config file is whatever the daemon would have done -
-/// except for the update checks, which Muster turns off either way.
-fn panes() -> Panes {
-    poison::lock(&PANES, "pane-settings").clone().unwrap_or_default()
-}
-
-/// Where Muster writes the config file its daemon reads, and what it last wrote there.
-///
-/// The same shape as [`STATE`] and for the same reason: the file is rewritten whenever the
-/// config file is, most rewrites say exactly what the last one did, and a daemon has nothing
-/// to re-read when the text has not moved.
-///
-/// None means the shell named nowhere to write one, which is what every seam test that sets
-/// no path gets. The daemon then reads the user's own herdr config, as it did before this
-/// existed, and the run log says so.
-static DAEMON_CONFIG: Mutex<Option<(String, String)>> = Mutex::new(None);
-
-pub(crate) fn set_daemon_config_path(path: &str) {
-    let mut held = poison::lock(&DAEMON_CONFIG, "daemon-config");
-    *held = if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
+pub(crate) fn set_daemon_settings(settings: DaemonSettings) {
+    // Stored under the session's lock, which `follow` holds while it reads these: a daemon
+    // reached in between is told either by the loop here or by the value it reads.
+    let session = poison::lock(&SESSION, "session");
+    for backend in session.backends.values() {
+        backend.follower.configure(&settings);
+    }
+    *poison::lock(&SETTINGS, "daemon-settings") = Some(settings);
 }
 
 /// The root knobs, held for whatever asks about them next.
@@ -538,292 +487,105 @@ pub(crate) fn set_tab_holders(record: &str, arrangement: &str, socket: &str) {
     poison::lock(&SESSION, "session").holding = Holding::new(record, arrangement, socket);
 }
 
-/// Says where names are remembered, and reads back the ones already there.
-///
-/// Read here rather than lazily, because it has to happen before any daemon is attached: the
-/// first snapshot mints a name for every pane and tab it describes, and a name minted for
-/// something that already had one is a pane whose environment now names something else, or a
-/// tab the saved arrangement can no longer find.
-///
-/// The same path becomes the record this window shares with any other Muster that is open, and
-/// from here on nothing writes it except through that - see `shared_file`.
-pub(crate) fn set_pane_names_path(path: &str) {
-    *poison::lock(&NAMES_FILE, "saved-names") =
-        if path.is_empty() { None } else { Some((path.to_string(), String::new())) };
-    *poison::lock(&SHARED_NAMES, "shared-names") =
-        (!path.is_empty()).then(|| Arc::new(SharedFile::at(path, &crate::shared_file::NAMES)));
-    if path.is_empty() {
-        return;
-    }
-
-    let Ok(text) = std::fs::read_to_string(path) else { return };
-    match names::from_toml(&text, Mint::Drawn) {
-        Ok((panes, tabs)) => {
-            let session = poison::lock(&SESSION, "session");
-            *poison::lock(&session.names, "pane-names") = panes;
-            *poison::lock(&session.tab_names, "tab-names") = tabs;
-        }
-        Err(detail) => log::warn(
-            "names.restore.failed",
-            fields! {
-                "path" => path.to_string(),
-                "detail" => detail,
-                "impact" => "every pane already open is named again, so a program still \
-                             running in one holds a name that resolves to nothing and its \
-                             commands are refused; and every tab is named again, so this \
-                             window opens without the arrangement it was left in",
-                "check" => "the file - it is TOML, and it is replaced by the next publish. A \
-                            pane made from now on is named and told its name as usual",
-            },
-        ),
-    }
-}
-
-/// A daemon's endpoint, turned into something that can be connected to.
-///
-/// The one place local and remote differ. Everything past this point holds a socket path and
-/// never asks where it goes, which is the property that lets one adapter serve both.
+/// A daemon found or started, and how it is reached.
 #[derive(Debug)]
 struct Reached {
     socket_path: String,
     tunnel: Option<Tunnel>,
-    /// What every pane made on this daemon is handed.
-    ///
-    /// A restore where Muster redirected the daemon's config, and nothing where it did not:
-    /// a daemon somebody named by `socket` and a daemon on another machine were pointed
-    /// somewhere by nobody, so a pane on either already reads what it always did.
-    panes: PaneEnvironment,
-    /// Whether Muster wrote this daemon's config, which is a different question from whether
-    /// a pane needs anything put back - and stays different once a pane carries more than the
-    /// one restored variable.
-    owns_config: bool,
-    /// Where that config went, when it went to another machine.
-    ///
-    /// None for a daemon on this one, whose file is the single path the shell named. A remote
-    /// daemon's is on the far side, so a setting changed while the window is open has to be
-    /// sent again before that daemon is asked to read it - and this is the only record of
-    /// where to send it.
-    remote_config: Option<String>,
-    /// Whether Muster started this daemon, as against attaching to one that was answering.
-    ///
-    /// The distinction nothing recorded, and the one that makes a lifecycle decision safe.
-    /// `daemon::ensure_running` attaches to whatever answers on the socket, so a Muster
-    /// launched today can adopt a daemon started eighteen hours ago holding somebody's working
-    /// agent - which happened, and which reads in `ps` exactly like the scratch daemons beside
-    /// it (kan a_28YghIUw2). "The daemons Muster started" and "the daemons Muster is using" are
-    /// different sets, and only the second is knowable without this.
+    /// Whether Muster started it, rather than finding it already answering.
     started: bool,
 }
 
-/// Writes the config Muster's daemon reads, and says where it went and whether it moved.
-///
-/// None when the shell named nowhere to write one. The daemon then reads the user's own herdr
-/// config, which is what it did before this existed - so the fallback is the old behaviour
-/// rather than a broken one, and the run log names which file is in play either way.
-///
-/// The flag is whether the text changed since the last write. It is the whole difference
-/// between a daemon that has something to re-read and one that does not: herdr reads its
-/// config at startup and on request, so a file that says what it already said is a request
-/// nobody needs to make.
-/// The config Muster derives from its own, as the bytes a daemon reads.
-///
-/// One text, whichever machine the daemon is on: a person writes `scrollback_bytes` once and
-/// every daemon Muster starts runs it. What differs is where the file lands - a path the shell
-/// named, here, and a path under the far machine's own home, over there.
-fn daemon_configuration_text() -> String {
-    muster_herdr::configuration_text(&panes())
-}
-
-fn write_daemon_configuration() -> Option<(String, bool)> {
-    let mut held = poison::lock(&DAEMON_CONFIG, "daemon-config");
-    let (path, written) = held.as_mut()?;
-
-    match muster_herdr::write_configuration(path, &panes()) {
-        Ok(text) => {
-            let changed = &text != written;
-            if changed {
-                log::info(
-                    "daemon.config.written",
-                    fields! {
-                        "path" => path.clone(),
-                        "impact" => "a daemon started from here runs these settings; one that \
-                                     was already running keeps what it was started with until \
-                                     it is asked to read this again",
-                    },
-                );
-                *written = text;
-            }
-            Some((path.clone(), changed))
-        }
-        Err(detail) => {
-            log::warn(
-                "daemon.config.failed",
-                fields! {
-                    "path" => path.clone(),
-                    "detail" => detail,
-                    "impact" => "the daemon falls back to the user's own herdr config, so what \
-                                 a pane runs and how deep its scrollback is come from a file \
-                                 Muster did not write - and its update checks are back on, \
-                                 which can move the pinned daemon off its pin",
-                    "check" => "whether that directory exists and is writable",
-                },
-            );
-            // Cleared so a directory that becomes writable again is picked up by the next
-            // write rather than after the settings happen to change twice.
-            written.clear();
-            None
-        }
-    }
-}
-
-/// Opens whatever a daemon's endpoint describes.
-///
-/// For a daemon on this machine that is a path, found the way herdr's own client finds it
-/// when the config did not say. For a remote one it is an ssh master forwarding that
-/// daemon's socket onto a path here - so the answer has the same shape either way, and the
-/// mirror, the subscription and the encoder below never learn which they got.
-/// Tells the panes of a daemon on this machine where this window listens.
-///
-/// Separate from the two builders because it is orthogonal to both: whether a pane has a config
-/// file to restore is about the daemon Muster started, and whether it can reach this window is
-/// about which machine it is on.
-fn reachable(panes: PaneEnvironment) -> PaneEnvironment {
-    match command::listening_at() {
-        Some(socket) => panes.reachable_at(&socket),
-        None => panes,
-    }
+/// What every pane this window makes is handed beyond what its daemon gives it: the window's own
+/// socket, so a program in the pane can drive the window it is drawn in. The daemon gives the
+/// pane its name (`MUSTER_PANE`) itself, from the request that makes it.
+fn pane_environment() -> BTreeMap<String, String> {
+    command::listening_at()
+        .map(|socket| BTreeMap::from([(environment::WINDOW_SOCKET.to_string(), socket)]))
+        .unwrap_or_default()
 }
 
 fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
     match endpoint {
-        // A socket somebody named is a daemon somebody chose, of a version nobody promised.
-        // Taken as asked for, and left alone: this is the deliberate way out of the
-        // arrangement below, and second-guessing it would leave no way out at all.
-        Endpoint::Local { socket_path: Some(path) } => Ok(Reached {
-            socket_path: path.clone(),
-            tunnel: None,
-            // Nothing to restore, because Muster redirected nothing here - but a pane on this
-            // machine is still a pane that should be able to drive the window it is in.
-            panes: reachable(PaneEnvironment::none()),
-            owns_config: false,
-            remote_config: None,
-            // Somebody named this socket, so whatever is behind it was somebody else's to
-            // start and stays somebody else's to end.
-            started: false,
-        }),
+        // A socket somebody named is a daemon somebody chose. Taken as asked for, and left
+        // alone: this is the deliberate way out of the arrangement below.
+        Endpoint::Local { socket_path: Some(path) } => {
+            Ok(Reached { socket_path: path.clone(), tunnel: None, started: false })
+        }
         Endpoint::Local { socket_path: None } => {
-            let environment = daemon::environment();
-            let path = own_socket_path(&environment).ok_or_else(|| {
-                "Muster cannot work out where its own daemon's socket would go, because \
-                 nothing in the environment says where home is - neither HOME nor \
-                 XDG_CONFIG_HOME. This window will render nothing. Give the daemon a `socket` \
-                 in the config file to say outright."
+            let inherited: BTreeMap<String, String> = std::env::vars().collect();
+            let home =
+                install::muster_home(|name| inherited.get(name).cloned()).ok_or_else(|| {
+                    "Muster cannot work out where its daemon's socket goes, because nothing in the \
+                 environment says where home is - neither MUSTER_HOME nor HOME. This window will \
+                 render nothing. Give the daemon a `socket` in the config file to say outright."
+                        .to_string()
+                })?;
+            let socket = install::socket_path(&home);
+            let binary = daemon_binary().ok_or_else(|| {
+                "this app was not told where its muster-daemon is, so there is no daemon to start \
+                 and this window will render nothing. A build stages it beside the bridge; this \
+                 is a bug in how the shell starts Muster."
                     .to_string()
             })?;
-            // Before the spawn rather than beside it: `herdr server` takes no arguments and
-            // reads its config once at startup, so a file written afterwards is a file that
-            // daemon never sees.
-            let config = write_daemon_configuration();
-            let adopted = daemon::ensure_running(
-                &path,
-                daemon_binary().as_deref(),
-                &environment,
+            let given = environment::for_daemon(
+                &inherited,
                 platform_locale().as_deref(),
-                config.as_ref().map(|(path, _)| path.as_str()),
                 commands_path().as_deref(),
-            )?;
+            );
+            let (reached, _) = launch::ensure_running(&launch::Launch {
+                binary: binary.as_ref(),
+                data: None,
+                socket: &socket,
+                environment: &given,
+            })?;
+            let socket_path = socket.display().to_string();
             // Written down only when Muster started it. An adopted daemon belongs to whoever
             // started it, and offering it in Muster's own census would be offering somebody a
             // process to end on Muster's word.
-            if adopted == daemon::Reached::Started
-                && let Some(directory) = daemon_records_path()
-            {
-                records::started(&directory, &path);
+            let started = reached == launch::Reached::Started;
+            if started && let Some(directory) = daemon_records_path() {
+                records::started(&directory, &socket_path);
             }
-            // A daemon left running by an earlier Muster is holding somebody's agents, so it
-            // is reused rather than restarted - but it read its config when it started. Asking
-            // it to read again is what makes a setting saved between launches take effect
-            // without costing anyone a pane.
-            if adopted == daemon::Reached::Adopted
-                && config.as_ref().is_some_and(|(_, moved)| *moved)
-            {
-                daemon::reload_configuration(&path);
-            }
-            let panes = reachable(match &config {
-                Some(_) => PaneEnvironment::restoring(&environment),
-                // Nowhere to write one, so nothing was redirected and nothing needs restoring.
-                None => PaneEnvironment::none(),
-            });
-            Ok(Reached {
-                socket_path: path,
-                tunnel: None,
-                panes,
-                owns_config: config.is_some(),
-                remote_config: None,
-                started: adopted == daemon::Reached::Started,
-            })
+            Ok(Reached { socket_path, tunnel: None, started })
         }
-        // A socket somebody named is somebody's own daemon on either machine, and gets the same
-        // answer on both: forwarded as asked for, and left alone. Nothing is read off the far
-        // end at all, because the one question that needed asking has been answered outright.
+        // Somebody's own daemon on another machine: forwarded as asked for, and left alone.
         Endpoint::Ssh { host, options, socket_path: Some(path) } => {
             let tunnel = open_tunnel(daemon, host, options, path.clone())?;
             Ok(Reached {
                 socket_path: tunnel.local_socket_path().to_string(),
                 tunnel: Some(tunnel),
-                panes: PaneEnvironment::none(),
-                owns_config: false,
-                remote_config: None,
                 started: false,
             })
         }
-        // The arrangement the local arm has, one machine further away. What used to stop it was
-        // packaging rather than principle - four platforms are pinned and a build carries one -
-        // and that is answered by fetching the right asset here and pushing it over the master,
-        // rather than by attaching whatever herdr somebody happened to install over there.
+        // The arrangement the local arm has, one machine further away: whatever is installed
+        // for this version over there is started, detached, through the forward.
         Endpoint::Ssh { host, options, socket_path: None } => {
-            // Asked for rather than assumed, and asked for using the rules Muster already
-            // has: a shell one-liner spelling out where herdr keeps its socket would be a
-            // second copy of the thing most likely to drift.
-            let environment = remote_environment(host, options)?;
-            let remote_socket = own_socket_path(&environment).ok_or_else(|| {
+            let far = remote_environment(host, options)?;
+            let installed = remote::Installed::on(&far).ok_or_else(|| {
                 format!(
-                    "{host} answered, and nothing in its environment says where a herdr socket \
-                     would go - it has no HOME. That machine's panes are absent from the window \
-                     and nothing else is affected. Name the daemon's socket in the config \
+                    "{host} answered, and nothing in its environment says where home is, so there \
+                     is nowhere to look for its daemon. That machine's panes are absent from the \
+                     window and nothing else is affected. Name the daemon's socket in the config \
                      file's `socket` key to say outright."
                 )
             })?;
-            // Opened before the daemon exists, which is what lets everything after this ask
-            // "does it answer" through the forwarded path rather than inventing a second way to
-            // probe. Measured against the devenv: ssh binds the local end when it connects and
-            // reaches the far one per connection, so a remote socket that is not there yet
-            // costs nothing until something dials it.
-            let tunnel = open_tunnel(daemon, host, options, remote_socket)?;
-            let adopted = remote::ensure_running(
+            // Opened before the daemon exists, so everything after this asks "does it answer"
+            // through the forwarded path: ssh reaches the far socket per connection, so one that
+            // is not there yet costs nothing until something dials it.
+            let tunnel =
+                open_tunnel(daemon, host, options, installed.socket.display().to_string())?;
+            let local = std::path::PathBuf::from(tunnel.local_socket_path());
+            let (reached, _) = remote::ensure_running(
                 &tunnel.remote(),
-                &environment,
-                tunnel.local_socket_path(),
-                cache_path().as_deref(),
-                &daemon_configuration_text(),
+                &installed,
+                &local,
+                &environment::for_far_daemon(&far),
             )?;
-            // A daemon left running by an earlier Muster read its config when it started, and
-            // the settings may have moved since. The same reasoning the local arm gives, with
-            // one difference: there is no record here of what that daemon was started with, so
-            // it is asked once rather than only when the file is known to have moved.
-            if adopted == daemon::Reached::Adopted {
-                daemon::reload_configuration(tunnel.local_socket_path());
-            }
             Ok(Reached {
                 socket_path: tunnel.local_socket_path().to_string(),
                 tunnel: Some(tunnel),
-                // Muster redirected this daemon's config, so a pane on it is handed the far
-                // machine's own herdr config back - without which `herdr` typed in a devenv
-                // pane would read Muster's derived file instead of the user's.
-                panes: PaneEnvironment::restoring(&environment),
-                owns_config: true,
-                remote_config: remote::configuration_path(&environment),
-                started: adopted == daemon::Reached::Started,
+                started: reached == launch::Reached::Started,
             })
         }
     }
@@ -885,69 +647,39 @@ fn tunnel_path(daemon: &DaemonId, extension: &str) -> String {
 #[derive(Debug)]
 pub(crate) struct AttachedPane {
     pub(crate) input: PaneInput,
-    pub(crate) control_socket_path: String,
-    /// What this pane's own daemon calls it, for the bridge that streams its frames.
-    ///
-    /// The one place above the adapter that speaks the backend's vocabulary, and it does so
-    /// because the bridge runs the daemon's own CLI rather than going through Muster. Carried
-    /// rather than looked up when the answer is built, so that a pane whose daemon drops it
-    /// between attaching and answering cannot be handed an id from a registry that has already
-    /// forgotten it.
-    pub(crate) backend_pane_id: String,
-    /// Held because dropping it unlinks the socket and stops the listener, and used to tell the
-    /// bridge whether its pane is on screen.
-    control: Arc<PaneControlChannel>,
+    /// The socket its bridge reports on. Held because dropping it unlinks the socket and stops
+    /// the listener.
+    link: Arc<PaneLink>,
+}
+
+impl AttachedPane {
+    pub(crate) fn link_path(&self) -> &str {
+        self.link.socket_path()
+    }
 }
 
 /// One daemon this process is following.
 #[derive(Debug)]
 struct Backend {
     mirror: Arc<Mutex<Mirror>>,
-    /// The ssh master this daemon is reached through, for a remote one.
-    ///
-    /// Held because dropping it takes the connection down, and named because a pane's bridge
-    /// needs the same master to run its frame stream through. Absent for a daemon on this
-    /// machine, which is the difference the rest of this file never has to notice.
+    /// The ssh master this daemon is reached through, for a remote one. Held because dropping
+    /// it takes the connection down. Absent for a daemon on this machine.
     tunnel: Option<Tunnel>,
     /// Whether Muster started this daemon rather than attaching to one already answering.
     ///
     /// Kept because ending a daemon is a decision somebody has to make about a process holding
-    /// work, and "did we start it" is the one thing about it nothing else can reconstruct
-    /// afterwards - `ps` cannot tell the daemon Muster launched a minute ago from the one it
-    /// adopted that has been holding somebody's agent since yesterday.
+    /// work, and "did we start it" is the one thing about it nothing else can reconstruct.
     started: bool,
-    /// Where this daemon was actually found, as opposed to how it was asked for.
-    ///
-    /// The resolution rather than the wish, which is why it lives here and not in the
-    /// composition record beside it: a path discovered from this run's environment, or
-    /// forwarded from another machine, describes nothing a later run could use.
+    /// Where this daemon was actually found, as opposed to how it was asked for: for a remote
+    /// one, the local end of its forward, which is what its panes' bridges dial.
     socket_path: String,
-    /// How this daemon is asked for changes. One per daemon rather than one per pane,
-    /// because what these ask for is structure and structure belongs to the daemon.
+    /// How this daemon is asked for changes. One per daemon, because structure belongs to the
+    /// daemon rather than to any pane in it.
     channel: Arc<dyn BackendChannel>,
-    /// Whether Muster wrote the config file this daemon reads.
-    ///
-    /// True only for a daemon Muster started itself. A daemon named by `socket` is somebody
-    /// else's and a remote one was reached rather than started, so neither was redirected -
-    /// and asking one of those to re-read its own config would be reaching into a session
-    /// Muster does not own, possibly while its owner is editing that file.
-    owns_config: bool,
-    /// Where that config file is, when it is on another machine.
-    ///
-    /// None for a daemon on this one, whose file is written straight to disk. A remote
-    /// daemon's has to be sent again before it is asked to re-read, and this is the only
-    /// record of where it went.
-    remote_config: Option<String>,
-    /// This daemon's half of the pane-name registry.
-    ///
-    /// A view onto the one registry the session holds, scoped to this daemon, and the same one
-    /// the subscription and the channel above were handed. Kept here so that everything with a
-    /// backend in front of it can translate a name without reaching for the session's field
-    /// and the daemon id separately.
-    names: Names,
-    /// Held because dropping it ends the subscription and every thread under it - the
-    /// structure stream and one agent watcher per pane.
-    _subscription: Subscription,
+    /// Where its panes' keystrokes go, one connection for all of them.
+    input: Arc<dyn InputSink>,
+    /// Held because dropping it hangs up and stops following.
+    follower: Follower,
 }
 
 /// Everything this process holds open, and the composition it holds it for.
@@ -963,44 +695,16 @@ pub(crate) struct Session {
     /// has about a hundred bytes to spend and the temporary directory has already spent half
     /// of them, and a backend is free to spell an id with characters a path cannot hold.
     next_socket: u64,
-    /// Tabs Muster has asked a daemon to make, until the daemon says they exist.
+    /// Machines this window has asked for a first tab, once each.
     ///
-    /// Shown when the mirror knows them rather than on trust, because a region whose tab the
-    /// mirror has never heard of is dropped by the very next reconcile - so showing one
-    /// immediately is a race against the event that would have made it true. Muster does not
-    /// read a daemon's own focus to decide what a region shows (`architecture.md`, cursors
-    /// are written, not read), so what it asked for is the only record there is.
-    ///
-    /// One per daemon, replaced rather than queued: two new tabs in flight at once is
-    /// somebody pressing the key twice, and the second is the one they are looking for.
-    wanted_tabs: BTreeMap<DaemonId, TabId>,
-
-    /// A pane Muster made and wants the keyboard on, until the daemon has described it.
-    ///
-    /// The same shape as `wanted_tabs` and for the same reason: a split answers with the pane
-    /// it made long before the event describing it arrives, and `Composition::reconcile`
-    /// resolves a region against the mirror's pane list - so a keyboard pointed at a pane the
-    /// mirror has not heard of falls to whichever pane the tab already had, and nothing
-    /// afterwards points it back. What that looks like is a split whose new pane appears
-    /// unfocused while the keyboard sits in the pane you split.
-    ///
-    /// One per daemon, replaced rather than queued, because two splits in flight at once is
-    /// somebody pressing the key twice and the second is the one they are looking at.
-    wanted_panes: BTreeMap<DaemonId, (RegionId, PaneId)>,
-
-    /// Machines this window has asked for a workspace, once each.
-    ///
-    /// Beside `wanted_tabs` and `wanted_panes` above, and the one of the three that guards the
-    /// *asking* rather than what to do with the answer. A window with nothing to show asks a
-    /// machine for a workspace, and until that workspace exists the window still has nothing -
-    /// so an unguarded rule would ask again on every event any machine sent, and a laptop that
-    /// chatters would give it a dozen workspaces before the first reply landed.
+    /// A window with nothing to show asks a machine for a tab, and a rule with no record of
+    /// having asked would ask again on every event any machine sent until the tab arrived.
     ///
     /// **Never emptied.** A machine is asked at most once for the life of this window, which is
     /// what makes closing a machine's last pane leave it empty instead of getting a fresh shell
     /// a moment later (kan a_2I6h18OU6). A daemon that refuses is left in here for the sharper
     /// version of the same reason: a rule that retried a refusal would retry it forever.
-    workspaces_asked_of: BTreeSet<DaemonId>,
+    tabs_asked_of: BTreeSet<DaemonId>,
 
     /// Which window this is, and which window holds each tab.
     ///
@@ -1038,31 +742,9 @@ pub(crate) struct Session {
     /// laptop changes network.
     respawns: Respawns,
 
-    /// How big each pane's grid is, and which are past what one frame can carry.
-    grids: Grids,
-
-    /// The search somebody has open, if anybody has.
-    ///
-    /// One at a time, because the find bar is one bar over the pane with the keyboard. Held
-    /// here rather than in `Presentation` because it is not worth a restart remembering -
-    /// `presentation.rs` says as much about panels that open on a chord - and not in the
-    /// shell because which hit is selected decides which scroll goes out, and deciding is
-    /// this side's job.
-    search: Option<Search>,
-
-    /// What Muster calls each pane, across every daemon at once.
-    ///
-    /// One registry rather than one per daemon, because a name has to be unique over all of
-    /// them: that is what lets a caller name a pane on the devenv without saying which machine
-    /// holds it. Each `Backend` above holds a view onto this scoped to its own daemon.
-    ///
-    /// Shared behind a lock because two threads mint into it - a daemon's subscription thread
-    /// when a pane appears, and whichever thread dispatched a split.
-    names: Arc<Mutex<PaneNames>>,
-
-    /// The same for tabs, on the same terms, and a second lock rather than one over both so
-    /// that decoding a pane event never waits on a tab being named.
-    tab_names: Arc<Mutex<TabNames>>,
+    /// Where every pane and tab this window makes gets its name, whichever daemon it is on:
+    /// names are unique across machines, so one minter draws them all.
+    minter: Arc<Mutex<Minter>>,
 
     /// The tab a numbered chord has just named, while `numbered_chords = "tab_then_pane"`.
     ///
@@ -1088,8 +770,6 @@ pub(crate) struct Session {
 struct Sent {
     view: Option<ViewChanged>,
     roster: Option<RosterChanged>,
-    /// The panes on screen the last time the bridges were told which theirs are.
-    showing: Option<BTreeSet<PaneKey>>,
 }
 
 impl Sent {
@@ -1109,21 +789,6 @@ impl Sent {
         self.roster = Some(roster.clone());
         true
     }
-}
-
-/// One pane's live search.
-///
-/// The hits are kept rather than looked for again on every step. A pane goes on printing
-/// while somebody reads it, so a needle asked for twice can answer differently - and a
-/// counter that says "3 of 47" while walking a list of 51 is worse than one that is a moment
-/// behind. Re-typing is what re-reads.
-#[derive(Debug)]
-struct Search {
-    daemon: DaemonId,
-    pane: PaneId,
-    found: Found,
-    /// Which hit is selected, or none when nothing matched.
-    selected: Option<usize>,
 }
 
 pub(crate) static SESSION: LazyLock<Mutex<Session>> =
@@ -1153,7 +818,7 @@ static PUBLISHING: Mutex<()> = Mutex::new(());
 /// static above means adding a line here, and the way it fails otherwise is a test that passes
 /// alone and not in company.
 ///
-/// Dropping the session is the whole teardown: a `Backend` owns its subscription, its ssh
+/// Dropping the session is the whole teardown: a `Backend` owns its follower, its ssh
 /// master and its panes' sockets, and dropping one ends the threads behind all three. So this
 /// is the shutdown path that already existed, called deliberately rather than at exit.
 pub(crate) fn reset() {
@@ -1164,12 +829,9 @@ pub(crate) fn reset() {
     *poison::lock(&COMMANDS, "commands") = None;
     *poison::lock(&STATE, "saved-arrangement") = None;
     *poison::lock(&SHOW, "show") = None;
-    *poison::lock(&NAMES_FILE, "saved-names") = None;
-    *poison::lock(&SHARED_NAMES, "shared-names") = None;
     *poison::lock(&BINDINGS, "bindings") = None;
     *poison::lock(&PANE_INPUT, "input-settings") = None;
-    *poison::lock(&PANES, "pane-settings") = None;
-    *poison::lock(&DAEMON_CONFIG, "daemon-config") = None;
+    *poison::lock(&SETTINGS, "daemon-settings") = None;
     *poison::lock(&FEEL, "settings") = None;
     *poison::lock(&CONFIG_PATH, "settings") = None;
     *poison::lock(&APPEARANCE, "settings") = None;
@@ -1184,159 +846,93 @@ pub(crate) fn reset() {
     // shell configured with no socket takes.
     watchdog::forget_everything();
     watchdog::unset_deadlines();
-    set_frame_cells(None);
     watch::forget_everyone();
     command::listen("");
     ffi::muster_set_event_callback(None);
 }
 
 impl Session {
-    /// Which local panes' bridges to tell whether they are on screen, when that has changed.
-    ///
-    /// A bridge told its pane is hidden lets go of its herdr client, because herdr renders every
-    /// attached client on each pass whether or not anybody can see it - measured at 0.135 of a
-    /// core with fourteen panes attached against 0.030 with the two on screen. Every pane is told
-    /// rather than only the ones that moved, because the message costs a line and a bridge
-    /// replaced while its pane was hidden starts out streaming.
-    ///
-    /// Local panes only. A remote pane's client is an ssh exec, measured at 444-561 ms to start
-    /// (`PaneSurfaces`), which would be the price of every tab switch - so a remote daemon still
-    /// renders the hidden panes it streams here.
-    fn tell_bridges_what_is_showing(
-        &mut self,
-        showing: &BTreeSet<PaneKey>,
-    ) -> Vec<(Arc<AttachedPane>, bool)> {
-        if self.sent.showing.as_ref() == Some(showing) {
-            return Vec::new();
-        }
-        self.sent.showing = Some(showing.clone());
-        self.panes
-            .iter()
-            .filter(|(daemon, _)| self.backends.get(*daemon).is_some_and(|b| b.tunnel.is_none()))
-            .flat_map(|(daemon, panes)| {
-                panes.iter().map(move |(pane, held)| {
-                    (Arc::clone(held), showing.contains(&PaneKey::new(daemon, pane)))
-                })
-            })
-            .collect()
-    }
-
     /// Starts following a daemon, or leaves the one already being followed alone.
-    ///
-    /// Seeded with a snapshot the caller already has, before the subscription starts. The
-    /// subscription takes its own moments later and replaces this one; doing it in the other
-    /// order would let the older answer land last and stick, since a mirror with nothing
-    /// happening in it is never corrected.
     ///
     /// The endpoint and the socket path are both passed because they are different things.
     /// The endpoint is what someone asked for and is what composition writes down; the path
     /// is where this run found it, and is worth nothing to a later one.
     ///
-    /// Returns what the seed established, for the caller to announce once it has let go of
-    /// the session. Nothing else will: the subscription's own bootstrap diffs against this
-    /// mirror rather than an empty one, so every pane the seed already placed is a pane it
-    /// sees no change in. Dropping these on the floor is how a window opened onto running
-    /// agents came up believing every one of them was unknown.
-    fn follow(&mut self, daemon: &Daemon, reached: Reached, seed: Snapshot) -> Vec<Change> {
+    /// Returns the daemon's connection, for the caller to wait on its first snapshot once it
+    /// has let go of the session: the follower applies it on its own thread, and announcing it
+    /// takes this lock.
+    fn follow(
+        &mut self,
+        daemon: &Daemon,
+        reached: Reached,
+    ) -> Result<Option<Arc<muster_daemon_client::follow::Connection>>, String> {
         let id = daemon.id.clone();
         self.composition.attach_daemon(daemon.clone());
         if self.backends.contains_key(&id) {
-            return Vec::new();
+            return Ok(None);
         }
 
-        let mut mirror = Mirror::new();
-        let seeded = mirror.bootstrap(seed);
-        let mirror = Arc::new(Mutex::new(mirror));
-
-        // Sharing the record where there is one, so that naming a pane this daemon has just
-        // described cannot race another Muster naming the same one.
-        let names = match shared_names() {
-            Some(shared) => Names::sharing(
-                id.clone(),
-                Arc::clone(&self.names),
-                Arc::clone(&self.tab_names),
-                shared,
-            ),
-            None => Names::new(id.clone(), Arc::clone(&self.names), Arc::clone(&self.tab_names)),
-        };
+        let mirror = Arc::new(Mutex::new(Mirror::new()));
         let reporting = id.clone();
-        let renaming = id.clone();
-        let subscription = Subscription::start(
-            &reached.socket_path,
+        let follower = Follower::start(
+            Following {
+                socket: reached.socket_path.clone().into(),
+                client: format!("muster {}", env!("CARGO_PKG_VERSION")),
+                daemon: id.to_string(),
+                remote: reached.tunnel.is_some(),
+            },
             Arc::clone(&mirror),
             Arc::new(move |notice| announce(&reporting, notice)),
-            names.clone(),
-        );
+        )
+        .map_err(|error| format!("could not start following {id} ({error})"))?;
+        if let Some(settings) = poison::lock(&SETTINGS, "daemon-settings").as_ref() {
+            follower.configure(settings);
+        }
+        let connection = follower.connection();
+        let description = match &reached.tunnel {
+            Some(tunnel) => format!("the daemon {id} on {}", tunnel.host()),
+            None => format!("the daemon {id}"),
+        };
+        let channel = Arc::new(DaemonBackend::new(
+            Arc::clone(&connection),
+            Arc::clone(&mirror),
+            Arc::clone(&self.minter),
+            pane_environment(),
+            description.clone(),
+        ));
+        let input =
+            Arc::new(DaemonInput::new(Arc::clone(&connection), muster_vt::key_code, description));
         self.backends.insert(
             id,
             Backend {
                 mirror,
                 tunnel: reached.tunnel,
-                // A pane given back the name it was made with may already be on screen under a
-                // name it was given on sight, and nothing will name it again - so the session
-                // is read afresh, which is the census that swaps the one for the other.
-                channel: Arc::new(
-                    HerdrBackend::new(
-                        HerdrClient::new(reached.socket_path.clone()),
-                        reached.panes,
-                        names.clone(),
-                    )
-                    .on_renamed(Arc::new(move || {
-                        resnapshot(&renaming, "a pane took back the name it was made with");
-                    })),
-                ),
-                owns_config: reached.owns_config,
-                remote_config: reached.remote_config,
                 started: reached.started,
                 socket_path: reached.socket_path,
-                names,
-                _subscription: subscription,
+                channel,
+                input,
+                follower,
             },
         );
-        seeded
+        Ok(Some(connection))
     }
 
-    /// Drops what a daemon no longer holds: the names of panes and tabs, and the text sizes
-    /// somebody set on panes.
+    /// Drops the text sizes somebody set on panes a daemon no longer holds.
     ///
     /// Only where the daemon is answering. A mirror that has gone stale is not evidence a pane
-    /// is gone - it is a connection nobody is hearing from - and forgetting a name on a dropped
-    /// VPN would strand an agent that is still working on the far side with a name nothing can
-    /// resolve. A forgotten tab name is milder and wrong in the same direction: the saved
-    /// arrangement would stop finding the tab a region was showing. A forgotten text size is
-    /// milder still and wrong the same way: a pane comes back at the configured size after a
-    /// blip, having been made bigger on purpose.
+    /// is gone - it is a connection nobody is hearing from - and a pane coming back at the
+    /// configured size after a blip would have lost a size set on purpose.
     fn forget_what_closed(&mut self) {
-        for backend in self.backends.values() {
-            let mirror = poison::lock(&backend.mirror, "mirror");
-            if mirror.health() != Health::Connected {
-                continue;
-            }
-            let panes: Vec<PaneId> = mirror.panes().map(|pane| pane.id.clone()).collect();
-            let tabs: Vec<TabId> = mirror.tabs().map(|tab| tab.id.clone()).collect();
-            drop(mirror);
-            // The mirror holds Muster's names, so this asks the registry for each one's backend
-            // id rather than the other way round.
-            let held = panes.iter().filter_map(|pane| backend.names.backend_pane(pane).ok());
-            backend.names.prune_panes(held);
-            let held = tabs.iter().filter_map(|tab| backend.names.backend_tab(tab).ok());
-            backend.names.prune_tabs(held);
-        }
-
-        // Text sizes follow the names, rather than answering the question a second time. The
-        // registry already knows the difference between a pane that has gone and one the daemon
-        // has not described yet - a split's pane is named before the daemon announces it, and
-        // this runs on the publish in between - and getting that difference wrong here means a
-        // pane opening at the size of the pane it was split from and losing it a frame later.
         let gone: Vec<PaneKey> = self
             .font_sizes
             .entries()
             .filter(|(pane, _)| {
                 // A daemon nothing is following is not evidence either. An entry for one this
                 // window is about to attach again is what makes a size survive a relaunch.
-                self.backends
-                    .get(&pane.daemon)
-                    .is_some_and(|backend| backend.names.backend_pane(&pane.pane).is_err())
+                self.backends.get(&pane.daemon).is_some_and(|backend| {
+                    let mirror = poison::lock(&backend.mirror, "mirror");
+                    mirror.health() == Health::Connected && mirror.pane(&pane.pane).is_none()
+                })
             })
             .map(|(pane, _)| pane.clone())
             .collect();
@@ -1431,7 +1027,6 @@ impl Session {
         let mirror = poison::lock(&backend.mirror, "mirror");
 
         self.composition.reconcile(daemon, &mirror);
-        let stale = &mut self.grids;
         let attached = self.panes.entry(daemon.clone()).or_default();
         attached.retain(|pane, _| {
             let held = mirror.pane(pane).is_some();
@@ -1444,10 +1039,6 @@ impl Session {
                 // And nothing is owed about its bridge either. A window whose panes come and
                 // go all day would otherwise accumulate one entry per pane it ever held.
                 poison::lock(&DARK, "dark-panes").remove(&key);
-                // Nor about its grid. Recorded here and cleared after this lock is released,
-                // for the reason `watchdog` states about the one above: clearing takes
-                // `PROBLEMS` and then `SESSION`, and this runs holding `SESSION`.
-                poison::lock(&STALE_GRIDS, "stale-grids").extend(stale.forget(&key).clear);
             }
             held
         });
@@ -1493,7 +1084,7 @@ impl Session {
             self.composition
                 .regions()
                 .filter(|region| &region.daemon == daemon)
-                .filter_map(|region| Some((region, mirror.layout(showing.as_ref()?)?)))
+                .filter_map(|region| Some((region, mirror.tab(showing.as_ref()?)?)))
                 .flat_map(|(region, layout)| match zoom_filling(region, Some(layout)) {
                     Some(filling) => vec![filling],
                     None => layout.root.panes().into_iter().cloned().collect(),
@@ -1538,79 +1129,41 @@ impl Session {
                  attached."
             )
         })?;
-        let socket_path = backend.socket_path.clone();
-        // Resolved once, here, because both things this opens speak to the daemon directly:
-        // the second input channel below, and the bridge the shell starts from the answer.
-        let backend_pane = backend.names.backend_pane(pane).map_err(|_| {
-            format!(
-                "{daemon} does not hold a pane called {pane}, so there is nothing to open a \
-                 channel to. A name the window is still showing and the registry has already \
-                 forgotten means a pane closed between the two - the next publish drops it."
-            )
-        })?;
+        let sink = Arc::clone(&backend.input);
         let path = self.next_socket_path();
-        let dialed = PaneKey::new(daemon, pane);
-        let stopped = dialed.clone();
-        let drawn = dialed.clone();
-        let painting = dialed.clone();
-        let asked = dialed.clone();
-        let control = PaneControlChannel::bind(
-            path.clone(),
+        let attached = PaneKey::new(daemon, pane);
+        let stopped = attached.clone();
+        let painting = attached.clone();
+        let asked = attached.clone();
+        let link = PaneLink::bind(
+            path,
             Reports {
-                connected: Box::new(move || typeable(&dialed.daemon, &dialed.pane)),
+                attached: Box::new(move || typeable(&attached.daemon, &attached.pane)),
                 exited: Box::new(move |ended| bridge_ended(&stopped, &ended)),
-                sized: Box::new(move |columns, rows| pane_sized(&drawn, columns, rows)),
                 painted: Box::new(move || watchdog::painted(&painting)),
             },
         )
         .map_err(|error| {
             format!(
-                "could not bind the socket this pane's bridge dials back on ({error}). \
-                     Usual causes: a full or read-only temporary directory."
-            )
-        })?;
-        let control = Arc::new(control);
-
-        // The second channel, for the keys and text whose correct encoding depends on modes
-        // the control stream cannot show us. Pointed at the daemon this pane belongs to
-        // rather than at whatever the environment names: a remote pane asked of the local
-        // daemon is a pane whose arrows quietly go to the wrong machine, and the failure
-        // reads as a guessed encoding rather than as an error.
-        let server = HerdrPaneChannel::new(HerdrClient::new(socket_path), backend_pane.as_str());
-
-        // The pane's modes are not readable, so this is the documented guess, with the one
-        // field in it that is a preference taken from the config file. One day the rest is
-        // fed from the daemon; nothing above here changes when it is.
-        let settings = pane_input();
-        let encoder = KeyEncoder::new(settings.profile()).map_err(|error| {
-            format!(
-                "could not build a key encoder ({error}), so nothing typed into this pane \
-                 would reach it. libghostty-vt is behind this; check that ./dev built it."
+                "could not bind the socket this pane's bridge reports on ({error}). Usual \
+                 causes: a full or read-only temporary directory."
             )
         })?;
 
         self.panes.entry(daemon.clone()).or_default().insert(
             pane.clone(),
             Arc::new(AttachedPane {
-                input: PaneInput::new(
-                    Arc::clone(&control) as Arc<_>,
-                    Some(Arc::new(server) as Arc<_>),
-                    Arc::new(encoder),
-                    &settings,
-                )
-                // Hung on the input path rather than on its six call sites, and on delivery
-                // rather than on intent: something reached this pane, so a frame is owed and
-                // the window can tell a pane that stopped painting from one whose agent has
-                // nothing to say (kan a_2LMRCug0P).
-                .delivering_to(Arc::new(move || watchdog::typed(&asked))),
-                control_socket_path: path,
-                backend_pane_id: backend_pane.as_str().to_string(),
-                control,
+                input: PaneInput::new(pane.clone(), sink, &pane_input())
+                    // Hung on the input path rather than on its call sites: something reached
+                    // this pane, so output is owed and the window can tell a pane that stopped
+                    // painting from one whose agent has nothing to say (kan a_2LMRCug0P).
+                    .delivering_to(Arc::new(move || watchdog::typed(&asked))),
+                link: Arc::new(link),
             }),
         );
         // The socket is bound and the shell has not been told about it yet, so this is the
         // earliest moment the wait for a bridge can be said to have started.
-        watchdog::opened(PaneKey::new(daemon, pane), backend_pane.as_str().to_string());
+        watchdog::opened(PaneKey::new(daemon, pane));
         Ok(())
     }
 
@@ -1646,47 +1199,6 @@ impl Session {
             }
         }
         agents
-    }
-
-    /// Shows a tab Muster asked for, once the daemon has described it.
-    ///
-    /// Returns whether anything moved, so the caller knows whether to republish.
-    /// Puts the keyboard on a pane Muster made, once the daemon has described it.
-    ///
-    /// Returns whether anything moved, so the caller knows whether to republish. Held rather
-    /// than applied and hoped for: `Composition::reconcile` runs before every publish and
-    /// resolves each region against the mirror's pane list, so pointing at a pane the mirror
-    /// does not hold yet is undone by the next publish rather than remembered.
-    fn keyboard_to_wanted_pane(&mut self, daemon: &DaemonId) -> bool {
-        let Some((region, pane)) = self.wanted_panes.get(daemon).cloned() else { return false };
-        {
-            let Some(backend) = self.backends.get(daemon) else { return false };
-            let mirror = poison::lock(&backend.mirror, "mirror");
-            // Not yet described. Left in place rather than dropped, on the same terms as a
-            // wanted tab: the event is on its way, and forgetting it here is a split whose
-            // pane never takes the keyboard.
-            if mirror.pane(&pane).is_none() {
-                return false;
-            }
-        }
-        self.wanted_panes.remove(daemon);
-        self.composition.focus_pane(region, pane);
-        true
-    }
-
-    fn show_wanted_tab(&mut self, daemon: &DaemonId) -> bool {
-        let Some(tab) = self.wanted_tabs.get(daemon).cloned() else { return false };
-        {
-            let Some(backend) = self.backends.get(daemon) else { return false };
-            let mirror = poison::lock(&backend.mirror, "mirror");
-            // Not yet described. Left in place rather than dropped: the event is on its way,
-            // and forgetting it here is a new tab nothing ever shows.
-            if mirror.tab(&tab).is_none() {
-                return false;
-            }
-        }
-        self.wanted_tabs.remove(daemon);
-        self.composition.surface(daemon, &tab).is_some()
     }
 
     /// Puts a region onto the tab holding this pane, so that something can show it.
@@ -1755,38 +1267,15 @@ impl Session {
         View::of(
             &self.composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
-            |daemon| {
-                let tunnel = self.backends.get(daemon)?.tunnel.as_ref()?;
-                Some(Transport {
-                    host: tunnel.host().to_string(),
-                    control_path: tunnel.control_path().to_string(),
-                })
-            },
-            |daemon| {
-                let backend = self.backends.get(daemon)?;
-                // Whichever path the bridge's own CLI will be able to open, which is not the
-                // same path in both cases: a bridge for a local pane runs here and takes the
-                // socket as it is, and one for a remote pane runs its CLI on the far end,
-                // where the near end of a tunnel names nothing at all. Handed over rather
-                // than found either way, because Muster's daemon listens on a session of its
-                // own and a CLI left to look for itself reaches a different one.
-                match &backend.tunnel {
-                    Some(tunnel) => Some(tunnel.remote_socket_path().to_string()),
-                    None => Some(backend.socket_path.clone()),
-                }
-            },
+            |daemon| Some(self.backends.get(daemon)?.socket_path.clone()),
+            |daemon| self.backends.get(daemon).is_some_and(|backend| backend.tunnel.is_some()),
             |daemon, pane| {
                 let key = PaneKey::new(daemon, pane);
                 ViewPane {
                     id: pane.clone(),
-                    control_socket_path: self
+                    link_socket_path: self
                         .channel(daemon, pane)
-                        .map(|held| held.control_socket_path.clone()),
-                    backend_pane_id: self
-                        .backends
-                        .get(daemon)
-                        .and_then(|backend| backend.names.backend_pane(pane).ok())
-                        .map(|named| named.as_str().to_string()),
+                        .map(|held| held.link_path().to_string()),
                     font_size_offset: self.font_sizes.offset(&key),
                     bridge_restarts: self.respawns.restarts(&key),
                 }
@@ -1869,14 +1358,6 @@ impl Session {
         self.panes.get(&region.daemon)?.get(region.pane.as_ref()?).map(Arc::clone)
     }
 
-    /// One named pane, whether or not the keyboard is in it.
-    ///
-    /// Behind an `Arc` for the same reason [`Self::keyboard_pane`] is: the caller lets go of
-    /// this lock before it sends anything.
-    fn attached_pane(&self, daemon: &DaemonId, pane: &PaneId) -> Option<Arc<AttachedPane>> {
-        self.panes.get(daemon)?.get(pane).map(Arc::clone)
-    }
-
     /// Which region would draw this pane, whether or not its tab is the one on screen.
     ///
     /// Scoped to a daemon rather than searched across all of them, because two daemons hand
@@ -1913,26 +1394,6 @@ pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
     poison::lock(&SESSION, "session").keyboard_pane()
 }
 
-/// One named pane, if this window has a channel open to it.
-///
-/// For the input that is addressed rather than focused, which today is the wheel. Absent means
-/// no channel, not no pane: a pane whose bridge has not finished starting is the ordinary case.
-pub(crate) fn attached_pane(daemon: &DaemonId, pane: &PaneId) -> Option<Arc<AttachedPane>> {
-    poison::lock(&SESSION, "session").attached_pane(daemon, pane)
-}
-
-/// Asks the daemon showing this window for a change.
-///
-/// Nothing is applied here, and nothing is answered with new state: what happened arrives
-/// afterwards on the daemon's own events, which is what keeps one description of the session
-/// rather than two that can disagree (`architecture.md`, view = f(daemon state)).
-///
-/// The one exception is where the keyboard ends up, which is Muster's own state and not the
-/// daemon's. A split you asked for takes it, because that is what pressing the key meant.
-///
-/// The channel is taken out from under the lock before the request goes, because a request
-/// is a round trip and holding the session across one would stall every event arriving from
-/// every other daemon behind a wedged one.
 /// Whether this window's keyboard follows a pane the request makes.
 ///
 /// Only ever consulted for a request that makes one, and it is the one thing about a mutation
@@ -1956,46 +1417,49 @@ fn refused_or_unanswered<T>(outcome: &Result<T, Refusal>) -> (String, String) {
     }
 }
 
+/// Asks the daemon showing this window for a change.
+///
+/// Nothing is applied here that the daemon did not say: what happened arrives on the daemon's
+/// own events, which reach the mirror before the answer does, so by the time this returns the
+/// mirror already shows it (`architecture.md`, view = f(daemon state)).
+///
+/// The one exception is where the keyboard ends up, which is Muster's own state and not the
+/// daemon's. A split you asked for takes it, because that is what pressing the key meant.
+///
+/// The channel is taken out from under the lock before the request goes, because a request
+/// is a round trip and holding the session across one would stall every event arriving from
+/// every other daemon behind a wedged one.
 pub(crate) fn submit(
     daemon: &DaemonId,
     intent: &BackendIntent,
     keyboard: Keyboard,
 ) -> Result<Option<PaneId>, Refusal> {
     let (region, source, channel) = {
-        let session = poison::lock(&SESSION, "session");
+        let mut session = poison::lock(&SESSION, "session");
         // Which pane this request came from, for a pane it may be about to make. A split names
-        // the pane it splits; ⌘T and a new workspace name nothing, so the answer is the pane in
-        // front of whoever asked. Read here rather than after the round trip, because by then
-        // the keyboard may have moved.
+        // the pane it splits; ⌘T names nothing, so the answer is the pane in front of whoever
+        // asked. Read here rather than after the round trip, because by then the keyboard may
+        // have moved.
         let source = match intent {
             BackendIntent::SplitPane { pane, .. } => Some(PaneKey::new(daemon, pane)),
-            BackendIntent::CreateTab { .. } | BackendIntent::CreateWorkspace { .. } => session
+            BackendIntent::CreateTab { .. } => session
                 .composition
                 .focused_region()
                 .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?))),
             _ => None,
         };
         // Which region this is about, for the keyboard afterwards. None is an answer rather
-        // than a failure for an intent that names nothing existing - there is no region to
-        // find for a workspace that does not exist yet, and the one it produces is opened by
-        // the reconcile behind the daemon's own event.
+        // than a failure for an intent that names nothing on screen.
         let region = match intent {
             // A rename is about a thing rather than about what is on screen, and requiring a
             // region would refuse the case the feature exists for: the sidebar lists every
             // pane every daemon holds, and the ones worth naming are the ones no region is
-            // showing.
-            // Arranging the list is about things rather than about what is on screen, for the
-            // same reason a rename is: the rows worth dragging are very often the ones no
-            // region is showing, and requiring one would refuse the case the gesture is for.
-            // Typing into a pane is about the pane, not about what is on screen, and this is the
-            // sharpest case of that: what it is *for* is reaching a pane no region shows. An
-            // agent told to instruct two others has to be able to reach them wherever they are.
-            BackendIntent::CreateWorkspace { .. }
-            | BackendIntent::CreateTab { .. }
+            // showing. Arranging the list is the same: the rows worth dragging are very often
+            // the ones no region is showing. A new tab has no region until it exists.
+            BackendIntent::CreateTab { .. }
             | BackendIntent::RenamePane { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SwapPanes { .. }
-            | BackendIntent::SendText { .. }
             | BackendIntent::MovePane { .. } => None,
             // Where a new pane goes is a fact about the tab's tree, on the same terms as
             // moving one, so this asks the window rather than requiring it: the keyboard
@@ -2011,8 +1475,7 @@ pub(crate) fn submit(
             BackendIntent::SplitPane { pane, .. } => session.region_holding(daemon, pane),
             BackendIntent::ClosePane { pane }
             | BackendIntent::ResizePane { pane, .. }
-            | BackendIntent::ZoomPane { pane }
-            | BackendIntent::FocusPane { pane } => Some(
+            | BackendIntent::ZoomPane { pane } => Some(
                 session
                     .region_holding(daemon, pane)
                     .ok_or_else(|| Refusal::Declined(not_showing(daemon)))?,
@@ -2036,14 +1499,17 @@ pub(crate) fn submit(
                      followed, which is a bug in the core rather than a state to recover from"
             ))
         })?;
+        // Taken before asking. The daemon describes a new tab to every window before this one
+        // hears the answer, and a tab nobody held in that moment would go to whichever window
+        // came to the front last (kan a_2Mhi0EZlv). One the request then fails to make is a
+        // row for a name nothing will ever use, which the next window to open prunes.
+        if let Some(tab) = made_tab(intent) {
+            session.holding.making(tab);
+        }
         (region, source, channel)
     };
 
-    let makes_a_tab = expect_a_tab(daemon, intent);
     let outcome = channel.submit(intent);
-    if makes_a_tab {
-        hold_what_was_made(daemon, outcome.as_ref().ok());
-    }
     let (refused, unanswered) = refused_or_unanswered(&outcome);
     log::info(
         "intent.submitted",
@@ -2056,131 +1522,63 @@ pub(crate) fn submit(
             "unanswered" => unanswered,
         },
     );
+    let Ok(Outcome { created, created_tab }) = &outcome else {
+        return outcome.map(|_| None);
+    };
 
-    // A daemon that says it does not hold what was named is describing this window rather
-    // than the request: whatever is on screen for that thing is stale, and every later
-    // request about it is refused the same way. It has to be asked what it does hold, because
-    // it will not volunteer it - herdr drops a pane whose terminal is gone without an event
-    // for it, which leaves a pane on screen that cannot be focused, closed or typed into.
-    if let Err(Refusal::NotThere(detail)) = &outcome {
-        resnapshot(daemon, detail);
-    }
-
-    // The new pane is not in the mirror yet - its event is still in flight - so the region is
-    // the one that was split rather than one looked up. Taking the pane on trust is what
-    // `Composition::focus_pane` is for, and the reconcile behind the event that follows is
-    // where daemon truth gets applied to it.
-    // A tab this request made is remembered rather than shown: the mirror has not heard of
-    // it yet, and a region pointed at a tab the mirror does not know is dropped by the next
-    // reconcile. The reconcile behind the daemon's own event is where it becomes visible.
-    //
-    // Not for a move, which is the one request here that makes a tab without being about one:
-    // it makes a place to put a pane. Bringing that tab on screen would put the tab somebody
-    // was working in behind it, so "pull that pane out of the split" would answer by moving
-    // them somewhere they did not ask to go - and an agent pulling another agent's pane out
-    // would lose its own place doing it. The tab is listed and named, and `muster tab focus`
-    // is how anybody who does want to go there says so.
-    if !matches!(intent, BackendIntent::MovePane { .. })
-        && let Some(tab) = outcome.as_ref().ok().and_then(|outcome| outcome.created_tab.clone())
-    {
-        let mut session = poison::lock(&SESSION, "session");
-        session.wanted_tabs.insert(daemon.clone(), tab);
-    }
-
-    // What the daemon said about the arrangement it just made, taken now rather than waited
-    // for. herdr answers a swap or a resize with the settled tree and broadcasts the same tree
-    // about a hundred milliseconds later, so a window that only listens renders the
-    // arrangement being moved away from for six frames and then jumps
-    // (`observations/herdr-0.8.0.md` section 14). Still daemon truth - the mirror is what
-    // applies it, and it arms itself against the broadcast that is now behind it.
+    let mut session = poison::lock(&SESSION, "session");
     let mut moved = false;
-    if let Ok(outcome) = &outcome
-        && let Some(settled) = outcome.settled.clone()
+    // A tab this request made is shown. Not for a move, which is the one request here that
+    // makes a tab without being about one: it makes a place to put a pane. Bringing that tab on
+    // screen would put the tab somebody was working in behind it, so "pull that pane out of the
+    // split" would answer by moving them somewhere they did not ask to go - and an agent
+    // pulling another agent's pane out would lose its own place doing it. The tab is listed and
+    // named, and `muster tab focus` is how anybody who does want to go there says so.
+    if !matches!(intent, BackendIntent::MovePane { .. })
+        && let Some(tab) = created_tab
     {
-        let session = poison::lock(&SESSION, "session");
-        if let Some(backend) = session.backends.get(daemon) {
-            moved = !poison::lock(&backend.mirror, "mirror").settle(settled).is_empty();
-        }
+        session.composition.hold(tab.clone());
+        moved |= session.composition.surface(daemon, tab).is_some();
     }
-
-    // What the daemon said a pane is now called, taken from the answer for the same reason as
-    // the arrangement above and with less choice about it: herdr emits no event for a pane
-    // rename and has no topic for one, so this reply is the only thing that will ever say so
-    // (`observations/herdr-0.8.0.md` section 16). Without this, naming a pane changes the
-    // daemon and leaves the window reading what it read before.
-    if let Ok(outcome) = &outcome
-        && let Some((pane, name)) = outcome.renamed.clone()
-    {
-        let session = poison::lock(&SESSION, "session");
-        if let Some(backend) = session.backends.get(daemon) {
-            moved |= !poison::lock(&backend.mirror, "mirror").rename(&pane, name).is_empty();
-        }
-    }
-
-    // The pane a split made, remembered rather than pointed at. It is not in the mirror yet -
-    // its event is still in flight - and every publish resolves a region against the mirror's
-    // pane list, so pointing at it now is undone before anything renders. `publish` puts the
-    // keyboard there on the first pass after the daemon has described it.
-    let created = outcome.as_ref().ok().and_then(|outcome| outcome.created.clone());
-
-    // A pane opens at the size of the pane it came from, which is what Ghostty does
-    // (`window-inherit-font-size`, on by default) and what somebody who has finally made a
-    // pane readable means by splitting it. Whatever the keyboard does: an agent's `muster pane
-    // new` leaves the cursor alone and still makes a pane beside one that was sized.
-    //
-    // A pane another client made inherits nothing. There is no request to have come from, and
-    // taking whatever this window happened to be focused on would be an answer nobody asked
-    // for.
-    if let (Some(source), Some(created)) = (&source, &created) {
-        let mut session = poison::lock(&SESSION, "session");
+    if let Some(created) = created {
         let made = PaneKey::new(daemon, created);
-        session.font_sizes.inherit(&made, source);
+        // A pane opens at the size of the pane it came from, which is what Ghostty does
+        // (`window-inherit-font-size`, on by default) and what somebody who has finally made a
+        // pane readable means by splitting it. Whatever the keyboard does: an agent's `muster
+        // pane new` leaves the cursor alone and still makes a pane beside one that was sized.
+        //
+        // A pane another client made inherits nothing. There is no request to have come from,
+        // and taking whatever this window happened to be focused on would be an answer nobody
+        // asked for.
+        if let Some(source) = &source {
+            session.font_sizes.inherit(&made, source);
+        }
+        if let (Some(region), Keyboard::Follows) = (region, keyboard) {
+            session.composition.focus_pane(region, created.clone());
+            moved = true;
+        }
     }
-
-    if let (Some(region), Some(created), Keyboard::Follows) = (region, &created, keyboard) {
-        let mut session = poison::lock(&SESSION, "session");
-        session.wanted_panes.insert(daemon.clone(), (region, created.clone()));
-        moved = true;
-    }
+    drop(session);
     if moved {
         publish("intent");
     }
-    // The pane, so a caller can name it in its next breath. The only thing here a caller could
-    // not have learned some other way: the arrangement reaches it as a view, and this reaches it
-    // nowhere else - herdr's own id for the pane is not Muster's name for it, and the name was
-    // minted inside this call.
-    // The refusal's kind survives rather than being flattened to its sentence. A daemon
+    // The pane, so a caller can name it in its next breath: the name was minted inside this
+    // call. The refusal's kind survives rather than being flattened to its sentence. A daemon
     // saying it does not hold what was named is the one a caller may have to reword: asked
     // about a pane no machine holds, its answer is correct on its own terms and misleading
     // where it lands (`handler::placed`).
-    outcome.map(|_| created)
+    Ok(created.clone())
 }
 
-/// Says this window is waiting on a tab, when a request can make one.
+/// The tab a request makes under a name the window chose, when it makes one.
 ///
-/// The daemon describes a new tab to every window before this one hears the answer naming it,
-/// and a window that has not been told to wait would take it (kan a_2Mhi0EZlv). A move counts:
-/// a pane moved into a tab of its own, or into a tab on another machine, makes one there.
-fn expect_a_tab(daemon: &DaemonId, intent: &BackendIntent) -> bool {
-    let makes_a_tab = matches!(
-        intent,
-        BackendIntent::CreateTab { .. }
-            | BackendIntent::CreateWorkspace { .. }
-            | BackendIntent::MovePane { .. }
-    );
-    if makes_a_tab {
-        poison::lock(&SESSION, "session").holding.expect(daemon);
-    }
-    makes_a_tab
-}
-
-/// Takes the tab a request made as this window's, and stops waiting, in one write.
-fn hold_what_was_made(daemon: &DaemonId, outcome: Option<&Outcome>) {
-    let made = outcome.and_then(|outcome| outcome.created_tab.clone());
-    let mut session = poison::lock(&SESSION, "session");
-    session.holding.answered(daemon, made.as_ref());
-    if let Some(tab) = made {
-        session.composition.hold(tab);
+/// A move into a Muster tab on another machine makes a part of that tab here, under a name the
+/// window already holds, so it is not one.
+fn made_tab(intent: &BackendIntent) -> Option<&TabId> {
+    match intent {
+        BackendIntent::CreateTab { tab, .. }
+        | BackendIntent::MovePane { to: MoveDestination::NewTab { tab, .. }, .. } => Some(tab),
+        _ => None,
     }
 }
 
@@ -2200,8 +1598,8 @@ fn hold_what_was_made(daemon: &DaemonId, outcome: Option<&Outcome>) {
 ///
 /// It does *not* separate "the connection blinked" from "the pane is gone", which is what the
 /// card that asked for this expected of it: a bridge whose pane closed exits on its own too.
-/// The resnapshot below is what answers that, and the interval between exits is what answers
-/// the harder question of whether replacing it is going to help (`muster_core::respawn`).
+/// The mirror answers that, and the interval between exits answers the harder question of
+/// whether replacing it is going to help (`muster_core::respawn`).
 pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
     let daemon = DaemonId::new(if daemon.is_empty() { LOCAL } else { daemon });
     log::info(
@@ -2214,150 +1612,16 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
     );
     let key = PaneKey::new(&daemon, &PaneId::new(pane));
     if process_alive {
-        // The wait starts again. A pane keeps its channel while its surface is thrown away and
-        // built again, so the replacement bridge has to dial too - and a replacement that never
-        // arrives is the same deaf pane, which is the case `control_socket.rs` names as the
+        // The wait starts again. A pane keeps its link while its surface is thrown away and
+        // built again, so the replacement bridge has to attach too - and a replacement that
+        // never arrives is the same dark pane, which is the case `bridge_link` names as the
         // reason its accept loop runs more than once.
-        watchdog::opened(key.clone(), backend_pane_of(&key));
-        resnapshot(&daemon, &format!("nothing is painting {pane} any more"));
+        watchdog::opened(key);
         return;
     }
     // Nothing to add about how it ended: this arrival says only that a surface's command is
     // gone, which is `Ended::unsaid` by definition.
     bridge_ended(&key, &Ended::unsaid());
-}
-
-/// The cells a pane may hold in this run, read from the environment once.
-///
-/// `MUSTER_FRAME_CELLS` overrides it. It is here rather than in `config.toml` for the reason the
-/// typeable deadline is: its reason to exist is the suite. A bridge whose stdout is a pipe falls
-/// back to 80 by 24, so no test can build a pane of a hundred thousand cells - and the wire this
-/// travels on is exactly the part most worth proving end to end. Zero switches the ceiling off.
-static FRAME_CELLS: LazyLock<u32> = LazyLock::new(|| {
-    let Ok(spelled) = std::env::var("MUSTER_FRAME_CELLS") else {
-        return grid::FRAME_CELLS;
-    };
-    match spelled.trim().parse::<u32>() {
-        Ok(0) => u32::MAX,
-        Ok(cells) => {
-            log::info("grid.ceiling.overridden", fields! { "cells" => cells.to_string() });
-            cells
-        }
-        Err(error) => {
-            log::warn(
-                "grid.ceiling.unreadable",
-                fields! {
-                    "value" => spelled,
-                    "detail" => error.to_string(),
-                    "impact" => format!(
-                        "MUSTER_FRAME_CELLS is not a whole number of cells, so the default of {} \
-                         is in force and a pane past it is reported and stops shrinking as usual",
-                        grid::FRAME_CELLS
-                    ),
-                    "check" => "write a count of cells, or 0 to stop watching for it",
-                },
-            );
-            grid::FRAME_CELLS
-        }
-    }
-});
-
-/// What a test set in place of `FRAME_CELLS` ([`crate::testing`]).
-static SET_FRAME_CELLS: Mutex<Option<u32>> = Mutex::new(None);
-
-/// The cells a pane may hold, as set for a test or read from the environment.
-fn frame_cells() -> u32 {
-    poison::lock(&SET_FRAME_CELLS, "frame-cells").unwrap_or(*FRAME_CELLS)
-}
-
-/// Puts `cells` in place of the environment's ceiling, or back to it with `None`. Zero switches
-/// the ceiling off, as it does in the environment.
-pub(crate) fn set_frame_cells(cells: Option<u32>) {
-    *poison::lock(&SET_FRAME_CELLS, "frame-cells") =
-        cells.map(|cells| if cells == 0 { u32::MAX } else { cells });
-}
-
-/// A bridge has asked its daemon for a grid this big, and it may be one no frame can carry.
-///
-/// The one number nothing else in the window has. A daemon draws a pane by sending the whole
-/// screen as one frame, herdr refuses any client frame over 2 MiB, and a text frame over it is
-/// skipped with a line in the daemon's own log on the daemon's own machine - so a pane past
-/// about a hundred thousand cells stops updating while its state, its bridge and its client all
-/// report health. Sixteen minutes of that was the incident (kan a_2KHGYMpnK).
-///
-/// Whether this grid is too big is `grid`'s to say; what this does is ask, and raise or clear
-/// what it answers.
-pub(crate) fn pane_sized(pane: &PaneKey, columns: u32, rows: u32) {
-    let reported = {
-        let mut session = poison::lock(&SESSION, "session");
-        if !session.holds(pane) {
-            return;
-        }
-        session.grids.sized(pane, columns, rows, frame_cells())
-    };
-    for (key, detail) in reported.raise {
-        log::warn(
-            "pane.grid.oversized",
-            fields! {
-                "pane" => pane.to_string(),
-                "cols" => columns.to_string(),
-                "rows" => rows.to_string(),
-                "detail" => detail.clone(),
-            },
-        );
-        raise_problem(&key, Severity::Error, &detail);
-        // And this pane's silence now has a name, so the wider net leaves it alone. Two rows
-        // about one frozen pane would put the sentence with the remedy in it beside one saying
-        // only that the pane stopped, and send the reader to the second.
-        watchdog::explained(pane, true);
-    }
-    for key in reported.clear {
-        log::info(
-            "pane.grid.fits",
-            fields! {
-                "pane" => pane.to_string(),
-                "cols" => columns.to_string(),
-                "rows" => rows.to_string(),
-            },
-        );
-        clear_problem(&key, "fits");
-        watchdog::explained(pane, false);
-    }
-}
-
-/// What the daemon calls a pane, which is not what this window calls it.
-///
-/// Needed by exactly one sentence, and that sentence is the one nobody guesses: releasing a
-/// terminal a dead client is still holding means matching a herdr process's command line, and
-/// the bridge spells the pane the backend's way when it starts one. Empty for a pane no mirror
-/// here holds, which is a pane nothing is about to say anything about anyway.
-fn backend_pane_of(pane: &PaneKey) -> String {
-    poison::lock(&SESSION, "session")
-        .backends
-        .get(&pane.daemon)
-        .and_then(|backend| backend.names.backend_pane(&pane.pane).ok())
-        .map(|named| named.as_str().to_string())
-        .unwrap_or_default()
-}
-
-/// Problems about panes that have gone, waiting to be taken back.
-///
-/// A leaf lock, and the reason it exists is the lock order rather than tidiness: clearing a
-/// problem takes `PROBLEMS` and then `SESSION`, and the pruning that discovers a closed pane
-/// runs holding `SESSION`. So the discovery records here and `publish` does the clearing,
-/// which is the same shape `watchdog` uses for the other problem a closed pane can leave
-/// behind.
-static STALE_GRIDS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
-
-/// Takes back what was said about panes that have since closed.
-///
-/// A problem outliving its pane is a row in the roster naming something nobody can look at,
-/// and the pane most likely to be closed is the one that had stopped updating.
-fn clear_stale_grid_problems() {
-    let stale = std::mem::take(&mut *poison::lock(&STALE_GRIDS, "stale-grids"));
-    for key in stale {
-        clear_problem(&key, "closed");
-    }
 }
 
 /// A pane's bridge has stopped, said in its own words on the socket the app bound for it.
@@ -2390,9 +1654,9 @@ pub(crate) fn bridge_ended(pane: &PaneKey, ended: &Ended) {
     // refused attach can then name the client holding its terminal rather than pointing at a
     // log file.
     watchdog::ended(pane.clone(), ended.clone());
-    // Before deciding anything, because the decision turns on whether the daemon still holds
-    // this pane and the mirror is the only place that is written down.
-    resnapshot(&pane.daemon, &format!("nothing is painting {} any more", pane.pane));
+    // The mirror may not have heard yet that a pane whose bridge was let go has closed: the
+    // bridge hears on its stream and the window on its control connection, in no order. A
+    // bridge whose pane closed says `gone`, which is never replaced, so nothing here waits.
     replace_bridge(pane, ended.ending);
 }
 
@@ -2456,12 +1720,12 @@ fn replace_bridge(pane: &PaneKey, ending: Ending) {
             fields! {
                 "pane" => pane.to_string(),
                 "tried" => tried.to_string(),
-                "detail" => respawn::gave_up(pane, tried, &backend_pane_of(pane)),
+                "detail" => respawn::gave_up(pane, tried),
             },
         ),
         // Not a warning. Everything worked: somebody asked for this pane in another window and
-        // got it, which is the arrangement herdr allows and the one Muster asked for on their
-        // behalf. What would be wrong is taking it back, and this is that not happening.
+        // got it, which is the arrangement the daemon allows and the one Muster asked for on
+        // their behalf. What would be wrong is taking it back, and this is that not happening.
         Decision::Yield => log::info(
             "bridge.yielded",
             fields! { "pane" => pane.to_string(), "detail" => respawn::yielded(pane) },
@@ -2541,66 +1805,6 @@ pub(crate) fn bridge_stalled(pane: &PaneKey, deadline: u64) {
     publish("bridge_stalled");
 }
 
-/// Asks a daemon what it actually holds, and shows that instead.
-///
-/// The whole picture rather than the one thing that was refused, because the refusal only
-/// proves the picture is wrong somewhere - a pane that went may have taken its tab with it,
-/// and patching out the single entry that was named would leave the rest of the same staleness
-/// on screen. `bootstrap` already diffs against what the mirror holds, so what this costs when
-/// only one thing moved is one round trip and one change.
-///
-/// A daemon that will not answer is left alone. The window is already showing something wrong;
-/// replacing it with nothing on the strength of a failed request would be worse, and the
-/// subscription's own health reporting is what speaks for a daemon that has stopped answering.
-fn resnapshot(daemon: &DaemonId, why: &str) {
-    let Some((socket_path, mirror, names)) = ({
-        let session = poison::lock(&SESSION, "session");
-        session.backends.get(daemon).map(|backend| {
-            (backend.socket_path.clone(), Arc::clone(&backend.mirror), backend.names.clone())
-        })
-    }) else {
-        return;
-    };
-
-    let (snapshot, dropped) = match fetch_snapshot(&socket_path, &names) {
-        Ok(answer) => answer,
-        Err(failure) => {
-            log::warn(
-                "mirror.resnapshot.failed",
-                fields! {
-                    "daemon" => daemon.to_string(),
-                    "detail" => failure.to_string(),
-                    "impact" => "the window keeps showing what it was showing, including \
-                                 whatever the daemon has just said it does not hold",
-                    "check" => "whether this daemon is still answering at all - a health \
-                                record for it follows if it is not",
-                },
-            );
-            return;
-        }
-    };
-
-    let changes = {
-        let mut mirror = poison::lock(&mirror, "mirror");
-        mirror.bootstrap(snapshot)
-    };
-    log::info(
-        "mirror.resnapshot",
-        fields! {
-            "daemon" => daemon.to_string(),
-            "changes" => changes.len().to_string(),
-            "dropped" => dropped.to_string(),
-            "why" => why.to_string(),
-        },
-    );
-
-    reconcile(daemon);
-    publish("resnapshot");
-    for change in changes {
-        report(daemon, &change);
-    }
-}
-
 /// Why an intent about something on screen could not be sent.
 fn not_showing(daemon: &DaemonId) -> String {
     format!(
@@ -2610,12 +1814,10 @@ fn not_showing(daemon: &DaemonId) -> String {
     )
 }
 
-/// Points this window's keyboard at a pane, and tells the daemon somebody looked.
+/// Points this window's keyboard at a pane.
 ///
-/// The two halves are one action to whoever clicked, and they are kept separate underneath:
-/// the keyboard moves whatever the daemon says, because it is Muster's own cursor, and the
-/// daemon is told as a courtesy it may refuse. A refused write is worth a log line and not
-/// worth undoing a focus move the user can see happened.
+/// No daemon is told. Which pane has the keyboard is Muster's own cursor, and a daemon serving
+/// several windows has no single answer to hold (MIP-3, section 14).
 pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
     if let Some(tab) = tab_of_pane(pane)
         && reopened_for(&tab, pane.as_str())
@@ -2635,7 +1837,7 @@ pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
         session.composition.focus_pane(region, pane.clone());
     }
     publish("focus");
-    submit(daemon, &BackendIntent::FocusPane { pane: pane.clone() }, Keyboard::Follows).map(drop)
+    Ok(())
 }
 
 /// Moves the line between two regions, and republishes what that made.
@@ -2706,22 +1908,18 @@ pub(crate) fn equalize(daemon: &DaemonId, pane: &PaneId, evenly: Evenly) -> Resu
             })?
             .tab
             .clone();
-        let layout = held.layout(&tab).ok_or_else(|| {
+        let layout = held.tree(&tab).ok_or_else(|| {
             format!(
-                "the daemon {daemon} has not said how the tab {tab} is arranged, so there is no \
-                 tree to even out and no divider moved. A tab that has just been split publishes \
-                 its panes and its arrangement on separate events, so this resolves on its own - \
-                 read `muster window --json` until `regions[].layout` is no longer null and ask \
-                 again."
+                "the daemon {daemon} no longer holds the tab {tab}, so there is no tree to even \
+                 out and nothing moved. A tab that closed while the request was in flight looks \
+                 like this; `muster window` says what is still there."
             )
         })?;
         let dividers = equalize::dividers(layout, pane, evenly).ok_or_else(|| {
             format!(
                 "the pane {pane} sits in no {} that could be evened out, so nothing moved. A pane \
                  with nothing beside it is in no row and a pane with nothing above or below it is \
-                 in no column; `regions[].layout` in `muster window --json` says which. This is \
-                 also what an arrangement that has not caught up with its tab looks like, in \
-                 which case asking again works.",
+                 in no column; `regions[].layout` in `muster window --json` says which.",
                 evenly.as_str()
             )
         })?;
@@ -2896,6 +2094,42 @@ pub(crate) fn close_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), Refusal> {
     submit(daemon, &BackendIntent::CloseTab { tab: tab.clone() }, Keyboard::StaysPut).map(drop)
 }
 
+/// Calls a tab what somebody wants to call it, on every machine it spans.
+///
+/// One generation for all of them, higher than any part has had, so every part adopts the name
+/// and a part that misses it is renamed when its machine answers again (`catch_up_tab_names`).
+/// The first refusal is the answer; the parts that did take the name keep it, and the catch-up
+/// carries it to the rest.
+pub(crate) fn rename_tab(tab: &TabId, name: Option<&str>) -> Result<(), Refusal> {
+    let (parts, generation) = {
+        let session = poison::lock(&SESSION, "session");
+        let mut parts = Vec::new();
+        let mut newest = 0;
+        for (daemon, backend) in &session.backends {
+            if let Some(part) = poison::lock(&backend.mirror, "mirror").tab(tab) {
+                parts.push(daemon.clone());
+                newest = newest.max(part.generation);
+            }
+        }
+        (parts, newest + 1)
+    };
+    if parts.is_empty() {
+        return Err(Refusal::NotThere(format!(
+            "no machine this window follows holds a tab called {tab}, so nothing was renamed. \
+             `muster window` lists the tabs there are."
+        )));
+    }
+    let mut refused = None;
+    for daemon in parts {
+        let name = name.map(str::to_string);
+        let intent = BackendIntent::RenameTab { tab: tab.clone(), name, generation };
+        if let Err(refusal) = submit(&daemon, &intent, Keyboard::StaysPut) {
+            refused.get_or_insert(refusal);
+        }
+    }
+    refused.map_or(Ok(()), Err)
+}
+
 /// Takes a pane out of whatever tab it is in and gives it one of its own.
 ///
 /// Beside [`arrange_pane`] rather than inside it, because the two take different arguments and
@@ -2903,18 +2137,25 @@ pub(crate) fn close_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), Refusal> {
 /// going nowhere in particular. What they share is the intent, and the adapter is where the two
 /// destinations become one request.
 ///
-/// No region and no keyboard move. The tab it makes comes on screen through the ordinary path -
-/// the daemon says it exists, and `show_wanted_tab` puts a region on it - and the keyboard stays
-/// where it is, because pulling a pane out of a split is arranging the window rather than going
-/// somewhere.
+/// No region and no keyboard move. The tab it makes is listed and not shown, and the keyboard
+/// stays where it is, because pulling a pane out of a split is arranging the window rather than
+/// going somewhere (`submit`).
 pub(crate) fn move_pane_to_new_tab(
     daemon: &DaemonId,
     pane: &PaneId,
     name: Option<String>,
 ) -> Result<(), Refusal> {
-    let intent =
-        BackendIntent::MovePane { pane: pane.clone(), to: MoveDestination::NewTab { name } };
+    let intent = BackendIntent::MovePane {
+        pane: pane.clone(),
+        to: MoveDestination::NewTab { tab: mint_tab(), name },
+    };
     submit(daemon, &intent, Keyboard::StaysPut).map(drop)
+}
+
+/// A name for a tab this window is about to ask for, unique across every machine it shows.
+pub(crate) fn mint_tab() -> TabId {
+    let minter = Arc::clone(&poison::lock(&SESSION, "session").minter);
+    poison::lock(&minter, "minter").tab()
 }
 
 /// Puts a pane into a Muster tab, grouping its machine into that tab if it is not in it yet.
@@ -3008,13 +2249,8 @@ pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> 
             )));
         }
         // A move naming its window is a write to the record every window shares, so a tab on a
-        // machine this window does not follow can still be sent: the record or the names every
-        // window shares say it exists.
-        let known = described
-            || session.holding.holders().holder(&tab).is_some()
-            || poison::lock(&session.tab_names, "tab-names")
-                .entries()
-                .any(|(name, _, _)| name == &tab);
+        // machine this window does not follow can still be sent: the record says it exists.
+        let known = described || session.holding.holders().holder(&tab).is_some();
         if !known {
             return Err(Refusal::NotThere(format!(
                 "no window knows a tab called {tab}, so nothing was moved. `muster window` lists \
@@ -3210,30 +2446,6 @@ pub(crate) fn announce_roster() {
         },
     );
     ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(message)) });
-}
-
-/// Tells a bridge that has just dialed in that its pane is off screen, if it is.
-///
-/// Bridges are told what is showing when that changes, and one that had not dialed by then was
-/// told nothing: it starts out streaming, and without this would stream a pane nobody can see
-/// until the set next changed. Under `PUBLISHING`, so it cannot land after a publish that has
-/// since put the pane back on screen.
-fn tell_a_new_bridge_it_is_hidden(key: &PaneKey) {
-    let _publishing = poison::lock(&PUBLISHING, "publishing");
-    let hidden = {
-        let session = poison::lock(&SESSION, "session");
-        let local = session.backends.get(&key.daemon).is_some_and(|b| b.tunnel.is_none());
-        let off_screen =
-            session.sent.showing.as_ref().is_some_and(|showing| !showing.contains(key));
-        if local && off_screen {
-            session.panes.get(&key.daemon).and_then(|panes| panes.get(&key.pane)).cloned()
-        } else {
-            None
-        }
-    };
-    if let Some(pane) = hidden {
-        pane.control.show(false);
-    }
 }
 
 /// One numbering, as a log line says it.
@@ -3566,36 +2778,31 @@ pub(crate) fn follow_configured(config: &Config) {
     }
 }
 
-/// Reaches one daemon, takes its first snapshot, and starts following it.
+/// How long a window opening onto a daemon waits for its first snapshot before carrying on
+/// without it. The daemon's panes arrive on their own when it answers.
+const FIRST_SNAPSHOT: std::time::Duration = std::time::Duration::from_secs(10);
+
 fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
     let reached = reach(&daemon.id, &daemon.endpoint)?;
-    // Named through the session's registry rather than one of its own, because a name minted
-    // reading this snapshot is the name the mirror will hold from here on.
-    let names = {
-        let session = poison::lock(&SESSION, "session");
-        Names::new(daemon.id.clone(), Arc::clone(&session.names), Arc::clone(&session.tab_names))
-    };
-    let (snapshot, dropped) = fetch_snapshot(&reached.socket_path, &names).map_err(|failure| {
-        format!("the daemon {} did not answer at {} ({failure}).", daemon.id, reached.socket_path)
-    })?;
     log::info(
         "daemon.attached",
         fields! {
             "daemon" => daemon.id.to_string(),
             "socket" => reached.socket_path.clone(),
             "remote" => reached.tunnel.as_ref().map_or("", Tunnel::host).to_string(),
-            "panes" => snapshot.panes.len().to_string(),
-            "dropped" => dropped.to_string(),
+            "started" => reached.started,
         },
     );
-    let mut session = poison::lock(&SESSION, "session");
-    let seeded = session.follow(daemon, reached, snapshot);
-    // Before reporting, and explicitly: reporting reads the mirror back through the session
-    // and reaches the shell, which may answer by dispatching. Both want this lock.
-    drop(session);
-
-    for change in seeded {
-        report(&daemon.id, &change);
+    let connection = poison::lock(&SESSION, "session").follow(daemon, reached)?;
+    // Not under the session's lock: announcing the snapshot takes it.
+    if let Some(connection) = connection
+        && !connection.wait_for_snapshot(FIRST_SNAPSHOT)
+    {
+        return Err(format!(
+            "the daemon {} did not send its state within {}s",
+            daemon.id,
+            FIRST_SNAPSHOT.as_secs()
+        ));
     }
     Ok(())
 }
@@ -3615,7 +2822,7 @@ pub(crate) enum AttachError {
 /// Three steps, and each is the reason the next can be simple: be following something, put back
 /// what was left, and settle what to show - which for a window somebody asked for means keeping
 /// off the tabs another window has, and for a window with nothing at all means asking a machine
-/// for a workspace. That last one is what a fresh machine needs, where Muster has just started a
+/// for a tab. That last one is what a fresh machine needs, where Muster has just started a
 /// daemon that has not answered anything yet.
 pub(crate) fn open() -> Result<(), String> {
     follow_implicitly_if_nothing_else()?;
@@ -3625,8 +2832,8 @@ pub(crate) fn open() -> Result<(), String> {
     reopen_what_was_left();
     // After the file has been read and before anything writes over it. Everything above reads
     // the arrangement; everything from here on is entitled to replace it - which is why this
-    // sits above the last two steps rather than below them, and it has to. Asking for a
-    // workspace is answered by the daemon on its own thread, and the region for it is opened
+    // sits above the last two steps rather than below them, and it has to. Asking for a tab
+    // is answered by the daemon on its own thread, and the region for it is opened
     // by the standing rule when that answer lands; a window that had not yet said it was open
     // would turn that rule off and wait forever for a region nothing else will make.
     mark_opened();
@@ -3749,13 +2956,19 @@ fn say_this_window_is_open() {
         if session.holding.has_opened() {
             return;
         }
-        let known: BTreeSet<TabId> = {
-            let tabs = poison::lock(&session.tab_names, "tab-names");
-            tabs.entries().map(|(name, _, _)| name.clone()).collect()
-        };
+        // A daemon still restoring has not described every tab it will hold.
+        let mut answered = BTreeSet::new();
+        let mut described = BTreeSet::new();
+        for (daemon, backend) in &session.backends {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            if mirror.health() == Health::Connected && !mirror.restoring() {
+                answered.insert(daemon.clone());
+                described.extend(mirror.tabs().map(|tab| tab.id.clone()));
+            }
+        }
         let followed = session.backends.keys().cloned().collect();
         session.holding.follow(followed);
-        session.holding.open(|tab| known.contains(tab));
+        session.holding.open(&answered, |tab| described.contains(tab));
     }
     // The daemons described their tabs before this window had said it was open, when it could
     // not be the one to take them. On a first launch that is every tab there is.
@@ -3786,7 +2999,7 @@ fn take_what_nobody_holds() -> bool {
 /// Before the two rules under it rather than instead of them, which is what makes this an
 /// addition and not a special case: a daemon whose saved regions all turned out to be gone
 /// falls through to getting a region of its own, and a window where every daemon did falls
-/// through to asking for a workspace. So a first launch, a launch after a reboot took
+/// through to asking for a tab. So a first launch, a launch after a reboot took
 /// everything, and a launch onto a session still running are one path with different amounts
 /// of it doing anything.
 ///
@@ -3913,7 +3126,7 @@ fn named_daemons() -> Vec<String> {
         .collect()
 }
 
-/// Asks for one workspace when this window has no tab it may open onto.
+/// Asks for one tab when this window has no tab it may open onto.
 ///
 /// The one rule that makes a window out of nothing, and the only one left: a window is not a
 /// window if it is showing nothing, so something has to fill it. It picks the first local
@@ -3921,16 +3134,16 @@ fn named_daemons() -> Vec<String> {
 /// than filling a window.
 ///
 /// **Once per launch, per machine, and never again.** Nothing takes a machine back out of
-/// `workspaces_asked_of`, so a machine whose panes all close later stays empty - which is the
+/// `tabs_asked_of`, so a machine whose panes all close later stays empty - which is the
 /// answer `a_2I6h18OU6` settled on, now that `muster pane new --daemon <id>` and the machines at
 /// the foot of the agent list are both ways back in. The rule this replaces gave every attached
 /// machine a column and refilled it the moment it emptied, so somebody finished with a devenv
 /// for the afternoon got a fresh ssh shell every time they closed one.
 ///
-/// Nothing is opened here. The daemon answers by publishing a workspace, a tab and a pane, and
-/// the tab appears the way every other tab does - through the reconcile that follows. A window
-/// that built one itself would be a second place layout is decided.
-fn open_a_workspace_if_the_window_is_empty() {
+/// Nothing is asked of a machine still restoring what it held before it last stopped. Its tabs
+/// are on their way, and a tab asked for now would be one more beside them; it is asked once
+/// it says it has finished, if the window is still empty then.
+fn open_a_tab_if_the_window_is_empty() {
     let empty = {
         let session = poison::lock(&SESSION, "session");
         session.composition.showing().is_none()
@@ -3960,31 +3173,28 @@ fn open_a_workspace_if_the_window_is_empty() {
     // afterwards would ask two or three times over.
     {
         let mut session = poison::lock(&SESSION, "session");
-        if !session.workspaces_asked_of.insert(daemon.clone()) {
+        if !session.tabs_asked_of.insert(daemon.clone()) {
             return;
         }
     }
-    ask_for_a_workspace(&daemon);
+    ask_for_a_tab(&daemon);
 }
 
-/// Asks one machine for a workspace, and says what a refusal costs.
+/// Asks one machine for a tab, and says what a refusal costs.
 ///
 /// One caller for the empty window and one for a machine holding nothing, so what happens when
 /// a daemon says no is written down once.
-fn ask_for_a_workspace(daemon: &DaemonId) {
-    log::info("workspace.creating", fields! { "daemon" => daemon.to_string() });
-    let asked = submit(
-        daemon,
-        &BackendIntent::CreateWorkspace { cwd: None, run: None, name: None },
-        Keyboard::Follows,
-    );
+fn ask_for_a_tab(daemon: &DaemonId) {
+    log::info("tab.first.creating", fields! { "daemon" => daemon.to_string() });
+    let intent = BackendIntent::CreateTab { tab: mint_tab(), cwd: None, run: None, name: None };
+    let asked = submit(daemon, &intent, Keyboard::Follows);
     if let Err(Refusal::Unanswered(detail)) = &asked {
         log::warn(
-            "workspace.unanswered",
+            "tab.first.unanswered",
             fields! {
                 "daemon" => daemon.to_string(),
                 "detail" => detail.clone(),
-                "impact" => "the daemon may have made the workspace, and if it did it arrives on \
+                "impact" => "the daemon may have made the tab, and if it did it arrives on \
                              its own events and this machine fills in. If it did not, this \
                              machine shows nothing in this window, and nothing will ask again - \
                              asking twice could make two",
@@ -3995,7 +3205,7 @@ fn ask_for_a_workspace(daemon: &DaemonId) {
         );
     } else if let Err(refusal) = asked {
         log::error(
-            "workspace.refused",
+            "tab.first.refused",
             fields! {
                 "daemon" => daemon.to_string(),
                 "detail" => refusal.to_string(),
@@ -4014,16 +3224,18 @@ fn ask_for_a_workspace(daemon: &DaemonId) {
 /// Whether this machine has told this window what it holds.
 ///
 /// The difference between "this machine is empty" and "this machine has not answered yet", and
-/// the reason asking for a workspace waits for it. A daemon Muster attached to already has a
-/// session, and asking it for a workspace in the moment before its first snapshot lands is a
+/// the reason asking for a tab waits for it. A daemon Muster attached to already has a
+/// session, and asking it for a tab in the moment before its first snapshot lands is a
 /// window that opens onto a tab nobody asked for and leaves the one they did behind.
 ///
 /// A daemon Muster just started answers this true and holds nothing, which is the case the ask
-/// exists for - it simply happens on that bootstrap rather than a moment before it.
+/// exists for - it simply happens on that bootstrap rather than a moment before it. A daemon
+/// still restoring has not said all it holds, and answers false until it says it is done.
 fn has_spoken(daemon: &DaemonId) -> bool {
     let session = poison::lock(&SESSION, "session");
     session.backends.get(daemon).is_some_and(|backend| {
-        poison::lock(&backend.mirror, "mirror").health() == Health::Connected
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        mirror.health() == Health::Connected && !mirror.restoring()
     })
 }
 
@@ -4206,10 +3418,10 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, TabId)> {
 ///
 /// Two rules with an order between them. Take in whatever the machines have already said -
 /// including any tab nobody holds that is this window's to take - and only then ask for a
-/// workspace, so the window that asks is one that genuinely has nothing to open onto.
+/// tab, so the window that asks is one that genuinely has nothing to open onto.
 fn settle_what_the_window_shows() {
     reconcile_every_daemon();
-    open_a_workspace_if_the_window_is_empty();
+    open_a_tab_if_the_window_is_empty();
 }
 
 /// Brings every attached machine's tabs into the window, whatever order the events arrived in.
@@ -4218,7 +3430,7 @@ fn settle_what_the_window_shows() {
 /// menu and a window built in between, and a machine's first snapshot lands somewhere in that
 /// gap. Reconciling here rather than waiting for the next thing a daemon says is what stops the
 /// window deciding it is empty while holding a snapshot that says otherwise, which is a window
-/// that asks for a workspace nobody wanted and opens onto it.
+/// that asks for a tab nobody wanted and opens onto it.
 ///
 /// Idempotent, and the same call the event path makes for one daemon.
 fn reconcile_every_daemon() {
@@ -4276,51 +3488,6 @@ fn save(composition: &Composition, presentation: Presentation, font_sizes: &Font
             written.clear();
         }
     }
-}
-
-/// Writes down what Muster calls each pane and each tab, if it has changed since the last time.
-///
-/// The same shape as [`save`] beside it, including the staged rename: a window killed
-/// mid-write would otherwise come back to a file that parses as far as the third pane and
-/// stops, which would strand every pane after it.
-///
-/// Panes are locked before tabs, and this is the only caller that holds both.
-fn save_names(panes: &Arc<Mutex<PaneNames>>, tabs: &Arc<Mutex<TabNames>>) {
-    let Some(shared) = shared_names() else { return };
-
-    // The compare first, and outside the hold, because this runs on every publish and a publish
-    // follows every agent transition - while the names change only when a pane or a tab appears
-    // or goes. Taking a file lock and reading a file for each of those would be a lock per
-    // keystroke somebody typed into an agent. What is compared is this window's own last write,
-    // so another Muster's change is not missed by it: that is adopted inside the hold, by
-    // whichever naming next takes it.
-    {
-        let mut held = poison::lock(&NAMES_FILE, "saved-names");
-        let Some((_, written)) = held.as_mut() else { return };
-        let text =
-            names::to_toml(&poison::lock(panes, "pane-names"), &poison::lock(tabs, "tab-names"));
-        if &text == written {
-            return;
-        }
-        // Cleared rather than set to `text`: what actually lands in the record is decided
-        // inside the hold, where another Muster's entries are taken on first, so the text
-        // computed here is not what to compare against next time.
-        written.clear();
-    }
-
-    names::save_shared(panes, tabs, shared.as_ref());
-
-    // What did land, so the next publish can skip the hold.
-    let mut held = poison::lock(&NAMES_FILE, "saved-names");
-    if let Some((_, written)) = held.as_mut() {
-        *written =
-            names::to_toml(&poison::lock(panes, "pane-names"), &poison::lock(tabs, "tab-names"));
-    }
-}
-
-/// The record this window shares, if it has one.
-fn shared_names() -> Option<Arc<SharedFile>> {
-    poison::lock(&SHARED_NAMES, "shared-names").clone()
 }
 
 /// The arrangement this window was left in, or nothing.
@@ -4394,7 +3561,7 @@ fn publish(cause: &str) {
     // two are settled together rather than left to drift. `noticed` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
-    let (view, roster, numbering, noticed, view_message, roster_message, told) = {
+    let (view, roster, numbering, noticed, view_message, roster_message) = {
         let mut session = poison::lock(&SESSION, "session");
         // Before the view is built, and over every daemon rather than whichever one prompted
         // this. Several paths change what is on screen without going near a reconcile:
@@ -4410,16 +3577,6 @@ fn publish(cause: &str) {
         let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
         for daemon in &daemons {
             session.reconcile(daemon);
-            // After the reconcile rather than before it, because the reconcile is what would
-            // undo it: it resolves every region against the mirror's pane list, so a keyboard
-            // put on a pane the mirror has just heard of has to be put there afterwards.
-            //
-            // And the channels again when it moved, because a zoomed region draws whichever
-            // pane the keyboard is on: a pane that has just taken it in one is a pane the
-            // reconcile above bound no socket for, and the view is about to name it.
-            if session.keyboard_to_wanted_pane(daemon) {
-                session.open_channels(daemon);
-            }
         }
         let view = session.view();
         let roster = session.roster(&view);
@@ -4434,23 +3591,12 @@ fn publish(cause: &str) {
         // changes it ends up here - so nothing has to remember to save.
         save(&session.composition, session.presentation, &session.font_sizes);
         session.forget_what_closed();
-        save_names(&session.names, &session.tab_names);
         let view_message = convert::view(&view);
         let roster_message = convert::roster(&roster, &numbering);
         let view_message = session.sent.view(&view_message).then_some(view_message);
         let roster_message = session.sent.roster(&roster_message).then_some(roster_message);
-        let told = session.tell_bridges_what_is_showing(view.showing());
-        (view, roster, numbering, noticed, view_message, roster_message, told)
+        (view, roster, numbering, noticed, view_message, roster_message)
     };
-    // Outside the lock, because each is a write to a socket.
-    for (pane, on_screen) in told {
-        pane.control.show(on_screen);
-    }
-
-    // The first thing done outside that lock, because it is the only thing here that has been
-    // waiting for it: the reconciles above are what discover a pane has closed, and taking back
-    // what was said about one needs `PROBLEMS` before `SESSION`.
-    clear_stale_grid_problems();
 
     if view_message.is_none() && roster_message.is_none() {
         log::debug("publish.unchanged", fields! { "cause" => cause });
@@ -4513,16 +3659,9 @@ fn publish(cause: &str) {
 /// shell, the shell reacts by dispatching, and a dispatch that arrived while this held the
 /// session would deadlock against it on the same thread.
 fn reconcile(daemon: &DaemonId) {
-    let showed = {
-        let mut session = poison::lock(&SESSION, "session");
-        session.reconcile(daemon);
-        // A tab Muster asked for, now that the daemon has said what is in it. Here rather
-        // than at the moment it was asked for, because until this event a region showing it
-        // would be a region showing a tab the mirror has never heard of.
-        session.show_wanted_tab(daemon)
-    };
+    poison::lock(&SESSION, "session").reconcile(daemon);
     // A standing rule rather than a launch-time one, because the states that produce a
-    // daemon with nothing on screen keep arriving: a workspace Muster asked for a moment ago
+    // daemon with nothing on screen keep arriving: a tab Muster asked for a moment ago
     // and is waiting on, a daemon that came back after a restart with its tabs, a tab closed
     // from another client while its daemon still holds others.
     //
@@ -4539,9 +3678,6 @@ fn reconcile(daemon: &DaemonId) {
     if opened() {
         settle_what_the_window_shows();
     }
-    if showed {
-        publish("tab_shown");
-    }
 }
 
 /// Turns what one daemon said into a log line and, where the window renders it, an event.
@@ -4551,44 +3687,26 @@ fn reconcile(daemon: &DaemonId) {
 /// the shell's business, so every pane is sent and the shell decides.
 fn announce(daemon: &DaemonId, notice: Notice) {
     match notice {
-        Notice::Bootstrapped { changes, dropped, denied_tabs } => {
+        Notice::Bootstrapped { changes, unreadable } => {
             log::info(
                 "mirror.bootstrap",
                 fields! {
                     "daemon" => daemon.to_string(),
                     "changes" => changes.len().to_string(),
-                    "dropped" => dropped.to_string(),
-                    "denied_tabs" => denied_tabs.to_string(),
+                    "unreadable" => unreadable.to_string(),
                 },
             );
-            if denied_tabs > 0 {
+            if unreadable > 0 {
                 log::warn(
-                    "mirror.tabs_denied",
+                    "mirror.tabs_unreadable",
                     fields! {
                         "daemon" => daemon.to_string(),
-                        "count" => denied_tabs.to_string(),
-                        "impact" => "this daemon's snapshot disagreed with itself and the tabs \
-                                     it could not account for are not drawn. Right where the \
-                                     daemon is holding tabs no pane is in; wrong if it holds \
-                                     panes this snapshot left out, and then those panes are \
-                                     missing from the window too",
-                        "check" => "ask this daemon `herdr api snapshot` and compare its tabs \
-                                    with its panes. A tab no pane names is one herdr has \
-                                    already closed and not announced \
-                                    (observations/herdr-0.8.0.md section 15)",
-                    },
-                );
-            }
-            if dropped > 0 {
-                log::warn(
-                    "mirror.entries_dropped",
-                    fields! {
-                        "daemon" => daemon.to_string(),
-                        "count" => dropped.to_string(),
-                        "impact" => "the session renders with fewer panes than the daemon \
-                                     holds, which looks like panes the user closed",
-                        "check" => "a herdr whose pane, tab or workspace payload has moved - \
-                                    compare corpus/herdr-<version>/api-schema.json",
+                        "count" => unreadable.to_string(),
+                        "impact" => "these tabs are not drawn, and neither are their panes",
+                        "check" => "a daemon of this protocol never sends a tree that does not \
+                                    read, so this is a bug on one side or the other - the \
+                                    daemon's log for the snapshot, and the protocol versions \
+                                    the two sides were built with",
                     },
                 );
             }
@@ -4597,6 +3715,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             reconcile(daemon);
             publish("bootstrap");
             health(daemon, Health::Connected, "");
+            catch_up_tab_names(daemon);
             for change in changes {
                 report(daemon, &change);
             }
@@ -4636,17 +3755,6 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             log::info("backend.reconnected", fields! { "daemon" => daemon.to_string() });
             health(daemon, Health::Connected, "");
         }
-        Notice::UnknownEvent { kind } => log::warn(
-            "backend.unknown_event",
-            fields! {
-                "daemon" => daemon.to_string(),
-                "kind" => kind,
-                "impact" => "whatever this event reports is not reaching the mirror, so the \
-                             view is missing that kind of change entirely",
-                "check" => "whether this herdr is newer than the pinned one - if the event \
-                            matters, it needs reading in muster-herdr's decoder",
-            },
-        ),
     }
 }
 
@@ -4663,25 +3771,25 @@ fn report(daemon: &DaemonId, change: &Change) {
         );
     }
 
-    // The one change that is about an interval rather than a pane, and the only evidence
-    // there will ever be that something happened while Muster was not listening. herdr's
-    // counter is session-wide and reaches a client only in a snapshot, so nothing says
-    // which panes moved or what they moved to - and after this line, nothing ever can.
-    if let Change::AgentTransitionsMissed { expected, saw } = change {
-        log::warn(
-            "agent.transitions_missed",
+    if let Change::Restored(restored) = change {
+        restored_from_disk(daemon, restored);
+    }
+    if let Change::PasteHeld { pane, text } = change {
+        log::info(
+            "paste.held",
             fields! {
                 "daemon" => daemon.to_string(),
-                "expected" => expected.to_string(),
-                "saw" => saw.to_string(),
-                "missed" => saw.saturating_sub(*expected).to_string(),
-                "impact" => "the states shown are right, but an agent may have asked for a \
-                             person while this window was disconnected and gone back to work \
-                             since - so a request for attention was never routed",
-                "check" => "the backend.stale record above this, for how long the gap was, and \
-                            whether any pane on this daemon is waiting on somebody",
+                "pane" => pane.to_string(),
+                "characters" => text.chars().count().to_string(),
             },
         );
+        ffi::emit(&Event {
+            payload: Some(event::Payload::PasteHeld(PasteHeld {
+                daemon_id: daemon.to_string(),
+                pane_id: pane.to_string(),
+                text: text.clone(),
+            })),
+        });
     }
 
     // Recorded before anything is announced, because it is what the announcement depends on:
@@ -4721,9 +3829,7 @@ fn report(daemon: &DaemonId, change: &Change) {
             }
             None
         }
-        // Both spellings of removal, because both mean the pane is gone: one is a client
-        // closing it and the other is its program ending (`architecture.md`, event model).
-        Change::PaneRemoved { pane, .. } => {
+        Change::PaneRemoved(pane) => {
             let key = PaneKey::new(daemon, pane);
             let mut session = poison::lock(&SESSION, "session");
             session.state_since.remove(&key);
@@ -4739,8 +3845,86 @@ fn report(daemon: &DaemonId, change: &Change) {
     if let Some(pane) = change.announces_agent_state() {
         announce_state(&PaneKey::new(daemon, pane));
     }
-    if let Change::PaneRemoved { pane, .. } = change {
+    if let Change::PaneRemoved(pane) = change {
         watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
+    }
+}
+
+/// What a daemon said when it finished putting back what it held before it last stopped.
+///
+/// Nothing asks a restoring daemon for a first tab, because its tabs are on their way; so this
+/// is where that ask happens, if the window is still empty now that they have arrived.
+fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
+    log::info(
+        "daemon.restored",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "lost_tabs" => restored.lost_tabs.len().to_string(),
+            "lost_panes" => restored.lost_panes.len().to_string(),
+        },
+    );
+    if restored.saving_stopped {
+        log::warn(
+            "daemon.saving_stopped",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "impact" => "the daemon has stopped writing down its tabs and panes, so if it \
+                             stops, what changed from now on does not come back",
+                "check" => "the daemon's own log, which says why it could not save - most \
+                            often a full or read-only disk",
+            },
+        );
+    }
+    if opened() {
+        settle_what_the_window_shows();
+    }
+}
+
+/// Renames this machine's part of each grouped tab whose name is behind another part's.
+///
+/// A tab spanning machines holds its name on each of them, ordered by a generation, and a
+/// machine that was away when the tab was renamed comes back with the old name (MIP-3, section
+/// 2). The part with the highest generation holds the name; a lagging part is told it, at that
+/// generation, when its machine answers again.
+fn catch_up_tab_names(daemon: &DaemonId) {
+    let lagging: Vec<(TabId, Option<String>, u64)> = {
+        let session = poison::lock(&SESSION, "session");
+        let Some(backend) = session.backends.get(daemon) else { return };
+        let here: Vec<(TabId, u64)> = poison::lock(&backend.mirror, "mirror")
+            .tabs()
+            .map(|tab| (tab.id.clone(), tab.generation))
+            .collect();
+        here.into_iter()
+            .filter_map(|(tab, generation)| {
+                let (newest, label) = session
+                    .backends
+                    .iter()
+                    .filter(|(other, _)| *other != daemon)
+                    .filter_map(|(_, other)| {
+                        let mirror = poison::lock(&other.mirror, "mirror");
+                        mirror.tab(&tab).map(|part| (part.generation, part.label.clone()))
+                    })
+                    .max_by_key(|(generation, _)| *generation)?;
+                (newest > generation).then_some((tab, label, newest))
+            })
+            .collect()
+    };
+    for (tab, name, generation) in lagging {
+        let intent = BackendIntent::RenameTab { tab: tab.clone(), name, generation };
+        if let Err(refusal) = submit(daemon, &intent, Keyboard::StaysPut) {
+            log::warn(
+                "tab.name.catch_up_failed",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "tab" => tab.to_string(),
+                    "detail" => refusal.to_string(),
+                    "impact" => "this machine's part of the tab keeps an older name; the \
+                                 window shows the newest one, and another window reading only \
+                                 this machine shows the old one",
+                    "check" => "`muster tab rename` sets the name on every part again",
+                },
+            );
+        }
     }
 }
 
@@ -4873,200 +4057,40 @@ pub(crate) fn toggle_sidebar() {
     set_sidebar(shown);
 }
 
-/// What a search is showing, which is everything the shell draws in the find bar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Findings {
-    pub(crate) total: u32,
-    /// Which hit is selected, counting from one, or zero when nothing matched.
-    ///
-    /// Counting from one because it is a number a person reads - "3 of 47" - and zero is
-    /// already the answer to "which of nothing".
-    pub(crate) selected: u32,
-    pub(crate) rows_searched: u32,
-
-    /// How much of the pane this covered, which is what the bar draws beside the count.
-    ///
-    /// The core's own answer rather than a word, so the three cases stay a thing the compiler
-    /// checks and only the one place that has to spell them for the shell does.
-    pub(crate) reach: Reach,
-
-    /// Whether landing on the selected match moved the pane.
-    ///
-    /// The window cannot work this out for itself. A wheel goes through the window, so it knows
-    /// the pane moved; a landing is written onto the pane's own channel from here, so the window
-    /// hears nothing and a selection made before the search stays over text that has scrolled
-    /// out from under it (kan a_2JrhrSBOx).
-    pub(crate) scrolled: bool,
-}
-
-impl Default for Findings {
-    /// Nothing searched, over a pane nothing was asked about. `Whole` rather than one of the
-    /// other two, so a bar with an empty field draws no caveat about a search that has not
-    /// happened.
-    fn default() -> Findings {
-        Findings { total: 0, selected: 0, rows_searched: 0, reach: Reach::Whole, scrolled: false }
-    }
-}
-
-/// Looks for something in the pane with the keyboard, and lands on the first match.
+/// Types text into a pane by name, whether or not a region is showing it.
 ///
-/// A read and a scroll, in that order, and the whole of what typing in the find bar does.
-/// An empty needle answers without asking anybody: it means nothing has been typed yet, and
-/// a round trip per keystroke on the way to an empty field would be a round trip for nothing.
-pub(crate) fn find(daemon: &DaemonId, pane: &PaneId, needle: &Needle) -> Result<Findings, String> {
-    if needle.is_empty() {
-        end_find();
-        return Ok(Findings::default());
-    }
-    let channel = channel(daemon)?;
-    let found = channel.find(pane, needle).map_err(|refusal| {
-        format!(
-            "the daemon {daemon} would not read pane {pane}, so nothing was searched: {refusal}"
-        )
-    })?;
-
-    let selected = (!found.hits.is_empty()).then_some(0);
-    // The viewport the search was measured against, handed straight to the landing: the
-    // pane has not been asked to move since, so asking it again would only widen the window
-    // in which it could print and shift what the offsets mean.
-    let viewport = found.viewport;
-    let search = Search { daemon: daemon.clone(), pane: pane.clone(), found, selected };
-    let findings = search.findings(land(&search, Some(viewport)));
-    poison::lock(&SESSION, "session").search = Some(search);
-    Ok(findings)
-}
-
-/// Moves to the next match, or the previous one, and lands on it.
-///
-/// Wraps at both ends, because a list somebody is stepping through has no reason to stop
-/// having reached one end of it - and the alternative is a chord that silently does nothing.
-pub(crate) fn step_find(forward: bool) -> Result<Findings, String> {
-    let mut session = poison::lock(&SESSION, "session");
-    let Some(search) = session.search.as_mut() else {
-        return Err("nothing is being searched for, so there was no next match to go to. The \
-                    find bar sends this, so either it is open with nothing typed in it or the \
-                    core forgot a search the shell still has on screen."
-            .to_string());
-    };
-    let total = search.found.hits.len();
-    if total == 0 {
-        return Ok(search.findings(false));
-    }
-    search.selected = Some(match (search.selected, forward) {
-        (Some(at), true) => (at + 1) % total,
-        (Some(at), false) => (at + total - 1) % total,
-        (None, _) => 0,
-    });
-    // Taken out from under the lock, because landing is a round trip and holding the session
-    // across one stalls every event arriving from every other daemon.
-    let landing = Search {
-        daemon: search.daemon.clone(),
-        pane: search.pane.clone(),
-        found: search.found.clone(),
-        selected: search.selected,
-    };
-    drop(session);
-    Ok(landing.findings(land(&landing, None)))
-}
-
-/// Forgets the search, which is what closing the find bar means.
-pub(crate) fn end_find() {
-    poison::lock(&SESSION, "session").search = None;
-}
-
-impl Search {
-    /// What the bar draws, given whether landing on the selected match moved the pane.
-    ///
-    /// Taken as an argument rather than filled in afterwards, so a caller that lands cannot
-    /// answer without saying what the landing did.
-    fn findings(&self, scrolled: bool) -> Findings {
-        Findings {
-            total: u32::try_from(self.found.hits.len()).unwrap_or(u32::MAX),
-            selected: self.selected.map_or(0, |at| u32::try_from(at + 1).unwrap_or(u32::MAX)),
-            rows_searched: self.found.rows_searched,
-            reach: self.found.reach(),
-            scrolled,
+/// Through the daemon's input connection, which never blocks and answers nothing: the daemon
+/// writes it as a paste it never holds, then presses Return if asked. Whether it arrived is
+/// what a caller's read-back is for.
+pub(crate) fn send_to_pane(
+    daemon: &DaemonId,
+    pane: &PaneId,
+    text: String,
+    enter: bool,
+) -> Result<(), Refusal> {
+    let input = {
+        let session = poison::lock(&SESSION, "session");
+        let backend = session.backends.get(daemon).ok_or_else(|| {
+            Refusal::Declined(format!(
+                "this window is not following a daemon called {daemon}, so nothing was sent."
+            ))
+        })?;
+        if poison::lock(&backend.mirror, "mirror").pane(pane).is_none() {
+            return Err(Refusal::NotThere(format!(
+                "{daemon} holds no pane called {pane}, so nothing was sent. Most likely it \
+                 closed while this was in flight."
+            )));
         }
-    }
-}
-
-/// Puts the selected match on screen, and says whether the pane had to move.
-///
-/// A scroll against where the pane is looking, because herdr scrolls by steps rather than to a
-/// place: the difference between here and there is what gets sent
-/// (`observations/herdr-0.8.0.md` section 17). A pane already showing the match is left alone,
-/// so stepping through hits on one screen does not jog the view under somebody reading it.
-///
-/// `known` is where the pane was looking when the search read it, which the search already
-/// established and which nothing has moved yet. A step passes `None` instead and asks again,
-/// because the step before it scrolled the pane and landing against the answer from two
-/// keystroke ago would walk the view further with every press.
-///
-/// Nothing here fails loudly. The count is already right and already on screen; a landing that
-/// did not happen costs a scroll somebody can do themselves, and a refusal per keystroke in the
-/// log would bury the one that mattered. Every one of those paths answers `false`, which is the
-/// truth the window needs either way: the pane is where it was.
-fn land(search: &Search, known: Option<Viewport>) -> bool {
-    let Some(hit) = search.selected.and_then(|at| search.found.hits.get(at)) else {
-        return false;
+        Arc::clone(&backend.input)
     };
-    let Ok(channel) = channel(&search.daemon) else {
-        return false;
-    };
-    let viewport = match known {
-        Some(viewport) => viewport,
-        None => match channel.viewport(&search.pane) {
-            Ok(viewport) => viewport,
-            Err(_) => return false,
-        },
-    };
-    if viewport.shows(hit.rows_from_bottom) {
-        return false;
-    }
-    let Some(attached) = attached_pane(&search.daemon, &search.pane) else {
-        // A pane with no bridge is one no region is showing, which a find bar over the
-        // focused pane cannot be about. Worth a line rather than silence, because it means
-        // the window and the session disagree about what has the keyboard.
-        log::debug(
-            "find.unattached",
-            fields! {
-                "daemon" => search.daemon.to_string(),
-                "pane" => search.pane.to_string(),
-                "impact" => "the match was found and counted, and the pane did not move to it.",
-            },
-        );
-        return false;
-    };
-
-    let wanted = viewport.centred_on(hit.rows_from_bottom);
-    let (direction, rows) = if wanted > viewport.rows_from_bottom {
-        (ScrollDirection::Up, wanted - viewport.rows_from_bottom)
-    } else {
-        (ScrollDirection::Down, viewport.rows_from_bottom - wanted)
-    };
-    if rows == 0 {
-        return false;
-    }
-    attached.input.scroll(direction, u16::try_from(rows).unwrap_or(u16::MAX));
-    true
-}
-
-/// Says where a pane is looking, and changes nothing.
-///
-/// A round trip at the moment somebody asks, for the reason [`find`] takes one: a pane's
-/// position is announced only to a subscription that names it, so following fifteen panes
-/// would be fifteen held connections for a number nothing renders.
-pub(crate) fn viewport(daemon: &DaemonId, pane: &PaneId) -> Result<Viewport, String> {
-    let channel = channel(daemon)?;
-    channel.viewport(pane).map_err(|refusal| {
-        format!("the daemon {daemon} would not say where pane {pane} is looking: {refusal}")
-    })
+    input.send(pane, InputEvent::Send { text, enter });
+    Ok(())
 }
 
 /// Reads a pane back, and changes nothing.
 ///
-/// A round trip at the moment somebody asks, like [`find`] above and for the same reason: a
-/// pane's output never enters the core, so there is nothing held here to answer from. The
+/// A round trip at the moment somebody asks: a pane's output never enters the core, so there is
+/// nothing held here to answer from. The
 /// channel is taken and the lock dropped before the request goes, because a read is a round
 /// trip and holding the session across one stalls every event arriving from every other
 /// daemon.
@@ -5142,67 +4166,6 @@ pub(crate) fn daemons_differ(config: &Config) -> bool {
     configured.as_deref().unwrap_or_default() != config.daemons.as_slice()
 }
 
-/// Writes what a pane should be again, and asks the daemons Muster owns to read it.
-///
-/// The counterpart of [`reset_pane_input`] for the settings Muster does not act on itself. It
-/// cannot reach as far: a pane's shell and its scrollback limit are arguments herdr takes when
-/// it builds a pane's terminal, so a reload reaches panes opened afterwards and no others -
-/// the same honest limit `pane_padding` already carries. What it does reach immediately is the
-/// update checks, which is why a daemon started before the file changed still gets asked.
-///
-/// Silent when nothing moved. Most reloads change a colour, and a file that says what it
-/// already said is a request no daemon needs.
-pub(crate) fn rewrite_daemon_configuration() {
-    let Some((_, changed)) = write_daemon_configuration() else { return };
-    if !changed {
-        return;
-    }
-    let text = daemon_configuration_text();
-
-    let told: Vec<(String, Option<(Remote, String)>)> = {
-        let session = poison::lock(&SESSION, "session");
-        session
-            .backends
-            .values()
-            .filter(|backend| backend.owns_config)
-            .map(|backend| {
-                let over_there = backend
-                    .tunnel
-                    .as_ref()
-                    .zip(backend.remote_config.as_ref())
-                    .map(|(tunnel, path)| (tunnel.remote(), path.clone()));
-                (backend.socket_path.clone(), over_there)
-            })
-            .collect()
-    };
-    // Outside the lock: these are round trips to other processes, and on other machines, and
-    // holding the session through one would stop every event this window is listening for.
-    for (socket, over_there) in &told {
-        // The far machine's copy first, for the reason the local one is written before the
-        // daemon starts: a daemon asked to re-read a file that still says the old thing reads
-        // the old thing, and reports success doing it.
-        if let Some((remote, path)) = over_there
-            && let Err(detail) = remote.place(path, text.as_bytes(), "0644")
-        {
-            log::warn(
-                "daemon.config.unsent",
-                fields! {
-                    "host" => remote.host(),
-                    "path" => path.clone(),
-                    "detail" => detail,
-                    "impact" => "that machine's panes keep the settings its daemon was started \
-                                 with, so a shell or a scrollback depth changed just now \
-                                 applies to the panes beside them and not to those",
-                    "check" => "whether the connection to that host is still up - the run log \
-                                says tunnel.down if it is not",
-                },
-            );
-            continue;
-        }
-        daemon::reload_configuration(socket);
-    }
-}
-
 /// Points every attached pane at typing settings that have just been read again.
 ///
 /// Every pane or none, which is the whole reason this exists rather than only setting the
@@ -5210,48 +4173,17 @@ pub(crate) fn rewrite_daemon_configuration() {
 /// and leave the rest as they were, so what `option_as_alt` meant would depend on when each
 /// pane happened to be opened.
 ///
-/// A pane whose encoder will not build keeps the one it had. That is the better of two bad
-/// answers - the alternative is a pane that stops typing - and it is loud, because the pane it
-/// happens to is named.
 pub(crate) fn reset_pane_input(settings: &PaneInputSettings) {
     set_pane_input(settings.clone());
 
-    let panes: Vec<(DaemonId, PaneId, Arc<AttachedPane>)> = {
+    let panes: Vec<Arc<AttachedPane>> = {
         let session = poison::lock(&SESSION, "session");
-        session
-            .panes
-            .iter()
-            .flat_map(|(daemon, panes)| {
-                panes
-                    .iter()
-                    .map(move |(pane, held)| (daemon.clone(), pane.clone(), Arc::clone(held)))
-            })
-            .collect()
+        session.panes.values().flat_map(|panes| panes.values().map(Arc::clone)).collect()
     };
-
-    let mut resettled = 0usize;
-    for (daemon, pane, held) in &panes {
-        match KeyEncoder::new(settings.profile()) {
-            Ok(encoder) => {
-                held.input.resettle(Arc::new(encoder), settings);
-                resettled += 1;
-            }
-            Err(error) => log::warn(
-                "config.reload.encoder",
-                fields! {
-                    "daemon" => daemon.to_string(),
-                    "pane" => pane.to_string(),
-                    "detail" => error.to_string(),
-                    "impact" => "this pane keeps the typing settings it was attached with, so it \
-                                  now disagrees with the rest of the window about what option \
-                                  means",
-                    "check" => "libghostty-vt is behind this; a relaunch rebuilds every encoder \
-                                 from scratch",
-                },
-            ),
-        }
+    for held in &panes {
+        held.input.resettle(settings);
     }
-    log::info("config.reload.typing", fields! { "panes" => resettled.to_string() });
+    log::info("config.reload.typing", fields! { "panes" => panes.len().to_string() });
 }
 
 /// One press of a font-size chord, on the pane the keyboard is on.
@@ -5271,20 +4203,6 @@ pub(crate) fn adjust_font_size(change: FontSizeChange) -> Result<(), String> {
         };
         let Some(pane) = region.pane.clone() else { return Err(no_pane_to_size()) };
         let pane = PaneKey::new(&region.daemon, &pane);
-        // Smaller text is more cells, and past a point a frame of them stops fitting through
-        // the daemon's cap - which costs the pane every frame after it, silently. Saturated
-        // rather than refused, on the same terms as the end of the offset's own range: the
-        // honest answer to a key held down is text that stops shrinking.
-        if change == FontSizeChange::Smaller && !session.grids.may_shrink(&pane, frame_cells()) {
-            log::info(
-                "pane.font_size.floor",
-                fields! {
-                    "pane" => pane.to_string(),
-                    "offset" => session.font_sizes.offset(&pane).to_string(),
-                },
-            );
-            return Ok(());
-        }
         let offset = session.font_sizes.adjust(&pane, change);
         (pane, offset)
     };
@@ -5303,121 +4221,34 @@ fn no_pane_to_size() -> String {
         .to_string()
 }
 
-/// Hands every attached pane back at the size its daemon lays it out at.
-///
 /// The shell's word that this process is going away, acted on before its bridges are killed.
-/// A controlling client holds a pane's terminal at its own geometry and herdr does not release
-/// that on detach, so a Muster that quits leaves every pane it touched sized to a window that
-/// no longer exists - and the herdr TUI somebody opens next inherits it
-/// (`observations/herdr-0.8.0.md` section 4).
 ///
-/// Not the size the pane had before Muster arrived, which nothing can answer: herdr publishes a
-/// pane's rows and never its columns. The daemon's own layout is the answer instead, and it is
-/// the one that matters - what is about to draw these panes is herdr itself.
-///
-/// Waited for rather than fired and forgotten. The resize leaves over the pane's control
-/// socket, is relayed by a bridge this process is about to kill, and lands in the daemon a
-/// moment later; without the wait, quitting races the thing it is trying to do. `viewport_rows`
-/// is what the daemon will say back - the one dimension it reports - so that is what is
-/// watched.
-///
-/// Or ends them, if that is what was asked. Handing a pane back at a tidy size is care taken
-/// over a session somebody is coming back to, and there is no session to come back to here -
-/// so that half is skipped rather than done and then undone.
+/// The other windows hear it first, even if ending the sessions runs long. This window keeps
+/// its tabs: its agents are still running, and reopening it comes back to them - unless ending
+/// them is what was asked.
 pub(crate) fn quitting(close_sessions: bool) {
-    // First, so the other windows hear it even if handing the panes back runs long. This window
-    // keeps its tabs: its agents are still running, and reopening it comes back to them.
     poison::lock(&SESSION, "session").holding.close();
-    let daemons: Vec<(DaemonId, String, Names)> = {
+    if !close_sessions {
+        return;
+    }
+    let daemons: Vec<(DaemonId, String)> = {
         let session = poison::lock(&SESSION, "session");
         session
             .backends
             .iter()
-            .map(|(id, backend)| (id.clone(), backend.socket_path.clone(), backend.names.clone()))
+            .map(|(id, backend)| (id.clone(), backend.socket_path.clone()))
             .collect()
     };
-
-    if close_sessions {
-        close_daemons(&daemons);
-        return;
-    }
-
-    let mut unreachable = 0usize;
-    let mut wanted: Vec<(DaemonId, PaneId, u16)> = Vec::new();
-    for (daemon, socket_path, names) in &daemons {
-        // Outside the session lock: this is a round trip, and a wedged daemon must not hold up
-        // the ones that are answering while somebody is waiting to quit.
-        let sizes = match muster_herdr::fetch_unattached_sizes(socket_path, names) {
-            Ok(sizes) => sizes,
-            Err(failure) => {
-                log::warn(
-                    "quit.geometry.unknown",
-                    fields! {
-                        "daemon" => daemon.to_string(),
-                        "detail" => failure.to_string(),
-                        "impact" => "this daemon's panes keep the size this window gave them, so \
-                                     a terminal opened on them next renders into a grid the \
-                                     wrong shape until something resizes it",
-                        "check" => "whether that daemon is still answering at all - it is being \
-                                    asked one last question on the way out",
-                    },
-                );
-                continue;
-            }
-        };
-
-        let panes: Vec<(PaneId, Arc<AttachedPane>)> = {
-            let session = poison::lock(&SESSION, "session");
-            session
-                .panes
-                .get(daemon)
-                .into_iter()
-                .flatten()
-                .map(|(pane, held)| (pane.clone(), Arc::clone(held)))
-                .collect()
-        };
-        for (pane, held) in panes {
-            // Only panes this window is driving. A pane it never attached to was never held at
-            // Muster's geometry, and resizing one would be moving something Muster did not move.
-            let Some(cells) = sizes.get(&pane) else { continue };
-            if held.input.resize(cells.columns, cells.rows) {
-                wanted.push((daemon.clone(), pane, cells.rows));
-            } else {
-                // A pane whose bridge has already gone. Its hold is whatever that bridge left,
-                // and there is no longer a route to it - this window's only way onto a pane's
-                // terminal is the stream its bridge holds open.
-                unreachable += 1;
-            }
-        }
-    }
-
-    let settled = wait_for_geometry(&daemons, &wanted);
-    let missed = wanted.len() - settled + unreachable;
-    log::info(
-        "quit.geometry.restored",
-        fields! {
-            "asked" => wanted.len().to_string(),
-            "settled" => settled.to_string(),
-            "unreachable" => unreachable.to_string(),
-            "impact" => if missed == 0 {
-                String::new()
-            } else {
-                format!(
-                    "{missed} pane(s) keep the size this window gave them, so a terminal opened \
-                     on them renders into a grid the wrong shape until something resizes it"
-                )
-            },
-        },
-    );
+    close_daemons(&daemons);
 }
 
 /// Asks every daemon this window is attached to stop, and says what came of it.
 ///
-/// `server.stop` rather than a signal, because a signal is not available: Muster puts a daemon
-/// it starts in a process group of its own so that quitting cannot take the agents with it, and
-/// a daemon opened through Launch Services has no pid here at all. The socket is the only
-/// handle, and it is the better one - measured, it gives a pane's process a catchable SIGHUP
-/// and a window to act in rather than a SIGKILL (kan a_28YghIUw2).
+/// A stop request rather than a signal, because a signal is not available: Muster puts a daemon
+/// it starts in a session of its own so that quitting cannot take the agents with it, and a
+/// daemon on another machine has no pid here at all. The socket is the only handle, and it is
+/// the better one - it gives a pane's process a catchable SIGHUP and a moment to act in rather
+/// than a SIGKILL (kan a_28YghIUw2).
 ///
 /// A longer timeout than an ordinary request. This is a daemon tearing down every pane it
 /// holds, and the alternative to waiting is reporting a failure for a stop that worked.
@@ -5425,11 +4256,11 @@ pub(crate) fn quitting(close_sessions: bool) {
 /// A daemon that will not answer is reported and left. It is still running, its agents are
 /// still going, and the honest thing is to say which one rather than to insist - `muster
 /// window` names every daemon and its socket, which is what makes ending one by hand safe.
-fn close_daemons(daemons: &[(DaemonId, String, Names)]) {
+fn close_daemons(daemons: &[(DaemonId, String)]) {
     const PATIENCE: std::time::Duration = std::time::Duration::from_secs(5);
     let (mut stopped, mut refused) = (0usize, Vec::new());
-    for (daemon, socket_path, _) in daemons {
-        match daemon::stop(socket_path, PATIENCE) {
+    for (daemon, socket_path) in daemons {
+        match launch::stop(socket_path.as_ref(), PATIENCE) {
             Ok(()) => stopped += 1,
             Err(failure) => {
                 refused.push(daemon.to_string());
@@ -5441,9 +4272,9 @@ fn close_daemons(daemons: &[(DaemonId, String, Names)]) {
                         "detail" => failure,
                         "impact" => "this machine's session is still running with its agents \
                                      in it, although quitting was asked to end it",
-                        "check" => "whether that daemon is answering at all - `muster window` \
-                                    names its socket, and `HERDR_SOCKET_PATH=<socket> herdr \
-                                    server stop` ends it by hand",
+                        "check" => "whether that daemon is answering at all - `muster daemons` \
+                                    names its socket, and `lsof <socket>` the process holding \
+                                    it, which ends it by hand",
                     },
                 );
             }
@@ -5457,42 +4288,6 @@ fn close_daemons(daemons: &[(DaemonId, String, Names)]) {
             "refused" => refused.join(","),
         },
     );
-}
-
-/// Waits until the daemons agree that the panes are the size they were asked to be.
-///
-/// Rows, because rows are what herdr reports back: a pane's `viewport_rows` is the one
-/// dimension in its payload, and columns are in none of it. Half an oracle answers the question
-/// that is actually being asked here, which is whether the message arrived at all.
-///
-/// Bounded, and short. This is between somebody pressing ⌘Q and the window going, so the honest
-/// trade is a moment of delay against a pane handed back wrong - and a daemon that has stopped
-/// answering has already been reported by the fetch above.
-fn wait_for_geometry(
-    daemons: &[(DaemonId, String, Names)],
-    wanted: &[(DaemonId, PaneId, u16)],
-) -> usize {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1500);
-    let mut settled = 0;
-    let mut waiting: Vec<&(DaemonId, PaneId, u16)> = wanted.iter().collect();
-    while !waiting.is_empty() && std::time::Instant::now() < deadline {
-        waiting.retain(|(daemon, pane, rows)| {
-            let Some((_, socket_path, names)) = daemons.iter().find(|(id, ..)| id == daemon) else {
-                return false;
-            };
-            match muster_herdr::pane_rows(socket_path, names, pane) {
-                Some(reported) if reported == *rows => {
-                    settled += 1;
-                    false
-                }
-                _ => true,
-            }
-        });
-        if !waiting.is_empty() {
-            std::thread::sleep(std::time::Duration::from_millis(25));
-        }
-    }
-    settled
 }
 
 /// Tells the shell what the window should be showing of itself.
@@ -5584,7 +4379,6 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
 /// The moment the pane becomes typeable, on the thread that accepted the connection.
 fn typeable(daemon: &DaemonId, pane: &PaneId) {
     let key = PaneKey::new(daemon, pane);
-    tell_a_new_bridge_it_is_hidden(&key);
     // Something is painting this pane again, so the next bridge to stop is news.
     poison::lock(&DARK, "dark-panes").remove(&key);
     watchdog::typeable(&key);

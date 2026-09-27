@@ -11,13 +11,14 @@ use muster_core::fields;
 
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step, View};
 use muster_core::config::{self, CursorStyle};
+use muster_core::daemon_settings::DaemonSettings;
 use muster_core::equalize::Evenly;
-use muster_core::find::{Needle, Reach, arrived_in};
 use muster_core::font::{self, FontReport};
-use muster_core::input::{CompositionOutcome, Modifiers, ScrollDirection, composition_outcome};
+use muster_core::input::{CompositionOutcome, Modifiers, composition_outcome};
 use muster_core::intent::Refusal;
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::pane_text::{arrived_in, rows_of};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 use muster_core::{AgentState, PaneKey};
@@ -119,7 +120,7 @@ fn route(payload: request::Payload) -> Response {
             Response::ok()
         }),
         request::Payload::Paste(paste) => with_pane("a paste", |pane| {
-            pane.input.paste(&paste.text);
+            pane.input.paste(&paste.text, paste.confirmed);
             Response::ok()
         }),
         request::Payload::SplitPane(split) => split_pane(&split),
@@ -196,17 +197,9 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::ArrangePane(arrange) => arrange_pane(&arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),
         request::Payload::EqualizePanes(even) => equalize_panes(&even),
-        request::Payload::Scroll(scroll) => scroll_pane(&scroll),
         request::Payload::RenamePane(rename) => rename_pane(&rename),
         request::Payload::RenameTab(rename) => rename_tab(&rename),
         request::Payload::CloseTab(close) => close_tab(&close),
-        request::Payload::ReadViewport(read) => read_viewport(&read),
-        request::Payload::Find(find) => find_in_pane(&find),
-        request::Payload::FindStep(step) => step_find(&step.direction),
-        request::Payload::EndFind(_) => {
-            session::end_find();
-            Response::ok()
-        }
         // Answered when the panes have been handed back, not when the message was read. The
         // shell is holding its own termination open on this reply, which is the whole point:
         // everything here has to happen while its bridges are still alive to relay it.
@@ -294,37 +287,11 @@ fn read_pane(read: &proto::ReadPane) -> Response {
         Ok(read) => Response {
             payload: Some(response::Payload::PaneText(proto::PaneText {
                 // Counted here rather than by whoever reads the text, and counted the way a
-                // search counts the same answer - two ideas of what a row is would disagree
-                // the moment one of them was fixed.
-                rows: u32::try_from(muster_core::find::rows_of(&read.text).len())
-                    .unwrap_or(u32::MAX),
+                // tail cuts the same answer - two ideas of what a row is would disagree the
+                // moment one of them was fixed.
+                rows: u32::try_from(rows_of(&read.text).len()).unwrap_or(u32::MAX),
                 text: read.text,
                 truncated: read.truncated,
-            })),
-        },
-        Err(refusal) => Response::failure(refusal),
-    }
-}
-
-/// Says where a pane is looking, so a shell can keep a selection on its own text.
-///
-/// Named like every other pane request, and the empty case is the unusual one here: a wheel
-/// scrolls whatever the pointer is over rather than whatever has the keyboard, so the caller
-/// that wants this normally names the pane it just scrolled.
-fn read_viewport(read: &proto::ReadViewport) -> Response {
-    let target = match target(&read.daemon_id, &read.pane_id) {
-        Ok(target) => target,
-        Err(refusal) => return *refusal,
-    };
-    let Some(pane) = &target.pane else {
-        return nothing_to_act_on(&target.daemon);
-    };
-    match session::viewport(&target.daemon, pane) {
-        Ok(viewport) => Response {
-            payload: Some(response::Payload::PaneViewport(proto::PaneViewport {
-                rows_from_bottom: viewport.rows_from_bottom,
-                rows: viewport.rows,
-                deepest: viewport.deepest,
             })),
         },
         Err(refusal) => Response::failure(refusal),
@@ -367,64 +334,6 @@ fn read_daemons() -> Response {
     }
 }
 
-/// Looks for something in a pane, and puts the first match on screen.
-///
-/// Named like every other pane request: an empty pane means the one the keyboard is on,
-/// which is the pane a find bar is drawn over and so the only case a chord produces.
-fn find_in_pane(find: &proto::Find) -> Response {
-    let target = match target(&find.daemon_id, &find.pane_id) {
-        Ok(target) => target,
-        Err(refusal) => return *refusal,
-    };
-    let Some(pane) = &target.pane else {
-        return nothing_to_act_on(&target.daemon);
-    };
-    found(session::find(&target.daemon, pane, &Needle::new(&find.needle)))
-}
-
-/// Walks the matches of the search already open.
-fn step_find(direction: &str) -> Response {
-    let forward = match direction {
-        "next" => true,
-        "previous" => false,
-        _ => {
-            return Response::failure(format!(
-                "the core does not know a find step called {direction:?}, so the selected match \
-                 stayed where it was. Only next and previous exist; the shell builds this from a \
-                 fixed set, so this is a bug there."
-            ));
-        }
-    };
-    found(session::step_find(forward))
-}
-
-fn found(answer: Result<session::Findings, String>) -> Response {
-    match answer {
-        Ok(findings) => Response {
-            payload: Some(response::Payload::Findings(proto::Findings {
-                total: findings.total,
-                selected: findings.selected,
-                rows_searched: findings.rows_searched,
-                // The one place the core's three reaches become words a shell reads, so a
-                // fourth one added later is a match arm rather than a string invented twice.
-                reach: match findings.reach {
-                    Reach::Whole => "whole",
-                    Reach::Capped { .. } => "capped",
-                    Reach::ScreenOnly => "screen_only",
-                }
-                .to_string(),
-                rows_held: match findings.reach {
-                    Reach::Capped { rows_held } => rows_held,
-                    // Zero for the other two, since "of 0 rows" is not a sentence to draw.
-                    _ => 0,
-                },
-                scrolled: findings.scrolled,
-            })),
-        },
-        Err(reason) => Response::failure(reason),
-    }
-}
-
 /// Calls a pane what somebody wants to call it.
 ///
 /// Trimmed, and blank reads as taking the name away. A name of spaces is a row that looks
@@ -450,14 +359,10 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
         // The daemon comes from the tab, the way it comes from a pane in `act`: a tab name is
         // unique across every attached machine, so a caller that has one has said enough.
         let tab = TabId::new(&rename.tab_id);
-        let Some(daemon) = holder_of(&tab, &rename.daemon_id) else {
+        if holder_of(&tab, &rename.daemon_id).is_none() {
             return no_such_tab(&tab, "renamed");
-        };
-        return relayed(submit(
-            &daemon,
-            &BackendIntent::RenameTab { tab, name },
-            Keyboard::Follows,
-        ));
+        }
+        return relayed(session::rename_tab(&tab, name.as_deref()).map(|()| Response::ok()));
     }
 
     let daemon = match resolve_daemon(&rename.daemon_id) {
@@ -477,7 +382,7 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
              nothing was changed. Most likely it closed while this was in flight."
         ));
     };
-    relayed(submit(&daemon, &BackendIntent::RenameTab { tab, name }, Keyboard::Follows))
+    relayed(session::rename_tab(&tab, name.as_deref()).map(|()| Response::ok()))
 }
 
 /// Closes a tab and every pane in it.
@@ -597,47 +502,6 @@ fn equalize_panes(even: &proto::EqualizePanes) -> Response {
         Ok(()) => Response::ok(),
         Err(detail) => Response::failure(detail),
     }
-}
-
-/// One wheel notch or trackpad gesture, scaled by what the config file asked for.
-///
-/// Addressed rather than focused, which is what separates this from every other input path
-/// here. A wheel moves the pane the pointer is over, because reading one agent's output while
-/// typing into another is the ordinary case in a window of fifteen - so this never touches the
-/// keyboard, and pointing at a pane is not a request to type in it.
-fn scroll_pane(scroll: &proto::Scroll) -> Response {
-    let Some(direction) = ScrollDirection::parse(&scroll.direction) else {
-        return Response::failure(format!(
-            "the core does not know a scroll direction called {:?}, so the wheel did nothing. \
-             Only up and down exist; the shell builds this from a fixed set, so this is a bug \
-             there.",
-            scroll.direction
-        ));
-    };
-    let daemon = match resolve_daemon(&scroll.daemon_id) {
-        Ok(daemon) => daemon,
-        Err(refusal) => return *refusal,
-    };
-    let pane = PaneId::new(&scroll.pane_id);
-    let Some(attached) = session::attached_pane(&daemon, &pane) else {
-        // Not a refusal, and the difference is the point: the pointer being somewhere is not a
-        // request, so a wheel over a pane whose bridge has not finished starting should cost
-        // nothing and say nothing loud. A `Response::failure` here would be logged as
-        // `core.refused` at error level, once per wheel event, for a state that resolves in
-        // milliseconds.
-        log::debug(
-            "scroll.unattached",
-            fields! {
-                "daemon" => daemon.to_string(),
-                "pane" => pane.to_string(),
-                "impact" => "the wheel moved nothing. Expected while a pane's bridge is \
-                             starting; a pane that never scrolls has no channel at all.",
-            },
-        );
-        return Response::ok();
-    };
-    attached.input.scroll(direction, lines(scroll.delta));
-    Response::ok()
 }
 
 /// One press, after the input method has had its turn.
@@ -857,8 +721,8 @@ fn relayed(answer: Result<Response, Refusal>) -> Response {
 /// Why a request that named no pane found none.
 ///
 /// Two states with two ways out, so they get a message each. A machine holding no panes at all
-/// wants one made on it. A machine that holds a tab and no pane in it is a tab whose panes have
-/// not been described yet, which resolves on its own and wants nothing done about it.
+/// wants one made on it. A machine whose tabs in this window are all off screen wants one of
+/// them named or gone to.
 fn nothing_to_act_on(daemon: &DaemonId) -> Response {
     if session::holding_nothing(daemon) {
         return Response::failure(format!(
@@ -868,10 +732,10 @@ fn nothing_to_act_on(daemon: &DaemonId) -> Response {
         ));
     }
     Response::failure(format!(
-        "the daemon {daemon} holds a tab this window has not been told the panes of yet, so a \
-         request that named no pane had nothing to act on and nothing happened. The daemon's \
-         event is on its way - ask again. A request that names no pane means the pane that \
-         machine has the keyboard on, or its first in the tab on screen."
+        "none of the daemon {daemon}'s tabs in this window is on screen, so a request that named \
+         no pane had nothing to act on and nothing happened. A request that names no pane means \
+         the pane that machine has the keyboard on, or its first in the tab on screen; name the \
+         pane, or go to one of its tabs with `muster tab focus`."
     ))
 }
 
@@ -915,17 +779,11 @@ fn held_elsewhere(pane: &PaneId, holder: &DaemonId, named: &str) -> Response {
     ))
 }
 
-/// Makes a tab beside a pane, in the directory that pane is in.
+/// Makes a tab, in the directory of the pane the request came from.
 ///
 /// The directory is resolved here rather than left to the daemon. A new tab has nothing to
-/// inherit from, so herdr would start it in a home directory - and the answer somebody
+/// inherit from, so the daemon would start it in a home directory - and the answer somebody
 /// pressing the key means is "where I already am", which the mirror already knows.
-///
-/// Which workspace it goes in is not decided here and is not this layer's to decide: the request
-/// names the pane, and the adapter asks the daemon which of its workspaces that means. That
-/// matters rather than being tidiness - `tab.create` takes a workspace and ignores keys it does
-/// not know, so a request that named the pane to herdr would be accepted and put the tab
-/// wherever that daemon last had focus (MIP-2).
 fn create_tab(create: &proto::CreateTab) -> Response {
     let cwd = (!create.cwd.is_empty()).then(|| create.cwd.clone());
     let run = (!create.run.is_empty()).then(|| create.run.clone());
@@ -934,52 +792,33 @@ fn create_tab(create: &proto::CreateTab) -> Response {
 
     // A window showing nothing, answered before anything else because every rule below starts
     // from a machine and here nobody has named one - not the request, and not the keyboard.
-    // ⌘T is the one request that can refill such a window, so Muster picks the machine itself.
+    // ⌘T is the one request that can refill such a window, so Muster picks the machine: the
+    // first local daemon, and any daemon at all when none of them is local. Launch makes the
+    // same choice and stops at local, because filling an empty window is Muster's own idea and
+    // making things on somebody else's machine uninvited is a bigger claim.
     if create.pane_id.is_empty()
         && create.daemon_id.is_empty()
         && session::focused_daemon().is_none()
     {
-        return open_a_workspace(None, keyboard, cwd, run, name);
+        let chosen = session::first_local_daemon().or_else(session::first_attached_daemon);
+        let Some(daemon) = chosen else {
+            return Response::failure(
+                "this window has no daemon to make a tab on, so nothing was opened. A window \
+                 with nothing attached looks like this, and so does the renderer check - the \
+                 daemon.unavailable records above say which, if a daemon was meant to be there.",
+            );
+        };
+        return open_a_tab(&daemon, None, keyboard, cwd, run, name);
     }
 
     let target = match target(&create.daemon_id, &create.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
-    let (daemon, pane) = (target.daemon.clone(), target.pane.clone());
-    // A tab lives in a workspace and a machine showing nothing has none to put one in, so what
-    // was asked for becomes the request that makes both.
-    let Some(pane) = pane else {
-        return open_a_workspace(Some(daemon), keyboard, cwd, run, name);
-    };
-
-    let inherited = session::cwd_of(&daemon, &pane);
-    relayed(submit(
-        &daemon,
-        &BackendIntent::CreateTab { beside: pane, cwd: cwd.or(inherited), run, name },
-        keyboard,
-    ))
+    open_a_tab(&target.daemon, target.pane.as_ref(), keyboard, cwd, run, name)
 }
 
-/// Makes a workspace, when there is no pane to make one beside.
-///
-/// What asking for a tab or a pane means on a machine showing nothing - every pane closed, a
-/// devenv attached for the first time, or a window with nothing on screen at all. A tab lives
-/// in a workspace and a workspace is named by a pane in it, so a machine with no pane has
-/// nothing to name and a workspace is the only request that can produce one. Without this,
-/// any machine that reaches zero panes is a machine nobody can put one back on: every other
-/// action is about a pane, and there is no pane.
-///
-/// `on` is the machine somebody named, and `None` means nobody did - a window showing nothing,
-/// where Muster picks: the first local daemon, and any daemon at all when none of them is
-/// local. Launch makes the same choice and stops at local, because filling an empty window is
-/// Muster's own idea and making things on somebody else's machine uninvited is a bigger claim.
-/// Naming a machine is the invitation, so that caution has nothing to guard here.
-///
-/// A machine that *has* a region and no pane in it is refused rather than given a workspace.
-/// That is a tab whose panes this window has not been told about yet - a moment, not an
-/// absence - and answering it with a workspace would leave somebody a pane they never asked
-/// for every time an event ran late.
+/// Asks one machine for a tab, starting where `from` is when nobody said where.
 ///
 /// The keyboard follows whatever was asked for, except in a window that has nowhere else to
 /// put it. `take_focus` is false so that an agent making panes does not drag somebody's cursor
@@ -987,29 +826,18 @@ fn create_tab(create: &proto::CreateTab) -> Response {
 /// machine and somebody is typing into it. In a window showing nothing there is no cursor to
 /// drag and no other pane to leave it on, and honouring the flag there would show a pane
 /// nobody can type into until they click it.
-fn open_a_workspace(
-    on: Option<DaemonId>,
+fn open_a_tab(
+    daemon: &DaemonId,
+    from: Option<&PaneId>,
     keyboard: Keyboard,
     cwd: Option<String>,
     run: Option<String>,
     name: Option<String>,
 ) -> Response {
-    let chosen =
-        on.or_else(|| session::first_local_daemon().or_else(session::first_attached_daemon));
-    let Some(daemon) = chosen else {
-        return Response::failure(
-            "this window has no pane to put a tab beside and no daemon to make one on, so \
-             nothing was opened. A window with nothing attached looks like this, and so does \
-             the renderer check - the daemon.unavailable records above say which, if a \
-             daemon was meant to be there.",
-        );
-    };
-    if !session::holding_nothing(&daemon) {
-        return nothing_to_act_on(&daemon);
-    }
-    let nowhere_else = session::focused_daemon().is_none();
-    let keyboard = if nowhere_else { Keyboard::Follows } else { keyboard };
-    relayed(submit(&daemon, &BackendIntent::CreateWorkspace { cwd, run, name }, keyboard))
+    let cwd = cwd.or_else(|| from.and_then(|pane| session::cwd_of(daemon, pane)));
+    let keyboard = if session::focused_daemon().is_none() { Keyboard::Follows } else { keyboard };
+    let intent = BackendIntent::CreateTab { tab: session::mint_tab(), cwd, run, name };
+    relayed(submit(daemon, &intent, keyboard))
 }
 
 /// The daemon a request means, given what it named.
@@ -1149,28 +977,6 @@ fn appearance_message() -> proto::Appearance {
             unknown: color(appearance.colors.agents.unknown),
         }),
     }
-}
-
-/// How many lines one scroll gesture is worth.
-///
-/// The device's delta, scaled by what the config file asked for and rounded up to at least
-/// one - a gesture small enough to round to zero is still a gesture somebody made, and a
-/// wheel that sometimes does nothing reads as a broken wheel rather than as a small notch.
-/// Here rather than in the shell because it is a decision, and a decision in the shell is
-/// one no test can reach (`docs/testing.md`, thin shell).
-fn lines(delta: f64) -> u16 {
-    let scaled = delta.abs() * session::feel().scroll_multiplier;
-    if !scaled.is_finite() {
-        return 1;
-    }
-    // Clamped before the cast rather than after, so nothing is ever converted out of range.
-    // Truncation is what `as` does to a float past the ceiling, and truncation of a scroll
-    // wraps an enormous gesture to a tiny one - a wheel that goes the wrong distance for no
-    // visible reason. After the clamp the value is a whole number in `1..=u16::MAX`, so the
-    // cast is exact and the lint has nothing left to warn about.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let lines = scaled.round().clamp(1.0, f64::from(u16::MAX)) as u16;
-    lines
 }
 
 /// Moves the keyboard one tab along the window's tab order.
@@ -1647,7 +1453,7 @@ fn split_pane(split: &proto::SplitPane) -> Response {
     // Refusing here would leave `--daemon` unable to reach the machine it is most needed for -
     // the one holding no panes, which is every devenv on the day it is attached.
     let Some(pane) = pane else {
-        return open_a_workspace(Some(daemon), keyboard, cwd, run, name);
+        return open_a_tab(&daemon, None, keyboard, cwd, run, name);
     };
     placed(
         submit(
@@ -1673,19 +1479,20 @@ fn send_to_pane(send: &proto::SendToPane) -> Response {
     // The keyboard never moves for this. Being sent something is not the same as being looked
     // at, and an agent telling two others what to do would otherwise pull the user's cursor
     // onto whichever it addressed last.
-    let answer = act(&send.daemon_id, &send.pane_id, Keyboard::StaysPut, |pane| {
-        BackendIntent::SendText { pane, text: send.text.clone(), enter: send.enter }
-    });
-    // A send whose answer was lost is confirmed too, since whether it arrived is exactly what the
-    // read-back settles. Not with `--enter`: Return is not pressed after text that may not have
-    // arrived, and a read-back finding the text would report a submission that never happened.
-    let settles = match &answer.payload {
-        Some(response::Payload::Ok(_)) => true,
-        Some(response::Payload::Unanswered(_)) => !send.enter,
-        _ => false,
+    let target = match target(&send.daemon_id, &send.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
     };
-    if !send.confirm || !settles {
-        return answer;
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(&target.daemon);
+    };
+    if let Err(refusal) =
+        session::send_to_pane(&target.daemon, &pane, send.text.clone(), send.enter)
+    {
+        return placed(Err(refusal), &target);
+    }
+    if !send.confirm {
+        return Response::ok();
     }
     confirm_it_arrived(send)
 }
@@ -1836,8 +1643,7 @@ fn attach_pane(pane_id: &str) -> Response {
     match session::attach(pane_id) {
         Ok(pane) => Response {
             payload: Some(response::Payload::Attached(proto::Attached {
-                control_socket_path: pane.control_socket_path.clone(),
-                backend_pane_id: pane.backend_pane_id.clone(),
+                link_socket_path: pane.link_path().to_string(),
             })),
         },
         Err(AttachError::Unreachable(detail)) => Response::failure(format!(
@@ -1874,27 +1680,14 @@ fn start(startup: &proto::Startup) -> Response {
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.
     session::set_state_path(&startup.state_path);
-    // Before the config, and for the sharpest version of the same reason: applying one attaches
-    // daemons, and the first snapshot from each mints a name for every pane it describes. Read
-    // afterwards, every pane already open would be named a second time, and a program running
-    // in one would hold a name for nothing.
-    session::set_pane_names_path(&startup.pane_names_path);
     // Before the config too, because applying one can start a daemon and the locale is part of
     // the environment that daemon is born with. Set after, it would reach the second launch.
     session::set_platform_locale(&startup.locale);
-    // Before the config for the sharpest version of that reason: this is where the file that
-    // daemon reads gets written, and `herdr server` reads its config once at startup.
-    session::set_daemon_config_path(&startup.daemon_config_path);
     // Before the config for the same reason once more: applying one can start a daemon, and this
     // is part of the environment that daemon is born with - so a pane it spawns has `muster` on
     // its PATH from the first one onwards.
     session::set_commands_path(&startup.commands_path);
     session::set_daemon_records_path(&startup.daemon_records_path);
-    // Before the config, because applying one can attach a daemon on another machine and that
-    // is the whole of what this is for: a herdr for that machine's platform, fetched here and
-    // pushed across. Set after, the first launch to meet a new devenv would download to a
-    // temporary and throw it away.
-    session::set_cache_path(&startup.cache_path);
 
     if let Err(refusal) = start_logging(startup) {
         return *refusal;
@@ -2008,10 +1801,9 @@ fn apply_config(path: &str) {
     session::set_feel(config.feel);
     session::set_appearance(config.appearance.clone());
     session::set_notifications(config.notifications);
-    // Before following, which is what writes the derived config and starts a daemon
-    // that reads it. Set after, a first launch would give its daemon last launch's
-    // answer about what a pane runs.
-    session::set_panes(config.panes.clone());
+    // Before following, so each daemon is told these the moment it is reached. Set after, a
+    // pane opened in that moment would run last launch's shell.
+    session::set_daemon_settings(DaemonSettings::from(&config));
     session::set_configured_daemons(&config.daemons);
     session::follow_configured(&config);
 }
@@ -2155,13 +1947,11 @@ fn reload_config() -> Response {
     session::set_feel(config.feel);
     session::set_appearance(config.appearance.clone());
     session::set_notifications(config.notifications);
-    session::set_panes(config.panes.clone());
-    // Unlike `[[daemon]]`, this one is not left for a relaunch, because a relaunch would not
-    // fix it: the daemon is started and never stopped, so it outlives every launch and would
-    // go on running the settings it was born with until the machine was rebooted. Rewriting
-    // the file and asking the daemon to read it again is what makes saving the file mean
-    // something - as far as it can go, which is panes opened from now on.
-    session::rewrite_daemon_configuration();
+    // Unlike `[[daemon]]`, not left for a relaunch, because a relaunch would not fix it: the
+    // daemon outlives every launch and would go on with the settings it was last told. Each
+    // followed daemon is told what changed now; a shell or a scrollback depth reaches the panes
+    // it opens from now on.
+    session::set_daemon_settings(DaemonSettings::from(&config));
     // Recorded even though it is not acted on, so the next reload compares against this file
     // rather than reporting the same unapplied change forever.
     session::set_configured_daemons(&config.daemons);
@@ -2183,11 +1973,8 @@ fn reload_config() -> Response {
     // the chords do and leaves the numbers beside the rows saying what they used to do - which
     // is the one failure the numbers are drawn to prevent.
     //
-    // Announced here rather than left to the next publish, and the difference is the whole
-    // point: a reload asks the daemon to re-read its own config, so it says something shortly
-    // afterwards and the roster is republished anyway. The numbers would come right either
-    // way - by luck, a moment later. What has to be true is that they are right when the save
-    // returns.
+    // Announced here rather than left to the next publish: what has to be true is that the
+    // numbers are right when the save returns, not whenever a daemon next says something.
     session::announce_roster();
     Response::ok()
 }

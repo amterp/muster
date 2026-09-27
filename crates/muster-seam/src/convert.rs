@@ -53,17 +53,8 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
                 weight: region.weight,
                 root: region.root.as_ref().map(node),
                 zoomed: region.zoomed,
-                ssh_host: region
-                    .transport
-                    .as_ref()
-                    .map(|transport| transport.host.clone())
-                    .unwrap_or_default(),
-                ssh_control_path: region
-                    .transport
-                    .as_ref()
-                    .map(|transport| transport.control_path.clone())
-                    .unwrap_or_default(),
-                backend_socket: region.backend_socket.clone().unwrap_or_default(),
+                daemon_socket: region.daemon_socket.clone().unwrap_or_default(),
+                remote: region.remote,
             })
             .collect(),
         focused_region: view.focused.map(|id| id.to_string()).unwrap_or_default(),
@@ -164,8 +155,7 @@ fn node(node: &ViewNode) -> proto::ViewNode {
     let payload = match node {
         ViewNode::Pane(pane) => proto::view_node::Node::Pane(proto::ViewPane {
             pane_id: pane.id.to_string(),
-            control_socket_path: pane.control_socket_path.clone().unwrap_or_default(),
-            backend_pane_id: pane.backend_pane_id.clone().unwrap_or_default(),
+            link_socket_path: pane.link_socket_path.clone().unwrap_or_default(),
             font_size_offset: pane.font_size_offset,
             bridge_restarts: pane.bridge_restarts,
         }),
