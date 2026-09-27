@@ -42,6 +42,8 @@ muster-proto = { path = "crates/muster-proto" }
 muster-seam = { path = "crates/muster-seam" }
 muster-ssh = { path = "crates/muster-ssh" }
 muster-vt = { path = "crates/muster-vt" }
+# The Linux daemons' allocator (MIP-3, section 12).
+mimalloc = "0.1"
 prost = "0.14"
 # herdr's detection manifests are written in this crate's syntax, so matching them with
 # anything else would change what a rule means.

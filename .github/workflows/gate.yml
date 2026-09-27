@@ -104,7 +104,10 @@ jobs:
             deps/.built
             deps/ghostty/macos/GhosttyKit.xcframework
             deps/ghostty/zig-out
-          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps/ghostty.pin', 'deps/ghostty-patches/*.patch') }}
+          # `linux-musl` stands for what ./dev -d builds beyond the pin - here, the Linux daemons'
+          # archives. Change it when that list changes: a hit restores a zig-out without the new
+          # artifact, ./dev rebuilds it on every run, and a key that hit is never saved again.
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-linux-musl-${{ hashFiles('deps/ghostty.pin', 'deps/ghostty-patches/*.patch') }}
 
       # Small, and it saves a GitHub release round trip. ./dev re-verifies the checksum on
       # every run, so a cache that came back truncated is caught rather than trusted.

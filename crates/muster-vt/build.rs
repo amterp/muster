@@ -18,7 +18,8 @@ fn main() {
          the path to deps/",
     );
     let include = repo.join("deps/ghostty/zig-out/include");
-    let lib = repo.join("deps/ghostty/zig-out/lib");
+    let target = std::env::var("TARGET").expect("cargo sets TARGET");
+    let lib = repo.join("deps/ghostty").join(library_dir(&target));
     let header = include.join("ghostty/vt.h");
 
     assert!(
@@ -34,7 +35,7 @@ fn main() {
     // the bindings stale. Cargo scans a directory for any file that changed.
     println!("cargo:rerun-if-changed={}", include.join("ghostty").display());
     println!("cargo:rustc-link-search=native={}", lib.display());
-    let kind = link_kind();
+    let kind = link_kind(&target);
     if kind == "static" {
         println!("cargo:rerun-if-changed={}", lib.join("libghostty-vt.a").display());
     }
@@ -43,9 +44,19 @@ fn main() {
     // here: a link argument emitted by a build script reaches only its own crate, and every
     // downstream binary would link fine and fail at startup.
 
-    let bindings = bindgen::Builder::default()
+    let mut bindings = bindgen::Builder::default()
         .header(header.to_string_lossy())
-        .clang_arg(format!("-I{}", include.display()))
+        .clang_arg(format!("-I{}", include.display()));
+    // bindgen hands clang the target cargo builds for, and clang defers to musl's own
+    // stddef.h and stdint.h there, which a Mac does not have. Zig carries them, and they are
+    // the headers the library itself was compiled against.
+    if let Some(zig_target) = linux_target(&target) {
+        let libc = zig_lib_dir().join("libc/include");
+        for dir in [zig_target, "generic-musl", "any-linux-any"] {
+            bindings = bindings.clang_arg(format!("-isystem{}", libc.join(dir).display()));
+        }
+    }
+    let bindings = bindings
         .allowlist_function("ghostty_.*")
         .allowlist_type("Ghostty.*")
         .allowlist_var("GHOSTTY_.*")
@@ -62,7 +73,42 @@ fn main() {
     std::fs::write(out.join("modes.rs"), mode_table(&modes)).expect("OUT_DIR should be writable");
 }
 
-/// How libghostty-vt is linked: as the dylib unless this cargo invocation says `static`.
+/// Where `./dev` put the libghostty-vt built for `target`, under `deps/ghostty`: the host's
+/// in zig's default prefix, and each Linux daemon's in a prefix of its own, because a build
+/// for another target into the default prefix would replace the host's archive.
+fn library_dir(target: &str) -> String {
+    match linux_target(target) {
+        Some(zig_target) => format!("zig-out/{zig_target}/lib"),
+        None => "zig-out/lib".to_string(),
+    }
+}
+
+/// Zig's name for a Linux target the daemon is built for (MIP-3, section 12).
+fn linux_target(target: &str) -> Option<&'static str> {
+    match target {
+        "x86_64-unknown-linux-musl" => Some("x86_64-linux-musl"),
+        "aarch64-unknown-linux-musl" => Some("aarch64-linux-musl"),
+        _ => None,
+    }
+}
+
+/// The directory zig keeps its libc headers under, as `zig env` reports it.
+fn zig_lib_dir() -> PathBuf {
+    let output = std::process::Command::new("zig").arg("env").output().expect(
+        "zig is needed to build for a Linux target, as it is for libghostty itself, and none \
+         is on PATH. Try: brew install zig@0.16",
+    );
+    let env = String::from_utf8_lossy(&output.stdout);
+    let dir = env
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(".lib_dir = \""))
+        .and_then(|rest| rest.strip_suffix("\","))
+        .unwrap_or_else(|| panic!("`zig env` names no .lib_dir; it printed:\n{env}"));
+    PathBuf::from(dir)
+}
+
+/// How libghostty-vt is linked: as the dylib unless this cargo invocation says `static`, and
+/// always statically for a Linux target, which exists only for the daemon.
 ///
 /// The daemon links it statically, so a daemon copied to another machine is one file. The
 /// app's side links the dylib the bundle ships, so libmuster and the bridge share one copy.
@@ -81,9 +127,16 @@ fn main() {
 /// the same directory is not a candidate - and nor is a rebuilt archive noticed unless cargo
 /// is told to watch it, which it is: a patch that changes only Zig code rebuilds the archive
 /// and leaves every header alone.
-fn link_kind() -> &'static str {
+fn link_kind(target: &str) -> &'static str {
     println!("cargo:rerun-if-env-changed=MUSTER_VT_LINK");
+    let linux = linux_target(target).is_some();
     match std::env::var("MUSTER_VT_LINK").as_deref() {
+        Ok("dylib") if linux => panic!(
+            "MUSTER_VT_LINK=dylib asks for a shared libghostty-vt on {target}, which is only \
+             ever built for the daemon, and a daemon copied to a Linux machine has to be one \
+             file (MIP-3, section 12). Unset it for this target."
+        ),
+        _ if linux => "static",
         Ok("static") => "static",
         Ok("dylib") | Err(_) => "dylib",
         Ok(other) => panic!(

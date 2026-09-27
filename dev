@@ -40,11 +40,21 @@ GHOSTTY_PATCHES = "deps/ghostty-patches"
 // Both builds of the pin: the surface API the shell renders through, and the VT the
 // core encodes keys with and the tests read grids from - as a dylib for anything that
 // shares a process with the surface API, and as an archive for the daemon, which does not.
+//
+// The Linux daemons take an archive each, built from the same patched checkout into a prefix of
+// its own (MIP-3, section 12) - under zig's name for the target, which muster-vt's build script
+// maps cargo's name onto.
+LINUX_DAEMONS = {
+    "x86_64-unknown-linux-musl": "x86_64-linux-musl",
+    "aarch64-unknown-linux-musl": "aarch64-linux-musl",
+}
 DEP_ARTIFACTS = [
     XCFRAMEWORK,
     "deps/ghostty/zig-out/lib/libghostty-vt.dylib",
     "deps/ghostty/zig-out/lib/libghostty-vt.a",
     "deps/ghostty/zig-out/include/ghostty/vt.h",
+    "deps/ghostty/zig-out/x86_64-linux-musl/lib/libghostty-vt.a",
+    "deps/ghostty/zig-out/aarch64-linux-musl/lib/libghostty-vt.a",
 ]
 // The session backend is a runtime dependency of the suite, not just of the app. Tests
 // that speak to a daemon speak to a real one: a hand-written stand-in would be Muster's
@@ -1463,6 +1473,8 @@ fn build_deps():
     // tests read grids from.
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native`
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
+    for zig_target in LINUX_DAEMONS.values():
+        $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dtarget={zig_target} --prefix zig-out/{zig_target}`
     write_file(BUILT_STAMP, deps_stamp(pin))
 
 // The contract tier is opt-in and never part of the gate: it needs a real herdr on PATH
@@ -1586,6 +1598,10 @@ if build:
     // The core first: it is the layer the shell will call into, and its errors are the
     // ones a contributor can act on without a window.
     $`cargo build --workspace --all-targets`
+    // The daemon for each Linux machine a remote pane can be on (MIP-3, section 12), built by
+    // the gate so a change that breaks it fails here rather than on the next remote install.
+    for target in LINUX_DAEMONS.keys():
+        $`cargo build -p muster-daemon --target {target}`
     $`swift build`
     stage_helpers("debug")
 
@@ -1611,6 +1627,9 @@ if notarize:
 if lint:
     announce("lint")
     $`cargo clippy --workspace --all-targets -- -D warnings`
+    // The Linux halves of the daemon and of detection are code a Mac never compiles otherwise.
+    // One target is enough: the two differ only in libc's per-architecture constants.
+    $`cargo clippy -p muster-daemon -p muster-detect --all-targets --target aarch64-unknown-linux-musl -- -D warnings`
 
 if test:
     announce("test")

@@ -16,6 +16,9 @@ muster-frame.workspace = true
 muster-vt.workspace = true
 prost.workspace = true
 
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc.workspace = true
+
 # The daemon's tests live here because cargo only hands `CARGO_BIN_EXE_muster-daemon` to tests
 # in the package that owns the binary, and every one of them runs the real binary.
 [dev-dependencies]

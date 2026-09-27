@@ -1,0 +1,13 @@
+#!/bin/sh
+# A C compiler for the daemon's C dependencies (mimalloc) on one Linux target, used through a
+# link named for zig's spelling of that target (.cargo/config.toml). cc-rs also passes cargo's
+# spelling as --target=, which zig does not read, so that is dropped in favour of the link's.
+target=$(basename "$0")
+for argument; do
+    shift
+    case $argument in
+        --target=*) ;;
+        *) set -- "$@" "$argument" ;;
+    esac
+done
+exec zig cc -target "$target" "$@"

@@ -34,6 +34,12 @@ use muster_daemon_proto::install;
 
 use crate::session::Shared;
 
+// musl's own allocator serializes every allocation on one lock, and the daemon allocates from a
+// thread per pane (MIP-3, section 12). macOS's allocator does not have that problem.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// Exit status of a daemon that found another already serving its socket. Whoever started it
 /// dials that one instead.
 const ALREADY_SERVING: u8 = 3;

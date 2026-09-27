@@ -10,3 +10,6 @@ profile = "minimal"
 # rustfmt and clippy are part of the gate, so they are part of the toolchain rather than
 # something a contributor is expected to have installed. rust-src is for rust-analyzer.
 components = ["rustfmt", "clippy", "rust-src"]
+# The daemon for Linux machines, cross-compiled from the Mac (MIP-3, section 12). musl, so each
+# is one static file that runs on any distribution a remote pane might be on.
+targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
