@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "one-integration-test",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790543939595,
+  "creator": "Alexander Terp",
+  "description": "The gate spends most of its time on something that is not testing. Measured 2026-09-27: every file in a crate's tests/ is its own binary, 114 of them across the workspace (muster-seam 30, muster-core 26, muster-daemon 18, ...), plus a unit-test binary per crate. macOS scans every newly built executable before its first run (XprotectService and syspolicyd), taking 1 to 6 s per binary on a quiet machine and up to 58 s when several gates queue on the same system service. Every rebuild makes them all new, so a gate spent 30+ minutes in cargo test -- --list alone, which only runs each binary once to count its tests. Each of those binaries also links the whole crate and its dependencies: 967 of them sat in one worktree's target/debug/deps, 12 GB, which is much of why a worktree's target reaches 30-40 GB on a disk that filled once already.\n\nDirection: one integration test binary per crate (tests/\u003ccrate\u003e/main.rs, or tests/it/main.rs, with each current file a module), the common Rust layout for this. Roughly 114 binaries become about 12, which cuts the scan, the link time and the disk together. Check before moving: tests that set process-wide state (environment variables, cwd, signal handlers) now share a process; ./dev's zero-tests rule, tools/corpus-lint.py's driver claims, SKIPPED_SUITES and any 'cargo test --test \u003cname\u003e' in ./dev, docs/testing.md or CI name binaries and must follow. Separately: the Developer Tools exemption for MusterSessions.app (added 2026-09-27) should remove the scan for everything a pane runs once the helper restarts under the new release; measure a fresh binary's first run then.\n\nWhen: right after the cut-over lands, since both slots are editing tests until then.",
+  "id": "a_2Xo8X7zjP",
+  "position": "b05",
+  "title": "One integration test binary per crate, not one per test file",
+  "type": "chore",
+  "updated_at_millis": 1790543939647,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790543939595}
+  ]
+}
