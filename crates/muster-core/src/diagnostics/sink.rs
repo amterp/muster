@@ -161,3 +161,28 @@ fn quote_into(out: &mut String, value: &str) {
     }
     out.push('"');
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A process that logs and then starts another program hands that program the log's
+    /// descriptor, unless the descriptor is close-on-exec. The app starts daemons and every
+    /// daemon starts panes, so an inherited log is open in every shell a person has.
+    #[test]
+    fn the_log_file_is_not_handed_to_programs_this_process_starts() {
+        let path = std::env::temp_dir()
+            .join(format!("muster-sink-inherited-{}.jsonl", std::process::id()));
+        let sink = JsonLinesSink::open(path.to_str().expect("a temp path is UTF-8"))
+            .expect("the temp directory is writable");
+        // SAFETY: F_GETFD on a descriptor the sink owns only reads its flags.
+        let flags = unsafe { libc::fcntl(sink.fd, libc::F_GETFD) };
+        drop(sink);
+        let _ = std::fs::remove_file(&path);
+        assert_ne!(
+            flags & libc::FD_CLOEXEC,
+            0,
+            "the log is open in every child this process starts"
+        );
+    }
+}
