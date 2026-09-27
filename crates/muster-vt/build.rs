@@ -34,7 +34,7 @@ fn main() {
     // the bindings stale. Cargo scans a directory for any file that changed.
     println!("cargo:rerun-if-changed={}", include.join("ghostty").display());
     println!("cargo:rustc-link-search=native={}", lib.display());
-    println!("cargo:rustc-link-lib=dylib=ghostty-vt");
+    println!("cargo:rustc-link-lib={}=ghostty-vt", link_kind());
     // Where a binary looks for the dylib at *runtime* is set in .cargo/config.toml, not
     // here: a link argument emitted by a build script reaches only its own crate, and every
     // downstream binary would link fine and fail at startup.
@@ -56,6 +56,29 @@ fn main() {
 
     let modes = include.join("ghostty/vt/modes.h");
     std::fs::write(out.join("modes.rs"), mode_table(&modes)).expect("OUT_DIR should be writable");
+}
+
+/// How libghostty-vt is linked: as the dylib unless this cargo invocation says `static`.
+///
+/// The daemon links it statically, so a daemon copied to another machine is one file, and
+/// nothing in the app's process may: a static libghostty-vt beside GhosttyKit fails to link on
+/// 35 duplicate Zig runtime symbols (docs/observations/libghostty-9f9b8d1d.md, section 8).
+/// A cargo feature cannot express that, because features unify across every package one
+/// invocation builds, and a workspace build would hand the seam the static archive. An
+/// environment variable is scoped to the invocation instead: the daemon's own build sets it,
+/// and a build that also produces `muster-seam` must not. rustc finds the archive itself and
+/// bundles it into this crate, so the dylib beside it in the same directory is not a
+/// candidate.
+fn link_kind() -> &'static str {
+    println!("cargo:rerun-if-env-changed=MUSTER_VT_LINK");
+    match std::env::var("MUSTER_VT_LINK").as_deref() {
+        Ok("static") => "static",
+        Ok("dylib") | Err(_) => "dylib",
+        Ok(other) => panic!(
+            "MUSTER_VT_LINK={other} is not a way to link libghostty-vt. It is `static` for \
+             the daemon's own build and unset (or `dylib`) for everything else."
+        ),
+    }
 }
 
 /// Every mode `modes.h` names, as a Rust table.
