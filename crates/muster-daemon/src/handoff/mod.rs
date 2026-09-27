@@ -127,7 +127,7 @@ fn unexpected(awaited: &str, came: &handoff::Message) -> String {
 pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Reply {
     let started = Instant::now();
     let faults = Faults::read();
-    let handing = shared.lock().handing();
+    let mut handing = shared.lock().handing();
     log::info(
         "daemon.handoff.started",
         fields! {
@@ -137,7 +137,7 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
     );
     handing.persister.pause(STEP);
     let mut successor = None;
-    match handed(shared, replacement, &handing, &mut successor) {
+    match handed(shared, replacement, &mut handing, &mut successor) {
         Ok(accepted) => {
             let pid = successor.as_ref().map_or(0, Child::id);
             let subscribers = shared.lock().replaced(pid, accepted.daemon_version.clone());
@@ -201,7 +201,7 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
 fn handed(
     shared: &Shared,
     replacement: &Replacement,
-    handing: &Handing,
+    handing: &mut Handing,
     successor: &mut Option<Child>,
 ) -> Result<handoff::Accept, String> {
     if !shared.socket.accepting.hold(STEP) {
@@ -221,6 +221,19 @@ fn handed(
         other => return Err(unexpected("an accept", &other)),
     };
 
+    // Every reader held first, and what they reported applied, before anything is captured:
+    // a title or directory that changed after the capture would reach the replay but not the
+    // record.
+    for pane in &handing.panes {
+        if !pane.io.hold_reader(STEP) {
+            return Err(format!("pane {}'s reader did not stop", pane.record.pane));
+        }
+    }
+    if !shared.lock().reports().settle(STEP) {
+        return Err("what the panes reported was not applied in time".to_string());
+    }
+    shared.lock().recapture(handing);
+
     let state = serde_json::to_vec(&handing.state).map_err(|error| error.to_string())?;
     let socket = &shared.socket;
     fds::send(&link, &[socket.listener.as_fd(), socket.lock.as_fd()])
@@ -238,9 +251,6 @@ fn handed(
 
     for pane in &handing.panes {
         let name = &pane.record.pane;
-        if !pane.io.hold_reader(STEP) {
-            return Err(format!("pane {name}'s reader did not stop"));
-        }
         let (replay, grid) = pane.io.replay();
         fds::send(&link, &[pane.io.master()])
             .map_err(|error| format!("could not send pane {name}'s terminal: {error}"))?;

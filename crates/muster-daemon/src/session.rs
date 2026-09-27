@@ -1286,6 +1286,8 @@ impl Session {
                     effect: Some(effect),
                 }));
             }
+            // Answered by the publisher, never applied here.
+            Reported::Settled(_) => {}
             Reported::PasteHeld(text) => {
                 self.emit(Payload::PasteHeld(proto::PasteHeld { pane: name, text }));
             }
@@ -1841,6 +1843,21 @@ impl Session {
             persister: Arc::clone(&self.persister),
             log: self.log.clone(),
         }
+    }
+
+    /// Takes what [`Session::handing`] captured again, once every pane's reader is held and
+    /// what they reported before is applied: nothing about a pane changes after this.
+    pub(crate) fn recapture(&self, handing: &mut Handing) {
+        handing.state = self.persisted();
+        for handed in &mut handing.panes {
+            if let Some(pane) = self.panes.iter().find(|pane| Arc::ptr_eq(&pane.io, &handed.io)) {
+                handed.record = pane.record.clone();
+            }
+        }
+    }
+
+    pub(crate) fn reports(&self) -> Reports {
+        self.reports.clone()
     }
 
     /// The new daemon serves: subscribers are told, and are handed back to have what they were

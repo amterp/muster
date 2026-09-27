@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Weak;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
+use std::time::Duration;
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
@@ -152,6 +153,19 @@ pub(crate) enum Reported {
         agent: Option<String>,
         state: proto::AgentState,
     },
+    /// Answered once every report queued before it has been applied ([`Reports::settle`]).
+    Settled(Settle),
+}
+
+/// The answer a [`Reported::Settled`] is waiting for.
+#[derive(Debug, Clone)]
+pub(crate) struct Settle(SyncSender<()>);
+
+/// Never equal: each settle waits on its own answer.
+impl PartialEq for Settle {
+    fn eq(&self, _: &Settle) -> bool {
+        false
+    }
 }
 
 /// Where panes send their reports.
@@ -195,20 +209,65 @@ impl Reports {
             }
         }
     }
+
+    /// Waits, at most `within`, until the session has applied every report queued before this
+    /// call. Waits for room in the queue rather than dropping, which is safe only for a caller
+    /// holding no lock the publisher takes. True when a publisher that has gone applies nothing
+    /// more either.
+    pub(crate) fn settle(&self, within: Duration) -> bool {
+        let (settled, answer) = mpsc::sync_channel(1);
+        let queued =
+            self.sender.send(Report { serial: 0, what: Reported::Settled(Settle(settled)) });
+        queued.is_err() || answer.recv_timeout(within).is_ok()
+    }
 }
 
 /// Applies every report under the session lock, for as long as the daemon runs.
 pub(crate) fn publish(receiver: &Receiver<Report>, shared: &Weak<Shared>) {
-    for report in receiver {
-        let Some(shared) = shared.upgrade() else { return };
+    publish_with(receiver, |report| {
+        let Some(shared) = shared.upgrade() else { return false };
         shared.lock().reported(report);
         OVERRUN_WARNED.store(false, Ordering::Relaxed);
+        true
+    });
+}
+
+/// Hands each report to `apply` in order, answering a settle once everything before it is
+/// applied, until `apply` says there is no session left to apply them to.
+fn publish_with(receiver: &Receiver<Report>, mut apply: impl FnMut(Report) -> bool) {
+    for report in receiver {
+        if let Reported::Settled(Settle(settled)) = &report.what {
+            let _ = settled.try_send(());
+        } else if !apply(report) {
+            return;
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_settle_returns_once_every_report_before_it_is_applied() {
+        let (reports, received) = Reports::with_depth(8);
+        let applied = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let applying = std::sync::Arc::clone(&applied);
+        let publisher = std::thread::spawn(move || {
+            publish_with(&received, |report| {
+                std::thread::sleep(Duration::from_millis(20));
+                applying.lock().unwrap().push(report.what);
+                true
+            });
+        });
+        for title in ["one", "two", "three"] {
+            assert!(reports.send(1, Reported::Title(title.to_string())));
+        }
+        assert!(reports.settle(Duration::from_secs(5)));
+        assert_eq!(applied.lock().unwrap().len(), 3);
+        drop(reports);
+        publisher.join().unwrap();
+    }
 
     #[test]
     fn a_local_url_names_its_directory() {
