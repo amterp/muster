@@ -267,7 +267,8 @@ fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
         }
     };
     let settings = state.as_ref().map(|state| state.settings.clone());
-    (Saved { persister: persist::Persister::new(path, disabled), settings }, state)
+    let restoring = state.is_some();
+    (Saved { persister: persist::Persister::new(path, disabled), settings, restoring }, state)
 }
 
 /// Refuses a path that holds something other than a socket, because binding replaces what is

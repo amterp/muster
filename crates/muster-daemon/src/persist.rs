@@ -176,12 +176,25 @@ fn ratios(node: &Node) -> Result<(), String> {
 
 /// Moves a file this daemon cannot use out of the way, keeping it, and says where it went.
 pub(crate) fn move_aside(path: &Path) -> std::io::Result<PathBuf> {
-    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
-    let mut aside = path.as_os_str().to_owned();
-    aside.push(format!(".corrupt-{seconds}"));
-    let aside = PathBuf::from(aside);
+    let aside = aside(path, "corrupt");
     std::fs::rename(path, &aside)?;
     Ok(aside)
+}
+
+/// Copies the file at `path` beside itself, as `<file>.unrestored-<seconds>`: what a previous
+/// run saved, kept for a person when this run could not bring all of it back and its next write
+/// will leave the rest out.
+pub(crate) fn keep_aside(path: &Path) -> std::io::Result<PathBuf> {
+    let aside = aside(path, "unrestored");
+    std::fs::copy(path, &aside)?;
+    Ok(aside)
+}
+
+fn aside(path: &Path, why: &str) -> PathBuf {
+    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
+    let mut aside = path.as_os_str().to_owned();
+    aside.push(format!(".{why}-{seconds}"));
+    PathBuf::from(aside)
 }
 
 fn temporary(path: &Path) -> PathBuf {
@@ -324,6 +337,11 @@ impl Persister {
         }
     }
 
+    /// The file this persister writes.
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
     /// The daemon is stopping, and this is the state to leave behind: what it held before it
     /// closed anything. Only the first call counts.
     pub(crate) fn stopping(&self, state: State) {
@@ -333,7 +351,20 @@ impl Persister {
                 pending.phase = Phase::Stopping;
                 pending.last = Some(state);
             }
-            Phase::Restoring => pending.phase = Phase::Stopped,
+            Phase::Restoring => {
+                pending.phase = Phase::Stopped;
+                log::warn(
+                    "daemon.state.not_saved",
+                    fields! {
+                        "path" => self.path.display(),
+                        "impact" => "the daemon stopped before every saved tab was back, so it \
+                                     saves nothing; the file keeps what the last run saved, and \
+                                     loses what this one changed",
+                        "check" => "a daemon.state.* record before this one, if restoring was \
+                                    stuck or failed",
+                    },
+                );
+            }
             Phase::Stopping | Phase::Stopped | Phase::Off => return,
         }
         self.woken.notify_all();

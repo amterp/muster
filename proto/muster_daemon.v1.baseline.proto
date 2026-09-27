@@ -461,6 +461,10 @@ message Snapshot {
   repeated Tab tabs = 3;
   repeated Pane panes = 4;
   Settings settings = 5;
+  // True while the daemon is bringing back the tabs a previous run saved: more arrive as
+  // events, and `restored` says when it is done. A client that decides a tab is gone, or makes
+  // a pane under a saved name, waits for that first.
+  bool restoring = 6;
 }
 
 message PaneText {
@@ -487,7 +491,16 @@ message Event {
     SettingsChanged settings_changed = 16;
     PaneEffect pane_effect = 17;
     PasteHeld paste_held = 18;
+    Restored restored = 19;
   }
+}
+
+// The daemon has finished bringing back what a previous run saved, sent only when it restored.
+message Restored {
+  // The saved tabs and panes that did not come back: a name a client had already taken, or a
+  // pane no shell would start for. The file that held them is kept aside, and the daemon's log
+  // says where.
+  repeated string lost = 1;
 }
 
 message PaneOpened {

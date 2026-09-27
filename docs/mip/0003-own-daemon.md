@@ -236,9 +236,19 @@ saves nothing over it. One that does not parse, or holds a state no daemon would
 moved aside to `<file>.corrupt-<seconds>` with a warning, and the daemon starts empty. Neither stops
 the daemon from starting. Restoring runs once the socket is served, one tab at a time, so a
 directory on a hung mount cannot keep the daemon from answering; a client that connects meanwhile
-sees the tabs arrive as events. Nothing is written until every saved tab is back, so a crash
-while restoring loses nothing, and a directory that no longer exists starts its pane's shell at
-home.
+sees the tabs arrive as events, and its snapshot says `restoring` until a `restored` event names
+what did not come back. The app waits for that before it decides a tab of its grouping file is
+gone or makes a pane under a saved name, since a name a client takes first is not restored.
+Nothing is written until every saved tab is back, so a crash or a stop while restoring loses
+nothing. A directory that no longer exists starts its pane's shell at home, and a shell that will
+not start - one uninstalled since the last run, a directory it may not enter - is tried again as
+the default shell at home. What still does not come back, the next write leaves out, so the file
+as it was is first copied to `<file>.unrestored-<seconds>` and the daemon's log names it; if the
+copy fails, the daemon saves nothing that run rather than lose the only record. A restored pane
+has the environment the daemon gives every pane (section 3) and not what its create asked for:
+that is chiefly `MUSTER_SOCKET`, which names a window's socket and so a window a restart may well
+have outlived. `muster` run in a restored pane therefore reaches no window until the app hands
+panes a way to find it again, which `docs/cli/limits.md` says at the cut-over.
 
 ### 3. Starting a pane
 
@@ -825,6 +835,8 @@ herdr's own client measured 1.4 ms and 22.6 ms. The remote row is in section 4.
   wheel is no longer always an intent), the renderer seam, degradation, durability, and the
   diagnostic log, whose daemon writes a file of its own that each run follows (section 1).
 - `docs/glossary.md`: adapter, backend, daemon, devenv container, frame, pane channel, tab.
+- `docs/cli/limits.md`: a pane the daemon restored has `$MUSTER_PANE` but no `$MUSTER_SOCKET`
+  (section 2), where today herdr's restored pane has neither.
 
 ### Delivery
 

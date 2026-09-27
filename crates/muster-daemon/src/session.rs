@@ -71,6 +71,8 @@ pub(crate) struct Places {
 pub(crate) struct Saved {
     pub(crate) persister: Arc<Persister>,
     pub(crate) settings: Option<proto::Settings>,
+    /// Whether saved tabs are to come back ([`restore`]).
+    pub(crate) restoring: bool,
 }
 
 /// What every thread of the daemon shares.
@@ -91,7 +93,7 @@ impl Shared {
         saved: Saved,
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, data, log } = places;
-        let Saved { persister, settings } = saved;
+        let Saved { persister, settings, restoring } = saved;
         Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
@@ -149,6 +151,7 @@ impl Shared {
                     persister,
                     log,
                     stopping: false,
+                    restoring,
                 }),
                 stopping,
                 instance,
@@ -252,6 +255,8 @@ pub(crate) struct Session {
     log: Option<Arc<DaemonLog>>,
     /// Set once the daemon has begun to stop, after which no pane starts.
     stopping: bool,
+    /// Set while the tabs a previous run saved are coming back.
+    restoring: bool,
 }
 
 impl std::fmt::Debug for Session {
@@ -367,6 +372,9 @@ impl Reading {
 /// A process started for a pane, or why it did not.
 type Started = std::io::Result<(OwnedFd, Child)>;
 
+/// What a pane's process starts as: its argv and environment.
+type Launched = (Vec<String>, Vec<(OsString, OsString)>);
+
 /// A saved tab whose names are reserved, and whose panes' shells have yet to start.
 #[derive(Debug)]
 struct Restoring {
@@ -379,15 +387,29 @@ struct Restoring {
 #[derive(Debug)]
 struct RestoringPane {
     saved: persist::Pane,
-    argv: Vec<String>,
-    environment: Vec<(OsString, OsString)>,
+    /// The configured shell.
+    launch: Launched,
+    /// The default shell, for when the configured one will not start.
+    fallback: Launched,
+}
+
+/// A saved pane's shell once it has started, or failed to: where, and which program.
+#[derive(Debug)]
+struct Restarted {
+    cwd: PathBuf,
+    program: String,
+    started: Started,
 }
 
 impl Restoring {
     /// Starts each pane's shell in its saved directory, or at home when that is gone. A shell
     /// and never the command a pane was made with: an agent started afresh in every pane is not
     /// what anybody asked for.
-    fn start(&self) -> Vec<(PathBuf, Started)> {
+    ///
+    /// A shell that will not start there - a configured shell since uninstalled, a directory it
+    /// may not enter - is tried again as the default shell at home, so a setting that went bad
+    /// between runs costs where the panes start rather than the panes.
+    fn start(&self) -> Vec<Restarted> {
         self.panes
             .iter()
             .map(|pane| {
@@ -405,33 +427,51 @@ impl Restoring {
                     );
                     self.home.clone()
                 };
-                let launch = Launch {
-                    argv: &pane.argv,
-                    environment: &pane.environment,
-                    cwd: &cwd,
-                    grid: pane.saved.grid,
-                };
-                let started = pty::start(&launch);
-                (cwd, started)
+                let first = start_launched(&pane.launch, &cwd, pane.saved.grid);
+                let Err(error) = first.started else { return first };
+                log::warn(
+                    "daemon.state.fallback",
+                    fields! {
+                        "pane" => pane.saved.name,
+                        "program" => first.program,
+                        "cwd" => cwd.display(),
+                        "error" => error,
+                        "impact" => "the pane comes back running the default shell at home",
+                        "check" => "whether the configured shell still exists, and whether the \
+                                    directory can be entered",
+                    },
+                );
+                start_launched(&pane.fallback, &self.home, pane.saved.grid)
             })
             .collect()
     }
 }
 
+fn start_launched((argv, environment): &Launched, cwd: &Path, grid: Grid) -> Restarted {
+    let launch = Launch { argv, environment, cwd, grid };
+    Restarted { cwd: cwd.to_path_buf(), program: argv[0].clone(), started: pty::start(&launch) }
+}
+
 /// Brings back the tabs a previous run saved, one at a time, each pane's shell starting with
 /// the session unlocked. Only then may the persister write: until every saved tab is back, the
-/// session holds less than the file, and a write would lose the difference.
+/// session holds less than the file, and a write would lose the difference. What could not be
+/// brought back is kept in a copy of the file, since the next write leaves it out.
 pub(crate) fn restore(shared: &Shared, state: persist::State) {
     let started = std::time::Instant::now();
+    let unfinished = Unfinished;
     let saved: HashMap<String, persist::Pane> =
         state.panes.into_iter().map(|pane| (pane.name.clone(), pane)).collect();
     let tabs = state.tabs.len();
+    let mut lost = Vec::new();
     for tab in state.tabs {
-        let Some(restoring) = shared.lock().prepare_restore(tab, &saved) else { continue };
+        let Some(restoring) = shared.lock().prepare_restore(tab, &saved, &mut lost) else {
+            continue;
+        };
         let started = restoring.start();
-        shared.lock().restored(restoring, started);
+        shared.lock().restored(restoring, started, &mut lost);
     }
-    let session = shared.lock();
+    drop(unfinished);
+    let mut session = shared.lock();
     log::info(
         "daemon.state.restored",
         fields! {
@@ -442,7 +482,34 @@ pub(crate) fn restore(shared: &Shared, state: persist::State) {
             "ms" => started.elapsed().as_millis(),
         },
     );
+    session.restoring = false;
+    if session.stopping {
+        return;
+    }
+    if !lost.is_empty() && !session.keep_what_was_lost(&lost) {
+        return;
+    }
+    session.emit(Payload::Restored(proto::Restored { lost }));
     session.persister.arm();
+}
+
+/// Says so when restoring ends by a panic, which leaves the persister never armed.
+struct Unfinished;
+
+impl Drop for Unfinished {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            return;
+        }
+        log::error(
+            "daemon.state.restore_failed",
+            fields! {
+                "impact" => "the saved tabs are not all back, and nothing is saved for the rest of \
+                             this daemon's run; the file keeps what the last run saved",
+                "check" => "this is a bug: the panic above says where restoring stopped",
+            },
+        );
+    }
 }
 
 /// A create that has been checked, with its names reserved, and whose process has yet to start.
@@ -579,6 +646,7 @@ impl Session {
             tabs: self.tabs.iter().map(Tab::record).collect(),
             panes: self.panes.iter().map(|pane| pane.record.clone()).collect(),
             settings: Some(self.settings.clone()),
+            restoring: self.restoring,
         }
     }
 
@@ -674,8 +742,19 @@ impl Session {
         pane: &str,
         command: Option<&str>,
         requested: &HashMap<String, String>,
-    ) -> (Vec<String>, Vec<(OsString, OsString)>) {
+    ) -> Launched {
         let shell = self.settings.shell.clone().unwrap_or_default();
+        self.launch_with(&shell, pane, command, requested)
+    }
+
+    /// As [`Session::launch`], under `shell` rather than the configured one.
+    fn launch_with(
+        &self,
+        shell: &proto::Shell,
+        pane: &str,
+        command: Option<&str>,
+        requested: &HashMap<String, String>,
+    ) -> Launched {
         let login = shell.mode() != proto::ShellMode::NonLogin;
         let environment = spawn::environment(
             &self.inherited,
@@ -1294,6 +1373,7 @@ impl Session {
         &mut self,
         tab: persist::Tab,
         saved: &HashMap<String, persist::Pane>,
+        lost: &mut Vec<String>,
     ) -> Option<Restoring> {
         if self.stopping {
             return None;
@@ -1312,6 +1392,7 @@ impl Session {
                                  of that name first",
                 },
             );
+            lost.push(tab.name);
             return None;
         }
         let mut panes = Vec::new();
@@ -1326,10 +1407,14 @@ impl Session {
                                      one of that name first",
                     },
                 );
+                lost.push(name.to_string());
                 continue;
             }
-            let (argv, environment) = self.launch(name, None, &HashMap::new());
-            panes.push(RestoringPane { saved: pane.clone(), argv, environment });
+            let shell = self.settings.shell.clone().unwrap_or_default();
+            let launch = self.launch_with(&shell, name, None, &HashMap::new());
+            let fallback = proto::Shell { command: None, ..shell };
+            let fallback = self.launch_with(&fallback, name, None, &HashMap::new());
+            panes.push(RestoringPane { saved: pane.clone(), launch, fallback });
         }
         self.reserved.insert(tab.name.clone());
         for pane in &panes {
@@ -1340,20 +1425,21 @@ impl Session {
 
     /// Finishes restoring a tab once its panes' shells have started, or failed to. The tab
     /// comes back with the panes that did.
-    fn restored(&mut self, restoring: Restoring, started: Vec<(PathBuf, Started)>) {
+    fn restored(&mut self, restoring: Restoring, started: Vec<Restarted>, lost: &mut Vec<String>) {
         let Restoring { tab, panes, .. } = restoring;
         self.reserved.remove(&tab.name);
         for pane in &panes {
             self.reserved.remove(&pane.saved.name);
         }
         let mut back = HashSet::new();
-        for (pane, (cwd, started)) in panes.into_iter().zip(started) {
-            let program = &pane.argv[0];
+        for (pane, Restarted { cwd, program, started }) in panes.into_iter().zip(started) {
+            let program = &program;
             let name = pane.saved.name;
             let (master, child) = match started {
                 Ok(started) => started,
                 Err(error) => {
                     Self::could_not_start(&name, program, &cwd, &error);
+                    lost.push(name);
                     continue;
                 }
             };
@@ -1370,6 +1456,8 @@ impl Session {
             };
             if self.open(record, pane.saved.grid, master, child, program).is_ok() {
                 back.insert(name);
+            } else {
+                lost.push(name);
             }
         }
         if self.stopping {
@@ -1395,6 +1483,7 @@ impl Session {
                     "check" => "the daemon.pane.not_started records before this one",
                 },
             );
+            lost.push(tab.name);
             return;
         };
         let zoomed = tab.zoomed.filter(|pane| root.contains(pane));
@@ -1402,6 +1491,43 @@ impl Session {
         let record = tab.record();
         self.tabs.push(tab);
         self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
+    }
+
+    /// Copies the state file aside before the persister's first write leaves out the saved
+    /// tabs and panes that did not come back. False when the copy failed, and nothing may be
+    /// written this run: the file is then the only record of them.
+    fn keep_what_was_lost(&self, lost: &[String]) -> bool {
+        match persist::keep_aside(self.persister.path()) {
+            Ok(kept) => {
+                log::warn(
+                    "daemon.state.unrestored",
+                    fields! {
+                        "lost" => lost.join(" "),
+                        "kept" => kept.display(),
+                        "impact" => "these saved tabs and panes did not come back, and the next \
+                                     write leaves them out of the state file; the file as it was \
+                                     is kept aside",
+                        "check" => "the daemon.state.* and daemon.pane.not_started records before \
+                                    this one say why each did not come back",
+                    },
+                );
+                true
+            }
+            Err(error) => {
+                log::error(
+                    "daemon.state.unrestored",
+                    fields! {
+                        "lost" => lost.join(" "),
+                        "error" => error,
+                        "impact" => "these saved tabs and panes did not come back, and the file \
+                                     holding them could not be copied aside, so nothing is saved \
+                                     for the rest of this daemon's run",
+                        "check" => "the permissions on the state file's directory, and free space",
+                    },
+                );
+                false
+            }
+        }
     }
 
     // -----------------------------------------------------------------------------------------

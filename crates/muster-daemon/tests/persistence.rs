@@ -235,3 +235,123 @@ fn a_write_that_never_finishes_holds_up_no_request() {
     let took = started.elapsed();
     assert!(took < Duration::from_secs(1), "a create and a snapshot took {took:?}");
 }
+
+/// A state file of `tabs` tabs of one pane each, `t<n>` holding `p<n>`, every pane in `cwd`,
+/// with `shell` as the configured shell if one is given.
+fn saved(tabs: usize, cwd: &Path, shell: Option<&str>) -> String {
+    let shell = shell.map_or("null".to_string(), |shell| format!("{shell:?}"));
+    let tab =
+        |n| format!(r#"{{"tab":"t{n}","label":{{"generation":0}},"root":{{"pane":"p{n}"}}}}"#);
+    let pane = |n| {
+        format!(
+            r#"{{"pane":"p{n}","cwd":{:?},"grid":{{"cols":80,"rows":24,"width_px":0,"height_px":0}}}}"#,
+            cwd.display().to_string()
+        )
+    };
+    format!(
+        r#"{{"version":1,"daemon":"test","settings":{{"shell":{{"command":{shell},"mode":0}}}},"tabs":[{}],"panes":[{}]}}"#,
+        (0..tabs).map(tab).collect::<Vec<_>>().join(","),
+        (0..tabs).map(pane).collect::<Vec<_>>().join(","),
+    )
+}
+
+/// Stops the daemon, puts `file` where its state is kept, and starts it again on it.
+fn restarted_from(daemon: &mut Daemon, file: &str) -> Control {
+    let mut control = daemon.connect();
+    stop(daemon, &mut control);
+    std::fs::write(state_file(daemon), file).unwrap();
+    daemon.restart();
+    daemon.connect()
+}
+
+/// The copy of the state file a restore that lost something kept aside.
+fn kept_aside(root: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(root).unwrap().flatten().map(|entry| entry.path()).find(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("daemon.state.json.unrestored-"))
+    })
+}
+
+fn restored(events: &[proto::Event]) -> Option<&proto::Restored> {
+    events.iter().find_map(|event| match &event.event {
+        Some(proto::event::Event::Restored(restored)) => Some(restored),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_shell_gone_since_the_last_run_comes_back_as_the_default_shell() {
+    let mut daemon = daemon();
+    let work = directory(&daemon, "work");
+    let mut control = restarted_from(&mut daemon, &saved(1, &work, Some("/nonexistent/shell")));
+    until_restored(&mut control, 1);
+    until_text(&mut control, "p0", "");
+    assert!(written(&daemon.root().join("daemon.log")).contains("daemon.state.fallback"));
+    assert_eq!(kept_aside(daemon.root()), None, "nothing was lost");
+}
+
+/// With no shell that will start, a tab cannot come back; the next write leaves it out of the
+/// file, so the file as it was is kept aside first.
+#[test]
+fn a_tab_no_shell_will_start_for_is_kept_in_a_copy_of_the_file() {
+    let mut daemon = daemon_with(&[("SHELL", "/nonexistent/default")]);
+    let work = directory(&daemon, "work");
+    let file = saved(1, &work, Some("/nonexistent/shell"));
+    let mut control = restarted_from(&mut daemon, &file);
+    let kept = until_some("a copy of the file kept aside", || kept_aside(daemon.root()));
+    assert_eq!(std::fs::read_to_string(kept).unwrap(), file);
+    let snapshot = until_some("the restore to end", || {
+        Some(snapshot(&mut control)).filter(|snapshot| !snapshot.restoring)
+    });
+    assert!(snapshot.tabs.is_empty());
+}
+
+/// A client that makes a pane under a name a saved pane has, while the daemon is restoring,
+/// keeps it; the saved pane is lost, and the file that held it is kept aside. Until the restore
+/// has ended, the file is not written at all, and the snapshot says it is under way.
+#[test]
+fn a_name_a_client_took_while_restoring_is_kept_in_a_copy_of_the_file() {
+    const TABS: usize = 60;
+    let mut daemon = daemon();
+    let work = directory(&daemon, "work");
+    let file = saved(TABS, &work, None);
+    let mut control = restarted_from(&mut daemon, &file);
+    let subscribed = expect(&mut control, subscribe_request(), proto::Outcome::Done);
+    let Some(proto::answer::Detail::Snapshot(first)) = subscribed.answer.detail else {
+        panic!("a subscribe answers with a snapshot")
+    };
+    assert!(first.restoring, "{TABS} tabs take longer than one answer to bring back");
+    let taken = format!("p{}", TABS - 1);
+    make(&mut control, create(&taken, in_new_tab("tx")));
+
+    let events =
+        events_until(&mut control, "the restore to end", |events| restored(events).is_some());
+    assert_eq!(std::fs::read_to_string(state_file(&daemon)).unwrap(), file, "untouched so far");
+    let lost = &restored(&events).unwrap().lost;
+    assert_eq!(*lost, [taken.clone(), format!("t{}", TABS - 1)]);
+    let kept = kept_aside(daemon.root()).expect("a copy kept aside");
+    assert_eq!(std::fs::read_to_string(kept).unwrap(), file);
+    let after = snapshot(&mut control);
+    assert!(!after.restoring);
+    let tab = after.tabs.iter().find(|tab| tab.tab == "tx").expect("the client's tab");
+    assert_eq!(shape(tab.root.as_ref().unwrap()), taken, "the client's pane stays");
+}
+
+/// A daemon stopped while it is still bringing its tabs back holds less than the file, so it
+/// writes nothing over it.
+#[test]
+fn a_stop_while_restoring_leaves_the_file_as_it_was() {
+    const TABS: usize = 60;
+    let mut daemon = daemon();
+    let work = directory(&daemon, "work");
+    let file = saved(TABS, &work, None);
+    let mut control = restarted_from(&mut daemon, &file);
+    expect(&mut control, subscribe_request(), proto::Outcome::Done);
+    events_until(&mut control, "a first tab back", |events| {
+        names(events).iter().any(|name| name.starts_with("tab_opened:"))
+    });
+    stop(&mut daemon, &mut control);
+    assert_eq!(std::fs::read_to_string(state_file(&daemon)).unwrap(), file);
+    assert!(written(&daemon.root().join("daemon.log")).contains("daemon.state.not_saved"));
+}
