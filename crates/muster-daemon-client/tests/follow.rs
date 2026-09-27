@@ -212,3 +212,48 @@ fn the_census_asks_each_daemon_what_it_holds() {
     assert_eq!(census[0].state, records::State::Answering);
     assert_eq!(census[0].panes, 1);
 }
+
+/// A window reacts to what a daemon says by asking it for more - an empty window asks for a
+/// tab - and that request's answer is read by the same connection the notice came from. So a
+/// reaction asking the daemon something has to be answered, not left waiting on itself.
+#[test]
+fn a_reaction_to_a_notice_can_ask_the_same_daemon() {
+    let daemon = Daemon::start_built();
+    let mirror = Arc::new(Mutex::new(Mirror::new()));
+    let backend: Arc<Mutex<Option<DaemonBackend>>> = Arc::new(Mutex::new(None));
+    let (answered, answers) = std::sync::mpsc::channel();
+    let asking = Arc::clone(&backend);
+    let follower = Follower::start(
+        Following {
+            socket: daemon.socket_path().to_path_buf(),
+            client: "test".to_string(),
+            daemon: "local".to_string(),
+            remote: false,
+        },
+        Arc::clone(&mirror),
+        Arc::new(move |notice| {
+            if !matches!(notice, Notice::Bootstrapped { .. }) {
+                return;
+            }
+            let backend = until_some("the backend", || asking.lock().unwrap().take());
+            let made = backend.submit(&BackendIntent::CreateTab {
+                tab: TabId::new("t1"),
+                cwd: None,
+                run: None,
+                name: None,
+            });
+            let _ = answered.send(made.map(|outcome| outcome.created_tab));
+        }),
+    )
+    .unwrap();
+    *backend.lock().unwrap() = Some(DaemonBackend::new(
+        follower.connection(),
+        Arc::clone(&mirror),
+        Arc::new(Mutex::new(Minter::new(Mint::Drawn))),
+        BTreeMap::new(),
+        "the test daemon".to_string(),
+    ));
+
+    let made = answers.recv_timeout(std::time::Duration::from_secs(20)).unwrap();
+    assert_eq!(made, Ok(Some(TabId::new("t1"))));
+}

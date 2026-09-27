@@ -29,8 +29,11 @@ use crate::input::Input;
 /// How long a daemon has to answer a request made while connecting.
 const PATIENCE: Duration = Duration::from_secs(10);
 
-/// What the follower tells its owner, as it happens. Called with the mirror's lock released,
-/// so a reaction that reads the mirror does not wait on the thread that wrote it.
+/// What the follower tells its owner, in the order it happened.
+///
+/// Called on a thread of the follower's own, never the one reading the daemon: a reaction is
+/// free to make requests of the same daemon, whose answers that reader has to deliver. The
+/// mirror is already current when a notice arrives, and may have moved on since.
 pub type Notify = Arc<dyn Fn(Notice) + Send + Sync>;
 
 /// One thing worth telling the window or the run log about.
@@ -133,6 +136,7 @@ impl Follower {
         notify: Notify,
     ) -> std::io::Result<Follower> {
         let connection = Arc::new(Connection::default());
+        let notify = notifier(&following.daemon, &connection, notify)?;
         let shared = Arc::clone(&connection);
         let thread = std::thread::Builder::new()
             .name(format!("muster-follow-{}", following.daemon))
@@ -152,6 +156,27 @@ impl Follower {
             send_settings(&control, previous.as_ref(), settings);
         }
     }
+}
+
+/// Hands notices to `notify` on a thread of their own, in order (see [`Notify`]).
+///
+/// Not joined when the follower is dropped: its owner may be holding whatever a reaction is
+/// waiting for. It says nothing once the follower is stopping, and ends when the last sender
+/// goes with the threads that hold one.
+fn notifier(daemon: &str, connection: &Arc<Connection>, notify: Notify) -> std::io::Result<Notify> {
+    let (tell, told) = std::sync::mpsc::channel::<Notice>();
+    let connection = Arc::clone(connection);
+    std::thread::Builder::new().name(format!("muster-notice-{daemon}")).spawn(move || {
+        for notice in told {
+            if connection.stopping.load(Ordering::Relaxed) {
+                return;
+            }
+            notify(notice);
+        }
+    })?;
+    Ok(Arc::new(move |notice| {
+        let _ = tell.send(notice);
+    }))
 }
 
 impl Drop for Follower {
