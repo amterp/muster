@@ -46,10 +46,10 @@ impl Data {
                 })?
                 .with_file_name(NAME),
         };
-        Data::check(dir)
+        Data::check(&dir)
     }
 
-    fn check(dir: PathBuf) -> Result<Data, String> {
+    fn check(dir: &Path) -> Result<Data, String> {
         if !dir.is_dir() {
             return Err(format!(
                 "{} does not exist, or is not a directory. The daemon has not started, because \
