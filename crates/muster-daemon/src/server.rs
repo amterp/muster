@@ -11,6 +11,7 @@ use muster_daemon_proto::version::{PROTOCOL, compatible};
 use muster_daemon_proto::{self as proto, ConnectionKind, hello_answer, install};
 
 use crate::control;
+use crate::input;
 use crate::session::Shared;
 use crate::stream;
 
@@ -85,6 +86,7 @@ fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
     let _ = stream.set_read_timeout(None);
     match ConnectionKind::try_from(hello.kind) {
         Ok(ConnectionKind::Stream) => stream::serve(stream, shared),
+        Ok(ConnectionKind::Input) => input::serve(stream, shared, &hello.client),
         _ => control::serve(stream, shared, &hello.client),
     }
 }
@@ -101,12 +103,7 @@ fn judge(hello: &proto::Hello) -> Result<(), String> {
         ));
     }
     match ConnectionKind::try_from(hello.kind) {
-        Ok(ConnectionKind::Control | ConnectionKind::Stream) => Ok(()),
-        Ok(ConnectionKind::Input) => {
-            Err("this daemon serves control and stream connections only; input connections \
-             arrive in a later version"
-                .to_string())
-        }
+        Ok(ConnectionKind::Control | ConnectionKind::Stream | ConnectionKind::Input) => Ok(()),
         Ok(ConnectionKind::Unspecified) | Err(_) => {
             Err("the hello names no kind of connection this daemon knows".to_string())
         }

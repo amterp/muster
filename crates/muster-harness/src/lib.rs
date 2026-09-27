@@ -7,6 +7,7 @@
 
 mod control;
 mod daemon;
+mod input;
 mod relay;
 mod relay_daemon;
 mod stream;
@@ -14,6 +15,7 @@ mod until;
 
 pub use control::{Asked, Control};
 pub use daemon::{Daemon, FIRST_ANSWER_BUDGET};
+pub use input::Input;
 pub use relay::{Holding, Pump, Relay};
 pub use stream::Stream;
 pub use until::{Detail, PATIENCE, until, until_file, until_some, until_within};

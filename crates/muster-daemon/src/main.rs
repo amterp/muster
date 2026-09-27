@@ -8,6 +8,7 @@
 mod control;
 mod descriptors;
 mod effects;
+mod input;
 mod pane;
 mod process;
 mod pty;

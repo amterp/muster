@@ -5,7 +5,7 @@ mod support;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 
-use muster_daemon_proto::connection::{self, HandshakeError};
+use muster_daemon_proto::connection;
 use muster_daemon_proto::version::PROTOCOL;
 use support::*;
 
@@ -43,18 +43,16 @@ fn a_client_of_another_major_is_refused_with_both_versions() {
 }
 
 #[test]
-fn control_and_stream_connections_are_welcomed_and_input_is_refused_until_it_is_served() {
+fn every_kind_of_connection_is_welcomed() {
     let daemon = daemon();
-    for kind in [proto::ConnectionKind::Control, proto::ConnectionKind::Stream] {
+    for kind in [
+        proto::ConnectionKind::Control,
+        proto::ConnectionKind::Stream,
+        proto::ConnectionKind::Input,
+    ] {
         if let Err(error) = connection::connect(daemon.socket_path(), kind, "test") {
             panic!("a {kind:?} connection was not welcomed: {error:?}");
         }
-    }
-    match connection::connect(daemon.socket_path(), proto::ConnectionKind::Input, "test") {
-        Err(HandshakeError::Refused(refused)) => {
-            assert!(refused.reason.contains("input connections"), "{}", refused.reason);
-        }
-        other => panic!("an input connection was not refused: {other:?}"),
     }
 }
 

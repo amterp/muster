@@ -30,7 +30,7 @@ use crate::pty;
 use crate::pty::Grid;
 use crate::screen::Screen;
 use crate::stream::{Bridge, Refusal};
-use crate::writer::{self, Input};
+use crate::writer::{self, Encoding, Input, Writer};
 
 /// Told when a pane's process has ended, with the pane's serial and, when this daemon saw the
 /// process end, how it ended.
@@ -47,6 +47,8 @@ pub(crate) struct PaneIo {
     master: Arc<OwnedFd>,
     /// The pane's lock: its terminal, and where its output stands.
     screen: Mutex<Screen>,
+    /// The pane's modes as the writer encodes against them, refreshed under the pane's lock.
+    encoding: Arc<Mutex<Encoding>>,
     input: SyncSender<Input>,
 }
 
@@ -62,6 +64,21 @@ impl PaneIo {
             Ok(()) => true,
             Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => false,
         }
+    }
+
+    /// Output for the pane, from its program or on its behalf: to its bridge and its terminal,
+    /// then the modes it left read out for the writer.
+    fn output(&self, bytes: &[u8]) -> Vec<Happened> {
+        let mut screen = self.screen();
+        let happened = screen.output(bytes);
+        poison::lock(&self.encoding, "daemon.pane.encoding").refresh(screen.terminal());
+        happened
+    }
+
+    /// Resets the pane's terminal and its surface's, as Ghostty's `reset` does. The program is
+    /// not told.
+    pub(crate) fn reset(&self) {
+        self.output(b"\x1bc");
     }
 
     /// Attaches a bridge to the pane, at `grid` when it says one.
@@ -96,6 +113,7 @@ impl PaneIo {
     }
 
     fn resize_locked(&self, screen: &mut Screen, grid: Grid) {
+        poison::lock(&self.encoding, "daemon.pane.encoding").resize(grid);
         let resized = pty::set_size(self.master.as_fd(), grid)
             .map_err(|error| error.to_string())
             .and_then(|()| screen.resize(grid).map_err(|error| error.to_string()));
@@ -185,20 +203,30 @@ impl Pane {
         let (wake_read, wake) = pipe().map_err(failed)?;
         let writer_wake = writer::duplicate(&wake_read).map_err(failed)?;
         let master = Arc::new(master);
+        let encoding = Encoding::new(screen.terminal(), screen.grid())
+            .map_err(|error| failed(io::Error::other(error.to_string())))?;
+        let encoding = Arc::new(Mutex::new(encoding));
         let (input, queued) = writer::queue();
         let io = Arc::new(PaneIo {
             serial,
             master: Arc::clone(&master),
             screen: Mutex::new(screen),
+            encoding: Arc::clone(&encoding),
             input,
         });
         let pane = record.pane.clone();
 
         let writing = Arc::clone(&master);
-        let name = pane.clone();
+        let writer = Writer::new(
+            pane.clone(),
+            serial,
+            encoding,
+            Arc::downgrade(&io),
+            watching.reports.clone(),
+        );
         std::thread::Builder::new()
             .name(format!("write {pane}"))
-            .spawn(move || writer::write(&name, &queued, &writing, &writer_wake))
+            .spawn(move || writer.write(&queued, &writing, &writer_wake))
             .map_err(failed)?;
 
         let reader = Reader {
@@ -327,7 +355,7 @@ impl Reader {
             let read = unsafe { libc::read(master, buffer.as_mut_ptr().cast(), buffer.len()) };
             if read > 0 {
                 let chunk = &buffer[..read.cast_unsigned()];
-                let happened = self.io.screen().output(chunk);
+                let happened = self.io.output(chunk);
                 self.io.dispatch(happened, &mut self.heard, &self.reports);
                 if !self.heard.reports_directory && due.is_none() {
                     due = Some(Instant::now() + CWD_CADENCE);

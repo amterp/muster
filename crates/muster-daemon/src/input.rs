@@ -1,0 +1,154 @@
+//! An input connection: keystrokes, clicks, pastes and `pane send` text, never answered.
+//!
+//! Each event names its pane and goes to that pane's writer queue, which encodes it against
+//! the pane's modes (`writer.rs`). The connection never waits on a pane: an event for a pane
+//! whose program has stopped reading, with its queue full, is dropped rather than held, since
+//! holding it would stall every other pane's input behind one program.
+
+use std::collections::HashMap;
+use std::os::unix::net::UnixStream;
+use std::sync::{Arc, Weak};
+
+use muster_core::diagnostics::log;
+use muster_core::fields;
+use muster_core::input::{KeyAction, Modifiers, OptionAsAlt};
+use muster_daemon_proto::connection;
+use muster_daemon_proto::{self as proto, input_event, input_event::perform};
+use muster_vt::{MouseAction, MouseButton, MouseEvent};
+
+use crate::pane::PaneIo;
+use crate::session::Shared;
+use crate::writer::{Input, OwnedKey, Wheel};
+
+/// Serves a welcomed input connection until it hangs up.
+pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) {
+    log::info("daemon.input.opened", fields! { "client" => client });
+    let mut panes: HashMap<String, Weak<PaneIo>> = HashMap::new();
+    // Panes whose queue was full at the last event, so a stall is said once rather than per
+    // keystroke.
+    let mut stalled: Vec<String> = Vec::new();
+    loop {
+        let event = match connection::receive::<proto::InputEvent>(&mut stream) {
+            Ok(Some(event)) => event,
+            Ok(None) => break,
+            Err(error) => {
+                log::warn(
+                    "daemon.input.unreadable",
+                    fields! {
+                        "client" => client,
+                        "error" => error,
+                        "impact" => "the input connection is closed; its client has to reconnect",
+                        "check" => "whether the client speaks this daemon's protocol version",
+                    },
+                );
+                break;
+            }
+        };
+        let Some(input) = event.input.and_then(|input| input_of(input, &event.pane)) else {
+            continue;
+        };
+        let io = panes.get(&event.pane).and_then(Weak::upgrade).or_else(|| {
+            let io = shared.lock().pane_io(&event.pane)?;
+            panes.insert(event.pane.clone(), Arc::downgrade(&io));
+            Some(io)
+        });
+        let Some(io) = io else {
+            log::debug("daemon.input.no_pane", fields! { "pane" => event.pane });
+            continue;
+        };
+        if io.queue(input) {
+            stalled.retain(|pane| *pane != event.pane);
+        } else if !stalled.contains(&event.pane) {
+            log::warn(
+                "daemon.input.dropped",
+                fields! {
+                    "pane" => event.pane,
+                    "impact" => "input for this pane is dropped until its program reads again",
+                    "check" => "whether the pane's program has stopped reading its terminal",
+                },
+            );
+            stalled.push(event.pane);
+        }
+    }
+    log::info("daemon.input.closed", fields! { "client" => client });
+}
+
+/// What an event asks the pane's writer for. Nothing for an event that names nothing to do.
+fn input_of(input: input_event::Input, pane: &str) -> Option<Input> {
+    use input_event::Input as Event;
+    let modifiers = |bits: u32| Modifiers(u16::try_from(bits).unwrap_or(0));
+    match input {
+        Event::Key(key) => Some(Input::Key(OwnedKey {
+            action: match key.action() {
+                proto::KeyAction::Release => KeyAction::Release,
+                proto::KeyAction::Repeat => KeyAction::Repeated,
+                proto::KeyAction::Press | proto::KeyAction::Unspecified => KeyAction::Press,
+            },
+            code: key.key,
+            modifiers: modifiers(key.mods).0,
+            consumed_modifiers: modifiers(key.consumed_mods).0,
+            unshifted_codepoint: key.unshifted_codepoint,
+            composing: key.composing,
+            option_as_alt: match key.option_as_alt() {
+                proto::OptionAsAlt::Always => OptionAsAlt::Always,
+                proto::OptionAsAlt::Left => OptionAsAlt::LeftOnly,
+                proto::OptionAsAlt::Right => OptionAsAlt::RightOnly,
+                proto::OptionAsAlt::Never | proto::OptionAsAlt::Unspecified => OptionAsAlt::Never,
+            },
+            text: key.text,
+        })),
+        Event::Mouse(mouse) => {
+            let action = match mouse.action() {
+                proto::MouseAction::Press => MouseAction::Press,
+                proto::MouseAction::Release => MouseAction::Release,
+                proto::MouseAction::Motion => MouseAction::Motion,
+                proto::MouseAction::Unspecified => return None,
+            };
+            let button = match mouse.button() {
+                proto::MouseButton::Left => Some(MouseButton::Left),
+                proto::MouseButton::Right => Some(MouseButton::Right),
+                proto::MouseButton::Middle => Some(MouseButton::Middle),
+                proto::MouseButton::None | proto::MouseButton::Unspecified => None,
+            };
+            Some(Input::Mouse(MouseEvent {
+                action,
+                button,
+                modifiers: modifiers(mouse.mods),
+                position: position(mouse.x, mouse.y),
+            }))
+        }
+        Event::Wheel(wheel) => Some(Input::Wheel(Wheel {
+            dx: wheel.dx,
+            dy: wheel.dy,
+            precise: wheel.precise,
+            modifiers: modifiers(wheel.mods),
+            position: position(wheel.x, wheel.y),
+        })),
+        Event::Paste(paste) => Some(Input::Paste { text: paste.text, confirmed: paste.confirmed }),
+        Event::Send(send) => Some(Input::Send { text: send.text, enter: send.enter }),
+        Event::Focus(focus) => Some(Input::Focus(focus.focused)),
+        Event::Perform(input_event::Perform { action: Some(action) }) => match action {
+            perform::Action::Raw(bytes) => Some(Input::Reply(bytes)),
+            perform::Action::Reset(_) => Some(Input::Reset),
+            perform::Action::ClearScreen(_) => {
+                log::warn(
+                    "daemon.input.clear_screen_unsupported",
+                    fields! {
+                        "pane" => pane,
+                        "impact" => "the pane's screen and history were not cleared",
+                        "check" => "clear_screen needs to know whether the cursor is at a \
+                                    prompt, which arrives with shell integration",
+                    },
+                );
+                None
+            }
+        },
+        Event::Perform(input_event::Perform { action: None }) => None,
+    }
+}
+
+/// A surface position in pixels, which never needs more than f32 holds.
+#[allow(clippy::cast_possible_truncation)]
+fn position(x: f64, y: f64) -> (f32, f32) {
+    (x as f32, y as f32)
+}

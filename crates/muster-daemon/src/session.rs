@@ -618,6 +618,9 @@ impl Session {
                     effect: Some(effect),
                 }));
             }
+            Reported::PasteHeld(text) => {
+                self.emit(Payload::PasteHeld(proto::PasteHeld { pane: name, text }));
+            }
         }
     }
 

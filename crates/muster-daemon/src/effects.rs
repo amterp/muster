@@ -145,6 +145,8 @@ pub(crate) enum Reported {
     Title(String),
     Cwd(PathBuf),
     Shown(Shown),
+    /// A paste with a newline, to a program that did not ask for bracketed paste.
+    PasteHeld(String),
 }
 
 /// Where panes send their reports.

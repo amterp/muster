@@ -59,6 +59,7 @@ impl Stream {
     /// A write the daemon no longer reads is what a hung-up stream looks like from here, as it
     /// does to a real bridge, so it is not a failure; the next read reports the end.
     fn send(&mut self, request: stream_request::Request) {
-        let _ = connection::send(&mut self.stream, &proto::StreamRequest { request: Some(request) });
+        let _ =
+            connection::send(&mut self.stream, &proto::StreamRequest { request: Some(request) });
     }
 }
