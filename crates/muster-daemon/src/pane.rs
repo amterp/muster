@@ -157,8 +157,8 @@ fn drain(master: &OwnedFd, wake: &OwnedFd, serial: u64, ended: Option<&Ended>) {
     }
 }
 
-/// A pipe whose two ends are close-on-exec, made under the session lock like every other
-/// descriptor a pane owns (`pty.rs` says why that matters).
+/// A pipe whose two ends are close-on-exec. A pane forked in the moment before they are marked
+/// still gets neither (`descriptors.rs`).
 fn pipe() -> io::Result<(OwnedFd, OwnedFd)> {
     let mut ends = [-1; 2];
     // SAFETY: `ends` has room for the two descriptors pipe writes.

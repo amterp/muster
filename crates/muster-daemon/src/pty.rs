@@ -141,6 +141,20 @@ pub(crate) fn hang_up(group: i32) {
     }
 }
 
+/// Ends a process started for a pane that will never exist, and reaps it: SIGKILL to its
+/// process group, since nothing it started has had a chance to matter yet.
+pub(crate) fn abandon(mut child: Child) {
+    if let Ok(group) = i32::try_from(child.id()) {
+        // SAFETY: killpg with a positive group id signals that group only; the child leads its
+        // own group because it started its own session.
+        unsafe {
+            libc::killpg(group, libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 /// The shell a pane runs when nothing names one: `$SHELL`, else the account's, else `/bin/sh`.
 pub(crate) fn default_shell(environment: &[(std::ffi::OsString, std::ffi::OsString)]) -> String {
     let from_environment = environment

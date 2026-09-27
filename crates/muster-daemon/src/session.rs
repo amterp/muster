@@ -5,9 +5,18 @@
 //! answer under the same lock. That is the whole of the ordering the protocol promises: events
 //! before the answer that names the last of them, and a subscription's snapshot before any event
 //! after it. Nothing on a pane's output path takes this lock.
+//!
+//! A pane create is the one request that lets go of the lock part way. Starting a process waits
+//! for it to change directory and exec, and a directory on a hung mount would otherwise stall
+//! every connection and every exit with it. So the create is checked and its names reserved
+//! under the lock, the process starts without it, and the pane is placed - its events emitted
+//! and its answer queued - under the lock again.
 
+use std::collections::HashSet;
 use std::ffi::OsString;
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
+use std::process::Child;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -65,6 +74,8 @@ impl Shared {
                     home,
                     next_serial: 0,
                     ended,
+                    reserved: HashSet::new(),
+                    stopping: false,
                 }),
                 stopping,
                 instance,
@@ -95,6 +106,11 @@ pub(crate) struct Session {
     home: PathBuf,
     next_serial: u64,
     ended: Ended,
+    /// Pane and tab names a create has claimed while its process starts, so a second create
+    /// cannot claim them too.
+    reserved: HashSet<String>,
+    /// Set once the daemon has begun to stop, after which no pane starts.
+    stopping: bool,
 }
 
 impl std::fmt::Debug for Session {
@@ -160,7 +176,43 @@ impl Reply {
     }
 }
 
+/// What handling a request came to.
+#[derive(Debug)]
+pub(crate) enum Handled {
+    Reply(Reply),
+    /// A pane to start with the session unlocked, then finish with [`Session::started`].
+    Start(Box<Starting>),
+}
+
+/// A create that has been checked, with its names reserved, and whose process has yet to start.
+#[derive(Debug)]
+pub(crate) struct Starting {
+    pane: String,
+    label: Option<String>,
+    command: Option<String>,
+    target: Target,
+    grid: Grid,
+    cwd: PathBuf,
+    argv: Vec<String>,
+    environment: Vec<(OsString, OsString)>,
+}
+
+impl Starting {
+    /// Opens the pane's PTY and starts its process. Waits for the process to change directory
+    /// and exec, which is why the session is not locked while this runs.
+    pub(crate) fn start(&self) -> std::io::Result<(OwnedFd, Child)> {
+        let launch = Launch {
+            argv: &self.argv,
+            environment: &self.environment,
+            cwd: &self.cwd,
+            grid: self.grid,
+        };
+        pty::start(&launch)
+    }
+}
+
 /// Where a create or a move puts a pane, once checked against what is here.
+#[derive(Debug)]
 enum Target {
     Beside { pane: String, side: tree::Side, ratio: f32 },
     NewTab { name: String, label: proto::Label },
@@ -172,11 +224,11 @@ impl Session {
         self.seq
     }
 
-    pub(crate) fn handle(&mut self, service: Service, asker: &Outbox) -> Reply {
+    pub(crate) fn handle(&mut self, service: Service, asker: &Outbox) -> Handled {
         use pane_request::Request as P;
         use session_request::Request as S;
         use tab_request::Request as T;
-        match service {
+        let reply = match service {
             Service::Session(proto::SessionRequest { request: Some(request) }) => match request {
                 S::Snapshot(_) => Reply {
                     detail: Some(Box::new(Detail::Snapshot(self.snapshot()))),
@@ -198,7 +250,7 @@ impl Session {
                 T::SetSplitRatio(set) => self.set_split_ratio(&set),
             },
             Service::Pane(proto::PaneRequest { request: Some(request) }) => match request {
-                P::Create(create) => self.create(create),
+                P::Create(create) => return self.create(create),
                 P::Close(close) => self.close_pane(&close.pane),
                 P::Resize(resize) => self.resize(&resize),
                 P::Zoom(zoom) => self.zoom(&zoom),
@@ -214,7 +266,8 @@ impl Session {
                 },
             },
             _ => Reply::unsupported(),
-        }
+        };
+        Handled::Reply(reply)
     }
 
     /// Stops listening to a connection that has gone.
@@ -222,8 +275,9 @@ impl Session {
         self.subscribers.retain(|subscriber| subscriber.id != connection);
     }
 
-    /// Closes every tab, and so every pane, in the order they were opened.
+    /// Closes every tab, and so every pane, in the order they were opened, and starts no more.
     pub(crate) fn close_everything(&mut self) {
+        self.stopping = true;
         while let Some(tab) = self.tabs.first() {
             let name = tab.name.clone();
             self.close_tab(&name);
@@ -264,27 +318,39 @@ impl Session {
     // -----------------------------------------------------------------------------------------
     // Panes
 
-    fn create(&mut self, create: pane_request::Create) -> Reply {
-        if let Err(why) = valid_name("pane", &create.pane) {
-            return Reply::refused(why);
+    /// Checks a create and reserves its names. The pane is started outside the lock
+    /// ([`Starting::start`]) and finished by [`Session::started`].
+    fn create(&mut self, create: pane_request::Create) -> Handled {
+        match self.prepare(create) {
+            Ok(starting) => Handled::Start(Box::new(starting)),
+            Err(reply) => Handled::Reply(reply),
         }
+    }
+
+    fn prepare(&mut self, create: pane_request::Create) -> Result<Starting, Reply> {
+        valid_name("pane", &create.pane).map_err(Reply::refused)?;
         if self.pane_index(&create.pane).is_some() {
-            return Reply::already();
+            return Err(Reply::already());
+        }
+        if self.reserved.contains(&create.pane) {
+            return Err(Reply::refused(format!(
+                "a pane {} is being started by another request",
+                create.pane
+            )));
+        }
+        if self.stopping {
+            return Err(Reply::refused("the daemon is stopping"));
         }
         if create.command.as_deref() == Some("") {
-            return Reply::refused("the command is empty; leave it out to start a shell");
+            return Err(Reply::refused("the command is empty; leave it out to start a shell"));
         }
-        let target = match self.target(create.placement, &create.pane) {
-            Ok(target) => target,
-            Err(reply) => return reply,
-        };
+        let target = self.target(create.placement, &create.pane)?;
         let neighbour = match &target {
             Target::Beside { pane, .. } => self.pane_index(pane).map(|index| &self.panes[index]),
             Target::NewTab { .. } => None,
         };
         let grid = match create.grid.map(grid) {
-            Some(Ok(grid)) => grid,
-            Some(Err(why)) => return Reply::refused(why),
+            Some(grid) => grid.map_err(Reply::refused)?,
             None => neighbour.map_or(Grid::FALLBACK, |pane| pane.grid),
         };
         let cwd = match create.cwd.filter(|cwd| !cwd.is_empty()) {
@@ -297,32 +363,74 @@ impl Session {
         let argv =
             pty::argv(shell.command.as_deref(), login, create.command.as_deref(), &self.inherited);
         let environment = spawn::environment(&self.inherited, &create.env, &create.pane);
-        let launch = Launch { argv: &argv, environment: &environment, cwd: &cwd, grid };
-        let (master, child) = match pty::start(&launch) {
+
+        self.reserved.insert(create.pane.clone());
+        if let Target::NewTab { name, .. } = &target {
+            self.reserved.insert(name.clone());
+        }
+        Ok(Starting {
+            pane: create.pane,
+            label: create.label,
+            command: create.command,
+            target,
+            grid,
+            cwd,
+            argv,
+            environment,
+        })
+    }
+
+    /// Finishes a create once its process has started, or failed to. The names it reserved are
+    /// released either way, and a pane whose place went away while it started is ended again.
+    pub(crate) fn started(
+        &mut self,
+        starting: Starting,
+        started: std::io::Result<(OwnedFd, Child)>,
+    ) -> Reply {
+        self.reserved.remove(&starting.pane);
+        if let Target::NewTab { name, .. } = &starting.target {
+            self.reserved.remove(name);
+        }
+        let program = &starting.argv[0];
+        let (master, child) = match started {
             Ok(started) => started,
-            Err(error) => return Self::could_not_start(&create.pane, &argv[0], &cwd, &error),
+            Err(error) => {
+                return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
+            }
         };
+        let gone = match &starting.target {
+            _ if self.stopping => Some(Reply::refused("the daemon stopped while the pane started")),
+            Target::Beside { pane, .. } if self.tab_of(pane).is_none() => Some(Reply::not_there(
+                format!("{pane} closed while the pane beside it was starting"),
+            )),
+            _ => None,
+        };
+        if let Some(reply) = gone {
+            drop(master);
+            pty::abandon(child);
+            return reply;
+        }
 
         let record = proto::Pane {
-            pane: create.pane.clone(),
-            label: create.label,
-            cwd: cwd.display().to_string(),
-            command: create.command,
+            pane: starting.pane.clone(),
+            label: starting.label,
+            cwd: starting.cwd.display().to_string(),
+            command: starting.command,
             ..proto::Pane::default()
         };
         self.next_serial += 1;
+        let serial = self.next_serial;
         let pane =
-            match Pane::start(record, grid, self.next_serial, master, Some(child), &self.ended) {
+            match Pane::start(record, starting.grid, serial, master, Some(child), &self.ended) {
                 Ok(pane) => pane,
-                Err(error) => return Self::could_not_start(&create.pane, &argv[0], &cwd, &error),
+                Err(error) => {
+                    return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
+                }
             };
-        log::info(
-            "daemon.pane.started",
-            fields! { "pane" => create.pane, "serial" => pane.serial },
-        );
+        log::info("daemon.pane.started", fields! { "pane" => starting.pane, "serial" => serial });
         self.emit(Payload::PaneOpened(proto::PaneOpened { pane: Some(pane.record.clone()) }));
         self.panes.push(pane);
-        self.place(&create.pane, target);
+        self.place(&starting.pane, starting.target);
         Reply::done()
     }
 
@@ -366,7 +474,7 @@ impl Session {
             }
             proto::placement::Where::NewTab(new_tab) => {
                 valid_name("tab", &new_tab.tab).map_err(Reply::refused)?;
-                if self.tab_index(&new_tab.tab).is_some() {
+                if self.tab_index(&new_tab.tab).is_some() || self.reserved.contains(&new_tab.tab) {
                     return Err(Reply::refused(format!(
                         "a tab {} is already on this daemon; place the pane beside one of its panes",
                         new_tab.tab
