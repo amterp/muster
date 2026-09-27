@@ -194,7 +194,11 @@ pub(crate) fn move_aside(path: &Path) -> std::io::Result<PathBuf> {
 /// will leave the rest out.
 pub(crate) fn keep_aside(path: &Path) -> std::io::Result<PathBuf> {
     let aside = aside(path, "unrestored");
-    std::fs::copy(path, &aside)?;
+    // Copied under another name and renamed, so no copy is ever found half written.
+    let mut copying = path.as_os_str().to_owned();
+    copying.push(".copying");
+    std::fs::copy(path, &copying)?;
+    std::fs::rename(&copying, &aside)?;
     Ok(aside)
 }
 

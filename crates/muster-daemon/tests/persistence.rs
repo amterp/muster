@@ -346,7 +346,9 @@ fn a_tab_no_shell_will_start_for_is_kept_in_a_copy_of_the_file() {
 /// has ended, the snapshot says it is under way.
 #[test]
 fn a_name_a_client_took_while_restoring_is_kept_in_a_copy_of_the_file() {
-    const TABS: usize = 60;
+    // Twenty shells to start against one connection's worth of requests: about 70 ms here, and
+    // ten seconds under emulation, where sixty outlasted the suite's patience.
+    const TABS: usize = 20;
     let mut daemon = daemon();
     let work = directory(&daemon, "work");
     let file = saved(TABS, &work, None);
