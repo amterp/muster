@@ -59,7 +59,19 @@ bundle and is kept at licenses/herdr/LICENSE. That copy is herdr's own file
 byte for byte, including the unfilled placeholders in the Apache appendix -
 which is why it names nobody, and why this paragraph rather than that file is
 where herdr is attributed. Muster starts that daemon and speaks to it over its
-socket, and contains no herdr source.
+socket.
+
+Muster's source also carries herdr code, under the same license. The crate
+crates/muster-detect ports herdr v0.8.0's agent detection, and changes it:
+src/manifest.rs and src/manifests.rs port src/detect/manifest.rs and the version
+type in src/detect/manifest_update.rs; src/identify.rs ports the process
+identification in src/detect/mod.rs and src/pane.rs; src/process/ ports the
+macOS and Linux probes in src/platform/; src/osc.rs ports the OSC 9 capture in
+src/pane/osc.rs; src/detector.rs ports the detection loop in src/pane.rs and
+src/pane/agent_detection.rs. Each of those files names what it ports and says
+that it was changed. crates/muster-detect/manifests/ holds herdr's nineteen
+detection manifests from src/detect/manifests/, byte for byte except pi.toml and
+opencode.toml, which each open with a comment saying what Muster changed.
 
 Muster links swift-protobuf (https://github.com/apple/swift-protobuf), licensed
 under the Apache License, Version 2.0, at the version pinned in

@@ -47,6 +47,22 @@ OUTPUT = ROOT / "licenses" / "THIRD-PARTY.md"
 # these along a normal edge is redistributed.
 SHIPPED_ROOTS = ("muster-seam", "muster-cli", "muster-bridge")
 
+# Source Muster carries from another project rather than links as a crate. Cargo cannot
+# see it, so it is named here: which workspace crate holds it, and the license it came
+# under. It is attributed below once that crate reaches a shipped binary - before then
+# the bundle does not contain it, and saying otherwise is the untruth this file avoids.
+VENDORED = (
+    {
+        "crate": "muster-detect",
+        "project": "herdr",
+        "version": "0.8.0",
+        "license": "Apache-2.0",
+        "repository": "https://github.com/herdrdev/herdr",
+        "license_file": "licenses/herdr/LICENSE",
+        "paths": ("crates/muster-detect/src", "crates/muster-detect/manifests"),
+    },
+)
+
 # The release is Apple Silicon only, so this is the graph that ships. Without it
 # cargo resolves for every platform and pulls in Windows crates that are not in
 # the local registry, which turns an offline run into a download or a failure.
@@ -96,8 +112,9 @@ def cargo_metadata() -> dict:
     return json.loads(out.stdout)
 
 
-def shipped_packages(meta: dict) -> list[dict]:
-    """Every third-party package reachable from a shipped crate."""
+def shipped_packages(meta: dict) -> tuple[list[dict], set[str]]:
+    """Every third-party package reachable from a shipped crate, and the names of the
+    workspace crates reached on the way."""
     by_id = {p["id"]: p for p in meta["packages"]}
     nodes = {n["id"]: n for n in meta["resolve"]["nodes"]}
     workspace = {by_id[i]["name"] for i in meta["workspace_members"]}
@@ -131,10 +148,32 @@ def shipped_packages(meta: dict) -> list[dict]:
                 continue
             stack.append(dep["pkg"])
 
-    return sorted(
+    third_party = sorted(
         (by_id[i] for i in seen if by_id[i]["name"] not in workspace),
         key=lambda p: (p["name"].lower(), p["version"]),
     )
+    return third_party, {by_id[i]["name"] for i in seen} & workspace
+
+
+def shipped_vendored(meta: dict, shipped_crates: set[str]) -> list[dict]:
+    """The VENDORED entries that ship, after checking every entry still describes the tree."""
+    by_id = {p["id"]: p for p in meta["packages"]}
+    workspace = {by_id[i]["name"] for i in meta["workspace_members"]}
+    for entry in VENDORED:
+        missing = [
+            path
+            for path in (entry["license_file"], *entry["paths"])
+            if not (ROOT / path).exists()
+        ]
+        if entry["crate"] not in workspace or missing:
+            sys.exit(
+                f"VENDORED names {entry['project']} source in {entry['crate']}, but "
+                f"{'that crate is not in the workspace' if entry['crate'] not in workspace else 'these paths are gone: ' + ', '.join(missing)}.\n"
+                "Impact: the attribution would describe code that is not where it says,\n"
+                "so it cannot be trusted to cover the code that is. If the source moved,\n"
+                "update the entry in tools/licenses.py; if it was removed, drop the entry."
+            )
+    return [entry for entry in VENDORED if entry["crate"] in shipped_crates]
 
 
 def license_texts(pkg: dict) -> list[tuple[str, str]]:
@@ -209,7 +248,7 @@ def swift_license_text(pkg: dict) -> str:
     )
 
 
-def render(packages: list[dict], swift: list[dict]) -> str:
+def render(packages: list[dict], swift: list[dict], vendored: list[dict]) -> str:
     # Group by the exact text, so one wording appears once however many crates
     # publish it.
     groups: dict[str, dict] = {}
@@ -331,6 +370,24 @@ def render(packages: list[dict], swift: list[dict]) -> str:
         w("```")
         w("")
 
+    if vendored:
+        w("## Source ported from other projects")
+        w("")
+        w("Compiled in as part of a Muster crate rather than linked as a crate of its own.")
+        w("")
+        for entry in vendored:
+            w(
+                f"### {entry['project']} {entry['version']} - {entry['license']} - "
+                f"{entry['repository']}"
+            )
+            w("")
+            w(f"In `{entry['crate']}`: " + ", ".join(f"`{p}`" for p in entry["paths"]) + ".")
+            w("")
+            w("```")
+            w((ROOT / entry["license_file"]).read_text(encoding="utf-8").strip())
+            w("```")
+            w("")
+
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -344,9 +401,9 @@ def main() -> int:
     args = parser.parse_args()
 
     meta = cargo_metadata()
-    packages = shipped_packages(meta)
+    packages, shipped_crates = shipped_packages(meta)
     swift = swift_packages()
-    rendered = render(packages, swift)
+    rendered = render(packages, swift, shipped_vendored(meta, shipped_crates))
 
     if not args.check:
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)

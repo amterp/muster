@@ -8,6 +8,7 @@ members = [
     "crates/muster-core",
     "crates/muster-daemon",
     "crates/muster-daemon-proto",
+    "crates/muster-detect",
     "crates/muster-frame",
     "crates/muster-harness",
     "crates/muster-herdr",
@@ -33,6 +34,7 @@ libc = "0.2"
 muster-cli = { path = "crates/muster-cli" }
 muster-core = { path = "crates/muster-core" }
 muster-daemon-proto = { path = "crates/muster-daemon-proto" }
+muster-detect = { path = "crates/muster-detect" }
 muster-frame = { path = "crates/muster-frame" }
 muster-harness = { path = "crates/muster-harness" }
 muster-herdr = { path = "crates/muster-herdr" }
@@ -41,6 +43,12 @@ muster-seam = { path = "crates/muster-seam" }
 muster-ssh = { path = "crates/muster-ssh" }
 muster-vt = { path = "crates/muster-vt" }
 prost = "0.14"
+# herdr's detection manifests are written in this crate's syntax, so matching them with
+# anything else would change what a rule means.
+regex = "1"
+# Detection manifests are parsed with `deny_unknown_fields`, which is what makes a misspelt
+# key a refusal rather than a rule that silently never matches.
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Verifying the daemon this build pins, in the app rather than only in `./dev`. Pure Rust
 # rather than forking a digest tool, because that tool is `shasum` on macOS and `sha256sum`
