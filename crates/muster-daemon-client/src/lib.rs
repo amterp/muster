@@ -61,6 +61,20 @@ fn dial(
     Ok((stream, welcome))
 }
 
+/// A line a start writes to the stderr file it shares with any other start on that socket, so
+/// that it can quote only what followed it.
+fn start_marker() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_nanos());
+    format!("--- muster-daemon start {}-{nanos} ---", std::process::id())
+}
+
+/// What a stderr file holds after `marker`'s line, trimmed.
+fn after_marker<'a>(text: &'a str, marker: &str) -> &'a str {
+    text.rfind(marker).map_or("", |at| text[at + marker.len()..].trim())
+}
+
 fn bounded(stream: &UnixStream, patience: Option<Duration>) -> std::io::Result<()> {
     stream.set_read_timeout(patience)?;
     stream.set_write_timeout(patience)

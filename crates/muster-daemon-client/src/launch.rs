@@ -11,6 +11,7 @@
 //! bundle holds muster-daemon, a spawned daemon's prompts are charged to Muster.
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -91,7 +92,8 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
             "environment" => launch.environment.keys().cloned().collect::<Vec<_>>().join(","),
         },
     );
-    let mut child = spawn(launch, &errors).map_err(|error| {
+    let marker = crate::start_marker();
+    let mut child = spawn(launch, &errors, &marker).map_err(|error| {
         format!(
             "could not run the daemon at {} ({error}), so this window has no session behind it. \
              A build stages it beside the bridge; check that it is there and executable.",
@@ -103,7 +105,9 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
     let mut lost_the_race = false;
     loop {
         if let Ok(welcome) = probe(launch.socket) {
-            let reached = if lost_the_race { Reached::Adopted } else { Reached::Started };
+            // A rival starter's daemon can answer before this one's exit says it lost.
+            let reached =
+                if welcome.pid == child.id() { Reached::Started } else { Reached::Adopted };
             log::info(
                 "daemon.started",
                 fields! {
@@ -113,9 +117,7 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
                     "reached" => format!("{reached:?}"),
                 },
             );
-            if !lost_the_race {
-                reap_later(child);
-            }
+            reap_later(child);
             return Ok((reached, welcome));
         }
         if !lost_the_race && let Ok(Some(status)) = child.try_wait() {
@@ -127,31 +129,36 @@ fn start(launch: &Launch) -> Result<(Reached, Welcome), String> {
                     "the daemon exited with {status} before it answered on {}, so this window \
                      has no session behind it. It said: {}",
                     launch.socket.display(),
-                    said(&errors)
+                    said(&errors, &marker)
                 ));
             }
         }
         if Instant::now() >= deadline {
+            // It may yet answer, and must not be left to linger as a zombie when it ends.
+            reap_later(child);
             return Err(format!(
                 "the daemon was started but did not answer on {} within {}s, so this window \
                  has no session behind it. It may still be starting, and relaunching will find \
                  it. It said: {}",
                 launch.socket.display(),
                 START_PATIENCE.as_secs(),
-                said(&errors)
+                said(&errors, &marker)
             ));
         }
         std::thread::sleep(DIAL_INTERVAL);
     }
 }
 
-fn spawn(launch: &Launch, errors: &Path) -> std::io::Result<Child> {
+fn spawn(launch: &Launch, errors: &Path, marker: &str) -> std::io::Result<Child> {
     // The daemon makes its own directory when it claims the socket, but the stderr file beside
     // the socket is opened first: on a machine that never ran a daemon it would not be there.
     if let Some(directory) = launch.socket.parent() {
         std::fs::create_dir_all(directory)?;
     }
-    let errors = std::fs::File::create(errors)?;
+    // Appended to, under a line of this start's own: two starters racing share the file, and
+    // each quotes only what its own daemon said.
+    let mut errors = std::fs::OpenOptions::new().create(true).append(true).open(errors)?;
+    writeln!(errors, "{marker}")?;
     let mut command = Command::new(launch.binary);
     command.arg("--socket").arg(launch.socket);
     if let Some(data) = launch.data {
@@ -220,9 +227,10 @@ fn stderr_path(socket: &Path) -> PathBuf {
     socket.with_extension("stderr")
 }
 
-fn said(errors: &Path) -> String {
-    match std::fs::read_to_string(errors) {
-        Ok(text) if !text.trim().is_empty() => text.trim().to_string(),
-        _ => format!("nothing ({} is empty)", errors.display()),
+fn said(errors: &Path, marker: &str) -> String {
+    let text = std::fs::read_to_string(errors).unwrap_or_default();
+    match crate::after_marker(&text, marker) {
+        "" => format!("nothing (in {} after the line {marker})", errors.display()),
+        said => said.to_string(),
     }
 }

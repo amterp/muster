@@ -24,6 +24,28 @@ const START_PATIENCE: Duration = Duration::from_secs(30);
 
 const DIAL_INTERVAL: Duration = Duration::from_millis(20);
 
+/// How often a starting daemon is checked for having exited. Each check is an ssh round trip,
+/// so far fewer of them than dials.
+const EXIT_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+
+/// A shell on the machine the daemon is to run on: ssh's in the app, and in tests a local `sh`,
+/// where the far side and this one are the same machine.
+pub trait Far {
+    fn host(&self) -> &str;
+    /// Runs `script` there and returns what it printed.
+    fn shell(&self, script: &str) -> Result<String, String>;
+}
+
+impl Far for Remote {
+    fn host(&self) -> &str {
+        Remote::host(self)
+    }
+
+    fn shell(&self, script: &str) -> Result<String, String> {
+        Remote::shell(self, script)
+    }
+}
+
 /// Where this version's daemon is on a machine whose environment is `environment`, as
 /// `muster_ssh::remote_environment` read it, and where it listens there.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +72,7 @@ impl Installed {
 /// Dials the daemon through `local_socket`, the forward's end here, and starts the one
 /// `installed` names over there if nothing answers.
 pub fn ensure_running(
-    remote: &Remote,
+    remote: &impl Far,
     installed: &Installed,
     local_socket: &Path,
 ) -> Result<(Reached, Welcome), String> {
@@ -99,48 +121,89 @@ pub fn ensure_running(
             "socket" => installed.socket.display(),
         },
     );
-    remote.shell(&start_script(installed))?;
+    let marker = crate::start_marker();
+    let started = remote.shell(&start_script(installed, &marker))?;
+    let pid: u32 = started.trim().parse().map_err(|_| {
+        format!(
+            "the start script on {} did not say which process it started (it printed {:?}), so \
+             its panes are absent from the window. This is likely a bug in the script.",
+            remote.host(),
+            started.trim()
+        )
+    })?;
 
     let deadline = Instant::now() + START_PATIENCE;
+    let mut next_exit_check = Instant::now() + EXIT_CHECK_INTERVAL;
     loop {
         if let Ok(welcome) = probe(local_socket) {
+            // A rival starter's daemon can take the socket first, and this one then exits.
+            let reached = if welcome.pid == pid { Reached::Started } else { Reached::Adopted };
             log::info(
                 "daemon.remote.started",
-                fields! { "host" => remote.host(), "pid" => welcome.pid, "instance" => welcome.instance },
+                fields! {
+                    "host" => remote.host(),
+                    "pid" => welcome.pid,
+                    "instance" => welcome.instance,
+                    "reached" => format!("{reached:?}"),
+                },
             );
-            return Ok((Reached::Started, welcome));
+            return Ok((reached, welcome));
         }
-        if Instant::now() >= deadline {
-            let said = remote
-                .shell(&format!("cat {} 2>/dev/null", path(&installed.stderr())))
-                .unwrap_or_default();
+        let now = Instant::now();
+        if now >= next_exit_check {
+            next_exit_check = now + EXIT_CHECK_INTERVAL;
+            let alive = remote.shell(&format!("kill -0 {pid} 2>/dev/null && echo alive"))?;
+            // One more dial: a daemon that lost the race exits, and the winner answers.
+            if alive.trim() != "alive" && probe(local_socket).is_err() {
+                return Err(format!(
+                    "the daemon on {} exited before it answered, so its panes are absent from \
+                     the window. It said: {}",
+                    remote.host(),
+                    said(remote, installed, &marker)
+                ));
+            }
+        }
+        if now >= deadline {
             return Err(format!(
                 "the daemon on {} was started and did not answer within {}s, so its panes are \
                  absent from the window. It said: {}",
                 remote.host(),
                 START_PATIENCE.as_secs(),
-                if said.trim().is_empty() { "nothing" } else { said.trim() }
+                said(remote, installed, &marker)
             ));
         }
         std::thread::sleep(DIAL_INTERVAL);
     }
 }
 
-/// The command that starts the daemon over there and returns at once.
+/// What the daemon wrote to its stderr file since this start's marker.
+fn said(remote: &impl Far, installed: &Installed, marker: &str) -> String {
+    let text = remote.shell(&format!("cat {} 2>/dev/null", path(&installed.stderr())));
+    match crate::after_marker(&text.unwrap_or_default(), marker) {
+        "" => "nothing".to_string(),
+        said => said.to_string(),
+    }
+}
+
+/// The command that starts the daemon over there, returns at once, and prints its pid.
 ///
 /// In a session of its own where the machine has `setsid`, and under `nohup` where it does not
 /// (a remote Mac ships no `setsid`), so the daemon outlives the ssh connection that started it.
-/// The brace group keeps the redirects on the daemon itself: dash execs the last command of a
-/// backgrounded list, and without the group ssh would wait on pipes the daemon holds open.
-pub fn start_script(installed: &Installed) -> String {
+/// Both exec the daemon, so `$!` is the daemon itself. The brace group keeps the redirects on
+/// the daemon: dash execs the last command of a backgrounded list, and without the group ssh
+/// would wait on pipes the daemon holds open. The stderr file is appended to, under `marker`,
+/// because another start may be writing to it at the same moment.
+pub fn start_script(installed: &Installed, marker: &str) -> String {
     let binary = path(&installed.binary);
     let socket = path(&installed.socket);
     let errors = path(&installed.stderr());
     let directory = path(installed.socket.parent().unwrap_or(Path::new("/")));
+    let marker = quoted(marker);
     format!(
-        "mkdir -p {directory} && if command -v setsid >/dev/null 2>&1; then \
-         {{ setsid {binary} --socket {socket} > {errors} 2>&1 < /dev/null & }}; else \
-         {{ nohup {binary} --socket {socket} > {errors} 2>&1 < /dev/null & }}; fi"
+        "mkdir -p {directory} && echo {marker} >> {errors} && \
+         if command -v setsid >/dev/null 2>&1; then \
+         {{ setsid {binary} --socket {socket} >> {errors} 2>&1 < /dev/null & }}; else \
+         {{ nohup {binary} --socket {socket} >> {errors} 2>&1 < /dev/null & }}; fi; echo $!"
     )
 }
 
@@ -183,35 +246,78 @@ mod tests {
             binary: PathBuf::from("/home/o'neil/.muster/daemon/0.9.0/muster-daemon"),
             socket: PathBuf::from("/home/o'neil/.muster/daemon/dev-1.sock"),
         };
-        let script = start_script(&installed);
+        let script = start_script(&installed, "--- a marker ---");
         assert!(script.contains(&quoted("/home/o'neil/.muster/daemon/0.9.0/muster-daemon")));
         assert!(script.contains(&quoted("/home/o'neil/.muster/daemon/dev-1.stderr")));
     }
 
-    /// Run by the shells a remote might have, it returns at once and leaves the daemon running,
-    /// told where to listen: bash forks a backgrounded list, and dash execs its last command.
-    #[test]
-    fn the_start_script_returns_and_leaves_the_daemon_running() {
-        let root = std::env::temp_dir().join(format!("muster-start-{}", std::process::id()));
+    /// This machine standing in for the far one: the same shell, no ssh.
+    struct Here;
+
+    impl Far for Here {
+        fn host(&self) -> &'static str {
+            "here"
+        }
+
+        fn shell(&self, script: &str) -> Result<String, String> {
+            let output = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(script)
+                .stderr(std::process::Stdio::inherit())
+                .output()
+                .map_err(|error| error.to_string())?;
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        }
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let root = PathBuf::from(format!("/tmp/muster-test/r{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn executable(path: &Path, script: &str) {
+        std::fs::write(path, script).unwrap();
+        std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+    }
+
+    /// A daemon that dies at once is noticed by its exit, not by the start's whole patience.
+    #[test]
+    fn a_remote_daemon_that_dies_at_once_says_why_quickly() {
+        let root = scratch("dies");
+        let binary = root.join("muster-daemon");
+        executable(&binary, "#!/bin/sh\necho 'no data directory beside me' >&2\nexit 1\n");
+        let installed = Installed { binary, socket: root.join("daemon").join("d.sock") };
+        let started = Instant::now();
+        let error = ensure_running(&Here, &installed, &installed.socket).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(2), "took {:?}", started.elapsed());
+        assert!(error.contains("no data directory beside me"), "{error}");
+        assert!(error.contains("exited before it answered"), "{error}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Run by the shells a remote might have, it returns at once, prints the daemon's pid and
+    /// leaves the daemon running, told where to listen: bash forks a backgrounded list, and dash
+    /// execs its last command. macOS ships both, so neither needs a container.
+    #[test]
+    fn the_start_script_returns_and_leaves_the_daemon_running() {
+        let root = scratch("start");
         let told = root.join("told");
         let binary = root.join("muster-daemon");
-        std::fs::write(
+        executable(
             &binary,
-            format!("#!/bin/sh\necho \"$@\" > '{}'\nsleep 3\n", told.display()),
-        )
-        .unwrap();
-        std::fs::set_permissions(&binary, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .unwrap();
+            &format!("#!/bin/sh\necho \"$$ $@\" > '{}'\nsleep 3\n", told.display()),
+        );
         let installed = Installed { binary, socket: root.join("daemon").join("d.sock") };
 
-        for shell in ["/bin/sh", "/bin/bash"] {
+        for shell in ["/bin/dash", "/bin/bash"] {
             let _ = std::fs::remove_file(&told);
             let started = Instant::now();
             let output = std::process::Command::new(shell)
                 .arg("-c")
-                .arg(start_script(&installed))
+                .arg(start_script(&installed, "--- a marker ---"))
                 .stdout(std::process::Stdio::piped())
                 .output()
                 .unwrap();
@@ -222,7 +328,12 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(10));
             }
             let told = std::fs::read_to_string(&told).unwrap_or_default();
-            assert_eq!(told.trim(), format!("--socket {}", installed.socket.display()), "{shell}");
+            let printed = String::from_utf8_lossy(&output.stdout);
+            assert_eq!(
+                told.trim(),
+                format!("{} --socket {}", printed.trim(), installed.socket.display()),
+                "{shell}: the pid printed is the daemon's own"
+            );
         }
         let _ = std::fs::remove_dir_all(&root);
     }

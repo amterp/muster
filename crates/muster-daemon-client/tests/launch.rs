@@ -79,8 +79,11 @@ fn two_starting_at_once_end_with_one_daemon() {
         let second = scope.spawn(|| ensure_running(&scratch.launch()).unwrap());
         [first.join().unwrap(), second.join().unwrap()]
     });
-    let [(_, first), (_, second)] = launched;
+    let [(first_reached, first), (second_reached, second)] = launched;
     assert_eq!((first.instance, first.pid), (second.instance, second.pid));
+    let started =
+        [first_reached, second_reached].iter().filter(|r| **r == Reached::Started).count();
+    assert_eq!(started, 1, "only the start whose daemon answered says it started one");
 }
 
 #[test]
@@ -92,6 +95,37 @@ fn a_daemon_that_dies_at_once_says_why() {
     let launch = Launch { binary: &broken, ..scratch.launch() };
     let error = ensure_running(&launch).unwrap_err();
     assert!(error.contains("no data directory here"), "{error}");
+}
+
+/// Two starts on one socket share its stderr file, and the second does not erase what the
+/// first one's daemon had already said.
+#[test]
+fn two_daemons_dying_at_once_each_say_why() {
+    let scratch = Scratch::new();
+    let broken = scratch.root.join("broken");
+    std::fs::write(&broken, "#!/bin/sh\necho \"$WHO: no data directory\" >&2\nsleep 0.5\nexit 1\n")
+        .unwrap();
+    std::fs::set_permissions(&broken, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let said_by = |who: &str| {
+        let mut environment = scratch.environment.clone();
+        environment.insert("WHO".to_string(), who.to_string());
+        environment
+    };
+    let (first, second) = (said_by("first"), said_by("second"));
+    let errors = std::thread::scope(|scope| {
+        let one = scope.spawn(|| {
+            ensure_running(&Launch { binary: &broken, environment: &first, ..scratch.launch() })
+                .unwrap_err()
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        let two = scope.spawn(|| {
+            ensure_running(&Launch { binary: &broken, environment: &second, ..scratch.launch() })
+                .unwrap_err()
+        });
+        [one.join().unwrap(), two.join().unwrap()]
+    });
+    assert!(errors[0].contains("first: no data directory"), "{}", errors[0]);
+    assert!(errors[1].contains("second: no data directory"), "{}", errors[1]);
 }
 
 #[test]
