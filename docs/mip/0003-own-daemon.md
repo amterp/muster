@@ -241,7 +241,8 @@ sees the tabs arrive as events, and its snapshot says `restoring` until a `resto
 what did not come back. The app waits for that before it decides a tab of its grouping file is
 gone or makes a pane under a saved name, since a name a client takes first is not restored.
 Nothing is written until every saved tab is back, so a crash or a stop while restoring loses
-nothing. A directory that no longer exists starts its pane's shell at home, and a shell that will
+nothing. A directory that no longer exists starts its pane's shell at home, as does one that has
+not said whether it exists within two seconds, such as one on a hung mount, and a shell that will
 not start - one uninstalled since the last run, a directory it may not enter - is tried again as
 the default shell, in the same directory and then at home. What still does not come back, the next
 write leaves out, so the file as it was is first copied to `<file>.unrestored-<seconds>` and the

@@ -523,19 +523,37 @@ impl Restoring {
         self.panes
             .iter()
             .map(|pane| {
-                let cwd = if pane.saved.cwd.is_dir() {
-                    pane.saved.cwd.clone()
-                } else {
-                    log::warn(
-                        "daemon.state.cwd_gone",
-                        fields! {
-                            "pane" => pane.saved.name,
-                            "cwd" => pane.saved.cwd.display(),
-                            "impact" => "the pane's shell starts in the home directory instead",
-                            "check" => "whether the directory was removed or its mount is gone",
-                        },
-                    );
-                    self.home.clone()
+                let saved = &pane.saved.cwd;
+                let cwd = match is_dir_within(saved, DIRECTORY_PATIENCE, Path::is_dir) {
+                    Some(true) => saved.clone(),
+                    Some(false) => {
+                        log::warn(
+                            "daemon.state.cwd_gone",
+                            fields! {
+                                "pane" => pane.saved.name,
+                                "cwd" => saved.display(),
+                                "impact" => "the pane's shell starts in the home directory instead",
+                                "check" => "whether the directory was removed or its mount is gone",
+                            },
+                        );
+                        self.home.clone()
+                    }
+                    None => {
+                        log::warn(
+                            "daemon.state.cwd_unanswered",
+                            fields! {
+                                "pane" => pane.saved.name,
+                                "cwd" => saved.display(),
+                                "seconds" => DIRECTORY_PATIENCE.as_secs(),
+                                "impact" => "the pane's shell starts in the home directory \
+                                             instead, and a thread still waiting on the directory \
+                                             is left until it answers",
+                                "check" => "whether the directory is on a network mount that has \
+                                            hung",
+                            },
+                        );
+                        self.home.clone()
+                    }
                 };
                 let first = start_launched(&pane.launch, &cwd, pane.saved.grid);
                 let Err(error) = first.started else { return first };
@@ -560,6 +578,29 @@ impl Restoring {
             })
             .collect()
     }
+}
+
+/// How long restoring waits to learn whether a pane's saved directory is there. A directory on a
+/// mount that has hung never answers, and would otherwise hold every tab after it back.
+const DIRECTORY_PATIENCE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Whether `path` is a directory, asked by `probe` on a thread of its own so a hung mount costs
+/// `within` rather than the restore. None when it did not answer in time; the thread is left
+/// waiting, one per such directory.
+fn is_dir_within(
+    path: &Path,
+    within: std::time::Duration,
+    probe: fn(&Path) -> bool,
+) -> Option<bool> {
+    let (answer, answered) = std::sync::mpsc::channel();
+    let path = path.to_path_buf();
+    std::thread::Builder::new()
+        .name("probe directory".to_string())
+        .spawn(move || {
+            let _ = answer.send(probe(&path));
+        })
+        .ok()?;
+    answered.recv_timeout(within).ok()
 }
 
 fn start_launched((argv, environment): &Launched, cwd: &Path, grid: Grid) -> Restarted {
@@ -2042,6 +2083,23 @@ mod tests {
         assert_eq!(next_event(&mut events), Payload::Restored(expected));
         assert!(!shared.lock().restoring);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A directory on a hung mount never answers whether it is there, and restoring must not
+    /// wait on it: the pane starts at home instead.
+    #[test]
+    fn a_directory_that_does_not_answer_is_given_up_on() {
+        let hung = |_: &Path| {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            true
+        };
+        let asked = std::time::Instant::now();
+        let patience = std::time::Duration::from_millis(50);
+        assert_eq!(is_dir_within(Path::new("/"), patience, hung), None);
+        assert!(asked.elapsed() < std::time::Duration::from_secs(5));
+        assert_eq!(is_dir_within(Path::new("/"), DIRECTORY_PATIENCE, Path::is_dir), Some(true));
+        let gone = Path::new("/nonexistent/directory");
+        assert_eq!(is_dir_within(gone, DIRECTORY_PATIENCE, Path::is_dir), Some(false));
     }
 
     fn replace_request() -> Service {
