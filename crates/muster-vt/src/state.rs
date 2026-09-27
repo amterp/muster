@@ -208,7 +208,8 @@ impl Terminal {
     /// cheap next to the replay it serves, and never on a path that runs per byte.
     pub fn cursor_shape(&self) -> CursorShape {
         let mut state: ffi::GhosttyRenderState = std::ptr::null_mut();
-        let mut style = ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK;
+        let mut style =
+            ffi::GhosttyRenderStateCursorVisualStyle_GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK;
         // SAFETY: a render state is created with the default allocator, updated from a terminal
         // this borrow keeps alive, read into a local of the type the header documents for
         // CURSOR_VISUAL_STYLE, and freed before return on every path.
