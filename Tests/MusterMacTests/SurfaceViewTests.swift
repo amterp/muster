@@ -177,6 +177,82 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(recorder.requests.isEmpty)
 }
 
+// The surface's half of a keystroke. The program's bytes go through the core to the daemon; the
+// surface is handed the same key afterwards for what it does by itself - scroll to the bottom,
+// clear a selection - and only when the program got it, so a chord Muster kept moves nothing.
+
+/// A core that says whether each press reached the pane's program.
+private func keysReachThePane(_ toPane: Bool) -> RecordingDispatcher {
+  RecordingDispatcher { request in
+    guard case .keyDown = request.payload else { return nil }
+    var handled = Muster_KeyHandled()
+    handled.toPane = toPane
+    return .keyHandled(handled)
+  }
+}
+
+@Test(.ownsTheSeam) @MainActor func aKeyTheProgramGotReachesTheSurface() {
+  let recording = RecordingSurface()
+  let pane = view(
+    surface: recording, clipboard: NSPasteboard.general, recorder: keysReachThePane(true))
+
+  pane.keyDown(with: key("h", keyCode: 0x04))
+
+  #expect(recording.presses.map(\.keyCode) == [0x04])
+  #expect(recording.presses.map(\.composing) == [false])
+}
+
+@Test(.ownsTheSeam) @MainActor func aKeyMusterKeptNeverReachesTheSurface() {
+  // A key the program never saw scrolling the pane to the bottom, or clearing what somebody
+  // had selected, would be the surface acting on a keystroke that was not the pane's.
+  let recording = RecordingSurface()
+  let pane = view(
+    surface: recording, clipboard: NSPasteboard.general, recorder: keysReachThePane(false))
+
+  pane.keyDown(with: key("h", keyCode: 0x04))
+
+  #expect(recording.presses.isEmpty)
+}
+
+@Test(.ownsTheSeam) @MainActor func aKeyTheCoreDidNotAnswerNeverReachesTheSurface() {
+  // A refusal or an answer of another kind is not a yes. `ok` is what the recorder says to
+  // everything it was not told about.
+  let recording = RecordingSurface()
+  let pane = view(surface: recording, clipboard: NSPasteboard.general)
+
+  pane.keyDown(with: key("h", keyCode: 0x04))
+
+  #expect(recording.presses.isEmpty)
+}
+
+@Test(.ownsTheSeam) @MainActor func aReleaseAndAModifierReachTheSurface() {
+  let recording = RecordingSurface()
+  let pane = view(surface: recording, clipboard: NSPasteboard.general)
+
+  pane.keyUp(with: release("h", keyCode: 0x04))
+  pane.flagsChanged(with: modifiers([.command]))
+
+  #expect(recording.releases == [0x04])
+  #expect(recording.modifierChanges.map { $0.contains(.command) } == [true])
+}
+
+@Test(.ownsTheSeam) @MainActor func aViewWithNoPaneHandsItsSurfaceNoKeys() {
+  // The renderer check runs a shell straight in its surface and swallows the keyboard, which
+  // the title says. A surface handed keys anyway would type into that shell.
+  let recording = RecordingSurface()
+  let pane = view(
+    surface: recording, clipboard: NSPasteboard.general, recorder: keysReachThePane(true))
+  pane.attach(typeable: false)
+
+  pane.keyDown(with: key("h", keyCode: 0x04))
+  pane.keyUp(with: release("h", keyCode: 0x04))
+  pane.flagsChanged(with: modifiers([.command]))
+
+  #expect(recording.presses.isEmpty)
+  #expect(recording.releases.isEmpty)
+  #expect(recording.modifierChanges.isEmpty)
+}
+
 // Selection and the clipboard, which is the one input path that never reaches the core: the
 // grid libghostty painted is where a drag lands, so the oracle here is the surface rather than
 // the seam.
@@ -331,6 +407,21 @@ private func key(_ characters: String, keyCode: UInt16) -> NSEvent {
     with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
     context: nil, characters: characters, charactersIgnoringModifiers: characters,
     isARepeat: false, keyCode: keyCode)!
+}
+
+private func release(_ characters: String, keyCode: UInt16) -> NSEvent {
+  NSEvent.keyEvent(
+    with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+    context: nil, characters: characters, charactersIgnoringModifiers: characters,
+    isARepeat: false, keyCode: keyCode)!
+}
+
+/// The left command key changing, as AppKit reports it: the flags held after the change.
+private func modifiers(_ flags: NSEvent.ModifierFlags) -> NSEvent {
+  NSEvent.keyEvent(
+    with: .flagsChanged, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0,
+    context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false,
+    keyCode: 0x37)!
 }
 
 private func click(at point: NSPoint) -> NSEvent { mouse(.leftMouseDown, at: point) }

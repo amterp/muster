@@ -5,7 +5,7 @@ import MusterRenderer
 ///
 /// libghostty attaches its own Metal layer to whatever NSView it is handed, so this view
 /// draws nothing itself. What it does own is input: the surface is a renderer, and nothing
-/// typed here goes through it (architecture.md, the renderer seam).
+/// typed here reaches the pane through it (architecture.md, the renderer seam).
 ///
 /// A library rather than part of the executable, because a view is reachable by a test and
 /// an executable's top-level code is not. `NSEvent.keyEvent(with:...)` builds a keystroke
@@ -189,12 +189,17 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // would be the shell deciding what a keystroke means, and choosing *both* - the
     // committed text and the encoded key - is the bug that made `hello` arrive as
     // `hheelllloo`.
-    Core.send(
+    let toPane = Core.send(
       keyDown: event.musterKeyEvent(
         action: event.isARepeat ? "repeated" : "press", isComposing: hasMarkedText()),
       wasComposing: wasComposing,
       committed: committedText,
       stillComposing: hasMarkedText())
+    // Only keys the program got (SurfaceKeys.swift says why the surface gets them at all), so
+    // a chord Muster kept moves nothing in the pane.
+    guard toPane else { return }
+    surface?.pressKey(
+      event, committed: committedText, composing: wasComposing || hasMarkedText())
   }
 
   public override func keyUp(with event: NSEvent) {
@@ -205,6 +210,18 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     Core.send(
       keyUp: event.musterKeyEvent(
         action: event.isARepeat ? "repeated" : "release", isComposing: hasMarkedText()))
+    surface?.releaseKey(event)
+  }
+
+  public override func flagsChanged(with event: NSEvent) {
+    // A modifier held changes what the surface does with the pointer, as it does in Ghostty.
+    // Not mid-composition, where the modifiers belong to the input method.
+    if isTypeable, !hasMarkedText() {
+      surface?.changeModifiers(event)
+    }
+    // Onward regardless: the window watches modifiers for the numbered chords, and an override
+    // here that stopped the event would end those silently.
+    super.flagsChanged(with: event)
   }
 
   /// A click into a window that is not key still picks the pane, rather than being spent
@@ -402,9 +419,8 @@ extension SurfaceView: @preconcurrency NSTextInputClient {
 
   /// Where the input method should put its candidate window.
   ///
-  /// The pane's cursor is daemon truth and the frame stream does not carry it, so this
-  /// answers with the view's own origin. A candidate window in the wrong corner is a
-  /// papercut; refusing to compose until the cursor is knowable would be worse.
+  /// The view's own origin for now. The surface knows where the pane's cursor is and could
+  /// say; a candidate window in the wrong corner is a papercut until it is asked.
   public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
     guard let window else { return .zero }
     return window.convertToScreen(convert(bounds, to: nil))

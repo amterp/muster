@@ -99,13 +99,17 @@ struct NumberedChordTests {
 @Suite("modifier events reach the window")
 @MainActor
 struct ModifierRoutingTests {
-  @Test("a modifier released over a pane reaches the window above it")
+  @Test("a modifier released over a pane reaches the pane's surface and the window above it")
   func modifiersTravelUpFromAPane() {
+    // The pane's view hands modifiers to its surface too, which is an override of exactly the
+    // kind that could stop them here.
     let window = KeyboardWindow(
       contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
       styleMask: [.titled], backing: .buffered, defer: false)
     let frame = NSRect(x: 0, y: 0, width: 200, height: 200)
     let chrome = PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
+    let recording = RecordingSurface()
+    chrome.surface.attach(recording, typeable: true)
     window.contentView?.addSubview(chrome)
 
     var held: [NSEvent.ModifierFlags] = []
@@ -117,6 +121,7 @@ struct ModifierRoutingTests {
     chrome.surface.flagsChanged(with: modifiers([]))
 
     #expect(held == [[.command], []])
+    #expect(recording.modifierChanges.count == 2)
   }
 
   @Test("a modifier released with the agent list focused reaches it too")

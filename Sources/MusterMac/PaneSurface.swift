@@ -49,6 +49,15 @@ public protocol PaneSurface: AnyObject {
   /// not who needs to know.
   var onProcessExited: (@MainActor (Bool) -> Void)? { get set }
 
+  /// A key the pane's program was given, handed to the surface for what it does on a keystroke
+  /// by itself. `committed` is an input method's text for it, and `composing` whether one was
+  /// or still is composing.
+  func pressKey(_ event: NSEvent, committed: String?, composing: Bool)
+  func releaseKey(_ event: NSEvent)
+
+  /// A modifier pressed or released on its own.
+  func changeModifiers(_ event: NSEvent)
+
   /// Where the pointer is, in the surface's own coordinates - measured from its top left,
   /// which is not where AppKit measures from. The caller converts.
   func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags)

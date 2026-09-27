@@ -40,6 +40,11 @@ public struct Appearance: Equatable, Sendable {
   /// Blank space between a pane's text and its edges, in points. Zero is a real answer.
   public var panePadding: UInt32?
 
+  /// How far the wheel scrolls, scaling what the device reported: 1 is the device's own answer.
+  /// The core scales what reaches the pane's program by the same number, so a surface that
+  /// ignored it would scroll its own history a different distance from the program's.
+  public var scrollMultiplier: Double?
+
   public init(
     fontFamily: String? = nil, fontSize: Float? = nil,
     background: String? = nil, foreground: String? = nil,
@@ -48,7 +53,7 @@ public struct Appearance: Equatable, Sendable {
     bold: String? = nil,
     palette: [String] = [],
     cursorStyle: CursorStyle? = nil, cursorBlink: Bool? = nil,
-    panePadding: UInt32? = nil
+    panePadding: UInt32? = nil, scrollMultiplier: Double? = nil
   ) {
     self.fontFamily = fontFamily
     self.fontSize = fontSize
@@ -63,6 +68,7 @@ public struct Appearance: Equatable, Sendable {
     self.cursorStyle = cursorStyle
     self.cursorBlink = cursorBlink
     self.panePadding = panePadding
+    self.scrollMultiplier = scrollMultiplier
   }
 
   /// The shapes a cursor comes in, in Muster's spelling.
@@ -85,10 +91,10 @@ public struct Appearance: Equatable, Sendable {
 /// is what lets a reload use the same path as a launch instead of a second one that can
 /// disagree with it.
 ///
-/// Empty when the appearance names nothing, which is how a person who configured no appearance
-/// gets no file rather than an empty one.
+/// Never empty: whatever the appearance says, a surface is told it has no bindings and no
+/// clipboard of its own (`embedded` below).
 public func ghosttyConfiguration(_ appearance: Appearance) -> [String] {
-  var lines: [String] = []
+  var lines = embedded
   func set(_ key: String, _ value: String?) {
     guard let value else { return }
     lines.append("\(key) = \(value)")
@@ -131,5 +137,29 @@ public func ghosttyConfiguration(_ appearance: Appearance) -> [String] {
     lines.append("window-padding-y = \(padding)")
   }
 
+  // Ghostty scrolls a trackpad's pixels at 1 and a wheel's notches at 3 rows each by default,
+  // and Muster's number scales what the device reported - so both scale by it, and 1 is exactly
+  // Ghostty's defaults.
+  set(
+    "mouse-scroll-multiplier",
+    appearance.scrollMultiplier.map { "precision:\(decimal($0)),discrete:\(decimal($0 * 3))" })
+
   return lines
+}
+
+/// What every surface is told whatever the appearance says, because a surface here is a view of a
+/// pane rather than a terminal of its own.
+///
+/// No bindings: every key a surface sees has already been given to the program, and a Ghostty
+/// binding firing on it underneath Muster's would act twice on one keystroke. No clipboard: a
+/// program's OSC 52 reaches the daemon too, and the daemon's is the one that is applied.
+private let embedded = [
+  "keybind = clear",
+  "clipboard-read = deny",
+  "clipboard-write = deny",
+]
+
+/// A number as somebody would write it: no trailing `.0`, and a `.` whatever the locale.
+private func decimal(_ value: Double) -> String {
+  String(format: "%g", value)
 }

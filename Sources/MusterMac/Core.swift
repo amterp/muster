@@ -209,7 +209,11 @@ public enum Core {
     return true
   }
 
-  /// A press, with everything the core needs to decide what it meant.
+  /// A press, with everything the core needs to decide what it meant, and whether the pane's
+  /// program got it - as the key itself or as text an input method committed.
+  ///
+  /// False for anything else the core answers, a refusal included: a key the program did not
+  /// get is one the pane's surface must not act on either.
   ///
   /// Internal, like every generated type: the seam's vocabulary is the shell's business
   /// and stops at this module's edge.
@@ -218,7 +222,7 @@ public enum Core {
     wasComposing: Bool,
     committed: String?,
     stillComposing: Bool
-  ) {
+  ) -> Bool {
     var down = Muster_KeyDown()
     down.key = key
     down.wasComposing = wasComposing
@@ -226,7 +230,8 @@ public enum Core {
     down.stillComposing = stillComposing
     var request = Muster_Request()
     request.keyDown = down
-    send(request)
+    guard case .keyHandled(let handled) = send(request) else { return false }
+    return handled.toPane
   }
 
   static func send(keyUp key: Muster_KeyEvent) {
@@ -489,7 +494,8 @@ public enum Core {
         palette: answer.palette,
         cursorStyle: MusterRenderer.Appearance.CursorStyle(rawValue: answer.cursorStyle),
         cursorBlink: answer.hasCursorBlink ? answer.cursorBlink : nil,
-        panePadding: answer.hasPanePadding ? answer.panePadding : nil
+        panePadding: answer.hasPanePadding ? answer.panePadding : nil,
+        scrollMultiplier: answer.scrollMultiplier
       ),
       chrome: Chrome(
         divider: named(answer.dividerColor),

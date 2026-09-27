@@ -88,7 +88,7 @@ import Testing
           bold: "#e5c07b",
           palette: (0..<16).map { String(format: "#%02x0000", $0) },
           cursorStyle: .bar, cursorBlink: false,
-          panePadding: 4)))
+          panePadding: 4, scrollMultiplier: 2)))
     defer { ghostty_config_free(config) }
 
     // Zero is what covers selection-background, selection-foreground and both paddings, which
@@ -125,7 +125,7 @@ import Testing
     defer { ghostty_config_free(config) }
 
     #expect(ghostty_config_diagnostics_count(config) == 0)
-    #expect(ghosttyConfiguration(Appearance(bold: "#e5c07b")) == ["bold-color = #e5c07b"])
+    #expect(ghosttyConfiguration(Appearance(bold: "#e5c07b")).contains("bold-color = #e5c07b"))
   }
 
   @Test func hollowIsMustersWordAndBlockHollowIsGhosttys() throws {
@@ -139,27 +139,79 @@ import Testing
     #expect(name(config, "cursor-style") == "block_hollow")
   }
 
-  @Test func anAppearanceNobodyConfiguredProducesNoFileAtAll() {
-    // Not an empty file - no file. Somebody who wrote no appearance gets whatever the renderer
-    // would have painted anyway, and Muster hands it nothing to read rather than a document
-    // saying nothing.
-    #expect(ghosttyConfiguration(Appearance()).isEmpty)
+  @Test func anAppearanceNobodyConfiguredChangesNothingAboutHowAPaneLooks() throws {
+    // Somebody who wrote no appearance gets whatever the renderer would have painted anyway:
+    // what the file still says is how a surface behaves, never how it looks.
+    let lines = ghosttyConfiguration(Appearance())
+    let config = try loaded(lines)
+    defer { ghostty_config_free(config) }
+    let defaults = try loaded([])
+    defer { ghostty_config_free(defaults) }
+
+    #expect(lines == ["keybind = clear", "clipboard-read = deny", "clipboard-write = deny"])
+    #expect(ghostty_config_diagnostics_count(config) == 0)
+    #expect(color(config, "background") == color(defaults, "background"))
+  }
+
+  @Test func aSurfaceHasNoBindingsOfItsOwn() throws {
+    // Every key a surface sees has already been given to the pane's program. A Ghostty binding
+    // firing on it too - ⌘V pasting from underneath Muster's own paste - is one keystroke acting
+    // twice. Measured against the library's defaults, so this fails if `clear` stops clearing
+    // rather than only if the line goes missing.
+    let config = try loaded(ghosttyConfiguration(Appearance()))
+    defer { ghostty_config_free(config) }
+    let defaults = try loaded([])
+    defer { ghostty_config_free(defaults) }
+
+    #expect(isBound(defaults, "paste_from_clipboard"))
+    #expect(!isBound(config, "paste_from_clipboard"))
+  }
+
+  @Test func aSurfaceNeverTouchesTheClipboard() throws {
+    // A program's OSC 52 reaches the pane's daemon as well as its surface, and the daemon's is
+    // the one Muster applies, under Muster's own setting. A surface that also acted would write
+    // the clipboard twice, or ignore somebody who said deny.
+    let config = try loaded(ghosttyConfiguration(Appearance()))
+    defer { ghostty_config_free(config) }
+
+    #expect(name(config, "clipboard-read") == "deny")
+    #expect(name(config, "clipboard-write") == "deny")
+  }
+
+  @Test func theWheelScalesOnBothKindsOfDevice() throws {
+    // Muster's one number scales what the device reported, and Ghostty's defaults are one row
+    // per trackpad row and three per wheel notch - so both scale, and 1 is exactly the defaults.
+    // The struct cannot be read back through the C API, so the count is what says it parsed.
+    for (multiplier, line) in [
+      (1.0, "mouse-scroll-multiplier = precision:1,discrete:3"),
+      (1.5, "mouse-scroll-multiplier = precision:1.5,discrete:4.5"),
+      (0.25, "mouse-scroll-multiplier = precision:0.25,discrete:0.75"),
+    ] {
+      let lines = ghosttyConfiguration(Appearance(scrollMultiplier: multiplier))
+      let config = try loaded(lines)
+      defer { ghostty_config_free(config) }
+
+      #expect(lines.contains(line))
+      #expect(ghostty_config_diagnostics_count(config) == 0, "\(line) did not parse")
+    }
+    #expect(
+      !ghosttyConfiguration(Appearance()).contains { $0.hasPrefix("mouse-scroll-multiplier") })
   }
 
   @Test func aSizeSomebodyWroteAsAWholeNumberStaysOne() {
     // Cosmetic, and worth a line anyway: this file is what somebody reads when a colour does not
     // take, and `font-size = 13.0` beside a config that says `size = 13` is one more thing to
     // wonder about at that moment.
-    #expect(ghosttyConfiguration(Appearance(fontSize: 13)) == ["font-size = 13"])
-    #expect(ghosttyConfiguration(Appearance(fontSize: 13.5)) == ["font-size = 13.5"])
+    #expect(ghosttyConfiguration(Appearance(fontSize: 13)).contains("font-size = 13"))
+    #expect(ghosttyConfiguration(Appearance(fontSize: 13.5)).contains("font-size = 13.5"))
   }
 
   @Test func paddingIsOneNumberAndTwoAxes() {
     // One key in Muster and two in libghostty, matching `resize_step`: which side of a pane the
     // space is on is not a distinction anybody has asked for.
-    #expect(
-      ghosttyConfiguration(Appearance(panePadding: 0))
-        == ["window-padding-x = 0", "window-padding-y = 0"])
+    let lines = ghosttyConfiguration(Appearance(panePadding: 0))
+    #expect(lines.contains("window-padding-x = 0"))
+    #expect(lines.contains("window-padding-y = 0"))
   }
 
   @Test func aValueLibghosttyCannotParseIsADiagnosticToo() throws {
@@ -245,6 +297,14 @@ private func color(_ config: ghostty_config_t, _ key: String) -> String? {
   var out = ghostty_config_color_s()
   let got = key.withCString { ghostty_config_get(config, &out, $0, UInt(strlen($0))) }
   return got ? String(format: "#%02x%02x%02x", out.r, out.g, out.b) : nil
+}
+
+/// Whether any key triggers an action. An action with none answers an empty trigger: a physical
+/// key that is unidentified, with no modifiers.
+private func isBound(_ config: ghostty_config_t, _ action: String) -> Bool {
+  let trigger = action.withCString { ghostty_config_trigger(config, $0, UInt(strlen($0))) }
+  return trigger.tag != GHOSTTY_TRIGGER_PHYSICAL || trigger.key.physical != GHOSTTY_KEY_UNIDENTIFIED
+    || trigger.mods != GHOSTTY_MODS_NONE
 }
 
 private func palette(_ config: ghostty_config_t, _ index: Int) -> String? {

@@ -195,8 +195,8 @@ public final class Renderer {
   ///
   /// A whole new config handle rather than a mutation, because there is no setter: the same
   /// file-and-load path a launch takes, handed to `ghostty_app_update_config`, which pushes it
-  /// to every surface. Colours, cursor and font size take effect immediately; padding and
-  /// scrollback are documented as reaching new surfaces only.
+  /// to every surface. Colours, cursor, font size and the wheel's multiplier take effect
+  /// immediately; padding and scrollback are documented as reaching new surfaces only.
   ///
   /// The old handle is kept and the new one dropped on failure, so a config that will not build
   /// leaves the window looking exactly as it did rather than half repainted.
@@ -254,7 +254,7 @@ public final class Renderer {
 /// One rendered pane. Disposable: it owns no truth, and closing it touches no session.
 @MainActor
 public final class Surface {
-  private let surface: ghostty_surface_t
+  let surface: ghostty_surface_t
   private let token: UInt
 
   /// Called when the command this surface is running exits.
@@ -431,7 +431,7 @@ public final class Surface {
   /// test can reach - a surface needs a GPU and a window, and forwarding is all this does.
   public func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) {
     ghostty_surface_mouse_pos(
-      surface, Double(point.x), Double(point.y), ghosttyModifiers(modifiers))
+      surface, Double(point.x), Double(point.y), ghosttyMods(modifiers))
   }
 
   /// Presses or releases the left button, which is what starts and ends a selection.
@@ -441,7 +441,7 @@ public final class Surface {
   public func leftMouse(pressed: Bool, modifiers: NSEvent.ModifierFlags) {
     ghostty_surface_mouse_button(
       surface, pressed ? GHOSTTY_MOUSE_PRESS : GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT,
-      ghosttyModifiers(modifiers))
+      ghosttyMods(modifiers))
   }
 
   /// Scrolls this surface's own history, or lets it answer as the pane's modes say.
@@ -512,17 +512,4 @@ private func write(_ lines: [String], to path: String) -> Bool {
   } catch {
     return false
   }
-}
-
-/// AppKit's modifier flags, in libghostty's spelling.
-///
-/// Only the four that mean something to a selection. Caps lock and the left/right variants
-/// exist in the enum and change nothing about dragging out a range of cells.
-private func ghosttyModifiers(_ flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e {
-  var mods: UInt32 = GHOSTTY_MODS_NONE.rawValue
-  if flags.contains(.shift) { mods |= GHOSTTY_MODS_SHIFT.rawValue }
-  if flags.contains(.control) { mods |= GHOSTTY_MODS_CTRL.rawValue }
-  if flags.contains(.option) { mods |= GHOSTTY_MODS_ALT.rawValue }
-  if flags.contains(.command) { mods |= GHOSTTY_MODS_SUPER.rawValue }
-  return ghostty_input_mods_e(mods)
 }

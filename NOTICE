@@ -15,12 +15,14 @@ Specifically:
   Sources/MusterMac/FindBar.swift ports the find bar from
   macos/Sources/Ghostty/Surface View/SurfaceView.swift (SurfaceSearchOverlay) and
   macos/Sources/Helpers/Backport.swift (BackportSelectionTextField) - the layout,
-  the corner-snapping drag, the button style, and what escape and return do. What
-  it counts is Muster's own: the search runs in Muster's core against history held
-  by a session daemon, not in the renderer.
+  the corner-snapping drag, the button style, and what escape and return do.
 
-  Sources/MusterCore/Input/Key.generated.swift and
-  Sources/MusterVT/KeyMapping.generated.swift are generated from Ghostty's
+  Sources/MusterRenderer/SurfaceKeys.swift ports how a keystroke is handed to a
+  surface from macos/Sources/Ghostty/NSEvent+Extension.swift and
+  macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift (keyDown,
+  flagsChanged, keyAction).
+
+  Sources/MusterMac/KeyNames.generated.swift is generated from Ghostty's
   src/input/keycodes.zig, itself derived from Chromium's DOM code table
   (BSD-style license).
 

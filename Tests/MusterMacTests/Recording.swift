@@ -35,6 +35,11 @@ final class RecordingSurface: PaneSurface {
   var refuses: [String] = []
   /// Every wheel it was handed, as the deltas and flags the surface was given.
   var scrolls: [(dx: Double, dy: Double, precise: Bool, momentum: UInt32)] = []
+  /// Every key it was handed, by keycode, with what came with it.
+  var presses: [(keyCode: UInt16, committed: String?, composing: Bool)] = []
+  var releases: [UInt16] = []
+  /// The modifiers held after each change it was told about.
+  var modifierChanges: [NSEvent.ModifierFlags] = []
 
   init(selection: String? = nil) { selectedText = selection }
 
@@ -54,9 +59,15 @@ final class RecordingSurface: PaneSurface {
   func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32) {
     scrolls.append((dx, dy, precise, momentum))
   }
+  func pressKey(_ event: NSEvent, committed: String?, composing: Bool) {
+    presses.append((event.keyCode, committed, composing))
+  }
+  func releaseKey(_ event: NSEvent) { releases.append(event.keyCode) }
+  func changeModifiers(_ event: NSEvent) { modifierChanges.append(event.modifierFlags) }
 }
 
-/// Answers every request with `ok` and keeps what it was asked.
+/// Answers every request with `ok`, or with what the test says instead, and keeps what it was
+/// asked.
 ///
 /// Locked, because not every request arrives on the thread that asked for it: a divider
 /// position leaves on a background queue, so a test reading this while one is in flight would
@@ -65,16 +76,28 @@ final class RecordingDispatcher: Dispatcher, @unchecked Sendable {
   private let lock = NSLock()
   private var recorded: [Muster_Request] = []
 
+  /// The answer to a request, when `ok` is not the one the test is about. Nil answers `ok`.
+  private let answer: @Sendable (Muster_Request) -> Muster_Response.OneOf_Payload?
+
+  init(
+    answering answer: @escaping @Sendable (Muster_Request) -> Muster_Response.OneOf_Payload? = {
+      _ in nil
+    }
+  ) {
+    self.answer = answer
+  }
+
   var requests: [Muster_Request] {
     lock.withLock { recorded }
   }
 
   func dispatch(_ request: [UInt8]) -> [UInt8] {
-    if let decoded = try? Muster_Request(serializedBytes: request) {
-      lock.withLock { recorded.append(decoded) }
-    }
     var response = Muster_Response()
     response.ok = Muster_Ok()
+    if let decoded = try? Muster_Request(serializedBytes: request) {
+      lock.withLock { recorded.append(decoded) }
+      if let payload = answer(decoded) { response.payload = payload }
+    }
     return (try? response.serializedBytes()) ?? []
   }
 }
