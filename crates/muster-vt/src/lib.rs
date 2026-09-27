@@ -5,15 +5,20 @@
 //! app.
 
 mod build_info;
+mod cells;
 mod ffi;
+mod formatter;
 mod grid;
 mod key_encoder;
 mod key_mapping;
 mod modes;
+mod state;
 mod terminal;
 
 pub use build_info::engine_version;
-pub use grid::{Cell, Cursor, Grid, Row, Width};
+pub use formatter::{Extras, Format, FormatOptions};
+pub use grid::{Cell, Color, Cursor, Grid, Row, Style, Width};
 pub use key_encoder::{EncoderError, KeyEncoder};
 pub use modes::Mode;
+pub use state::{Palette, Rgb, Screen};
 pub use terminal::{Terminal, TerminalError};

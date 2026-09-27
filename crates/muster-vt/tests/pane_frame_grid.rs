@@ -16,7 +16,7 @@ fn a_recorded_attach_repaint_renders_the_panes_screen() {
     // just attached, and the one frame every surface is guaranteed to see.
     let ansi = corpus_file("herdr-0.8.0/frames/frame-001-attach.ansi");
 
-    let terminal = Terminal::new(80, 24).expect("libghostty-vt should give us a terminal");
+    let mut terminal = Terminal::new(80, 24).expect("libghostty-vt should give us a terminal");
     terminal.write(&ansi);
 
     expect_snapshot(&terminal.viewport(80, 24).render(), "attach-repaint.txt");
@@ -28,7 +28,7 @@ fn the_whole_recorded_stream_converges_on_the_same_screen() {
     // envelopes off the wire, frames out, bytes into a terminal.
     let stream = corpus_file("herdr-0.8.0/frames/frames.ndjson");
     let mut decoder = FrameDecoder::new();
-    let terminal = Terminal::new(80, 24).expect("libghostty-vt should give us a terminal");
+    let mut terminal = Terminal::new(80, 24).expect("libghostty-vt should give us a terminal");
 
     let mut frames = 0;
     for event in decoder.consume(&stream) {
@@ -47,7 +47,7 @@ fn a_full_repaint_replaces_the_screen_rather_than_layering_onto_it() {
     // A surface attaching to a live pane starts mid-stream and must not inherit whatever was
     // on it (architecture.md, "the shell owns nothing"). herdr's repaint clears first; this
     // pins that we get the clear, not a merge.
-    let terminal = Terminal::new(20, 3).expect("libghostty-vt should give us a terminal");
+    let mut terminal = Terminal::new(20, 3).expect("libghostty-vt should give us a terminal");
     terminal.write(b"stale text everywhere");
     terminal.write(&corpus_file("herdr-0.8.0/frames/frame-001-attach.ansi"));
 

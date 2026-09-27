@@ -18,7 +18,7 @@ use support::{corpus_file, corpus_text};
 fn replay_fidelity_frames() -> Grid {
     let stream = corpus_file("herdr-0.8.0/frame-fidelity/frames.ndjson");
     let mut decoder = FrameDecoder::new();
-    let terminal = muster_vt::Terminal::new(80, 24).expect("libghostty-vt gives us a terminal");
+    let mut terminal = muster_vt::Terminal::new(80, 24).expect("libghostty-vt gives us a terminal");
     for event in decoder.consume(&stream) {
         if let PaneStreamEvent::Frame(frame) = event {
             terminal.write(&frame.bytes);

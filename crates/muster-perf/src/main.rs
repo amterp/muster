@@ -325,7 +325,7 @@ fn measure_everything(streams: &[Vec<u8>]) -> Vec<Cost> {
         measure("frame.vt_parse", "ns/byte", ansi_bytes.max(1), 20, 5, || {
             // A fresh terminal per iteration: replaying a repaint into a terminal that
             // already holds it measures a different, cheaper thing.
-            let Ok(terminal) = Terminal::new(80, 24) else { return };
+            let Ok(mut terminal) = Terminal::new(80, 24) else { return };
             for frame in &frames {
                 terminal.write(&frame.bytes);
             }

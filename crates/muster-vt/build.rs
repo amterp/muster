@@ -77,10 +77,12 @@ fn mode_table(header: &std::path::Path) -> String {
         else {
             continue;
         };
-        let (value, ansi) = arguments.split_once(',').expect("ghostty_mode_new takes two arguments");
+        let (value, ansi) =
+            arguments.split_once(',').expect("ghostty_mode_new takes two arguments");
         let value: u16 = value.trim().parse().expect("a mode's value is a number");
         let ansi: bool = ansi.trim().parse().expect("a mode's ANSI flag is true or false");
-        writeln!(table, "    ({name:?}, {value}, {ansi}),").expect("writing to a String cannot fail");
+        writeln!(table, "    ({name:?}, {value}, {ansi}),")
+            .expect("writing to a String cannot fail");
         count += 1;
     }
     assert!(

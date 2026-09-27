@@ -8,8 +8,9 @@
 use std::fmt;
 
 use crate::ffi;
-use crate::grid::{Cell, Cursor, Grid, Row, Width};
+use crate::grid::Cursor;
 use crate::modes::Mode;
+use crate::state::{Palette, Rgb};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalError {
@@ -36,6 +37,14 @@ impl std::error::Error for TerminalError {}
 pub struct Terminal {
     terminal: ffi::GhosttyTerminal,
 }
+
+// SAFETY: the handle is owned by this value and freed only by its Drop, and libghostty-vt
+// keeps no thread-local state for a terminal, so moving it to another thread is moving a
+// pointer. It is deliberately not Sync: every method reaches the handle through `&self` or
+// `&mut self`, and two threads reading one terminal while a third writes it is exactly what
+// libghostty requires the embedder to prevent. The daemon owns each pane's terminal under
+// that pane's lock, the same external synchronization `KeyEncoder` relies on.
+unsafe impl Send for Terminal {}
 
 impl Terminal {
     /// A terminal with grapheme clustering on, which is what the panes Muster mirrors have.
@@ -92,7 +101,7 @@ impl Terminal {
     /// malformed sequences are logged and dropped rather than propagated. A frame stream
     /// that has gone wrong shows up as a wrong grid, which is what the snapshot then
     /// catches.
-    pub fn write(&self, bytes: &[u8]) {
+    pub fn write(&mut self, bytes: &[u8]) {
         if bytes.is_empty() {
             return;
         }
@@ -103,7 +112,7 @@ impl Terminal {
         }
     }
 
-    pub fn resize(&self, columns: u16, rows: u16) -> Result<(), TerminalError> {
+    pub fn resize(&mut self, columns: u16, rows: u16) -> Result<(), TerminalError> {
         // Cell pixel dimensions feed image protocols and size reports, neither of which a
         // headless grid reader has any use for.
         // SAFETY: the handle is ours and the call takes only scalars besides.
@@ -115,17 +124,24 @@ impl Terminal {
         }
     }
 
-    /// Reads the visible screen.
+    /// Tells the terminal the palette the app is drawing with, as a theme switch does.
     ///
-    /// The viewport rather than the active area, because the viewport is what a user is
-    /// looking at, and that is the thing tests are supposed to assert on.
-    pub fn viewport(&self, columns: u16, rows: u16) -> Grid {
-        Grid {
-            rows: (0..rows)
-                .map(|y| Row { cells: (0..columns).filter_map(|x| self.cell(x, y)).collect() })
-                .collect(),
-            cursor: self.cursor(),
+    /// This sets the *default* palette: entries a program overrode with OSC 4 keep the
+    /// program's color, and every other entry follows the theme.
+    pub fn set_default_palette(&mut self, palette: &Palette) {
+        let raw = palette.map(Rgb::raw);
+        // SAFETY: COLOR_PALETTE reads exactly 256 GhosttyColorRgb from the pointer.
+        unsafe {
+            ffi::ghostty_terminal_set(
+                self.terminal,
+                ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_COLOR_PALETTE,
+                raw.as_ptr().cast(),
+            );
         }
+    }
+
+    pub(crate) fn handle(&self) -> ffi::GhosttyTerminal {
+        self.terminal
     }
 
     /// Where the cursor sits, and whether the user can see it.
@@ -157,91 +173,6 @@ impl Terminal {
             );
         }
         Cursor { column, row, is_visible: visible }
-    }
-
-    fn cell(&self, column: u16, row: u16) -> Option<Cell> {
-        let point = ffi::GhosttyPoint {
-            tag: ffi::GhosttyPointTag_GHOSTTY_POINT_TAG_VIEWPORT,
-            value: ffi::GhosttyPointValue {
-                coordinate: ffi::GhosttyPointCoordinate { x: column, y: u32::from(row) },
-            },
-        };
-        let mut grid_ref = ffi::GhosttyGridRef {
-            size: size_of::<ffi::GhosttyGridRef>(),
-            node: std::ptr::null_mut(),
-            x: 0,
-            y: 0,
-        };
-
-        // SAFETY: the point is fully initialized and the ref is a local we own. libghostty
-        // reads `size` to tell which version of the struct it was handed.
-        let found =
-            unsafe { ffi::ghostty_terminal_grid_ref(self.terminal, point, &raw mut grid_ref) };
-        if found != ffi::GhosttyResult_GHOSTTY_SUCCESS {
-            return None;
-        }
-
-        let mut raw: ffi::GhosttyCell = 0;
-        // SAFETY: the ref was just filled in by libghostty and the out parameter is ours.
-        if unsafe { ffi::ghostty_grid_ref_cell(&raw const grid_ref, &raw mut raw) }
-            != ffi::GhosttyResult_GHOSTTY_SUCCESS
-        {
-            return None;
-        }
-
-        let mut wide = ffi::GhosttyCellWide_GHOSTTY_CELL_WIDE_NARROW;
-        // SAFETY: the out pointer is to a local of the type documented for CELL_DATA_WIDE.
-        unsafe {
-            ffi::ghostty_cell_get(
-                raw,
-                ffi::GhosttyCellData_GHOSTTY_CELL_DATA_WIDE,
-                (&raw mut wide).cast(),
-            );
-        }
-
-        Some(Cell { text: graphemes(&mut grid_ref), width: Width::from_raw(wide) })
-    }
-}
-
-/// The cell's whole grapheme cluster, not just its first codepoint.
-///
-/// A snapshot that dropped combining marks would render an agent's output as something the
-/// user never saw, and would do it silently.
-fn graphemes(grid_ref: &mut ffi::GhosttyGridRef) -> String {
-    {
-        let mut codepoints = vec![0u32; 8];
-        let mut count = 0usize;
-
-        // SAFETY: the buffer is ours and its length is reported honestly; on
-        // GHOSTTY_OUT_OF_SPACE libghostty writes the count it needs into `count` instead.
-        let mut result = unsafe { read_graphemes(grid_ref, &mut codepoints, &raw mut count) };
-        if result == ffi::GhosttyResult_GHOSTTY_OUT_OF_SPACE {
-            codepoints = vec![0u32; count];
-            // SAFETY: as above, now with the capacity libghostty asked for.
-            result = unsafe { read_graphemes(grid_ref, &mut codepoints, &raw mut count) };
-        }
-        if result != ffi::GhosttyResult_GHOSTTY_SUCCESS {
-            return String::new();
-        }
-
-        codepoints.iter().take(count).filter_map(|point| char::from_u32(*point)).collect()
-    }
-}
-
-unsafe fn read_graphemes(
-    grid_ref: &mut ffi::GhosttyGridRef,
-    codepoints: &mut [u32],
-    count: *mut usize,
-) -> ffi::GhosttyResult {
-    // SAFETY: the caller guarantees `count` points at a usize it owns; the buffer is a live
-    // slice for the duration of the call.
-    unsafe {
-        ffi::ghostty_grid_ref_graphemes(
-            &raw const *grid_ref,
-            codepoints.as_mut_ptr(),
-            codepoints.len(),
-            count,
-        )
     }
 }
 

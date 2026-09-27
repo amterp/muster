@@ -1,13 +1,15 @@
 //! What a terminal screen holds, as data, and as text a reviewer can read in a diff.
 //!
-//! Deliberately only text and cell widths. Colors and attributes are real, and a snapshot
-//! that carried them would be a better oracle - but it would also be a wall of noise in
-//! every diff, and `docs/testing.md` wants cases a reviewer can read. Styling gets added
-//! when a test needs it to fail honestly.
+//! A cell carries its style, and a row whether it soft-wraps, because the replay oracle
+//! needed both to fail honestly: a replay that drops a status bar's background, or turns a
+//! soft wrap into a hard one, draws the same text. The rendered snapshot stays text and
+//! widths only - colors in every snapshot diff would be a wall of noise, and
+//! `docs/testing.md` wants cases a reviewer can read.
 
 use std::fmt::Write as _;
 
 use crate::ffi;
+use crate::state::Rgb;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Width {
@@ -30,16 +32,51 @@ impl Width {
     }
 }
 
+/// A color as a cell refers to it: by palette index, so it follows the palette, or direct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Color {
+    Palette(u8),
+    Rgb(Rgb),
+}
+
+/// What SGR left on a cell.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[allow(clippy::struct_excessive_bools)] // one flag per SGR attribute
+pub struct Style {
+    pub foreground: Option<Color>,
+    pub background: Option<Color>,
+    pub underline_color: Option<Color>,
+    pub bold: bool,
+    pub italic: bool,
+    pub faint: bool,
+    pub blink: bool,
+    pub inverse: bool,
+    pub invisible: bool,
+    pub strikethrough: bool,
+    pub overline: bool,
+    /// libghostty's underline kind: none, single, double, curly, dotted, dashed.
+    pub underline: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cell {
     /// The whole grapheme cluster in this cell. Empty for an unwritten cell.
     pub text: String,
     pub width: Width,
+    /// Includes a background an erase left with no text in the cell.
+    pub style: Style,
+    /// Set by DECSCA, so a selective erase leaves it alone.
+    pub protected: bool,
+    /// The OSC 8 link this cell belongs to.
+    pub hyperlink: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
     pub cells: Vec<Cell>,
+    /// Whether the line continues onto the next row because it ran out of width, rather
+    /// than because the program moved to a new line.
+    pub wraps: bool,
 }
 
 impl Row {

@@ -413,7 +413,7 @@ impl Bridge {
     /// pane's stream opens with a full repaint and replaying it is exact. It is also a few
     /// kilobytes, so the cost is not worth a terminal held across threads.
     pub(crate) fn grid(&self) -> Grid {
-        let terminal = Terminal::new(COLUMNS, ROWS).expect("libghostty-vt gives us a terminal");
+        let mut terminal = Terminal::new(COLUMNS, ROWS).expect("libghostty-vt gives us a terminal");
         terminal.write(&self.frames.lock().expect("a panicking reader poisoned the frame buffer"));
         terminal.viewport(COLUMNS, ROWS)
     }
