@@ -722,7 +722,9 @@ message StreamRequest {
   }
 
   // Bytes of `output` written to the surface since the last credit; a replay's bytes are not
-  // counted. The daemon keeps at most a fixed window of output unacknowledged.
+  // counted. The daemon sends output while less than a window of it (256 KiB) is
+  // unacknowledged, so a bridge must credit what it has written before a window's worth waits
+  // on it. It may credit in batches smaller than that.
   message Credit {
     uint64 bytes = 1;
   }
@@ -742,9 +744,9 @@ message StreamMessage {
     bytes replay = 3;
     // The program's own bytes.
     bytes output = 4;
-    // The window of unacknowledged output is full and output is being skipped. Once every byte
-    // sent has been credited, a replay catches the surface up with the screen, not the history it
-    // missed.
+    // The window of unacknowledged output is full and output is being skipped. Once credit
+    // brings the unacknowledged output below the window again, a replay catches the surface up
+    // with the screen, not the history it missed, and output resumes.
     Behind behind = 5;
     Detached detached = 6;
   }

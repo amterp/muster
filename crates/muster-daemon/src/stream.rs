@@ -5,7 +5,7 @@
 //! does can make the reader wait: frames go to a queue drained by a writer thread of the
 //! stream's own, and credit bounds that queue. A bridge that stops acknowledging what it has
 //! written to its surface falls behind, stops receiving output, and is caught up with the
-//! screen once it has acknowledged everything it was sent (MIP-3 section 4).
+//! screen once its acknowledgements make room in its window again (MIP-3 section 4).
 
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
@@ -67,11 +67,16 @@ impl Credit {
         Offer::Send
     }
 
-    /// Takes the bridge's word that it has written `bytes` more to its surface. True when that
-    /// was everything sent to a bridge that fell behind, which is when it is caught up.
+    /// Takes the bridge's word that it has written `bytes` more to its surface. True when a
+    /// bridge that fell behind has room in its window again, which is when it is caught up.
+    ///
+    /// Room, not an empty window: a bridge may acknowledge in batches, and one that fell behind
+    /// is sent nothing more to complete its last batch with, so waiting for every byte would
+    /// leave it blank for good. Room is the condition output already flows under, so a bridge
+    /// that works at all is never wedged.
     pub(crate) fn acknowledge(&mut self, bytes: u64) -> bool {
         self.unacknowledged = self.unacknowledged.saturating_sub(bytes);
-        if self.behind && self.unacknowledged == 0 {
+        if self.behind && self.unacknowledged < self.window {
             self.behind = false;
             return true;
         }
@@ -270,16 +275,36 @@ mod tests {
     }
 
     #[test]
-    fn credit_makes_room_and_a_bridge_behind_is_caught_up_only_when_acknowledged_in_full() {
+    fn credit_makes_room_and_a_bridge_behind_is_caught_up_once_it_has_room() {
         let mut credit = Credit::new(100);
         credit.offer(60);
         assert!(!credit.acknowledge(60), "a bridge that never fell behind owes no catch-up");
         credit.offer(120);
         assert_eq!(credit.offer(1), Offer::FallBehind);
-        assert!(!credit.acknowledge(100), "twenty bytes still unacknowledged");
+        assert!(!credit.acknowledge(20), "a hundred bytes still unacknowledged: a full window");
         assert_eq!(credit.offer(1), Offer::Skip);
-        assert!(credit.acknowledge(20));
+        assert!(credit.acknowledge(1));
         assert_eq!(credit.offer(1), Offer::Send, "caught up, output flows again");
+    }
+
+    #[test]
+    fn a_bridge_that_acknowledges_in_batches_is_caught_up_all_the_same() {
+        const BATCH: u64 = 32 * 1024;
+        let mut credit = Credit::new(WINDOW);
+        let mut sent = 0;
+        // Reads come in whatever sizes the program wrote, rarely a batch's multiple.
+        while credit.offer(20_000) == Offer::Send {
+            sent += 20_000;
+        }
+        // The bridge writes everything it was sent and acknowledges each whole batch, holding
+        // back the part of one it has not filled - and it is sent nothing more to fill it with.
+        let mut caught_up = false;
+        for _ in 0..sent / BATCH {
+            caught_up |= credit.acknowledge(BATCH);
+        }
+        assert!(caught_up, "a bridge that acknowledged {} of {sent} bytes is still behind", {
+            sent / BATCH * BATCH
+        });
     }
 
     #[test]

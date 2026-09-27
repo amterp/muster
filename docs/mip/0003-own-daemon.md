@@ -241,8 +241,12 @@ detects a slow reader on the far side of ssh, where the daemon's own queue depth
 sshd and TCP buffer megabytes before the daemon's writes block. Credit counts output only, not a
 replay's bytes: a replay is bounded by the pane's scrollback and comes once per attach, and counting
 it would put every large attach straight behind. A bridge is told once that it is behind, and gets
-no output until it has acknowledged everything it was sent; then it is caught up with the screen
-only, not its history (section 5), and output resumes. Bytes that scrolled off during a flood are
+no output until its acknowledgements bring the unacknowledged bytes below the window again; then it
+is caught up with the screen only, not its history (section 5), and output resumes. Below the
+window, not at zero: a bridge may acknowledge in batches, and one that is behind is sent nothing
+more to finish its last batch with, so waiting for every byte would leave its pane blank for good.
+The window is the condition output already flows under, so any bridge that acknowledges at all
+before a window's worth waits on it is never wedged, and the daemon depends on nothing more. Bytes that scrolled off during a flood are
 in the daemon, where `muster pane read` reaches them, and not in the surface's scrollback. The PTY
 reader never blocks on a bridge.
 

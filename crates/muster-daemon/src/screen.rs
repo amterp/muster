@@ -209,7 +209,7 @@ impl Screen {
     }
 
     /// Takes a bridge's acknowledgement, and catches it up with the screen once a bridge that
-    /// fell behind has acknowledged everything it was sent.
+    /// fell behind has room in its window again.
     pub(crate) fn acknowledge(&mut self, id: u64, bytes: u64) {
         let Some(bridge) = self.bridge.as_mut().filter(|bridge| bridge.id() == id) else { return };
         if bridge.acknowledge(bytes) {
