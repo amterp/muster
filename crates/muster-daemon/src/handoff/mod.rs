@@ -173,6 +173,10 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
             handing.persister.resume();
             if let Some(log) = &handing.log {
                 log.write_file();
+                let records = log.take_in_handed_over();
+                if records > 0 {
+                    log::info("daemon.handoff.successor_log", fields! { "records" => records });
+                }
             }
             let stop_deferred = shared.lock().not_replaced();
             log::error(
@@ -368,6 +372,14 @@ pub(crate) fn take_over(
         handoff::Message::Offer(offer) => offer,
         other => return Err(unexpected("the offer", &other)),
     };
+    log::info(
+        "daemon.handoff.taking_over",
+        fields! {
+            "from_pid" => offer.pid,
+            "from_version" => offer.daemon_version,
+            "panes" => offer.panes,
+        },
+    );
     let theirs = offer.protocol.unwrap_or_default();
     if !compatible(&PROTOCOL, &theirs) {
         return refuse(
@@ -559,6 +571,13 @@ fn adopt_panes(link: &mut UnixStream, shared: &Shared, panes: u32) -> Result<(),
 
 /// Tells the daemon handing over why this one will not take over, and says the same here.
 fn refuse<T>(link: &mut UnixStream, reason: String) -> Result<T, String> {
+    log::warn(
+        "daemon.handoff.refused",
+        fields! {
+            "reason" => reason,
+            "impact" => "every pane stays with the daemon handing over, which goes on serving",
+        },
+    );
     let _ = send(link, handoff::Message::Refused(handoff::Refused { reason: reason.clone() }));
     Err(reason)
 }

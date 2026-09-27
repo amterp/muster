@@ -479,3 +479,25 @@ fn a_resize_during_a_handoff_that_fails_takes_effect_after_it() {
 
     assert_eq!(tty_size(&daemon, "p1", "after"), "30x100");
 }
+
+/// A new daemon that fails before the commit never wrote the log's file, and what it logged is
+/// still there afterwards: the old daemon writes it in, ahead of its own word on the failure.
+#[test]
+fn a_new_daemon_that_fails_before_the_commit_leaves_its_records_in_the_log() {
+    for fault in ["refuse", "exit-before-ready"] {
+        let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", fault)]);
+        let (_control, _input) = two_panes(&daemon);
+        let old = format!("\"pid\":{},", daemon.pid());
+        refused(&mut daemon, None);
+
+        let log = written(&daemon.root().join("daemon.log"));
+        let taking = log
+            .lines()
+            .position(|line| line.contains("daemon.handoff.taking_over"))
+            .unwrap_or_else(|| panic!("{fault}: the new daemon's records are not in:\n{log}"));
+        assert!(!log.lines().nth(taking).unwrap().contains(&old), "{fault}: the new daemon's");
+        let failed = log.lines().position(|line| line.contains("daemon.handoff.failed")).unwrap();
+        assert!(taking < failed, "{fault}: its records come before the failure");
+        assert!(!daemon.root().join("daemon.log.handoff").exists(), "{fault}: nothing left");
+    }
+}

@@ -50,6 +50,16 @@ struct Inner {
     /// The first record kept from the file while another daemon writes it: from a handoff's
     /// commit on the daemon handing over, and until it on the daemon taking over.
     withheld_from: Option<u64>,
+    /// Where a daemon taking over writes each record until its commit ([`handed_over_path`]),
+    /// so a daemon that fails before then leaves them for the one handing over to take in.
+    handing_over: Option<File>,
+}
+
+/// Beside the log's file: `<name>.log.handoff`.
+fn handed_over_path(log: &Path) -> PathBuf {
+    let mut path = log.as_os_str().to_owned();
+    path.push(".handoff");
+    PathBuf::from(path)
 }
 
 impl DaemonLog {
@@ -74,6 +84,14 @@ impl DaemonLog {
         let log = Arc::new(DaemonLog::new(file));
         if withheld {
             log.withhold_file();
+            let mut inner = log.inner();
+            inner.handing_over = File::options()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(handed_over_path(&inner.file.path))
+                .ok();
         }
         log::install(Box::new(Sink(Arc::clone(&log))), "daemon", level);
         Some(log)
@@ -87,6 +105,7 @@ impl DaemonLog {
                 next: 1,
                 followers: Vec::new(),
                 withheld_from: None,
+                handing_over: None,
             }),
         }
     }
@@ -101,6 +120,8 @@ impl DaemonLog {
         let mut inner = self.inner();
         if inner.withheld_from.is_none() {
             inner.file.append(line.as_bytes());
+        } else if let Some(file) = &mut inner.handing_over {
+            let _ = file.write_all(line.as_bytes());
         }
         let number = inner.next;
         inner.next += 1;
@@ -152,6 +173,24 @@ impl DaemonLog {
         for line in withheld {
             inner.file.append(format!("{line}\n").as_bytes());
         }
+        if inner.handing_over.take().is_some() {
+            let _ = std::fs::remove_file(handed_over_path(&inner.file.path));
+        }
+    }
+
+    /// Writes into the file what a daemon that failed to take over logged before it failed,
+    /// and removes where it left it. Returns how many records that was.
+    pub(crate) fn take_in_handed_over(&self) -> usize {
+        let mut inner = self.inner();
+        let path = handed_over_path(&inner.file.path);
+        let Ok(records) = std::fs::read_to_string(&path) else { return 0 };
+        let _ = std::fs::remove_file(&path);
+        let mut count = 0;
+        for line in records.lines().filter(|line| !line.is_empty()) {
+            inner.file.append(format!("{line}\n").as_bytes());
+            count += 1;
+        }
+        count
     }
 
     /// Stops handing records to a connection that has gone.

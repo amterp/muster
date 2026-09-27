@@ -782,7 +782,9 @@ away, because a replay can provoke a reply of its own - setting mode 2033 sends 
 and nothing the replay provokes belongs on the pane's input. A replay rather than libghostty-vt's
 snapshot format carries the terminal, because a VT stream means the same thing to both libghostty
 versions and the snapshot format has no compatibility guarantee. Its readers start held, its log
-keeps records in memory only, and it neither accepts nor writes the state file. At `Commit` the old
+keeps its records out of the log's file - writing them to `<name>.log.handoff` beside it, which the
+old daemon writes into the log's file if the handoff fails, so a new daemon that refused or died
+still explains itself there - and it neither accepts nor writes the state file. At `Commit` the old
 daemon stops writing the log's file and the new one starts, with what it kept, so the file has one
 writer at a time and stays in order; the new daemon releases its readers, accepts on the socket it
 was handed, arms its persister, and says `Serving`.
