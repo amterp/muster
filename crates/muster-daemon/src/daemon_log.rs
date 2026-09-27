@@ -167,21 +167,38 @@ struct Rotating {
 
 impl Rotating {
     fn open(path: PathBuf, limit: u64) -> Rotating {
-        let file = append_to(&path).ok();
-        let size = file.as_ref().and_then(|file| file.metadata().ok()).map_or(0, |meta| meta.len());
-        Rotating { path, file, size, limit }
+        let mut rotating = Rotating { path, file: None, size: 0, limit };
+        rotating.reopen();
+        rotating
     }
 
+    /// Opens the file again, at the length it has: after a rotation that failed that is the
+    /// full file, and counting it as empty would let it grow by another limit each time.
+    fn reopen(&mut self) {
+        self.file = append_to(&self.path).ok();
+        self.size =
+            self.file.as_ref().and_then(|file| file.metadata().ok()).map_or(0, |meta| meta.len());
+    }
+
+    /// Nowhere to report that any of this failed: it would be a record in this same file. So a
+    /// failure costs records and never the bound. A file that would not open is tried again at
+    /// the next record, and one that could not be moved aside is started over.
     fn append(&mut self, line: &[u8]) {
         let length = line.len() as u64;
+        if self.file.is_none() {
+            self.reopen();
+        }
         if self.size > 0 && self.size + length > self.limit {
             let mut previous = self.path.as_os_str().to_owned();
             previous.push(".1");
-            let _ = std::fs::rename(&self.path, previous);
-            self.file = append_to(&self.path).ok();
-            self.size = 0;
+            if std::fs::rename(&self.path, previous).is_err() {
+                let _ = File::options().write(true).truncate(true).open(&self.path);
+            }
+            self.reopen();
+            if self.size > 0 && self.size + length > self.limit {
+                return;
+            }
         }
-        // Nowhere to report a failed write to: it would be a record in this same file.
         if let Some(file) = &mut self.file
             && file.write_all(line).is_ok()
         {
@@ -236,6 +253,32 @@ mod tests {
         assert!(current.contains("test.record.99\""), "the newest record is in the file");
         assert!(!previous.contains("test.record.0\""), "the oldest is gone");
         assert!(current.lines().chain(previous.lines()).all(|line| line.ends_with('}')));
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_moved_aside_is_started_over_rather_than_grown() {
+        let scratch = Scratch::new("stuck");
+        let path = scratch.0.join("daemon.log");
+        // A directory with something in it, which no rename replaces.
+        std::fs::create_dir_all(scratch.0.join("daemon.log.1/in-the-way")).unwrap();
+        let log = DaemonLog::new(Rotating::open(path.clone(), 2000));
+        for index in 0..100 {
+            log.write(&record(&format!("test.record.{index}")));
+        }
+        let current = std::fs::read_to_string(&path).unwrap();
+        assert!(current.len() <= 2000, "{} bytes past a 2000-byte limit", current.len());
+        assert!(current.contains("test.record.99\""), "the newest record is in the file");
+    }
+
+    #[test]
+    fn a_file_that_would_not_open_is_tried_again_at_the_next_record() {
+        let scratch = Scratch::new("reopen");
+        let path = scratch.0.join("later/daemon.log");
+        let log = DaemonLog::new(Rotating::open(path.clone(), FILE_BYTES));
+        log.write(&record("test.record.lost"));
+        std::fs::create_dir_all(scratch.0.join("later")).unwrap();
+        log.write(&record("test.record.kept"));
+        assert!(std::fs::read_to_string(&path).unwrap().contains("test.record.kept"));
     }
 
     #[test]
