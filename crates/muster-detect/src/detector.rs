@@ -362,7 +362,11 @@ impl Detector {
         };
 
         if !process_exited {
-            self.reporting.rules(detection.state, detection.rule.is_some(), now);
+            // Idle by the fallback is a reading, not a miss, for a manifest that has no idle rule
+            // of its own: that fallback is how it reads idle.
+            let by_fallback = detection.state == State::Idle
+                && !agent.as_ref().is_some_and(|agent| manifests.has_rule_for(agent, State::Idle));
+            self.reporting.rules(detection.state, detection.rule.is_some() || by_fallback, now);
         }
         let next = PublishState { state: detection.state, visible: detection.visible };
         if decide_transition(

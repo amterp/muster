@@ -141,6 +141,11 @@ impl Manifest {
         &self.script_paths
     }
 
+    /// Whether any rule reads `state`. A manifest with no idle rule reads idle by its fallback.
+    pub fn has_rule_for(&self, state: State) -> bool {
+        self.rules.iter().any(|rule| rule.state == state)
+    }
+
     /// Every rule is evaluated; the highest priority that matches wins, the earlier of two
     /// equal ones; and a known agent that matches nothing is idle.
     pub fn evaluate(&self, input: Input<'_>) -> Detection {

@@ -246,6 +246,11 @@ impl Manifests {
         }
     }
 
+    /// Whether `agent`'s manifest has a rule that reads `state`; false with no manifest.
+    pub fn has_rule_for(&self, agent: &Agent, state: State) -> bool {
+        self.entry(agent).is_some_and(|entry| entry.manifest.has_rule_for(state))
+    }
+
     fn entry(&self, agent: &Agent) -> Option<&Entry> {
         self.entries.iter().find(|entry| &entry.agent == agent)
     }

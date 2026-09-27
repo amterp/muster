@@ -512,8 +512,12 @@ struct Run {
 impl Run {
     /// A pane whose shell is at its prompt.
     fn new() -> Run {
+        Run::with_manifest(MANIFEST)
+    }
+
+    fn with_manifest(manifest: &str) -> Run {
         let (manifests, warnings) =
-            Manifests::load(&[("claude.toml".into(), MANIFEST.into())], None);
+            Manifests::load(&[("claude.toml".into(), manifest.into())], None);
         assert_eq!(warnings, []);
         let now = Instant::now();
         Run {
@@ -990,6 +994,29 @@ fn rules_reading_idle_while_the_agent_reports_working_are_unreadable() {
     let published = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("ready>"));
     let last = published.last().expect("something was published");
     assert_eq!((last.state, last.reported, last.unreadable), (State::Working, true, true));
+}
+
+/// Many harnesses' manifests say nothing of idle and leave it to the fallback, so a screen no
+/// rule matches is how they read idle. Typing a long prompt into one keeps its screen moving,
+/// and that is not the rules failing to read it.
+#[test]
+fn typing_into_an_agent_whose_manifest_has_no_idle_rule_is_not_unreadable() {
+    let manifest = r#"
+id = "claude"
+version = "9999.1"
+min_engine_version = 1
+
+[[rules]]
+id = "busy"
+state = "working"
+priority = 10
+contains = ["busy"]
+"#;
+    let mut run = Run::with_manifest(manifest);
+    run.tick();
+    run.start_agent();
+    let typed = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("> a long prompt"));
+    assert!(typed.iter().all(|publication| !publication.unreadable), "{typed:?}");
 }
 
 #[test]
