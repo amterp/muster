@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "show-an-agent",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790539181584,
+  "creator": "Alexander Terp",
+  "description": "amterp (2026-09-27), looking at two workers that read idle in the sidebar while each waited on a background shell it had started (Claude Code shows '1 shell still running' under its prompt and '· 2 shells ·' in its footer): an agent in that state is doing what it should, and Muster should say so rather than show it as having nothing to do.\n\nWhat seems to be wanted: a fact beside the agent state, like the sub-agent count, saying how many background tasks the agent has running, and a sidebar rendering of idle-with-background-work distinct from idle. Worth deciding with it: whether done (finished_unseen, a_2XYi76eVz) should fire when a turn ends with background work still running, since the agent will be woken again when that work finishes, so done at that moment is often premature.\n\nWhere the count could come from, most stable first: a harness report (check Claude Code's hook and statusline documentation for anything that exposes background tasks; do not assume one exists), then the screen (the footer text above, as a detection fact rather than a state rule). Daemon side belongs with a_2XarofkTD (harness-reported state); the sidebar with a_2XQXk8sou (agent facts).",
+  "id": "a_2Xm8ktxJm",
+  "parent": "a_2XJ1fUIyr",
+  "position": "b04",
+  "title": "Show an agent waiting on its own background work, not idle",
+  "type": "feature",
+  "updated_at_millis": 1790539181674,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790539181584}
+  ]
+}
