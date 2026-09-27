@@ -52,6 +52,9 @@ pub struct Daemon {
     /// The daemon a handoff started, which serves the socket once `process` has exited. Not the
     /// harness's child, so it is known by its pid.
     successor: Option<i32>,
+    /// The last daemon a handoff paused in, killed on drop too: a test that fails mid-handoff
+    /// never learns which daemon ended up serving.
+    paused: Option<i32>,
     started_in: Duration,
 }
 
@@ -93,6 +96,7 @@ impl Daemon {
                 .collect(),
             process: None,
             successor: None,
+            paused: None,
             started_in: Duration::ZERO,
         };
         daemon.process = Some(daemon.spawn(held));
@@ -293,7 +297,7 @@ impl Daemon {
 
     /// Waits until a daemon in a handoff pauses at the step its fault names, and returns the pid
     /// of the one that paused.
-    pub fn paused(&self) -> i32 {
+    pub fn paused(&mut self) -> i32 {
         let marker = self.paused_marker();
         let mut pid = 0;
         until_within(
@@ -308,6 +312,7 @@ impl Daemon {
             },
             (),
         );
+        self.paused = Some(pid);
         pid
     }
 
@@ -381,6 +386,11 @@ pub struct Replacing(std::thread::JoinHandle<proto::Answer>);
 impl Drop for Daemon {
     fn drop(&mut self) {
         self.kill();
+        if let Some(pid) = self.paused.take() {
+            // SAFETY: kill signals the one process this handle's handoff paused in, which this
+            // test started; if it has exited, nothing is signaled.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
