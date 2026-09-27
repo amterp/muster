@@ -6,6 +6,11 @@
 //! beside it, and its layers are bundled, a remote catalog cache and an override directory.
 //! Here an agent is its manifest and answers to the manifest's id and aliases, and the middle
 //! layer is whatever the app sent at connect.
+//!
+//! So an agent with no manifest is not an agent. herdr also recognised `omp` and `mastracode`,
+//! whose states its own plugins reported over hook authority, which Muster does not port.
+//! Recognised here with no rules, they would read idle while they worked, so they stay
+//! unknown; a manifest in the override directory names them for whoever wants the name shown.
 
 use std::collections::HashMap;
 use std::fmt;

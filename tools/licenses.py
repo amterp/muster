@@ -51,6 +51,9 @@ SHIPPED_ROOTS = ("muster-seam", "muster-cli", "muster-bridge")
 # see it, so it is named here: which workspace crate holds it, and the license it came
 # under. It is attributed below once that crate reaches a shipped binary - before then
 # the bundle does not contain it, and saying otherwise is the untruth this file avoids.
+# herdr's detection manifests come from two places (NOTICE says which is which), so they are
+# two entries: labelling all of them v0.8.0 would say something untrue of eight.
+DETECT_MANIFESTS = "crates/muster-detect/manifests/"
 VENDORED = (
     {
         "crate": "muster-detect",
@@ -59,7 +62,46 @@ VENDORED = (
         "license": "Apache-2.0",
         "repository": "https://github.com/herdrdev/herdr",
         "license_file": "licenses/herdr/LICENSE",
-        "paths": ("crates/muster-detect/src", "crates/muster-detect/manifests"),
+        "paths": (
+            "crates/muster-detect/src",
+            *(
+                DETECT_MANIFESTS + name
+                for name in (
+                    "amp.toml",
+                    "antigravity.toml",
+                    "devin.toml",
+                    "droid.toml",
+                    "gemini.toml",
+                    "hermes.toml",
+                    "kilo.toml",
+                    "kimi.toml",
+                    "maki.toml",
+                    "opencode.toml",
+                    "qodercli.toml",
+                )
+            ),
+        ),
+    },
+    {
+        "crate": "muster-detect",
+        "project": "herdr's agent-detection catalog",
+        "version": "(each manifest's own version, in NOTICE)",
+        "license": "Apache-2.0",
+        "repository": "https://herdr.dev/agent-detection/",
+        "license_file": "licenses/herdr/LICENSE",
+        "paths": tuple(
+            DETECT_MANIFESTS + name
+            for name in (
+                "claude.toml",
+                "cline.toml",
+                "codex.toml",
+                "cursor.toml",
+                "github-copilot.toml",
+                "grok.toml",
+                "kiro.toml",
+                "pi.toml",
+            )
+        ),
     },
 )
 
@@ -173,6 +215,20 @@ def shipped_vendored(meta: dict, shipped_crates: set[str]) -> list[dict]:
                 "so it cannot be trusted to cover the code that is. If the source moved,\n"
                 "update the entry in tools/licenses.py; if it was removed, drop the entry."
             )
+    listed = sorted(
+        path for entry in VENDORED for path in entry["paths"] if path.startswith(DETECT_MANIFESTS)
+    )
+    on_disk = sorted(
+        DETECT_MANIFESTS + path.name for path in (ROOT / DETECT_MANIFESTS).glob("*.toml")
+    )
+    if listed != on_disk:
+        sys.exit(
+            f"VENDORED lists the detection manifests {listed}, and {DETECT_MANIFESTS} holds "
+            f"{on_disk}.\n"
+            "Impact: a manifest would ship attributed to the wrong source, or to none.\n"
+            "Add a new manifest to the VENDORED entry for where it came from (NOTICE says\n"
+            "which manifests came from where), or drop one that was removed."
+        )
     return [entry for entry in VENDORED if entry["crate"] in shipped_crates]
 
 

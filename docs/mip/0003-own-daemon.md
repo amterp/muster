@@ -445,7 +445,8 @@ hooks. It is a port of herdr's detection at v0.8.0, covering four parts: the man
 and `src/pane/agent_detection.rs`), how the detection text and the OSC title and progress are
 extracted, and process identification (`src/detect/mod.rs` and the macOS and Linux probes). herdr
 spends about 4-5k lines on these. Its hook arbitration, plugin authority and remote manifest
-catalog are not ported.
+catalog are not ported. Nor are the two agents herdr knew only through its plugins, `omp` and
+`mastracode`: with no manifest, one would read idle while it worked, so it stays unknown.
 
 **Which agent.** The daemon reads the pane's foreground process group (`proc_pidinfo` and
 `KERN_PROCARGS2` on macOS, `/proc` on Linux), prefers the group leader, and unwraps interpreters:
