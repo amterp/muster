@@ -24,10 +24,10 @@ const HOME: &[u8] = b"\x1b[H";
 
 /// What RIS would reset, short of the history it would erase: the primary screen, a pen,
 /// hyperlink, protection and charsets at their defaults (an erase paints with the pen's
-/// background), the cursor's shape, margins and a scrolling region spanning the screen, no frozen rendering, no
-/// kitty flags or modifyOtherKeys, and every color a program set taken back. Then the screen
-/// erased, from the top. The modes the content is written under are stated here too; every
-/// mode is stated again after it.
+/// background), the cursor's shape, margins and a scrolling region spanning the screen, no
+/// frozen rendering, no kitty flags or modifyOtherKeys, and every color a program set taken
+/// back. Then the screen erased, from the top. The modes the content is written under are
+/// stated here too; every mode is stated again after it.
 const CATCH_UP_RESET: &[u8] = b"\x1b[?2026l\x1b[?1049l\x1b[?1047l\x1b[?47l\
     \x1b[0m\x1b]8;;\x1b\\\x1b[0\"q\x1b[0 q\x1b(B\x1b)B\x1b*B\x1b+B\x0f\
     \x1b[4l\x1b[?7h\x1b[?6l\x1b[?69l\x1b[r\x1b[=0;1u\x1b[>4m\

@@ -202,8 +202,6 @@ impl Terminal {
         String::from_utf8_lossy(bytes).into_owned()
     }
 
-    /// One scalar read. `fallback` is what a read the library refuses returns, and fixes
-    /// the out parameter's type - which must be the one terminal.h documents for `data`.
     /// The cursor's shape. Only a render state reads it, so this builds one for the question:
     /// cheap next to the replay it serves, and never on a path that runs per byte.
     pub fn cursor_shape(&self) -> CursorShape {
@@ -244,6 +242,8 @@ impl Terminal {
         }
     }
 
+    /// One scalar read. `fallback` is what a read the library refuses returns, and fixes
+    /// the out parameter's type - which must be the one terminal.h documents for `data`.
     fn get<T: Copy>(&self, data: ffi::GhosttyTerminalData, fallback: T) -> T {
         let mut value = fallback;
         // SAFETY: every caller pairs `data` with the output type the header documents for it.

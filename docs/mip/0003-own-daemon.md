@@ -426,13 +426,17 @@ before the next text on a row in whatever style the previous text left open, so 
 or underline would bleed across it, and the option closes the style first. The snapshot API was the
 alternative, and reaches the primary screen but still cannot emit state without content.
 
-Five things are not replayed, and the oracle pins each as its exact difference so a fix shows
+Six things are not replayed, and the oracle pins each as its exact difference so a fix shows
 up as a failing case: OSC 8 links on text already written (the formatter writes them for HTML
 only), per-cell DECSCA protection, a row painted with a background and no text, the kitty
-keyboard stack beneath its current flags, and a cursor saved with DECSC. Carrying the first
-three would change the formatter's existing output, which the patch does not do; the last two
-are not readable at all. The first three last until the program redraws those cells, the other
-two until it next pushes kitty flags or saves the cursor.
+keyboard stack beneath its current flags, a cursor saved with DECSC, and the primary screen's
+cursor shape while the alternate screen is active. Carrying the first three would change the
+formatter's existing output, which the patch does not do; the next two are not readable at all;
+and the last is readable only for the active screen, through a render state or `terminal_get`,
+so closing it takes one more getter in the patch. The first three last until the program
+redraws those cells, the next two until it next pushes kitty flags or saves the cursor, and the
+last until the shell's next prompt sets the shape again: a pane attached while vim is open shows
+the surface's default shape once vim exits, then the prompt's.
 `docs/observations/libghostty-9f9b8d1d.md` section 14 has the evidence.
 
 The daemon registers the bridge at the recorded stream offset while holding the pane's lock, so

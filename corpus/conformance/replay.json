@@ -441,6 +441,22 @@
       }
     },
     {
+      "name": "the primary screen's cursor shape while the alternate screen is active",
+      "why": "Each screen keeps its own cursor shape, and a replay states only the active one's: libghostty-vt reads the shape through a render state or terminal_get, and both read the active screen. So a pane attached while vim holds the alternate screen shows the receiver's default shape once vim exits, until the shell's next prompt sets it again. Known gap, pinned: it heals at the next prompt, and closing it needs a getter for the inactive screen's shape in the carried patch.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 0,
+        "feed": "$ \u001b[5 q\u001b[?1049h\u001b[2 qvim",
+        "after": "\u001b[?1049l"
+      },
+      "expect": {
+        "differences": [
+          "after: cursor shape: original Bar, replayed Block"
+        ]
+      }
+    },
+    {
       "name": "protected cells on the screen",
       "why": "DECSCA marks cells a selective erase must skip. The formatter writes no per-cell protection, so replayed cells lose it and the next selective erase wipes them. Known gap, pinned: selective erase is rare enough that no carried patch is worth it, and the pen's protection - what the program writes next - is the case after this one.",
       "given": {
