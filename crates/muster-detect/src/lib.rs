@@ -11,11 +11,13 @@
 //! `~/.muster/agent-detection/`.
 
 mod manifest;
+mod manifests;
 
 use std::fmt;
 use std::sync::Arc;
 
 pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Version};
+pub use manifests::{Manifests, Source, Warning};
 
 /// What an agent is doing, as far as its screen says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

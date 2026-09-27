@@ -1,0 +1,385 @@
+{
+  "concept": "detection.bundledManifests",
+  "source": "ported",
+  "citation": "herdr v0.8.0 src/detect/manifest/tests.rs, the tests of herdr's bundled manifests; each case names the test it came from.",
+  "why": "herdr's manifests are data written against herdr's engine, so the only evidence that this engine reads them the same way is herdr's own verdicts on the screens its authors wrote them for. Each case is a screen, a title and an OSC 9 payload in, and the state, deciding rule, visibility and skip flag out - the whole of what the publish loop acts on. `screen` is the region input as herdr's test passed it, not wrapped by screen_text. Where herdr's test asserted a state but not the deciding rule (the Devin idle, working and blocked screens other than the live footer and narrow welcome), the rule is this engine's reading of herdr's manifest, and a re-pin that moves it is worth a look rather than a rewrite.",
+  "cases": [
+    {
+      "name": "codex: ordinary text is the idle fallback",
+      "why": "A known agent whose screen matches no rule is idle, and not visibly so - which is what lets the loop hold a working-to-idle change until it is confirmed rather than trusting a screen that merely stopped saying anything. (known_agent_no_match_defaults_to_idle_fallback)",
+      "given": {
+        "agent": "codex",
+        "screen": "ordinary prompt text"
+      },
+      "expect": {
+        "state": "idle"
+      }
+    },
+    {
+      "name": "devin: the welcome prompt box is idle",
+      "why": "Devin's idle chrome is a prompt box between two rules, so reading it depends on the prompt_box_body region cutting where herdr's did. (devin_manifest_detects_idle_working_and_blocked_states)",
+      "given": {
+        "agent": "devin",
+        "screen": "─────────────────────────────────────────────────────\n❭ Ask Devin to build features, fix bugs, or work on\n  your code\n─────────────────────────────────────────────────────\nSWE-1.6               Context: 16k / 200k tokens (7%)"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "welcome_prompt_footer",
+        "visible": true
+      }
+    },
+    {
+      "name": "devin: a labelled top border still bounds the prompt box",
+      "why": "The live footer draws a label into the rule above the prompt ('(bypass permissions on)'), and a rule with a label is still a rule - is_horizontal_rule accepts one after three dashes. (devin_manifest_detects_idle_working_and_blocked_states)",
+      "given": {
+        "agent": "devin",
+        "screen": "Done.\n\n────────────────────────────────────────────────── (bypass permissions on) ─\n❭\n────────────────────────────────────────────────────────────────────────────\nClaude Opus 4.6 Thinking                                    Context: 38k / 200k tokens (18%)"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "live_prompt_footer",
+        "visible": true
+      }
+    },
+    {
+      "name": "devin: the welcome screen on a narrow pane is idle",
+      "why": "A narrow pane wraps the welcome text and the model footer, which is the case the welcome_prompt_footer rule exists for. The braille art in the banner must not read as a spinner. (devin_manifest_detects_idle_working_and_blocked_states)",
+      "given": {
+        "agent": "devin",
+        "screen": "⠀⠀⠀⠀⠀⣴⣾⣶⡄⠀⠀⠀⠀\n⠀⣴⣾⣶⡾⠛⠿⠟⠃⣴⣾⣶⡄  Devin CLI\n⠀⠛⠿⠟⠃⣴⣾⣶⡾⠛⠿⠟⠃  v2026.5.26-8\n⠀⣤⣶⣦⡄⠻⢿⠿⢷⣤⣶⣦⡄\n⠀⠻⢿⠿⢷⣤⣶⣦⡄⠻⢿⠿⠃  Hybrid\n⠀⠀⠀⠀⠀⠻⢿⠿⠃⠀⠀⠀⠀\n\n───────────────────────────\n❭ Ask Devin to build\n  features, fix bugs, or\n  work on your code\n───────────────────────────\nClaude Opus Looking for\n4.6 Thinkingplan mode? /\n            plan"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "welcome_prompt_footer",
+        "visible": true
+      }
+    },
+    {
+      "name": "devin: running tools is working",
+      "why": "The interrupt footer is Devin's working chrome, so it needs no confirming. (devin_manifest_detects_idle_working_and_blocked_states)",
+      "given": {
+        "agent": "devin",
+        "screen": "◔ Reading shell 91b655\n  │ Timeout: 35s\n\n⠀⡆ Running tools · 27s (esc to interrupt)\n─────────────────────────────────────────────────────\n❭ Guide Devin while it works"
+      },
+      "expect": {
+        "state": "working",
+        "rule": "running_tools_footer",
+        "visible": true
+      }
+    },
+    {
+      "name": "devin: the workspace trust prompt is blocked",
+      "why": "An agent asking whether to trust a directory needs a person, before it has done anything else. (devin_manifest_detects_idle_working_and_blocked_states)",
+      "given": {
+        "agent": "devin",
+        "screen": "Do you trust the authors of this directory?\nFor security, devin should not be run in directories\nwith untrusted content.\n❭ 1 Yes, trust /private/tmp/devin-hook-probe\n· 2 No, exit"
+      },
+      "expect": {
+        "state": "blocked",
+        "rule": "workspace_trust_prompt",
+        "visible": true
+      }
+    },
+    {
+      "name": "devin: a command permission menu is blocked",
+      "why": "The permission menu is what attention routing exists for. (devin_manifest_detects_idle_working_and_blocked_states)",
+      "given": {
+        "agent": "devin",
+        "screen": "⏺ Running command\n  └ $ sleep 30\n\n❭ 1 Yes  (Approve once)\n· 2 Yes, allow `sleep` commands\n· 3 Yes, always allow `sleep` commands\n· 4 No\n↑↓ select · ↵ confirm · esc cancel"
+      },
+      "expect": {
+        "state": "blocked",
+        "rule": "permission_prompt",
+        "visible": true
+      }
+    },
+    {
+      "name": "claude: a braille spinner in the title is working",
+      "why": "Claude Code animates its title with a braille spinner while it works, which is the cheapest and surest working signal it gives. (claude_osc_title_braille_prefix_is_working)",
+      "given": {
+        "agent": "claude",
+        "screen": "",
+        "title": "⠂ project"
+      },
+      "expect": {
+        "state": "working",
+        "rule": "osc_title_working",
+        "visible": true
+      }
+    },
+    {
+      "name": "claude: the static star in the title is idle",
+      "why": "When it stops, Claude Code's title settles on ✳. (claude_osc_title_static_prefix_is_idle)",
+      "given": {
+        "agent": "claude",
+        "screen": "",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "osc_title_idle",
+        "visible": true
+      }
+    },
+    {
+      "name": "claude: progress 4;3 alone is not working",
+      "why": "Claude Code leaves OSC 9;4 progress at 4;3 while it waits for permission, so that value cannot mean working on its own; with no other evidence the agent is the idle fallback. (claude_osc_progress_4_3_alone_does_not_force_working)",
+      "given": {
+        "agent": "claude",
+        "screen": "",
+        "progress": "4;3;"
+      },
+      "expect": {
+        "state": "idle"
+      }
+    },
+    {
+      "name": "claude: a blocker on screen outranks stale progress",
+      "why": "The regression behind the previous case: a permission form on screen must win over progress stuck at 4;3. (claude_blocker_screen_outranks_stale_osc_progress)",
+      "given": {
+        "agent": "claude",
+        "screen": "──────────\n  1. Yes\n  2. No\n\nEnter to select · ↑/↓ to navigate · Esc to cancel\n",
+        "title": "✳ Task title",
+        "progress": "4;3;"
+      },
+      "expect": {
+        "state": "blocked",
+        "rule": "live_blocked_form",
+        "visible": true
+      }
+    },
+    {
+      "name": "claude: progress 4;0 is idle",
+      "why": "Progress cleared to 4;0 is Claude Code saying it finished. (claude_osc_progress_4_0_is_idle)",
+      "given": {
+        "agent": "claude",
+        "screen": "",
+        "progress": "4;0;"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "osc_progress_idle"
+      }
+    },
+    {
+      "name": "claude: a bash permission prompt outranks an idle title",
+      "why": "The title can say idle while a permission prompt is on screen, and the prompt is the truth: the blocked rule's priority (850) is above the title's (250). (claude_blocker_screen_outranks_osc_idle_title)",
+      "given": {
+        "agent": "claude",
+        "screen": "do you want to proceed?\nbash command: rm -rf /tmp/test\n❯ 1. Yes\n   2. No\n\nEsc to cancel · Tab to amend · ctrl+e to explain\n",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "state": "blocked",
+        "rule": "bash_permission_prompt",
+        "visible": true
+      }
+    },
+    {
+      "name": "claude: nothing at all is the idle fallback",
+      "why": "With no title, no progress and an empty screen, a known agent is idle and not visibly so. (claude_empty_osc_empty_screen_is_idle_fallback)",
+      "given": {
+        "agent": "claude",
+        "screen": ""
+      },
+      "expect": {
+        "state": "idle"
+      }
+    },
+    {
+      "name": "codex: a braille spinner in the title is working",
+      "why": "Codex spins its title while a turn runs. (codex_osc_title_braille_spinner_is_working)",
+      "given": {
+        "agent": "codex",
+        "screen": "",
+        "title": "⠋ llm-proxy"
+      },
+      "expect": {
+        "state": "working",
+        "rule": "osc_title_working",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: Action Required in the title is blocked",
+      "why": "Codex puts Action Required in its title when it waits on an approval. (codex_osc_title_action_required_is_blocked)",
+      "given": {
+        "agent": "codex",
+        "screen": "",
+        "title": "[ . ] Action Required | llm-proxy"
+      },
+      "expect": {
+        "state": "blocked",
+        "rule": "osc_title_blocked",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: a plain title is idle",
+      "why": "A title with neither spinner nor Action Required is Codex at rest. (codex_osc_title_plain_is_idle)",
+      "given": {
+        "agent": "codex",
+        "screen": "",
+        "title": "llm-proxy"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "osc_title_idle",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: a background terminal does not make it look busy",
+      "why": "Background terminals can be long-lived helpers such as dev servers; the agent is idle once its foreground turn is. (codex_background_terminal_screen_does_not_override_osc_idle)",
+      "given": {
+        "agent": "codex",
+        "screen": "background terminal running · /ps to view · /stop to close\n",
+        "title": "llm-proxy"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "osc_title_idle",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: the screen says working when the title is static",
+      "why": "Some Codex builds leave the title static while working, so the Working line above the current prompt is a fallback. (codex_screen_working_fallback_handles_static_osc_title)",
+      "given": {
+        "agent": "codex",
+        "screen": "• I’ll run it and wait for completion.\n\n◦ Working (1m 16s • esc to interrupt) · 1 background…\n\n› Use /skills to list available skills\n\ngpt-5.6-sol default · /work\n",
+        "title": "project"
+      },
+      "expect": {
+        "state": "working",
+        "rule": "screen_working_fallback",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: the title's working outranks the screen fallback",
+      "why": "When both say working, the title's rule is the one that decides. (codex_osc_working_remains_preferred_over_screen_fallback)",
+      "given": {
+        "agent": "codex",
+        "screen": "• Working (4s • esc to interrupt)\n\n› Use /skills to list available skills\n\ngpt-5.6-sol default · /work\n",
+        "title": "⠸ project"
+      },
+      "expect": {
+        "state": "working",
+        "rule": "osc_title_working",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: a confirmation on screen outranks the working fallback",
+      "why": "A confirmation menu under a Working line is the agent waiting on a person. (codex_screen_blocker_outranks_working_fallback)",
+      "given": {
+        "agent": "codex",
+        "screen": "• Working (4s • esc to interrupt)\n› 1. Yes, proceed\nPress enter to confirm or esc to cancel\n",
+        "title": "project"
+      },
+      "expect": {
+        "state": "blocked",
+        "rule": "live_strong_blocker",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: a y/n question outranks the working fallback",
+      "why": "A weaker blocker still outranks the working fallback, and is not visible chrome. (codex_weak_blocker_outranks_working_fallback)",
+      "given": {
+        "agent": "codex",
+        "screen": "• Working (4s • esc to interrupt)\ndo you want to continue? [y/n]\n› Use /skills to list available skills\n",
+        "title": "project"
+      },
+      "expect": {
+        "state": "blocked",
+        "rule": "weak_blocker"
+      }
+    },
+    {
+      "name": "codex: the transcript viewer skips the update",
+      "why": "The transcript viewer shows old Working lines, so it is something to wait out rather than evidence of any state. (codex_transcript_viewer_outranks_working_fallback)",
+      "given": {
+        "agent": "codex",
+        "screen": "• Working (4s • esc to interrupt)\n› transcript\n↑/↓ to scroll · pgup/pgdn to move · home/end to jump · q to quit · esc to edit prev\n",
+        "title": "project"
+      },
+      "expect": {
+        "state": "unknown",
+        "rule": "transcript_viewer",
+        "skipStateUpdate": true
+      }
+    },
+    {
+      "name": "codex: an interrupted Working line is stale",
+      "why": "A Working line followed by 'Conversation interrupted' belongs to a turn that is over. (codex_screen_working_fallback_ignores_stale_and_prompt_text)",
+      "given": {
+        "agent": "codex",
+        "screen": "◦ Working (1m 16s • esc to interrupt)\n■ Conversation interrupted\n› Use /skills to list available skills\ngpt-5.6-sol default · /work\n",
+        "title": "project"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "osc_title_idle",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: Working typed into the prompt is not working",
+      "why": "Text a person typed at the prompt is not the agent's chrome. (codex_screen_working_fallback_ignores_stale_and_prompt_text)",
+      "given": {
+        "agent": "codex",
+        "screen": "› Explain the text ◦ Working (1m 16s • esc to interrupt)\ngpt-5.6-sol default · /work\n",
+        "title": "project"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "osc_title_idle",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: an indented Working line is not the live one",
+      "why": "Codex draws the live Working line at column zero; an indented one is quoted output. (codex_screen_working_fallback_ignores_stale_and_prompt_text)",
+      "given": {
+        "agent": "codex",
+        "screen": "  ◦ Working (1m 16s • esc to interrupt)\n› Use /skills to list available skills\ngpt-5.6-sol default · /work\n",
+        "title": "project"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "osc_title_idle",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: an interrupted turn on a short terminal is idle",
+      "why": "On a short terminal the prompt is a bare ›, and the turn above it is still over. (codex_screen_working_fallback_ignores_interrupted_short_terminal)",
+      "given": {
+        "agent": "codex",
+        "screen": "◦ Working (1m 16s • esc to interrupt)\n■ Conversation interrupted\n›\n",
+        "title": "project"
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "osc_title_idle",
+        "visible": true
+      }
+    },
+    {
+      "name": "codex: the title's spinner beats a stale y/n",
+      "why": "A stale [y/n] on screen is the weak blocker at priority 600; a live spinner in the title is 1050 and wins. (codex_osc_working_beats_weak_blocker_screen)",
+      "given": {
+        "agent": "codex",
+        "screen": "do you want to continue? [y/n]\n",
+        "title": "⠋ llm-proxy"
+      },
+      "expect": {
+        "state": "working",
+        "rule": "osc_title_working",
+        "visible": true
+      }
+    }
+  ]
+}

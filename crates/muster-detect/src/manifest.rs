@@ -69,7 +69,7 @@ impl Detection {
         Detection::fallback(State::Unknown)
     }
 
-    fn fallback(state: State) -> Self {
+    pub(crate) fn fallback(state: State) -> Self {
         Detection { state, visible: false, skip_state_update: false, rule: None }
     }
 }
