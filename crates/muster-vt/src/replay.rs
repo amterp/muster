@@ -14,6 +14,7 @@
 use crate::formatter::{
     Extras, Format, FormatOptions, ScreenExtras, ScreenFormatOptions, Selection,
 };
+use crate::grid::Width;
 use crate::modes::Mode;
 use crate::state::{Rgb, Screen};
 use crate::terminal::Terminal;
@@ -156,15 +157,26 @@ impl Terminal {
     /// put it there, and leaves the cell as it was.
     fn cursor_position(&self, out: &mut Vec<u8>, origin: Option<Region>) {
         let cursor = self.cursor();
+        let waiting = self.pending_wrap();
+        // A wide character ending in the last column leaves the cursor on its second half.
+        // Re-printed from there it would not fit, and would wrap for real; from its first
+        // half it lands where it was and leaves the same wait.
+        let column =
+            if waiting && self.active_width(cursor.column, cursor.row) == Some(Width::SpacerTail) {
+                cursor.column.saturating_sub(1)
+            } else {
+                cursor.column
+            };
+
         let (top, left) = origin.map_or((0, 0), |region| (region.top, region.left));
         let row = cursor.row.saturating_sub(top) + 1;
-        let column = cursor.column.saturating_sub(left) + 1;
-        out.extend(format!("\x1b[{row};{column}H").into_bytes());
+        let relative_column = column.saturating_sub(left) + 1;
+        out.extend(format!("\x1b[{row};{relative_column}H").into_bytes());
 
-        if self.pending_wrap() {
+        if waiting {
             let cell = Selection {
-                start: (cursor.column, u32::from(cursor.row)),
-                end: (cursor.column, u32::from(cursor.row)),
+                start: (column, u32::from(cursor.row)),
+                end: (column, u32::from(cursor.row)),
             };
             out.extend(self.format(FormatOptions { selection: Some(cell), ..FormatOptions::vt() }));
         }

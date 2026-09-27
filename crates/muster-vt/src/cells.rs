@@ -31,6 +31,20 @@ impl Terminal {
             .collect()
     }
 
+    /// The width of one cell of the active area, without reading its text or style.
+    pub(crate) fn active_width(&self, x: u16, y: u16) -> Option<Width> {
+        let grid_ref =
+            self.grid_ref(ffi::GhosttyPointTag_GHOSTTY_POINT_TAG_ACTIVE, x, u32::from(y))?;
+        let mut raw: ffi::GhosttyCell = 0;
+        // SAFETY: the ref was just filled in by libghostty and the out parameter is ours.
+        if unsafe { ffi::ghostty_grid_ref_cell(&raw const grid_ref, &raw mut raw) }
+            != ffi::GhosttyResult_GHOSTTY_SUCCESS
+        {
+            return None;
+        }
+        Some(Width::from_raw(cell_data(raw, ffi::GhosttyCellData_GHOSTTY_CELL_DATA_WIDE, 0)))
+    }
+
     fn row(&self, tag: ffi::GhosttyPointTag, y: u32, columns: u16) -> Row {
         let cells: Vec<Cell> = (0..columns).filter_map(|x| self.cell(tag, x, y)).collect();
         let wraps = self.grid_ref(tag, 0, y).is_some_and(|grid_ref| row_wraps(&grid_ref));
