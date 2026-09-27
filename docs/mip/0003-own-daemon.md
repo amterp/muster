@@ -48,7 +48,8 @@ must feel the same as in plain Ghostty.
 
 herdr owns every pane's PTY in a daemon that outlives the app. It restores the tab tree and each
 pane's directory after a daemon restart. It detects agent state by reading each pane's screen,
-with no hooks, identically on local and remote machines. It streams each pane to a client, and
+and takes an agent's own report of its state through its API, identically on local and remote
+machines. It streams each pane to a client, and
 its socket protocol works unchanged over a forwarded ssh socket. `docs/origin.md` chose it on those
 grounds, and named three ways out if it stopped fitting: fork it, replace it with the corpus as
 the spec, or adapt another backend.
