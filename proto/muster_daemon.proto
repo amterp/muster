@@ -816,6 +816,11 @@ message InputEvent {
       // `text:`, `csi:` and `esc:` bindings, already resolved to bytes.
       bytes raw = 3;
     }
+    // What the key would have sent the program had its binding not consumed it, sent instead
+    // when the daemon does not act: clear_screen on the alternate screen, where Ghostty leaves
+    // the key to the program. The surface decides from what it shows, and the program can
+    // switch screens before the daemon acts. Empty for a key that sends nothing.
+    bytes unconsumed = 4;
 
     message ClearScreen {}
     message Reset {}

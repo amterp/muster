@@ -147,12 +147,12 @@ fn input_of(input: input_event::Input) -> Option<Input> {
         Event::Paste(paste) => Some(Input::Paste { text: paste.text, confirmed: paste.confirmed }),
         Event::Send(send) => Some(Input::Send { text: send.text, enter: send.enter }),
         Event::Focus(focus) => Some(Input::Focus(focus.focused)),
-        Event::Perform(input_event::Perform { action: Some(action) }) => match action {
+        Event::Perform(input_event::Perform { action: Some(action), unconsumed }) => match action {
             perform::Action::Raw(bytes) => Some(Input::Reply(bytes)),
             perform::Action::Reset(_) => Some(Input::Reset),
-            perform::Action::ClearScreen(_) => Some(Input::ClearScreen),
+            perform::Action::ClearScreen(_) => Some(Input::ClearScreen { unconsumed }),
         },
-        Event::Perform(input_event::Perform { action: None }) => None,
+        Event::Perform(input_event::Perform { action: None, .. }) => None,
     }
 }
 

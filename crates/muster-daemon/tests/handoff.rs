@@ -591,7 +591,10 @@ fn a_resize_during_a_handoff_that_fails_takes_effect_after_it() {
 
 fn clear_screen(input: &mut Input, pane: &str) {
     let clear = input_event::perform::Action::ClearScreen(input_event::perform::ClearScreen {});
-    input.send(pane, Event::Perform(input_event::Perform { action: Some(clear) }));
+    input.send(
+        pane,
+        Event::Perform(input_event::Perform { action: Some(clear), ..Default::default() }),
+    );
 }
 
 /// A pane with history, attached to a surface that has drawn it.

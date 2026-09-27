@@ -26,6 +26,7 @@ use muster_vt::{
 use crate::effects::{Reported, Reports};
 use crate::pane::PaneIo;
 use crate::pty::Grid;
+use crate::screen::Cleared;
 
 /// How much may wait for a pane's program to read it.
 const QUEUE_DEPTH: usize = 1024;
@@ -59,8 +60,11 @@ pub(crate) enum Input {
     /// copy are reset, and the program is not told.
     Reset,
     /// Ghostty's clear_screen: the daemon's terminal cleared and the surface sent the result,
-    /// and a shell at its prompt sent a form feed to draw the prompt again.
-    ClearScreen,
+    /// and a shell at its prompt sent a form feed to draw the prompt again. On the alternate
+    /// screen nothing is cleared, and the program is sent `unconsumed`, the key's own bytes.
+    ClearScreen {
+        unconsumed: Vec<u8>,
+    },
 }
 
 /// A key as it arrives: libghostty's numbering, and the app's option-as-alt setting.
@@ -333,7 +337,7 @@ impl Writer {
                 }
                 if focused { b"\x1b[I".to_vec() } else { b"\x1b[O".to_vec() }
             }
-            Input::Reset | Input::ClearScreen => {
+            Input::Reset | Input::ClearScreen { .. } => {
                 drop(encoding);
                 self.perform(&input)
             }
@@ -347,7 +351,13 @@ impl Writer {
         let Some(io) = self.io.upgrade() else { return Vec::new() };
         match input {
             Input::Reset => io.reset(),
-            Input::ClearScreen if io.clear_screen() => return vec![0x0c],
+            Input::ClearScreen { unconsumed } => {
+                return match io.clear_screen() {
+                    Cleared::AtPrompt => vec![0x0c],
+                    Cleared::Alternate => unconsumed.clone(),
+                    Cleared::Elsewhere | Cleared::Deferred => Vec::new(),
+                };
+            }
             _ => {}
         }
         Vec::new()

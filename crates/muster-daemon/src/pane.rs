@@ -31,7 +31,7 @@ use crate::persist::Persister;
 use crate::process;
 use crate::pty;
 use crate::pty::Grid;
-use crate::screen::{Screen, Settled};
+use crate::screen::{Cleared, Screen, Settled};
 use crate::stream::{self, Bridge, Refusal};
 use crate::writer::{self, Encoding, Input, Writer};
 
@@ -285,12 +285,14 @@ impl PaneIo {
         }
     }
 
-    /// Clears the pane's screen as Ghostty's clear_screen does. True at a prompt, where the
-    /// shell is to be sent a form feed. Not while the pane is held for a handoff, as
-    /// [`PaneIo::resize`] says.
-    pub(crate) fn clear_screen(&self) -> bool {
+    /// Clears the pane's screen as Ghostty's clear_screen does. Not while the pane is held for
+    /// a handoff, as [`PaneIo::resize`] says.
+    pub(crate) fn clear_screen(&self) -> Cleared {
         let mut screen = self.screen();
-        !self.deferred_while_held(Performed::ClearScreen) && screen.clear_screen()
+        if self.deferred_while_held(Performed::ClearScreen) {
+            return Cleared::Deferred;
+        }
+        screen.clear_screen()
     }
 
     /// Records `what` to be done if the handoff holding the pane fails. Called under the pane's
@@ -369,7 +371,7 @@ impl PaneIo {
             match performed {
                 Performed::Reset => self.reset(),
                 Performed::ClearScreen => {
-                    if self.clear_screen() {
+                    if self.clear_screen() == Cleared::AtPrompt {
                         self.queue(Input::Reply(vec![0x0c]));
                     }
                 }

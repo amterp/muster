@@ -292,7 +292,9 @@ fn a_bindings_bytes_are_written_and_a_reset_resets_the_pane_and_its_surface() {
     let mut control = daemon.connect();
     let out = receiving(&mut control, &daemon, "p1", b"hello");
     let mut input = Input::connect(daemon.socket_path());
-    let perform = |action| Event::Perform(input_event::Perform { action: Some(action) });
+    let perform = |action| {
+        Event::Perform(input_event::Perform { action: Some(action), ..Default::default() })
+    };
     input.send("p1", perform(input_event::perform::Action::Raw(b"\x1b[15~".to_vec())));
     received(&out, b"\x1b[15~");
 

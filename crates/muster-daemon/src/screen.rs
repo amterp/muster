@@ -124,6 +124,19 @@ pub(crate) fn scheme_report(scheme: ColorScheme) -> &'static [u8] {
     }
 }
 
+/// What a clear_screen did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Cleared {
+    /// Everything went, at a shell's prompt, and the shell is to redraw it.
+    AtPrompt,
+    /// History and the rows above the cursor went.
+    Elsewhere,
+    /// Nothing: the alternate screen is the program's, and the key is too.
+    Alternate,
+    /// Nothing yet: the pane is held for a handoff, and it is done if the handoff fails.
+    Deferred,
+}
+
 pub(crate) struct Screen {
     terminal: Terminal,
     /// Where the terminal's effect handler leaves what a write produced, for whoever wrote to
@@ -272,14 +285,17 @@ impl Screen {
     /// Ghostty's clear_screen ([`Terminal::clear_screen`]), and the surface drawing the pane
     /// sent the result, since nothing in the output stream says what happened. True at a prompt,
     /// where the shell is to be asked to draw its prompt again.
-    pub(crate) fn clear_screen(&mut self) -> bool {
+    pub(crate) fn clear_screen(&mut self) -> Cleared {
+        if self.terminal.active_screen() == muster_vt::Screen::Alternate {
+            return Cleared::Alternate;
+        }
         self.content_seq += 1;
         let at_prompt = self.terminal.clear_screen();
         if let Some(bridge) = &self.bridge {
             bridge.replay(&self.terminal.replay());
             self.terminal.forget_kitty_images();
         }
-        at_prompt
+        if at_prompt { Cleared::AtPrompt } else { Cleared::Elsewhere }
     }
 
     /// Lets go of bridge `id`, if it is still the one attached.

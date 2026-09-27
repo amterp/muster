@@ -298,14 +298,41 @@ fn xtversion_is_answered_as_ghostty_with_term_program_version() {
 }
 
 fn clear_screen(daemon: &Daemon, pane: &str) {
+    clear_screen_with_key(daemon, pane, b"");
+}
+
+/// clear_screen from a key that would have sent `unconsumed` had its binding not consumed it.
+fn clear_screen_with_key(daemon: &Daemon, pane: &str, unconsumed: &[u8]) {
     use proto::input_event::{Input as Event, Perform, perform};
     let mut input = muster_harness::Input::connect(daemon.socket_path());
     input.send(
         pane,
         Event::Perform(Perform {
             action: Some(perform::Action::ClearScreen(perform::ClearScreen {})),
+            unconsumed: unconsumed.to_vec(),
         }),
     );
+}
+
+/// On the alternate screen Ghostty leaves the key to the program, so a clear_screen the
+/// surface sent as the program switched screens reaches the program as the key's own bytes.
+#[test]
+fn clear_screen_on_the_alternate_screen_sends_the_program_the_key() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let heard = daemon.root().join("heard");
+    let script = format!(
+        "printf 'before\\n\\033[?1049hvim'; stty raw -echo min 1 time 0; \
+         dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+        heard.display()
+    );
+    make(&mut control, running("p1", "t1", script));
+    until_text(&mut control, "p1", "vim");
+
+    clear_screen_with_key(&daemon, "p1", b"k");
+
+    assert_eq!(bytes_in(&heard), b"k", "the program gets the key");
+    assert!(read_text(&mut control, "p1", 0, 0).text.contains("vim"), "nothing was cleared");
 }
 
 /// Ghostty's clear_screen at a shell's prompt: the history goes, the screen is scrolled away,
