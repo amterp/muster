@@ -649,6 +649,7 @@ dependencies = [
 name = "muster-daemon-client"
 version = "0.9.0"
 dependencies = [
+ "conformance",
  "libc",
  "muster-core",
  "muster-daemon-proto",
@@ -656,6 +657,7 @@ dependencies = [
  "muster-ssh",
  "muster-vt",
  "prost",
+ "serde_json",
 ]
 
 [[package]]
@@ -707,6 +709,7 @@ dependencies = [
  "herdr-harness",
  "libc",
  "muster-core",
+ "muster-daemon-client",
  "muster-ssh",
  "serde_json",
  "sha2",

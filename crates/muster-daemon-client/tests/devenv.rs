@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use muster_daemon_client::environment::for_far_daemon;
 use muster_daemon_client::launch::{Reached, stop};
 use muster_daemon_client::remote::{Installed, ensure_running};
 use muster_daemon_proto as proto;
@@ -33,8 +34,9 @@ fn devenv() -> (String, Vec<String>) {
 #[ignore = "needs the devenv container; run through ./dev --ssh"]
 fn the_daemon_over_there_is_started_then_adopted_and_serves_a_pane() {
     let (host, options) = devenv();
-    let installed = Installed::on(&remote_environment(&host, &options).unwrap())
-        .expect("the container has a HOME");
+    let far = remote_environment(&host, &options).unwrap();
+    let installed = Installed::on(&far).expect("the container has a HOME");
+    let environment = for_far_daemon(&far);
     let temporary = std::env::temp_dir();
     let tunnel = Tunnel::open(
         Forward {
@@ -52,7 +54,8 @@ fn the_daemon_over_there_is_started_then_adopted_and_serves_a_pane() {
     // below an adoption.
     let _ = stop(local, Duration::from_secs(10));
 
-    let (reached, started) = ensure_running(&tunnel.remote(), &installed, local).unwrap();
+    let (reached, started) =
+        ensure_running(&tunnel.remote(), &installed, local, &environment).unwrap();
     assert_eq!(reached, Reached::Started);
 
     let mut control = Control::connect(local);
@@ -65,7 +68,8 @@ fn the_daemon_over_there_is_started_then_adopted_and_serves_a_pane() {
     );
     until_text(&mut control, "p1", "over-there");
 
-    let (reached, adopted) = ensure_running(&tunnel.remote(), &installed, local).unwrap();
+    let (reached, adopted) =
+        ensure_running(&tunnel.remote(), &installed, local, &environment).unwrap();
     assert_eq!(reached, Reached::Adopted);
     assert_eq!(adopted.instance, started.instance);
 

@@ -3,6 +3,7 @@
 //! bridge draws a pane from, and starting or adopting a daemon here or on another machine.
 
 pub mod control;
+pub mod environment;
 pub mod input;
 pub mod launch;
 pub mod remote;

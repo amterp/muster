@@ -436,168 +436,24 @@ pub fn environment() -> BTreeMap<String, String> {
     std::env::vars().collect()
 }
 
-/// What Muster's daemon is entitled to inherit from whoever launched Muster.
-///
-/// An allowlist, because a denylist has to keep up with every tool that invents a variable and
-/// is wrong until somebody notices it is. The consequence of being wrong is not a broken
-/// launch: it is a daemon that outlives the app, carrying one session's private state into
-/// every agent it ever spawns. Observed rather than imagined - launching Muster from inside a
-/// Claude Code session put that session's `CLAUDE_CODE_*` markers and messaging credentials
-/// into the daemon, and from there into every pane, where a fresh Claude Code read them and
-/// silently turned its own transcript saving off.
-///
-/// **The list is short because a pane runs a shell, and a shell builds its own world.** Login
-/// shells re-read the user's rc files inside the pane, so everything a toolchain manager,
-/// language version switcher or prompt puts in the environment is rebuilt there. What has to
-/// survive is only what a shell cannot work out for itself: where home is, what to run, and
-/// what the machine's conventions are.
-///
-/// The daemon and its panes get one answer rather than two, because there is one environment:
-/// a pane's program is a child of the daemon. That is worth stating rather than leaving
-/// implicit - a future herdr with per-pane environments would let these come apart, and then
-/// they are two decisions rather than one.
+/// What Muster's daemon is entitled to inherit from whoever launched Muster: the client's
+/// allowlist (`muster_daemon_client::environment`).
 pub fn carried(environment: &BTreeMap<String, String>) -> BTreeMap<String, String> {
-    environment
-        .iter()
-        .filter(|(name, value)| !value.is_empty() && is_carried(name))
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect()
+    muster_daemon_client::environment::carried(environment)
 }
 
-fn is_carried(name: &str) -> bool {
-    // Locale comes as a family - LC_ALL, LC_CTYPE, LC_TIME and the rest - and carrying some of
-    // it is worse than carrying none: a pane with LANG set and LC_CTYPE not renders wide
-    // glyphs differently from the terminal it was launched from.
-    name.starts_with("LC_") || CARRIED.contains(&name)
-}
-
-/// What Muster gives its daemon that nobody handed Muster.
-///
-/// The other half of [`carried`], and it exists because an allowlist can only carry what is
-/// there. A window launched the way Muster is meant to be launched - Dock, Finder, Spotlight -
-/// is started by launchd, which hands a GUI process `HOME`, `PATH`, `SHELL`, `USER`,
-/// `LOGNAME`, `TMPDIR` and little else. No `LANG`, no `LC_*`.
-///
-/// **Today a daemon gets one anyway, and that is the reason this exists rather than evidence
-/// that it need not.** `ghostty_init` calls Ghostty's own `ensureLocale`, which derives a
-/// locale from `CFLocale` and `setenv`s it into the whole process - so by the time Muster
-/// starts a daemon the environment it reads has a `LANG` in it that no shell put there.
-/// Measured: a bundle opened under `env -i` gives its daemon `LANG=en_AU.UTF-8` and a
-/// `LANGUAGE` beside it, which is Ghostty's pair and nothing else's. That is a loan, of the
-/// same kind as the fonts and colours Muster used to take from a Ghostty config file: it is
-/// invisible from here, it depends on the renderer being built before the daemon is started,
-/// and it is the day a renderer changes that every pane silently drops to the C locale.
-///
-/// So Muster answers the question itself. `locale` is what the platform said, which only the
-/// shell can ask. Whether a daemon gets it is decided here, and only when the environment
-/// names *nothing* in the locale family: a `LANG` supplied beside an inherited `LC_CTYPE` is
-/// the split locale [`is_carried`] already refuses to create, arrived at from the other
-/// direction.
-///
-/// The other entry is `HERDR_CONFIG_PATH`, and it is here rather than beside `HERDR_SESSION`
-/// on the command for one reason: it belongs in the answer to "what was this daemon given
-/// that nobody gave Muster", which is the log line somebody reads when a pane runs the wrong
-/// shell. It names a file Muster wrote from its own config, so that a `default_shell` set for
-/// somebody's own terminal stops deciding what every Muster pane runs. Unlike a private
-/// `XDG_CONFIG_HOME` it moves the config file and nothing else - the socket, the session state
-/// and the data directory all stay where herdr's own rules put them, verified against the
-/// pinned binary rather than only its source.
+/// What Muster gives its daemon that nobody handed Muster: the client's locale and command
+/// directory, and `HERDR_CONFIG_PATH`, naming the file Muster wrote from its own config so that
+/// a `default_shell` set for somebody's own terminal stops deciding what every Muster pane runs.
 pub fn supplied(
     environment: &BTreeMap<String, String>,
     locale: Option<&str>,
     config_path: Option<&str>,
     commands: Option<&str>,
 ) -> BTreeMap<String, String> {
-    let mut supplied = BTreeMap::new();
-    if let Some(locale) = locale.filter(|locale| !locale.is_empty())
-        && !names_a_locale(environment)
-    {
-        supplied.insert("LANG".to_string(), locale.to_string());
-    }
+    let mut supplied = muster_daemon_client::environment::supplied(environment, locale, commands);
     if let Some(path) = config_path.filter(|path| !path.is_empty()) {
         supplied.insert("HERDR_CONFIG_PATH".to_string(), path.to_string());
     }
-    if let Some(path) = commands
-        .filter(|path| !path.is_empty())
-        .and_then(|commands| with_commands(environment, commands))
-    {
-        supplied.insert("PATH".to_string(), path);
-    }
     supplied
 }
-
-/// `PATH` with Muster's own command directory in front of it.
-///
-/// The one entry here that is Muster's, on a variable that was inherited - so `PATH` ends up in
-/// both this list and [`carried`], which is the honest description of a value that was handed over
-/// and then added to. It is in this half because this is the list somebody reads when `muster` is
-/// not found in a pane.
-///
-/// In front rather than behind, so a pane reaches the CLI belonging to the window it is drawn in
-/// rather than one somebody installed years ago and forgot. macOS `path_helper` appends to an
-/// inherited PATH rather than replacing it, so the entry survives a pane's login shell.
-///
-/// None when there is nothing to do. Already on the PATH is the common case for anybody who put
-/// the directory in their own profile, and adding it again would lengthen the PATH of every daemon
-/// Muster ever starts. An *empty* PATH is left empty on purpose: a one-entry PATH holding only
-/// Muster's commands is a pane whose shell cannot run `ls`, which is worse than a pane with no
-/// `muster` in it.
-fn with_commands(environment: &BTreeMap<String, String>, commands: &str) -> Option<String> {
-    let path = environment.get("PATH").filter(|path| !path.is_empty())?;
-    if path.split(':').any(|entry| entry == commands) {
-        return None;
-    }
-    Some(format!("{commands}:{path}"))
-}
-
-/// Whether anything in this environment already decides what the locale is.
-fn names_a_locale(environment: &BTreeMap<String, String>) -> bool {
-    environment
-        .iter()
-        .any(|(name, value)| !value.is_empty() && (name == "LANG" || name.starts_with("LC_")))
-}
-
-/// The variables Muster's daemon carries, and why each one is here.
-///
-/// Anything not on this list is a variable a pane's own shell can rebuild, or one that
-/// belonged to whoever launched Muster and not to the agents Muster runs.
-const CARRIED: &[&str] = &[
-    // Where herdr's own config, sockets and session state live. These are also what Muster
-    // resolved the socket path from, so a daemon started without them would bind somewhere
-    // else and the launch would wait out its timeout for a daemon running perfectly well.
-    "HOME",
-    "XDG_CONFIG_HOME",
-    "XDG_STATE_HOME",
-    "XDG_DATA_HOME",
-    "XDG_CACHE_HOME",
-    "XDG_RUNTIME_DIR",
-    // What to run in a pane, and what it needs to find anything. A daemon with no PATH spawns
-    // a shell that cannot run `ls`.
-    "PATH",
-    "SHELL",
-    // Who the person is. Tools that look up a home directory or a git author read these, and
-    // a shell cannot invent them.
-    "USER",
-    "LOGNAME",
-    // The machine's conventions. Wrong or missing, and a pane mangles non-ASCII or writes
-    // scratch files somewhere unexpected. A launch that supplies no locale at all gets one
-    // anyway - see `supplied`.
-    "LANG",
-    "TZ",
-    "TMPDIR",
-    // TERM is deliberately absent, and this note is the whole reason to look for it here.
-    //
-    // No pane has ever seen the daemon's: herdr sets `TERM=xterm-256color` per pane
-    // unconditionally, because a pane is rendered by herdr's own terminal layer rather than by
-    // whatever launched the app. The one thing that does read the daemon's own is herdr's
-    // host-terminal detection, which decides who a notification is attributed to - so carrying
-    // it meant a Muster launched from Ghostty had its daemon posting notifications as Ghostty,
-    // to a terminal that is not there. A Dock launch never had one, so dropping it also makes
-    // the two ways of starting Muster give the daemon the same environment.
-    // The user's own ssh agent. A deliberate inclusion rather than an oversight: this is a
-    // credential channel, and a pane that cannot `git push` or reach a devenv is a pane
-    // somebody stops using. It is the person's own agent, it is what every terminal emulator
-    // on this platform passes through, and unlike a harness's session token it belongs to the
-    // human rather than to whichever program happened to launch Muster.
-    "SSH_AUTH_SOCK",
-];

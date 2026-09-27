@@ -71,10 +71,15 @@ impl Installed {
 
 /// Dials the daemon through `local_socket`, the forward's end here, and starts the one
 /// `installed` names over there if nothing answers.
+///
+/// `environment` is the daemon's whole environment, and so every pane's starting point there:
+/// build it with [`crate::environment::for_far_daemon`] from that machine's own, never pass an
+/// ssh session's through.
 pub fn ensure_running(
     remote: &impl Far,
     installed: &Installed,
     local_socket: &Path,
+    environment: &BTreeMap<String, String>,
 ) -> Result<(Reached, Welcome), String> {
     match probe(local_socket) {
         Ok(welcome) => return Ok((Reached::Adopted, welcome)),
@@ -122,7 +127,7 @@ pub fn ensure_running(
         },
     );
     let marker = crate::start_marker();
-    let started = remote.shell(&start_script(installed, &marker))?;
+    let started = remote.shell(&start_script(installed, &marker, environment))?;
     let pid: u32 = started.trim().parse().map_err(|_| {
         format!(
             "the start script on {} did not say which process it started (it printed {:?}), so \
@@ -192,9 +197,16 @@ fn said(remote: &impl Far, installed: &Installed, marker: &str) -> String {
 /// Both exec the daemon, so `$!` is the daemon itself. The brace group keeps the redirects on
 /// the daemon: dash execs the last command of a backgrounded list, and without the group ssh
 /// would wait on pipes the daemon holds open. The stderr file is appended to, under `marker`,
-/// because another start may be writing to it at the same moment.
-pub fn start_script(installed: &Installed, marker: &str) -> String {
-    let binary = path(&installed.binary);
+/// because another start may be writing to it at the same moment. `env -i` starts the daemon
+/// with `environment` and nothing of the ssh session that ran the script; it execs too.
+pub fn start_script(
+    installed: &Installed,
+    marker: &str,
+    environment: &BTreeMap<String, String>,
+) -> String {
+    let given: Vec<String> =
+        environment.iter().map(|(name, value)| quoted(&format!("{name}={value}"))).collect();
+    let command = format!("env -i {} {}", given.join(" "), path(&installed.binary));
     let socket = path(&installed.socket);
     let errors = path(&installed.stderr());
     let directory = path(installed.socket.parent().unwrap_or(Path::new("/")));
@@ -202,8 +214,8 @@ pub fn start_script(installed: &Installed, marker: &str) -> String {
     format!(
         "mkdir -p {directory} && echo {marker} >> {errors} && \
          if command -v setsid >/dev/null 2>&1; then \
-         {{ setsid {binary} --socket {socket} >> {errors} 2>&1 < /dev/null & }}; else \
-         {{ nohup {binary} --socket {socket} >> {errors} 2>&1 < /dev/null & }}; fi; echo $!"
+         {{ setsid {command} --socket {socket} >> {errors} 2>&1 < /dev/null & }}; else \
+         {{ nohup {command} --socket {socket} >> {errors} 2>&1 < /dev/null & }}; fi; echo $!"
     )
 }
 
@@ -246,7 +258,7 @@ mod tests {
             binary: PathBuf::from("/home/o'neil/.muster/daemon/0.9.0/muster-daemon"),
             socket: PathBuf::from("/home/o'neil/.muster/daemon/dev-1.sock"),
         };
-        let script = start_script(&installed, "--- a marker ---");
+        let script = start_script(&installed, "--- a marker ---", &BTreeMap::new());
         assert!(script.contains(&quoted("/home/o'neil/.muster/daemon/0.9.0/muster-daemon")));
         assert!(script.contains(&quoted("/home/o'neil/.muster/daemon/dev-1.stderr")));
     }
@@ -291,7 +303,8 @@ mod tests {
         executable(&binary, "#!/bin/sh\necho 'no data directory beside me' >&2\nexit 1\n");
         let installed = Installed { binary, socket: root.join("daemon").join("d.sock") };
         let started = Instant::now();
-        let error = ensure_running(&Here, &installed, &installed.socket).unwrap_err();
+        let error =
+            ensure_running(&Here, &installed, &installed.socket, &BTreeMap::new()).unwrap_err();
         // Far inside the start's own 30 seconds, with room for a loaded machine's slow shells.
         assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
         assert!(error.contains("no data directory beside me"), "{error}");
@@ -309,8 +322,9 @@ mod tests {
         let binary = root.join("muster-daemon");
         executable(
             &binary,
-            &format!("#!/bin/sh\necho \"$$ $@\" > '{}'\nsleep 3\n", told.display()),
+            &format!("#!/bin/sh\n{{ echo \"$$ $@\"; env; }} > '{}'\nsleep 3\n", told.display()),
         );
+        let given = environment(&[("HOME", "/home/o'neil"), ("LANG", "C.UTF-8")]);
         let installed = Installed { binary, socket: root.join("daemon").join("d.sock") };
 
         for shell in ["/bin/dash", "/bin/bash"] {
@@ -318,7 +332,9 @@ mod tests {
             let started = Instant::now();
             let output = std::process::Command::new(shell)
                 .arg("-c")
-                .arg(start_script(&installed, "--- a marker ---"))
+                .arg(start_script(&installed, "--- a marker ---", &given))
+                .env("SSH_CONNECTION", "10.0.0.1 22 10.0.0.2 22")
+                .env("SSH_AUTH_SOCK", "/tmp/ssh-XXXX/agent.1")
                 .stdout(std::process::Stdio::piped())
                 .output()
                 .unwrap();
@@ -329,11 +345,22 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(10));
             }
             let told = std::fs::read_to_string(&told).unwrap_or_default();
+            let mut lines = told.lines();
             let printed = String::from_utf8_lossy(&output.stdout);
             assert_eq!(
-                told.trim(),
+                lines.next().unwrap_or_default(),
                 format!("{} --socket {}", printed.trim(), installed.socket.display()),
                 "{shell}: the pid printed is the daemon's own"
+            );
+            // What the daemon's own `sh` adds for itself is not what it was given.
+            let mut inherited: Vec<&str> = lines
+                .filter(|line| !["PWD=", "SHLVL=", "_="].iter().any(|own| line.starts_with(own)))
+                .collect();
+            inherited.sort_unstable();
+            assert_eq!(
+                inherited,
+                ["HOME=/home/o'neil", "LANG=C.UTF-8"],
+                "{shell}: the daemon gets what it was given and nothing of the ssh session"
             );
         }
         let _ = std::fs::remove_dir_all(&root);
