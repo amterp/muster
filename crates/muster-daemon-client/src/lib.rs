@@ -2,10 +2,14 @@
 //! app asks and follows a daemon on, the input connection its keystrokes travel, the stream a
 //! bridge draws a pane from, and starting or adopting a daemon here or on another machine.
 
+pub mod backend;
 pub mod control;
+pub mod convert;
 pub mod environment;
+pub mod follow;
 pub mod input;
 pub mod launch;
+pub mod records;
 pub mod remote;
 pub mod stream;
 

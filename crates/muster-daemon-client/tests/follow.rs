@@ -1,0 +1,187 @@
+//! Following a daemon as the core's backend, against the real daemon.
+
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+
+use muster_core::config::{Cursor, CursorStyle};
+use muster_core::daemon_settings::DaemonSettings;
+use muster_core::intent::{BackendChannel, BackendIntent, Side};
+use muster_core::mirror::Mirror;
+use muster_core::mirror::backend::PaneId;
+use muster_core::names::{Mint, Minter};
+use muster_daemon_client::backend::DaemonBackend;
+use muster_daemon_client::follow::{Follower, Following, Notice};
+use muster_daemon_client::records;
+use muster_daemon_proto as proto;
+use muster_harness::requests::snapshot;
+use muster_harness::{Daemon, until_some};
+
+struct Followed {
+    follower: Follower,
+    mirror: Arc<Mutex<Mirror>>,
+    notices: Arc<Mutex<Vec<Notice>>>,
+    backend: DaemonBackend,
+}
+
+fn follow(daemon: &Daemon) -> Followed {
+    let mirror = Arc::new(Mutex::new(Mirror::new()));
+    let notices = Arc::new(Mutex::new(Vec::new()));
+    let heard = Arc::clone(&notices);
+    let follower = Follower::start(
+        Following {
+            socket: daemon.socket_path().to_path_buf(),
+            client: "test".to_string(),
+            daemon: "local".to_string(),
+            remote: false,
+        },
+        Arc::clone(&mirror),
+        Arc::new(move |notice| heard.lock().unwrap().push(notice)),
+    )
+    .unwrap();
+    let backend = DaemonBackend::new(
+        follower.connection(),
+        Arc::clone(&mirror),
+        Arc::new(Mutex::new(Minter::new(Mint::Drawn))),
+        BTreeMap::from([("MUSTER_SOCKET".to_string(), "/tmp/window.sock".to_string())]),
+        "the test daemon".to_string(),
+    );
+    let state = Followed { follower, mirror, notices, backend };
+    state.bootstrapped(1);
+    state
+}
+
+impl Followed {
+    /// Waits until the mirror has been bootstrapped this many times.
+    fn bootstrapped(&self, times: usize) {
+        until_some(&format!("{times} bootstrap(s)"), || {
+            let heard = self.notices.lock().unwrap();
+            let count = heard.iter().filter(|n| matches!(n, Notice::Bootstrapped { .. })).count();
+            (count >= times).then_some(())
+        });
+    }
+}
+
+/// Everything a request did arrives before its answer, so a submit returns with its effect in
+/// the mirror and nothing has to wait for it.
+#[test]
+fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
+    let daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+
+    let made = followed
+        .backend
+        .submit(&BackendIntent::CreateTab { cwd: None, run: None, name: Some("first".into()) })
+        .unwrap();
+    let (pane, tab) = (made.created.unwrap(), made.created_tab.unwrap());
+    {
+        let mirror = followed.mirror.lock().unwrap();
+        let held = mirror.pane(&pane).expect("the new pane is in the mirror already");
+        assert_eq!(held.tab, tab);
+        assert_eq!(held.name.as_deref(), Some("first"));
+    }
+
+    let split = followed
+        .backend
+        .submit(&BackendIntent::SplitPane {
+            pane: pane.clone(),
+            side: Side::Left,
+            ratio: None,
+            cwd: None,
+            run: None,
+            name: None,
+        })
+        .unwrap()
+        .created
+        .unwrap();
+    let mirror = followed.mirror.lock().unwrap();
+    let tree = mirror.tree(&tab).unwrap().to_string();
+    assert_eq!(tree, format!("columns({split}, {pane}@0.5)"), "the new pane is on the left");
+}
+
+/// A zoom is a toggle to the window and a state to the daemon, read from the mirror.
+#[test]
+fn zooming_twice_puts_the_tab_back() {
+    let daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+    let made =
+        followed.backend.submit(&BackendIntent::CreateTab { cwd: None, run: None, name: None });
+    let pane = made.unwrap().created.unwrap();
+    let zoomed = |followed: &Followed, pane: &PaneId| {
+        let mirror = followed.mirror.lock().unwrap();
+        mirror.tab(&mirror.pane(pane).unwrap().tab).unwrap().zoomed.clone()
+    };
+    followed.backend.submit(&BackendIntent::ZoomPane { pane: pane.clone() }).unwrap();
+    assert_eq!(zoomed(&followed, &pane), Some(pane.clone()));
+    followed.backend.submit(&BackendIntent::ZoomPane { pane: pane.clone() }).unwrap();
+    assert_eq!(zoomed(&followed, &pane), None);
+}
+
+/// A daemon that died and came back is followed again from a fresh snapshot, and the window
+/// was told it went stale in between.
+#[test]
+fn a_daemon_that_comes_back_is_followed_again() {
+    let mut daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+    followed
+        .backend
+        .submit(&BackendIntent::CreateTab { cwd: None, run: None, name: None })
+        .unwrap();
+
+    daemon.kill();
+    until_some("the window told the daemon went stale", || {
+        let heard = followed.notices.lock().unwrap();
+        heard.iter().any(|n| matches!(n, Notice::Stale { .. })).then_some(())
+    });
+    daemon.restart();
+    followed.bootstrapped(2);
+    until_some("the window told it reconnected", || {
+        let heard = followed.notices.lock().unwrap();
+        heard.iter().any(|n| matches!(n, Notice::Reconnected)).then_some(())
+    });
+    let made =
+        followed.backend.submit(&BackendIntent::CreateTab { cwd: None, run: None, name: None });
+    assert!(made.is_ok(), "requests work again: {made:?}");
+    drop(followed.follower);
+}
+
+/// Settings reach a daemon at connect and when they change, which is how the palette and the
+/// cursor programs are told come to match the window's.
+#[test]
+fn settings_reach_the_daemon() {
+    let daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+    let settings = DaemonSettings {
+        scrollback_bytes: Some(1 << 20),
+        cursor: Cursor { style: Some(CursorStyle::Bar), blink: Some(false) },
+        ..DaemonSettings::default()
+    };
+    followed.follower.configure(&settings);
+
+    let mut control = daemon.connect();
+    let held = until_some("the settings to arrive", || {
+        let settings = snapshot(&mut control).settings.unwrap_or_default();
+        (settings.scrollback_bytes == Some(1 << 20)).then_some(settings)
+    });
+    let cursor = held.cursor.expect("the cursor was sent");
+    assert_eq!((cursor.style(), cursor.blink), (proto::CursorStyle::Bar, Some(false)));
+}
+
+/// A daemon Muster started is in the census with what it holds, asked of it rather than read
+/// from the record.
+#[test]
+fn the_census_asks_each_daemon_what_it_holds() {
+    let daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+    followed
+        .backend
+        .submit(&BackendIntent::CreateTab { cwd: None, run: None, name: None })
+        .unwrap();
+    let records = daemon.root().join("records");
+    let socket = daemon.socket_path().display().to_string();
+    records::started(&records.display().to_string(), &socket);
+
+    let census = records::census(&records.display().to_string());
+    assert_eq!(census.len(), 1);
+    assert_eq!(census[0].state, records::State::Answering);
+    assert_eq!(census[0].panes, 1);
+}
