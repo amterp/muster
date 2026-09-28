@@ -318,6 +318,9 @@ fn connect(
             .map_err(|error| format!("could not open a control connection: {error}"))?,
     );
     let instance = control.welcome().instance;
+    // Before the subscribe, since the snapshot tells the window the daemon's panes and the window
+    // may send one of them input at once: a focus report, to the pane with its keyboard.
+    *lock(&connection.input) = Some(open_input(following, connection)?);
     *lock(&connection.connecting) = Some(Arc::clone(&control));
     if connection.stopping.load(Ordering::Relaxed) {
         return Err("this window stopped following the daemon".to_string());
@@ -366,7 +369,6 @@ fn connect(
         send_settings(&control, None, &settings);
     }
 
-    *lock(&connection.input) = Some(open_input(following, connection)?);
     log::info(
         "daemon.followed",
         fields! {

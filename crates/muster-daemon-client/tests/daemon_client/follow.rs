@@ -15,7 +15,7 @@ use muster_core::mirror::backend::{PaneId, TabId};
 static NEXT_TAB: AtomicU32 = AtomicU32::new(10);
 use muster_core::names::{Mint, Minter};
 use muster_daemon_client::backend::DaemonBackend;
-use muster_daemon_client::follow::{Follower, Following, Notice};
+use muster_daemon_client::follow::{Connection, Follower, Following, Notice};
 use muster_daemon_client::records;
 use muster_daemon_proto as proto;
 use muster_harness::requests::{snapshot, until_text};
@@ -417,4 +417,42 @@ fn letting_go_of_a_daemon_mid_connect_is_prompt() {
         "letting go took {:?}",
         started.elapsed()
     );
+}
+
+/// A window is told a daemon's panes the moment its snapshot arrives, and may send one of them
+/// input then and there: a focus report, to the pane with the keyboard of a window already in
+/// front. So the input connection is open before the snapshot can arrive.
+#[test]
+fn input_can_be_sent_as_soon_as_the_snapshot_arrives() {
+    let daemon = Daemon::start_built();
+    let connection = Arc::new(Mutex::new(None::<Arc<Connection>>));
+    let sent = Arc::new(Mutex::new(None));
+    let (reached, told) = (Arc::clone(&connection), Arc::clone(&sent));
+    // The notice holds up the reader that delivered it, so the follower goes no further with
+    // connecting until this has sent.
+    let notify = Arc::new(move |notice: Notice| {
+        if !matches!(notice, Notice::Bootstrapped { .. }) {
+            return;
+        }
+        let connection =
+            until_some("the follower to be started", || reached.lock().unwrap().clone());
+        let focus = proto::input_event::Input::Focus(proto::input_event::Focus { focused: true });
+        let event = proto::InputEvent { pane: "p1".to_string(), input: Some(focus) };
+        *told.lock().unwrap() = Some(connection.send_input(event));
+    });
+    let follower = Follower::start(
+        Following {
+            socket: daemon.socket_path().to_path_buf(),
+            client: "test".to_string(),
+            daemon: "local".to_string(),
+            remote: false,
+        },
+        Arc::new(Mutex::new(Mirror::new())),
+        notify,
+    )
+    .unwrap();
+    *connection.lock().unwrap() = Some(follower.connection());
+
+    let sent = until_some("the snapshot to arrive", || *sent.lock().unwrap());
+    assert_eq!(sent, Ok(()), "input sent on the snapshot's arrival was refused");
 }
