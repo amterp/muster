@@ -181,6 +181,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_command_over_the_master_can_never_become_one() {
+        // `ControlMaster auto` in a personal ssh config makes any client that finds nothing
+        // answering its `-S` path the master for it. This path is Muster's, so such a client
+        // would own it with no forward and persist past its command, and `-O check` would call
+        // that tunnel healthy while every request to the daemon was refused (kan a_2NnC4pyPm).
+        // ssh takes the first value it is given, so both pins have to come before the host.
+        let told = client_arguments("dev@devenv", "/tmp/m.ctl");
+        let host = told.iter().position(|word| word == "dev@devenv").expect("the host is there");
+        for pin in ["ControlMaster=no", "ControlPersist=no"] {
+            let at = told.iter().position(|word| word == pin);
+            assert!(
+                at.is_some_and(|at| at < host && told[at - 1] == "-o"),
+                "{pin} is not pinned ahead of the host, so a personal config decides it: {told:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_plain_word_is_quoted_whole() {
         assert_eq!(quoted("/home/dev/.muster"), "'/home/dev/.muster'");
     }
