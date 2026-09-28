@@ -98,6 +98,7 @@ impl Files {
             else {
                 continue;
             };
+            mend(&path);
             logs.insert(group, read_log(&path));
         }
         Found { saved, logs }
@@ -118,8 +119,14 @@ impl Store for Files {
             .mode(0o600)
             .open(self.log_of(group))
             .map_err(describe)?;
-        file.write_all(&line).map_err(describe)?;
-        file.sync_data().map_err(describe)
+        let before = file.metadata().map_err(describe)?.len();
+        let written = file.write_all(&line).and_then(|()| file.sync_data());
+        if let Err(error) = written {
+            // A fragment left here would join the next entry's line, and cost it too.
+            let _ = file.set_len(before);
+            return Err(describe(error));
+        }
+        Ok(())
     }
 
     fn save(&mut self, saved: &Saved) -> Result<(), String> {
@@ -128,6 +135,34 @@ impl Store for Files {
         let kept = Kept { version: VERSION, saved: saved.clone() };
         let bytes = serde_json::to_vec_pretty(&kept).map_err(|error| error.to_string())?;
         persist::write(&self.state(), &bytes).map_err(describe)
+    }
+}
+
+/// Cuts a log back to its last complete line. A last line with no newline is what a crash during
+/// an append leaves - a post that was never answered - and the next append would otherwise be
+/// written onto the end of it.
+fn mend(path: &Path) {
+    let Ok(bytes) = std::fs::read(path) else { return };
+    if bytes.last().is_none_or(|last| *last == b'\n') {
+        return;
+    }
+    let whole = bytes.iter().rposition(|byte| *byte == b'\n').map_or(0, |at| at + 1);
+    let cut = OpenOptions::new().write(true).open(path).and_then(|file| {
+        file.set_len(whole as u64)?;
+        file.sync_data()
+    });
+    match cut {
+        Ok(()) => log::warn(
+            "msg.store.torn_line_dropped",
+            fields! {
+                "file" => path.display(),
+                "bytes" => bytes.len() - whole,
+                "impact" => "none: it was a post the daemon never answered, because it went \
+                             down while writing it",
+                "check" => "whether the daemon or the machine went down around then",
+            },
+        ),
+        Err(error) => unreadable(path, &format!("its torn last line could not be cut: {error}")),
     }
 }
 

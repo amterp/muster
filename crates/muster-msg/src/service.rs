@@ -226,10 +226,18 @@ impl<S: Store> Messaging<S> {
             let policy = policies.remove(&name).unwrap_or_default();
             groups.insert(name, Group { policy, members, log });
         }
+        // A cursor past its log's head is what a log that lost entries leaves; the next entry
+        // would take a number the reader has already passed.
         let participants = saved
             .participants
             .into_iter()
-            .map(|participant| (participant.name.clone(), participant))
+            .map(|mut participant| {
+                for (group, cursor) in &mut participant.cursors {
+                    let head = groups.get(group).map_or(0, Group::head);
+                    *cursor = (*cursor).min(head);
+                }
+                (participant.name.clone(), participant)
+            })
             .collect();
         Messaging { store, participants, groups, waiters: BTreeMap::new(), next_ticket: 1 }
     }
@@ -800,7 +808,9 @@ impl<S: Store> Messaging<S> {
         if participant.gone {
             return Reach::Gone;
         }
-        let notice = self.notice(name, group).expect("a post that wakes leaves a notice");
+        let Some(notice) = self.notice(name, group) else {
+            return Reach::Waiting;
+        };
         let waiting = self
             .waiters
             .get(name)
