@@ -349,6 +349,10 @@ impl<S: Store> Messaging<S> {
         self.linked.remove(machine);
     }
 
+    /// A call that changes `group`, kept elsewhere, went unanswered: it may have been made
+    /// there all the same. Not marked yet.
+    pub fn unanswered(&mut self, _group: &str) {}
+
     /// The machine a replica may be behind, because there is no link to it now.
     pub fn behind(&self, group: &str) -> Option<&str> {
         let home = self.groups.get(&self.locate(group).ok()?)?.home.as_deref()?;

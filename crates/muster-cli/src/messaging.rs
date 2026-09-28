@@ -1156,6 +1156,28 @@ mod tests {
         assert!(said.contains("Update Muster"), "{said}");
     }
 
+    /// A post another machine took and never answered may have landed there, so it exits as a
+    /// daemon that hung up before answering does, not as a refusal: a script that posts again on
+    /// a refusal would post it twice.
+    #[test]
+    fn a_post_the_other_machine_never_answered_is_unanswered() {
+        let request = proto::MsgRequest {
+            caller: None,
+            request: Some(Asked::Post(msg_request::Post::default())),
+        };
+        let answer = proto::Answer {
+            outcome: proto::Outcome::Refused.into(),
+            reason: "devenv did not answer".to_string(),
+            detail: Some(proto::answer::Detail::Msg(proto::MsgAnswer {
+                refusal: "unanswered".to_string(),
+                ..proto::MsgAnswer::default()
+            })),
+            ..proto::Answer::default()
+        };
+        let trouble = render(&request, &answer, false, false).unwrap_err();
+        assert_eq!(trouble.code(), 4, "{trouble:?}");
+    }
+
     /// A wait that ran for minutes and was then ended by a handover is asked again of the new
     /// daemon: its patience is for the handover, not for the wait before it.
     #[test]

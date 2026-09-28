@@ -938,3 +938,19 @@ fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
     };
     assert!(bad_name(refused.check()));
 }
+
+/// A change whose reply never came may have been made at the home all the same, so the replica
+/// says it may be behind until the home's entries next reach it.
+#[test]
+fn a_replica_whose_call_went_unanswered_may_be_behind_until_it_hears_again() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    assert_eq!(wire.devenv.behind("review"), None);
+
+    wire.devenv.unanswered("review@lap");
+    assert_eq!(wire.devenv.behind("review"), Some("lap"));
+    wire.post(Side::Laptop, &builder, None, &[], "the home's next entry").unwrap();
+    assert_eq!(wire.devenv.behind("review"), None);
+}
