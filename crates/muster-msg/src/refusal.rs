@@ -27,6 +27,21 @@ pub enum Refusal {
     NoSuchParticipant {
         name: String,
     },
+    /// Members on several machines go by this name; `name@machine` says which.
+    WhichParticipant {
+        name: String,
+        candidates: Vec<String>,
+    },
+    /// A post to someone on another machine, with whom the author shares no group: the group
+    /// of exactly them would have a member that never joined it.
+    NoSharedGroup {
+        name: String,
+    },
+    /// The group is kept on a machine this one has no link to now.
+    Unreachable {
+        group: String,
+        machine: String,
+    },
     /// The caller is not a participant at all, so there is nothing to leave. `name` is what it
     /// called itself, when it did.
     NotAParticipant {
@@ -91,6 +106,9 @@ impl Refusal {
             Refusal::GroupNameClash { .. } => "group_name_clash",
             Refusal::PairTooLong { .. } => "pair_too_long",
             Refusal::NoSuchParticipant { .. } => "no_such_participant",
+            Refusal::WhichParticipant { .. } => "which_participant",
+            Refusal::NoSharedGroup { .. } => "no_shared_group",
+            Refusal::Unreachable { .. } => "unreachable",
             Refusal::NotAParticipant { .. } => "not_a_participant",
             Refusal::NotAMember { .. } => "not_a_member",
             Refusal::AddresseeNotInGroup { .. } => "addressee_not_in_group",

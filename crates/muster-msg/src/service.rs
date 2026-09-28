@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::across::Tell;
 use crate::names::{check_group, check_participant};
 use crate::{
     Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Policy, Refusal, Saved, Store, What,
@@ -155,6 +156,8 @@ impl Ringable {
 pub enum Liveness {
     Alive,
     Gone,
+    /// On another machine this one cannot reach now, or could not ask.
+    Unreachable,
     /// The human, who counts as alive whether or not anyone is at the window, since messages
     /// to the human wait for them.
     Human,
@@ -224,6 +227,8 @@ pub enum Reach {
     NoDoorbell,
     /// The group is paused: woken once it is resumed (MIP-4, section 8).
     Paused,
+    /// On another machine, which could not be told.
+    Unreachable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -235,6 +240,8 @@ pub struct Posted {
     pub wakes: Vec<Wake>,
     /// Waits this post ended, with what to tell each.
     pub answered: Vec<AnsweredWait>,
+    /// Other machines with members in the group, which the host sends the new entry to.
+    pub tell: Vec<Tell>,
     /// Why the state beside the log could not be saved, when it could not. The message is in
     /// the log regardless, so the post happened; what is at risk is only who was woken, which
     /// costs at most a wake too many after a restart.
@@ -254,6 +261,7 @@ pub struct Joined {
     pub group: Option<String>,
     pub created: bool,
     pub took_over: bool,
+    pub tell: Vec<Tell>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,6 +272,7 @@ pub struct Left {
     pub stopped: bool,
     /// The wait this ended: the leaver's own, or one it had filtered to the group it left.
     pub ended: Option<u64>,
+    pub tell: Vec<Tell>,
 }
 
 /// A change to a group: made, its policy set, members added or removed, paused.
@@ -457,7 +466,7 @@ impl<S: Store> Messaging<S> {
             self.add_member(group, &name, now_ms)?;
         }
         self.save()?;
-        Ok(Joined { name, group: group.map(str::to_string), created, took_over })
+        Ok(Joined { name, group: group.map(str::to_string), created, took_over, tell: Vec::new() })
     }
 
     pub fn leave(
@@ -489,7 +498,7 @@ impl<S: Store> Messaging<S> {
                 .is_some_and(|waiter| waiter.group.as_deref() == Some(group));
             let ended = if kept_to_it { self.waiters.remove(&name) } else { None };
             let ended = ended.map(|waiter| waiter.ticket);
-            Left { name, groups: vec![group.to_string()], stopped: false, ended }
+            Left { name, groups: vec![group.to_string()], stopped: false, ended, tell: Vec::new() }
         } else {
             let groups = self.memberships(&name);
             for group in &groups {
@@ -500,7 +509,7 @@ impl<S: Store> Messaging<S> {
             }
             self.participants.remove(&name);
             let ended = self.waiters.remove(&name).map(|waiter| waiter.ticket);
-            Left { name, groups, stopped: true, ended }
+            Left { name, groups, stopped: true, ended, tell: Vec::new() }
         };
         self.save()?;
         Ok(left)
@@ -575,6 +584,7 @@ impl<S: Store> Messaging<S> {
             reached: Vec::new(),
             wakes: Vec::new(),
             answered: Vec::new(),
+            tell: Vec::new(),
             unsaved: None,
         };
         let paused = self.groups[&group].policy.paused;
@@ -922,6 +932,7 @@ impl<S: Store> Messaging<S> {
             reached: Vec::new(),
             wakes: Vec::new(),
             answered: Vec::new(),
+            tell: Vec::new(),
             unsaved: None,
         };
         if !self.groups[group].policy.paused {

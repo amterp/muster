@@ -124,7 +124,13 @@ fn rung(via: &Via) -> String {
 
 fn refused(refusal: &Refusal) -> String {
     let detail = match refusal {
-        Refusal::BadName { name } | Refusal::NoSuchParticipant { name } => name.clone(),
+        Refusal::BadName { name }
+        | Refusal::NoSuchParticipant { name }
+        | Refusal::NoSharedGroup { name } => name.clone(),
+        Refusal::WhichParticipant { name, candidates } => {
+            format!("{name} {}", candidates.join(","))
+        }
+        Refusal::Unreachable { group, machine } => format!("{group} {machine}"),
         Refusal::NotAParticipant { name } => {
             name.clone().unwrap_or_else(|| "this session".to_string())
         }
@@ -243,6 +249,7 @@ fn reached(
         ("no agent", Reach::NoAgent),
         ("no doorbell", Reach::NoDoorbell),
         ("paused", Reach::Paused),
+        ("unreachable", Reach::Unreachable),
     ] {
         let names: Vec<String> = posted
             .reached
@@ -518,6 +525,7 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
                         Liveness::Alive => "alive",
                         Liveness::Gone => "gone",
                         Liveness::Human => "human",
+                        Liveness::Unreachable => "unreachable",
                     };
                     match member.activity {
                         Some(doing) => format!("{} {liveness} ({})", member.name, activity(doing)),

@@ -798,6 +798,20 @@ fn words(refusal: &Refusal) -> String {
         Refusal::NoSuchParticipant { name } => {
             format!("nobody here is called {name}; `{}` lists who is", messaging::command(WHO, ""))
         }
+        Refusal::WhichParticipant { name, candidates } => format!(
+            "{name} could be {}; say which, as name@machine",
+            candidates.join(" or ")
+        ),
+        Refusal::NoSharedGroup { name } => format!(
+            "{name} is on another machine and in no group with you, so there is no group to post \
+             this in; both of you join one with `{}`, then post with --group",
+            messaging::command(JOIN, "--group <group>")
+        ),
+        Refusal::Unreachable { group, machine } => format!(
+            "{group} is kept on {machine}, which this machine cannot reach now: messages cross \
+             machines only while a Muster window is attached to both, and its connection to \
+             {machine} may have dropped. Groups kept on this machine still work"
+        ),
         Refusal::NotAParticipant { name } => format!(
             "{} not taking part, so there is nothing to leave",
             name.as_ref().map_or("this session is".to_string(), |name| format!("{name} is"))
@@ -930,6 +944,7 @@ fn member_of(member: muster_msg::Member) -> msg_answer::Member {
         Liveness::Alive => msg_answer::Liveness::Alive,
         Liveness::Gone => msg_answer::Liveness::Gone,
         Liveness::Human => msg_answer::Liveness::Human,
+        Liveness::Unreachable => msg_answer::Liveness::Unspecified,
     };
     msg_answer::Member {
         name: member.name,
@@ -951,6 +966,7 @@ fn reach_of(reach: Reach) -> msg_answer::Reach {
         Reach::Waiting => msg_answer::Reach::Waiting,
         Reach::Gone => msg_answer::Reach::Gone,
         Reach::Paused => msg_answer::Reach::Paused,
+        Reach::Unreachable => msg_answer::Reach::Unspecified,
     }
 }
 

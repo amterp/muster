@@ -8,6 +8,7 @@
 //! crate knows only by name, as it knows an inbox only by path; it names no tab or window, and
 //! its tests run with no daemon.
 
+mod across;
 mod entry;
 mod names;
 mod policy;
@@ -15,8 +16,9 @@ mod refusal;
 mod service;
 mod store;
 
+pub use across::{Answered, Applied, Away, Call, Caught, Peer, Reply, Route, Settled, Tell};
 pub use entry::{Change, Entry, What};
-pub use names::{HUMAN, LONGEST_GROUP, default_name, pair_group};
+pub use names::{HUMAN, LONGEST_GROUP, default_name, pair_group, split_machine};
 pub use policy::Policy;
 pub use refusal::{Action, Refusal};
 pub use service::{

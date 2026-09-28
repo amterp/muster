@@ -21,6 +21,12 @@ pub(crate) fn check_participant(name: &str) -> Result<(), Refusal> {
     }
 }
 
+/// A name another machine's member or group goes by here, split into its own name and the
+/// machine's.
+pub fn split_machine(_name: &str) -> Option<(&str, &str)> {
+    None
+}
+
 /// A group name is a participant name, or several joined by `+` (see [`pair_group`]).
 pub(crate) fn check_group(name: &str) -> Result<(), Refusal> {
     let parts_fit = name.split('+').all(|part| check_participant(part).is_ok());
