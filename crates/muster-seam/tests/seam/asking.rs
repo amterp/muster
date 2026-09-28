@@ -5,7 +5,7 @@ use muster::proto::{
     AttentionChanged, Event, FocusAsking, OpenWindow, ReadWindow, Request, Response, Startup,
     WindowFocus, event, request, response,
 };
-use muster_daemon_proto::input_event;
+use muster_daemon_proto::{AgentState, input_event};
 use muster_harness::requests::{create, in_new_tab, make, until_text};
 use muster_harness::{Daemon, Input, until};
 use prost::Message;
@@ -60,6 +60,53 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     let nothing = focus_asking();
     assert_eq!(nothing, muster::proto::Asking::default(), "something still asks");
     assert_eq!(keyboard(), (hidden_tab.to_string(), hidden_pane.to_string()), "it moved");
+}
+
+/// Muster quit and its agents went on, and one blocked meanwhile. The window that opens next
+/// announces nothing about it, since it saw nothing change, and the pane is still the one asking:
+/// the sidebar shows it blocked, so going to the pane that asked has to reach it.
+#[test]
+fn a_pane_blocked_before_the_window_opened_is_reached() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", in_new_tab("t2")));
+    daemon.run_agent("p2");
+    daemon.set_agent_state("p2", AgentState::Blocked);
+    for payload in [
+        request::Payload::Startup(Startup {
+            config_path: daemon.muster_config().to_string_lossy().into_owned(),
+            ..Startup::default()
+        }),
+        request::Payload::OpenWindow(OpenWindow {}),
+    ] {
+        assert_ok(&answer(payload));
+    }
+    until(
+        "the window to show p2 blocked",
+        || state_of("p2") == "blocked",
+        || format!("the window reads p2 as {:?}", state_of("p2")),
+    );
+
+    let went = focus_asking();
+    assert_eq!(went.pane_id, "p2", "went to {went:?}");
+    assert_eq!(keyboard().1, "p2");
+}
+
+/// What the window paints for a pane.
+fn state_of(pane: &str) -> String {
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow {})).payload
+    else {
+        return String::new();
+    };
+    window
+        .panes
+        .into_iter()
+        .find(|agent| agent.pane_id == pane)
+        .map(|agent| agent.state)
+        .unwrap_or_default()
 }
 
 fn focus_asking() -> muster::proto::Asking {
