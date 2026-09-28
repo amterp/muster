@@ -345,6 +345,22 @@ fn follow(stream: &mut UnixStream, io: &Arc<PaneIo>, id: u64, pane: &str) {
 /// would otherwise be held until the connection died of something else.
 const STALLED_WRITE: Duration = Duration::from_secs(30);
 
+/// A debug build's [`STALLED_WRITE`] in milliseconds, when set.
+///
+/// The one way a test sees a bridge cut off for not reading without waiting half a minute for
+/// it. A shipped daemon never reads it.
+const STALLED_WRITE_SAID: &str = "MUSTER_DAEMON_STALLED_WRITE_MS";
+
+fn stalled_write() -> Duration {
+    if cfg!(debug_assertions)
+        && let Ok(said) = std::env::var(STALLED_WRITE_SAID)
+        && let Ok(millis) = said.trim().parse::<u64>()
+    {
+        return Duration::from_millis(millis);
+    }
+    STALLED_WRITE
+}
+
 /// Starts the thread that writes a stream's frames, and returns where to queue them. When every
 /// sender has gone, it writes what is left and hangs the connection up, which ends the thread
 /// reading it.
@@ -355,7 +371,7 @@ fn writer(stream: &UnixStream) -> std::io::Result<(Sender<Vec<u8>>, Written, Urg
     let urgent: Urgent = Arc::default();
     let jumping = Arc::clone(&urgent);
     let mut writing = stream.try_clone()?;
-    writing.set_write_timeout(Some(STALLED_WRITE))?;
+    writing.set_write_timeout(Some(stalled_write()))?;
     let slow_detach = crate::handoff::Faults::read().has("slow-detach");
     std::thread::Builder::new().name("stream write".to_string()).spawn(move || {
         let _finished = finished;

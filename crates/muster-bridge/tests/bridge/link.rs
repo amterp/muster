@@ -4,14 +4,17 @@ use std::io::{BufRead, BufReader, Read};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, channel};
+use std::time::Duration;
 
 use muster_core::bridge_link::Report;
 use muster_core::respawn::Ending;
 use muster_daemon_client::input::Input;
 use muster_daemon_proto::{self as proto, input_event};
 use muster_harness::requests::{create, in_new_tab, make};
-use muster_harness::{Daemon, PATIENCE};
+use muster_harness::{Daemon, PATIENCE, built_daemon, until};
 
 /// A window's end of one pane's link: every report a bridge sends, as it arrives.
 struct Window {
@@ -82,11 +85,21 @@ fn drawn(child: &mut Child) -> Receiver<Vec<u8>> {
 
 fn until_drawn(drawn: &Receiver<Vec<u8>>, wanted: &str) {
     let mut seen = Vec::new();
-    while !String::from_utf8_lossy(&seen).contains(wanted) {
+    loop {
         let Ok(bytes) = drawn.recv_timeout(PATIENCE) else {
-            panic!("{wanted:?} never drew; saw {:?}", String::from_utf8_lossy(&seen));
+            let tail = &seen[seen.len().saturating_sub(2000)..];
+            panic!(
+                "{wanted:?} never drew; the last it drew was {:?}",
+                String::from_utf8_lossy(tail)
+            );
         };
+        // Only what could hold a new match is searched: a pane that drew megabytes first
+        // would otherwise be searched from the start on every read.
+        let from = seen.len().saturating_sub(wanted.len());
         seen.extend(bytes);
+        if String::from_utf8_lossy(&seen[from..]).contains(wanted) {
+            return;
+        }
     }
 }
 
@@ -207,4 +220,109 @@ fn a_bridge_follows_its_pane_to_the_daemon_that_replaced_its_own() {
     until_drawn(&drawn, "handed-42");
     assert!(child.try_wait().unwrap().is_none(), "the bridge is still drawing");
     let _ = child.kill();
+}
+
+/// A daemon hangs up on a bridge that has stopped reading its stream, and a bridge stops when
+/// the surface it draws into stops reading it - which every surface in a window does while the
+/// window's main thread is paging. Nothing is wrong with the bridge or its surface then, so it
+/// attaches again and goes on drawing, where exiting would cost the window a new surface.
+///
+/// Once. A stream lost again straight after is not a window catching up, so the bridge exits
+/// as it always did and the window's replacement policy decides.
+#[test]
+fn a_bridge_cut_off_for_not_reading_attaches_again_once() {
+    let daemon = Daemon::start_with(built_daemon(), &[("MUSTER_DAEMON_STALLED_WRITE_MS", "300")]);
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let window = Window::bind(&daemon, "window");
+    let mut child = bridge(&daemon, "p1", &window, false);
+    assert_eq!(window.next(), Report::Attached);
+    let reading = Arc::new(AtomicBool::new(false));
+    let drawn = drawn_while(&mut child, Arc::clone(&reading));
+    let input = Input::open(daemon.socket_path(), "test", Box::new(|| {})).unwrap();
+
+    cut_off(&daemon, &input, &reading, 1);
+    loop {
+        match window.next() {
+            Report::Attached => break,
+            Report::Painted { .. } => {}
+            other @ Report::Exiting(_) => {
+                panic!("the bridge should attach again, and said {other:?}")
+            }
+        }
+    }
+    type_line(&input, "echo again-$((1+1))");
+    until_drawn(&drawn, "again-2");
+    assert!(child.try_wait().unwrap().is_none(), "the bridge is still drawing");
+
+    cut_off(&daemon, &input, &reading, 2);
+    let ending = loop {
+        match window.next() {
+            Report::Painted { .. } => {}
+            report => break exiting(report),
+        }
+    };
+    assert_eq!(ending, Ending::Lost);
+    let _ = child.wait();
+}
+
+/// Stops reading what the bridge draws, floods the pane until the daemon hangs up on the
+/// bridge for the `detached`th time, and reads again.
+fn cut_off(daemon: &Daemon, input: &Input, reading: &AtomicBool, detached: usize) {
+    reading.store(false, Ordering::SeqCst);
+    type_line(input, "head -c 3000000 /dev/zero | base64");
+    let log = daemon.socket_path().with_extension("log");
+    let count = || {
+        std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .matches("\"event\":\"daemon.stream.detached\"")
+            .count()
+    };
+    until(
+        "the daemon to hang up on a bridge that stopped reading",
+        || count() >= detached,
+        || {
+            let text = std::fs::read_to_string(&log).unwrap_or_default();
+            let tail: String = text.lines().rev().take(12).collect::<Vec<_>>().join("\n");
+            format!("{} hang-ups in {}; it ends:\n{tail}", count(), log.display())
+        },
+    );
+    reading.store(true, Ordering::SeqCst);
+}
+
+fn type_line(input: &Input, text: &str) {
+    input
+        .send(proto::InputEvent {
+            pane: "p1".to_string(),
+            input: Some(input_event::Input::Send(input_event::Send {
+                text: text.to_string(),
+                enter: true,
+            })),
+        })
+        .unwrap();
+}
+
+/// What the bridge draws, read only while `reading` says so: a surface that has stopped
+/// reading its pty.
+fn drawn_while(child: &mut Child, reading: Arc<AtomicBool>) -> Receiver<Vec<u8>> {
+    let mut stdout = child.stdout.take().unwrap();
+    let (tell, drawn) = channel();
+    std::thread::spawn(move || {
+        let mut buffer = [0u8; 4096];
+        loop {
+            if !reading.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+            match stdout.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => {
+                    if tell.send(buffer[..read].to_vec()).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    drawn
 }
