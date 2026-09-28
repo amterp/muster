@@ -23,9 +23,10 @@ pub(crate) const QUIET: Duration = Duration::from_secs(10);
 /// approved tool runs none until it ends. What the rules confirmed and then stopped seeing has
 /// gone. The wait lets a prompt finish drawing.
 ///
-/// The same wait sets a working report aside while a prompt is on screen: one sub-agent can
-/// ask permission while another's tool calls go on reporting working, and the prompt is still
-/// waiting on you.
+/// A prompt on screen also sets a working report aside: one sub-agent can ask permission while
+/// another's tool calls go on reporting working, and the prompt is still waiting on you. A
+/// report that came after the prompt drew is set aside at once, and one that came before it
+/// after this wait.
 pub(crate) const DISAGREE: Duration = Duration::from_secs(2);
 
 /// A blocked or idle report the rules have never read the same way stops counting once the pane
