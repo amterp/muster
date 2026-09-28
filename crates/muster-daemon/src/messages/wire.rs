@@ -135,10 +135,16 @@ fn member_from(member: msg_answer::Member) -> Member {
         name: member.name,
         liveness,
         activity,
-        groups: member.groups,
-        inbox: member.inbox,
-        pane: member.pane,
+        groups: member.groups.into_iter().map(plain).collect(),
+        inbox: member.inbox.map(plain),
+        pane: member.pane.map(plain),
     }
+}
+
+/// Text another machine sent that is printed here but names nothing, without anything a
+/// terminal would take as a command.
+fn plain(text: String) -> String {
+    text.chars().filter(|character| !character.is_control()).collect()
 }
 
 pub(super) fn reply_to(reply: Reply) -> Replied {
@@ -251,7 +257,8 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
 }
 
 /// The refusal a code names, with the fields it carries. A code this build does not know - a
-/// newer daemon's - keeps the other daemon's own words.
+/// newer daemon's - keeps the other daemon's own words. Every field is printed here, so none
+/// keeps what a terminal would take as a command.
 fn refusal_from(refused: peer_reply::Refused) -> Refusal {
     let peer_reply::Refused {
         code,
@@ -265,6 +272,8 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         action,
         ..
     } = refused;
+    let (words, name, group, machine) = (plain(words), plain(name), plain(group), plain(machine));
+    let (existing, candidates) = (plain(existing), candidates.into_iter().map(plain).collect());
     let optional = |text: String| (!text.is_empty()).then_some(text);
     match code.as_str() {
         "bad_name" => Refusal::BadName { name },

@@ -423,7 +423,7 @@ pub(crate) fn call_away(shared: &Shared, away: &Away) -> (Settle, Holding) {
 fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
     let patience = if matches!(away.call, Call::Post { .. }) { POSTING } else { CALLING };
     let replied = match link.call(wire::call_to(&away.call), patience) {
-        Ok(replied) => wire::reply_from(replied),
+        Ok(replied) => wire::reply_from(replied).and_then(|reply| named(reply, &away.machine)),
         Err(error) => {
             log::warn(
                 "msg.peer.call_failed",
@@ -456,6 +456,31 @@ fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
         let _ = fetch(shared, link, away.call.group(), next);
     }
     (settle, holding)
+}
+
+/// The reply, unless it names what no participant or group here could be called, which is
+/// refused whole rather than turned into this machine's names.
+fn named(reply: muster_msg::Reply, machine: &str) -> Option<muster_msg::Reply> {
+    match reply.check() {
+        Ok(()) => Some(reply),
+        Err(refusal) => {
+            misnamed(machine, &refusal);
+            None
+        }
+    }
+}
+
+fn misnamed(machine: &str, refusal: &Refusal) {
+    log::warn(
+        "msg.peer.misnamed",
+        fields! {
+            "machine" => machine,
+            "refusal" => format!("{refusal:?}"),
+            "impact" => "what that machine sent was refused whole and changed nothing here",
+            "check" => "whether that machine's daemon is Muster's own and as new as this one; \
+                        an honest one never sends such a name",
+        },
+    );
 }
 
 fn unreachable(away: &Away) -> Settle {
@@ -571,6 +596,10 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, call: Option<Called>) -> Repli
 /// between, and wake this machine's members for them.
 fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> Replied {
     let caught = wire::caught_from(caught);
+    if let Err(refusal) = caught.check() {
+        misnamed(&link.peer.name, &refusal);
+        return Replied::Refused(wire::refusal_to(&refusal));
+    }
     let group = caught.group.clone();
     let panes = Panes::of(shared);
     // A gap is fetched, and the post that was sent on is answered with whom the fetch reached:

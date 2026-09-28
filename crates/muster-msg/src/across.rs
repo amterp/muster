@@ -11,7 +11,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::names::{check_group, is_human, is_machine, split_machine};
+use crate::names::{
+    check_addressee, check_group, check_participant, is_human, is_machine, split_machine,
+};
 use crate::service::{Group, check_body};
 use crate::{
     Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, Member, Messaging,
@@ -155,9 +157,20 @@ pub enum Call {
 }
 
 impl Call {
-    /// Refuses a call whose names are not ones an honest asker sends. Not checked yet.
+    /// Refuses a call whose names are not ones an honest asker sends, before any is turned into
+    /// this machine's: the group is one kept here, so bare, and whoever joins, leaves or posts is
+    /// the asker's own participant, so bare too. `builder@<us>` there would become this
+    /// machine's `builder` on arrival.
     pub fn check(&self) -> Result<(), Refusal> {
-        Ok(())
+        check_group(self.group())?;
+        match self {
+            Call::Join { name, .. } | Call::Leave { name, .. } => check_participant(name),
+            Call::Post { author, to, .. } => {
+                check_participant(author)?;
+                to.iter().try_for_each(|name| check_addressee(name))
+            }
+            Call::Find { .. } | Call::Since { .. } | Call::Who { .. } => Ok(()),
+        }
     }
 
     /// The group the call is about, as its home names it.
@@ -210,8 +223,22 @@ pub struct Caught {
 pub const CAUGHT_BYTES: usize = 8 << 20;
 
 impl Caught {
-    /// Refuses entries whose names are not ones an honest home sends. Not checked yet.
+    /// Refuses entries whose names are not ones an honest home sends: its group bare, since a
+    /// group written `review@<us>` would land on one kept here, and every name one a participant
+    /// could have, this machine's own included - the human posts from a shell there too.
     pub fn check(&self) -> Result<(), Refusal> {
+        check_group(&self.group)?;
+        self.policy.check()?;
+        for entry in &self.entries {
+            match &entry.what {
+                What::Message { author, to, .. } => {
+                    check_addressee(author)?;
+                    to.iter().try_for_each(|name| check_addressee(name))?;
+                }
+                What::Created { by } | What::Changed { by, .. } => check_addressee(by)?,
+                What::Joined { who } | What::Left { who } => check_addressee(who)?,
+            }
+        }
         Ok(())
     }
 }
@@ -230,9 +257,22 @@ pub enum Reply {
 }
 
 impl Reply {
-    /// Refuses a reply whose names are not ones an honest home sends. Not checked yet.
+    /// Refuses a reply whose names are not ones an honest home sends, as [`Caught::check`] does.
     pub fn check(&self) -> Result<(), Refusal> {
-        Ok(())
+        match self {
+            Reply::Found(_) => Ok(()),
+            Reply::Joined { caught, .. } | Reply::Left { caught } | Reply::Caught(caught) => {
+                caught.check()
+            }
+            Reply::Posted { reached, caught, .. } => {
+                reached.iter().try_for_each(|(name, _)| check_addressee(name))?;
+                caught.check()
+            }
+            Reply::Members(members) => {
+                members.iter().try_for_each(|member| check_addressee(&member.name))
+            }
+            Reply::Refused { caught, .. } => caught.as_ref().map_or(Ok(()), Caught::check),
+        }
     }
 }
 
@@ -724,6 +764,10 @@ impl<S: Store> Messaging<S> {
             unsaved: None,
         };
         let refused = |refusal| Reply::Refused { refusal, caught: None };
+        if let Err(refusal) = call.check() {
+            answered.reply = refused(refusal);
+            return answered;
+        }
         answered.reply = match call {
             Call::Find { group } => Reply::Found(self.kept_here(&group)),
             Call::Since { group, after } => {
