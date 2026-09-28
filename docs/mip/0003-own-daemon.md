@@ -676,8 +676,10 @@ persisted.
 
 **Effects are the daemon's and arrive as events**: title, directory (OSC 7), bell, desktop
 notifications (OSC 9 and 777), progress (OSC 9;4), and clipboard writes (OSC 52). Attention routing
-already consumes daemon events, and now receives these whether or not the pane is on screen. The
-shell ignores the surface's own effect callbacks, and refuses its clipboard reads. A clipboard write
+already consumes daemon events, and now receives these whether or not the pane is on screen: a
+notification asks for somebody in the program's words, a bell marks the pane, and progress is shown
+with its agent (`architecture.md`, attention routing). The shell ignores the surface's own effect
+callbacks, and refuses its clipboard reads. A clipboard write
 is applied according to a Muster setting whose default matches Ghostty's `clipboard-write`
 default, allow. libghostty-vt has no clipboard-read effect, so a program asking to read the
 clipboard gets no answer.

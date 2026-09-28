@@ -4,8 +4,9 @@ One name per concept; docs and code use these terms. Alphabetical.
 
 - **adapter** - the module translating the Muster vocabulary to one concrete backend; nothing backend-shaped escapes
   it.
-- **agent state** - working / blocked / idle / done / unknown, per pane. Daemon-detected, except `done`: a finish the
-  daemon holds as `finished_unseen`, which a window paints until it is seen.
+- **agent state** - working / blocked / waiting / idle / done / unknown, per pane. Daemon-detected, except `done`: a
+  finish the daemon holds as `finished_unseen`, which a window paints until it is seen; and `waiting`: an idle agent
+  whose facts say what it ended its turn to wait on.
 - **backend** - the daemon system that owns sessions: `muster-daemon`, Muster's own since it replaced herdr (MIP-3).
 - **backend session** - one live connection to one daemon.
 - **bridge** - the subprocess a surface runs to deliver a pane channel; output only.

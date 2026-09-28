@@ -52,8 +52,9 @@ selection_foreground = "#c0caf5"
 bold = "#e5c07b"              # bold text; omit and it keeps whatever colour it already had
 divider = "#4a4a4a"            # the line between two regions; omit for the platform's
 focus_ring = "#bb9af7"         # which pane has the keyboard; omit to follow the macOS accent
-agent_working = "#7aa2f7"      # the five agent states, on a pane's edge and its row's dot
+agent_working = "#7aa2f7"      # the six agent states, on a pane's edge and its row's dot
 agent_blocked = "#ff9e64"      # each optional on its own; omit for the one Muster ships
+agent_waiting = "#7c7fd8"      # idle, and waiting on work it started itself
 agent_done = "#9ece6a"
 agent_idle = "#565f89"
 agent_unknown = "#3b4261"
@@ -70,8 +71,9 @@ blink = true                   # omit to let the program in the pane decide
 
 [notifications]
 blocked = true                 # an agent waiting on you
+programs = true                # a program in a pane asking to notify you (OSC 9, OSC 777)
 done = true                    # an agent that finished while nobody was looking
-muted = false                  # silences both, without forgetting which you wanted
+muted = false                  # silences all three, without forgetting which you wanted
 ```
 
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
@@ -379,6 +381,14 @@ Activating one takes you to the pane that raised it, including a pane no split i
 
 A pane you are already looking at never notifies. That is what its border is for, and a
 banner about something on your screen is the fastest way to learn that banners are noise.
+
+`programs` is a program in a pane asking to notify you, with OSC 9 or OSC 777, as a build or
+a test runner can. Its banner carries the program's own words, since it has said why it wants
+you, and it stands until you look at the pane. It is on because a program that asks has
+decided it is worth it; `programs = false` is for a tool that decides that too often. A bell
+is never a banner, whatever this says: shells ring for a completion that found nothing, so a
+bell marks the pane's row until you look, and bounces the Dock once if Muster is behind
+another app.
 
 `muted = true` is the quiet path for somebody running fifteen agents, and it is a third key
 rather than setting the other two to `false` so that going quiet for an afternoon does not

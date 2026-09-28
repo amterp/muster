@@ -200,9 +200,11 @@ the history its bridge was replayed on attaching, and everything since, on which
 full-screen program it reaches that program's screen and none of the history under it. A pane's text read by the CLI
 or an agent comes from the daemon instead, and has a reach of its own (`cli/limits.md`).
 
-Agent states are working / blocked / idle / done / **unknown** - five, not four; unknown renders as itself, never as
-success. State is daemon truth, but one of the five is computed from a client-side input, so the vocabulary has to
-carry that input.
+Agent states are working / blocked / waiting / idle / done / **unknown** - six; unknown renders as itself, never as
+success. State is daemon truth, but two of the six are computed in the window, so the vocabulary has to carry what
+they are computed from. `waiting` is the other: an idle agent that said, through the daemon's `report --waiting`, that
+it ended its turn to wait on work it started itself. It has not finished and nobody is holding it up, so it is neither
+idle nor done, and a caller waiting for `idle` is not answered by it.
 
 `done` is an agent that finished while nobody looked, and its two halves have different owners. **The daemon holds the
 finish; the window decides the look.** muster-daemon reports four states and never `done`, and marks a pane's record
@@ -223,8 +225,8 @@ refuses, as it refuses every change partway through a handoff, is taken back the
 until the next look reports it again. It is not sent again at once, since a daemon still handing over would refuse
 that too.
 
-**One legend, and the window holds it.** working cyan, blocked orange, done green, idle grey, and unknown a fainter
-grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
+**One legend, and the window holds it.** working cyan, blocked orange, waiting indigo, done green, idle grey, and
+unknown a fainter grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
 reads borders and dots all day and reads `muster window` when something has already gone strangely, so the surface
 with the smaller audience is the one that moves. The two did disagree once, working and done inverted between them,
 and what it cost was not a wrong pixel - it was somebody learning that the colours could not be trusted, in the one
@@ -235,6 +237,11 @@ which follows the macOS accent and is blue on the default one; and plain ANSI bl
 on a dark background, which costs more on this row than any other because working is the state a window spends most of
 its time in. Cyan is legible in both mediums, distinct from green and orange at a glance, and calm - which is what the
 busy-but-not-waiting state should be while blocked is the loud one.
+
+**Waiting is indigo because it is the calmest thing that is not resting.** An agent waiting on its own gate needs
+nobody, so it must not read as blocked; it has not finished, so it must not read as idle grey or done green; and it is
+not working either. Indigo sits apart from all three and from the accent ring's blue by weight. The CLI spells it
+blue, the nearest of the sixteen, and blue's poor legibility matters less on a row nobody has to find.
 
 **The two rings differ in kind, not only in hue.** The outer ring is the agent's state, at full weight on all four
 edges; the focus ring is thinner and sits inside it with a gap. That is not a decoration: the focus ring follows
@@ -252,7 +259,7 @@ resting rendering of a list of words, the row already prints the state, and the 
 a dot has to be some colour in order to exist.
 
 **The legend is a default, and the window's half of it is a person's to change.** `[colors]`
-carries the five agent states and the focus ring (`configuration.md`), and only the window
+carries the six agent states and the focus ring (`configuration.md`), and only the window
 honours them: the CLI keeps the terminal's fixed sixteen. That answers the question a
 configurable legend raises, which is what "one legend" can still mean once anybody can repaint
 it. `muster window` reads the same on every machine - which for an agent parsing it is a feature
@@ -262,7 +269,7 @@ wrong for somebody and would leave Muster no longer knowing what the legend was.
 **What crosses the seam is a value somebody wrote, never a legend.** `a_2HPHq3Zck` rejected a hue
 table in `muster-core` on the grounds that a hue never crosses, and half of that survives. A
 configured colour does cross - it arrives in the file the core parses, and rides the same
-`Appearance` message `divider` already does - but the core gains six optional strings and no
+`Appearance` message `divider` already does - but the core gains seven optional strings and no
 opinion: it paints nothing, holds no table mapping a state to a hue, and could not say which of
 them is the default. The defaults stay in the shell because the window is the canonical surface.
 So the core learns what a person chose and still never learns what a state means.
@@ -271,7 +278,7 @@ So the core learns what a person chose and still never learns what a state means
 `Sources/MusterMac/PaneChrome.swift` and `agent_style` in `crates/muster-cli/src/render.rs`, each citing this section
 and the other, each with a test that fails if its own row moves. The Swift side pins its
 *defaults*, which is exactly what the CLI is fixed against, so configurability costs the tripwire
-nothing. A tripwire rather than a mechanism: five rows that
+nothing. A tripwire rather than a mechanism: six rows that
 change almost never do not earn a generator, and a lint reading both files across the language line is a regex worth
 reaching for the first time a tripwire fails to fire.
 
@@ -429,8 +436,8 @@ pane (desiderata: fast is a feature, the per-event half).
 
 ## Attention routing
 
-Attention is computed in the core from control-plane events - agent-state transitions, bells, title changes, output
-activity all arrive there, so the data-plane bypass costs nothing here. The core owns the unread and urgency
+Attention is computed in the core from control-plane events - agent-state transitions and a program's bells,
+notifications and progress all arrive there, so the data-plane bypass costs nothing here. The core owns the unread and urgency
 ordering; the shell only delivers notifications and renders indicators. Activating a notification dispatches an
 ordinary focus intent through the one action path - which may change composition first, because the pane that asked
 may not be visible in any window. Surfacing the hidden is part of the feature, and the core owns it.
@@ -441,6 +448,12 @@ switched off on their own, and one key silences both without forgetting which of
 (`configuration.md`, `[notifications]`). A quiet path is in the first version rather than a later one because
 everything notifying is the same as nothing notifying, and somebody running fifteen agents finds that out on their
 first afternoon.
+
+**A program in a pane can ask too, and a bell never does.** A program's own notification (OSC 9, OSC 777) asks with
+its own words, which is the notification saying why; it stands until somebody looks, and a blocked agent outranks it.
+A bell only marks the pane until somebody looks, because shells ring for trivia. Progress (OSC 9;4) asks nothing and
+is shown with the pane's agent. None of the three is in a daemon's snapshot, so a window that reconnects holds a
+program's progress no longer: it cannot know the work is still running.
 
 **A pane the window is focused on and showing raises nothing.** That is what the border is for, and it costs no new
 rule: seen-ness is already computed for exactly that pane, and a finish there is reported seen rather than announced.
