@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "a-cli-verb-that",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790612572581,
+  "creator": "Alexander Terp",
+  "description": "A message for the human raises a banner, and choosing it (or cmd+shift+A) opens the group's transcript through OpenTranscript. The CLI has no verb for that, so parity with the banner is missing: something like muster msg open --group G.",
+  "id": "a_2YGvzS7K0",
+  "parent": "a_2Y3ODvuwa",
+  "position": "b02",
+  "title": "A CLI verb that opens a group's transcript",
+  "type": "feature",
+  "updated_at_millis": 1790612572581,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790612572581}
+  ]
+}
