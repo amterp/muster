@@ -974,6 +974,23 @@ mod tests {
         assert!(!text.contains("lsof -t /home/a/.muster/daemon/i1.sock)"), "{text}");
     }
 
+    /// The line is there to be pasted, and a home directory can have a space in it.
+    #[test]
+    fn the_way_to_end_a_herdr_daemon_pastes_whatever_its_path() {
+        let text = daemons_text(&muster_proto::Daemons {
+            remembered: true,
+            daemons: vec![muster_proto::KnownDaemon {
+                socket: "/Users/Jo Smith/.config/herdr/herdr.sock".to_string(),
+                state: "herdr".to_string(),
+                ..muster_proto::KnownDaemon::default()
+            }],
+        });
+        assert!(
+            text.contains("kill $(lsof -t '/Users/Jo Smith/.config/herdr/herdr.sock')"),
+            "{text}"
+        );
+    }
+
     /// The window decides the legend and nothing checks the two across the language line, so this
     /// is the tripwire. A failure here means `muster window` and the window itself contradict each
     /// other about what the product's own vocabulary looks like, which is how somebody learns to
