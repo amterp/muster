@@ -35,7 +35,7 @@ impl Binding {
 /// dispatcher has somewhere to grow, and so `Resolution` is not a lie about a shape that
 /// does not exist.
 ///
-/// **Not [`super::Action`]**, which is the window's own 44-item vocabulary in `bindings.rs` -
+/// **Not [`super::Action`]**, which is the window's own vocabulary in `bindings.rs` -
 /// splitting, focusing, resizing - dispatched on macOS by a menu item's key equivalent rather
 /// than from here. The two were both called `Action` and one reader lost an evening to it
 /// (kan a_2LMRCWP00), so the placeholder carries the module it belongs to in its name.

@@ -80,13 +80,25 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `focus_pane_1` to
 `focus_pane_9`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
-`find_next`, `find_previous`, `zoom`,
-`increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
+`find_next`, `find_previous`, `zoom`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
+`scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
+`clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
 `reload_config`, `show_shortcuts`, and `quit_and_close_sessions`. On macOS these become menu items, which is where the
 platform dispatches a key equivalent from - so a rebound action moves in the menu too, and
 System Settings can move it again.
 
-Seven of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+**Ghostty's own binding actions are here, on Ghostty's macOS chords.** Scrolling to the top
+or bottom (`cmd+home`, `cmd+end`) and by a page (`cmd+pageup`, `cmd+pagedown`), jumping to the
+prompt above or below (`cmd+shift+up`, `cmd+shift+down`, which needs Ghostty's shell integration
+to know where prompts are) and `select_all` (`cmd+a`) happen in the pane's surface, which holds
+its history. `clear_screen` (`cmd+k`) and `reset_terminal` (unbound, as in Ghostty) are carried
+out by the pane's daemon, which holds its terminal: clear_screen drops the history and has a
+shell at its prompt draw it again, and on the alternate screen it does what Ghostty does - hands
+the key to the program. Ghostty's `text:`, `csi:` and `esc:` are `[text]` here. The rest of
+Ghostty's actions are about its own windows, tabs and clipboard, and are not offered; a
+`[keymap]` line naming one is refused, and names Muster's equivalent where there is one.
+
+Eight of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
 the menu, one click away and one `[keymap]` line from a chord.
 
@@ -116,6 +128,9 @@ does it - and this is the other answer, for when you are finished for the day an
 agents to stop too. It asks first, naming every machine and the directories its panes are in,
 because it is the one thing in Muster that ends somebody's work. Bind it if you want to, and
 know that everything else here is undone by doing it again and this is not.
+
+`reset_terminal` is the eighth, as it is in Ghostty: it throws away the pane's screen and modes,
+and a chord for that is one somebody finds by losing their screen.
 
 **`cmd+1` to `cmd+9` go to a numbered agent.** The number is drawn on its row in the agent
 list, counting down the whole list across every machine, so `cmd+3` is the third row whichever

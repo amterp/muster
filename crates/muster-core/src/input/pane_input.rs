@@ -144,6 +144,26 @@ impl PaneInput {
         self.send_uncounted(event);
     }
 
+    /// Ghostty's clear_screen, with the key whose binding asked for it if one did.
+    ///
+    /// Not counted: on the alternate screen nothing is cleared, and a program handed the key
+    /// may draw nothing for it.
+    pub fn clear_screen(&self, key: Option<&KeyEvent>) {
+        let (key, option_as_alt) = {
+            let typing = self.typing.read().expect("a panicking sender poisoned the settings");
+            let key = key.map(|key| typing.settings.as_alt(key).unwrap_or_else(|| key.clone()));
+            (key, typing.settings.option_as_alt)
+        };
+        log::info("input.clear_screen", fields! { "pane" => self.pane.to_string() });
+        self.send_uncounted(InputEvent::ClearScreen { key, option_as_alt });
+    }
+
+    /// Ghostty's reset, which repaints the pane from a blank terminal, so it is counted.
+    pub fn reset(&self) {
+        log::info("input.reset", fields! { "pane" => self.pane.to_string() });
+        self.deliver(InputEvent::Reset);
+    }
+
     /// The pane gained or lost the keyboard of a focused window, for a program that asked to
     /// hear it. Not counted either: a program that never asked draws nothing for it.
     pub fn focus(&self, focused: bool) {

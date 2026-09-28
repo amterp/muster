@@ -195,7 +195,20 @@
         ]
       },
       "expect": {
-        "refused": "`splitt_right` in the config file's [keymap] is not something Muster does, so none of the file was applied. What it does: new_window, reopen_window, new_tab, next_tab, previous_tab, rename_tab, close_tab, split_right, split_down, split_left, split_up, rename_pane, move_pane_to_new_tab, close_pane, next_pane, previous_pane, focus_left, focus_right, focus_up, focus_down, focus_pane_1, focus_pane_2, focus_pane_3, focus_pane_4, focus_pane_5, focus_pane_6, focus_pane_7, focus_pane_8, focus_pane_9, resize_left, resize_right, resize_up, resize_down, find, find_next, find_previous, zoom, increase_font_size, decrease_font_size, reset_font_size, toggle_sidebar, reload_config, show_shortcuts, quit_and_close_sessions."
+        "refused": "`splitt_right` in the config file's [keymap] is not something Muster does, so none of the file was applied. What it does: new_window, reopen_window, new_tab, next_tab, previous_tab, rename_tab, close_tab, split_right, split_down, split_left, split_up, rename_pane, move_pane_to_new_tab, close_pane, next_pane, previous_pane, focus_left, focus_right, focus_up, focus_down, focus_pane_1, focus_pane_2, focus_pane_3, focus_pane_4, focus_pane_5, focus_pane_6, focus_pane_7, focus_pane_8, focus_pane_9, resize_left, resize_right, resize_up, resize_down, find, find_next, find_previous, zoom, scroll_to_top, scroll_to_bottom, scroll_page_up, scroll_page_down, jump_to_previous_prompt, jump_to_next_prompt, select_all, clear_screen, reset_terminal, increase_font_size, decrease_font_size, reset_font_size, toggle_sidebar, reload_config, show_shortcuts, quit_and_close_sessions. Ghostty's binding actions outside that list are not offered: they are about Ghostty's own windows, tabs and clipboard."
+      }
+    },
+    {
+      "name": "a Ghostty action name in [keymap] is told Muster's name for it",
+      "why": "A config carried over from Ghostty names Ghostty's actions, and most of them have an answer here under another name. Refusing with only a list of Muster's actions leaves the reader to guess which one it was; naming it is the difference between a fix and a search.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "goto_split = \"cmd+d\""
+        ]
+      },
+      "expect": {
+        "refused": "`goto_split` in the config file's [keymap] is Ghostty's name, and Muster's is `focus_left`, `focus_right`, `focus_up`, `focus_down`, `next_pane` and `previous_pane`. None of the file was applied."
       }
     },
     {

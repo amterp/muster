@@ -461,6 +461,30 @@ public enum Core {
   }
 
   /// Makes the focused pane fill its tab, or puts it back.
+  /// One of Ghostty's binding actions the pane's daemon carries out, on the pane with the
+  /// keyboard.
+  public enum PaneAction: Sendable {
+    case clearScreen
+    case resetTerminal
+  }
+
+  /// Asks the keyboard pane's daemon to carry out `action`, handing it the key whose binding
+  /// asked for it: on the alternate screen clear_screen leaves that key to the program.
+  public static func perform(_ action: PaneAction, key: NSEvent?) {
+    var perform = Muster_PerformOnPane()
+    switch action {
+    case .clearScreen: perform.clear = Muster_PerformOnPane.ClearScreen()
+    case .resetTerminal: perform.resetTerminal = Muster_PerformOnPane.ResetTerminal()
+    }
+    if let key, key.type == .keyDown {
+      perform.key = key.musterKeyEvent(
+        action: key.isARepeat ? "repeated" : "press", isComposing: false)
+    }
+    var request = Muster_Request()
+    request.performOnPane = perform
+    send(request)
+  }
+
   public static func zoom(daemonID: String = "", paneID: String = "") {
     var zoom = Muster_ZoomPane()
     zoom.daemonID = daemonID
@@ -994,6 +1018,7 @@ public enum Core {
     case .keyDown: return "key_down"
     case .keyUp: return "key_up"
     case .sendText: return "send_text"
+    case .performOnPane: return "perform_on_pane"
     case .paste: return "paste"
     case .wheel: return "wheel"
     case .mouse: return "mouse"

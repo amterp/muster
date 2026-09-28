@@ -71,6 +71,11 @@ public protocol PaneSurface: AnyObject {
   /// positive right and up, and `momentum` is in libghostty's numbering.
   func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32)
 
+  /// Carries out one of Ghostty's surface-local binding actions - scrolling, jumping between
+  /// prompts, selecting everything - and answers with it if the renderer did not.
+  @discardableResult
+  func perform(_ action: SurfaceAction) -> [String]
+
   /// Draws what an input method is composing at the pane's cursor, or clears it with nil. Never
   /// sent to the pane: only what the method commits is.
   func setPreedit(_ text: String?)

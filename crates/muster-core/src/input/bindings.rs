@@ -124,6 +124,24 @@ pub enum Action {
     FindNext,
     FindPrevious,
     Zoom,
+    // Ghostty's own binding actions, each on its macOS chord. The first seven are the surface's
+    // alone: it holds the pane's scrollback and selection, so moving through them writes
+    // nothing to the program and the shell performs them on the surface with the keyboard.
+    ScrollToTop,
+    ScrollToBottom,
+    ScrollPageUp,
+    ScrollPageDown,
+    /// To the prompt above or below, which a shell with Ghostty's integration marks.
+    JumpToPreviousPrompt,
+    JumpToNextPrompt,
+    SelectAll,
+    /// Ghostty's clear_screen: the history goes, and a shell at its prompt redraws it. Carried
+    /// out by the pane's daemon, which holds the terminal, and handed the key that asked for
+    /// it: on the alternate screen Ghostty leaves that key to the program, and so does Muster.
+    ClearScreen,
+    /// Ghostty's reset: the pane's terminal back to how it started, which tells the program
+    /// nothing. Carried out by the daemon, and unbound, as in Ghostty.
+    ResetTerminal,
     IncreaseFontSize,
     DecreaseFontSize,
     ResetFontSize,
@@ -138,7 +156,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 44] = [
+    pub const ALL: [Action; 53] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::NewTab,
@@ -176,6 +194,15 @@ impl Action {
         Action::FindNext,
         Action::FindPrevious,
         Action::Zoom,
+        Action::ScrollToTop,
+        Action::ScrollToBottom,
+        Action::ScrollPageUp,
+        Action::ScrollPageDown,
+        Action::JumpToPreviousPrompt,
+        Action::JumpToNextPrompt,
+        Action::SelectAll,
+        Action::ClearScreen,
+        Action::ResetTerminal,
         Action::IncreaseFontSize,
         Action::DecreaseFontSize,
         Action::ResetFontSize,
@@ -222,6 +249,15 @@ impl Action {
             Action::FindNext => "find_next",
             Action::FindPrevious => "find_previous",
             Action::Zoom => "zoom",
+            Action::ScrollToTop => "scroll_to_top",
+            Action::ScrollToBottom => "scroll_to_bottom",
+            Action::ScrollPageUp => "scroll_page_up",
+            Action::ScrollPageDown => "scroll_page_down",
+            Action::JumpToPreviousPrompt => "jump_to_previous_prompt",
+            Action::JumpToNextPrompt => "jump_to_next_prompt",
+            Action::SelectAll => "select_all",
+            Action::ClearScreen => "clear_screen",
+            Action::ResetTerminal => "reset_terminal",
             Action::IncreaseFontSize => "increase_font_size",
             Action::DecreaseFontSize => "decrease_font_size",
             Action::ResetFontSize => "reset_font_size",
@@ -282,7 +318,8 @@ impl Action {
             | Action::MovePaneToNewTab
             | Action::CloseTab
             | Action::ReopenWindow
-            | Action::QuitAndCloseSessions => None,
+            | Action::QuitAndCloseSessions
+            | Action::ResetTerminal => None,
             // Muster's own, since Ghostty has no equivalent. ⌘⇧N is free on this platform for
             // a terminal - a command chord never reaches a pane - and naming panes is what
             // somebody does in a window of fifteen agents, which is the size this was built
@@ -314,6 +351,16 @@ impl Action {
             Action::FindNext => Some(Chord::new(Key::KeyG, command)),
             Action::FindPrevious => Some(Chord::new(Key::KeyG, shifted)),
             Action::Zoom => Some(Chord::new(Key::Enter, shifted)),
+            // Ghostty's macOS chords for its own binding actions, so somebody arriving from it
+            // keeps them.
+            Action::ScrollToTop => Some(Chord::new(Key::Home, command)),
+            Action::ScrollToBottom => Some(Chord::new(Key::End, command)),
+            Action::ScrollPageUp => Some(Chord::new(Key::PageUp, command)),
+            Action::ScrollPageDown => Some(Chord::new(Key::PageDown, command)),
+            Action::JumpToPreviousPrompt => Some(Chord::new(Key::ArrowUp, shifted)),
+            Action::JumpToNextPrompt => Some(Chord::new(Key::ArrowDown, shifted)),
+            Action::SelectAll => Some(Chord::new(Key::KeyA, command)),
+            Action::ClearScreen => Some(Chord::new(Key::KeyK, command)),
             // The unshifted key rather than the plus printed above it. Ghostty binds both
             // because it lets an action carry several chords; Muster gives each one, and the
             // one to give is the one a hand actually makes.
@@ -333,6 +380,35 @@ impl Action {
             Action::ShowShortcuts => Some(Chord::new(Key::Slash, command)),
         }
     }
+}
+
+/// Ghostty's name for something Muster does under another, so a `[keymap]` line carried over
+/// from a Ghostty config is told which rather than only that it is wrong.
+///
+/// Only the names with an answer. The rest of Ghostty's binding actions are not offered: they
+/// are about Ghostty's own windows, tabs and clipboard, which in Muster are the daemon's, the
+/// core's or macOS's, and the refusal for an unknown name says so.
+pub fn ghostty_equivalent(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "new_split" => "`split_right`, `split_down`, `split_left` and `split_up`",
+        "goto_split" => {
+            "`focus_left`, `focus_right`, `focus_up`, `focus_down`, `next_pane` and \
+                         `previous_pane`"
+        }
+        "resize_split" => "`resize_left`, `resize_right`, `resize_up` and `resize_down`",
+        "toggle_split_zoom" => "`zoom`",
+        "close_surface" => "`close_pane`",
+        "goto_tab" => "`focus_pane_1` to `focus_pane_9`, which go to a pane and bring its tab",
+        "start_search" => "`find`",
+        "navigate_search" => "`find_next` and `find_previous`",
+        "jump_to_prompt" => "`jump_to_previous_prompt` and `jump_to_next_prompt`",
+        "reset" => "`reset_terminal`",
+        "copy_to_clipboard" | "paste_from_clipboard" => {
+            "the Edit menu's Copy and Paste, on cmd+c and cmd+v, which System Settings can move"
+        }
+        "text" | "csi" | "esc" => "a chord in `[text]`, which sends the bytes it names",
+        _ => return None,
+    })
 }
 
 /// What each numbered pane action is called, in place order.

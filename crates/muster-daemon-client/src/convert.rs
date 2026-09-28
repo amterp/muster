@@ -147,6 +147,34 @@ pub fn branch(branch: Branch) -> proto::Branch {
     }
 }
 
+fn key_event(
+    key: muster_core::KeyEvent,
+    option_as_alt: OptionAsAlt,
+    key_code: fn(muster_core::Key) -> u32,
+) -> input_event::Key {
+    input_event::Key {
+        action: match key.action {
+            KeyAction::Press => proto::KeyAction::Press,
+            KeyAction::Release => proto::KeyAction::Release,
+            KeyAction::Repeated => proto::KeyAction::Repeat,
+        }
+        .into(),
+        key: key_code(key.key),
+        mods: u32::from(key.modifiers.0),
+        consumed_mods: u32::from(key.consumed_modifiers.0),
+        text: key.text,
+        unshifted_codepoint: key.unshifted_codepoint.map_or(0, u32::from),
+        composing: key.is_composing,
+        option_as_alt: match option_as_alt {
+            OptionAsAlt::Never => proto::OptionAsAlt::Never,
+            OptionAsAlt::Always => proto::OptionAsAlt::Always,
+            OptionAsAlt::LeftOnly => proto::OptionAsAlt::Left,
+            OptionAsAlt::RightOnly => proto::OptionAsAlt::Right,
+        }
+        .into(),
+    }
+}
+
 /// An input event for one pane. `key_code` is libghostty's code for a key, which the caller
 /// supplies from the library that has it.
 pub fn input(
@@ -155,26 +183,20 @@ pub fn input(
     key_code: fn(muster_core::Key) -> u32,
 ) -> proto::InputEvent {
     let input = match event {
-        InputEvent::Key { key, option_as_alt } => input_event::Input::Key(input_event::Key {
-            action: match key.action {
-                KeyAction::Press => proto::KeyAction::Press,
-                KeyAction::Release => proto::KeyAction::Release,
-                KeyAction::Repeated => proto::KeyAction::Repeat,
-            }
-            .into(),
-            key: key_code(key.key),
-            mods: u32::from(key.modifiers.0),
-            consumed_mods: u32::from(key.consumed_modifiers.0),
-            text: key.text,
-            unshifted_codepoint: key.unshifted_codepoint.map_or(0, u32::from),
-            composing: key.is_composing,
-            option_as_alt: match option_as_alt {
-                OptionAsAlt::Never => proto::OptionAsAlt::Never,
-                OptionAsAlt::Always => proto::OptionAsAlt::Always,
-                OptionAsAlt::LeftOnly => proto::OptionAsAlt::Left,
-                OptionAsAlt::RightOnly => proto::OptionAsAlt::Right,
-            }
-            .into(),
+        InputEvent::Key { key, option_as_alt } => {
+            input_event::Input::Key(key_event(key, option_as_alt, key_code))
+        }
+        InputEvent::ClearScreen { key, option_as_alt } => {
+            input_event::Input::Perform(input_event::Perform {
+                action: Some(input_event::perform::Action::ClearScreen(
+                    input_event::perform::ClearScreen {},
+                )),
+                key: key.map(|key| key_event(key, option_as_alt, key_code)),
+            })
+        }
+        InputEvent::Reset => input_event::Input::Perform(input_event::Perform {
+            action: Some(input_event::perform::Action::Reset(input_event::perform::Reset {})),
+            key: None,
         }),
         InputEvent::Paste { text, confirmed } => {
             input_event::Input::Paste(input_event::Paste { text, confirmed })

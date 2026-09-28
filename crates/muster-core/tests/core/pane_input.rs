@@ -93,5 +93,9 @@ fn describe(event: &InputEvent) -> Value {
             json!({ "event": "mouse", "action": format!("{:?}", mouse.action) })
         }
         InputEvent::Focus(focused) => json!({ "event": "focus", "focused": focused }),
+        InputEvent::ClearScreen { key, .. } => {
+            json!({ "event": "clear_screen", "key": key.as_ref().map(|key| key.key.as_str()) })
+        }
+        InputEvent::Reset => json!({ "event": "reset" }),
     }
 }

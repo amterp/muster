@@ -32,6 +32,12 @@ pub enum InputEvent {
     /// The pane gained or lost the keyboard of a focused window. The daemon tells only a
     /// program that asked to hear it (mode 1004).
     Focus(bool),
+    /// Ghostty's clear_screen, which the daemon carries out on the pane's terminal. `key` is
+    /// the one whose binding asked for it, which the daemon sends the program instead when it
+    /// finds the alternate screen, as Ghostty leaves the key to the program there.
+    ClearScreen { key: Option<KeyEvent>, option_as_alt: OptionAsAlt },
+    /// Ghostty's reset: the pane's terminal back to how it started, telling the program nothing.
+    Reset,
 }
 
 /// A wheel or trackpad turn, as Ghostty's scroll callback takes it.

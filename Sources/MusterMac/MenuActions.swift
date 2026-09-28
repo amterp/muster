@@ -138,6 +138,28 @@ public enum MenuActions {
       title: "Find Next", selector: #selector(MusterWindow.findNext(_:)), group: .pane),
     "find_previous": Described(
       title: "Find Previous", selector: #selector(MusterWindow.findPrevious(_:)), group: .pane),
+    "scroll_to_top": Described(
+      title: "Scroll to Top", selector: #selector(MusterWindow.scrollToTop(_:)), group: .view),
+    "scroll_to_bottom": Described(
+      title: "Scroll to Bottom", selector: #selector(MusterWindow.scrollToBottom(_:)),
+      group: .view),
+    "scroll_page_up": Described(
+      title: "Scroll Page Up", selector: #selector(MusterWindow.scrollPageUp(_:)), group: .view),
+    "scroll_page_down": Described(
+      title: "Scroll Page Down", selector: #selector(MusterWindow.scrollPageDown(_:)),
+      group: .view),
+    "jump_to_previous_prompt": Described(
+      title: "Jump to Previous Prompt", selector: #selector(MusterWindow.jumpToPreviousPrompt(_:)),
+      group: .view),
+    "jump_to_next_prompt": Described(
+      title: "Jump to Next Prompt", selector: #selector(MusterWindow.jumpToNextPrompt(_:)),
+      group: .view),
+    "select_all": Described(
+      title: "Select All", selector: #selector(MusterWindow.selectAllInPane(_:)), group: .pane),
+    "clear_screen": Described(
+      title: "Clear Screen", selector: #selector(MusterWindow.clearScreen(_:)), group: .pane),
+    "reset_terminal": Described(
+      title: "Reset Terminal", selector: #selector(MusterWindow.resetTerminal(_:)), group: .pane),
     "increase_font_size": Described(
       title: "Bigger Text", selector: #selector(MusterWindow.increaseFontSize(_:)), group: .view),
     "decrease_font_size": Described(

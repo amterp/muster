@@ -122,6 +122,7 @@ fn route(payload: request::Payload) -> Response {
             Response::ok()
         }),
         request::Payload::Paste(paste) => paste_into(&paste),
+        request::Payload::PerformOnPane(perform) => perform_on_pane(&perform),
         request::Payload::Wheel(wheel) => wheel_over(&wheel),
         request::Payload::Mouse(mouse) => mouse_over(&mouse),
         request::Payload::SplitPane(split) => split_pane(&split),
@@ -564,6 +565,29 @@ fn paste_into(paste: &proto::Paste) -> Response {
             Response::ok()
         }
         Err(refusal) => *refusal,
+    }
+}
+
+/// Ghostty's clear_screen or reset, on the pane with the keyboard, for its daemon to carry out.
+fn perform_on_pane(perform: &proto::PerformOnPane) -> Response {
+    let key = match perform.key.as_ref().map(convert::key).transpose() {
+        Ok(key) => key,
+        Err(why) => return Response::failure(why),
+    };
+    match &perform.action {
+        Some(proto::perform_on_pane::Action::Clear(_)) => with_pane("a clear_screen", |pane| {
+            pane.input.clear_screen(key.as_ref());
+            Response::ok()
+        }),
+        Some(proto::perform_on_pane::Action::ResetTerminal(_)) => with_pane("a reset", |pane| {
+            pane.input.reset();
+            Response::ok()
+        }),
+        None => Response::failure(
+            "a PerformOnPane named no action, so nothing was done; the shell sending it is out of \
+             step with this core"
+                .to_string(),
+        ),
     }
 }
 

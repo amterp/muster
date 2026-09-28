@@ -390,6 +390,16 @@ public final class Surface {
     _ = act(next ? "navigate_search:next" : "navigate_search:previous", [])
   }
 
+  /// Carries out one of Ghostty's own binding actions on this surface, and answers with it if
+  /// libghostty did not.
+  ///
+  /// Not doing one is often ordinary - there is no prompt above the first one to jump to - so
+  /// the caller logs it rather than warns.
+  @discardableResult
+  public func perform(_ action: SurfaceAction) -> [String] {
+    act(action.ghosttyName, [])
+  }
+
   private func act(_ action: String, _ refused: [String]) -> [String] {
     let carried = action.withCString {
       ghostty_surface_binding_action(surface, $0, UInt(strlen($0)))

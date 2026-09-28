@@ -73,6 +73,7 @@ message Request {
     MoveTab move_tab = 51;
     Wheel wheel = 52;
     Mouse mouse = 53;
+    PerformOnPane perform_on_pane = 54;
   }
 
   // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
@@ -1595,6 +1596,25 @@ message Paste {
   // moved while somebody read the question.
   string daemon_id = 3;
   string pane_id = 4;
+}
+
+// One of Ghostty's binding actions that the pane's daemon carries out rather than its surface,
+// on the pane with the keyboard: the daemon holds the terminal these change.
+message PerformOnPane {
+  oneof action {
+    // Ghostty's clear_screen, not spelled so because swift-protobuf generates a field named
+    // `clear_screen` as `clearScreen_p`.
+    ClearScreen clear = 1;
+    ResetTerminal reset_terminal = 2;
+  }
+
+  // The key whose binding asked for it, when a key did. On the alternate screen clear_screen
+  // leaves the key to the program, as Ghostty does, and the daemon sends it on. Absent when the
+  // action came from a menu click.
+  KeyEvent key = 3;
+
+  message ClearScreen {}
+  message ResetTerminal {}
 }
 
 // A wheel or trackpad turn over a pane, which is the pane under the pointer rather than the

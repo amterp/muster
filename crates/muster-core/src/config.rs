@@ -25,6 +25,7 @@ use toml::Value;
 
 use crate::input::{
     Action, Binding, Bindings, Chord, NumberedChords, OptionAsAlt, PaneInputSettings, TEXT_EDITING,
+    ghostty_equivalent,
 };
 
 use crate::attention::Notifications;
@@ -1091,12 +1092,18 @@ fn read_keymap(root: &toml::Table, text: &BTreeMap<Binding, Vec<u8>>) -> Result<
     })?;
 
     for (name, chord) in block {
-        let action = Action::parse(name).ok_or_else(|| {
-            format!(
+        let action = Action::parse(name).ok_or_else(|| match ghostty_equivalent(name) {
+            Some(ours) => format!(
+                "`{name}` in the config file's [keymap] is Ghostty's name, and Muster's is \
+                 {ours}. None of the file was applied."
+            ),
+            None => format!(
                 "`{name}` in the config file's [keymap] is not something Muster does, so \
-                 none of the file was applied. What it does: {}.",
+                 none of the file was applied. What it does: {}. Ghostty's binding actions \
+                 outside that list are not offered: they are about Ghostty's own windows, tabs \
+                 and clipboard.",
                 Action::ALL.map(Action::as_str).join(", ")
-            )
+            ),
         })?;
         let chord = chord.as_str().ok_or_else(|| {
             format!(

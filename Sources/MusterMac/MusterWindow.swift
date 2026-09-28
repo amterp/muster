@@ -891,6 +891,30 @@ extension MusterWindow {
     Core.zoom()
   }
 
+  // Ghostty's surface-local binding actions, carried out on the surface with the keyboard.
+  @objc public func scrollToTop(_ sender: Any?) { performOnSurface(.scrollToTop) }
+  @objc public func scrollToBottom(_ sender: Any?) { performOnSurface(.scrollToBottom) }
+  @objc public func scrollPageUp(_ sender: Any?) { performOnSurface(.scrollPageUp) }
+  @objc public func scrollPageDown(_ sender: Any?) { performOnSurface(.scrollPageDown) }
+  @objc public func jumpToPreviousPrompt(_ sender: Any?) {
+    performOnSurface(.jumpToPreviousPrompt)
+  }
+  @objc public func jumpToNextPrompt(_ sender: Any?) { performOnSurface(.jumpToNextPrompt) }
+  @objc public func selectAllInPane(_ sender: Any?) { performOnSurface(.selectAll) }
+
+  // The two the pane's daemon carries out, handed the keystroke that asked when one did: a menu
+  // item's action runs inside the key event it was chosen by.
+  @objc public func clearScreen(_ sender: Any?) {
+    Core.perform(.clearScreen, key: NSApp.currentEvent)
+  }
+  @objc public func resetTerminal(_ sender: Any?) {
+    Core.perform(.resetTerminal, key: NSApp.currentEvent)
+  }
+
+  private func performOnSurface(_ action: SurfaceAction) {
+    keyboardChrome()?.surface.perform(action)
+  }
+
   @objc public func increaseFontSize(_ sender: Any?) {
     Core.adjustFontSize("larger")
   }

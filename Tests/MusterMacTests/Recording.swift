@@ -74,6 +74,12 @@ final class RecordingSurface: PaneSurface {
   func releaseKey(_ event: NSEvent) { releases.append(event.keyCode) }
   func changeModifiers(_ event: NSEvent) { modifierChanges.append(event.modifierFlags) }
   func setPreedit(_ text: String?) { preedits.append(text) }
+  /// Every surface-local action it was asked to carry out.
+  var performed: [SurfaceAction] = []
+  func perform(_ action: SurfaceAction) -> [String] {
+    performed.append(action)
+    return refuses
+  }
 }
 
 /// Answers every request with `ok`, or with what the test says instead, and keeps what it was

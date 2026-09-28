@@ -443,6 +443,19 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     }
   }
 
+  /// Carries out one of Ghostty's surface-local binding actions on this pane.
+  public func perform(_ action: SurfaceAction) {
+    guard let refused = surface?.perform(action), !refused.isEmpty else { return }
+    Core.debug(
+      "surface.action.not_performed",
+      [
+        "action": refused.joined(separator: ","),
+        "impact": "nothing moved; ordinary when there was nowhere to move to, such as no prompt "
+          + "above the first",
+        "check": "if it never works, whether a libghostty re-pin renamed the action",
+      ])
+  }
+
   public override func becomeFirstResponder() -> Bool {
     surface?.setFocus(true)
     return true
