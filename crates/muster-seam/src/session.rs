@@ -3257,7 +3257,13 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
 fn restore_late(daemon: &DaemonId) {
     {
         let mut session = poison::lock(&SESSION, "session");
-        if !session.awaiting.remove(daemon) {
+        // Until then its tabs are still arriving, and the ones it has not described yet would
+        // lose their place: this runs again when it says it has finished (`restored_from_disk`).
+        let restoring = session
+            .backends
+            .get(daemon)
+            .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").restoring());
+        if restoring || !session.awaiting.remove(daemon) {
             return;
         }
         let Some(left) = session.left.clone() else { return };
@@ -3613,13 +3619,23 @@ fn reopen_what_was_left() {
     // down - is taken here, which is how a window that was alone comes back exactly as it was.
     let listed: Vec<TabId> = saved.tabs.iter().map(|tab| tab.id.clone()).collect();
     session.holding.keep(&listed);
+    // A daemon whose attach finished while this waited for the session has been restored here
+    // already, and one still restoring has more tabs to describe than it has so far.
     let attaching = poison::lock(&ATTACHES, "attaches").under_way.clone();
-    session.awaiting = saved
+    let still_describing = |daemon: &DaemonId| match session.backends.get(daemon) {
+        Some(backend) => {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            mirror.health() == Health::Disconnected || mirror.restoring()
+        }
+        None => attaching.contains(daemon),
+    };
+    let awaiting: BTreeSet<DaemonId> = saved
         .tabs
         .iter()
         .flat_map(|tab| tab.regions.iter().map(|region| region.daemon.clone()))
-        .filter(|daemon| attaching.contains(daemon))
+        .filter(|daemon| still_describing(daemon))
         .collect();
+    session.awaiting = awaiting;
     if !session.awaiting.is_empty() {
         session.left = Some(saved.clone());
     }
@@ -4589,7 +4605,9 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
 /// What a daemon said when it finished putting back what it held before it last stopped.
 ///
 /// Nothing asks a restoring daemon for a first tab, because its tabs are on their way; so this
-/// is where that ask happens, if the window is still empty now that they have arrived.
+/// is where that ask happens, if the window is still empty now that they have arrived. It is
+/// also when a daemon that answered after the window opened gets its saved places back, since
+/// only now has it described every tab it holds.
 fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
     log::info(
         "daemon.restored",
@@ -4599,6 +4617,7 @@ fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
             "lost_panes" => restored.lost_panes.len().to_string(),
         },
     );
+    restore_late(daemon);
     if restored.saving_stopped {
         log::warn(
             "daemon.saving_stopped",
