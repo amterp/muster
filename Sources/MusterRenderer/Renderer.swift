@@ -1,5 +1,6 @@
 import AppKit
 import GhosttyKit
+import os
 
 /// The renderer seam: everything libghostty-shaped lives behind this module.
 ///
@@ -89,6 +90,29 @@ private func rendererCloseSurface(_ userdata: UnsafeMutableRawPointer?, _ proces
   Task { @MainActor in Surface.reportExit(token: token, processAlive: processAlive) }
 }
 
+/// A surface freed with `ghostty_surface_free_detached` has stopped its threads and released
+/// its memory. Arrives on the thread that did that, which is not the main thread.
+///
+/// `userdata` is the count the free was entered in, retained for the trip.
+private func rendererSurfaceFreed(_ userdata: UnsafeMutableRawPointer?) {
+  guard let userdata else { return }
+  Unmanaged<FreesInFlight>.fromOpaque(userdata).takeRetainedValue().ended()
+}
+
+/// Surfaces freed and still stopping their threads.
+///
+/// Counted under a lock rather than on the main actor, because each ends on the thread that
+/// freed it, and the one reader that must not miss an end is a deinit that cannot suspend.
+final class FreesInFlight: Sendable {
+  private let count = OSAllocatedUnfairLock(initialState: 0)
+
+  var value: Int { count.withLock { $0 } }
+
+  func began() { count.withLock { $0 += 1 } }
+
+  func ended() { count.withLock { $0 -= 1 } }
+}
+
 /// One libghostty runtime. Owns the app handle every surface hangs off.
 ///
 /// libghostty calls back when it has work to do rather than being polled, so the host's
@@ -104,6 +128,9 @@ public final class Renderer {
   private var padding: Double
   /// Where the derived config is written, kept so a reload writes to the same place.
   private let configPath: String
+
+  /// Surfaces freed and still stopping their threads, which the app must outlive.
+  private let frees = FreesInFlight()
 
   /// What libghostty made of the configuration Muster handed it, if anything.
   ///
@@ -168,7 +195,18 @@ public final class Renderer {
   // Isolated because both handles are main-actor state: libghostty is not thread-safe,
   // and freeing them off the main actor is exactly the kind of teardown crash that only
   // shows up on quit.
+  //
+  // Not while a freed surface is still stopping its threads: that runs on a thread of its own
+  // and reaches the app until it ends, so the app is ticked until every one has. Past the bound
+  // the app is left rather than freed under one, which is a leak in a process that is going
+  // away rather than a crash in it.
   isolated deinit {
+    let deadline = ContinuousClock.now + .seconds(5)
+    while frees.value > 0, ContinuousClock.now < deadline {
+      ghostty_app_tick(app)
+      usleep(1_000)
+    }
+    guard frees.value == 0 else { return }
     ghostty_app_free(app)
     ghostty_config_free(config)
   }
@@ -193,7 +231,7 @@ public final class Renderer {
   }
 
   /// How many freed surfaces are still stopping their threads.
-  public var freesInFlight: Int { 0 }
+  public var freesInFlight: Int { frees.value }
 
   public func setFocus(_ focused: Bool) {
     ghostty_app_set_focus(app, focused)
@@ -256,7 +294,7 @@ public final class Renderer {
       }
 
     guard let surface else { throw RendererError.surfaceCreationFailed }
-    return Surface(surface, token: token, padding: padding)
+    return Surface(surface, token: token, padding: padding, frees: frees)
   }
 }
 
@@ -265,6 +303,9 @@ public final class Renderer {
 public final class Surface {
   let surface: ghostty_surface_t
   private let token: UInt
+
+  /// Where this surface's free is counted until its threads have stopped.
+  private let frees: FreesInFlight
 
   /// Called when the command this surface is running exits.
   ///
@@ -287,16 +328,24 @@ public final class Surface {
   /// The space between the text and the surface's top and left edges, in points.
   public let padding: Double
 
-  init(_ surface: ghostty_surface_t, token: UInt, padding: Double) {
+  init(_ surface: ghostty_surface_t, token: UInt, padding: Double, frees: FreesInFlight) {
     self.surface = surface
     self.token = token
     self.padding = padding
+    self.frees = frees
     Surface.living[token] = Held(surface: self)
   }
 
+  /// Freed without waiting for its threads, which is not a nicety: they can be waiting for this
+  /// thread. They hand it messages through a mailbox of 64 that only a tick drains, and block
+  /// when it is full, so a main thread that fell behind and then joined them waited on itself
+  /// for good - one window, for three hours (docs/observations/libghostty-9f9b8d1d.md,
+  /// section 15). They stop on a thread of their own while this one goes back to ticking.
   isolated deinit {
     Surface.living.removeValue(forKey: token)
-    ghostty_surface_free(surface)
+    frees.began()
+    ghostty_surface_free_detached(
+      surface, rendererSurfaceFreed, Unmanaged.passRetained(frees).toOpaque())
   }
 
   /// A way back to a surface somebody else owns.

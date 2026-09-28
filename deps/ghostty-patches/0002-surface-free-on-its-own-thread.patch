@@ -1,0 +1,110 @@
+Surface: free a surface without joining its threads on the caller
+
+ghostty_surface_free joins a surface's renderer and IO threads on the
+calling thread, which for an embedder is the main thread. Those threads
+push to the app mailbox with no timeout when it is full, only the main
+thread drains it (ghostty_app_tick), and the IO thread joins its reader
+on the way out. So a main thread that let the mailbox fill and then
+freed a surface waits on itself for good. Muster's window did, for three
+hours, while the machine was swapping and seven agents were setting
+titles and progress faster than the stalled main thread could drain.
+
+This adds ghostty_surface_free_detached, which splits the free where the
+join is:
+
+- On the calling thread, which must be the main thread: the half of
+  apprt.embedded.Surface.deinit that touches the app. The inspector and
+  the title are freed and the surface leaves the app's list, so App's
+  hasSurface drops whatever is still queued for it. The Metal layer's
+  display callback is cleared too, because the display pass calls into
+  the renderer on the main thread and the renderer is about to be
+  destroyed on another.
+- On a spawned, detached thread: core Surface.deinit, which stops and
+  joins the threads, then the surface's memory, then done(userdata).
+  If the thread cannot be spawned, this half runs on the caller, which
+  is what ghostty_surface_free does.
+
+The caller must not free the app before done has been called.
+
+Additive only: one new function. ghostty_surface_free is unchanged.
+Muster carries this for good rather than sending it upstream.
+
+diff --git a/include/ghostty.h b/include/ghostty.h
+index df9472d2..2714e387 100644
+--- a/include/ghostty.h
++++ b/include/ghostty.h
+@@ -1127,6 +1127,9 @@ GHOSTTY_API ghostty_surface_config_s ghostty_surface_config_new();
+ GHOSTTY_API ghostty_surface_t ghostty_surface_new(ghostty_app_t,
+                                                      const ghostty_surface_config_s*);
+ GHOSTTY_API void ghostty_surface_free(ghostty_surface_t);
++GHOSTTY_API void ghostty_surface_free_detached(ghostty_surface_t,
++                                               void (*)(void*),
++                                               void*);
+ GHOSTTY_API void* ghostty_surface_userdata(ghostty_surface_t);
+ GHOSTTY_API ghostty_app_t ghostty_surface_app(ghostty_surface_t);
+ GHOSTTY_API ghostty_surface_config_s ghostty_surface_inherited_config(ghostty_surface_t, ghostty_surface_context_e);
+diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
+index a380dc50..dba50fab 100644
+--- a/src/apprt/embedded.zig
++++ b/src/apprt/embedded.zig
+@@ -1572,6 +1572,60 @@ pub const CAPI = struct {
+         ptr.app.closeSurface(ptr);
+     }
+ 
++    /// Frees a surface as ghostty_surface_free does, except that its
++    /// threads are stopped and joined on a thread of their own.
++    ///
++    /// Joining them on the main thread can wait forever: they push to the
++    /// app mailbox with no timeout, only the main thread drains it, and an
++    /// IO thread joins its reader on the way out. So a main thread that
++    /// let the mailbox fill and then freed a surface waits on itself.
++    ///
++    /// Call this on the main thread. The surface leaves the app before it
++    /// returns, so nothing still queued for it is delivered. `done` is
++    /// called with `userdata` on the freeing thread once the surface's
++    /// memory is released, and the app must not be freed before then.
++    export fn ghostty_surface_free_detached(
++        ptr: *Surface,
++        done: ?*const fn (?*anyopaque) callconv(.c) void,
++        userdata: ?*anyopaque,
++    ) void {
++        // The half of Surface.deinit that touches the app, which only the
++        // main thread may.
++        ptr.freeInspector();
++        if (ptr.title) |v| ptr.app.core_app.alloc.free(v);
++        ptr.title = null;
++        ptr.app.core_app.deleteSurface(ptr);
++
++        // The layer's display pass runs on the main thread and calls into
++        // the renderer, which the freeing thread is about to destroy.
++        const api = &ptr.core_surface.renderer.api;
++        if (comptime @hasField(@TypeOf(api.*), "layer")) {
++            api.layer.setDisplayCallback(null, null);
++        }
++
++        const thread = std.Thread.spawn(
++            .{},
++            surfaceFreeDetached,
++            .{ ptr, done, userdata },
++        ) catch |err| {
++            log.warn("error spawning a thread to free a surface, freeing it here err={}", .{err});
++            surfaceFreeDetached(ptr, done, userdata);
++            return;
++        };
++        thread.detach();
++    }
++
++    fn surfaceFreeDetached(
++        ptr: *Surface,
++        done: ?*const fn (?*anyopaque) callconv(.c) void,
++        userdata: ?*anyopaque,
++    ) void {
++        const alloc = ptr.app.core_app.alloc;
++        ptr.core_surface.deinit();
++        alloc.destroy(ptr);
++        if (done) |callback| callback(userdata);
++    }
++
+     /// Returns the userdata associated with the surface.
+     export fn ghostty_surface_userdata(surface: *Surface) ?*anyopaque {
+         return surface.userdata;

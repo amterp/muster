@@ -542,3 +542,41 @@ grapheme clustering off here while a surface configured for it keeps it on.
 
 Linear in rows, about 0.2 µs per 80-column row to compose and the same to parse
 (`vt.replay_compose` and `vt.replay_parse` in `crates/muster-perf`).
+
+## 15. Freeing a surface can wait on the main thread forever
+
+Seen 2026-09-28 in a 0.9.0 window that froze for three hours on a machine that was swapping.
+The core, the daemon and every agent kept working; the window drew nothing and took no input.
+A three-second `sample` of it showed the main thread in `ghostty_surface_free`, in
+`pthread_join`, for all of it.
+
+**The frames, symbolized.** A bundle's libghostty has no internal symbols, so each sampled
+address was matched to a function of `libghostty_zcu.o`, from GhosttyKit built at this pin,
+by comparing the function's instructions with branch and page offsets masked. Nine matched
+exactly and eight at 99.2-99.9%:
+
+- the main thread: `ghostty_surface_free` → `Surface.deinit` → `pthread_join` of the IO thread;
+- that IO thread: the xev loop → the child-exit callback (`Exec.processExit`) →
+  `apprt.surface.Mailbox.push`, waiting;
+- every other surface's reader: `Termio.processOutputLocked` → `StreamHandler.windowTitle` or
+  `progressReport` → the same push, waiting.
+
+**Why it never returns.** A surface's threads reach the main thread through the app mailbox,
+one `BlockingQueue(Message, 64)` (`App.zig:611`) that only `ghostty_app_tick` drains, and when
+it is full they wait with no timeout: the reader once an instant push fails
+(`termio/stream_handler.zig:121-124`), the IO thread for `child_exited` (`termio/Exec.zig:288-293`).
+`Surface.deinit` joins the IO thread (`Surface.zig:815-817`), and the IO thread joins its reader
+on the way out (`termio/Exec.zig:229`). So a main thread that fell far enough behind for the
+mailbox to fill, and then freed a surface, is waiting for itself.
+
+Ghostty's own app frees the same way, synchronously on the main thread
+(`macos/Sources/Ghostty/Ghostty.Surface.swift:26-33`), so the deadlock is latent there too; its
+main thread is rarely late enough to meet it.
+
+**What Muster does instead.** `deps/ghostty-patches/0002` adds `ghostty_surface_free_detached`,
+which does on the main thread the half of the free that touches the app - the surface leaves
+the app's list, so `hasSurface` (`App.zig:534`) drops whatever is still queued for it - and
+stops and joins the threads on a thread of its own, calling back once the memory is released.
+The main thread goes back to ticking, the mailbox drains, and the join completes.
+`ghostty_surface_free` is unchanged. `SurfaceGUITests` stages the deadlock with a real surface:
+titles set as fast as a shell can, a main actor kept from ticking, then a free.

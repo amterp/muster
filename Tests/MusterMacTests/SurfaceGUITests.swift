@@ -1,7 +1,7 @@
 import AppKit
 import MusterRenderer
-import os
 import Testing
+import os
 
 @testable import MusterMac
 
