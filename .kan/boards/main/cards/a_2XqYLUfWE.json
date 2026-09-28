@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "launch-a-successor",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790549698417,
   "creator": "Alexander Terp",
   "description": "A handoff hands every live pane to a new daemon binary. If that binary cannot start (a bad build, a missing library, macOS's first-run scan outlasting the handoff's patience), the handoff fails late. The test suite already launches a copied daemon once before handing over to it (411ac73) for exactly this reason. The app, or muster-daemon replace itself, could run the successor with --version first and refuse the handoff with a clear reason if it does not answer.",
   "id": "a_2XqYLUfWE",
   "parent": "a_2XJ1fUIyr",
-  "position": "b06",
+  "position": "ZV",
   "title": "Launch a successor daemon once before handing panes to it",
   "type": "enhancement",
-  "updated_at_millis": 1790549698534,
+  "updated_at_millis": 1790559251602,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790549698417}
+    {"field":"column","value":"backlog-hi","at":1790549698417},
+    {"field":"column","value":"done","at":1790559251602}
   ]
 }

@@ -9,6 +9,12 @@
       "body": "Daemon and plugin half landed (a12fd67): AgentFacts.waiting, Report.waiting / report --waiting, cleared at the agent's next turn, finished_unseen held off while set, a SessionStart line only in Muster panes, daemon.agent.turn_ended logged with waiting true/false to measure adoption. Review: a waiting fact whose work finishes inside the same turn, or never wakes the agent, sticks until the next turn. The sidebar half waits for the cut-over.",
       "created_at_millis": 1790555246333,
       "id": "c_2XssfpTJy"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Unverified risk (slot 2, round 9): if Claude Code fires PostToolUse for a background sub-agent's tools after the main turn's Stop, the first such call counts as a new turn and clears a wait just declared. daemon.agent.turn_ended in the run log will show it.",
+      "created_at_millis": 1790559251759,
+      "id": "c_2XuYsBgoX"
     }
   ],
   "created_at_millis": 1790539181584,
@@ -19,7 +25,7 @@
   "position": "b04",
   "title": "An agent can say it is waiting on its own work, so it does not read idle",
   "type": "feature",
-  "updated_at_millis": 1790555246333,
+  "updated_at_millis": 1790559251759,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790539181584}
   ]

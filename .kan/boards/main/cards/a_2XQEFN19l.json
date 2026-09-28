@@ -6,6 +6,14 @@
     "devenv"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Workflow landed (a05dffd): build the musl test binaries on the macOS gate runner, run them on ubuntu-24.04 and ubuntu-24.04-arm. Not exercised until the first push runs it; move to done when that run is green.",
+      "created_at_millis": 1790559251689,
+      "id": "c_2XuYs4MmY"
+    }
+  ],
   "created_at_millis": 1790486960516,
   "creator": "Alexander Terp",
   "description": "./dev --linux runs muster-daemon's and muster-detect's suites on Linux in a Debian container (dash as /bin/sh), natively on arm64 and under emulation for x86_64. It is not in CI: macOS runners have no docker, so it needs a Linux runner that can run ./dev's deps step (Rust, Zig, the patched libghostty build), or a split job that builds on macOS and tests on Linux. Until then a Linux regression is caught only when someone runs the tier or --ssh by hand.",
@@ -14,7 +22,7 @@
   "position": "av",
   "title": "Run ./dev --linux in CI",
   "type": "chore",
-  "updated_at_millis": 1790486960516,
+  "updated_at_millis": 1790559251689,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790486960516}
   ]
