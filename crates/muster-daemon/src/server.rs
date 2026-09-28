@@ -190,13 +190,18 @@ fn judge(hello: &proto::Hello) -> Result<(), String> {
     }
 }
 
-/// The version this daemon says it is: its own, or in a debug build whatever
-/// `MUSTER_DAEMON_VERSION_SAID` names. The one way a test gets an older daemon to hand over,
-/// since every daemon a test starts is built from the same commit. A shipped daemon never reads
-/// it, so nothing in a person's environment can make one lie about its version.
+/// The version a debug build says it is instead of its own, when set.
+///
+/// The one way a test gets an older daemon to hand over, since every daemon a test starts is
+/// built from the same commit. A shipped daemon never reads it, so nothing in a person's
+/// environment can make one lie about its version.
+pub(crate) const VERSION_SAID: &str = "MUSTER_DAEMON_VERSION_SAID";
+
+/// The version this daemon says it is: its own, or in a debug build whatever [`VERSION_SAID`]
+/// names.
 fn said_version() -> String {
     if cfg!(debug_assertions)
-        && let Ok(said) = std::env::var("MUSTER_DAEMON_VERSION_SAID")
+        && let Ok(said) = std::env::var(VERSION_SAID)
         && !said.is_empty()
     {
         return said;

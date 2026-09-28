@@ -439,6 +439,9 @@ fn start(replacement: &Replacement, socket: &Path) -> Result<(UnixStream, Child)
     let (link, theirs) = UnixStream::pair().map_err(|error| error.to_string())?;
     let mut command = Command::new(&replacement.program);
     command.arg("--socket").arg(socket).arg("--handoff").arg(LINK.to_string());
+    // Said by this daemon about itself. The successor is the newer daemon an update brings, and
+    // one that inherited the override would claim to be the daemon it replaced.
+    command.env_remove(crate::server::VERSION_SAID);
     if let Some(data) = &replacement.data {
         command.arg("--data").arg(data);
     }
