@@ -601,6 +601,7 @@ dependencies = [
  "clap_complete",
  "conformance",
  "muster-daemon-client",
+ "muster-daemon-proto",
  "muster-harness",
  "muster-proto",
  "muster-seam",

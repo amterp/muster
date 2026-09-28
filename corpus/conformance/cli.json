@@ -534,6 +534,33 @@
       }
     },
     {
+      "name": "a wait can end when an agent settles into waiting on its own work",
+      "why": "`waiting` is a word `muster window` prints, for an idle agent that said it ended its turn to wait on work it started. It is not `idle`, which is an agent with nothing left to do, so a caller who wants either names both.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--until",
+          "waiting,idle"
+        ]
+      },
+      "expect": {
+        "request": {
+          "watch_panes": {
+            "pane_ids": [
+              "p1w3r07bsd"
+            ],
+            "until": [
+              "waiting",
+              "idle"
+            ]
+          }
+        }
+      }
+    },
+    {
       "name": "a wait does not wait on the pane it is running in",
       "why": "Every other pane command falls back to $MUSTER_PANE. This one cannot mean it: the pane the command is running in is busy running the command, so a wait on it has no useful answer, and a caller who left `--pane` off meant some other pane.",
       "given": {
@@ -553,7 +580,7 @@
     },
     {
       "name": "a state nobody is ever in is refused by the command line",
-      "why": "A typo in a state would otherwise wait for something that never happens, which from outside is indistinguishable from an agent still working. The five words are the ones `muster window` prints.",
+      "why": "A typo in a state would otherwise wait for something that never happens, which from outside is indistinguishable from an agent still working. The six words are the ones `muster window` prints.",
       "given": {
         "argv": [
           "pane",

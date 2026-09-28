@@ -6,13 +6,20 @@ out what it did.
 
     tab 1  t1w3r07bsd  ~/src/muster  on screen
       ▸ 1  p1w3r07bsd  unknown   2h  ~/src/muster
-        2  p1w3r0ab2n  working  12m  🤖 A · reading AGENTS.md
+        2  p1w3r0ab2n  working  12m  🤖 A · reading AGENTS.md  64% context  2 sub-agents
     tab 2  t1w3r0h4kp  the build
         3  p1w3r0cd4x  blocked  40m  🤖 B  (hidden)
+        4  p1w3r0ef6y  waiting   8m  🤖 C · on the full gate  31% context
 
     local  connected
       this machine · started by Muster · 3 panes in ~/src/muster
       /Users/you/.muster/daemon/release.sock
+
+After a pane's label come what its agent says about itself and anything else worth a glance:
+how full its context is, its sub-agents, `(cannot read the screen)` when Muster's rules have
+stopped reading the agent, `(bell)` for a bell nobody has looked at since, and a program's own
+progress, `(40% done)` or `(progress failed)`. A waiting agent's second line is what it waits on.
+The model and the cost are in `--json`.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
 shows one. The machines follow rather than heading the list, because a tab can hold panes on more
@@ -80,7 +87,20 @@ One entry per pane every followed daemon holds, on screen or not.
   failing that its directory and the harness detected in it.
 - `given_name` - the name somebody gave it, empty when nobody has.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
-- `state` - `working`, `blocked`, `idle`, `done` or `unknown`.
+- `state` - `working`, `blocked`, `waiting`, `idle`, `done` or `unknown`.
+- `reported` - whether the state is the agent's own report rather than what Muster read off its
+  screen.
+- `unreadable` - whether Muster's rules have stopped reading this agent's screen. Its state is
+  then only what the agent reports, and `unknown` while it has reported nothing: said rather than
+  guessed.
+- `facts` - what the agent says about itself, `null` while it has said nothing: `context_used`
+  (0 to 100), `subagents`, `model`, `cost_usd`, `waiting` (what it ended its turn to wait on) and
+  `other`, its own keys. Anything it has not said is `null`, since an agent that never reported
+  its context has not used none of it.
+- `progress` - what a program in the pane says of its progress, `{"state", "percent"}`, or `null`.
+  `state` is `running`, `error`, `indeterminate` or `paused`; `percent` is `null` when the program
+  gave none.
+- `rang` - whether a program in the pane rang the bell and nobody has looked at the pane since.
 - `since` - when the agent last changed state, in seconds since the epoch to the millisecond, so
   `now - .since` in jq is how long it has been in it. Two reads that say `working` with the same
   `since` are one turn; a different `since` is a finish and a new turn in between. Looking at a
@@ -159,7 +179,10 @@ daemon: no daemon knows the other one exists, so nothing else in this answer imp
 
 ## Agent states
 
-`working`, `blocked`, `idle` and `done` come from the harness running in the pane. `unknown` is
+`working`, `blocked`, `idle` and `done` come from the harness running in the pane. `waiting` is an
+idle agent that said it ended its turn to wait on work it started itself, a gate or a build: it
+has not finished and nobody is holding it up, and `facts.waiting` says on what. It lasts until
+the agent ends a later turn without saying it again, or somebody prompts it. `unknown` is
 the ordinary answer for a pane running a plain shell, and also for a pane whose harness could
 not be read: an agent Muster failed to read is not an agent that finished.
 
@@ -168,12 +191,12 @@ window opened later still says `done`, and it lasts until a window that has the 
 the pane - which clears it for every window - or until the agent works or waits on somebody
 again. A daemon that restarts forgets it, so a script should not expect a `done` to outlive one.
 
-The state column is coloured: `working` cyan, `blocked` yellow, `done` green. `idle` and
+The state column is coloured: `working` cyan, `blocked` yellow, `done` green, `waiting` blue. `idle` and
 `unknown` are left plain, because they are the resting answer and the row already prints the
 word. It is the same legend the window itself paints, where `blocked` is orange - the sixteen
 colours a terminal has hold no orange, and yellow is the nearest slot.
 
-**These five are fixed, and the window's are not.** `[colors] agent_*` repaints the window; this
+**These are fixed, and the window's are not.** `[colors] agent_*` repaints the window; this
 answer keeps the terminal's sixteen whatever that file says, so `muster window` reads the same on
 anybody's machine. What it names is a slot rather than a pixel, so repainting `[colors] palette`
 does move what you see here - that is your terminal's own vocabulary, which every program in it

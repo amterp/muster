@@ -30,6 +30,8 @@ muster-harness.workspace = true
 # so another can check that the variable names this crate spells out still match the ones the
 # app sets.
 muster-daemon-client.workspace = true
+# To report as an agent does, which the window test reads back.
+muster-daemon-proto.workspace = true
 muster-seam.workspace = true
 
 [lints]

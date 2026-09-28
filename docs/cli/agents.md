@@ -38,7 +38,9 @@ That is one look. To find out when an agent finishes, wait on it rather than loo
 
 It blocks until the pane's agent is idle or blocked, prints the pane and its state -
 `p1w3r0ab2n  done` - and exits 0. `idle` is also met by `done`, which is an idle nobody has looked
-at. `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
+at, and not by `waiting`: an agent that ended its turn to wait on a gate it started has not
+finished, so the wait goes on until it has. Add `waiting` to the list to hear of that too.
+`--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
 `--pane` more than once to wait for the first of several agents.
 
 A wait also ends when the daemon holding its pane stops answering - a devenv over a dropped VPN -

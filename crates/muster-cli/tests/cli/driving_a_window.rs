@@ -135,6 +135,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
 
     a_pane_can_be_read_back(&made_pane, &inside(&first));
     every_pane_says_since_when(&inside(&first));
+    what_an_agent_says_and_a_bell_are_in_the_window(&daemon, &made_pane, &inside(&first));
     the_columns_are_described(&inside(&first));
     the_arrangement_is_readable(&first, &made_pane, &inside(&first));
     an_uneven_tab_is_evened_out(&first, &made_pane, &inside(&first));
@@ -314,6 +315,41 @@ fn every_pane_says_since_when(environment: &[(&str, String)]) {
              it is {now} now - so `since` is not seconds since the epoch: {pane}"
         );
     }
+}
+
+/// What a pane's agent says about itself and a bell nobody heard reach both the plain window and
+/// its JSON. The window is not focused, so nobody is looking and the bell marks the pane.
+fn what_an_agent_says_and_a_bell_are_in_the_window(
+    daemon: &Daemon,
+    pane: &str,
+    environment: &[(&str, String)],
+) {
+    let report = muster_daemon_proto::pane_request::Report {
+        pane: pane.to_string(),
+        context_used: Some(64.0),
+        ..Default::default()
+    };
+    muster_harness::requests::expect(
+        &mut daemon.connect(),
+        muster_harness::requests::pane(muster_daemon_proto::pane_request::Request::Report(report)),
+        muster_daemon_proto::Outcome::Done,
+    );
+    let rung = run(&["pane", "send", "--pane", pane, r"printf '\a'", "--enter"], environment);
+    assert_eq!(rung.code, 0, "`muster pane send` failed: {}", rung.errors);
+
+    let described = until_some("the window to carry the agent's word and the bell", || {
+        let window = json_from(&run(&["window", "--json"], environment));
+        let panes = window["panes"].as_array().cloned().unwrap_or_default();
+        let described = panes.into_iter().find(|described| described["pane"] == json!(pane))?;
+        (described["rang"] == json!(true) && !described["facts"].is_null()).then_some(described)
+    });
+    assert_eq!(described["facts"]["context_used"], json!(64.0), "{described}");
+    assert_eq!(described["facts"]["waiting"], Value::Null, "nothing said is null: {described}");
+    assert_eq!(described["unreadable"], json!(false), "{described}");
+
+    let plain = run(&["window"], environment);
+    let line = plain.out.lines().find(|line| line.contains(pane)).unwrap_or_default();
+    assert!(line.contains("64% context") && line.contains("(bell)"), "{}", plain.out);
 }
 
 /// What a pane has printed, which nothing else in this surface answers.

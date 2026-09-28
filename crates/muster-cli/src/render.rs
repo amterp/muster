@@ -402,6 +402,7 @@ fn tab_lines(
             pane,
             agent.map_or("unknown", |agent| agent.state.as_str()),
             &agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default(),
+            agent,
             keyboard == Some(pane.pane_id.as_str()),
             say_machine,
         ));
@@ -486,6 +487,7 @@ fn pane_line(
     pane: &muster_proto::RosterPane,
     state: &str,
     held: &str,
+    agent: Option<&muster_proto::PaneStateChanged>,
     has_keyboard: bool,
     say_machine: bool,
 ) -> String {
@@ -498,8 +500,19 @@ fn pane_line(
         pad(held, widths.held, QUIET, Align::Right),
         pane.label,
     );
-    if !pane.subtitle.is_empty() {
-        line.push_str(&styled(&format!(" · {}", pane.subtitle), QUIET));
+    let waiting = agent.and_then(|agent| agent.facts.as_ref()).map(|facts| facts.waiting.as_str());
+    // What it waits on says more than its title while it waits, and the two would crowd a line.
+    match waiting.filter(|waiting| state == "waiting" && !waiting.is_empty()) {
+        Some(waiting) => line.push_str(&styled(&format!(" · on {waiting}"), QUIET)),
+        None if !pane.subtitle.is_empty() => {
+            line.push_str(&styled(&format!(" · {}", pane.subtitle), QUIET));
+        }
+        None => {}
+    }
+    if let Some(agent) = agent {
+        for said in agent_notes(agent) {
+            line.push_str(&styled(&format!("  {said}"), QUIET));
+        }
     }
     if !pane.on_screen {
         line.push_str(&styled("  (hidden)", QUIET));
@@ -511,6 +524,39 @@ fn pane_line(
         line.push_str(&styled(&format!("  ({})", pane.daemon_id), QUIET));
     }
     line
+}
+
+/// What else is worth a glance about a pane's agent, each a few words: how full its context is,
+/// its sub-agents, whether its screen can be read, a bell nobody heard, and a program's progress.
+///
+/// The model and the cost are left to `--json`: they change what somebody does next less often
+/// than they would lengthen every line.
+fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
+    let mut notes = Vec::new();
+    if let Some(facts) = &agent.facts {
+        if let Some(used) = facts.context_used {
+            notes.push(format!("{used:.0}% context"));
+        }
+        match facts.subagents {
+            0 => {}
+            1 => notes.push("1 sub-agent".to_string()),
+            count => notes.push(format!("{count} sub-agents")),
+        }
+    }
+    if agent.unreadable {
+        notes.push("(cannot read the screen)".to_string());
+    }
+    if agent.rang {
+        notes.push("(bell)".to_string());
+    }
+    if let Some(progress) = &agent.progress {
+        match (progress.state.as_str(), progress.percent) {
+            ("error", _) => notes.push("(progress failed)".to_string()),
+            ("running" | "paused", Some(percent)) => notes.push(format!("({percent}% done)")),
+            _ => {}
+        }
+    }
+    notes
 }
 
 /// What each word means at a glance, so a window with fifteen panes can be read without counting.
@@ -529,6 +575,10 @@ fn pane_line(
 /// file's own: plain ANSI blue is the least legible of the sixteen on a dark background, and
 /// working is the state a window spends most of its time in.
 ///
+/// Waiting is blue, the nearest of the sixteen to the window's indigo. Blue's legibility cost
+/// matters less here than it did for working: a waiting agent needs nobody, so its row is one
+/// to skip rather than to find.
+///
 /// Only the states worth a colour get one. `unknown` is the ordinary answer for a pane running a
 /// shell rather than an agent, and colouring it would put a signal on almost every row; `idle` goes
 /// bare for the reason the window draws it no border, that no colour is what resting looks like in
@@ -538,6 +588,7 @@ fn agent_style(state: &str) -> Style {
         "working" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Cyan))),
         "blocked" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Yellow))),
         "done" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Green))),
+        "waiting" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Blue))),
         _ => QUIET,
     }
 }
@@ -617,6 +668,20 @@ impl Widths {
 /// deciding which agent has waited longest is comparing orders of magnitude. Empty for zero,
 /// which is a window too old to say, and a clock that has gone backwards reads as `0s` rather
 /// than as a negative.
+/// What an agent says about itself, with what it has not said as null rather than as zero: an
+/// agent that never reported its context has not used none of it.
+fn facts_json(facts: &muster_proto::AgentFacts) -> Value {
+    let said = |text: &str| if text.is_empty() { Value::Null } else { json!(text) };
+    json!({
+        "context_used": facts.context_used,
+        "subagents": facts.subagents,
+        "model": said(&facts.model),
+        "cost_usd": facts.cost_usd,
+        "waiting": said(&facts.waiting),
+        "other": facts.other,
+    })
+}
+
 fn held_for(since_ms: i64, now_ms: i64) -> String {
     if since_ms == 0 {
         return String::new();
@@ -681,6 +746,13 @@ fn window_json(window: &Window, others: Others) -> Value {
                 "subtitle": pane.subtitle,
                 "state": states.get(pane.pane_id.as_str()).map_or("unknown", |agent| agent.state.as_str()),
                 "since": states.get(pane.pane_id.as_str()).map_or(Value::Null, |agent| since_json(agent.since_ms)),
+                "reported": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.reported),
+                "unreadable": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.unreadable),
+                "facts": states.get(pane.pane_id.as_str()).and_then(|agent| agent.facts.as_ref()).map_or(Value::Null, facts_json),
+                "progress": states.get(pane.pane_id.as_str()).and_then(|agent| agent.progress.as_ref()).map_or(Value::Null, |progress| {
+                    json!({ "state": progress.state, "percent": progress.percent })
+                }),
+                "rang": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.rang),
                 "on_screen": pane.on_screen,
                 "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
                 // Null rather than zeroes for a pane the window is not drawing, so this and
