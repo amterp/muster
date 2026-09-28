@@ -107,6 +107,10 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
         || format!("It shows:\n{}", read_pane(&socket, &first)),
     );
 
+    the_daemon_answers_only_for_a_window_that_does_not(
+        &socket, &host, &options, &installed, &first,
+    );
+
     // The connection drops and comes back, and the same pane can still reach the window. What it
     // was told is a path on the devenv, and the reopened master forwards the window there again.
     let forwarded = forwards_so_far(&log);
@@ -153,6 +157,50 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
         ),
     );
     assert!(left.trim().is_empty(), "the window's socket outlived it on the devenv: {left}");
+}
+
+/// A devenv pane's `muster window` is answered by the window while the window answers there,
+/// and by the devenv's own daemon once `$MUSTER_SOCKET` names a window that does not, as a
+/// pane's does once its window has closed and taken the forward with it.
+fn the_daemon_answers_only_for_a_window_that_does_not(
+    socket: &Path,
+    host: &str,
+    options: &[String],
+    installed: &Installed,
+    first: &str,
+) {
+    // With the window answering there, it answers rather than the devenv's daemon: its
+    // listing is a window's, not headed by the daemon that answered in a window's place.
+    type_into(
+        socket,
+        first,
+        "echo daemon=$(~/.muster/bin/muster window | grep -c 'no window answered').",
+    );
+    until_within(
+        "`muster window` in the devenv pane to be answered",
+        LAUNCH_PATIENCE,
+        || read_pane(socket, first).contains("daemon=0."),
+        || format!("It shows:\n{}", read_pane(socket, first)),
+    );
+    // And where it names a window that does not answer, as a pane's does once its window has
+    // closed and taken the forward with it, the devenv's own daemon answers for its panes.
+    let daemons = installed.socket.parent().expect("a socket is in a directory");
+    let gone = daemons.join("window-gone.sock");
+    let said = over_ssh(
+        host,
+        options,
+        &format!(
+            "export MUSTER_SOCKET={} MUSTER_DAEMON_SOCKET={}; ~/.muster/bin/muster window; \
+             ~/.muster/bin/muster pane read --pane {first}",
+            muster_ssh::quoted(&gone.to_string_lossy()),
+            muster_ssh::quoted(&installed.socket.to_string_lossy()),
+        ),
+    );
+    assert!(
+        said.contains("no window answered; the muster-daemon at") && said.contains(first),
+        "with its window gone, a devenv pane's `muster window` is answered by its daemon: {said}"
+    );
+    assert!(said.contains("said=42."), "and `pane read` reads the pane from there: {said}");
 }
 
 /// Opens a window configured with the devenv's daemon and nothing else, listening on `socket`.
