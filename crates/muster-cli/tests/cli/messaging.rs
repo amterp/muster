@@ -12,8 +12,10 @@ use std::process::{Command, Output, Stdio};
 use std::time::Duration;
 
 use muster_daemon_proto::{self as proto, messaging, session_request};
-use muster_harness::Daemon;
-use muster_harness::requests::{expect, session};
+use muster_harness::requests::{
+    beside, close_request, create, expect, in_new_tab, make, session, until_text,
+};
+use muster_harness::{Daemon, Input};
 use serde_json::Value;
 
 fn muster(daemon: &Daemon, arguments: &[&str]) -> Output {
@@ -225,5 +227,97 @@ fn the_reference_spells_every_verb_as_the_command_does() {
     assert!(
         reference.contains(&messaging::command(messaging::READ, "")),
         "docs/cli/msg.md never spells the command as `muster msg read`"
+    );
+}
+
+/// The daemon's quiet period: how long nothing may have been typed into a pane before it is
+/// rung.
+const QUIET: Duration = Duration::from_secs(3);
+
+/// A daemon with the fake agent in panes `p1` to `p3`, idle, working and holding a half-typed
+/// draft, and `p4` at its shell, where an agent may yet start. Every pane has been quiet for the
+/// doorbell's quiet period.
+fn agents_in_panes() -> Daemon {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    for pane in ["p2", "p3", "p4"] {
+        make(&mut control, create(pane, beside("p1", proto::Side::Right)));
+    }
+    for pane in ["p1", "p2", "p3"] {
+        daemon.run_agent(pane);
+    }
+    daemon.set_agent_state("p2", proto::AgentState::Working);
+    Input::connect(daemon.socket_path()).send(
+        "p3",
+        proto::input_event::Input::Send(proto::input_event::Send {
+            text: "half a thought".to_string(),
+            enter: false,
+        }),
+    );
+    until_text(&mut control, "p3", "half a thought");
+    std::thread::sleep(QUIET + Duration::from_millis(500));
+    daemon
+}
+
+/// A post to agents in panes says, for each, whether it was rung, and what a ring still to
+/// come waits for; each counts as heard, and so does one already woken.
+#[test]
+fn a_post_to_agents_in_panes_says_when_each_is_rung() {
+    let daemon = agents_in_panes();
+    let to_all = ["msg", "--as", "lead", "post", "--to", "p1,p2,p3,p4"];
+    assert_eq!(
+        ok(&muster(&daemon, &[&to_all[..], &["a", "brief"]].concat())),
+        "posted #7 to lead+p1+p2+p3+p4\n\
+         woke: p1 (idle)\n\
+         rung once idle: p2 (working)\n\
+         rung once its prompt is empty: p3 (idle)\n\
+         rung once an agent is found: p4"
+    );
+
+    let json = ["msg", "--json", "--as", "other", "post", "--to", "p2,p3,p4", "another"];
+    let posted: Value = serde_json::from_str(&ok(&muster(&daemon, &json))).unwrap();
+    assert_eq!(posted["deferred"], serde_json::json!(["p2", "p3", "p4"]), "{posted}");
+    assert_eq!(
+        posted["until"],
+        serde_json::json!({ "p2": "idle", "p3": "prompt", "p4": "agent" }),
+        "{posted}"
+    );
+    assert_eq!(posted["doing"], serde_json::json!({ "p2": "working", "p3": "idle" }), "{posted}");
+    for none in ["woke", "already_woken", "gone", "no_agent", "no_doorbell", "waiting"] {
+        assert_eq!(posted[none], serde_json::json!([]), "{none}: {posted}");
+    }
+
+    assert_eq!(
+        ok(&muster(&daemon, &[&to_all[..], &["more"]].concat())),
+        "posted #8 to lead+p1+p2+p3+p4\n\
+         woke: p1 (idle, already woken), p2 (working, already woken), \
+         p3 (idle, already woken), p4 (already woken)"
+    );
+}
+
+/// The human is heard: whoever reads the post there is the person at the keyboard.
+#[test]
+fn a_post_to_the_human_is_heard() {
+    let daemon = Daemon::start_built();
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "--as", "a", "post", "--to", "@human", "look"])),
+        "posted #4 to @human+a\nnot woken: @human (sees it when it reads)"
+    );
+}
+
+/// An agent whose pane has closed can be woken by nothing, so a post to it alone is unheard.
+#[test]
+fn a_post_to_an_agent_whose_pane_closed_is_unheard() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", beside("p1", proto::Side::Right)));
+    daemon.run_agent("p1");
+    ok(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", "p1", "a", "brief"]));
+    expect(&mut control, close_request("p1"), proto::Outcome::Done);
+    assert_eq!(
+        unheard(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", "p1", "more"])),
+        "posted #5 to lead+p1\nnot woken: p1 (no agent in its pane)"
     );
 }
