@@ -260,13 +260,15 @@ fn put_there(remote: &impl Far, installed: &Installed, payload: &Payload) -> Res
 ///
 /// The staging names carry the shell's pid, so two windows installing at once never write into
 /// one directory. If another install's directory lands in place between the check and the
-/// move, `mv` puts this one inside it, and it is removed from there.
+/// move, `mv` puts this one inside it, and it is removed from there. An archive that does not
+/// unpack takes its staging directory with it.
 fn install_script(installed: &Installed, stamp: &str) -> String {
     let directory = path(&installed.directory);
     format!(
         "d={directory}; s=\"$d.placing.$$\"; o=\"$d.old.$$\"; \
-         rm -rf \"$s\" && mkdir -p \"$s\" && tar -xf - -C \"$s\" && \
-         printf %s {stamp} > \"$s/installed\" && \
+         rm -rf \"$s\" && mkdir -p \"$s\" && \
+         {{ tar -xf - -C \"$s\" && printf %s {stamp} > \"$s/installed\" || \
+         {{ rm -rf \"$s\"; false; }}; }} && \
          {{ if [ -d \"$d\" ]; then mv \"$d\" \"$o\"; fi; mv \"$s\" \"$d\"; }} && \
          rm -rf \"$o\" \"$d/${{s##*/}}\"",
         stamp = quoted(stamp),
