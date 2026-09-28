@@ -221,6 +221,10 @@ would use for each, and it never refuses. Claude's session name is not in a Bash
 environment, and requiring `--name` first would make an agent's first `read` fail. From stage 2 a
 pane's label takes precedence, since a person chose it.
 
+No caller may become a participant that is alive in another session, whether it asks with
+`join --name` or with `--as`: its addresses would replace the live one's, which would never be woken
+again. A caller carrying no address, such as a script, moves nothing, so it may act as anyone.
+
 Every verb identifies its caller by the first of: `--as NAME`; a session address a wake adapter
 recognizes, such as Claude's socket path, which is the same in every Bash call, whereas a variable
 exported in one Bash call is gone in the next; or `MUSTER_PANE`, when detection has found an agent
@@ -476,6 +480,19 @@ survive a daemon restart, a daemon handoff (MIP-3 section 10) and a reboot. Wake
 too and are found dead at first use, which marks their participants gone until they return. Replicas
 are not persisted; a replica refetches when its link returns.
 
+**A log file is named after its group, so group names are unique regardless of case.** On macOS's
+default filesystem `Review.log` and `review.log` are one file, so two groups named that way would
+merge after a restart with their sequence numbers repeated. A group whose name differs from an
+existing one's only in case is refused, naming the existing group. The other way was to encode case
+into file names, which keeps both groups but makes the store unreadable by eye; nobody wants
+`Review` and `review` as two groups anyway. For the same reason a group name is at most 250 bytes,
+so its file name fits the 255 a filesystem allows, and a post whose pair group would be named past
+that is refused asking for a named group. Participant names are not file names and keep their case.
+
+A crash during an append leaves a last line with no newline, which was a post never answered.
+Loading cuts it off, so the next append starts on a line of its own, and a cursor past its log's
+head is brought back to it.
+
 Logs are kept until the group is deleted (`muster msg group delete`). `muster msg groups` lists
 the groups this machine is home to or replicates, with size and last activity.
 
@@ -722,3 +739,5 @@ bind.
   and MIP-3.
 - 2026-09-28 Stage 1 built: the Claude observation on macOS, the default name and the re-wake's
   timing answered (sections 3 and 5), `wait`'s output convention (section 6).
+- 2026-09-28 Stage 1 reviewed: group names unique regardless of case, and a torn log line cut at
+  load (section 12); `--as` held to the rule `join --name` is (section 3).

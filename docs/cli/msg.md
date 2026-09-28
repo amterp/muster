@@ -26,8 +26,10 @@ Every verb works out who is asking, in this order:
 `join --name NAME` takes a name. A session that runs any other verb first is registered under
 the last part of its working directory - `muster-5` for a session in `~/src/muster-5` - with
 `-2`, `-3` added when a live session already has that name. Joining under the name of a
-participant whose session has gone takes it over, with its place in every group. Joining under
-the name of one that is still running is refused.
+participant whose session has gone takes it over, with its place in every group. A session may
+not become one that is still running, with `join --name` or with `--as`; a shell or a script,
+which has no session of its own to move, may act `--as` anyone. A participant nothing can wake,
+such as one made by `join --name` from a plain shell, counts as gone.
 
 Names are letters, digits, `.`, `_` and `-`. They are not authentication: anything running as
 you can post as anyone.
@@ -35,7 +37,8 @@ you can post as anyone.
 ## Groups
 
 Every message belongs to one group, and every group has one log. `join --group G` joins G,
-creating it if it does not exist.
+creating it if it does not exist. Group names are unique regardless of case: with `review`
+there, `Review` is refused, because on macOS the two would be one file.
 
 A post names its group with `--group`. Without one it goes to the one group its author and
 addressees share; if they share none, to a group of exactly them, named from their names sorted
@@ -86,15 +89,16 @@ what came before.
 
 `log --group G [--since N]` prints the transcript and moves nothing.
 
-`read --if-unread` prints nothing at all when nothing is unread, for a hook to run after every
-tool call.
+`read --if-unread` prints nothing at all unless a message is unread, for a hook to run after every
+tool call. Joins and leaves on their own print nothing, though your place still moves past them.
 
 ## Waiting
 
 `wait [--group G] [--timeout S]` blocks until you have an unread message that would wake you,
 then prints what a wake would say and exits 0. It returns at once if you already have one. A
-newer `wait` by the same participant ends the older, which exits 1. With `--timeout` it exits 5
-when nothing arrived.
+newer `wait` by the same participant ends the older, which exits 1, as does one whose participant
+leaves. With `--timeout` it exits 5 when nothing arrived. A wait survives Muster updating its
+daemon: it asks the new one and goes on waiting.
 
 **Do not run it in the foreground of an agent's turn**: that is the blocking loop this exists to
 remove. It is for hooks and scripts.
