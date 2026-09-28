@@ -465,6 +465,31 @@ fn a_replace_asked_during_another_is_refused_as_such_and_the_first_goes_on() {
     assert!(!line.contains("daemon.handoff.failed"), "logged as a failure: {line}");
 }
 
+/// The program asked its version gets none of the daemon's descriptors, as the successor does
+/// not: now that panes are made while it runs, one could be forked from between a terminal's
+/// opening and its close-on-exec. A descriptor the daemon holds without the flag stands in.
+#[test]
+fn the_program_asked_its_version_holds_none_of_the_daemons_descriptors() {
+    let scripts = std::env::temp_dir().join(format!("muster-sealed-{}", std::process::id()));
+    std::fs::create_dir_all(&scripts).unwrap();
+    let (program, out) = (scripts.join("muster-daemon"), scripts.join("fds"));
+    // bash by name, as for a pane's own listing; 255 is where bash keeps the script it reads.
+    let script = format!(
+        "#!/bin/bash\ni=3; while [ $i -lt 255 ]; do [ -e /dev/fd/$i ] && echo $i >> '{out}'; \
+         i=$((i+1)); done; echo end >> '{out}'\nexit 1\n",
+        out = out.display()
+    );
+    std::fs::write(&program, script).unwrap();
+    std::fs::set_permissions(&program, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .unwrap();
+    let mut daemon = daemon_holding(9);
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+
+    refused(&mut daemon, Some(&program));
+    assert_eq!(std::fs::read_to_string(&out).unwrap(), "end\n");
+    let _ = std::fs::remove_dir_all(&scripts);
+}
+
 /// A new daemon that fails at each step of a handoff costs nothing.
 #[test]
 fn a_new_daemon_that_refuses_or_dies_at_any_step_leaves_the_old_one_serving() {
