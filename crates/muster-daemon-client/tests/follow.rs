@@ -269,8 +269,14 @@ fn a_herdr_daemon_from_before_is_named_in_the_census() {
     assert_eq!(census[0].state, records::State::Herdr);
     assert_eq!(census[0].panes, 0, "herdr is not asked what it holds");
 
+    // Waited for rather than read once: a child another test forks in this moment holds a copy
+    // of the listener until it execs, and the socket accepts on that copy.
     drop(listening);
-    assert_eq!(records::census(&records)[0].state, records::State::Silent);
+    until(
+        "the record to read silent once nothing listens",
+        || records::census(&records)[0].state == records::State::Silent,
+        || format!("it reads {:?}", records::census(&records)[0].state),
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
