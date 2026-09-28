@@ -226,6 +226,10 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.group = group;
             refused.machine = machine;
         }
+        Refusal::HumanElsewhere { machine, calls_us } => {
+            refused.machine = machine;
+            refused.name = calls_us;
+        }
         Refusal::NotAllowed { addressee, group, allowed } => {
             refused.name = addressee;
             refused.group = group;
@@ -291,6 +295,7 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "unreachable" => Refusal::Unreachable { group, machine },
         "unanswered" => Refusal::Unanswered { group, machine },
         "kept_elsewhere" => Refusal::KeptElsewhere { group, machine },
+        "human_elsewhere" => Refusal::HumanElsewhere { machine, calls_us: name },
         "not_allowed" => Refusal::NotAllowed { addressee: name, group, allowed: candidates },
         "not_permitted" if let Some(action) = action_from(&action) => {
             Refusal::NotPermitted { name, group, action, permitted: candidates }
@@ -358,6 +363,7 @@ mod tests {
             Refusal::Unreachable { group: "g@x".into(), machine: "x".into() },
             Refusal::Unanswered { group: "g@x".into(), machine: "x".into() },
             Refusal::KeptElsewhere { group: "g@x".into(), machine: "x".into() },
+            Refusal::HumanElsewhere { machine: "x".into(), calls_us: "y".into() },
             Refusal::NotAllowed {
                 addressee: "b".into(),
                 group: "g".into(),

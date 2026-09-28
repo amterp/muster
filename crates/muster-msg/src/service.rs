@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::across::Tell;
+use crate::across::{HumanHome, Peer, Tell};
 use crate::names::{check_addressee, check_group, check_participant, is_human, split_machine};
 use crate::{
     Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Policy, Refusal, Saved, Store, What,
@@ -385,6 +385,8 @@ pub struct Messaging<S: Store> {
     pub(crate) met: BTreeSet<String>,
     /// Replicas a change to went unanswered, until their home is next heard from.
     pub(crate) unanswered: BTreeSet<String>,
+    /// Where the human is homed, once a daemon there has dialed this one.
+    pub(crate) human_home: Option<HumanHome>,
 }
 
 impl<S: Store> Messaging<S> {
@@ -452,6 +454,7 @@ impl<S: Store> Messaging<S> {
             linked: BTreeSet::new(),
             met: BTreeSet::new(),
             unanswered: BTreeSet::new(),
+            human_home: saved.human_home,
         };
         messaging.kept = messaging.snapshot();
         messaging
@@ -510,6 +513,9 @@ impl<S: Store> Messaging<S> {
     ) -> Result<bool, Refusal> {
         let caller = &Self::addressed(caller, presence);
         check_participant(name)?;
+        if name == HUMAN {
+            self.human_here(presence)?;
+        }
         self.may_become(name, caller, presence)?;
         let took_over = self
             .participants
@@ -531,6 +537,9 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Left, Refusal> {
         let caller = &Self::addressed(caller, presence);
+        if self.lookup(caller).as_deref() == Some(HUMAN) {
+            self.human_here(presence)?;
+        }
         let name = self
             .lookup(caller)
             .filter(|name| self.participants.contains_key(name))
@@ -590,19 +599,20 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
         check_body(body)?;
-        let author = self.identify(caller, presence)?;
+        let author = self.acting(caller, presence)?;
         let group = group.map(|group| self.locate(group)).transpose()?;
         let addressees = self.addressees(&author, to, group.as_deref(), presence)?;
         let group = self.resolve_group(&author, &addressees, group.as_deref(), now_ms)?;
         self.here(&group)?;
         let cursor = self.cursor(&author, &group);
-        self.post_as(&author, &group, addressees, body, cursor, presence, now_ms)
+        self.post_as(&author, &group, addressees, body, cursor, None, presence, now_ms)
     }
 
     /// Appends a post by `author`, who had read `group` up to `cursor`, and reaches whoever it
     /// is for on this machine. The author's own daemon is where its cursor lives, so a post
     /// forwarded from another machine brings the cursor with it (MIP-4, section 4). The
-    /// group's policy binds here, where it is kept, whichever machine the post came from.
+    /// group's policy binds here, where it is kept, whichever machine the post came from. That
+    /// machine, `from`, learns of the entry from its answer, so it is not told it again.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn post_as(
         &mut self,
@@ -611,6 +621,7 @@ impl<S: Store> Messaging<S> {
         addressees: Vec<String>,
         body: &str,
         cursor: u64,
+        from: Option<&str>,
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
@@ -636,7 +647,6 @@ impl<S: Store> Messaging<S> {
         };
         let seq = self.append(group, message, now_ms)?;
         let targets = self.targets(group, author, addressees);
-        let from = split_machine(author).map(|(_, machine)| machine);
         let mut posted = Posted {
             author: author.to_string(),
             group: group.to_string(),
@@ -932,7 +942,7 @@ impl<S: Store> Messaging<S> {
     ) -> Result<Changed, Refusal> {
         policy.check()?;
         self.kept(group)?;
-        let by = self.identify(caller, presence)?;
+        let by = self.acting(caller, presence)?;
         self.permitted(group, &by, Action::SetPolicy)?;
         let after = self.groups[group].head();
         let policy = Policy { paused: self.groups[group].policy.paused, ..policy };
@@ -955,7 +965,7 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Changed, Refusal> {
         self.kept(group)?;
-        let by = self.identify(caller, presence)?;
+        let by = self.acting(caller, presence)?;
         if !add.is_empty() {
             self.permitted(group, &by, Action::Add)?;
         }
@@ -1015,7 +1025,7 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Changed, Refusal> {
         self.kept(group)?;
-        let by = self.identify(caller, presence)?;
+        let by = self.acting(caller, presence)?;
         self.permitted(group, &by, Action::Pause)?;
         if self.groups[group].policy.paused {
             return Ok(Changed::by(&by, group, None));
@@ -1040,7 +1050,7 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
         self.kept(group)?;
-        let by = self.identify(caller, presence)?;
+        let by = self.acting(caller, presence)?;
         self.permitted(group, &by, Action::Resume)?;
         let mut posted = Posted {
             author: by.clone(),
@@ -1199,6 +1209,11 @@ impl<S: Store> Messaging<S> {
         group: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
+        if name == HUMAN
+            && let Some(home) = self.human_elsewhere(presence)
+        {
+            return Ok(home.human());
+        }
         let scope: Vec<String> = match group {
             Some(group) => vec![group.to_string()],
             None => self.memberships(author),
@@ -1312,6 +1327,42 @@ impl<S: Store> Messaging<S> {
         Ok(name)
     }
 
+    /// Records that `peer`'s daemon dialed this one. The app's daemon is the one that dials, so
+    /// the human is homed there, and this daemon has none of its own (MIP-4, section 10).
+    pub fn dialed_by(&mut self, peer: &Peer) -> Result<(), Refusal> {
+        self.human_home =
+            Some(HumanHome { machine: peer.name.clone(), calls_us: peer.calls_us.clone() });
+        self.save()
+    }
+
+    /// Where the human is homed when that is not here: the machine that last dialed this
+    /// daemon, unless a window attends it, since then the app runs on this machine.
+    pub(crate) fn human_elsewhere(&self, presence: &dyn Presence) -> Option<&HumanHome> {
+        self.human_home.as_ref().filter(|_| !presence.attended())
+    }
+
+    /// Refuses to act as this machine's human where it has none.
+    fn human_here(&self, presence: &dyn Presence) -> Result<(), Refusal> {
+        self.human_elsewhere(presence).map_or(Ok(()), |home| Err(home.refusal()))
+    }
+
+    /// Who acts in a verb that needs no cursor of its own: a post, or a change to a group's
+    /// policy or members. [`Self::identify`], but where the human is homed elsewhere a person's
+    /// shell is that human, as a member from there is named, and is made no participant here:
+    /// its cursors are kept at its home.
+    pub(crate) fn acting(
+        &mut self,
+        caller: &Caller,
+        presence: &dyn Presence,
+    ) -> Result<String, Refusal> {
+        let addressed = Self::addressed(caller, presence);
+        let named = addressed.as_name.clone().or_else(|| self.lookup(&addressed));
+        match self.human_elsewhere(presence) {
+            Some(home) if named.as_deref() == Some(HUMAN) => Ok(home.human()),
+            _ => self.identify(caller, presence),
+        }
+    }
+
     /// Notes that `name` ran a verb, which is how its hooks are seen to run.
     fn seen(&mut self, name: &str, caller: &Caller) {
         if name != HUMAN {
@@ -1328,12 +1379,16 @@ impl<S: Store> Messaging<S> {
         let caller = &Self::addressed(caller, presence);
         if let Some(name) = &caller.as_name {
             check_participant(name)?;
+            if name == HUMAN {
+                self.human_here(presence)?;
+            }
             self.may_become(name, caller, presence)?;
             self.adopt(name, caller);
             return Ok((name.clone(), false));
         }
         if let Some(name) = self.lookup(caller) {
             if name == HUMAN {
+                self.human_here(presence)?;
                 self.participants.entry(name.clone()).or_insert_with(|| Participant::named(HUMAN));
             } else {
                 self.adopt(&name, caller);
@@ -1574,6 +1629,11 @@ impl<S: Store> Messaging<S> {
                     addressees.iter().find(|name| split_machine(name).is_some())
                 {
                     return Err(Refusal::NoSharedGroup { name: elsewhere.clone() });
+                }
+                if let Some(home) = &self.human_home
+                    && author == home.human()
+                {
+                    return Err(home.refusal());
                 }
                 let mut everyone: Vec<&str> = vec![author];
                 everyone.extend(addressees.iter().map(String::as_str));
@@ -1994,6 +2054,7 @@ impl<S: Store> Messaging<S> {
                     policy: group.policy.clone(),
                 })
                 .collect(),
+            human_home: self.human_home.clone(),
         }
     }
 }

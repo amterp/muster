@@ -1097,3 +1097,123 @@ fn a_member_that_left_and_rejoined_across_a_page_boundary_is_kept() {
         "the first wait was still kept: {again:?}"
     );
 }
+
+/// The devenv once the laptop's daemon has dialed it: the human is homed on the laptop.
+fn dialed() -> Wire {
+    let mut wire = Wire::new();
+    wire.devenv.dialed_by(&Side::Devenv.peer()).unwrap();
+    wire
+}
+
+fn human_elsewhere() -> Refusal {
+    Refusal::HumanElsewhere { machine: "lap".to_string(), calls_us: "devenv".to_string() }
+}
+
+/// A person's shell on a daemon the laptop's dialed is the laptop's human. What keeps the
+/// human's cursors is refused there, naming the laptop, and no human is made on the devenv.
+#[test]
+fn a_person_on_the_far_machine_is_the_laptops_human() {
+    let mut wire = dialed();
+    let critic = session("critic");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+
+    let refused = devenv.join(&human(), None, Some("review"), sessions, now);
+    assert_eq!(refused.unwrap_err(), human_elsewhere());
+    let refused = devenv.join(&human(), Some(HUMAN), Some("review"), sessions, now);
+    assert_eq!(refused.unwrap_err(), human_elsewhere());
+    assert_eq!(devenv.read(&human(), None, sessions).unwrap_err(), human_elsewhere());
+    assert_eq!(devenv.wait(&human(), None, false, sessions).unwrap_err(), human_elsewhere());
+    assert_eq!(devenv.leave(&human(), None, sessions, now).unwrap_err(), human_elsewhere());
+    let refused = devenv.group_new(&human(), "mine", None, sessions, now);
+    assert_eq!(refused.unwrap_err(), human_elsewhere());
+    assert!(devenv.participant(HUMAN).is_none(), "the devenv made a human of its own");
+}
+
+/// An agent on the far machine that asks for the human means the laptop's: in a group the
+/// human joined, the laptop is told and wakes it; in none, there is no group to post in.
+#[test]
+fn the_far_machines_human_is_the_laptops() {
+    let mut wire = dialed();
+    let (critic, scout) = (session("critic"), session("scout"));
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+    wire.join(Side::Devenv, &scout, Some("scout"), "other");
+
+    let posted = wire.post(Side::Devenv, &critic, None, &[HUMAN], "a question").unwrap();
+    assert_eq!(woke(&posted), [("@human@lap", Reach::Waiting)]);
+    assert_eq!(told_the_human(&wire), [(Side::Laptop, "review@devenv")]);
+
+    let refused = wire.post(Side::Devenv, &scout, None, &[HUMAN], "and mine");
+    assert_eq!(refused.unwrap_err(), Refusal::NoSharedGroup { name: "@human@lap".to_string() });
+    assert!(wire.devenv.participant(HUMAN).is_none(), "the devenv made a human of its own");
+}
+
+/// The person may post in, and change, a group kept on the far machine from a shell there,
+/// as the laptop's human. The laptop learns of the post as its own human's, which wakes the
+/// laptop's members and not the human, and a resume there does not wake the one who made it.
+#[test]
+fn the_person_posts_and_resumes_from_the_far_machine_as_the_laptops_human() {
+    let mut wire = dialed();
+    let (critic, builder) = (session("critic"), session("builder"));
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+
+    let posted = wire.post(Side::Devenv, &human(), None, &[], "go ahead").unwrap();
+    assert_eq!(posted.author, "@human@lap");
+    assert_eq!(
+        woke(&posted),
+        [("critic", Reach::Woken), ("builder@lap", Reach::Woken)],
+        "the laptop was told, and reached its own members"
+    );
+    assert!(told_the_human(&wire).is_empty(), "the human was woken by its own post");
+    assert_eq!(wire.read(Side::Laptop, &builder, None), ["review@devenv @human: go ahead"]);
+
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let paused = devenv.pause(&critic, "review", sessions, now).unwrap();
+    wire.tell(Side::Devenv, &paused.tell);
+    wire.read(Side::Devenv, &critic, None);
+    wire.post(Side::Devenv, &critic, None, &[], "while paused").unwrap();
+    wire.wakes.clear();
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let resumed = devenv.resume(&human(), "review", sessions, now).unwrap();
+    assert_eq!(resumed.author, "@human@lap");
+    wire.tell(Side::Devenv, &resumed.tell);
+    assert!(told_the_human(&wire).is_empty(), "the resume woke the one who made it");
+}
+
+/// What the person asks of a group kept on the laptop goes to the laptop, where the human's
+/// cursors are: the devenv forwards only its own members'.
+#[test]
+fn the_person_posts_to_a_laptop_group_from_the_laptop() {
+    let mut wire = dialed();
+    let critic = session("critic");
+    wire.join(Side::Laptop, &human(), None, "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+
+    let refused = wire.post(Side::Devenv, &human(), Some("review"), &[], "from here");
+    assert_eq!(refused.unwrap_err(), human_elsewhere());
+    let refused = wire.post(Side::Devenv, &human(), None, &["critic"], "or to you");
+    assert_eq!(refused.unwrap_err(), human_elsewhere());
+}
+
+/// A daemon a window attends is the human's home, whoever dialed it last: the app runs on its
+/// machine too. What was learned survives a restart.
+#[test]
+fn a_daemon_a_window_attends_keeps_its_own_human() {
+    let mut wire = dialed();
+    wire.sessions.attended.set(true);
+    let critic = session("critic");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    assert_eq!(wire.join(Side::Devenv, &human(), None, "review"), "review");
+
+    let saved = wire.devenv.store().saved.clone().expect("the devenv saved its state");
+    let mut restored = Messaging::restore(Memory::default(), saved, BTreeMap::new());
+    wire.sessions.attended.set(false);
+    let refused = restored.read(&human(), None, &wire.sessions);
+    assert_eq!(refused.unwrap_err(), human_elsewhere());
+}

@@ -136,6 +136,7 @@ fn refused(refusal: &Refusal) -> String {
             format!("{group} {machine}")
         }
         Refusal::Unchecked { group, machines } => format!("{group} {}", machines.join(",")),
+        Refusal::HumanElsewhere { machine, calls_us } => format!("{machine} {calls_us}"),
         Refusal::NotAParticipant { name } => {
             name.clone().unwrap_or_else(|| "this session".to_string())
         }

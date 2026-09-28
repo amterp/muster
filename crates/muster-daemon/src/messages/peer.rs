@@ -389,6 +389,19 @@ fn serve_in_background(shared: &Arc<Shared>, stream: UnixStream, peer: Peer) -> 
 fn up(shared: &Arc<Shared>, link: &Arc<Link>, dialed: bool) {
     shared.peers.links().push(Arc::clone(link));
     shared.messages().service.linked(&link.peer.name);
+    if !dialed && let Err(refusal) = shared.messages().service.dialed_by(&link.peer) {
+        log::warn(
+            "msg.peer.home_unsaved",
+            fields! {
+                "machine" => link.peer.name,
+                "error" => super::words(&refusal),
+                "impact" => "the person is known to be on that machine until this daemon \
+                             restarts; after that a person's shell here is taken for a human of \
+                             this machine's own again, until the link is up",
+                "check" => "whether the disk holding the message store is full or read-only",
+            },
+        );
+    }
     log::info(
         "msg.peer.linked",
         fields! {

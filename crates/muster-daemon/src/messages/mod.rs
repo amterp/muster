@@ -1108,6 +1108,13 @@ pub(super) fn words(refusal: &Refusal) -> String {
             "{group} is kept on {machine}, so its members, policy and pause are changed there, \
              with `muster msg` on {machine}; this machine only holds a copy"
         ),
+        Refusal::HumanElsewhere { machine, calls_us } => format!(
+            "this shell is the person at the Muster window on {machine}, whose messages are \
+             kept there: this machine's daemon was reached from there, so it has no person of \
+             its own. Run this on {machine}, where a group kept here is named <group>@{calls_us}. \
+             Here you can post in and change a group kept here that you are in, and read its \
+             log"
+        ),
         Refusal::NotAParticipant { name } => format!(
             "{} not taking part, so there is nothing to leave",
             name.as_ref().map_or("this session is".to_string(), |name| format!("{name} is"))

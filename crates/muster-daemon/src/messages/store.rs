@@ -246,7 +246,7 @@ mod tests {
         let mut files = Files::beside(&socket);
         files.append("g", &message(1, "one")).unwrap();
         files.append("a+b", &message(1, "two")).unwrap();
-        let saved = Saved { participants: Vec::new(), groups: Vec::new() };
+        let saved = Saved::default();
         files.save(&saved).unwrap();
 
         let found = Files::beside(&socket).load();

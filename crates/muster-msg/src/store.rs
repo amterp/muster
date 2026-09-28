@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Entry, Participant, Policy};
+use crate::{Entry, HumanHome, Participant, Policy};
 
 /// Where the host keeps what must outlive it. Both calls happen before the request that caused
 /// them is answered, so an answer never reports something the store did not take.
@@ -15,6 +15,9 @@ pub trait Store {
 pub struct Saved {
     pub participants: Vec<Participant>,
     pub groups: Vec<GroupRecord>,
+    /// Where the human is homed, once a daemon there has dialed this one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_home: Option<HumanHome>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

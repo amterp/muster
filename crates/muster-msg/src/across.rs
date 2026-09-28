@@ -29,6 +29,27 @@ pub struct Peer {
     pub calls_us: String,
 }
 
+/// The machine the human is homed on, as a daemon there that dialed this one introduced it
+/// (MIP-4, section 10): the app runs there, and its daemon is the one that dials.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HumanHome {
+    /// What this machine calls it.
+    pub machine: String,
+    /// What it calls this machine, which is how a group kept here is named there.
+    pub calls_us: String,
+}
+
+impl HumanHome {
+    /// The human, as this machine writes a member on that one.
+    pub fn human(&self) -> String {
+        format!("{HUMAN}@{}", self.machine)
+    }
+
+    pub(crate) fn refusal(&self) -> Refusal {
+        Refusal::HumanElsewhere { machine: self.machine.clone(), calls_us: self.calls_us.clone() }
+    }
+}
+
 impl Peer {
     /// A name as the peer wrote it, as this machine writes it: the peer's own members gain its
     /// name, and this machine's lose theirs.
@@ -436,7 +457,7 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
     ) -> Result<Route, Refusal> {
         check_body(body)?;
-        let author = self.identify(caller, presence)?;
+        let author = self.acting(caller, presence)?;
         let group = group.map(|group| self.locate(group)).transpose()?;
         let addressees = self.addressees(&author, to, group.as_deref(), presence)?;
         let key = match group {
@@ -447,6 +468,13 @@ impl<S: Store> Messaging<S> {
             },
         };
         let Some(machine) = self.groups[&key].home.clone() else { return Ok(Route::Here) };
+        // The human's posts elsewhere go from its home, where its cursors are: this machine
+        // forwards only its own members'.
+        if let Some(home) = self.human_elsewhere(presence)
+            && author == home.human()
+        {
+            return Err(home.refusal());
+        }
         self.reachable(&key, &machine)?;
         self.check_members(&key, &author, &addressees)?;
         let unread = if is_human(&author) { 0 } else { self.unread_from_others(&author, &key) };
@@ -474,6 +502,11 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
     ) -> Result<Vec<Away>, Refusal> {
         let caller = &Self::addressed(caller, presence);
+        if let Some(home) = self.human_elsewhere(presence)
+            && self.lookup(caller).as_deref() == Some(HUMAN)
+        {
+            return Err(home.refusal());
+        }
         let Some(name) = self.lookup(caller).filter(|name| self.participants.contains_key(name))
         else {
             return Ok(Vec::new());
@@ -948,7 +981,8 @@ impl<S: Store> Messaging<S> {
             return refused(refusal);
         }
         let caught = |service: &Self| service.since(&group, head).ok();
-        match self.post_as(&author, &group, addressees, &body, cursor, presence, now_ms) {
+        let from = Some(peer.name.as_str());
+        match self.post_as(&author, &group, addressees, &body, cursor, from, presence, now_ms) {
             Ok(posted) => {
                 answered.wakes = posted.wakes;
                 answered.answered = posted.answered;

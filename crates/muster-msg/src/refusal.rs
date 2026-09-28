@@ -60,6 +60,13 @@ pub enum Refusal {
         group: String,
         machine: String,
     },
+    /// The caller is the person at the window, whose messages are kept on `machine`, where the
+    /// app runs: this machine's daemon was dialed from there, so it has no human of its own
+    /// (MIP-4, section 10). `calls_us` is what that machine calls this one.
+    HumanElsewhere {
+        machine: String,
+        calls_us: String,
+    },
     /// The caller is not a participant at all, so there is nothing to leave. `name` is what it
     /// called itself, when it did.
     NotAParticipant {
@@ -130,6 +137,7 @@ impl Refusal {
             Refusal::Unchecked { .. } => "unchecked",
             Refusal::Unanswered { .. } => "unanswered",
             Refusal::KeptElsewhere { .. } => "kept_elsewhere",
+            Refusal::HumanElsewhere { .. } => "human_elsewhere",
             Refusal::NotAParticipant { .. } => "not_a_participant",
             Refusal::NotAMember { .. } => "not_a_member",
             Refusal::AddresseeNotInGroup { .. } => "addressee_not_in_group",
