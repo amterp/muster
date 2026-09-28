@@ -363,12 +363,16 @@ fn launch(program: &Path, patience: Duration) -> Result<(), String> {
     let started = Instant::now();
     let mut command = Command::new(program);
     command.arg("--version").stdin(Stdio::null()).stdout(Stdio::null());
-    // As for the successor itself: the signals this daemon blocks for its own handling would
-    // otherwise stay blocked in the program, which a stop could then not end.
+    // As for the successor itself: none of this daemon's descriptors, since a pane's terminal
+    // opened a moment before would stay open in the program; and none of the signals this
+    // daemon blocks for its own handling, which would stay blocked in it so a stop could not
+    // end it.
+    let mut sealing = Sealing::prepare();
     // SAFETY: the closure runs in the child between fork and exec, and makes only
-    // async-signal-safe calls: sigemptyset and sigprocmask.
+    // async-signal-safe calls: what `seal` calls, sigemptyset and sigprocmask.
     unsafe {
-        command.pre_exec(|| {
+        command.pre_exec(move || {
+            sealing.seal();
             let mut unblocked = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
             libc::sigemptyset(unblocked.as_mut_ptr());
             if libc::sigprocmask(libc::SIG_SETMASK, unblocked.as_ptr(), std::ptr::null_mut()) == -1
