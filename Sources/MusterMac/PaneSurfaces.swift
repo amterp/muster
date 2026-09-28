@@ -67,6 +67,8 @@ public final class PaneSurfaces {
   private let parking = NSView(frame: .zero)
 
   private var held: [PaneKey: Held] = [:]
+  /// The panes the last roster named, or nil before one has arrived.
+  private var alive: Set<PaneKey>?
   private var windowIsVisible = true
   private var windowIsKey = false
 
@@ -155,11 +157,16 @@ public final class PaneSurfaces {
   /// moved from one region to another is claimed by the second and given up by the first, and
   /// a region that parked its own departures as it applied would take back a chrome the region
   /// beside it had already adopted - whenever the two applied in that order.
+  ///
+  /// A pane the last roster left out is let go as soon as it is parked, rather than waiting for
+  /// the next roster. A window that skips a stale view applies that view's roster while the pane
+  /// is still on screen, and the roster after it may be a long time coming.
   public func park(everythingBut onScreen: Set<PaneKey>) {
     for (key, entry) in held where !onScreen.contains(key) {
       guard entry.chrome.superview !== parking else { continue }
       parking.addSubview(entry.chrome)
     }
+    if let alive { release(everythingBut: alive) }
   }
 
   /// Lets go of every parked pane the daemons no longer hold.
@@ -176,6 +183,7 @@ public final class PaneSurfaces {
   /// nothing empties one afterwards except the next snapshot. If that stops being true, this
   /// is where a window loses every off-screen bridge to a daemon that was only reconnecting.
   public func release(everythingBut alive: Set<PaneKey>) {
+    self.alive = alive
     for (key, entry) in held
     where !alive.contains(key) && entry.chrome.superview === parking {
       release(key)
