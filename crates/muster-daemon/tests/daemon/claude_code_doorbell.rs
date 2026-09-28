@@ -149,3 +149,80 @@ fn brief(nonce: &str) -> String {
     let _ = write!(brief, "\nThe word is {nonce}.\n");
     brief
 }
+
+/// The doorbell rings a pane only once the agent's prompt reads empty (MIP-4, section 6), and
+/// a newly started Claude Code's prompt is not empty as text: it shows a suggestion,
+/// `❯ Try "..."`, that nobody typed. What tells them apart is how it is drawn: faint, with the
+/// first letter inverse when Claude Code draws its own caret there (2.1.283 draws none in a
+/// pane nothing has focused). This holds that fact to the Claude Code installed.
+#[test]
+#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
+fn a_new_claude_prompt_draws_what_nobody_typed_faint() {
+    if std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none() {
+        eprintln!(
+            "claude-code: skipped, MUSTER_CLAUDE_CODE_TESTS is not set; ./dev --claude-code sets it"
+        );
+        return;
+    }
+    let arguments = how_to_run().unwrap_or_else(|why| {
+        panic!(
+            "claude-code: could not run Claude Code: {why}.\n  Impact: nothing checked how a \
+             new Claude prompt is drawn, so this tier did not pass.\n  Fix: install claude and \
+             log in (`claude auth login`), or set ANTHROPIC_API_KEY."
+        )
+    });
+    let home = std::env::var("HOME").expect("HOME is set");
+    let mut environment = vec![("HOME", home), ("USER", std::env::var("USER").unwrap_or_default())];
+    if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+        environment.push(("ANTHROPIC_API_KEY", key));
+    }
+    let environment: Vec<(&str, &str)> =
+        environment.iter().map(|(name, value)| (*name, value.as_str())).collect();
+    let daemon = daemon_with(&environment);
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    let project = daemon.root().join("fresh");
+    std::fs::create_dir_all(&project).unwrap();
+    let command: Vec<String> = arguments.iter().map(|argument| quoted(argument)).collect();
+    make(
+        &mut control,
+        proto::pane_request::Create {
+            command: Some(format!("claude {}", command.join(" "))),
+            cwd: Some(project.display().to_string()),
+            grid: Some(proto::Grid { cols: 110, rows: 35, width_px: 1100, height_px: 700 }),
+            ..create("fresh", in_new_tab("t1"))
+        },
+    );
+    until_ready(&mut control, &mut input, "fresh");
+
+    let mut stream = attached(&daemon, "fresh", false);
+    let mut surface = Surface::new(110, 35);
+    surface.follow(&mut stream, "the prompt", true, |surface| surface.screen().contains('❯'));
+    let grid = surface.terminal.viewport(110, 35);
+    let row = grid
+        .rows
+        .iter()
+        .find(|row| row.text().trim_start().starts_with('❯'))
+        .expect("a prompt row");
+    let after: Vec<&muster_vt::Cell> = row
+        .cells
+        .iter()
+        .skip_while(|cell| cell.text != "❯")
+        .skip(1)
+        .filter(|cell| !cell.text.trim().is_empty())
+        .collect();
+    let drawn: Vec<(String, bool, bool)> = after
+        .iter()
+        .map(|cell| (cell.text.clone(), cell.style.inverse, cell.style.faint))
+        .collect();
+    eprintln!(
+        "claude-code: the new prompt reads {:?}; (text, inverse, faint): {drawn:?}",
+        row.text()
+    );
+    let Some((caret, rest)) = after.split_first() else {
+        eprintln!("claude-code: the new prompt shows no suggestion, only its caret");
+        return;
+    };
+    assert!(caret.style.inverse || caret.style.faint, "the first cell is typed: {drawn:?}");
+    assert!(rest.iter().all(|cell| cell.style.faint), "a cell is not faint: {drawn:?}");
+}
