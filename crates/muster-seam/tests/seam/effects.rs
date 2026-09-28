@@ -44,6 +44,38 @@ fn a_bell_marks_its_pane_progress_shows_and_a_notification_asks_in_its_own_words
     assert_eq!((asked.pane_id.as_str(), asked.note_body.as_str()), ("p1", "tests passed"));
 }
 
+/// A bell announces its pane when it marks it, and not again until somebody has looked: a shell
+/// holding Tab rings for every keystroke, and each announcement is work on the shell's main
+/// thread.
+#[test]
+fn a_bell_announces_its_pane_once_until_somebody_looks() {
+    let _turn = muster::testing::fresh_session();
+    muster::ffi::muster_set_event_callback(Some(note));
+    ASKED.lock().expect("a panicking test poisoned the log").clear();
+    ANNOUNCED.lock().expect("a panicking test poisoned the log").clear();
+    let daemon = Daemon::start_built();
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+    until_text(&mut daemon.connect(), "p1", "$");
+    let socket = open_window(&daemon);
+    until_some("the window to list the pane", || agent(&socket));
+
+    // A notification after the bells, which arrives after them and says they have all been
+    // heard. Not progress: that announces the pane too, and can reach the mirror with the bells.
+    typing(&daemon)(r"printf '\a\a\a\033]9;heard\a'");
+    until(
+        "the notification after the bells to ask for somebody",
+        || asked().iter().any(|asked| asked.state == "notified"),
+        || format!("the window asked {:?}", asked()),
+    );
+    let rang = ANNOUNCED
+        .lock()
+        .expect("a panicking test poisoned the log")
+        .iter()
+        .filter(|agent| agent.pane_id == "p1" && agent.rang)
+        .count();
+    assert_eq!(rang, 1, "three bells nobody heard announced the pane {rang} times");
+}
+
 /// An agent Muster recognizes notifies at the moments its state already asks for somebody, so
 /// its own notification asks nobody. The same words from its shell once it has gone ask as any
 /// program's do.
@@ -142,12 +174,21 @@ fn asked() -> Vec<AttentionChanged> {
 
 static ASKED: Mutex<Vec<AttentionChanged>> = Mutex::new(Vec::new());
 
+/// Every pane state the core told the shell, in order.
+static ANNOUNCED: Mutex<Vec<PaneStateChanged>> = Mutex::new(Vec::new());
+
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
-    if let Some(event::Payload::AttentionChanged(asked)) = event.payload {
-        ASKED.lock().expect("a panicking test poisoned the log").push(asked);
+    match event.payload {
+        Some(event::Payload::AttentionChanged(asked)) => {
+            ASKED.lock().expect("a panicking test poisoned the log").push(asked);
+        }
+        Some(event::Payload::PaneStateChanged(announced)) => {
+            ANNOUNCED.lock().expect("a panicking test poisoned the log").push(announced);
+        }
+        _ => {}
     }
 }

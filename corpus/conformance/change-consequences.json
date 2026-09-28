@@ -178,8 +178,8 @@
       }
     },
     {
-      "name": "a bell is announced with the pane's agent, and moves nothing else",
-      "why": "Whether it marks the pane is the window's to say, since only the window knows whether somebody is looking. The mark travels with the pane's state, like its facts, and a shell that rings twice a second must not republish the roster each time.",
+      "name": "a bell moves nothing, and announces nothing by itself",
+      "why": "Whether it marks the pane is the window's to say, since only the window knows whether somebody is looking, and only the first bell nobody has heard changes the mark. So the window announces the pane when a bell marks it, and not per bell: a shell holding Tab, or `yes $'\\a'`, rings thousands of times a second, and each announcement is a lock, an encode and a redraw of the agent list on the shell's main thread.",
       "given": {
         "change": "rang",
         "pane": "w1:p1"
@@ -187,7 +187,7 @@
       "expect": {
         "movesStructure": false,
         "republishes": false,
-        "announcesAgentState": "w1:p1"
+        "announcesAgentState": null
       }
     },
     {
