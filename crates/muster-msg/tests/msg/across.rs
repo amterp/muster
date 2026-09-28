@@ -705,3 +705,23 @@ fn a_bare_name_join_is_not_made_a_group_here_while_a_known_machine_is_down() {
     let made = laptop.group_new(&builder, "review", None, sessions, 1);
     assert!(made.is_ok(), "group new makes it here regardless: {made:?}");
 }
+
+/// A group's policy, members and pause are changed on its home. Named here by its bare name, as
+/// every other verb takes it, a group kept elsewhere is refused as such, naming where.
+#[test]
+fn a_change_to_a_group_kept_elsewhere_by_its_bare_name_says_where_it_is_kept() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let paused = laptop.pause(&builder, "review", sessions, 1);
+    assert_eq!(
+        paused.map(|_| ()),
+        Err(Refusal::KeptElsewhere {
+            group: "review@devenv".to_string(),
+            machine: "devenv".to_string()
+        })
+    );
+}
