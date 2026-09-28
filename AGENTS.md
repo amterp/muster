@@ -155,9 +155,9 @@ skill that points an agent at them and nothing more.
 ## Building
 
 `./dev` is the only supported way to build, test, and lint. With no flags it takes the full gate, and
-`.github/workflows/gate.yml` runs that one command on every push and pull request - so a contributor's green and a
-merge gate's green cannot drift apart. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints,
-`./dev -h` lists them all.
+`.github/workflows/gate.yml` runs that one command on every push and pull request - so whatever a contributor's green
+covers, the merge gate's covers too. Its `linux` job adds the Linux suites below, which a macOS runner has no docker
+to run. Flags narrow it and cluster: `./dev -t` tests, `./dev -tl` tests and lints, `./dev -h` lists them all.
 
 **A narrowed flag still takes what it cannot run without**, so `./dev -t` on a checkout nothing has been built in
 fetches libghostty and generates the seam's types before running anything. Both are near-free once they are there -

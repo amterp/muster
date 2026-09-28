@@ -1,9 +1,10 @@
 # Muster's gate, on every push.
 #
-# One job, running `./dev` with no flags. That is the whole gate, and anything else run
-# here is how a contributor's green and a merge gate's green start to drift apart. Every
-# step above it exists only to put a toolchain or a pinned dependency where `./dev`
-# expects to find one.
+# The `gate` job runs `./dev` with no flags, the same gate a contributor runs, and checks
+# nothing else: a check added to this job and not to `./dev` is how a contributor's green
+# and a merge gate's green start to drift apart. Every step before it exists only to put a
+# toolchain or a pinned dependency where `./dev` expects to find one. The `linux` job adds
+# what the gate job cannot run on a macOS runner, which has no docker: see below.
 #
 # Three tiers stay out, for the reasons docs/testing.md gives: `--contract` needs a
 # logged-in GUI session to launch the app, and `--perf` and `--latency` are timing
