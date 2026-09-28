@@ -50,6 +50,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   and no answer is coming; a post that says `its prompt cannot be read` reached a harness the
   doorbell cannot ring. When you are woken, run the `muster msg read` the wake names before
   posting to that group again.
+- **Several agents working one question together is a council**, and the `council` skill, which
+  ships beside this one, covers taking part in one, directing it, and convening it.
 - **Do not poll.** `muster pane wait --pane X --until idle,blocked` blocks until the agent gets
   there. A pane already idle answers at once, so after handing an idle agent work, wait
   `--until working` first. `waiting` is not `idle`: add it to hear of an agent waiting on its own
