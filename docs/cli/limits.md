@@ -6,7 +6,10 @@
 Muster leaves it running, and the window that opens next listens somewhere else. So `muster` run
 in a pane made before the window you are looking at says that window has quit, on this machine
 and on an SSH machine alike. A pane the open window made reaches it from either machine; on this
-one, `--socket` with a path from `muster window list` does too.
+one, `--socket` with a path from `muster window list` does too. With no window answering at all,
+the pane's own daemon answers what it can in the window's place: `muster window`, `pane read`,
+`pane send` and `pane wait` work on that machine's own panes (`muster docs overview`, "With no
+window"), and everything else waits for a window.
 
 ## A pane restored after a daemon restart cannot say which window it is in
 

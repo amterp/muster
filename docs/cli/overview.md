@@ -126,6 +126,35 @@ what differs is the build, and only while the two are different versions.
 Outside a pane it is whatever your own `PATH` finds. A Homebrew install puts one there
 pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to your `PATH`.
 
+## With no window
+
+Four verbs work with no window at all: `muster window` (and `window --watch`), `pane read`, `pane
+send` and `pane wait`. What agents are doing and what a pane printed are the daemon's to know, and
+a window only relays them, so when no window answers these ask the daemon holding the panes: the
+one `$MUSTER_DAEMON_SOCKET` names, which every pane has, and otherwise this install's. That is
+what makes them work on an SSH devenv nothing forwards a window to, and in a pane whose window has
+quit. They answer as a window would: the same text, the same `--json`, the same exit codes, the
+same `--confirm` read-back and the same wait. Panes are named as a window names them.
+
+They fall back only when there is no window to ask: `$MUSTER_SOCKET` names one that does not
+answer, or, with it unset, none is listening. A window named with `--socket` that is not there is
+refused, and so are several windows with nothing saying which. `--no-window` asks the daemon even
+with a window open.
+
+`muster window` says when the daemon answered: its first line names the daemon, and `--json`
+carries `"answered_by": "daemon"`, which a window's answer never does. The daemon has no places,
+no keyboard and nothing on screen, so those are left out rather than made up; a tab has no label
+unless somebody gave it one, and the machine is called by its host name. The other three print
+exactly what they print through a window, since their answer means the same thing either way.
+With no window there is no keyboard, so a pane is named with `--pane` or `$MUSTER_PANE`.
+
+Every other verb needs a window, and says so. Making, splitting, arranging, resizing, zooming and
+moving panes and tabs is laying out a window's tabs, which a window composes from its regions;
+focus, the asking chord, font, the sidebar and reload are about what a window shows; which window
+holds a tab is a window's record; and `muster daemons` marks which daemons that window is using.
+`pane rename` and `pane close` are the daemon's to do and could work without a window, but do not
+yet.
+
 ## Output
 
 Plain output is for a person to read. `--json` answers the same thing for a program, and colour

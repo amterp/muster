@@ -816,12 +816,20 @@ today is Claude Code alone. A wake that cannot be rung yet waits in the daemon f
 and agent state changes and otherwise by the next deadline - a quiet period ending, a Return due again, or five
 seconds while a prompt holds a draft (MIP-4, section 6).
 
-**This is the one request path that does not run through the core.** Messaging has to work with no window open, and
-the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,
+**Messaging is one of two request paths that do not run through the core.** Messaging has to work with no window
+open, and the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,
 or else this install's daemon. A window that shows messages will send the same requests, which is parity by the same
 construction the core gives everything else. The command, its namespace and its verbs are spelled once, in
 `muster-daemon-proto`'s `messaging` module, which the CLI's grammar, the daemon's wake text and every refusal naming
 the next command all read - so a rename is one edit.
+
+**The other is a window's questions about panes when no window answers.** `muster window`, `pane read`, `pane send`
+and `pane wait` ask the same daemon when `$MUSTER_SOCKET` names a window that is not there, or none is listening: on
+an SSH devenv nothing forwards a window to, or in a pane whose window has quit. The CLI builds the window's own
+answers from the daemon's records, so one renderer prints both. It stays a second path in transport only: the rules
+the window applies on the way - paging to a pane's newest rows (`muster-daemon-proto`'s `pane_text`), counting rows
+and confirming a send (`muster-core`'s `pane_text`), and which states end a wait (`AgentState::counts_as`) - are
+the same functions on both paths rather than copies of them.
 
 ## The renderer seam
 

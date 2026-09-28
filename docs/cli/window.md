@@ -34,6 +34,25 @@ are still running.
 
     muster window --json | jq -r '.panes[] | select(.state == "blocked") | .pane'
 
+## With no window
+
+When no window answers, this machine's daemon does (`muster docs overview`, "With no window"):
+
+    no window answered; the muster-daemon at /home/you/.muster/daemon/release.sock holds:
+    tab    t1w3r07bsd
+           p1w3r07bsd  unknown    muster
+           p1w3r0ab2n  working    🤖 A · reading AGENTS.md  64% context
+
+    devenv  connected
+      this machine · already running · 2 panes in /home/you/src/muster
+      /home/you/.muster/daemon/release.sock
+
+The same rows, less what only a window has: no places, no `▸`, no `(hidden)`, and no time in a
+state, which a window counts from when it first saw the pane. `done` is still a finish nobody has
+seen, as the daemon records it. In `--json`, `answered_by` is `"daemon"`; `name`, `keyboard`,
+`showing` and every `since` and `rect` are null; `regions` is empty; every `place` is 0 and every
+`on_screen` false.
+
 ## Other windows
 
 A tab belongs to exactly one window, and `tabs[]` and the rows above are this window's own. The
