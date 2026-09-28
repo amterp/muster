@@ -893,8 +893,10 @@ there, with its stderr on the old daemon's. And macOS checks a binary the first 
 took up to 12.6 s for a fresh copy on a busy machine: inside the exchange that would outlast a
 step's ten seconds and fail it late, where here it is only waited for. Nothing is refused while
 it waits: panes are made, resized, renamed and closed, and hooks report, as at any other time. The
-checks above are made again when it answers, and the daemon is marked as being replaced only then,
-so a stop signal that came meanwhile stops it and refuses the handoff.
+checks above are made again when it answers, and the daemon is marked as being replaced only then;
+a request they refuse is logged as `daemon.handoff.refused`, since nothing was started to fail. A
+stop signal that comes meanwhile stops the daemon at once, closing its panes as at any other time,
+and the request is never answered: its connection closes with the daemon.
 
 **The exchange.** The old daemon starts the new one in a session of its own, with one end of a socket
 pair as descriptor 3 (`--handoff 3`), and they speak `Handoff` frames over it, never over the
@@ -945,8 +947,8 @@ have read some output the old one never sees. Once `Serving` arrives, the old da
 closing a pane, writing its state or removing the socket - once it has killed whatever of a pane
 closed before the handoff still ignored its hang-up, since nothing would after.
 
-**A stop signal waits for the handoff.** A SIGTERM or SIGINT to the old daemon while a handoff runs
-closes nothing: if the handoff succeeds the old daemon exits as it would have anyway, leaving the new
+**A stop signal waits for the handoff.** A SIGTERM or SIGINT to the old daemon while a handoff runs,
+once the panes are being handed over, closes nothing: if the handoff succeeds the old daemon exits as it would have anyway, leaving the new
 one serving every pane, and if it fails the old daemon then stops as it was asked. Closing a pane
 mid-handoff would end a process the new daemon may already hold, and removing the socket would leave
 the new daemon serving nobody. A signal to the new daemon before `Commit` waits, blocked, until it
