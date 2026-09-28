@@ -43,7 +43,7 @@ use crate::data::Data;
 use crate::detect::{self, Detecting};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
-use crate::messages::{Doorbell, Messages};
+use crate::messages::{Doorbell, Messages, Peers};
 use crate::pane::{Ended, Pane, PaneIo, Process, Turns, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
@@ -97,6 +97,8 @@ pub(crate) struct Shared {
     pub(crate) messages: Mutex<Messages>,
     /// Rings agents in panes once they can be rung.
     pub(crate) doorbell: Doorbell,
+    /// Links to other machines' daemons, which groups span machines over.
+    pub(crate) peers: Peers,
     /// The manifests panes are detected by, which the doorbell reads a prompt with too.
     pub(crate) detecting: Arc<Detecting>,
     /// Told when the daemon should exit, and why.
@@ -154,6 +156,7 @@ impl Shared {
             Shared {
                 messages: Mutex::new(messages),
                 doorbell: Doorbell::default(),
+                peers: Peers::default(),
                 detecting: Arc::clone(&detecting),
                 session: Mutex::new(Session {
                     instance,

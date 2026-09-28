@@ -1656,6 +1656,9 @@ message PeerReply {
     string existing = 7;
     repeated string candidates = 8;
     Caught caught = 9;
+    // What a group's policy refused: `join`, `leave`, `add`, `remove`, `set_policy`, `pause`
+    // or `resume`.
+    string action = 10;
   }
 }
 

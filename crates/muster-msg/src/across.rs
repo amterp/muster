@@ -113,6 +113,8 @@ pub struct Tell {
     pub machine: String,
     pub group: String,
     pub after: u64,
+    /// The members there the new message is for, which are unreachable if it cannot be sent.
+    pub targets: Vec<String>,
 }
 
 /// What one machine asks of another. Groups are named as their home names them, and every
@@ -153,7 +155,8 @@ pub enum Call {
 }
 
 impl Call {
-    fn group(&self) -> &str {
+    /// The group the call is about, as its home names it.
+    pub fn group(&self) -> &str {
         match self {
             Call::Find { group }
             | Call::Join { group, .. }
@@ -268,7 +271,7 @@ impl<S: Store> Messaging<S> {
 
     /// The machine a replica may be behind, because there is no link to it now.
     pub fn behind(&self, group: &str) -> Option<&str> {
-        let home = self.groups.get(group)?.home.as_deref()?;
+        let home = self.groups.get(&self.locate(group).ok()?)?.home.as_deref()?;
         (!self.linked.contains(home)).then_some(home)
     }
 
@@ -633,26 +636,6 @@ impl<S: Store> Messaging<S> {
         })
     }
 
-    /// Adds what another machine said about its own members of `group` to `members`, which
-    /// holds that machine's as [`Liveness::Unreachable`] until then. A member it did not name
-    /// has gone from it.
-    pub fn heard(members: &mut [Member], machine: &str, heard: &[Member]) {
-        for member in members {
-            if split_machine(&member.name).is_none_or(|(_, at)| at != machine) {
-                continue;
-            }
-            match heard.iter().find(|said| said.name == member.name) {
-                Some(said) => {
-                    member.liveness = said.liveness;
-                    member.activity = said.activity;
-                    member.pane.clone_from(&said.pane);
-                    member.inbox.clone_from(&said.inbox);
-                }
-                None => member.liveness = Liveness::Gone,
-            }
-        }
-    }
-
     // ------------------------------------------------------------------------------------------
     // On the machine asked
 
@@ -848,6 +831,26 @@ impl<S: Store> Messaging<S> {
             }
             Err(Refusal::NoSuchGroup { .. }) => Ok(Place::Nowhere),
             Err(refusal) => Err(refusal),
+        }
+    }
+}
+
+/// Adds what another machine said about its own members of `group` to `members`, which
+/// holds that machine's as [`Liveness::Unreachable`] until then. A member it did not name
+/// has gone from it.
+pub fn heard(members: &mut [Member], machine: &str, heard: &[Member]) {
+    for member in members {
+        if split_machine(&member.name).is_none_or(|(_, at)| at != machine) {
+            continue;
+        }
+        match heard.iter().find(|said| said.name == member.name) {
+            Some(said) => {
+                member.liveness = said.liveness;
+                member.activity = said.activity;
+                member.pane.clone_from(&said.pane);
+                member.inbox.clone_from(&said.inbox);
+            }
+            None => member.liveness = Liveness::Gone,
         }
     }
 }

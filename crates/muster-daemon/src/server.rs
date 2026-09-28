@@ -167,6 +167,7 @@ fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
     match ConnectionKind::try_from(hello.kind) {
         Ok(ConnectionKind::Stream) => stream::serve(stream, shared),
         Ok(ConnectionKind::Input) => input::serve(stream, shared, &hello.client),
+        Ok(ConnectionKind::Peer) => crate::messages::peer::serve(stream, shared),
         _ => control::serve(stream, shared, &hello.client),
     }
 }
@@ -183,8 +184,13 @@ fn judge(hello: &proto::Hello) -> Result<(), String> {
         ));
     }
     match ConnectionKind::try_from(hello.kind) {
-        Ok(ConnectionKind::Control | ConnectionKind::Stream | ConnectionKind::Input) => Ok(()),
-        Ok(ConnectionKind::Unspecified | ConnectionKind::Peer) | Err(_) => {
+        Ok(
+            ConnectionKind::Control
+            | ConnectionKind::Stream
+            | ConnectionKind::Input
+            | ConnectionKind::Peer,
+        ) => Ok(()),
+        Ok(ConnectionKind::Unspecified) | Err(_) => {
             Err("the hello names no kind of connection this daemon knows".to_string())
         }
     }

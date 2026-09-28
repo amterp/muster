@@ -781,6 +781,11 @@ fn left_text(left: &msg_answer::Left, json: bool) -> String {
     }
 }
 
+/// The human, on this machine or, as `@human@laptop`, on another.
+fn is_human(name: &str) -> bool {
+    name.strip_prefix(spelling::HUMAN).is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
+}
+
 /// What a post did for each participant it was for. Nobody live heard it - nobody woken, to be
 /// rung, already woken, or the human - is [`Trouble::Unheard`], printed the same way.
 fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Trouble> {
@@ -793,11 +798,12 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         (named(Reach::AlreadyWoken), named(Reach::Waiting), named(Reach::Gone));
     let (no_agent, no_doorbell) = (named(Reach::NoAgent), named(Reach::NoDoorbell));
     let paused = named(Reach::Paused);
+    let unreachable = named(Reach::Unreachable);
     let heard = !woke.is_empty()
         || !deferred.is_empty()
         || !already.is_empty()
         || !paused.is_empty()
-        || waiting.iter().any(|reached| reached.name == spelling::HUMAN);
+        || waiting.iter().any(|reached| is_human(&reached.name));
     let text = if json {
         let listed = |reached: &[&msg_answer::Reached]| -> Vec<String> {
             reached.iter().map(|reached| reached.name.clone()).collect()
@@ -824,6 +830,7 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
             "no_agent": listed(&no_agent),
             "no_doorbell": listed(&no_doorbell),
             "paused": listed(&paused),
+            "unreachable": listed(&unreachable),
             "doing": doing,
             "until": until,
         })
@@ -865,12 +872,15 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         not.extend(waiting.iter().map(|reached| {
             with(
                 reached,
-                Some(if reached.name == spelling::HUMAN {
+                Some(if is_human(&reached.name) {
                     "notified when a window opens"
                 } else {
                     "sees it when it reads"
                 }),
             )
+        }));
+        not.extend(unreachable.iter().map(|reached| {
+            with(reached, Some("its machine cannot be reached; it sees this once it can"))
         }));
         if !not.is_empty() {
             lines.push(format!("not woken: {}", not.join(", ")));
@@ -918,7 +928,11 @@ fn entries_text(entries: &msg_answer::Entries, say_when_empty: bool, json: bool)
             .iter()
             .map(|group| {
                 let entries: Vec<_> = group.entries.iter().map(entry_json).collect();
-                serde_json::json!({ "group": group.group, "entries": entries })
+                serde_json::json!({
+                    "group": group.group,
+                    "entries": entries,
+                    "behind": group.behind,
+                })
             })
             .collect();
         return serde_json::json!({ "groups": groups }).to_string();
@@ -956,7 +970,16 @@ fn entries_text(entries: &msg_answer::Entries, say_when_empty: bool, json: bool)
         }
     }
     if blocks.is_empty() && say_when_empty {
-        return "nothing unread".to_string();
+        blocks.push("nothing unread".to_string());
+    }
+    // A replica whose home cannot be reached may lack what was posted there since.
+    for group in &entries.groups {
+        if let Some(machine) = &group.behind {
+            blocks.push(format!(
+                "{machine} cannot be reached now, so {} may be missing messages posted since",
+                group.group
+            ));
+        }
     }
     blocks.join("\n")
 }
@@ -1100,5 +1123,44 @@ mod tests {
         assert!(patience.allows_another(at(0), at(300_000)));
         assert!(patience.allows_another(at(300_200), at(300_400)));
         assert!(!patience.allows_another(at(310_400), at(310_600)));
+    }
+
+    /// A member on a machine that cannot be reached is not woken, and says why; a post heard
+    /// by nobody else exits as unheard.
+    #[test]
+    fn a_member_on_an_unreachable_machine_is_named_as_such() {
+        let posted = msg_answer::Posted {
+            group: "review".to_string(),
+            seq: 7,
+            reached: vec![msg_answer::Reached {
+                name: "critic@devenv".to_string(),
+                reach: msg_answer::Reach::Unreachable.into(),
+                ..msg_answer::Reached::default()
+            }],
+        };
+        let Err(Trouble::Unheard(text)) = posted_text(&posted, false) else {
+            panic!("nobody heard it");
+        };
+        assert_eq!(
+            text,
+            "posted #7 to review\nnot woken: critic@devenv (its machine cannot be reached; it \
+             sees this once it can)"
+        );
+    }
+
+    #[test]
+    fn a_read_of_a_group_whose_home_cannot_be_reached_says_it_may_be_behind() {
+        let entries = msg_answer::Entries {
+            groups: vec![msg_answer::GroupEntries {
+                group: "review@lap".to_string(),
+                entries: Vec::new(),
+                behind: Some("lap".to_string()),
+            }],
+        };
+        assert_eq!(
+            entries_text(&entries, true, false),
+            "nothing unread\nlap cannot be reached now, so review@lap may be missing messages \
+             posted since"
+        );
     }
 }

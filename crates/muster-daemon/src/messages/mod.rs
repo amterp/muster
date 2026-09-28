@@ -7,14 +7,18 @@
 
 mod doorbell;
 mod inbox;
+pub(crate) mod peer;
 mod presence;
 mod prompt;
 mod store;
+mod wire;
 
 pub(crate) use doorbell::Doorbell;
+pub(crate) use peer::Peers;
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -23,8 +27,9 @@ use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, GROUP, JOIN, READ, WHO};
 use muster_msg::{
-    Action, Activity, Caller, Change, Changed, Entry, Inbox, LARGEST_BODY, LONGEST_GROUP, Liveness,
-    Messaging, Policy, Presence, Reach, Refusal, Via, Wake, What,
+    Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Entry, Inbox, LARGEST_BODY,
+    LONGEST_GROUP, Liveness, Messaging, Policy, Presence, Reach, Refusal, Route, Settled, Tell,
+    Via, Wake, What,
 };
 use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
@@ -36,7 +41,7 @@ use presence::Panes;
 use store::Files;
 
 /// How often a wait looks up from its channel to see whether its caller hung up.
-const LOOK_UP: Duration = Duration::from_millis(500);
+pub(crate) const LOOK_UP: Duration = Duration::from_millis(500);
 
 #[derive(Debug)]
 pub(crate) struct Messages {
@@ -57,6 +62,9 @@ pub(crate) struct Messages {
     tellings: u64,
     /// Follows of a log waiting for its next entry, woken by anything that may have appended.
     follows: Vec<Sender<()>>,
+    /// Changes made by the request being handled, for the other machines with members in
+    /// their groups to be sent once this lock is let go.
+    telling: Vec<Tell>,
 }
 
 #[derive(Debug)]
@@ -85,6 +93,7 @@ impl Messages {
             told: Vec::new(),
             tellings: 0,
             follows: Vec::new(),
+            telling: Vec::new(),
         }
     }
 
@@ -137,58 +146,6 @@ impl Messages {
             return refused_as("", "handing_over", HANDING_OVER);
         }
         let result = match asked {
-            Asked::Join(join) => self
-                .service
-                .join(caller, join.name.as_deref(), join.group.as_deref(), panes, now_ms())
-                .and_then(|joined| {
-                    if join.pull {
-                        self.service.pulls(&joined.name)?;
-                    }
-                    Ok(joined)
-                })
-                .map(|joined| {
-                    log::info(
-                        "msg.joined",
-                        fields! {
-                            "name" => joined.name,
-                            "group" => joined.group.clone().unwrap_or_default(),
-                            "created" => joined.created,
-                            "took_over" => joined.took_over,
-                        },
-                    );
-                    let answer = Answer::Joined(msg_answer::Joined {
-                        name: joined.name.clone(),
-                        group: joined.group,
-                        created: joined.created,
-                        took_over: joined.took_over,
-                    });
-                    (joined.name, answer)
-                }),
-            Asked::Leave(leave) => {
-                let waits = &mut self.waits;
-                let told = &mut self.told;
-                self.service.leave(caller, leave.group.as_deref(), panes, now_ms()).map(|left| {
-                    if let Some(wait) = left.ended.and_then(|ticket| waits.remove(&ticket)) {
-                        let _ = wait.send(WaitEnded::Left);
-                    }
-                    if left.name == muster_msg::HUMAN {
-                        told.extend(left.groups.iter().map(|group| nothing_waits(group)));
-                    }
-                    log::info(
-                        "msg.left",
-                        fields! {
-                            "name" => left.name,
-                            "groups" => left.groups.join(","),
-                            "stopped" => left.stopped,
-                        },
-                    );
-                    let answer = Answer::Left(msg_answer::Left {
-                        groups: left.groups,
-                        stopped: left.stopped,
-                    });
-                    (left.name, answer)
-                })
-            }
             Asked::Who(who) => self.service.who(who.group.as_deref(), panes).map(|members| {
                 let members = members.into_iter().map(member_of).collect();
                 (String::new(), Answer::Members(msg_answer::Members { members }))
@@ -203,9 +160,9 @@ impl Messages {
                         .groups
                         .into_iter()
                         .map(|(group, entries)| msg_answer::GroupEntries {
+                            behind: self.service.behind(&group).map(str::to_string),
                             group,
                             entries: entries.iter().map(entry_of).collect(),
-                            behind: None,
                         })
                         .collect();
                     (read.name, Answer::Entries(msg_answer::Entries { groups }))
@@ -213,9 +170,9 @@ impl Messages {
             }
             Asked::Log(asked) => self.service.log(&asked.group, asked.since).map(|entries| {
                 let group = msg_answer::GroupEntries {
+                    behind: self.service.behind(&asked.group).map(str::to_string),
                     group: asked.group,
                     entries: entries.iter().map(entry_of).collect(),
-                    behind: None,
                 };
                 (String::new(), Answer::Entries(msg_answer::Entries { groups: vec![group] }))
             }),
@@ -224,10 +181,12 @@ impl Messages {
             | Asked::GroupSet(_)
             | Asked::GroupMembers(_)
             | Asked::Pause(_) => self.group(caller, asked, panes),
-            Asked::Post(_) | Asked::Wait(_) | Asked::Resume(_) => {
-                unreachable!("posts, waits, resumes and follows are handled apart")
-            }
-            Asked::Peer(_) => return Reply::unsupported(),
+            Asked::Join(_)
+            | Asked::Leave(_)
+            | Asked::Post(_)
+            | Asked::Wait(_)
+            | Asked::Resume(_)
+            | Asked::Peer(_) => unreachable!("each of these is handled apart"),
         };
         match result {
             Ok((caller, answer)) => answered(caller, answer),
@@ -242,6 +201,7 @@ impl Messages {
         asked: Asked,
         panes: &Panes,
     ) -> Result<(String, Answer), Refusal> {
+        let telling = &mut self.telling;
         match asked {
             Asked::Groups(_) => {
                 let groups = self
@@ -260,7 +220,7 @@ impl Messages {
                 let policy = new.policy.map(policy_from);
                 self.service
                     .group_new(caller, &new.group, policy, panes, now_ms())
-                    .map(|made| changed("made", made))
+                    .map(|made| changed("made", made, telling))
             }
             Asked::GroupSet(set) => self
                 .service
@@ -271,7 +231,7 @@ impl Messages {
                     panes,
                     now_ms(),
                 )
-                .map(|set| changed("set_policy", set)),
+                .map(|set| changed("set_policy", set, telling)),
             Asked::GroupMembers(members) => {
                 let waits = &mut self.waits;
                 let told = &mut self.told;
@@ -294,13 +254,13 @@ impl Messages {
                         if members.removed.iter().any(|name| name == muster_msg::HUMAN) {
                             told.push(nothing_waits(&members.group));
                         }
-                        changed("members", members)
+                        changed("members", members, telling)
                     })
             }
             Asked::Pause(pause) => self
                 .service
                 .pause(caller, &pause.group, panes, now_ms())
-                .map(|paused| changed("paused", paused)),
+                .map(|paused| changed("paused", paused, telling)),
             _ => unreachable!("only group requests are answered here"),
         }
     }
@@ -309,33 +269,41 @@ impl Messages {
 /// Answers a `msg` request. `hung_up` says whether the caller has gone, for a wait that would
 /// otherwise outlive it.
 pub(crate) fn handle(
-    shared: &Shared,
+    shared: &Arc<Shared>,
     request: proto::MsgRequest,
     hung_up: &dyn Fn() -> bool,
 ) -> Reply {
     let caller = caller_of(request.caller.unwrap_or_default());
     let Some(asked) = request.request else { return Reply::unsupported() };
+    if let Asked::Peer(peer) = &asked {
+        return peer::hold(shared, &peer.name, &peer.socket, hung_up);
+    }
     let panes = Panes::of(shared);
     match asked {
         Asked::Post(post) => posting(shared, &caller, &post, &panes),
         Asked::Resume(resume) => resuming(shared, &caller, &resume.group, &panes),
         Asked::Wait(wait) => waiting(shared, &caller, &wait, hung_up, &panes),
         Asked::Log(log) if log.follow => following(shared, log, hung_up),
+        Asked::Join(join) => joining(shared, &caller, &join, &panes),
+        Asked::Leave(leave) => leaving(shared, &caller, &leave, &panes),
+        Asked::Who(who) => whoing(shared, &who, &panes),
         asked => {
-            let (reply, told) = {
+            let (reply, told, telling) = {
                 let mut messages = shared.messages();
                 let reply = messages.answer(&caller, asked, &panes);
                 messages.appended();
-                (reply, messages.take_told())
+                (reply, messages.take_told(), std::mem::take(&mut messages.telling))
             };
             tell_human(shared, told);
+            peer::tell(shared, &telling);
             reply
         }
     }
 }
 
 /// What waits for the human, as the service decided it, for the windows to be told.
-struct Told {
+#[derive(Debug, Default)]
+pub(crate) struct Told {
     order: u64,
     notices: Vec<msg_answer::Notice>,
 }
@@ -401,111 +369,75 @@ fn ended_by_handover() -> Reply {
     refused_as("", "ended", "the daemon is handing over; ask again")
 }
 
-fn posting(
-    shared: &Shared,
-    caller: &Caller,
-    post: &proto::msg_request::Post,
-    panes: &Panes,
-) -> Reply {
-    let delivered = delivering(shared, panes, |service| {
-        service.post(caller, post.group.as_deref(), &post.to, &post.body, panes, now_ms())
-    });
-    match delivered {
-        Ok(delivered) => {
-            let posted = told("msg.posted", Some(post.body.len()), &delivered);
-            answered(delivered.posted.author.clone(), Answer::Posted(posted))
-        }
-        Err(reply) => reply,
-    }
-}
-
-/// A resume wakes as a post does, and is answered as one.
-fn resuming(shared: &Shared, caller: &Caller, group: &str, panes: &Panes) -> Reply {
-    let delivered =
-        delivering(shared, panes, |service| service.resume(caller, group, panes, now_ms()));
-    match delivered {
-        Ok(delivered) => {
-            let resumed = told("msg.resumed", None, &delivered);
-            answered(delivered.posted.author.clone(), Answer::Resumed(resumed))
-        }
-        Err(reply) => reply,
-    }
-}
-
-/// What delivering a post's wakes came to.
-struct Delivered {
-    posted: muster_msg::Posted,
-    /// Could not be woken.
-    failed: Vec<String>,
-    /// Left for the doorbell, with what each waits for.
+/// Wakes a change made, sorted under the service's lock to be delivered once it is let go.
+#[derive(Debug, Default)]
+pub(crate) struct Holding {
+    sending: Vec<Wake>,
+    ringing: Vec<(Wake, presence::Seen)>,
     deferred: Vec<(String, msg_answer::Until)>,
-    activities: HashMap<String, Activity>,
+    /// What waits for the human now, for the windows attending this daemon.
+    told: Told,
 }
 
-/// Runs `act` under the messaging lock, then delivers the wakes it returns with the lock let
-/// go: rung, sent to an inbox, answered to a wait, or left for the doorbell.
-fn delivering(
-    shared: &Shared,
-    panes: &Panes,
-    act: impl FnOnce(&mut Messaging<Files>) -> Result<muster_msg::Posted, Refusal>,
-) -> Result<Delivered, Reply> {
-    // Rung or sent once the lock is let go, and deferred: left for the doorbell.
-    let mut sending: Vec<Wake> = Vec::new();
-    let mut ringing: Vec<(Wake, presence::Seen)> = Vec::new();
-    let mut deferred: Vec<(String, msg_answer::Until)> = Vec::new();
-    let (posted, activities, for_the_human) = {
-        let mut messages = shared.messages();
-        if messages.handing_over {
-            return Err(refused_as("", "handing_over", HANDING_OVER));
-        }
-        let posted = act(&mut messages.service);
-        let posted = match posted {
-            Ok(posted) => posted,
-            Err(refusal) => return Err(refused("", &refusal)),
-        };
-        for answered in &posted.answered {
-            if let Some(wait) = messages.waits.remove(&answered.ticket) {
+/// What delivering a [`Holding`] came to: who could not be woken, and who is left for the
+/// doorbell and until what.
+#[derive(Debug, Default)]
+struct Rang {
+    failed: Vec<String>,
+    deferred: Vec<(String, msg_answer::Until)>,
+}
+
+impl Messages {
+    /// Ends the waits a change answered and sorts its wakes: sent now, rung now, or left for the
+    /// doorbell. Under the lock, so a wait's answer and the service's record of it cannot part.
+    pub(crate) fn hold(
+        &mut self,
+        wakes: &[Wake],
+        answered: &[AnsweredWait],
+        panes: &Panes,
+    ) -> Holding {
+        for answered in answered {
+            if let Some(wait) = self.waits.remove(&answered.ticket) {
                 let _ = wait.send(WaitEnded::Ready(vec![notice_of(&answered.notice)]));
             }
         }
         let now = Instant::now();
-        for wake in &posted.wakes {
+        let mut holding = Holding::default();
+        for wake in wakes {
             let pane = match &wake.via {
                 Via::Pane(pane) => pane,
                 Via::Human => {
-                    messages.told.push(notice_of(&wake.notice));
+                    self.told.push(notice_of(&wake.notice));
                     continue;
                 }
                 Via::Inbox(_) => {
-                    sending.push(wake.clone());
+                    holding.sending.push(wake.clone());
                     continue;
                 }
             };
             // A pane whose agent has not been found yet waits for it like a busy one.
             let until = match panes.get(pane).map(|seen| (doorbell::may_ring(seen, now), seen)) {
                 Some((Now::Ring, seen)) => {
-                    ringing.push((wake.clone(), seen.clone()));
+                    holding.ringing.push((wake.clone(), seen.clone()));
                     continue;
                 }
                 Some((Now::AtIdle, _)) => msg_answer::Until::Idle,
                 Some((Now::At(_), _)) => msg_answer::Until::Prompt,
                 None => msg_answer::Until::Agent,
             };
-            deferred.push((wake.name.clone(), until));
-            messages.pending.push(wake.clone());
+            holding.deferred.push((wake.name.clone(), until));
+            self.pending.push(wake.clone());
         }
-        let activities: HashMap<String, Activity> = posted
-            .reached
-            .iter()
-            .filter_map(|(name, _)| {
-                let participant = messages.service.participant(name)?;
-                Some((name.clone(), panes.activity(participant)?))
-            })
-            .collect();
-        messages.appended();
-        (posted, activities, messages.take_told())
-    };
-    tell_human(shared, for_the_human);
+        self.appended();
+        holding.told = self.take_told();
+        holding
+    }
+}
+
+/// Delivers what [`Messages::hold`] sorted, with the service's lock let go.
+fn ring(shared: &Shared, holding: Holding) -> Rang {
+    let Holding { sending, ringing, mut deferred, told } = holding;
+    tell_human(shared, told);
     let names: Vec<(String, String)> =
         ringing.iter().map(|(wake, _)| (wake.name.clone(), wake.notice.group.clone())).collect();
     let came = doorbell::ring_all(shared, ringing);
@@ -537,26 +469,344 @@ fn delivering(
             }
         }
     }
-    let failed: Vec<String> = failed
+    let failed = failed
         .iter()
         .map(|wake| wake.name.clone())
         .chain(refused_rings.into_iter().map(|(name, _)| name))
         .collect();
+    Rang { failed, deferred }
+}
+
+fn joining(
+    shared: &Arc<Shared>,
+    caller: &Caller,
+    join: &proto::msg_request::Join,
+    panes: &Panes,
+) -> Reply {
+    let (name, group) = (join.name.as_deref(), join.group.as_deref());
+    let route = {
+        let mut messages = shared.messages();
+        if messages.handing_over {
+            return refused_as("", "handing_over", HANDING_OVER);
+        }
+        messages.service.route_join(caller, name, group, panes)
+    };
+    let route = match route {
+        Ok(Route::Ask { group }) => ask_around(shared, caller, name, &group, panes),
+        other => other,
+    };
+    let joined = match route {
+        Err(refusal) => return refused("", &refusal),
+        Ok(Route::Away(away)) => {
+            let (settle, holding) = peer::call_away(shared, &away);
+            ring(shared, holding);
+            match settle.result {
+                Ok(Settled::Joined(joined)) => joined,
+                Ok(other) => return mismatched("join", &other),
+                Err(refusal) => return refused("", &refusal),
+            }
+        }
+        Ok(_) => {
+            let joined = {
+                let mut messages = shared.messages();
+                if messages.handing_over {
+                    return refused_as("", "handing_over", HANDING_OVER);
+                }
+                let joined = messages.service.join(caller, name, group, panes, now_ms());
+                messages.appended();
+                joined
+            };
+            match joined {
+                Ok(joined) => {
+                    peer::tell(shared, &joined.tell);
+                    joined
+                }
+                Err(refusal) => return refused("", &refusal),
+            }
+        }
+    };
+    // Its hooks fetch its messages, wherever the group it joined is kept (MIP-4, section 6).
+    if join.pull
+        && let Err(refusal) = shared.messages().service.pulls(&joined.name)
+    {
+        return refused("", &refusal);
+    }
+    log::info(
+        "msg.joined",
+        fields! {
+            "name" => joined.name,
+            "group" => joined.group.clone().unwrap_or_default(),
+            "created" => joined.created,
+            "took_over" => joined.took_over,
+        },
+    );
+    let answer = Answer::Joined(msg_answer::Joined {
+        name: joined.name.clone(),
+        group: joined.group,
+        created: joined.created,
+        took_over: joined.took_over,
+    });
+    answered(joined.name, answer)
+}
+
+/// Asks each linked machine whether it keeps a group by this name, and joins it there if one
+/// does; here, creating it, if none does.
+fn ask_around(
+    shared: &Arc<Shared>,
+    caller: &Caller,
+    name: Option<&str>,
+    group: &str,
+    panes: &Panes,
+) -> Result<Route, Refusal> {
+    let mut keeping = Vec::new();
+    for machine in shared.peers.machines() {
+        let call = muster_msg::Call::Find { group: group.to_string() };
+        let (settle, _) = peer::call_away(shared, &Away { machine: machine.clone(), call });
+        if matches!(settle.result, Ok(Settled::Found(true))) {
+            keeping.push(format!("{group}@{machine}"));
+        }
+    }
+    match keeping.as_slice() {
+        [] => Ok(Route::Here),
+        [there] => shared.messages().service.route_join(caller, name, Some(there), panes),
+        _ => Err(Refusal::WhichGroup { candidates: keeping }),
+    }
+}
+
+fn leaving(
+    shared: &Arc<Shared>,
+    caller: &Caller,
+    leave: &proto::msg_request::Leave,
+    panes: &Panes,
+) -> Reply {
+    let group = leave.group.as_deref();
+    let away = {
+        let mut messages = shared.messages();
+        if messages.handing_over {
+            return refused_as("", "handing_over", HANDING_OVER);
+        }
+        messages.service.route_leave(caller, group, panes)
+    };
+    let away = match away {
+        Ok(away) => away,
+        Err(refusal) => return refused("", &refusal),
+    };
+    let (mut name, mut groups) = (String::new(), Vec::new());
+    for away in &away {
+        let (settle, holding) = peer::call_away(shared, away);
+        ring(shared, holding);
+        match settle.result {
+            Ok(Settled::Left(left)) => {
+                end_wait(shared, left.ended);
+                name = left.name;
+                groups.extend(left.groups);
+            }
+            Ok(other) => return mismatched("leave", &other),
+            Err(refusal) => return refused("", &refusal),
+        }
+    }
+    let mut stopped = false;
+    if group.is_none() || away.is_empty() {
+        let left = {
+            let mut messages = shared.messages();
+            if messages.handing_over {
+                return refused_as("", "handing_over", HANDING_OVER);
+            }
+            let left = messages.service.leave(caller, group, panes, now_ms());
+            messages.appended();
+            left
+        };
+        match left {
+            Ok(left) => {
+                end_wait(shared, left.ended);
+                peer::tell(shared, &left.tell);
+                name = left.name;
+                groups.extend(left.groups);
+                stopped = left.stopped;
+            }
+            Err(refusal) => return refused("", &refusal),
+        }
+    }
+    if name == muster_msg::HUMAN {
+        let told = {
+            let mut messages = shared.messages();
+            messages.told.extend(groups.iter().map(|group| nothing_waits(group)));
+            messages.take_told()
+        };
+        tell_human(shared, told);
+    }
+    log::info(
+        "msg.left",
+        fields! { "name" => name, "groups" => groups.join(","), "stopped" => stopped },
+    );
+    answered(name, Answer::Left(msg_answer::Left { groups, stopped }))
+}
+
+fn end_wait(shared: &Shared, ticket: Option<u64>) {
+    let wait = ticket.and_then(|ticket| shared.messages().waits.remove(&ticket));
+    if let Some(wait) = wait {
+        let _ = wait.send(WaitEnded::Left);
+    }
+}
+
+/// Members of a group, or every participant here: a group's members on another machine are
+/// as that machine's daemon says, asked now.
+fn whoing(shared: &Arc<Shared>, who: &proto::msg_request::Who, panes: &Panes) -> Reply {
+    let group = who.group.as_deref();
+    let found = {
+        let messages = shared.messages();
+        messages
+            .service
+            .who(group, panes)
+            .and_then(|members| Ok((members, messages.service.route_who(group)?)))
+    };
+    let (mut members, away) = match found {
+        Ok(found) => found,
+        Err(refusal) => return refused("", &refusal),
+    };
+    for away in away {
+        let (settle, holding) = peer::call_away(shared, &away);
+        ring(shared, holding);
+        if let Ok(Settled::Members(heard)) = settle.result {
+            muster_msg::heard(&mut members, &away.machine, &heard);
+        }
+    }
+    let members = members.into_iter().map(member_of).collect();
+    answered(String::new(), Answer::Members(msg_answer::Members { members }))
+}
+
+/// A reply from another machine that settled as another kind of answer than the call asked
+/// for: two daemons disagreeing about the protocol, which is a bug.
+fn mismatched(asked: &str, settled: &Settled) -> Reply {
+    log::error(
+        "msg.peer.mismatched",
+        fields! {
+            "asked" => asked,
+            "settled" => format!("{settled:?}"),
+            "impact" => "the request was refused, though the other machine may have done it",
+            "check" => "whether both daemons are the same build; this is a bug if they are",
+        },
+    );
+    refused_as("", "mismatched", &format!("the other machine answered a {asked} with {settled:?}"))
+}
+
+fn posting(
+    shared: &Arc<Shared>,
+    caller: &Caller,
+    post: &proto::msg_request::Post,
+    panes: &Panes,
+) -> Reply {
+    let route = {
+        let mut messages = shared.messages();
+        if messages.handing_over {
+            return refused_as("", "handing_over", HANDING_OVER);
+        }
+        messages.service.route_post(caller, post.group.as_deref(), &post.to, &post.body, panes)
+    };
+    let delivered = match route {
+        Err(refusal) => return refused("", &refusal),
+        Ok(Route::Away(away)) => {
+            let (settle, holding) = peer::call_away(shared, &away);
+            let rang = ring(shared, holding);
+            match settle.result {
+                Ok(Settled::Posted(posted)) => {
+                    let activities = activities_of(shared, &posted, panes);
+                    Delivered { posted, rang, activities }
+                }
+                Ok(other) => return mismatched("post", &other),
+                Err(refusal) => return refused("", &refusal),
+            }
+        }
+        Ok(_) => {
+            let delivered = delivering(shared, panes, |service| {
+                service.post(caller, post.group.as_deref(), &post.to, &post.body, panes, now_ms())
+            });
+            match delivered {
+                Ok(delivered) => delivered,
+                Err(reply) => return reply,
+            }
+        }
+    };
+    let posted = told("msg.posted", Some(post.body.len()), &delivered);
+    answered(delivered.posted.author.clone(), Answer::Posted(posted))
+}
+
+/// A resume wakes as a post does, and is answered as one.
+fn resuming(shared: &Shared, caller: &Caller, group: &str, panes: &Panes) -> Reply {
+    let delivered =
+        delivering(shared, panes, |service| service.resume(caller, group, panes, now_ms()));
+    match delivered {
+        Ok(delivered) => {
+            let resumed = told("msg.resumed", None, &delivered);
+            answered(delivered.posted.author.clone(), Answer::Resumed(resumed))
+        }
+        Err(reply) => reply,
+    }
+}
+
+/// What delivering a post's wakes came to.
+struct Delivered {
+    posted: muster_msg::Posted,
+    rang: Rang,
+    activities: HashMap<String, Activity>,
+}
+
+/// Runs `act` under the messaging lock, then delivers the wakes it returns with the lock let
+/// go - rung, sent to an inbox, answered to a wait, or left for the doorbell - and sends the
+/// new entry on to the other machines with members in the group.
+fn delivering(
+    shared: &Shared,
+    panes: &Panes,
+    act: impl FnOnce(&mut Messaging<Files>) -> Result<muster_msg::Posted, Refusal>,
+) -> Result<Delivered, Reply> {
+    let (mut posted, holding) = {
+        let mut messages = shared.messages();
+        if messages.handing_over {
+            return Err(refused_as("", "handing_over", HANDING_OVER));
+        }
+        let posted = match act(&mut messages.service) {
+            Ok(posted) => posted,
+            Err(refusal) => return Err(refused("", &refusal)),
+        };
+        let holding = messages.hold(&posted.wakes, &posted.answered, panes);
+        (posted, holding)
+    };
+    let rang = ring(shared, holding);
+    let elsewhere = peer::tell(shared, &posted.tell);
+    posted.reached.extend(elsewhere);
     if let Some(error) = &posted.unsaved {
         kept_nothing(&Refusal::Store { error: error.clone() });
     }
-    Ok(Delivered { posted, failed, deferred, activities })
+    let activities = activities_of(shared, &posted, panes);
+    Ok(Delivered { posted, rang, activities })
+}
+
+/// What each agent a post reached on this machine is doing.
+fn activities_of(
+    shared: &Shared,
+    posted: &muster_msg::Posted,
+    panes: &Panes,
+) -> HashMap<String, Activity> {
+    let messages = shared.messages();
+    posted
+        .reached
+        .iter()
+        .filter_map(|(name, _)| {
+            let participant = messages.service.participant(name)?;
+            Some((name.clone(), panes.activity(participant)?))
+        })
+        .collect()
 }
 
 /// What a post or a resume did, as its answer and the daemon's log say it. `bytes` is a post's
 /// size, never its body: the log records what happened, not what was said.
 fn told(event: &'static str, bytes: Option<usize>, delivered: &Delivered) -> msg_answer::Posted {
-    let Delivered { posted, failed, deferred, activities } = delivered;
+    let Delivered { posted, rang, activities } = delivered;
     let until = |name: &String| {
-        deferred.iter().find(|(deferred, _)| deferred == name).map(|(_, until)| *until)
+        rang.deferred.iter().find(|(deferred, _)| deferred == name).map(|(_, until)| *until)
     };
     let told = |name: &String, reach: Reach| {
-        if failed.contains(name) {
+        if rang.failed.contains(name) {
             Reach::Gone
         } else if until(name).is_some() {
             Reach::Deferred
@@ -596,6 +846,7 @@ fn told(event: &'static str, bytes: Option<usize>, delivered: &Delivered) -> msg
             "waiting" => named(Reach::Waiting),
             "no_agent" => named(Reach::NoAgent),
             "no_doorbell" => named(Reach::NoDoorbell),
+            "unreachable" => named(Reach::Unreachable),
             "gone" => named(Reach::Gone),
             "paused" => named(Reach::Paused),
         },
@@ -603,8 +854,10 @@ fn told(event: &'static str, bytes: Option<usize>, delivered: &Delivered) -> msg
     msg_answer::Posted { group: posted.group.clone(), seq: posted.seq, reached }
 }
 
-/// A change to a group, as its answer and the daemon's log say it.
-fn changed(what: &str, changed: Changed) -> (String, Answer) {
+/// A change to a group, as its answer and the daemon's log say it. What other machines must
+/// be sent of it is added to `telling`.
+fn changed(what: &str, changed: Changed, telling: &mut Vec<Tell>) -> (String, Answer) {
+    telling.extend(changed.tell);
     log::info(
         "msg.group.changed",
         fields! {
@@ -759,21 +1012,21 @@ fn answered(caller: String, answer: Answer) -> Reply {
     Reply { detail: Some(Box::new(Detail::Msg(answer))), ..Reply::done() }
 }
 
-fn refused(caller: &str, refusal: &Refusal) -> Reply {
+pub(super) fn refused(caller: &str, refusal: &Refusal) -> Reply {
     if let Refusal::Store { .. } = refusal {
         kept_nothing(refusal);
     }
     refused_as(caller, refusal.code(), &words(refusal))
 }
 
-fn refused_as(caller: &str, code: &str, reason: &str) -> Reply {
+pub(super) fn refused_as(caller: &str, code: &str, reason: &str) -> Reply {
     let answer =
         proto::MsgAnswer { caller: caller.to_string(), refusal: code.to_string(), answer: None };
     Reply { detail: Some(Box::new(Detail::Msg(answer))), ..Reply::refused(reason) }
 }
 
 /// A refusal in words, naming the command that gets the caller past it.
-fn words(refusal: &Refusal) -> String {
+pub(super) fn words(refusal: &Refusal) -> String {
     let join = |group: &str| messaging::command(JOIN, &format!("--group {group}"));
     match refusal {
         Refusal::BadName { name } => {
@@ -910,7 +1163,7 @@ fn caller_of(caller: proto::msg_request::Caller) -> Caller {
     }
 }
 
-fn entry_of(entry: &Entry) -> msg_answer::Entry {
+pub(super) fn entry_of(entry: &Entry) -> msg_answer::Entry {
     use msg_answer::entry::What as Said;
     let what = match &entry.what {
         What::Message { author, to, body } => Said::Message(msg_answer::Message {
@@ -946,7 +1199,7 @@ pub(crate) fn notice_of(notice: &muster_msg::Notice) -> msg_answer::Notice {
     }
 }
 
-fn member_of(member: muster_msg::Member) -> msg_answer::Member {
+pub(super) fn member_of(member: muster_msg::Member) -> msg_answer::Member {
     let liveness = match member.liveness {
         Liveness::Alive => msg_answer::Liveness::Alive,
         Liveness::Gone => msg_answer::Liveness::Gone,
@@ -963,7 +1216,7 @@ fn member_of(member: muster_msg::Member) -> msg_answer::Member {
     }
 }
 
-fn reach_of(reach: Reach) -> msg_answer::Reach {
+pub(super) fn reach_of(reach: Reach) -> msg_answer::Reach {
     match reach {
         Reach::Woken => msg_answer::Reach::Woken,
         Reach::Deferred => msg_answer::Reach::Deferred,
@@ -977,7 +1230,7 @@ fn reach_of(reach: Reach) -> msg_answer::Reach {
     }
 }
 
-fn policy_of(policy: &Policy) -> proto::msg_request::Policy {
+pub(super) fn policy_of(policy: &Policy) -> proto::msg_request::Policy {
     let map = |map: &std::collections::BTreeMap<String, Vec<String>>| {
         map.iter()
             .map(|(author, names)| {
@@ -993,7 +1246,7 @@ fn policy_of(policy: &Policy) -> proto::msg_request::Policy {
     }
 }
 
-fn policy_from(policy: proto::msg_request::Policy) -> Policy {
+pub(super) fn policy_from(policy: proto::msg_request::Policy) -> Policy {
     let map = |map: HashMap<String, proto::msg_request::Names>| {
         map.into_iter().map(|(author, names)| (author, names.names)).collect()
     };
@@ -1005,7 +1258,7 @@ fn policy_from(policy: proto::msg_request::Policy) -> Policy {
     }
 }
 
-fn activity_of(activity: Option<Activity>) -> msg_answer::Activity {
+pub(super) fn activity_of(activity: Option<Activity>) -> msg_answer::Activity {
     match activity {
         None => msg_answer::Activity::Unspecified,
         Some(Activity::Working) => msg_answer::Activity::Working,
@@ -1015,7 +1268,7 @@ fn activity_of(activity: Option<Activity>) -> msg_answer::Activity {
     }
 }
 
-fn now_ms() -> u64 {
+pub(super) fn now_ms() -> u64 {
     let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
 }

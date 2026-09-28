@@ -243,7 +243,7 @@ impl Wire {
         let away = service.route_who(Some(group)).unwrap();
         for away in away {
             if let Settled::Members(heard) = self.send(side, &away.call).unwrap() {
-                Messaging::<Memory>::heard(&mut members, &away.machine, &heard);
+                muster_msg::heard(&mut members, &away.machine, &heard);
             }
         }
         members.into_iter().map(|member| (member.name, member.liveness)).collect()

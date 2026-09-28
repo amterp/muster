@@ -282,6 +282,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
 /// decided, and says whether this daemon stops because of it.
 fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> (Reply, Option<Stop>) {
     shared.messages().handing_over(true);
+    shared.peers.close_all();
     let reply = handoff::hand_over(shared, replacement);
     if reply.outcome == proto::Outcome::Done {
         return (reply, Some(Stop::HandedOff));

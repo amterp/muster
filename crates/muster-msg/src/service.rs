@@ -620,6 +620,15 @@ impl<S: Store> Messaging<S> {
             tell: self.tell(group, seq - 1, from),
             unsaved: None,
         };
+        for tell in &mut posted.tell {
+            tell.targets = targets
+                .iter()
+                .filter(|target| {
+                    split_machine(target).is_some_and(|(_, machine)| machine == tell.machine)
+                })
+                .cloned()
+                .collect();
+        }
         for target in targets {
             // A member on another machine is reached by its own daemon (MIP-4, section 11).
             if split_machine(&target).is_some() {
@@ -1606,7 +1615,12 @@ impl<S: Store> Messaging<S> {
             .collect();
         machines
             .into_iter()
-            .map(|machine| Tell { machine: machine.to_string(), group: group.to_string(), after })
+            .map(|machine| Tell {
+                machine: machine.to_string(),
+                group: group.to_string(),
+                after,
+                targets: Vec::new(),
+            })
             .collect()
     }
 
