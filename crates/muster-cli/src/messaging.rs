@@ -10,7 +10,7 @@ use std::io::Read;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand};
 use muster_daemon_proto::connection::{self, HandshakeError};
@@ -279,10 +279,11 @@ const PATIENCE: Duration = Duration::from_mins(1);
 /// Asks, and asks again while the daemon is handing over to a new one: it refuses changes
 /// until the new one serves, and ends the connections of waits in progress.
 fn ask(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trouble> {
-    let started = std::time::Instant::now();
+    let mut patience = Patience::default();
     let waits = matches!(request.request, Some(Asked::Wait(_)));
     let mut answered_before = false;
     loop {
+        let began = Instant::now();
         let answer = ask_once(socket, request);
         let again = match &answer {
             Ok(answer) => matches!(refusal_of(answer), "handing_over" | "ended"),
@@ -294,10 +295,25 @@ fn ask(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trou
             Err(_) => false,
         };
         answered_before |= matches!(answer, Ok(_) | Err(Trouble::Unanswered(_)));
-        if !again || started.elapsed() >= HANDOVER_PATIENCE {
+        if !again || !patience.allows_another(began, Instant::now()) {
             return answer;
         }
         std::thread::sleep(RETRY);
+    }
+}
+
+/// How long asking again may go on while a daemon hands over.
+#[derive(Debug, Default)]
+struct Patience {
+    since: Option<Instant>,
+}
+
+impl Patience {
+    /// Whether to ask again after an attempt that began at `began` and ended, at `now`, in a
+    /// handover.
+    fn allows_another(&mut self, began: Instant, now: Instant) -> bool {
+        let since = *self.since.get_or_insert(began);
+        now.duration_since(since) < HANDOVER_PATIENCE
     }
 }
 
@@ -590,4 +606,31 @@ fn notice_json(notice: &msg_answer::Notice) -> serde_json::Value {
         "from": notice.from,
         "text": spelling::wake_text(notice),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_handover_is_waited_out_for_a_while_and_no_longer() {
+        let start = Instant::now();
+        let mut patience = Patience::default();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        assert!(patience.allows_another(at(0), at(200)));
+        assert!(patience.allows_another(at(400), at(600)));
+        assert!(!patience.allows_another(at(10_000), at(10_200)));
+    }
+
+    /// A wait that ran for minutes and was then ended by a handover is asked again of the new
+    /// daemon: its patience is for the handover, not for the wait before it.
+    #[test]
+    fn a_long_wait_ended_by_a_handover_is_asked_again() {
+        let start = Instant::now();
+        let mut patience = Patience::default();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        assert!(patience.allows_another(at(0), at(300_000)));
+        assert!(patience.allows_another(at(300_200), at(300_400)));
+        assert!(!patience.allows_another(at(310_400), at(310_600)));
+    }
 }
