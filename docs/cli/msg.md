@@ -15,6 +15,10 @@ These talk to the daemon, not to a window, so they work with no window open and 
 terminal as well as a pane. The daemon is the one `$MUSTER_DAEMON_SOCKET` names, which every pane
 Muster makes has, and otherwise this install's daemon under `~/.muster/daemon/`.
 
+An agent in a pane on an SSH machine does the same with the agents on that machine. Muster
+installs a `muster` there beside the daemon, every pane there finds it on its `PATH`, and it asks
+that machine's daemon.
+
 ## Who you are
 
 Every verb works out who is asking, in this order:

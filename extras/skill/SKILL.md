@@ -8,93 +8,53 @@ description: Drive a Muster window - make panes, start agents in them, read what
 Muster is a native macOS workspace for AI coding agents: real splits, agent status at a glance,
 local and SSH agents in one window, on daemon-owned sessions that outlive the app.
 
-You can drive the window you are drawn in. Start here:
+Everything you need is in the reference that ships inside `muster`, so it describes the version
+you are talking to:
 
 ```
-muster docs
+muster docs            # the topics
+muster docs agents     # making panes, running agents in them, waiting on them, reading them
+muster docs msg        # messaging other agents, and being woken by them
+muster docs window     # every field of muster window --json
+muster docs limits     # what this cannot do
 muster --help
 ```
 
-Both come out of the running binary, so they describe the version you are talking to rather than
-whatever a page on the internet last said. `muster docs overview` is the vocabulary,
-`muster docs window` is every field of `muster window --json`, `muster docs agents` is making
-panes and instructing what runs in them, `muster docs msg` is messaging other agents, and
-`muster docs limits` is what this cannot do.
+Read `muster docs agents` and `muster docs msg` before you start other agents. What follows is
+only what goes wrong when you skip them.
 
 ## Before you reach for it
 
-`muster` is on your `PATH` only if a Muster window put it there. Check with `muster window`: exit
-3 means there is no window to talk to, and then nothing here applies.
+Every pane Muster makes has `muster` on its `PATH`, on this machine and on an SSH devenv alike.
+`muster window` exits 3 when there is no window to talk to, which is also what a devenv pane
+gets; `muster msg` still works there, because it asks the pane's own daemon rather than a
+window.
 
-**Do not retry on exit 4.** It means a window took the request and never answered, so whatever
-you asked for may already have happened - sending it again is how another agent ends up with
-your instruction twice. Only 3 is safe to repeat. After a 4, read the pane
-(`muster pane read --pane X`) before deciding anything.
+**Do not retry on exit 4.** A window or daemon took the request and never answered, so what you
+asked for may already have happened, and sending it again is how an agent gets your instruction
+twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before deciding anything.
 
-## What is worth knowing that reference docs will not tell you
+## Rules the reference states once and agents still break
 
-**Read `muster window` before you act.** You have no eyes. A pane you remember making may have
-been closed, renamed, or moved to another tab by the person at the keyboard.
+- **Read `muster window` before you act**, and check `daemons[].state` in the same answer:
+  `stale` means the rest of it is an old picture. A pane you made may since have been closed,
+  renamed or moved by the person at the keyboard.
+- **Tell an agent something with `muster msg post --to <pane>`, not with `muster pane send`.**
+  A message arrives whole and wakes the agent once it is idle at an empty prompt; `pane send`
+  types into the pane, and is for answering a prompt the agent is blocked on.
+- **After posting, end your turn.** An answer wakes you. Exit 6 means nobody live heard the post
+  and no answer is coming; a post that says `its prompt cannot be read` reached a harness the
+  doorbell cannot ring. When you are woken, run the `muster msg read` the wake names before
+  posting to that group again.
+- **Do not poll.** `muster pane wait --pane X --until idle,blocked` blocks until the agent gets
+  there. A pane already idle answers at once, so after handing an idle agent work, wait
+  `--until working` first. `waiting` is not `idle`: add it to hear of an agent waiting on its own
+  build, and give `--timeout`.
+- **Do not take the keyboard.** `pane new` leaves focus where it is, which is right: the person is
+  reading something. `--focus` and `muster focus` are for an agent that needs them.
+- **Name every pane you make**, `--name '🤖 A'`, so a person can tell your agents apart.
+- **`muster tab rename` without `--tab` renames the tab the person's keyboard is in**, not yours:
+  name it from the `tab` on your own row of `muster window --json`.
+- **Fix a layout with `muster pane move`, never by closing a working agent.**
 
-**Check `daemons[].state` in the same answer.** `stale` means the rest of it is an old picture,
-and acting on an old picture is how you send an instruction to a pane that is gone.
-
-**Do not take focus you were not asked for.** `pane new` leaves the keyboard where it is, and that
-is the right default: the person is reading something. `--focus`, and `muster focus`, interrupt
-them. Use them when an agent needs attention, not to show off work.
-
-**Name every pane you make.** `--name '🤖 A'` costs nothing and is the only way a person running
-several agents can tell them apart. Muster's own pane names are unique but unmemorable.
-
-**`muster tab rename` with no `--tab` is not your tab.** It means the tab the person's keyboard is
-in, which is usually somewhere else. Nothing tells a pane which tab holds it, so name the tab
-outright: `muster window --json` gives every pane a `tab`, and yours is the row whose `pane` matches
-`$MUSTER_PANE`.
-
-**Do not poll `muster window` to find out when an agent finishes.** `muster pane wait --pane X
---until idle,blocked` blocks until it does and exits 0; `--timeout` gives up with exit 5. A pane
-already idle answers at once, so after handing an idle agent work, wait `--until working` first.
-An agent that ended its turn to wait on its own work reads `waiting`, which is not `idle`: add it,
-`--until idle,blocked,waiting`, to hear of it, and give `--timeout`, since a wait on something that
-never wakes the agent lasts until somebody prompts it.
-To follow several agents, `muster window --watch` prints a line each time any of them changes -
-run it where each line reaches you as it arrives, such as a background monitor, rather than
-waiting for it to exit. It never does.
-
-**Tell an agent something with a message, not with the keyboard.** `muster msg post --to X --file
-brief.md` reaches the agent in pane X whole, however long, once it is idle, and it can answer with
-a message that wakes you - so after posting, end your turn rather than waiting in a loop.
-`muster pane send` types into a pane: keep it for answering a prompt the agent is blocked on.
-
-**A post says whether anyone will hear it.** The daemon wakes an agent in a pane by typing into
-its prompt, and only when that prompt is Claude Code's and empty. An agent blocked at a
-permission prompt or trust dialog is not rung until somebody answers it, so a post it defers can
-wait there indefinitely: check `muster pane wait --until idle,blocked` or `muster window`, and
-answer the dialog with `pane send`. An agent of another harness is never rung, and the post says
-`its prompt cannot be read`. Exit 6 means nobody live heard the post and no answer is coming:
-do not end your turn waiting for one.
-
-**A message you are woken for says how to read it.** Run the `muster msg read` it names before
-posting to that group again; a post is refused while you have unread messages there.
-
-**You can read a pane, not just its state.** `muster pane read --pane X` hands back what that
-pane has printed. `muster window` tells you an agent is `blocked` or `done`; only this tells you
-what it said. `--rows 40` for the last page of it, and check `truncated` in `--json` before
-concluding you have seen the whole pane.
-
-**An arrangement you got wrong can be fixed without closing anything.** Three `pane new --down` in
-a row give a column of four, not a grid. `muster pane move --pane X --onto Y` puts one pane where
-another is - trading places inside a tab, joining the other's tab when they are in different ones -
-and nothing running in either stops. Closing a working agent to correct a layout is never the
-answer.
-
-**`muster tab new` is the other way to make a pane**, and the one to reach for when the work does
-not belong in this tab at all. It takes `--run` and `--name` exactly as `pane new` does, and prints
-the pane it made rather than the tab.
-
-**There may be more than one window.** `muster window list` says which are open and marks the one
-you are in. Pane names are the same in every window, so a name you read in one addresses the same
-pane from another with `--socket`. `muster window new` opens one and prints its socket.
-
-**Muster imposes no workflow.** Panes, states and names are primitives. Nothing here is a way of
-working you are expected to follow.
+Muster imposes no workflow. Panes, states, names and messages are primitives.
