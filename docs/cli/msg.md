@@ -157,10 +157,11 @@ ring still to come says what it waits for: the agent to be idle, a draft left in
 be sent or cleared, or an agent to start in a pane opened under 30 seconds ago. A pane with no
 agent past that, or whose agent's prompt cannot be read, is not woken.
 
-A post that woke nobody live - nobody woken, to be rung, already woken, or the human - is still
-kept, and exits 6: whoever you meant to tell is not there to hear it, and no answer is coming.
-With `--json` the same answer is lists of names under `woke`, `deferred`, `already_woken`,
-`waiting`, `gone`, `no_agent` and `no_doorbell`, what each agent in a pane is doing under
+A post that woke nobody live - nobody woken, to be rung, already woken, held until a group is
+resumed or a machine can be reached, or the human - is still kept, and exits 6: whoever you meant
+to tell is not there to hear it, and no answer is coming. With `--json` the same answer is lists
+of names under `woke`, `deferred`, `already_woken`, `waiting`, `gone`, `no_agent`, `no_doorbell`,
+`paused` and `unreachable`, what each agent in a pane is doing under
 `doing`, and what each deferred ring waits for under `until`: `idle`, `prompt` or `agent`.
 
 ## Reading, and the guard
@@ -235,8 +236,8 @@ once Ctrl-C has stopped the follow and left its shell.
 | `resume G` | wakes each member once for what it has unread, and lets posts wake again |
 
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, including
-by a group's policy, 3 no daemon
-to ask, 4 the daemon hung up before answering, 5 a wait that timed out, 6 a post that woke
+by a group's policy, 3 no daemon to ask, 4 no answer, so it may or may not have happened (the
+daemon hung up, or another machine never answered), 5 a wait that timed out, 6 a post that woke
 nobody live.
 
 ## Across machines
@@ -252,8 +253,9 @@ from the other:
 
 - **Names say which machine.** Each machine writes the other's members and groups with that
   machine's name: the laptop sees `critic@devenv`, the devenv sees `builder@your-laptop`. The
-  laptop calls a machine by its `[[daemon]] id`, and the machine calls the laptop by its host
-  name. A bare name is the one kept on this machine, or else the one elsewhere that goes by it,
+  laptop calls a machine by its `[[daemon]] id`, and the machine calls the laptop by the name the
+  laptop's daemon chose when it first linked and keeps from then on: on a Mac the computer's name
+  from Sharing settings, which a new network does not change. A bare name is the one kept on this machine, or else the one elsewhere that goes by it,
   and `review@devenv` says which when both machines have one. `join` with a bare name asks the
   linked machines first, and makes the group here only if none keeps one. While a machine linked
   to since the daemon started is down, it cannot be asked, so that `join` is refused,
@@ -265,13 +267,20 @@ from the other:
 - **Without the link, nothing crosses.** With no window attached to both, or while the connection
   is down, a post, join or leave for a group kept on the other machine is refused at once, naming
   the machine: exit 1, `unreachable` in `--json`. Nothing is queued, since a queued post would land
-  behind messages its author never saw. Groups kept here work as ever. `read` and `log` answer from
-  this machine's copy and say it may be behind, and what was posted meanwhile arrives when the link
-  returns.
+  behind messages its author never saw. Groups kept here work as ever. `read`, `log` and `wait`
+  answer from this machine's copy, which after its daemon restarts or updates holds nothing until
+  the link returns, and `read` and `log` say it may be behind; `log --follow` waits. What was
+  posted meanwhile arrives when the link returns, and wakes whoever it is for, so a post whose
+  only member is on a machine that cannot be reached exits 0, not 6.
+- **A change with no answer may have happened.** When the other machine takes a post, join or
+  leave and does not answer in time, it is refused as `unanswered`, exit 4: it may have landed
+  there. `muster msg log` says whether, so look before posting again. Until the group is heard
+  from again, `read` and `log` say it may be behind.
 - **A group's policy is its home's.** A post, join or leave from another machine is held to it
   as one made there is, and a refusal names members as you name them. `group set`, `group add`,
   `group remove`, `pause` and `resume` run only on the group's machine; elsewhere they are
-  refused, `kept_elsewhere`, naming it. A pause holds wakes on both machines, and a resume wakes
+  refused, `kept_elsewhere`, naming it. There, `group remove review critic@devenv` removes a
+  member on another machine, which lets it go as a leave would. A pause holds wakes on both machines, and a resume wakes
   each machine's members.
 - **The human is on the laptop.** `@human` in a policy means you wherever the group is kept, and
   a devenv post that wakes you notifies through the laptop's windows. The guard never holds your

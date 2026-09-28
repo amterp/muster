@@ -654,14 +654,21 @@ A group or participant name is unique on its home daemon, and a verb accepts `re
 two attached machines use the same name.
 
 As built, each machine writes its own members bare and another machine's as `name@machine`, in its
-own name for that machine: the app's `[[daemon]] id` for the far one, and the laptop's host name
-from the far side, since the laptop's own id is usually `local`. Whatever crosses the link is
+own name for that machine: the app's `[[daemon]] id` for the far one, and from the far side the
+name the laptop's daemon chose when it first linked and keeps beside its store, since the laptop's
+own id is usually `local` and its host name changes with the network (on a Mac, the Sharing
+name). Whatever crosses the link is
 turned into the receiver's names on arrival, so `who`, `read` and a wake read from where the reader
 stands, and the laptop's human in a devenv group is `@human@laptop` there, woken by the laptop. A
 bare name is the one kept here, or else the one elsewhere that goes by it, and `join` with a bare
 name asks each linked machine before making the group here. Each answer from a home carries the
 entries after the asker's head, so a replica that fell behind catches up in the reply, a refusal
-by the guard included. Two things are not built: a post `--to` someone on another machine needs a
+by the guard included. Whatever a peer names is checked before it is turned: a call's group and
+whoever acts in it are bare, so a peer cannot act as one of this machine's participants or land
+entries on a group kept here, and every other name must be one a participant could have. A change
+sent to the home and never answered is refused as `unanswered` rather than `unreachable`, since it
+may have landed, and the replica says it may be behind until the home is next heard from. Two
+things are not built: a post `--to` someone on another machine needs a
 group both joined, since the pair group would hold a member that never joined it; and a daemon
 reaches only the machines it is linked to directly, so a devenv agent cannot join a group kept on
 a second devenv.
@@ -691,7 +698,10 @@ cursors and policies, written with an atomic rename as MIP-3's persisted state i
 message every few seconds at most, so that is at most one sync every few seconds per group. Logs
 survive a daemon restart, a daemon handoff (MIP-3 section 10) and a reboot. Wake addresses survive
 too and are found dead at first use, which marks their participants gone until they return. Replicas
-are not persisted; a replica refetches when its link returns.
+are not persisted; a replica refetches when its link returns. Until then a daemon that starts holds
+an empty replica for each group a cursor names, with the participants holding those cursors as
+members, so the group answers as there and behind rather than as unknown, and a bare name still
+finds it.
 
 **A log file is named after its group, so group names are unique regardless of case.** On macOS's
 default filesystem `Review.log` and `review.log` are one file, so two groups named that way would
@@ -1013,3 +1023,6 @@ bind.
   for rather than sent, and no pair groups or second hop across machines (sections 7 and 11). A
   group's policy binds at its home, replicas are sent it with every entry, and `@human` in a
   policy is the human on any machine (sections 8 and 11).
+- 2026-09-28 Stage 5 reviewed: a daemon holds an empty replica from its start, names from a peer
+  are checked, a change never answered is `unanswered`, and the near machine's name is kept
+  (sections 11 and 12).
