@@ -63,15 +63,13 @@ pub(crate) struct SelfReport {
 }
 
 /// How far along drift is, for another process to go on from: how long ago each of its spans
-/// began, and the seconds of the last [`DRIFT`] in which the pane produced output. And how long
-/// a prompt has been on screen, which a working report is set aside for.
+/// began, and the seconds of the last [`DRIFT`] in which the pane produced output.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Drift {
     pub rules_idle_ago: Option<Duration>,
     pub unmatched_ago: Option<Duration>,
     pub working_ago: Option<Duration>,
     pub active_ago: Vec<Duration>,
-    pub blocker_ago: Option<Duration>,
 }
 
 #[derive(Debug, Default)]
@@ -269,14 +267,20 @@ impl Reporting {
             unmatched_ago: self.unmatched_since.map(ago),
             working_ago: self.working_since.map(ago),
             active_ago: self.active_seconds.iter().copied().map(ago).collect(),
-            blocker_ago: self.blocker_since.map(ago),
         }
+    }
+
+    /// How long a prompt the rules can see has been on screen, which a working report is set
+    /// aside for.
+    pub(crate) fn blocker_ago(&self, now: Instant) -> Option<Duration> {
+        self.blocker_since.map(|since| now.saturating_duration_since(since))
     }
 
     pub(crate) fn resumed(
         report: Option<CarriedReport>,
         output_ago: Option<Duration>,
         drift: Drift,
+        blocker_ago: Option<Duration>,
         now: Instant,
     ) -> Reporting {
         let at = |ago: Duration| now.checked_sub(ago);
@@ -295,7 +299,7 @@ impl Reporting {
             unmatched_since: drift.unmatched_ago.and_then(at),
             working_since: drift.working_ago.and_then(at),
             active_seconds: drift.active_ago.into_iter().filter_map(at).collect(),
-            blocker_since: drift.blocker_ago.and_then(at),
+            blocker_since: blocker_ago.and_then(at),
             ..Reporting::default()
         }
     }

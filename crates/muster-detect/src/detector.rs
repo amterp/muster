@@ -211,6 +211,7 @@ impl Detector {
             report,
             output_ago,
             drift: self.reporting.drift(now),
+            blocker_ago: self.reporting.blocker_ago(now),
         }
     }
 
@@ -234,8 +235,13 @@ impl Detector {
         detector.foreground_shell_exit_reported = carried.shell_exit_reported;
         detector.title_writes_at_change = carried.title_pending.then_some(title_writes);
         detector.last_concluded = carried.concluded;
-        detector.reporting =
-            Reporting::resumed(carried.report, carried.output_ago, carried.drift, now);
+        detector.reporting = Reporting::resumed(
+            carried.report,
+            carried.output_ago,
+            carried.drift,
+            carried.blocker_ago,
+            now,
+        );
         detector
     }
 
@@ -546,6 +552,9 @@ pub struct Carried {
     pub output_ago: Option<Duration>,
     /// Where telling that the rules cannot read the screen stands.
     pub drift: Drift,
+    /// How long a prompt the rules can see has been on screen, which a working report is set
+    /// aside for.
+    pub blocker_ago: Option<Duration>,
 }
 
 /// An agent's own report, as another process needs it to go on.

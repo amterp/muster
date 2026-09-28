@@ -160,7 +160,7 @@ impl Detection {
             unmatched_ms_ago: carried.drift.unmatched_ago.map(millis),
             working_ms_ago: carried.drift.working_ago.map(millis),
             active_ms_ago: carried.drift.active_ago.iter().copied().map(millis).collect(),
-            blocker_ms_ago: carried.drift.blocker_ago.map(millis),
+            blocker_ms_ago: carried.blocker_ago.map(millis),
         }
     }
 
@@ -214,8 +214,8 @@ impl Detection {
                 unmatched_ago: carried.unmatched_ms_ago.map(millis),
                 working_ago: carried.working_ms_ago.map(millis),
                 active_ago: carried.active_ms_ago.iter().copied().map(millis).collect(),
-                blocker_ago: carried.blocker_ms_ago.map(millis),
             },
+            blocker_ago: carried.blocker_ms_ago.map(millis),
         };
         let mut progress = Progress::default();
         if !carried.progress.is_empty() {
