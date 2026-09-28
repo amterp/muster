@@ -74,3 +74,28 @@ fn a_read_the_store_could_not_keep_moves_no_cursor() {
     let read = service.read(&session("b"), None, &Everyone).unwrap();
     assert_eq!(read.groups[0].1.len(), 1, "{read:?}");
 }
+
+/// What a damaged log leaves behind: a reader whose cursor points past the last entry the log
+/// still holds. The next post must reach it rather than fail, and it must read that post.
+#[test]
+fn a_cursor_past_the_head_of_its_log_is_brought_back_to_it() {
+    let mut first = Messaging::new(Memory::default());
+    first.join(&session("a"), Some("a"), Some("g"), &Everyone, 1).unwrap();
+    first.join(&session("b"), Some("b"), Some("g"), &Everyone, 2).unwrap();
+    let mut logs: BTreeMap<String, Vec<_>> = BTreeMap::new();
+    for (group, entry) in &first.store().appended {
+        logs.entry(group.clone()).or_default().push(entry.clone());
+    }
+    let mut saved = first.store().saved.clone().expect("the service saved its state");
+    for participant in &mut saved.participants {
+        if participant.name == "b" {
+            participant.cursors.insert("g".to_string(), 9);
+        }
+    }
+
+    let mut second = Messaging::restore(Memory::default(), saved, logs);
+    let posted = second.post(&session("a"), None, &[], "after the damage", &Everyone, 4).unwrap();
+    assert_eq!(posted.wakes.iter().map(|wake| wake.name.as_str()).collect::<Vec<_>>(), ["b"]);
+    let read = second.read(&session("b"), None, &Everyone).unwrap();
+    assert_eq!(read.groups[0].1.len(), 1, "{read:?}");
+}

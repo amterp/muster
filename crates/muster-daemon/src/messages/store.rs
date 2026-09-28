@@ -227,6 +227,25 @@ mod tests {
         assert_eq!(Files::beside(&socket).load().logs["g"], vec![message(1, "kept")]);
     }
 
+    /// The next post after a crash starts on a line of its own, so the entry the daemon answered
+    /// as kept is still there after the restart after that.
+    #[test]
+    fn an_entry_appended_after_a_torn_line_is_kept() {
+        let socket = scratch("torn-then-appended");
+        let mut files = Files::beside(&socket);
+        files.append("g", &message(1, "kept")).unwrap();
+        let mut file = OpenOptions::new().append(true).open(files.log_of("g")).unwrap();
+        file.write_all(b"{\"seq\":2,\"at_ms\":2,\"kind\":\"mess").unwrap();
+
+        let mut files = Files::beside(&socket);
+        assert_eq!(files.load().logs["g"], vec![message(1, "kept")]);
+        files.append("g", &message(2, "answered as kept")).unwrap();
+        assert_eq!(
+            Files::beside(&socket).load().logs["g"],
+            vec![message(1, "kept"), message(2, "answered as kept")]
+        );
+    }
+
     #[test]
     fn a_state_file_from_a_newer_daemon_is_not_read() {
         let socket = scratch("newer");
