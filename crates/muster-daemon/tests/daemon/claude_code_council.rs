@@ -37,23 +37,29 @@ const WRAP_UP_AT: usize = 45;
 
 const MEMBERS: [&str; 2] = ["builder", "critic"];
 
-const TOPIC: &str = "the on-disk format and the command line of a small to-do list tool for one \
-    person: how items are stored, the commands, due dates, what happens when two terminals edit \
-    the list at once, and how it is tested";
+const TOPIC: &str = "the design of a small to-do list tool for one person";
+
+/// One aspect per round, more than the rounds [`WRAP_UP_AT`] messages take, since a director
+/// that ran out of aspects declared the design complete at 27 messages.
+const AGENDA: &str = "1. how items are stored on disk; 2. the commands; 3. due dates and \
+    recurring items; 4. two terminals editing the list at once; 5. errors and their messages; \
+    6. searching and filtering; 7. undo; 8. importing and exporting; 9. configuration; \
+    10. output for scripts; 11. performance with ten thousand items; 12. how it is tested";
 
 fn brief() -> String {
     format!(
         "You are the director of the council `council`. First run `muster msg join --name \
          director --group council`. Its members are builder, who proposes, and critic, who finds \
-         what is wrong with a proposal. The question is {TOPIC}.\n\n\
-         Settle one aspect per round. In each round, address builder with \
+         what is wrong with a proposal. The question is {TOPIC}, and its agenda is: {AGENDA}.\n\n\
+         Settle one aspect of the agenda per round, in order. In each round, address builder with \
          `muster msg post --group council --to builder` and ask for a proposal; when it answers, \
          address critic with the number of builder's message to review; when critic answers, \
          decide the aspect in a post to the group with no `--to`, and start the next round. \
          After each post end your turn: you are woken when the member you addressed answers, \
-         and a member hears another's post only when you address it. Keep going, taking the \
-         aspects again in more detail as you run out, until @human tells you to finish; do not \
-         address @human before then. Then post the design in one paragraph to @human in the \
+         and a member hears another's post only when you address it. Finishing is @human's \
+         call, not yours: keep going round after round, starting the agenda again in more \
+         detail if you reach its end, until @human tells you to finish, and do not address \
+         @human before then. Then post the design in one paragraph to @human in the \
          group, starting with DONE:, and end your turn."
     )
 }
