@@ -22,7 +22,7 @@ use muster_core::input::{
 use muster_core::intent::Refusal;
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
-use muster_core::pane_text::{arrived_in, rows_of};
+use muster_core::pane_text::{self, rows_of};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 use muster_core::{AgentState, PaneKey};
@@ -1657,45 +1657,14 @@ fn send_to_pane(send: &proto::SendToPane) -> Response {
     confirm_it_arrived(send)
 }
 
-/// How long a pane is given to draw what it was handed before `--confirm` calls it missing.
-///
-/// A send is accepted once the window has queued the bytes for the daemon, which is before the
-/// program has read them, echoed them, and had that land in the daemon's copy of the screen.
-/// Reading once at that moment refuses whatever has not finished the trip - the delivered
-/// message reported as refused, which is the one answer this flag exists to make impossible.
-///
-/// The floor is the slowest an honest pane was measured taking: 54ms, against a median of 0,
-/// with sixteen spinning cores on a ten-core machine. The ceiling is what a caller driving
-/// several agents will pay on a send that genuinely did not land, because only a miss waits out
-/// the whole budget - a pane that has already drawn the text answers on the first read, before
-/// any sleep. A second buys about eighteen times the worst honest case for a price a caller
-/// pays only when the news is bad.
-const CONFIRM_WITHIN: std::time::Duration = std::time::Duration::from_secs(1);
-
-/// How often the pane is re-read while waiting, matching the seam's other bounded waits.
-const CONFIRM_POLL: std::time::Duration = std::time::Duration::from_millis(25);
-
-/// How far up the pane a confirmation reads while it waits. A sent message ends at the bottom of
-/// the screen, and a screen is shorter than this at any size somebody works at; the history above
-/// is what every re-read would otherwise move, forty times a second. A miss reads the whole pane
-/// once before refusing, for a message its own output has already scrolled away.
-const CONFIRM_ROWS: u32 = 300;
-
 /// Reads the pane back and refuses if the message that was just sent does not appear on it.
 ///
-/// Here rather than in the CLI, for the reason the CLI holds no logic at all: a second caller
-/// asking for the same certainty - a chord, an API client - would otherwise get a different
-/// answer, or none.
-///
-/// Reading until [`CONFIRM_WITHIN`] runs out rather than once, because a send is accepted before
-/// the pane can have drawn it. A pane that has drawn it answers on the first read, so the cost
-/// falls on the miss.
+/// How long to read and what to say is `pane_text::confirm`'s, which the CLI also uses when it
+/// sends straight to a daemon, so a caller asking for the same certainty gets the same answer.
 ///
 /// **Refusal rather than a field on the answer**, because an exit code is the only part of this
 /// a script branches on without reading English, and a send that cannot be seen is exactly the
-/// case `--confirm` was asked for. The message says what it looked for, since the commonest
-/// cause is a pane whose harness draws the text somewhere this cannot read - which is a fact
-/// about that harness rather than about the send.
+/// case `--confirm` was asked for.
 fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
     let pane = if send.pane_id.is_empty() {
         match session::focused_pane() {
@@ -1712,42 +1681,12 @@ fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
              going missing, not the send."
         ));
     };
-    let deadline = std::time::Instant::now() + CONFIRM_WITHIN;
-    // Whatever the last read said, so a pane that could not be read at all is reported as that
-    // rather than as one that drew nothing - two different things to be told.
-    let unreadable = loop {
-        let outcome = match session::read_pane(&daemon, &pane, CONFIRM_ROWS) {
-            Ok(read) if arrived_in(&read.text, &send.text) => return Response::ok(),
-            Ok(_) => None,
-            Err(refusal) => Some(refusal),
-        };
-        if std::time::Instant::now() >= deadline {
-            break outcome;
-        }
-        std::thread::sleep(CONFIRM_POLL);
-    };
-    // A command whose output scrolled the message past the last rows ran, and refusing it
-    // invites running it twice. So the whole pane is read once before saying so, which costs
-    // the history only on the path that has already waited out the second.
-    if unreadable.is_none()
-        && session::read_pane(&daemon, &pane, 0)
-            .is_ok_and(|read| arrived_in(&read.text, &send.text))
-    {
-        return Response::ok();
-    }
-    match unreadable {
-        None => Response::failure(format!(
-            "the text was sent to pane {pane} and is not on it, so whatever is running there \
-             did not receive it. Two things do this. A terminal in canonical mode - anything \
-             reading stdin without a line editor - discards a line over 1024 bytes whole rather \
-             than cutting it, and says nothing (`muster docs limits`). And a harness that folds \
-             a long paste into a placeholder draws neither the text nor an error, which reads \
-             here the same way. `muster pane read --pane {pane}` shows what it does draw."
-        )),
-        Some(refusal) => Response::failure(format!(
-            "the text was sent to pane {pane} and reading it back to confirm failed: {refusal}. \
-             Whatever was sent may well have arrived."
-        )),
+    let confirmed = pane_text::confirm(pane.as_str(), &send.text, |rows| {
+        session::read_pane(&daemon, &pane, rows).map(|read| read.text)
+    });
+    match confirmed {
+        Ok(()) => Response::ok(),
+        Err(refusal) => Response::failure(refusal),
     }
 }
 

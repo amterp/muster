@@ -176,23 +176,6 @@ impl DaemonBackend {
     }
 }
 
-/// Whether a read that asked for the last `rows` rows got them.
-///
-/// A daemon that predates reading from the end reads from the first row instead. It gives that
-/// away by sending more rows than were asked for, or, when its 4 MiB cut the page short of that,
-/// by starting at row 0 and ending far from the last row. A tail ends at the last row with
-/// anything on it, so at most a screen of blank rows short of the end.
-fn answers_the_tail(page: &proto::PaneText, rows: u32) -> bool {
-    /// Taller than any screen, and far shorter than the rows a 4 MiB cut leaves out.
-    const A_SCREEN: u64 = 1000;
-    let ends = page.first_row + u64::from(page.rows);
-    rows > 0 && page.rows <= rows && (page.first_row > 0 || ends + A_SCREEN >= page.total_rows)
-}
-
-fn reaches_the_end(page: &proto::PaneText) -> bool {
-    page.first_row + u64::from(page.rows) >= page.total_rows
-}
-
 fn beside(pane: &PaneId, side: Side) -> placement::Where {
     placement::Where::Beside(placement::Beside {
         pane: pane.to_string(),
@@ -293,31 +276,10 @@ impl BackendChannel for DaemonBackend {
     }
 
     fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal> {
-        // Only the rows wanted, when some are: a pane's whole history is what a starved reader
-        // would otherwise have to drain before it could answer, and twenty rows fit a socket's
-        // buffer where 12000 do not.
-        let first = self.read_page(pane, 0, rows)?;
-        if answers_the_tail(&first, rows) {
-            return Ok(PaneText { truncated: first.first_row > 0, text: first.text });
-        }
-        let whole = first;
-        if reaches_the_end(&whole) {
-            return Ok(PaneText { text: whole.text, truncated: false });
-        }
-        // A page stops at the daemon's 4 MiB, and what a read is for is the newest rows, so the
-        // page wanted is the one ending at the last row. Rows differ in length, so start as far
-        // from the end as the first page reached from the start, and move on by however far a
-        // page still falls short. A few tries settle it; the cap only bounds a pane printing
-        // faster than it can be read.
-        let mut newest = whole;
-        for _ in 0..8 {
-            let first_row = newest.total_rows.saturating_sub(u64::from(newest.rows));
-            newest = self.read_page(pane, first_row, 0)?;
-            if reaches_the_end(&newest) || newest.rows == 0 {
-                break;
-            }
-        }
-        Ok(PaneText { text: newest.text, truncated: true })
+        let newest = muster_daemon_proto::pane_text::newest(rows, |first_row, last| {
+            self.read_page(pane, first_row, last)
+        })?;
+        Ok(PaneText { text: newest.text, truncated: newest.truncated })
     }
 
     fn description(&self) -> &str {
@@ -351,27 +313,5 @@ impl InputSink for DaemonInput {
 
     fn description(&self) -> &str {
         &self.description
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn page(first_row: u64, rows: u32, total_rows: u64) -> proto::PaneText {
-        proto::PaneText { first_row, rows, total_rows, ..proto::PaneText::default() }
-    }
-
-    #[test]
-    fn a_tail_is_told_from_an_older_daemons_first_page() {
-        // A daemon that reads from the end: the last rows with text, a screen of blank rows
-        // below them left out, or everything when the pane holds fewer.
-        assert!(answers_the_tail(&page(9_980, 20, 10_024), 20));
-        assert!(answers_the_tail(&page(0, 12, 40), 20));
-        // An older daemon answers from row 0, cut at its 4 MiB, which can still be fewer rows
-        // than a large count asked for. Those are the oldest rows, not the newest.
-        assert!(!answers_the_tail(&page(0, 42_000, 100_000), 100_000));
-        // And more rows than were asked for is an older daemon's whole answer.
-        assert!(!answers_the_tail(&page(0, 300, 300), 20));
     }
 }

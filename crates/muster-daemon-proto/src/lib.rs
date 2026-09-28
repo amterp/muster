@@ -5,12 +5,13 @@
 //! two must agree on and nothing else: the generated messages (`proto/muster_daemon.proto`,
 //! whose header is the protocol's documentation), the version rule, where an install's daemon
 //! listens, how long a daemon just started is given, the handshake that opens every connection,
-//! and how the messaging commands are spelled.
+//! how the messaging commands are spelled, and how a pane's newest rows are read through pages.
 
 pub mod connection;
 pub mod install;
 pub mod launch;
 pub mod messaging;
+pub mod pane_text;
 pub mod version;
 
 include!(concat!(env!("OUT_DIR"), "/muster.daemon.rs"));
