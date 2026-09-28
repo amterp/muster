@@ -21,9 +21,21 @@ use crate::{ConnectionKind, Hello, HelloRefused, Welcome, hello_answer};
 /// allocated for it.
 pub const LARGEST_MESSAGE: u32 = 16 << 20;
 
-/// Writes one message as a frame.
+/// Writes one message as a frame. One past [`LARGEST_MESSAGE`] is refused here rather than
+/// written, since the reader would refuse it and end the connection, taking with it everything
+/// else that was using it.
 pub fn send(stream: &mut impl Write, message: &impl Message) -> std::io::Result<()> {
-    muster_frame::write_frame(stream, &message.encode_to_vec())
+    let bytes = message.encode_to_vec();
+    if bytes.len() > LARGEST_MESSAGE as usize {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "a message of {} bytes is past the {LARGEST_MESSAGE}-byte ceiling",
+                bytes.len()
+            ),
+        ));
+    }
+    muster_frame::write_frame(stream, &bytes)
 }
 
 /// Reads one message, or `None` when the other end hung up between messages.
@@ -112,5 +124,18 @@ pub fn open(
         Some(hello_answer::Answer::Welcome(welcome)) => Ok(welcome),
         Some(hello_answer::Answer::Refused(refused)) => Err(HandshakeError::Refused(refused)),
         None => Err(HandshakeError::Garbled("the handshake's answer was empty".to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_message_past_the_ceiling_is_refused_and_nothing_is_written() {
+        let hello = Hello { client: "x".repeat(LARGEST_MESSAGE as usize + 1), ..Hello::default() };
+        let mut written = Vec::new();
+        assert!(send(&mut written, &hello).is_err());
+        assert!(written.is_empty(), "{} bytes written", written.len());
     }
 }

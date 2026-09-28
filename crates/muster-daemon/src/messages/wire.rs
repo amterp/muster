@@ -50,6 +50,7 @@ pub(super) fn caught_to(caught: &Caught) -> proto::Caught {
         group: caught.group.clone(),
         entries: caught.entries.iter().map(entry_of).collect(),
         policy: Some(policy_of(&caught.policy)),
+        more: caught.more,
     }
 }
 
@@ -58,6 +59,7 @@ pub(super) fn caught_from(caught: proto::Caught) -> Caught {
         group: caught.group,
         entries: caught.entries.into_iter().filter_map(entry_from).collect(),
         policy: caught.policy.map(policy_from).unwrap_or_default(),
+        more: caught.more,
     }
 }
 
@@ -374,6 +376,7 @@ mod tests {
         let caught = Caught {
             group: "review".into(),
             policy: muster_msg::Policy::default(),
+            more: true,
             entries: vec![
                 Entry {
                     seq: 4,

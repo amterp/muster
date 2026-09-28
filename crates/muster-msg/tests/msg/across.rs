@@ -770,4 +770,21 @@ fn a_log_bigger_than_a_frame_is_fetched_in_pages() {
         })
         .sum();
     assert!(bytes < FRAME, "one answer holds {bytes} bytes of bodies");
+
+    // Asked again from each page's last entry, the pages together are the whole log, and the
+    // replica they are applied to holds every message.
+    let (mut after, mut pages, mut more) = (0, 0, true);
+    while more {
+        let page = wire.laptop.since("review", after).unwrap();
+        let (devenv, sessions) = wire.split(Side::Devenv);
+        let applied = devenv.apply(&Side::Devenv.peer(), page.clone(), sessions, 99).unwrap();
+        after = page.entries.last().unwrap().seq;
+        assert_eq!(applied.more, page.more.then_some(after));
+        more = page.more;
+        pages += 1;
+    }
+    assert!(pages > 1, "one page for the whole log");
+    let replica = wire.devenv.log("review@lap", 0).unwrap();
+    let messages = replica.iter().filter(|entry| matches!(entry.what, What::Message { .. }));
+    assert_eq!(messages.count(), 18);
 }

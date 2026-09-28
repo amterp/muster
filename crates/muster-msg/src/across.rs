@@ -194,7 +194,15 @@ pub struct Caught {
     pub group: String,
     pub policy: Policy,
     pub entries: Vec<Entry>,
+    /// The home holds entries after these, left for the next page: see [`CAUGHT_BYTES`].
+    #[serde(default)]
+    pub more: bool,
 }
+
+/// How many bytes of message bodies one [`Caught`] carries before it leaves the rest for the
+/// next page. Half of what a link carries in a frame, since a body may be a megabyte and the
+/// entries around the bodies take room too; one entry always goes, whatever its size.
+pub const CAUGHT_BYTES: usize = 8 << 20;
 
 /// The answer to a [`Call`]. Each that changed a group carries the entries after the asker's
 /// head, so a replica that fell behind catches up in the same reply, a refusal included.
@@ -227,6 +235,8 @@ pub struct Applied {
     pub wakes: Vec<Wake>,
     pub answered: Vec<AnsweredWait>,
     pub unsaved: Option<String>,
+    /// The replica's head, when its home said it holds more: where to fetch the next page from.
+    pub more: Option<u64>,
 }
 
 /// A request answered by another machine, as it ends on this one.
@@ -560,6 +570,7 @@ impl<S: Store> Messaging<S> {
         applied.wakes.extend(done.wakes);
         applied.answered.extend(done.answered);
         applied.unsaved = applied.unsaved.take().or(done.unsaved);
+        applied.more = applied.more.or(done.more);
         Ok(done.reached)
     }
 
@@ -577,6 +588,7 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Applied, u64> {
         let key = peer.inward(&caught.group);
+        let more = caught.more;
         let group = self.groups.entry(key.clone()).or_insert_with(|| Group {
             policy: Policy::default(),
             members: BTreeSet::new(),
@@ -675,6 +687,7 @@ impl<S: Store> Messaging<S> {
             wakes: posted.wakes,
             answered: posted.answered,
             unsaved,
+            more: more.then(|| self.groups[&key].head()),
         })
     }
 
@@ -723,11 +736,22 @@ impl<S: Store> Messaging<S> {
             return Err(Refusal::NoSuchGroup { group: group.to_string() });
         }
         let kept = &self.groups[group];
-        Ok(Caught {
-            group: group.to_string(),
-            policy: kept.policy.clone(),
-            entries: kept.log.iter().filter(|entry| entry.seq > after).cloned().collect(),
-        })
+        let mut entries = Vec::new();
+        let mut bytes = 0;
+        let mut more = false;
+        for entry in kept.log.iter().filter(|entry| entry.seq > after) {
+            let size = match &entry.what {
+                What::Message { body, .. } => body.len(),
+                _ => 0,
+            };
+            if !entries.is_empty() && bytes + size > CAUGHT_BYTES {
+                more = true;
+                break;
+            }
+            bytes += size;
+            entries.push(entry.clone());
+        }
+        Ok(Caught { group: group.to_string(), policy: kept.policy.clone(), entries, more })
     }
 
     fn join_from(

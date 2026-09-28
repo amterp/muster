@@ -1667,4 +1667,7 @@ message Caught {
   string group = 1;
   repeated MsgAnswer.Entry entries = 2;
   MsgRequest.Policy policy = 3;
+  // The home holds entries after these, sent a page at a time so that a frame stays under the
+  // ceiling: ask `Since` again from the new head.
+  bool more = 4;
 }

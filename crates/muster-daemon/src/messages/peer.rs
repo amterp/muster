@@ -389,14 +389,19 @@ fn refetch(shared: &Shared, link: &Link) {
 /// saying whom it reached.
 fn fetch(shared: &Shared, link: &Link, group: &str, mut head: u64) -> Vec<(String, Reach)> {
     let mut reached = Vec::new();
-    for _ in 0..3 {
+    let mut gaps = 0;
+    loop {
         let call = Call::Since { group: group.to_string(), after: head };
         let away = Away { machine: link.peer.name.clone(), call };
         let (settle, holding) = settle_with(shared, link, &away);
         super::ring(shared, holding);
         reached.extend(settle.applied.reached);
-        match settle.result {
-            Ok(Settled::Gap(from)) => head = from,
+        match (settle.result, settle.applied.more) {
+            (Ok(Settled::Gap(from)), _) if gaps < 3 => {
+                gaps += 1;
+                head = from;
+            }
+            (Ok(Settled::Caught), Some(next)) if next > head => head = next,
             _ => break,
         }
     }
@@ -437,9 +442,19 @@ fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
     };
     let Some(reply) = replied else { return (unreachable(away), Holding::default()) };
     let panes = Panes::of(shared);
-    let mut messages = shared.messages();
-    let settle = messages.service.settle(&link.peer, &away.call, reply, &panes, now_ms());
-    let holding = messages.hold(&settle.applied.wakes, &settle.applied.answered, &panes);
+    let (settle, holding) = {
+        let mut messages = shared.messages();
+        let settle = messages.service.settle(&link.peer, &away.call, reply, &panes, now_ms());
+        let holding = messages.hold(&settle.applied.wakes, &settle.applied.answered, &panes);
+        (settle, holding)
+    };
+    // A reply catches the replica up a page at most; the rest is fetched as a refetch is.
+    // `fetch` asks `Since` itself and pages on, so only other calls start it here.
+    if let Some(next) = settle.applied.more
+        && !matches!(away.call, Call::Since { .. })
+    {
+        let _ = fetch(shared, link, away.call.group(), next);
+    }
     (settle, holding)
 }
 
