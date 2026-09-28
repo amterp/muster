@@ -409,3 +409,63 @@ fn a_paused_group_rings_nobody_and_resuming_it_rings_once() {
     std::thread::sleep(QUIET + Duration::from_secs(1));
     assert_eq!(agent.rung().len(), 2, "rung more than once on resuming: {:?}", agent.rung());
 }
+
+/// The agent in `p1`, as its own hooks ask: a `join` or `wait` sent from inside its pane.
+fn from_the_pane(asked: Asked) -> Service {
+    let caller = msg_request::Caller { pane: Some("p1".to_string()), ..Default::default() };
+    Service::Msg(proto::MsgRequest { caller: Some(caller), request: Some(asked) })
+}
+
+/// An agent whose hooks fetch its messages, at work, sent a message its hooks were counted on to
+/// fetch: nothing is typed into its pane while it works.
+fn at_work_with_a_message_its_hooks_took() -> Agent {
+    let mut agent = Agent::in_a_pane();
+    let join = Asked::Join(msg_request::Join {
+        name: Some("worker".to_string()),
+        group: Some("integrator+worker".to_string()),
+        pull: true,
+    });
+    expect(&mut agent.control, from_the_pane(join), proto::Outcome::Done);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    let posted = agent.post("worker", "a brief");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Woken);
+    agent
+}
+
+/// A turn that ends in an API error, or that a person stops with Esc, runs no `Stop` hook, so
+/// nothing fetches what the hooks were counted on to fetch. Its agent is rung for it once idle.
+#[test]
+fn an_agent_whose_turn_ended_without_its_stop_hook_is_rung_for_what_its_hooks_took() {
+    let agent = at_work_with_a_message_its_hooks_took();
+    std::thread::sleep(QUIET);
+    assert!(agent.rung().is_empty(), "rung at work: {:?}", agent.rung());
+
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    let rung = agent.until_rung(1);
+    assert!(rung[0].contains("still unread"), "{rung:?}");
+}
+
+/// A turn that ends as usual starts its `Stop` hook, whose wait is told what the hooks took,
+/// whether it connects before the doorbell sees the agent idle or just after: nothing is typed.
+#[test]
+fn an_agent_whose_stop_hook_waits_is_told_there_and_not_rung() {
+    let agent = at_work_with_a_message_its_hooks_took();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    std::thread::sleep(Duration::from_millis(500));
+    let mut waiting = agent.daemon.connect();
+    let wait = Asked::Wait(msg_request::Wait { due: true, ..Default::default() });
+    waiting.send(from_the_pane(wait));
+    match waiting.next_message(Duration::from_secs(20)) {
+        Some(proto::control_message::Message::Answer(proto::Answer {
+            detail:
+                Some(proto::answer::Detail::Msg(proto::MsgAnswer {
+                    answer: Some(Answer::Notices(notices)),
+                    ..
+                })),
+            ..
+        })) => assert_eq!(notices.notices[0].group, "integrator+worker"),
+        other => panic!("the Stop hook's wait was not told: {other:?}"),
+    }
+    std::thread::sleep(QUIET + Duration::from_secs(2));
+    assert!(agent.rung().is_empty(), "rung as well: {:?}", agent.rung());
+}

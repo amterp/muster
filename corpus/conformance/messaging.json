@@ -1079,6 +1079,44 @@
       ] }
     },
     {
+      "name": "an agent whose hooks took a wake is rung once its turn ends with no Stop hook waiting",
+      "why": "A turn that ends in an API error, or that a person stops with Esc, runs no Stop hook, so nothing fetches what the agent's hooks were counted on to fetch mid-turn. Going idle with no wait connected, it is rung for it, once, as an agent without hooks is (MIP-4, sections 5 and 6).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1", "pull": true},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"do": "idle", "name": "b"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "b joined g (created)",
+        "a joined g",
+        "a posted #4 to g; woke b",
+        "p1 idle",
+        "rewoke b [g #4-4 x1 to-you:0 from a again] rung p1"
+      ] }
+    },
+    {
+      "name": "an idle agent whose hooks ran lately is rung for a post when no Stop hook is waiting",
+      "why": "Between turns only a Stop hook's wait fetches for an agent, and one whose last turn ended without running it has none; its hooks having run a minute ago says nothing about now (MIP-4, sections 6 and 7).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1", "pull": true},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "a", "do": "post", "body": "one"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "b joined g (created)",
+        "a joined g",
+        "p1 idle",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a] rung p1"
+      ] }
+    },
+    {
       "name": "an agent at work is reached: its inbox is woken at once, and its hooks read at its next tool call",
       "why": "Council v1 delivered only to an agent blocked in `await`, so one that had started working was unreachable until it looped back. A wake goes to a session's inbox whatever it is doing, and an agent whose hooks fetch its messages reads them at its next tool call, without its pane being rung over its work (MIP-4, sections 5 and 6).",
       "given": { "steps": [
