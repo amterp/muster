@@ -96,6 +96,9 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
     until_text(&mut control, "p1", "over-there");
     muster_is_on_the_path_over_there(&mut control, local);
     agents_message_each_other_over_there(&tunnel, &installed);
+    make(&mut control, create("p4", in_new_tab("t4")));
+    until_text(&mut control, "p4", "$");
+    its_panes_are_driven_over_there_with_no_window(&tunnel, &installed);
 
     let (reached, adopted) =
         ensure_running(&tunnel.remote(), &installed, &carried, local, &environment).unwrap();
@@ -130,6 +133,30 @@ fn muster_is_on_the_path_over_there(control: &mut Control, local: &Path) {
         let text = read_text(control, "p3", 0, 0).text;
         text.contains(&version).then_some(())
     });
+}
+
+/// The CLI the install linked into `~/.muster/bin` lists, types into and reads the panes of the
+/// daemon over there, where no window is: its daemon answers in the window's place.
+fn its_panes_are_driven_over_there_with_no_window(tunnel: &Tunnel, installed: &Installed) {
+    let muster = muster_ssh::quoted(&installed.commands.join("muster").to_string_lossy());
+    let said = tunnel
+        .remote()
+        .shell(&format!(
+            "M={muster}; $M window; \
+             $M pane send --pane p4 --enter --confirm 'echo typed-over-there'; echo \"sent=$?\"; \
+             i=0; until $M pane read --pane p4 | grep -q '^typed-over-there' || [ $i -ge 100 ]; \
+             do sleep 0.1; i=$((i+1)); done; $M pane read --pane p4 --rows 5"
+        ))
+        .unwrap();
+    assert!(
+        said.contains("no window answered; the muster-daemon at") && said.contains("p4"),
+        "`muster window` over there lists the daemon's panes, saying the daemon answered: {said}"
+    );
+    assert!(said.contains("sent=0"), "a confirmed send over there reached its pane: {said}");
+    assert!(
+        said.lines().any(|line| line.trim() == "typed-over-there"),
+        "the pane read over there shows what the send ran: {said}"
+    );
 }
 
 /// The CLI the install linked into `~/.muster/bin` messages through the daemon over there: a
