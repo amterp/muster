@@ -185,6 +185,10 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     interpretingKeyEvent = true
     interpretKeyEvents([event])
     interpretingKeyEvent = false
+    // Once for the whole keystroke rather than on every callback inside it, and only while a
+    // composition is or was showing: clearing one that never was would redraw the pane on
+    // every key.
+    if wasComposing || hasMarkedText() { showComposition() }
 
     guard isTypeable else { return }
     // All three signals travel together and the core picks between them. Choosing here
@@ -454,11 +458,14 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 ///
 /// Without this, composing scripts are unusable: dead keys, pinyin, kana and every
 /// candidate window need somewhere to put text that is not finished yet. AppKit routes all
-/// of it through this protocol, and the only thing Muster does with it is refuse to send
-/// anything until the method says it is done.
+/// of it through this protocol. Muster sends nothing until the method says it is done, and
+/// meanwhile the surface draws the composition at the pane's cursor, where the candidate
+/// window opens beside it, as in Ghostty.
 extension SurfaceView: @preconcurrency NSTextInputClient {
   public func insertText(_ string: Any, replacementRange: NSRange) {
+    let wasComposing = hasMarkedText()
     markedText = NSMutableAttributedString()
+    if wasComposing, !interpretingKeyEvent { showComposition() }
     let text =
       switch string {
       case let attributed as NSAttributedString: attributed.string
@@ -482,10 +489,15 @@ extension SurfaceView: @preconcurrency NSTextInputClient {
     case let plain as String: markedText = NSMutableAttributedString(string: plain)
     default: break
     }
+    // Inside a keystroke `keyDown` shows it once the keystroke is done. Outside one - a layout
+    // switched mid-composition - nothing else will.
+    if !interpretingKeyEvent { showComposition() }
   }
 
   public func unmarkText() {
+    guard hasMarkedText() else { return }
     markedText = NSMutableAttributedString()
+    if !interpretingKeyEvent { showComposition() }
   }
 
   public func hasMarkedText() -> Bool {
@@ -507,14 +519,40 @@ extension SurfaceView: @preconcurrency NSTextInputClient {
 
   public func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
 
-  /// Where the input method should put its candidate window.
-  ///
-  /// The view's own origin for now. The surface knows where the pane's cursor is and could
-  /// say; a candidate window in the wrong corner is a papercut until it is asked.
+  /// Where the input method should put its candidate window: on the pane's cursor, so it
+  /// opens beside the text being composed. The view itself before there is a surface to ask.
   public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
     guard let window else { return .zero }
-    return window.convertToScreen(convert(bounds, to: nil))
+    guard let surface else { return window.convertToScreen(convert(bounds, to: nil)) }
+    let scale = window.backingScaleFactor
+    let cellWidth = Double(surface.cellPixelSize?.width ?? 0) / scale
+    let rect = Self.candidateRect(
+      cursor: surface.cursorCell, range: range, cellWidth: cellWidth, height: bounds.height)
+    return window.convertToScreen(convert(rect, to: nil))
   }
 
   public func characterIndex(for point: NSPoint) -> Int { 0 }
+
+  /// The cursor's cell, as the surface measures it from its top left, in this view's own
+  /// coordinates from the bottom left.
+  ///
+  /// An empty range is an insertion point rather than text - dictation asks with one to place
+  /// its microphone - so it is a line at the range's position rather than a cell, as Ghostty
+  /// answers it.
+  static func candidateRect(cursor: NSRect, range: NSRange, cellWidth: Double, height: Double)
+    -> NSRect
+  {
+    var x = cursor.minX
+    var width = cursor.width
+    if range.length == 0, width > 0 {
+      width = 0
+      x += cellWidth * Double(range.location)
+    }
+    return NSRect(x: x, y: height - cursor.minY, width: width, height: cursor.height)
+  }
+
+  /// Hands the composition to the surface to draw, or clears it when there is none.
+  private func showComposition() {
+    surface?.setPreedit(hasMarkedText() ? markedText.string : nil)
+  }
 }

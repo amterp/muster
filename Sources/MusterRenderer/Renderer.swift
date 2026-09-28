@@ -405,6 +405,31 @@ public final class Surface {
     text.withCString { ghostty_surface_text(surface, $0, UInt(strlen($0))) }
   }
 
+  /// Draws what an input method is composing at the pane's cursor, or clears it with nil.
+  ///
+  /// Drawn only: libghostty never writes a preedit to its terminal, so a composition that is
+  /// abandoned reaches nobody, and what the method commits goes to the pane the way any typed
+  /// text does.
+  public func setPreedit(_ text: String?) {
+    guard let text, !text.isEmpty else {
+      ghostty_surface_preedit(surface, nil, 0)
+      return
+    }
+    text.withCString { ghostty_surface_preedit(surface, $0, UInt(strlen($0))) }
+  }
+
+  /// The cell under the pane's cursor, where an input method puts its candidate window: in
+  /// points from the surface's top left, with `y` at the cell's bottom edge, as libghostty
+  /// answers.
+  public var cursorCell: NSRect {
+    var x = 0.0
+    var y = 0.0
+    var width = 0.0
+    var height = 0.0
+    ghostty_surface_ime_point(surface, &x, &y, &width, &height)
+    return NSRect(x: x, y: y, width: width, height: height)
+  }
+
   /// The pane's grid dimensions, which the daemon needs in cells rather than pixels.
   public var cellSize: (columns: UInt16, rows: UInt16) {
     let size = ghostty_surface_size(surface)

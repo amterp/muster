@@ -71,6 +71,14 @@ public protocol PaneSurface: AnyObject {
   /// positive right and up, and `momentum` is in libghostty's numbering.
   func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32)
 
+  /// Draws what an input method is composing at the pane's cursor, or clears it with nil. Never
+  /// sent to the pane: only what the method commits is.
+  func setPreedit(_ text: String?)
+
+  /// The cell under the pane's cursor, in points from the surface's top left, with `y` at the
+  /// cell's bottom edge. Where an input method's candidate window goes.
+  var cursorCell: NSRect { get }
+
   /// What is selected in this pane, or nil when nothing is.
   var selectedText: String? { get }
 

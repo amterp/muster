@@ -62,6 +62,56 @@ private func view(_ recorder: RecordingDispatcher) -> SurfaceView {
   #expect(!surface.hasMarkedText())
 }
 
+@Test(.ownsTheSeam) @MainActor func aCompositionIsDrawnButNeverSent() {
+  // Kana mid-composition: the person has to see what they are building, and the pane must see
+  // none of it until the method commits. Abandoned, it leaves nothing behind.
+  let recorder = RecordingDispatcher()
+  let recording = RecordingSurface()
+  let surface = view(surface: recording, clipboard: NSPasteboard.general, recorder: recorder)
+
+  surface.setMarkedText(
+    "に", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange())
+  surface.unmarkText()
+
+  #expect(recording.preedits == ["に", nil])
+  #expect(recorder.requests.isEmpty)
+}
+
+@Test(.ownsTheSeam) @MainActor func aKeystrokeThatFinishesACompositionTakesItOffTheScreen() {
+  let recording = RecordingSurface()
+  let surface = view(surface: recording, clipboard: NSPasteboard.general)
+  surface.setMarkedText(
+    "´", selectedRange: NSRange(location: 0, length: 1), replacementRange: NSRange())
+
+  surface.keyDown(with: key("e", keyCode: 0x0e))
+
+  #expect(recording.preedits == ["´", nil])
+}
+
+@Test(.ownsTheSeam) @MainActor func typingWithNoCompositionDrawsNone() {
+  // Clearing a composition that was never there redraws the pane, and this runs on every key.
+  let recording = RecordingSurface()
+  let surface = view(surface: recording, clipboard: NSPasteboard.general)
+
+  surface.keyDown(with: key("h", keyCode: 0x04))
+
+  #expect(recording.preedits.isEmpty)
+}
+
+@Test @MainActor func theCandidateWindowOpensOnThePanesCursor() {
+  // The surface measures from its top left to the cell's bottom edge; AppKit wants the cell
+  // from the bottom left. A candidate window at the view's corner is the bug this replaces.
+  let cursor = NSRect(x: 16, y: 34, width: 8, height: 17)
+  let text = SurfaceView.candidateRect(
+    cursor: cursor, range: NSRange(location: 0, length: 1), cellWidth: 8, height: 100)
+  #expect(text == NSRect(x: 16, y: 66, width: 8, height: 17))
+
+  // Dictation asks with an empty range, and wants an insertion point at its position.
+  let insertion = SurfaceView.candidateRect(
+    cursor: cursor, range: NSRange(location: 2, length: 0), cellWidth: 8, height: 100)
+  #expect(insertion == NSRect(x: 32, y: 66, width: 0, height: 17))
+}
+
 @Test(.ownsTheSeam) @MainActor func committedTextFromOutsideAKeystrokeIsStillSent() {
   // A character picker or a service commits text with no key press behind it. Nothing else
   // is going to send that, so the view must.

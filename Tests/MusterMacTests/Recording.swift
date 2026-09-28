@@ -43,6 +43,9 @@ final class RecordingSurface: PaneSurface {
   var releases: [UInt16] = []
   /// The modifiers held after each change it was told about.
   var modifierChanges: [NSEvent.ModifierFlags] = []
+  /// Every composition it was asked to draw, `nil` for a clear.
+  var preedits: [String?] = []
+  var cursorCell: NSRect = .zero
 
   init(selection: String? = nil) { selectedText = selection }
 
@@ -70,6 +73,7 @@ final class RecordingSurface: PaneSurface {
   }
   func releaseKey(_ event: NSEvent) { releases.append(event.keyCode) }
   func changeModifiers(_ event: NSEvent) { modifierChanges.append(event.modifierFlags) }
+  func setPreedit(_ text: String?) { preedits.append(text) }
 }
 
 /// Answers every request with `ok`, or with what the test says instead, and keeps what it was
