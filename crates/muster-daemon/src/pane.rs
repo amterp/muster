@@ -1034,6 +1034,10 @@ impl PaneIo {
             input_at: Mutex::new(None),
         })
     }
+
+    pub(crate) fn encoding(&self) -> Arc<Mutex<Encoding>> {
+        Arc::clone(&self.encoding)
+    }
 }
 
 #[cfg(test)]

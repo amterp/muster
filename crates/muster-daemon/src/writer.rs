@@ -605,6 +605,108 @@ pub(crate) fn duplicate(fd: &OwnedFd) -> io::Result<OwnedFd> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use muster_daemon_proto::input_event::{self, Input as Event};
+    use std::io::{PipeReader, PipeWriter, Read, Write};
+
+    /// A writer for a pane with no program, writing to a pipe whose other end the test reads.
+    struct Writing {
+        io: Arc<PaneIo>,
+        queue: Option<SyncSender<Input>>,
+        written: PipeReader,
+        wake: PipeWriter,
+        thread: Option<std::thread::JoinHandle<()>>,
+        _reports: Receiver<crate::effects::Report>,
+    }
+
+    impl Writing {
+        fn new() -> Writing {
+            let io = PaneIo::idle(1);
+            let (written, master) = io::pipe().expect("a pipe");
+            let master = OwnedFd::from(master);
+            // SAFETY: fcntl on a descriptor this test owns.
+            unsafe {
+                let flags = libc::fcntl(master.as_raw_fd(), libc::F_GETFL);
+                assert_ne!(
+                    libc::fcntl(master.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK),
+                    -1
+                );
+            }
+            let (woken, wake) = io::pipe().expect("a pipe");
+            let woken = OwnedFd::from(woken);
+            let (queue, queued) = queue();
+            let (reports, received) = Reports::with_depth(1);
+            let writer =
+                Writer::new("p1".to_string(), 1, io.encoding(), Arc::downgrade(&io), reports);
+            let thread = std::thread::spawn(move || writer.write(&queued, &master, &woken));
+            Writing {
+                io,
+                queue: Some(queue),
+                written,
+                wake,
+                thread: Some(thread),
+                _reports: received,
+            }
+        }
+
+        fn send(&self, input: Input) {
+            self.queue.as_ref().expect("a queue").send(input).expect("the writer is running");
+        }
+
+        /// Writes `event`, and returns once the writer has finished with it: a reply queued
+        /// after it has reached the pipe.
+        fn written(&mut self, event: Event) {
+            self.send(crate::input::input_of(event).expect("something to write"));
+            self.send(Input::Reply(b"<done>".to_vec()));
+            let mut seen = Vec::new();
+            let mut byte = [0];
+            while !seen.ends_with(b"<done>") {
+                self.written.read_exact(&mut byte).expect("the writer wrote");
+                seen.push(byte[0]);
+            }
+        }
+    }
+
+    impl Drop for Writing {
+        fn drop(&mut self) {
+            let _ = self.wake.write_all(b"x");
+            self.queue = None;
+            if let Some(thread) = self.thread.take() {
+                let _ = thread.join();
+            }
+        }
+    }
+
+    fn key(text: &str) -> Event {
+        Event::Key(input_event::Key { text: text.to_string(), ..Default::default() })
+    }
+
+    fn bound(bytes: &[u8]) -> Event {
+        Event::Perform(input_event::Perform {
+            action: Some(input_event::perform::Action::Raw(bytes.to_vec())),
+            key: None,
+        })
+    }
+
+    /// Input someone typed is what a program echoes, and detection takes the echo for it rather
+    /// than for the agent's output; what answers the program itself is not.
+    #[test]
+    fn a_key_counts_as_typed_input_and_a_reply_does_not() {
+        let mut writing = Writing::new();
+        writing.send(Input::Reply(b"\x1b[?1;2c".to_vec()));
+        writing.written(Event::Focus(input_event::Focus { focused: true }));
+        assert_eq!(writing.io.input_at(), None, "a reply and a focus report are not typed");
+        writing.written(key("a"));
+        assert!(writing.io.input_at().is_some(), "a key is typed");
+    }
+
+    /// A binding's bytes, such as shift+enter's `text:\n` or option+left's word jump, are
+    /// typed as surely as the key they replace.
+    #[test]
+    fn a_bindings_bytes_count_as_typed_input() {
+        let mut writing = Writing::new();
+        writing.written(bound(b"\x1bb"));
+        assert!(writing.io.input_at().is_some());
+    }
 
     fn wheel(dy: f64, precise: bool) -> Wheel {
         Wheel { dx: 0.0, dy, precise, modifiers: Modifiers::NONE, position: (0.0, 0.0) }

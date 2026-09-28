@@ -95,7 +95,7 @@ impl Panes {
 }
 
 /// What an event asks the pane's writer for. Nothing for an event that names nothing to do.
-fn input_of(input: input_event::Input) -> Option<Input> {
+pub(crate) fn input_of(input: input_event::Input) -> Option<Input> {
     use input_event::Input as Event;
     let modifiers = |bits: u32| Modifiers(u16::try_from(bits).unwrap_or(0));
     match input {
