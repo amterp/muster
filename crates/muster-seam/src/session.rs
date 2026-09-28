@@ -3468,16 +3468,6 @@ fn attaching_anything() -> bool {
     !poison::lock(&ATTACHES, "attaches").under_way.is_empty()
 }
 
-/// Attaches one configured daemon, trying again on the reconnect backoff for as long as the
-/// session lasts.
-///
-/// A daemon that could not be reached at launch used to be dropped for the life of the process,
-/// so a devenv whose VPN came up a minute after Muster did needed a relaunch - which costs the
-/// panes on every other machine. Each failed attempt is a `daemon.unavailable` record, and the
-/// first raises a problem that the attach clears. The first rather than the fifth, as for a
-/// dropped connection: each attempt has already waited out its own patience, ten seconds for a
-/// daemon's state and more for an ssh host, so one failure is already a machine missing from the
-/// window for longer than anybody would wait without being told why.
 /// Holds a link from each daemon on this machine to each the window reaches over ssh, as each
 /// attaches: either end of a pair may be the one to arrive last. The far end is the local end
 /// of its forward, which stays the same path when the tunnel reopens, and the daemon here dials
@@ -3505,6 +3495,16 @@ fn link_daemons() {
     }
 }
 
+/// Attaches one configured daemon, trying again on the reconnect backoff for as long as the
+/// session lasts.
+///
+/// A daemon that could not be reached at launch used to be dropped for the life of the process,
+/// so a devenv whose VPN came up a minute after Muster did needed a relaunch - which costs the
+/// panes on every other machine. Each failed attempt is a `daemon.unavailable` record, and the
+/// first raises a problem that the attach clears. The first rather than the fifth, as for a
+/// dropped connection: each attempt has already waited out its own patience, ten seconds for a
+/// daemon's state and more for an ssh host, so one failure is already a machine missing from the
+/// window for longer than anybody would wait without being told why.
 fn keep_attaching(daemon: &Daemon, generation: u64) {
     let key = reconnect::key(daemon.id.as_str());
     let mut attempts = reconnect::Attempts::new();
