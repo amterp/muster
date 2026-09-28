@@ -1604,10 +1604,10 @@ if test:
         exit(1)
     print(dim(stdout.trim()))
 
-    // The same claim about the tests themselves: a test file without its `mod` line in its
-    // binary's main.rs compiles to nothing, and the suite below stays green without it.
+    // The same claim about the code itself: a file without its `mod` line compiles to
+    // nothing, and the suite below stays green without it - most easily a test file.
     stdout, stderr, code = $`python3 tools/test-mods.py` catch:
-        print_err(red("A test file is never compiled."))
+        print_err(red("A Rust file is never compiled."))
         print_err(stderr.trim())
         exit(1)
     print(dim(stdout.trim()))

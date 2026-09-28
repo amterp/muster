@@ -184,7 +184,8 @@ Muster's principles, adapted to that evidence:
   turn first; a bridge test's `Typing` takes it for you. A test that needs a process of its own stays a top-level
   file, which cargo builds as its own binary, and says why at the top: `muster-seam/tests/named_daemon.rs` sets
   `HOME`, and `muster-daemon-client/tests/log_relay.rs` installs the process's log sink. A file without its `mod`
-  line compiles to nothing and the gate stays green, so `tools/test-mods.py` fails the gate on one.
+  line compiles to nothing and the gate stays green, so `tools/test-mods.py` fails the gate on one, here or in a
+  crate's `src/`, where a `tests.rs` whose `#[cfg(test)] mod tests;` is missing goes as quietly.
 - **A Swift test that points the seam somewhere holds it while it does.** `Core.dispatcher` is one mutable global
   for the process, so a test that swaps it is writing where every other test reads. These tests all run on the main
   actor and so are never truly concurrent - but a test that awaits gives the actor up, and another test's recorder
