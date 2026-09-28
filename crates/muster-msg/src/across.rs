@@ -15,7 +15,7 @@ use crate::names::{check_group, is_human, is_machine, split_machine};
 use crate::service::{Group, check_body};
 use crate::{
     Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, Member, Messaging,
-    Policy, Posted, Presence, Reach, Refusal, Store, Wake, What,
+    Notice, Policy, Posted, Presence, Reach, Refusal, Store, Via, Wake, What,
 };
 
 /// Another machine's daemon, as a link to it knows it.
@@ -587,6 +587,11 @@ impl<S: Store> Messaging<S> {
             unsaved: None,
         };
         let mut resumed = None;
+        // Reached once the batch is in, and only those still members then: a replica refetched
+        // from nothing replays its whole log, and a member who left since was woken for it
+        // already, before it left.
+        let mut targets: Vec<String> = Vec::new();
+        let mut human_left = false;
         for entry in fresh {
             let entry = peer.entry(entry);
             let group = self.groups.get_mut(&key).expect("made above");
@@ -596,6 +601,7 @@ impl<S: Store> Messaging<S> {
                 }
                 What::Left { who } => {
                     group.members.remove(who);
+                    human_left |= who == HUMAN;
                 }
                 What::Changed { change: Change::Paused, .. } => {
                     resumed = None;
@@ -612,12 +618,34 @@ impl<S: Store> Messaging<S> {
             group.log.push(entry);
             let Some((author, to)) = message else { continue };
             for target in self.targets(&key, &author, to) {
-                if !self.participants.contains_key(&target) {
-                    continue;
+                if !targets.contains(&target) {
+                    targets.push(target);
                 }
-                let reach = self.reach_member(&target, &key, &mut posted, presence, now_ms);
-                posted.reached.push((target, reach));
             }
+        }
+        for target in targets {
+            let member = self.groups[&key].members.contains(&target);
+            if !member || !self.participants.contains_key(&target) {
+                continue;
+            }
+            let reach = self.reach_member(&target, &key, &mut posted, presence, now_ms);
+            posted.reached.push((target, reach));
+        }
+        // The windows may show what waited for the human here before it left: nothing does now.
+        if human_left && !self.groups[&key].members.contains(HUMAN) {
+            posted.wakes.push(Wake {
+                name: HUMAN.to_string(),
+                via: Via::Human,
+                notice: Notice {
+                    group: key.clone(),
+                    first: 0,
+                    last: 0,
+                    count: 0,
+                    to_you: 0,
+                    from: Vec::new(),
+                    again: false,
+                },
+            });
         }
         if let Some(by) = resumed
             && !self.groups[&key].policy.paused
