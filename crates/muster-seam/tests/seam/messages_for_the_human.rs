@@ -48,7 +48,7 @@ fn a_message_for_the_human_notifies_once_and_lands_on_its_transcript() {
     assert_eq!(went.group, "g", "went to {went:?}");
     assert_eq!(went.pane_id, "");
     let transcript = keyboard_pane();
-    assert_eq!(command_of(&mut control, &transcript), "muster msg log --group 'g' --follow");
+    assert_eq!(command_of(&mut control, &transcript), "muster msg log --group='g' --follow");
     until(
         "going there to take the banner back",
         || asked_of("g").last().is_some_and(|last| last.state.is_empty()),

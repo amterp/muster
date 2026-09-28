@@ -1399,6 +1399,14 @@ fn focus_asking() -> Response {
 /// layout moves under them because a message arrived. Going there is the human reading the
 /// group, so its daemon is told.
 fn open_transcript(daemon: &DaemonId, group: &str) -> Response {
+    let Some(command) = transcript::command(group) else {
+        return Response::failure(format!(
+            "{group:?} cannot be a group's name, so no transcript was opened: its pane would \
+             hand the name to a shell. A group's name holds letters, digits and . _ - + @ only. \
+             The banner or request that named it came from daemon {daemon}, which should never \
+             have sent it; check which Muster that daemon is and whether it can be trusted."
+        ));
+    };
     let response = match session::transcript_pane(daemon, group) {
         Some(pane) => relayed(session::focus(daemon, &pane).map(|()| Response::ok())),
         None => open_a_tab(
@@ -1406,7 +1414,7 @@ fn open_transcript(daemon: &DaemonId, group: &str) -> Response {
             None,
             Keyboard::Follows,
             None,
-            Some(transcript::command(group)),
+            Some(command),
             Some(transcript::pane_name(group)),
         ),
     };

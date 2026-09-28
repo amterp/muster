@@ -5077,6 +5077,21 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
 /// (MIP-4, section 10). Somebody already reading the group's transcript is the human reading
 /// it, so the daemon is told that instead of anybody being interrupted.
 fn human_noticed(daemon: &DaemonId, group: &str) {
+    // A banner for it would lead to a transcript whose command line holds the name.
+    if !transcript::is_group(group) {
+        log::warn(
+            "attention.message_group_refused",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "group" => group,
+                "impact" => "no notification is raised for this group and ⌘⇧A does not go to \
+                             it, since its transcript would hand the name to a shell",
+                "check" => "which program serves that daemon's socket; a group's name holds only \
+                            letters, digits and . _ - + @, and no Muster daemon sends another",
+            },
+        );
+        return;
+    }
     let key = GroupKey { daemon: daemon.clone(), group: group.to_string() };
     let attend = {
         let mut session = poison::lock(&SESSION, "session");
