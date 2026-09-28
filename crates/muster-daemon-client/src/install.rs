@@ -42,6 +42,8 @@ pub struct Payload {
     pub archive: Vec<u8>,
     /// The archive's SHA-256, which the machine keeps beside the daemon once it is installed.
     pub stamp: String,
+    /// Whether the archive holds the `muster` CLI.
+    pub carries_cli: bool,
 }
 
 impl Carried {
@@ -95,7 +97,7 @@ impl Carried {
                 )
             })?;
         let stamp = format!("{:x}", Sha256::digest(&archive));
-        Ok(Payload { build, archive, stamp })
+        Ok(Payload { build, archive, stamp, carries_cli: cli.is_some() })
     }
 }
 

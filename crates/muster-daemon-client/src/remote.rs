@@ -107,7 +107,10 @@ pub fn ensure_running(
     environment: &BTreeMap<String, String>,
 ) -> Result<(Reached, Welcome), String> {
     match probe(local_socket) {
-        Ok(welcome) => return Ok((Reached::Adopted, welcome)),
+        Ok(welcome) => {
+            cli_there(remote, installed, carried);
+            return Ok((Reached::Adopted, welcome));
+        }
         Err(HandshakeError::Unreachable(_)) => {}
         Err(HandshakeError::Stalled(why)) => {
             return Err(format!(
@@ -209,6 +212,38 @@ pub fn install(remote: &impl Far, installed: &Installed, carried: &Carried) -> R
         put_there(remote, installed, &payload)?;
     }
     Ok(())
+}
+
+/// Installs this build beside an adopted daemon when the machine has no `muster` to run. The CLI
+/// rides the install, so a daemon installed before the install carried it, and adopted ever
+/// since, left its machine none. The install replaces the version's directory under the running
+/// daemon, as handing an older daemon's panes over does; the daemon keeps running the binary it
+/// started from. Failing here costs only messaging from that machine's shells, so it is logged
+/// rather than refusing the adoption.
+fn cli_there(remote: &impl Far, installed: &Installed, carried: &Carried) {
+    let link = path(&installed.commands.join("muster"));
+    let said = remote.shell(&format!("test -x {link} && echo present"));
+    if said.as_deref().is_ok_and(|said| said.trim() == "present") {
+        return;
+    }
+    let installing = survey(remote, installed)
+        .and_then(|(platform, _, _)| carried.payload(remote.host(), &platform))
+        .and_then(|payload| {
+            if payload.carries_cli { put_there(remote, installed, &payload) } else { Ok(()) }
+        });
+    if let Err(error) = installing {
+        log::warn(
+            "daemon.remote.no_cli",
+            fields! {
+                "host" => remote.host(),
+                "error" => error,
+                "impact" => "`muster` is not found in shells on that machine, so its agents \
+                             cannot message; its panes are unaffected",
+                "check" => "whether the machine has room in ~/.muster, and whether \
+                            ~/.muster/bin/muster there is a link some other install made",
+            },
+        );
+    }
 }
 
 /// What the machine is, which build is installed there, and whether its daemon can run: one
