@@ -1269,3 +1269,83 @@ fn a_new_ring_set_at_the_home_re_tells_what_waits_for_the_human() {
         .collect();
     assert_eq!(told, [(Side::Laptop, "review@devenv", 0)]);
 }
+
+/// What the devenv's replica of `review` lacks from the laptop, applied as one batch, as a
+/// replica that missed the entries is sent them when it next hears from the home.
+fn catch_up(wire: &mut Wire, head: u64) -> muster_msg::Applied {
+    let caught = wire.laptop.since("review", head).unwrap();
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.apply(&Side::Devenv.peer(), caught, sessions, now).unwrap()
+}
+
+/// The devenv's replica of `review` with `critic` in it, and its head: from here on the laptop's
+/// entries are lost on the way, until [`catch_up`].
+fn replica_missing_entries() -> (Wire, Caller, u64) {
+    let mut wire = Wire::new();
+    wire.join(Side::Laptop, &session("builder"), Some("builder"), "review");
+    wire.join(Side::Devenv, &session("critic"), Some("critic"), "review");
+    let head = wire.laptop.since("review", 0).unwrap().entries.last().unwrap().seq;
+    wire.losing = true;
+    (wire, session("builder"), head)
+}
+
+/// A batch holding a message and then a pause wakes the message's members at once, as the
+/// home woke its own when it was posted. The pause forgets that wake, as it did at the home, so
+/// a resume wakes them again for what they still have unread.
+#[test]
+fn a_message_before_a_pause_in_one_batch_wakes_at_once() {
+    let (mut wire, builder, head) = replica_missing_entries();
+    wire.post(Side::Laptop, &builder, None, &[], "before the pause").unwrap();
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.pause(&builder, "review", sessions, now).unwrap();
+
+    let applied = catch_up(&mut wire, head);
+    assert_eq!(applied.reached, [("critic".to_string(), Reach::Woken)]);
+
+    wire.losing = false;
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let resumed = laptop.resume(&builder, "review", sessions, now).unwrap();
+    let reached = wire.tell(Side::Laptop, &resumed.tell);
+    assert_eq!(reached, [("critic@devenv".to_string(), Reach::Woken)]);
+}
+
+/// A message posted while the group was paused is held, though the batch ends resumed, and the
+/// resume wakes its members once.
+#[test]
+fn a_message_while_paused_in_one_batch_is_held_until_the_resume() {
+    let (mut wire, builder, head) = replica_missing_entries();
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.pause(&builder, "review", sessions, now).unwrap();
+    wire.post(Side::Laptop, &builder, None, &[], "while paused").unwrap();
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.resume(&builder, "review", sessions, now).unwrap();
+
+    let applied = catch_up(&mut wire, head);
+    assert_eq!(
+        applied.reached,
+        [("critic".to_string(), Reach::Paused), ("critic".to_string(), Reach::Woken)]
+    );
+}
+
+/// A message posted before a new ring set is rung under the one it was posted under, which the
+/// replica holds from the batch before.
+#[test]
+fn a_message_before_a_new_ring_set_in_one_batch_rings_under_the_old() {
+    let (mut wire, builder, head) = replica_missing_entries();
+    wire.post(Side::Laptop, &builder, None, &[], "to everyone").unwrap();
+    let only_builder = Policy {
+        ring: BTreeMap::from([("*".to_string(), vec!["builder".to_string()])]),
+        ..Policy::default()
+    };
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.group_set(&builder, "review", only_builder, sessions, now).unwrap();
+
+    let applied = catch_up(&mut wire, head);
+    assert_eq!(applied.reached, [("critic".to_string(), Reach::Woken)]);
+}
