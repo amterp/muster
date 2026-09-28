@@ -980,6 +980,44 @@
         ],
         "asking": []
       }
+    },
+    {
+      "name": "the mute silences a program's notification, and takes one down",
+      "why": "`muted` is the quiet path, and it means quiet: a program's own words are an interruption like any other. One already asking goes when the mute is saved, as a state's does.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "notification": {
+              "title": "build",
+              "body": "tests passed"
+            }
+          },
+          {
+            "notifications": {
+              "muted": true
+            }
+          },
+          {
+            "pane": "local/w1:p2",
+            "notification": {
+              "title": "build",
+              "body": "tests passed again"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 notified: tests passed",
+          "local/w1:p2 withdrawn"
+        ],
+        "asking": []
+      }
     }
   ]
 }
