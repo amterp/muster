@@ -542,6 +542,8 @@ struct Reached {
     started: bool,
     /// What to ask of a daemon found running that is older than the one this build carries.
     handover: Option<Handover>,
+    /// Where this window answers on that daemon's machine, for a daemon on another one.
+    far_window: Option<String>,
 }
 
 /// An older daemon's panes, to be handed to this build's daemon once the window follows it.
@@ -840,9 +842,12 @@ fn said_how_it_went(
 /// Only on this machine. The socket is a path here, and on a devenv that path names nothing or
 /// some unrelated socket, so a pane there is told nothing and its programs correctly conclude
 /// they are not in a window they can drive.
-fn pane_environment(window: Option<String>, on_this_machine: bool) -> BTreeMap<String, String> {
+fn pane_environment(
+    window: Option<String>,
+    far_window: Option<String>,
+) -> BTreeMap<String, String> {
+    drop(far_window);
     window
-        .filter(|_| on_this_machine)
         .map(|socket| BTreeMap::from([(environment::WINDOW_SOCKET.to_string(), socket)]))
         .unwrap_or_default()
 }
@@ -851,9 +856,13 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
     match endpoint {
         // A socket somebody named is a daemon somebody chose. Taken as asked for, and left
         // alone: this is the deliberate way out of the arrangement below.
-        Endpoint::Local { socket_path: Some(path) } => {
-            Ok(Reached { socket_path: path.clone(), tunnel: None, started: false, handover: None })
-        }
+        Endpoint::Local { socket_path: Some(path) } => Ok(Reached {
+            socket_path: path.clone(),
+            tunnel: None,
+            started: false,
+            handover: None,
+            far_window: None,
+        }),
         Endpoint::Local { socket_path: None } => {
             let inherited: BTreeMap<String, String> = std::env::vars().collect();
             let home =
@@ -895,7 +904,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             if started && let Some(directory) = daemon_records_path() {
                 records::started(&directory, &socket_path);
             }
-            Ok(Reached { socket_path, tunnel: None, started, handover })
+            Ok(Reached { socket_path, tunnel: None, started, handover, far_window: None })
         }
         // Somebody's own daemon on another machine: forwarded as asked for, and left alone.
         Endpoint::Ssh { host, options, socket_path: Some(path) } => {
@@ -905,6 +914,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 tunnel: Some(tunnel),
                 started: false,
                 handover: None,
+                far_window: None,
             })
         }
         // The arrangement the local arm has, one machine further away: whatever is installed
@@ -941,6 +951,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 tunnel: Some(tunnel),
                 started: reached == launch::Reached::Started,
                 handover,
+                far_window: None,
             })
         }
     }
@@ -1270,7 +1281,10 @@ impl Session {
             Arc::clone(&connection),
             Arc::clone(&mirror),
             Arc::clone(&self.minter),
-            pane_environment(command::listening_at(), reached.tunnel.is_none()),
+            pane_environment(
+                reached.tunnel.is_none().then(command::listening_at).flatten(),
+                reached.far_window.clone(),
+            ),
             description.clone(),
         ));
         let input =
@@ -5357,14 +5371,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_a_pane_on_this_machine_is_told_the_window_socket() {
+    fn a_pane_is_told_the_window_socket_on_its_own_machine() {
         let window = Some("/Users/someone/.muster/state/command-1.sock".to_string());
-        let here = pane_environment(window.clone(), true);
+        let here = pane_environment(window.clone(), None);
         assert_eq!(here.get(environment::WINDOW_SOCKET), window.as_ref());
-        assert!(
-            pane_environment(window, false).is_empty(),
-            "a devenv pane was handed a path on the Mac, which names nothing there or \
-             something else"
+
+        let far = Some("/home/dev/.muster/daemon/window-w1w3r07bsd.sock".to_string());
+        let there = pane_environment(None, far.clone());
+        assert_eq!(
+            there.get(environment::WINDOW_SOCKET),
+            far.as_ref(),
+            "a devenv pane was not told where the window answers on its own machine, so \
+             `muster` there cannot drive the window it is drawn in"
         );
     }
 }
