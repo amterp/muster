@@ -987,6 +987,38 @@ fn a_blocked_report_gives_way_after_a_handoff_as_it_would_have_before() {
     assert_eq!((last.state, last.reported), (State::Idle, false), "{after:?}");
 }
 
+/// A sibling's working report that lands just after the prompt draws: the prompt was already on
+/// screen when it came, so the pane never reads working in between.
+#[test]
+fn a_working_report_just_after_a_prompt_draws_leaves_the_pane_blocked() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.run_for(Duration::from_secs(2), Some("busy"));
+    run.report(State::Blocked);
+    let mut seen = run.run_for(Duration::from_millis(500), Some("allow? busy"));
+    run.report(State::Working);
+    seen.extend(run.run_for(Duration::from_secs(5), Some("allow? busy")));
+    assert!(seen.iter().all(|publication| publication.state == State::Blocked), "{seen:?}");
+}
+
+/// The same across a handoff: the daemon a pane goes to knows how long the prompt has been up.
+#[test]
+fn a_prompt_outranks_a_working_report_straight_through_a_handoff() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.run_for(Duration::from_secs(2), Some("busy"));
+    run.report(State::Blocked);
+    run.run_for(Duration::from_secs(3), Some("allow? busy"));
+    run.report(State::Working);
+    let mut seen = run.run_for(Duration::from_secs(1), Some("allow? busy"));
+
+    run.detector = Detector::resumed(SHELL, run.detector.carried(run.now), run.now, 0);
+    seen.extend(run.run_for(Duration::from_secs(5), Some("allow? busy")));
+    assert!(seen.iter().all(|publication| publication.state == State::Blocked), "{seen:?}");
+}
+
 /// A prompt the rules read as blocked, with something else animating beside it: the report and
 /// the rules agree, and the screen moving is no reason to stop counting it.
 #[test]
