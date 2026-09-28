@@ -226,16 +226,14 @@ impl Messages {
                     .group_new(caller, &new.group, policy, panes, now_ms())
                     .map(|made| changed("made", made, telling))
             }
-            Asked::GroupSet(set) => self
-                .service
-                .group_set(
-                    caller,
-                    &set.group,
-                    policy_from(set.policy.unwrap_or_default()),
-                    panes,
-                    now_ms(),
-                )
-                .map(|set| changed("set_policy", set, telling)),
+            Asked::GroupSet(set) => {
+                let policy = policy_from(set.policy.unwrap_or_default());
+                let changed_it =
+                    self.service.group_set(caller, &set.group, policy, panes, now_ms())?;
+                // The policy decides which messages ring the human, so what waits may have moved.
+                self.told.push(notice_of(&self.service.human_notice(&changed_it.group)));
+                Ok(changed("set_policy", changed_it, &mut self.telling))
+            }
             Asked::GroupMembers(members) => {
                 let waits = &mut self.waits;
                 let told = &mut self.told;

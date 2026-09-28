@@ -1934,6 +1934,22 @@ impl<S: Store> Messaging<S> {
         })
     }
 
+    /// What waits for this machine's human in `group` now, a count of 0 when nothing does: for
+    /// a change other than a message or a read that can move it, since a policy decides which
+    /// messages ring the human (MIP-4, sections 8 and 10).
+    pub fn human_notice(&self, group: &str) -> Notice {
+        let member = self.groups.get(group).is_some_and(|kept| kept.members.contains(HUMAN));
+        member.then(|| self.notice(HUMAN, group)).flatten().unwrap_or_else(|| Notice {
+            group: group.to_string(),
+            first: 0,
+            last: 0,
+            count: 0,
+            to_you: 0,
+            from: Vec::new(),
+            again: false,
+        })
+    }
+
     /// What waits for the human in each group it is in, for a host that is starting to tell
     /// the windows (MIP-4, section 10).
     pub fn human_notices(&self) -> Vec<Notice> {

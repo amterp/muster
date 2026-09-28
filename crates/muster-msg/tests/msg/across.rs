@@ -1217,3 +1217,33 @@ fn a_daemon_a_window_attends_keeps_its_own_human() {
     let refused = restored.read(&human(), None, &wire.sessions);
     assert_eq!(refused.unwrap_err(), human_elsewhere());
 }
+
+/// A new ring set at the home can stop ringing the human for what already waits, or start:
+/// the laptop's replica says what waits for the human under it, as the laptop's own group
+/// set does.
+#[test]
+fn a_new_ring_set_at_the_home_re_tells_what_waits_for_the_human() {
+    let mut wire = Wire::new();
+    let critic = session("critic");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+    wire.post(Side::Devenv, &critic, None, &[], "one").unwrap();
+    wire.post(Side::Devenv, &critic, None, &[], "two").unwrap();
+    wire.wakes.clear();
+
+    let agents_only = Policy {
+        ring: BTreeMap::from([("*".to_string(), vec!["*".to_string()])]),
+        ..Policy::default()
+    };
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let set = devenv.group_set(&critic, "review", agents_only, sessions, now).unwrap();
+    wire.tell(Side::Devenv, &set.tell);
+    let told: Vec<(Side, &str, u64)> = wire
+        .wakes
+        .iter()
+        .filter(|(_, wake)| wake.via == Via::Human)
+        .map(|(side, wake)| (*side, wake.notice.group.as_str(), wake.notice.count))
+        .collect();
+    assert_eq!(told, [(Side::Laptop, "review@devenv", 0)]);
+}

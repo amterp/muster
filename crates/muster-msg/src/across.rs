@@ -17,7 +17,7 @@ use crate::names::{
 use crate::service::{Group, check_body};
 use crate::{
     Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, Member, Messaging,
-    Notice, Policy, Posted, Presence, Reach, Refusal, Store, Via, Wake, What,
+    Policy, Posted, Presence, Reach, Refusal, Store, Via, Wake, What,
 };
 
 /// Another machine's daemon, as a link to it knows it.
@@ -700,6 +700,7 @@ impl<S: Store> Messaging<S> {
     ) -> Result<Applied, u64> {
         let key = peer.inward(&caught.group);
         let more = caught.more;
+        let ring_before = self.groups.get(&key).map(|group| group.policy.ring.clone());
         let group = self.groups.entry(key.clone()).or_insert_with(|| Group::replica(&peer.name));
         let head = group.head();
         let fresh: Vec<Entry> =
@@ -764,26 +765,18 @@ impl<S: Store> Messaging<S> {
             let reach = self.reach_member(&target, &key, &mut posted, presence, now_ms);
             posted.reached.push((target, reach));
         }
-        // The windows may show what waited for the human here before it left: nothing does now.
-        if human_left && !self.groups[&key].members.contains(HUMAN) {
-            posted.wakes.push(Wake {
-                name: HUMAN.to_string(),
-                via: Via::Human,
-                notice: Notice {
-                    group: key.clone(),
-                    first: 0,
-                    last: 0,
-                    count: 0,
-                    to_you: 0,
-                    from: Vec::new(),
-                    again: false,
-                },
-            });
-        }
         if let Some(by) = resumed
             && !self.groups[&key].policy.paused
         {
             self.wake_resumed(&key, &by, &mut posted, presence, now_ms);
+        }
+        // What the windows show for the human may be stale: nothing waits once it has left, and
+        // a new ring set there may ring it for what is already unread, or no longer.
+        let human_here = self.groups[&key].members.contains(HUMAN);
+        let rings_otherwise = ring_before.is_some_and(|ring| ring != self.groups[&key].policy.ring);
+        if (human_left && !human_here) || (rings_otherwise && human_here) {
+            let notice = self.human_notice(&key);
+            posted.wakes.push(Wake { name: HUMAN.to_string(), via: Via::Human, notice });
         }
         keep_last_human_wake(&mut posted.wakes);
         self.unanswered.remove(&key);
