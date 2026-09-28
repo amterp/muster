@@ -890,7 +890,10 @@ finds an older daemon running.
 `daemon.handoff.launched`. A program that cannot start - a bad build, a missing library - is refused
 there, with its stderr on the old daemon's. And macOS checks a binary the first time it runs, which
 took up to 12.6 s for a fresh copy on a busy machine: inside the exchange that would outlast a
-step's ten seconds and fail it late, where here it is only waited for.
+step's ten seconds and fail it late, where here it is only waited for. Nothing is refused while
+it waits: panes are made, resized, renamed and closed, and hooks report, as at any other time. The
+checks above are made again when it answers, and the daemon is marked as being replaced only then,
+so a stop signal that came meanwhile stops it and refuses the handoff.
 
 **The exchange.** The old daemon starts the new one in a session of its own, with one end of a socket
 pair as descriptor 3 (`--handoff 3`), and they speak `Handoff` frames over it, never over the

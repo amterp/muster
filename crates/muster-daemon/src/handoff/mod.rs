@@ -133,9 +133,20 @@ fn unexpected(awaited: &str, came: &handoff::Message) -> String {
 
 /// Hands every pane to the daemon `replacement` names. Done means it serves the socket, and
 /// this daemon is to exit; anything short of that is undone, and refused with the reason.
+///
+/// The program is run once first, with the session unlocked and taking changes: the first run
+/// of a new binary can take seconds on macOS, and nothing is refused until the panes are being
+/// handed over.
 pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Reply {
     let started = Instant::now();
     let faults = Faults::read();
+    let patience = if faults.has("short-launch") { Duration::from_secs(1) } else { LAUNCH };
+    if let Err(why) = launch(&replacement.program, patience) {
+        return failed(replacement, &why);
+    }
+    if let Err(why) = shared.lock().begin_replacing() {
+        return failed(replacement, why);
+    }
     let mut handing = shared.lock().handing();
     log::info(
         "daemon.handoff.started",
@@ -202,26 +213,28 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
                 }
             }
             let stop_deferred = shared.lock().not_replaced();
-            log::error(
-                "daemon.handoff.failed",
-                fields! {
-                    "program" => replacement.program.display(),
-                    "error" => why,
-                    "impact" => "no pane was handed over; this daemon goes on serving every pane \
-                                 as before",
-                    "check" => "the new daemon's own error, on this daemon's stderr, and whether \
-                                the program is a muster-daemon of the same protocol major",
-                },
-            );
+            let reply = failed(replacement, &why);
             if stop_deferred {
                 let _ = shared.stopping.send(Stop::Asked);
             }
-            Reply::refused(format!(
-                "could not hand over to {}: {why}",
-                replacement.program.display()
-            ))
+            reply
         }
     }
+}
+
+fn failed(replacement: &Replacement, why: &str) -> Reply {
+    log::error(
+        "daemon.handoff.failed",
+        fields! {
+            "program" => replacement.program.display(),
+            "error" => why,
+            "impact" => "no pane was handed over; this daemon goes on serving every pane as \
+                         before",
+            "check" => "the new daemon's own error, on this daemon's stderr, and whether the \
+                        program is a muster-daemon of the same protocol major",
+        },
+    );
+    Reply::refused(format!("could not hand over to {}: {why}", replacement.program.display()))
 }
 
 fn handed(
@@ -230,8 +243,6 @@ fn handed(
     handing: &mut Handing,
     successor: &mut Option<Child>,
 ) -> Result<handoff::Accept, String> {
-    let patience = if Faults::read().has("short-launch") { Duration::from_secs(1) } else { LAUNCH };
-    launch(&replacement.program, patience)?;
     // Two daemons writing the state file at once would share its temporary file.
     if !handing.persister.pause(STEP) {
         return Err("this daemon's write of its state file did not finish".to_string());

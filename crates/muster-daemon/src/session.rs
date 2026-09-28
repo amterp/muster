@@ -1934,20 +1934,11 @@ impl Session {
     // -----------------------------------------------------------------------------------------
     // Handoff (MIP-3 section 10)
 
-    /// Checks the daemon can be replaced now, and marks it as being replaced: from here a
-    /// request that changes anything is refused, so what is handed over is what the session
-    /// holds. The handoff runs with the session unlocked ([`crate::handoff::hand_over`]).
+    /// Checks the daemon can be replaced now, and names the program to replace it with. The
+    /// handoff runs with the session unlocked ([`crate::handoff::hand_over`]), and marks the
+    /// session with [`Session::begin_replacing`] once the program has answered.
     fn replace(&mut self, replace: session_request::Replace) -> Handled {
-        let refused = if self.stopping {
-            Some("the daemon is stopping")
-        } else if self.restoring {
-            Some("the daemon is still bringing back its saved tabs; ask again once it has")
-        } else if self.replacing != Replacing::No {
-            Some("the daemon is already being replaced")
-        } else {
-            None
-        };
-        if let Some(why) = refused {
+        if let Some(why) = self.cannot_replace() {
             return Handled::Reply(Reply::refused(why));
         }
         let Some(program) = replace.program.map(PathBuf::from).or_else(|| self.executable.clone())
@@ -1956,8 +1947,30 @@ impl Session {
                 "this daemon could not find its own executable; name the program to replace it with",
             ));
         };
-        self.replacing = Replacing::Underway;
         Handled::Replace(Box::new(Replacement { program, data: replace.data.map(PathBuf::from) }))
+    }
+
+    /// Checks again that the daemon can be replaced, since the session was unlocked while the
+    /// program was asked its version, and marks it as being replaced: from here a request that
+    /// changes anything is refused, so what is handed over is what the session holds.
+    pub(crate) fn begin_replacing(&mut self) -> Result<(), &'static str> {
+        if let Some(why) = self.cannot_replace() {
+            return Err(why);
+        }
+        self.replacing = Replacing::Underway;
+        Ok(())
+    }
+
+    fn cannot_replace(&self) -> Option<&'static str> {
+        if self.stopping {
+            Some("the daemon is stopping")
+        } else if self.restoring {
+            Some("the daemon is still bringing back its saved tabs; ask again once it has")
+        } else if self.replacing != Replacing::No {
+            Some("the daemon is already being replaced")
+        } else {
+            None
+        }
     }
 
     pub(crate) fn log(&self) -> Option<Arc<DaemonLog>> {
