@@ -833,6 +833,28 @@ the background with `muster msg wait --due`, whose answer starts its next turn. 
 of its verbs ran in the last five minutes, a post marks it woken and types nothing; otherwise it is rung as any
 agent in a pane is.
 
+**A group is kept on the daemon it was made on, and other machines hold replicas of it** (MIP-4, section 11). A
+window attached to this machine's daemon and an SSH one holds a `msg.peer` request open on the local daemon for each
+pair, naming the local end of the far daemon's forward, and the daemon links to it for as long as the request lasts.
+The two call each other over that one connection (`messages/peer.rs`), since ssh forwards it one way only. A daemon
+sends its members' joins, leaves and posts in a group kept elsewhere to the group's home, which numbers the entry,
+checks the guard against the cursor the post brought, and sends the entry on to every other machine with a member.
+Each daemon wakes only its own members. Each machine writes its own members bare and another's as `name@machine`,
+and whatever crosses the link is turned into the receiver's names on arrival. That happens in `muster-msg`, so the
+rules are tested with two services and no daemon (`crates/muster-msg/tests/msg/across.rs`). With no window there is
+no link: a change to a group kept elsewhere is refused at once, naming the machine. Replicas are not kept on disk,
+so a link that comes up refetches them.
+
+**A group's policy binds at its home, whichever machine a request came from.** A forwarded post runs through the
+same `post_as` as a local one, so the home checks whom its author may address and whether the group is paused, and
+a forwarded join or leave is checked against the group's membership. Every batch of entries the home sends carries
+the policy, so a replica wakes its members as the home would, and a pause or resume there pauses or wakes the
+replica's members too. A policy, its members and its pause are changed only at the home; on a replica those verbs
+are refused, naming the home. The human is homed on the machine the app runs on, and a policy's `@human` means that
+person on any machine, so the human on the laptop is rung in a group kept on the devenv as in one kept on the
+laptop. Only the human's home daemon tells windows what waits for the human, and the guard never holds the human's
+post on either machine.
+
 **Messaging is one of two request paths that do not run through the core.** Messaging has to work with no window
 open, and the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,
 or else this install's daemon. A window that shows messages will send the same requests, which is parity by the same

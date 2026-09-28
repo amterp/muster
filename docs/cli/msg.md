@@ -17,7 +17,8 @@ Muster makes has, and otherwise this install's daemon under `~/.muster/daemon/`.
 
 An agent in a pane on an SSH machine does the same with the agents on that machine. Muster
 installs a `muster` there beside the daemon, every pane there finds it on its `PATH`, and it asks
-that machine's daemon.
+that machine's daemon. While a window is attached to both machines, agents on each share groups
+with the other's (below).
 
 ## Who you are
 
@@ -218,7 +219,7 @@ once Ctrl-C has stopped the follow and left its shell.
 |---|---|
 | `join [--name N] [--group G] [--pull]` | registers you, and joins a group, creating it if absent |
 | `leave [--group G]` | leaves a group; with none, leaves every group and stops taking part |
-| `who [--group G]` | who takes part: alive, gone, or the human, what each in a pane is doing, and their groups |
+| `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, and their groups |
 | `post [--group G] [--to A,B] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for |
 | `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
 | `log --group G [--since N] [--follow]` | the transcript, moving nothing; `--follow` keeps printing |
@@ -235,6 +236,41 @@ by a group's policy, 3 no daemon
 to ask, 4 the daemon hung up before answering, 5 a wait that timed out, 6 a post that woke
 nobody live.
 
+## Across machines
+
+A group is kept on the machine it was made on. While a Muster window is attached to your laptop's
+daemon and an SSH machine's, it links the two, and a group on either can be joined and posted to
+from the other:
+
+    # on the laptop
+    muster msg join --name builder --group review
+    # on the devenv
+    muster msg join --name critic --group review    # joined review@your-laptop as critic
+
+- **Names say which machine.** Each machine writes the other's members and groups with that
+  machine's name: the laptop sees `critic@devenv`, the devenv sees `builder@your-laptop`. The
+  laptop calls a machine by its `[[daemon]] id`, and the machine calls the laptop by its host
+  name. A bare name is the one kept on this machine, or else the one elsewhere that goes by it,
+  and `review@devenv` says which when both machines have one. `join` with a bare name asks the
+  linked machines first, and makes the group here only if none keeps one.
+- **Each machine wakes its own agents.** A post is numbered on the group's machine, and the guard
+  counts what you have not read there, so it holds across machines as it does on one. A post's
+  answer says what each machine did for its own agents.
+- **Without the link, nothing crosses.** With no window attached to both, or while the connection
+  is down, a post, join or leave for a group kept on the other machine is refused at once, naming
+  the machine: exit 1, `unreachable` in `--json`. Nothing is queued, since a queued post would land
+  behind messages its author never saw. Groups kept here work as ever. `read` and `log` answer from
+  this machine's copy and say it may be behind, and what was posted meanwhile arrives when the link
+  returns.
+- **A group's policy is its home's.** A post, join or leave from another machine is held to it
+  as one made there is, and a refusal names members as you name them. `group set`, `group add`,
+  `group remove`, `pause` and `resume` run only on the group's machine; elsewhere they are
+  refused, `kept_elsewhere`, naming it. A pause holds wakes on both machines, and a resume wakes
+  each machine's members.
+- **The human is on the laptop.** `@human` in a policy means you wherever the group is kept, and
+  a devenv post that wakes you notifies through the laptop's windows. The guard never holds your
+  post, on either machine.
+
 ## Where messages are kept
 
 In a directory beside the daemon's socket, `<install>.msg/`, readable by you only: a log per
@@ -245,6 +281,10 @@ where.
 
 ## Not yet
 
-Messages stay on the machine they were posted on: an agent on a devenv and one on your laptop
-cannot share a group yet, and no verb deletes a group. `docs/mip/0004-agent-messaging.md` is the
+A post `--to` someone on another machine needs a group you have both joined: the group of just
+the two of you is not made across machines. A daemon links only to the machines a window attaches
+it to, so an agent on one devenv cannot join a group kept on another. A policy names only this
+machine's participants, `*` and `@human`, and `group add` takes only this machine's, so a group
+whose `membership` is not `*` cannot be joined from another machine. No verb deletes a group.
+`docs/mip/0004-agent-messaging.md` is the
 design and its order.

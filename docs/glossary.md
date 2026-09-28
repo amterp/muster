@@ -27,7 +27,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   just read as empty, and only for a harness whose manifest can read its prompt (MIP-4, section 6).
 - **frame** - one message on a socket: a four-byte length, then that many bytes (`muster-frame`).
 - **group** - a set of participants and the one log of messages they share (MIP-4). Addressing a message decides
-  whom it wakes, never who may read it.
+  whom it wakes, never who may read it. Kept on the daemon it was made on, its home; another machine with a member
+  holds a replica, named `review@machine` there (MIP-4, section 11).
 - **guard** - the daemon refusing a post while its author has unread messages from others in that group. There is
   no override: read, then post.
 - **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
@@ -37,14 +38,14 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
   authoritative.
 - **participant** - an agent, or the human as `@human`, known by name to one daemon's messaging, with a place in
-  the log of every group it has joined.
+  the log of every group it has joined. Another machine's participant is `name@machine` there.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.
 - **pane name** - what Muster calls a pane: `p1w3r07bsd`, minted by Muster rather than borrowed from the backend,
   unique across every attached machine, and never reused. What every message and every CLI argument means by a pane.
   A pane reads its own from `MUSTER_PANE`.
 - **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
 - **pane tree** - the split layout inside one tab; daemon truth.
-- **policy** - a group's four rules, enforced by the daemon: whom an unaddressed post wakes (`ring`), whom each
+- **policy** - a group's four rules, enforced by the group's home daemon: whom an unaddressed post wakes (`ring`), whom each
   author may address (`allow`), who may change the group (`membership`), and whether it is `paused`, holding every
   wake but the human's (MIP-4, section 8).
 - **region** - the part of a Muster tab that one machine holds, as it sits on screen: that machine's pane tree,

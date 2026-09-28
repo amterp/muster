@@ -488,9 +488,11 @@ A participant is working, blocked, idle, done, alive, or gone:
 - **With hooks only**: alive while a `wait` is connected or a hook has run in the last few minutes
   (five, as built).
 
-Each daemon computes presence for its own participants and sends changes over its peer links with
-the replicas (section 11), so `muster msg who` and a post's answer show every member of a group,
-whichever machine it is on.
+Each daemon computes presence for its own participants, so `muster msg who` and a post's answer
+show every member of a group, whichever machine it is on. As built, a daemon asks the other
+machine's for its members when an answer needs them rather than being sent changes: `who` asks,
+and a post's answer carries what each machine's daemon did for its own members when it took the
+entry. Nothing is replicated that could go stale.
 
 ### 8. Groups and policy
 
@@ -644,6 +646,36 @@ homed on this machine keep working, and `read` and `log` on a replica say it may
 A group or participant name is unique on its home daemon, and a verb accepts `review@devenv` when
 two attached machines use the same name.
 
+As built, each machine writes its own members bare and another machine's as `name@machine`, in its
+own name for that machine: the app's `[[daemon]] id` for the far one, and the laptop's host name
+from the far side, since the laptop's own id is usually `local`. Whatever crosses the link is
+turned into the receiver's names on arrival, so `who`, `read` and a wake read from where the reader
+stands, and the laptop's human in a devenv group is `@human@laptop` there, woken by the laptop. A
+bare name is the one kept here, or else the one elsewhere that goes by it, and `join` with a bare
+name asks each linked machine before making the group here. Each answer from a home carries the
+entries after the asker's head, so a replica that fell behind catches up in the reply, a refusal
+by the guard included. Two things are not built: a post `--to` someone on another machine needs a
+group both joined, since the pair group would hold a member that never joined it; and a daemon
+reaches only the machines it is linked to directly, so a devenv agent cannot join a group kept on
+a second devenv.
+
+**A group's policy binds at its home** (section 8). A forwarded post runs through the same checks
+as one made there, whom its author may address and whether the group is paused among them, and a
+forwarded join or leave is checked against `membership`. Every batch of entries the home sends
+carries the policy, so a replica wakes its own members as the home would, and a pause or resume
+there holds or wakes the replica's members too. Only the home changes a policy, its members or its
+pause; those verbs on a replica are refused as `kept_elsewhere`, naming the home. A policy names
+this machine's participants, `*` and `@human`, so a group whose `membership` is not `*` cannot yet
+be joined from another machine.
+
+**`@human` in a policy is the human on any machine.** There is one person, homed on the machine
+the app runs on (section 10), so a policy's `@human`, like its `*`, names a role rather than a
+participant: it is not turned into another machine's name, and it matches `@human@laptop` as it
+matches `@human`. A group kept on the devenv with the default policy rings the laptop's human as
+one kept on the laptop does, and a ring set's `*` passes over the human on every machine. The human
+is woken by its home daemon, the only one that tells windows what waits for the human, and the
+guard never holds the human's post on either machine.
+
 ### 12. Persistence
 
 Each daemon stores the groups it is home to beside its persisted state (MIP-3 section 2): an
@@ -796,6 +828,10 @@ green on its own.
    the link, forwarding to the home, and loud failure when the link is down, in the `--ssh` tier.
    Proves: a laptop agent and a devenv agent in a plain terminal share one group, the guard holds
    across the link, and local groups keep working while it is cut.
+
+   As built, the `--ssh` tier's proof is `crates/muster-seam/tests/devenv_messages.rs`, with a
+   window attached to both machines, and the gate runs the same exchange between two daemons on
+   one machine (`crates/muster-daemon/tests/daemon/linked.rs`).
 
 ## Rationale
 
@@ -966,3 +1002,7 @@ bind.
 - 2026-09-28 Decision 3 decided: `muster msg <verb>` on both platforms.
 - 2026-09-28 Stage 4 built: policy enforced, `pause` and `resume`, the hooks adapter with `wait
   --due`, and the council skill (sections 6, 8, 12 and 13); `asyncRewake` checked live.
+- 2026-09-28 Stage 5 built: groups across machines, with names turned on arrival, presence asked
+  for rather than sent, and no pair groups or second hop across machines (sections 7 and 11). A
+  group's policy binds at its home, replicas are sent it with every entry, and `@human` in a
+  policy is the human on any machine (sections 8 and 11).
