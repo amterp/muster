@@ -428,14 +428,16 @@ fn letting_go_of_a_daemon_mid_connect_is_prompt() {
 /// A window is told a daemon's panes the moment its snapshot arrives, and may send one of them
 /// input then and there: a focus report, to the pane with the keyboard of a window already in
 /// front. So the input connection is open before the snapshot can arrive.
+///
+/// With the input connection opened before the subscribe, this passes every time. Without it,
+/// it is a race the send usually loses and a loaded machine can let it win: notices run on a
+/// thread of their own, so nothing here holds the connect back while this sends.
 #[test]
 fn input_can_be_sent_as_soon_as_the_snapshot_arrives() {
     let daemon = Daemon::start_built();
     let connection = Arc::new(Mutex::new(None::<Arc<Connection>>));
     let sent = Arc::new(Mutex::new(None));
     let (reached, told) = (Arc::clone(&connection), Arc::clone(&sent));
-    // The notice holds up the reader that delivered it, so the follower goes no further with
-    // connecting until this has sent.
     let notify = Arc::new(move |notice: Notice| {
         if !matches!(notice, Notice::Bootstrapped { .. }) {
             return;
