@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use muster_core::config::{ClipboardWrite, Cursor, CursorStyle, Shell, ShellMode};
 use muster_core::daemon_settings::DaemonSettings;
@@ -244,6 +245,63 @@ fn settings_reach_the_daemon() {
     assert_eq!((shell.ssh_env, shell.ssh_terminfo, shell.sudo), (Some(false), None, Some(true)));
 }
 
+/// A setting refused while the daemon was handing its panes over reaches it with the next
+/// change, once that handoff has failed.
+///
+/// A daemon partway through a handoff refuses every change, and one whose handoff then fails
+/// keeps the same connection, so no reconnect sends everything again. Sending only what the next
+/// change differs in would leave the refused setting unsent for as long as the app runs.
+#[test]
+fn a_setting_refused_during_a_failed_handoff_goes_with_the_next_change() {
+    let mut daemon = Daemon::start_with(
+        muster_harness::built_daemon(),
+        &[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready,exit-before-ready")],
+    );
+    let followed = follow(&daemon);
+    let first = DaemonSettings::default();
+    followed.follower.configure(&first);
+    let mut control = daemon.connect();
+    until_some("the first settings to arrive", || {
+        snapshot(&mut control).settings.and_then(|settings| settings.cursor)
+    });
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    let refused = DaemonSettings { scrollback_bytes: Some(1 << 20), ..first };
+    followed.follower.configure(&refused);
+    // Answered in order on the follower's own connection, so the setting has been refused by
+    // the time this is.
+    let own = followed.follower.connection().control().expect("the follower is connected");
+    let held = own.snapshot().wait(Duration::from_secs(10)).expect("the daemon answered");
+    let Some(proto::answer::Detail::Snapshot(held)) = held.detail else {
+        panic!("a snapshot request was answered without one")
+    };
+    assert_eq!(
+        held.settings.unwrap_or_default().scrollback_bytes,
+        None,
+        "the daemon took a setting while handing its panes over"
+    );
+    daemon.resume();
+    let failed = daemon.finish_replacing(replacing);
+    assert_ne!(failed.outcome(), proto::Outcome::Done, "the handoff was meant to fail");
+
+    let next =
+        DaemonSettings { cursor: Cursor { style: Some(CursorStyle::Bar), blink: None }, ..refused };
+    followed.follower.configure(&next);
+    // Each setting is sent in turn on one connection, so once the cursor is in, anything sent
+    // before it is too.
+    let held = until_some("the next change to arrive", || {
+        let settings = snapshot(&mut control).settings.unwrap_or_default();
+        let cursor = settings.cursor.as_ref().map(proto::Cursor::style);
+        (cursor == Some(proto::CursorStyle::Bar)).then_some(settings)
+    });
+    assert_eq!(
+        held.scrollback_bytes,
+        Some(1 << 20),
+        "the setting refused during the handoff was never sent again"
+    );
+}
+
 /// A daemon Muster started is in the census with what it holds, asked of it rather than read
 /// from the record.
 #[test]
@@ -337,7 +395,7 @@ fn a_reaction_to_a_notice_can_ask_the_same_daemon() {
         "the test daemon".to_string(),
     ));
 
-    let made = answers.recv_timeout(std::time::Duration::from_secs(20)).unwrap();
+    let made = answers.recv_timeout(Duration::from_secs(20)).unwrap();
     assert_eq!(made, Ok(Some(TabId::new("t1"))));
 }
 
@@ -418,11 +476,7 @@ fn letting_go_of_a_daemon_mid_connect_is_prompt() {
 
     let started = std::time::Instant::now();
     drop(follower);
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(1),
-        "letting go took {:?}",
-        started.elapsed()
-    );
+    assert!(started.elapsed() < Duration::from_secs(1), "letting go took {:?}", started.elapsed());
 }
 
 /// A window is told a daemon's panes the moment its snapshot arrives, and may send one of them
