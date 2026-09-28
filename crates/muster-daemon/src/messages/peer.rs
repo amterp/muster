@@ -12,10 +12,10 @@
 use std::collections::HashMap;
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use muster_core::diagnostics::{log, poison};
@@ -121,15 +121,23 @@ impl std::fmt::Display for Failed {
 #[derive(Debug)]
 pub(crate) struct Peers {
     links: Mutex<Vec<Arc<Link>>>,
-    /// What this daemon calls itself to another machine.
-    us: String,
+    /// Where the name this daemon calls itself to another machine is kept.
+    directory: PathBuf,
+    /// That name, once a link has needed it: choosing it may ask macOS, which a daemon that
+    /// never links should not wait on before it answers anything.
+    us: OnceLock<String>,
 }
 
 impl Peers {
     /// No links yet, for a daemon whose messages are kept at `socket`.
     pub(crate) fn beside(socket: &Path) -> Peers {
-        let us = this_machine(super::store::Files::beside(socket).directory());
-        Peers { links: Mutex::new(Vec::new()), us }
+        let directory = super::store::Files::beside(socket).directory().to_path_buf();
+        Peers { links: Mutex::new(Vec::new()), directory, us: OnceLock::new() }
+    }
+
+    /// What this daemon calls itself to another machine.
+    fn us(&self) -> &str {
+        self.us.get_or_init(|| this_machine(&self.directory))
     }
 
     fn links(&self) -> std::sync::MutexGuard<'_, Vec<Arc<Link>>> {
@@ -236,7 +244,7 @@ pub(crate) fn hold(
             std::thread::sleep(LOOK_UP);
             continue;
         }
-        match dial(&shared.peers.us, name, socket) {
+        match dial(shared.peers.us(), name, socket) {
             Ok((stream, peer)) => {
                 said = false;
                 let since = std::time::Instant::now();
@@ -344,7 +352,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
             return;
         }
     };
-    let us = proto::Introduce { name: shared.peers.us.clone(), you: theirs.name.clone() };
+    let us = proto::Introduce { name: shared.peers.us().to_string(), you: theirs.name.clone() };
     if connection::send(&mut stream, &PeerFrame { frame: Some(Frame::Introduce(us)) }).is_err() {
         return;
     }
