@@ -646,3 +646,40 @@ fn the_human_is_exempt_from_the_guard_across_the_link() {
     assert_eq!(posted.group, "review@devenv");
     assert_eq!(woke(&posted), [("critic@devenv", Reach::Woken)]);
 }
+
+/// Refetching a replica from nothing, after a restart, replays its log. A member who left is not
+/// reached for what came while it was a member, and the human who left is told nothing waits,
+/// so a banner from before the restart comes down rather than going up again.
+#[test]
+fn a_replayed_replica_reaches_nobody_who_left() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+    wire.post(Side::Devenv, &critic, None, &[], "for everyone").unwrap();
+    wire.post(Side::Devenv, &critic, None, &[HUMAN], "a question for you").unwrap();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let away = laptop.route_leave(&human(), Some("review"), sessions).unwrap();
+    for away in away {
+        wire.send(Side::Laptop, &away.call).unwrap();
+    }
+
+    let saved = wire.laptop.store().saved.clone().unwrap();
+    wire.laptop = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+    wire.cut();
+    wire.wakes.clear();
+    wire.mend();
+    let told: Vec<(&str, u64)> = wire
+        .wakes
+        .iter()
+        .filter(|(side, wake)| *side == Side::Laptop && wake.via == Via::Human)
+        .map(|(_, wake)| (wake.notice.group.as_str(), wake.notice.count))
+        .collect();
+    assert_eq!(told, [("review@devenv", 0)], "the human is told nothing waits, and no more");
+    // Once at most, for the whole replay: not at all while it still counts as woken from
+    // before the restart.
+    let builder_woken =
+        wire.wakes.iter().filter(|(side, wake)| *side == Side::Laptop && wake.name == "builder");
+    assert!(builder_woken.count() <= 1, "builder woken per message: {:?}", wire.wakes);
+}
