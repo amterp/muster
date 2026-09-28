@@ -159,9 +159,10 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
     assert!(left.trim().is_empty(), "the window's socket outlived it on the devenv: {left}");
 }
 
-/// A devenv pane's `muster window` is answered by the window while the window answers there,
-/// and by the devenv's own daemon once `$MUSTER_SOCKET` names a window that does not, as a
-/// pane's does once its window has closed and taken the forward with it.
+/// A devenv pane's `muster window` is answered by the window while the window answers there. A
+/// pane whose `$MUSTER_SOCKET` names a window of this Muster that has quit - Muster relaunched -
+/// is answered by the window open now, which forwards beside it; and one naming a window no
+/// window of this Muster is beside is answered by the devenv's own daemon.
 fn the_daemon_answers_only_for_a_window_that_does_not(
     socket: &Path,
     host: &str,
@@ -182,10 +183,29 @@ fn the_daemon_answers_only_for_a_window_that_does_not(
         || read_pane(socket, first).contains("daemon=0."),
         || format!("It shows:\n{}", read_pane(socket, first)),
     );
-    // And where it names a window that does not answer, as a pane's does once its window has
-    // closed and taken the forward with it, the devenv's own daemon answers for its panes.
+    // A window of this Muster that has quit: the window open now answers, and a change from the
+    // pane reaches it.
     let daemons = installed.socket.parent().expect("a socket is in a directory");
-    let gone = daemons.join("window-gone.sock");
+    let install = installed.socket.file_stem().expect("a socket has a name").to_string_lossy();
+    let relaunched = daemons.join(format!("window-{install}-wgone.sock"));
+    let said = over_ssh(
+        host,
+        options,
+        &format!(
+            "export MUSTER_SOCKET={} MUSTER_DAEMON_SOCKET={} MUSTER_PANE={first}; \
+             ~/.muster/bin/muster window | grep -c 'no window answered'; \
+             ~/.muster/bin/muster pane rename 'reached'; echo renamed=$?.",
+            muster_ssh::quoted(&relaunched.to_string_lossy()),
+            muster_ssh::quoted(&installed.socket.to_string_lossy()),
+        ),
+    );
+    assert!(
+        said.starts_with('0') && said.contains("renamed=0."),
+        "a pane whose window relaunched did not reach the window open now: {said}"
+    );
+
+    // A window of another Muster forwarding here, or none: the devenv's own daemon answers.
+    let gone = daemons.join("window-another-install-wgone.sock");
     let said = over_ssh(
         host,
         options,
