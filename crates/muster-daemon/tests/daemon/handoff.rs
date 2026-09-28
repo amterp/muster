@@ -179,6 +179,49 @@ fn a_bridge_hears_replaced_even_when_its_detach_is_written_late() {
     assert_eq!(surface.detached, Some(proto::DetachReason::Replaced));
 }
 
+/// A bridge far behind on output, as one on a slow link under a flood is, still hears REPLACED
+/// within the handoff's bound rather than after the megabytes queued ahead of it. The new daemon's
+/// replay redraws the pane, so that output is not missed.
+#[test]
+fn a_bridge_behind_on_output_hears_replaced_within_the_handoff() {
+    use proto::stream_message::Message as Streamed;
+    let mut daemon = daemon();
+    let (_control, mut input) = two_panes(&daemon);
+    let mut stream = Stream::connect(daemon.socket_path());
+    stream.attach_with_window("p1", None, false, Some(4 << 20));
+    // A reader at a quarter of a megabyte a second that never credits, so the window's output
+    // queues in the daemon for as long as it takes to read.
+    let (outputs, heard) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        loop {
+            match stream.next_within(muster_harness::PATIENCE) {
+                Some(Some(Streamed::Output(bytes))) => {
+                    let _ = outputs.send(());
+                    std::thread::sleep(std::time::Duration::from_micros(bytes.len() as u64 * 4));
+                }
+                Some(Some(Streamed::Detached(detached))) => return Some(detached.reason()),
+                Some(Some(_)) => {}
+                Some(None) | None => return None,
+            }
+        }
+    });
+    type_line(&mut input, "p1", "head -c 3000000 /dev/zero | base64");
+    heard.recv_timeout(muster_harness::PATIENCE).expect("the flood to reach the bridge");
+    // Long enough for the flood to be queued, far shorter than reading it would take.
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    replaced(&mut daemon);
+
+    let waiting = std::time::Instant::now();
+    let reason = reader.join().expect("the reader");
+    assert_eq!(
+        reason,
+        Some(proto::DetachReason::Replaced),
+        "the bridge read {reason:?} {:?} after the handoff, with the flood still queued ahead",
+        waiting.elapsed()
+    );
+}
+
 /// A subscriber hears that the daemon was replaced, then its connection ends: it connects again
 /// and starts from a snapshot of the new daemon.
 #[test]
