@@ -3,6 +3,14 @@
   "alias": "cross-machine-pair",
   "alias_explicit": false,
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "A real case, 2026-09-28 on 0.11.0: telling two idle devenv agents to carry on after the upgrade. `muster msg post --to \u003cpane\u003e` from a devenv shell is refused ('this shell is the person at the Muster window on sydmac7m7r ... Run this on sydmac7m7r'), and from the laptop it needs a group both have joined, which neither pane had. Fell back to `muster pane send --confirm` then `--enter` into their empty prompts. The refusal itself was clear about why and where to go.",
+      "created_at_millis": 1790631228574,
+      "id": "c_2YOlJpguu"
+    }
+  ],
   "created_at_millis": 1790619585008,
   "creator": "Alexander Terp",
   "description": "Two agents on different machines who share no group cannot message each other without first making one; pair groups (a+b) are per machine. And a group on one devenv cannot be reached from another devenv through the laptop (a second hop). Both from stage 5's report.",
@@ -11,7 +19,7 @@
   "position": "b08",
   "title": "Cross-machine pair groups, and a second hop",
   "type": "feature",
-  "updated_at_millis": 1790619585008,
+  "updated_at_millis": 1790631228574,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790619585008}
   ]
