@@ -495,13 +495,18 @@ pub(crate) struct Reading {
     io: Arc<PaneIo>,
     first_row: u64,
     rows: u32,
+    /// The last rows asked for instead, when not zero.
+    last: u32,
 }
 
 impl Reading {
     pub(crate) fn read(&self) -> Reply {
-        let text = screen::page(self.first_row, self.rows, screen::PAGE_BYTES, |first, count| {
-            self.io.screen().rows(first, count)
-        });
+        let rows = |first, count| self.io.screen().rows(first, count);
+        let text = if self.last > 0 {
+            screen::last_page(self.last, screen::PAGE_BYTES, rows)
+        } else {
+            screen::page(self.first_row, self.rows, screen::PAGE_BYTES, rows)
+        };
         Reply { detail: Some(Box::new(Detail::Text(text))), ..Reply::done() }
     }
 }
@@ -908,6 +913,7 @@ impl Session {
                             io: Arc::clone(&self.panes[index].io),
                             first_row: read.first_row,
                             rows: read.rows,
+                            last: read.last,
                         }));
                     }
                 },

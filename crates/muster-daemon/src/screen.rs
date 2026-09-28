@@ -457,6 +457,50 @@ pub(crate) fn page(
     proto::PaneText { first_row, text, total_rows, rows: held }
 }
 
+/// The last `last` rows ending at the last row with anything on it, stopping short at `limit`
+/// bytes with the newest rows kept. The blank rest of the screen beneath a prompt is held as
+/// rows, and is not what a reader asking for the newest ones wants.
+///
+/// Found from the bottom a batch at a time and read backwards from there, so no row older than
+/// the ones sent is formatted.
+pub(crate) fn last_page(
+    last: u32,
+    limit: usize,
+    mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
+) -> proto::PaneText {
+    let (_, total_rows) = read(0, 0);
+    let mut end = total_rows;
+    while end > 0 {
+        let from = end.saturating_sub(u64::from(PAGE_BATCH));
+        let (lines, _) = read(from, u32::try_from(end - from).unwrap_or(PAGE_BATCH));
+        if let Some(at) = lines.iter().rposition(|line| !line.trim().is_empty()) {
+            end = from + at as u64 + 1;
+            break;
+        }
+        end = from;
+    }
+    let oldest = end.saturating_sub(u64::from(last));
+    let mut newest_first: Vec<String> = Vec::new();
+    let mut bytes = 0;
+    let mut first_row = end;
+    'reading: while first_row > oldest {
+        let from = first_row.saturating_sub(u64::from(PAGE_BATCH)).max(oldest);
+        let (lines, _) = read(from, u32::try_from(first_row - from).unwrap_or(PAGE_BATCH));
+        for line in lines.into_iter().rev() {
+            let separator = usize::from(!newest_first.is_empty());
+            if bytes + separator + line.len() > limit {
+                break 'reading;
+            }
+            bytes += separator + line.len();
+            newest_first.push(line);
+            first_row -= 1;
+        }
+    }
+    newest_first.reverse();
+    let rows = u32::try_from(newest_first.len()).unwrap_or(u32::MAX);
+    proto::PaneText { first_row, text: newest_first.join("\n"), total_rows, rows }
+}
+
 /// One cell's size in pixels, zero while no surface has said.
 fn cell_pixels(grid: Grid) -> (u32, u32) {
     (
@@ -610,6 +654,16 @@ mod tests {
             Some(format!("{:09}", full.rows - 1).as_str())
         );
         assert_eq!(full.total_rows, 100_000);
+    }
+
+    #[test]
+    fn the_last_rows_are_the_newest_that_fit() {
+        let newest = last_page(3, PAGE_BYTES, rows_of(9, 1_000));
+        assert_eq!(newest.text, "000000997\n000000998\n000000999");
+        assert_eq!((newest.first_row, newest.rows, newest.total_rows), (997, 3, 1_000));
+        let cut = last_page(1_000, 30, rows_of(9, 1_000));
+        assert_eq!(cut.text, "000000997\n000000998\n000000999", "the newest kept, not the oldest");
+        assert_eq!(last_page(5, PAGE_BYTES, rows_of(9, 0)).text, "");
     }
 
     #[test]
