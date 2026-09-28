@@ -1729,9 +1729,15 @@ if contract:
     // by the tests, so the app they judge is the one this run just built.
     swift_bin = $`swift build --show-bin-path`.stdout.trim()
     root = $`pwd`.stdout.trim()
-    $`MUSTER_CONTRACT_APP={swift_bin}/muster MUSTER_CONTRACT_BUNDLE={root}/{BUNDLE}/Contents/MacOS/muster cargo test -p muster-contract --test launch -- --ignored --test-threads=1` catch:
+    // A directory per checkout, so two worktrees running this at once do not delete each
+    // other's homes, and the same one on every run here, so a run finds the daemons an
+    // interrupted one left and ends them. Short, for the socket paths the app binds under it.
+    checkout = $`printf %s {root} | shasum -a 256`.stdout[:8]
+    scratch = "/tmp/muster-contract-{checkout}"
+    print("Each check's home and run log: {scratch}/<check>/")
+    $`MUSTER_CONTRACT_ROOT={scratch} MUSTER_CONTRACT_APP={swift_bin}/muster MUSTER_CONTRACT_BUNDLE={root}/{BUNDLE}/Contents/MacOS/muster cargo test -p muster-contract --test launch -- --ignored --test-threads=1` catch:
         print_err(red("The app did not launch cleanly against a real daemon."))
-        print_err("Each check's run log is under /tmp/muster-contract/<check>/run.jsonl.")
+        print_err("Each check's run log is under {scratch}/<check>/run.jsonl.")
         exit(1)
 
     // And the Swift tests that need a real libghostty surface, which is a Metal layer on a

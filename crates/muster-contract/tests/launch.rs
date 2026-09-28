@@ -13,7 +13,7 @@
 //! Every test is ignored, because launching an app needs a logged-in GUI session and the default
 //! gate stays offline and deterministic (`docs/testing.md`). `./dev --contract` builds the app
 //! and the bundle, says where they are, and runs these one at a time. Each check leaves its run
-//! log under `/tmp/muster-contract/<check>/`, because that log is what a failure is read from.
+//! log under `<MUSTER_CONTRACT_ROOT>/<check>/`, because that log is what a failure is read from.
 
 use std::collections::BTreeSet;
 use std::os::unix::process::CommandExt;
@@ -29,10 +29,6 @@ use muster_daemon_proto::{self as proto, ConnectionKind, input_event};
 use muster_harness::requests::{beside, create, in_new_tab, make, snapshot};
 use muster_harness::{Daemon, Input, until, until_file, until_within};
 use serde_json::Value;
-
-/// Where each check keeps its home and its log. Short, because a socket path has to fit
-/// `sockaddr_un.sun_path` and the app binds its daemon's socket and every pane's link under here.
-const ROOT: &str = "/tmp/muster-contract";
 
 /// The pane every check that stages its own daemon opens, named as a script talking to the daemon
 /// directly would name one.
@@ -651,6 +647,21 @@ fn a_refused_config_opens_the_roster_it_would_have_had_nowhere_to_appear_in() {
     expect_no_daemon_left(&scratch);
 }
 
+/// Where each check keeps its home and its log, which `./dev --contract` names per checkout:
+/// two checkouts running the tier at once would otherwise delete each other's homes and stop
+/// each other's daemons. Short, because a socket path has to fit `sockaddr_un.sun_path` and the
+/// app binds its daemon's socket and every pane's link under here.
+fn root() -> PathBuf {
+    let Some(root) = std::env::var_os("MUSTER_CONTRACT_ROOT").map(PathBuf::from) else {
+        panic!(
+            "MUSTER_CONTRACT_ROOT is not set, so there is nowhere to keep this check's home.\n  \
+             Impact: this check ran nothing.\n  Fix: run it through ./dev --contract, which \
+             names a directory for this checkout."
+        )
+    };
+    root
+}
+
 /// The app SwiftPM builds, which is what every check but one launches.
 fn built_app() -> PathBuf {
     handed("MUSTER_CONTRACT_APP", "the app SwiftPM builds")
@@ -700,7 +711,7 @@ struct Scratch {
 
 impl Scratch {
     fn new(check: &str) -> Scratch {
-        let scratch = Scratch { root: Path::new(ROOT).join(check) };
+        let scratch = Scratch { root: root().join(check) };
         // Before the delete, not after, and that ordering was one of three daemon-leak faults
         // this tier once had (a_2I7ASgulK). Removing the directory takes the last run's socket
         // with it, and a daemon whose socket is gone cannot be reached to be asked to stop:
