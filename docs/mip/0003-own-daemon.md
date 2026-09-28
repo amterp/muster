@@ -755,13 +755,16 @@ reader, which gives it to detection at once, and it counts until one of these:
   has identified its agent waits two seconds for it;
 - for working, ten seconds pass with no output from the pane. A working agent animates something,
   and one interrupted mid-turn, which no hook reports, sits still at its prompt. This asks only
-  that the screen move, not that a rule match it, so it holds when the rules have broken;
+  that the screen move, not that a rule match it, so it holds when the rules have broken. While
+  a rule that sees a prompt on screen has read blocked for two seconds, a working report is set
+  aside, and counts again once the prompt goes: one sub-agent can ask permission while another's
+  tool calls go on reporting working, and the prompt is still waiting on you;
 - for blocked or idle that the rules have read the same way, since the report came or as it came,
   the rules read something else for two seconds. No hook says a prompt went: Esc and a denial run
   none, and an approved tool runs none until it ends. What the rules confirmed and then stopped
   seeing has gone, however much else on the screen still moves. Claude Code's two permission rules
-  that read only the dialog under the last horizontal rule rank above its working rules, so a
-  prompt shown while sub-agents animate beside it still reads blocked;
+  that read only the dialog under the last horizontal rule rank above its working rules, so the
+  rules read a prompt shown while sub-agents animate beside it as blocked;
 - for blocked or idle that the rules have never read the same way, the pane produces output in
   each of three seconds running after the report. That is a prompt the rules cannot read, where
   the report is all there is to go on, and a prompt waiting on you sits still. An approved tool

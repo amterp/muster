@@ -81,6 +81,7 @@ id = "live_blocked_form"
 state = "blocked"
 # Above every working rule, the title's included: a dialog open below the last horizontal rule
 # is waiting on you, whatever else on screen still animates (sub-agents running beside it).
+# Read for two seconds, it also outranks a working hook report from one of those sub-agents.
 # The region is what keeps stale text out: once the dialog closes, below the last rule is the
 # status footer again.
 priority = 1150

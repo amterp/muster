@@ -21,6 +21,10 @@ pub(crate) const QUIET: Duration = Duration::from_secs(10);
 /// something else for this long. No hook says a prompt went: Esc and a denial run none, and an
 /// approved tool runs none until it ends. What the rules confirmed and then stopped seeing has
 /// gone. The wait lets a prompt finish drawing.
+///
+/// The same wait sets a working report aside while a prompt is on screen: one sub-agent can
+/// ask permission while another's tool calls go on reporting working, and the prompt is still
+/// waiting on you.
 pub(crate) const DISAGREE: Duration = Duration::from_secs(2);
 
 /// A blocked or idle report the rules have never read the same way stops counting once the pane
@@ -78,6 +82,9 @@ pub(crate) struct Reporting {
     /// What the rules read the last screen as, and since when every screen they read came to
     /// that.
     reading: Option<(State, Instant)>,
+    /// Since when every screen the rules read came to a blocker they can see: a prompt, rather
+    /// than a guess from the absence of anything else.
+    blocker_since: Option<Instant>,
     /// Since when no rule matched any screen they read.
     unmatched_since: Option<Instant>,
     /// Since when a working report has counted without a break.
@@ -110,10 +117,16 @@ impl Reporting {
         }
     }
 
-    /// What the rules made of a screen they read: its state, and whether any rule matched.
-    pub(crate) fn rules(&mut self, state: State, matched: bool, now: Instant) {
+    /// What the rules made of a screen they read: its state, whether any rule matched, and
+    /// whether the rule that decided saw the state itself on screen.
+    pub(crate) fn rules(&mut self, state: State, matched: bool, visible: bool, now: Instant) {
         if self.reading.is_none_or(|(read, _)| read != state) {
             self.reading = Some((state, now));
+        }
+        if state == State::Blocked && visible {
+            self.blocker_since.get_or_insert(now);
+        } else {
+            self.blocker_since = None;
         }
         if let Some(report) = self.report.as_mut().filter(|report| report.state == state) {
             report.confirmed = true;
@@ -128,6 +141,7 @@ impl Reporting {
     /// The pane's agent changed: what was learned of the last one's screen is no guide.
     pub(crate) fn agent_changed(&mut self) {
         self.reading = None;
+        self.blocker_since = None;
         self.unmatched_since = None;
         self.working_since = None;
         self.active_seconds.clear();
@@ -139,7 +153,8 @@ impl Reporting {
     /// one that reported (after [`UNCONFIRMED`] for one not yet identified), when the agent's
     /// process has exited, for working after [`QUIET`] without output, and for blocked or idle
     /// after [`DISAGREE`] of the rules reading otherwise once they have read it the same way, or
-    /// else after [`RESTLESS_SECONDS`] of output running.
+    /// else after [`RESTLESS_SECONDS`] of output running. A working report is set aside, and
+    /// counts again after, while the rules have read a prompt on screen for [`DISAGREE`].
     pub(crate) fn in_force(
         &mut self,
         agent: Option<&Agent>,
@@ -161,6 +176,11 @@ impl Reporting {
         let unconfirmed = !confirmed && now.duration_since(report.at) >= UNCONFIRMED;
         if exited || stale || unconfirmed {
             self.report = None;
+            return None;
+        }
+        let prompted =
+            self.blocker_since.is_some_and(|since| now.duration_since(since) >= DISAGREE);
+        if report.state == State::Working && prompted {
             return None;
         }
         confirmed.then_some(report.state)

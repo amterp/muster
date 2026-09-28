@@ -374,7 +374,7 @@ impl Detector {
         };
 
         if !process_exited {
-            self.reporting.rules(detection.state, detection.rule.is_some(), now);
+            self.reporting.rules(detection.state, detection.rule.is_some(), detection.visible, now);
         }
         let next = PublishState { state: detection.state, visible: detection.visible };
         if decide_transition(
