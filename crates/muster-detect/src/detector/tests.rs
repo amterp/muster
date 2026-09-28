@@ -958,6 +958,27 @@ fn a_blocked_report_gives_way_once_the_prompt_it_described_is_gone() {
     assert_eq!((last.state, last.reported), (State::Idle, false), "{after:?}");
 }
 
+/// Esc at a prompt, and the pane handed to another daemon before the report has given way: the
+/// daemon it goes to knows the rules read the prompt, and lets the report go as this one would.
+#[test]
+fn a_blocked_report_gives_way_after_a_handoff_as_it_would_have_before() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Blocked);
+    run.paint("allow?");
+    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+    run.paint("ready>");
+    run.run_for(Duration::from_secs(1), None);
+
+    run.detector = Detector::resumed(SHELL, run.detector.carried(run.now), run.now, 0);
+    let after = run.run_for(Duration::from_secs(5), None);
+    let last = after.last().expect("something was published");
+    assert_eq!((last.state, last.reported), (State::Idle, false), "{after:?}");
+}
+
 /// A prompt the rules read as blocked, with something else animating beside it: the report and
 /// the rules agree, and the screen moving is no reason to stop counting it.
 #[test]
