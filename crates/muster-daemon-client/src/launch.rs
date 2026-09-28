@@ -21,15 +21,12 @@ use muster_core::fields;
 use muster_daemon_proto::connection::HandshakeError;
 use muster_daemon_proto::{ConnectionKind, Welcome, install};
 
-/// How long a daemon just started may take to answer.
+/// How long a daemon just started may take to answer: `LAUNCH_PATIENCE`, which says why.
 ///
-/// It answers in milliseconds once it runs. The wait is for macOS, which holds a binary it has
-/// not run before while it scans it: 16 s for a debug daemon on the machine this was measured
-/// on, and 44 s for a freshly built app. That is every first launch after an install or an
-/// update, not only the first on a machine, so every start gets it: a start keyed on "no
-/// record yet" would still give up after an update, whose daemon is new to macOS but not to
-/// Muster.
-const START_PATIENCE: Duration = Duration::from_mins(1);
+/// That is every first launch after an install or an update, not only the first on a machine,
+/// so every start gets it: a start keyed on "no record yet" would still give up after an update,
+/// whose daemon is new to macOS but not to Muster.
+const START_PATIENCE: Duration = muster_daemon_proto::launch::LAUNCH_PATIENCE;
 
 /// How long a start goes quietly before the log says it is slow, which is where the patience
 /// stood before a first launch was known to need more.

@@ -897,11 +897,13 @@ while another handoff is under way. `muster-daemon replace` asks for it by hand;
 finds an older daemon running.
 
 **A launch first.** Before it touches anything, the old daemon runs the program once with
-`--version` and waits up to thirty seconds for it to exit well, logging how long it took as
+`--version` and waits up to a minute for it to exit well, logging how long it took as
 `daemon.handoff.launched`. A program that cannot start - a bad build, a missing library - is refused
 there, with its stderr on the old daemon's. And macOS checks a binary the first time it runs, which
 took up to 12.6 s for a fresh copy on a busy machine: inside the exchange that would outlast a
-step's ten seconds and fail it late, where here it is only waited for. Nothing is refused while
+step's ten seconds and fail it late, where here it is only waited for. The minute is the one the app
+gives a daemon it launches itself (`muster_daemon_proto::launch::LAUNCH_PATIENCE`), because the first
+start of a new daemon after an update is one or the other, and 44 s was measured for it. Nothing is refused while
 it waits: panes are made, resized, renamed and closed, and hooks report, as at any other time. The
 checks above are made again when it answers, and the daemon is marked as being replaced only then;
 a request they refuse is logged as `daemon.handoff.refused`, since nothing was started to fail. A

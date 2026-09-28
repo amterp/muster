@@ -39,10 +39,10 @@ use crate::session::{Handing, Places, Replacement, Reply, Resuming, Saved, Share
 const STEP: Duration = Duration::from_secs(10);
 
 /// How long the successor has to answer `--version`, which it is run with once before any pane
-/// is touched. macOS checks a binary the first time it runs, which took up to 12.6 s on a busy
-/// machine: inside a step of the handoff that would outlast [`STEP`], and here it costs only
-/// the wait.
-const LAUNCH: Duration = Duration::from_secs(30);
+/// is touched. macOS checks a binary the first time it runs: inside a step of the handoff that
+/// would outlast [`STEP`], and here it costs only the wait. The app's own launch waits the same,
+/// since an update's first start of a new daemon is either one.
+const LAUNCH: Duration = muster_daemon_proto::launch::LAUNCH_PATIENCE;
 
 /// A replay goes in pieces of this, each well inside the largest frame.
 const PIECE: usize = 1 << 20;
