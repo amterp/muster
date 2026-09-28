@@ -69,12 +69,19 @@ fn dial(
 }
 
 /// A line a start writes to the stderr file it shares with any other start on that socket, so
-/// that it can quote only what followed it.
+/// that it can quote only what followed it, and the token its daemon repeats in its welcome, so
+/// that it knows the daemon that answered is its own.
+///
+/// Counted as well as timed, because the clock alone does not tell two starts apart: macOS's
+/// ticks in whole microseconds, and two threads of one process starting the same socket land
+/// in the same one often enough that each took the other's daemon for its own.
 fn start_marker() -> String {
+    static STARTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let start = STARTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_nanos());
-    format!("--- muster-daemon start {}-{nanos} ---", std::process::id())
+    format!("--- muster-daemon start {}-{nanos}-{start} ---", std::process::id())
 }
 
 /// What a stderr file holds after `marker`'s line, trimmed.
@@ -119,4 +126,18 @@ pub fn silence_sigpipe(stream: &UnixStream) -> std::io::Result<()> {
 #[cfg(not(target_vendor = "apple"))]
 pub fn silence_sigpipe(_stream: &UnixStream) -> std::io::Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A marker is how a start knows the daemon that answered is its own, and two starts in one
+    /// process - two threads, or one retrying - can begin inside the same tick of the clock.
+    #[test]
+    fn every_start_has_a_marker_of_its_own() {
+        let markers: std::collections::HashSet<String> =
+            (0..1000).map(|_| start_marker()).collect();
+        assert_eq!(markers.len(), 1000);
+    }
 }
