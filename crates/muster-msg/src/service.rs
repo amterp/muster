@@ -964,6 +964,8 @@ impl<S: Store> Messaging<S> {
         }
         let mut changed = Changed::by(&by, group, None);
         let after = self.groups[group].head();
+        // Told from before the change too, so the machine of a member removed there lets it go.
+        let before = self.tell(group, after, None);
         for name in add {
             check_participant(name)?;
             let name = self.addressee(name, &by, Some(group), presence)?;
@@ -973,7 +975,8 @@ impl<S: Store> Messaging<S> {
             }
         }
         for name in remove {
-            let Some(name) = self.lookup_name(name) else {
+            let Some(name) = self.member_named(group, name)?.or_else(|| self.lookup_name(name))
+            else {
                 return Err(Refusal::NoSuchParticipant { name: name.clone() });
             };
             if !self.groups[group].members.contains(&name) {
@@ -992,6 +995,11 @@ impl<S: Store> Messaging<S> {
         let any = !changed.added.is_empty() || !changed.removed.is_empty();
         changed.seq = any.then(|| self.groups[group].head());
         changed.tell = self.tell(group, after, None);
+        for told in before {
+            if !changed.tell.iter().any(|telling| telling.machine == told.machine) {
+                changed.tell.push(told);
+            }
+        }
         self.save()?;
         Ok(changed)
     }
@@ -1112,6 +1120,25 @@ impl<S: Store> Messaging<S> {
         match &kept.home {
             None => Ok(kept),
             Some(machine) => Err(Refusal::KeptElsewhere { group: key, machine: machine.clone() }),
+        }
+    }
+
+    /// The member of `group` that `name` means: that member, or else the one on another machine
+    /// going by it, which is not a participant here (MIP-4, section 11).
+    fn member_named(&self, group: &str, name: &str) -> Result<Option<String>, Refusal> {
+        let members = &self.groups[group].members;
+        if members.contains(name) {
+            return Ok(Some(name.to_string()));
+        }
+        let elsewhere: Vec<String> = members
+            .iter()
+            .filter(|member| split_machine(member).is_some_and(|(base, _)| base == name))
+            .cloned()
+            .collect();
+        match elsewhere.as_slice() {
+            [] => Ok(None),
+            [only] => Ok(Some(only.clone())),
+            _ => Err(Refusal::WhichParticipant { name: name.to_string(), candidates: elsewhere }),
         }
     }
 

@@ -817,10 +817,16 @@ fn a_log_bigger_than_a_frame_is_fetched_in_pages() {
     let mut wire = Wire::new();
     let builder = session("builder");
     wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    // A member on the devenv, or its replica is not held; the posts are not sent on, so the
+    // pages below are what bring them.
+    wire.join(Side::Devenv, &session("critic"), Some("critic"), "review");
+    let joined = wire.devenv.log("review@lap", 0).unwrap().last().unwrap().seq;
+    wire.losing = true;
     let page = "x".repeat(muster_msg::LARGEST_BODY - 1024);
     for _ in 0..18 {
         wire.post(Side::Laptop, &builder, None, &[], &page).unwrap();
     }
+    wire.losing = false;
 
     let caught = wire.laptop.since("review", 0).unwrap();
     let bytes: usize = caught
@@ -835,7 +841,7 @@ fn a_log_bigger_than_a_frame_is_fetched_in_pages() {
 
     // Asked again from each page's last entry, the pages together are the whole log, and the
     // replica they are applied to holds every message.
-    let (mut after, mut pages, mut more) = (0, 0, true);
+    let (mut after, mut pages, mut more) = (joined, 0, true);
     while more {
         let page = wire.laptop.since("review", after).unwrap();
         let (devenv, sessions) = wire.split(Side::Devenv);

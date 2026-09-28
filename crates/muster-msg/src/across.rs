@@ -294,7 +294,7 @@ pub struct Applied {
     pub wakes: Vec<Wake>,
     pub answered: Vec<AnsweredWait>,
     /// Waits kept to the group by members here its home removed, which the host ends as a
-    /// leave does. Not filled yet.
+    /// leave does.
     pub ended: Vec<u64>,
     pub unsaved: Option<String>,
     /// The replica's head, when its home said it holds more: where to fetch the next page from.
@@ -646,6 +646,7 @@ impl<S: Store> Messaging<S> {
         applied.reached.extend(done.reached.iter().cloned());
         applied.wakes.extend(done.wakes);
         applied.answered.extend(done.answered);
+        applied.ended.extend(done.ended);
         applied.unsaved = applied.unsaved.take().or(done.unsaved);
         applied.more = applied.more.or(done.more);
         Ok(done.reached)
@@ -696,6 +697,7 @@ impl<S: Store> Messaging<S> {
             match &entry.what {
                 What::Joined { who } => {
                     group.members.insert(who.clone());
+                    self.cursor_from_join(who, &key, entry.seq);
                 }
                 What::Left { who } => {
                     group.members.remove(who);
@@ -752,6 +754,10 @@ impl<S: Store> Messaging<S> {
         }
         keep_last_human_wake(&mut posted.wakes);
         self.unanswered.remove(&key);
+        let more = more.then(|| self.groups[&key].head());
+        // Only once the batch reaches the home's head: until then a member may yet rejoin in a
+        // later page, and one joining now may not have reached its Joined entry.
+        let ended = if more.is_none() { self.let_go_of(&key) } else { Vec::new() };
         let unsaved = match self.save() {
             Err(Refusal::Store { error }) => Some(error),
             _ => None,
@@ -760,9 +766,9 @@ impl<S: Store> Messaging<S> {
             reached: posted.reached,
             wakes: posted.wakes,
             answered: posted.answered,
-            ended: Vec::new(),
+            ended,
             unsaved,
-            more: more.then(|| self.groups[&key].head()),
+            more,
         })
     }
 
@@ -807,6 +813,42 @@ impl<S: Store> Messaging<S> {
             }
         };
         answered
+    }
+
+    /// Starts the cursor of `name`, if it is one of this machine's participants, at its join to
+    /// the replica `key` when the join's own answer did not, so nothing from before the join is
+    /// unread to it.
+    fn cursor_from_join(&mut self, name: &str, key: &str, seq: u64) {
+        if let Some(participant) = self.participants.get_mut(name) {
+            participant.cursors.entry(key.to_string()).or_insert(seq);
+        }
+    }
+
+    /// Lets each of this machine's participants that is not a member of the replica `key` go of
+    /// it, as leaving would, and drops the replica if none is left in it, so it is not fetched
+    /// again. Returns the waits they kept to it, which the host ends. Judged by membership once
+    /// the batch is in rather than by each `Left`, so a replica replayed from nothing does not
+    /// let go of a member who left and came back.
+    fn let_go_of(&mut self, key: &str) -> Vec<u64> {
+        let members = &self.groups[key].members;
+        let gone: Vec<String> =
+            self.participants.keys().filter(|name| !members.contains(*name)).cloned().collect();
+        if members.iter().all(|member| split_machine(member).is_some()) {
+            self.groups.remove(key);
+        }
+        gone.iter().filter_map(|name| self.let_go(name, key)).collect()
+    }
+
+    /// Lets `name`, one of this machine's participants, go of a replica its home took it out of,
+    /// as leaving would: returns the wait it kept to that group, which the host ends.
+    fn let_go(&mut self, name: &str, key: &str) -> Option<u64> {
+        let participant = self.participants.get_mut(name)?;
+        participant.cursors.remove(key);
+        participant.woken.remove(key);
+        participant.rewoken.remove(key);
+        let kept_to_it =
+            self.waiters.get(name).is_some_and(|waiter| waiter.group.as_deref() == Some(key));
+        kept_to_it.then(|| self.waiters.remove(name)).flatten().map(|waiter| waiter.ticket)
     }
 
     /// A group's entries after `after`, as this machine keeps them.

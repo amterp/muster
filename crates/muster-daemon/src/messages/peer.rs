@@ -523,6 +523,7 @@ fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
     let (settle, holding) = {
         let mut messages = shared.messages();
         let settle = messages.service.settle(&link.peer, &away.call, reply, &panes, now_ms());
+        messages.let_go(&settle.applied.ended);
         let holding = messages.hold(&settle.applied.wakes, &settle.applied.answered, &panes);
         (settle, holding)
     };
@@ -701,6 +702,7 @@ fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> 
         let mut messages = shared.messages();
         match messages.service.apply(&link.peer, caught, &panes, now_ms()) {
             Ok(applied) => {
+                messages.let_go(&applied.ended);
                 let holding = messages.hold(&applied.wakes, &applied.answered, &panes);
                 (applied.reached, holding)
             }
