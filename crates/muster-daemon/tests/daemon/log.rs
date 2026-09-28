@@ -1,7 +1,7 @@
 //! The daemon's own log (MIP-3 section 1): a bounded file beside its socket, and the same
 //! records for any control connection that follows them.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::support::*;
 use muster_harness::Input;
@@ -94,4 +94,20 @@ fn with_logging_off_there_is_no_file_and_nothing_to_follow() {
     assert_eq!(refused.outcome(), proto::Outcome::Refused);
     assert!(refused.answer.reason.contains("MUSTER_LOG=0"), "{}", refused.answer.reason);
     assert!(!daemon.root().join("daemon.log").exists());
+}
+
+#[test]
+fn waiting_for_a_record_ends_when_it_arrives_rather_than_at_the_deadline() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    follow(&mut control, None);
+    // Made on another connection, so the record reaches this one after the wait has begun.
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+
+    let deadline = Duration::from_secs(30);
+    let began = Instant::now();
+    control.logged_until("daemon.pane.started", deadline);
+    // The record arrives within milliseconds of the pane being made; half the deadline is
+    // only there to tell "returned when it arrived" from "returned at the deadline".
+    assert!(began.elapsed() < deadline / 2, "waited {:?} for a record", began.elapsed());
 }
