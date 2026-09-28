@@ -232,8 +232,12 @@ reach all of it. The four directions are geometric and do not wrap. `--place` ta
 
 `--asking` goes to the pane most urgently asking for somebody, which is what `cmd+shift+a` does:
 `blocked` first, then a program's notification, then `done`, and within each the pane that asked
-first. It prints the pane it went to, and nothing when nothing is asking, which still exits 0. Going
-there is looking at it, so run it again for the next one.
+first. It prints the pane it went to, and nothing when nothing is asking, which still exits 0.
+
+It reaches the panes this window would post a notification for: its own tabs, and those of a
+window that is closed. A pane in another open window is that window's to go to, from there.
+Going to a pane counts as looking at it only while the window is in front, so run it again for
+the next one there; with another app in front, it goes back to the same pane.
 
 Tabs step too, on their own axis - `muster tab focus --next` reaches the tabs behind whatever is on
 screen.

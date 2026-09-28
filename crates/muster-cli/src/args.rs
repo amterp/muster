@@ -229,9 +229,9 @@ enum What {
 
     /// Put the window's keyboard on a pane, or step it somewhere
     //
-    // A name, a direction and a place are three ways of saying where, and clap holds them in
-    // one group so that two at once is refused before this is read. None of them is the
-    // fourth way, which is the pane this is running in.
+    // A name, a direction, a place and the pane asking are four ways of saying where, and clap
+    // holds them in one group so that two at once is refused before this is read. None of them
+    // is the fifth way, which is the pane this is running in.
     Focus {
         /// The pane to go to, or the one this is running in
         #[arg(value_name = "REF", group = "somewhere")]

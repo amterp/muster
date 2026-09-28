@@ -959,8 +959,11 @@ message FocusTab {
 // Puts the keyboard on the pane asking for somebody that is most urgent: blocked before a
 // program's notification before done, and within each, the one that has asked longest.
 //
-// Like a banner click, it surfaces the pane's tab. Landing there is looking at the pane, which
-// takes back what it asked, so pressing again goes to the next one.
+// Like a banner click, it surfaces the pane's tab, and it reaches the panes a banner from this
+// window would: its own tabs and a closed window's, not another open window's. Landing there
+// is looking at the pane only while the window has the OS's focus, which takes back what it
+// asked, so pressing again goes to the next one; asked from behind another app, it lands on
+// the same pane again.
 message FocusAsking {}
 
 // Where a FocusAsking went: both empty when nothing was asking, which is no failure. A window

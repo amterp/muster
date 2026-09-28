@@ -3478,8 +3478,17 @@ fn connecting(daemon: &DaemonId) {
     });
 }
 
-/// What to tell somebody whose configured daemon has not attached since launch.
+/// What to tell somebody whose daemon, configured or Muster's own, has not attached since launch.
 fn never_attached(daemon: &Daemon, refusal: &str) -> String {
+    let backoff = reconnect::BACKOFF_NS[reconnect::BACKOFF_NS.len() - 1] / 1_000_000_000;
+    // Muster's own, with no daemon configured: the only one, and on this machine.
+    if named_daemons().is_empty() {
+        return format!(
+            "Muster could not start its own daemon on this machine: {refusal}. This window has \
+             no panes until it does. Muster keeps trying about every {backoff} seconds and the \
+             panes arrive on their own once it answers, so relaunching is not necessary."
+        );
+    }
     format!(
         "Muster could not reach the daemon {}: {refusal}. Its panes are absent from this \
          window, and every other daemon's are unaffected. Muster keeps trying about every {} \
@@ -3487,7 +3496,7 @@ fn never_attached(daemon: &Daemon, refusal: &str) -> String {
          necessary. Check that the daemon is running and that the machine it is on is \
          reachable.",
         described(daemon),
-        reconnect::BACKOFF_NS[reconnect::BACKOFF_NS.len() - 1] / 1_000_000_000,
+        backoff,
     )
 }
 
