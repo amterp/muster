@@ -18,6 +18,7 @@ pub mod args;
 pub mod dial;
 pub mod docs;
 pub mod environment;
+pub mod messaging;
 pub mod opening;
 pub mod render;
 
@@ -143,6 +144,10 @@ pub fn run(
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
+        args::Asking::Message(messaging) => {
+            let rendered = messaging::run(*messaging, environment, input, json);
+            return finish(rendered, json, out, errors);
+        }
         args::Asking::Send(request) => request,
         args::Asking::SendFrom { mut request, from } => match read_text(&from, input) {
             Ok(text) => {
@@ -188,6 +193,16 @@ pub fn run(
 
     let rendered = dial::ask(&request, named.as_deref(), environment)
         .and_then(|response| render::answer(&response, json));
+    finish(rendered, json, out, errors)
+}
+
+/// Prints an answer, or reports why there is none, and says what to exit with.
+fn finish(
+    rendered: Result<String, Trouble>,
+    json: bool,
+    out: &mut impl Write,
+    errors: &mut impl Write,
+) -> i32 {
     match rendered {
         Ok(text) => {
             if !text.is_empty() {

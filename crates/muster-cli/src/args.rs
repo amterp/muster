@@ -68,6 +68,8 @@ pub enum Asking {
     MakeWindow,
     /// The window that was closed, which is the same act with the arrangement it left behind.
     ReopenWindow,
+    /// A message for this machine's daemon rather than a window.
+    Message(Box<crate::messaging::Messaging>),
 }
 
 /// Where the text of a `pane send` comes from when it is not on the command line.
@@ -206,6 +208,15 @@ enum What {
     Tab {
         #[command(subcommand)]
         doing: WithTab,
+    },
+
+    /// Post messages to other agents, read theirs, and be woken when one arrives for you
+    #[command(name = muster_daemon_proto::messaging::NAMESPACE, long_about = crate::messaging::PROTOCOL)]
+    Msg {
+        #[command(flatten)]
+        identity: crate::messaging::Identity,
+        #[command(subcommand)]
+        verb: crate::messaging::Verb,
     },
 
     /// Every daemon Muster started on this machine, and whether it is still there
@@ -715,6 +726,9 @@ pub fn parse(
         },
         What::Window { doing: None, .. } => send(request::Payload::ReadWindow(ReadWindow {})),
         What::Daemons => send(request::Payload::ReadDaemons(ReadDaemons {})),
+        What::Msg { identity, verb } => {
+            Asking::Message(Box::new(crate::messaging::parse(verb, identity, environment, here)?))
+        }
         // Asked of every window rather than of one, which is why it is not a `Send`: `--socket`
         // and $MUSTER_SOCKET both narrow to one window, and the question here is which there are.
         What::Window { doing: Some(AboutWindows::List), .. } => Asking::Survey,
@@ -1054,7 +1068,7 @@ fn directory(
 /// test says where the command was typed, and a corpus case can then pin what a relative path
 /// means. Unlike `--cwd` this file is read on this machine, so the only paths refused are the
 /// two nothing here can resolve.
-fn file_to_read(named: &str, here: Option<&Path>) -> Result<String, Failure> {
+pub(crate) fn file_to_read(named: &str, here: Option<&Path>) -> Result<String, Failure> {
     if named.starts_with('~') {
         return Err(Failure::Refused(format!(
             "`--file {named}` still has its tilde, so the shell did not expand it - quoting is \

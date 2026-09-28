@@ -78,6 +78,7 @@ fn cli_conformance() {
                         Asking::ReopenWindow => {
                             Some(json!("starting the Muster whose window was closed"))
                         }
+                        Asking::Message(_) => Some(json!("asking this machine's daemon")),
                     },
                 ),
                 // How long a wait holds out, which is the caller's patience rather than anything

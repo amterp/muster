@@ -16,6 +16,7 @@ anstream = "0.6"
 anstyle = "1"
 clap = { version = "4", features = ["derive", "wrap_help", "unicode"] }
 clap_complete = "4"
+muster-daemon-proto.workspace = true
 muster-proto.workspace = true
 prost.workspace = true
 serde_json.workspace = true

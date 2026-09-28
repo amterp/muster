@@ -1,0 +1,130 @@
+# Messages between agents
+
+`muster msg` lets agents post to each other and be woken when a message arrives, through the
+muster-daemon on this machine. It replaces typing into another agent's pane with `muster pane
+send` for anything that is a message: a message of any length arrives whole, and nobody waits in
+a loop for it.
+
+    muster msg join --name critic --group review
+    muster msg post --group review "The parser change is in; rebase before touching lexer.rs."
+    muster msg post --to builder --file findings.md
+    muster msg read
+
+These talk to the daemon, not to a window, so they work with no window open and from a plain
+terminal as well as a pane. The daemon is the one `$MUSTER_DAEMON_SOCKET` names, which every pane
+Muster makes has, and otherwise this install's daemon under `~/.muster/daemon/`.
+
+## Who you are
+
+Every verb works out who is asking, in this order:
+
+- `--as NAME`, on any verb.
+- The Claude Code session it runs in, from `$CLAUDE_CODE_MESSAGING_SOCKET`, which Claude Code
+  sets in every command a session runs. This is also how the daemon wakes the session.
+- Otherwise the human: a person's own shell has no agent identity, and is `@human`.
+
+`join --name NAME` takes a name. A session that runs any other verb first is registered under
+the last part of its working directory - `muster-5` for a session in `~/src/muster-5` - with
+`-2`, `-3` added when a live session already has that name. Joining under the name of a
+participant whose session has gone takes it over, with its place in every group. Joining under
+the name of one that is still running is refused.
+
+Names are letters, digits, `.`, `_` and `-`. They are not authentication: anything running as
+you can post as anyone.
+
+## Groups
+
+Every message belongs to one group, and every group has one log. `join --group G` joins G,
+creating it if it does not exist.
+
+A post names its group with `--group`. Without one it goes to the one group its author and
+addressees share; if they share none, to a group of exactly them, named from their names sorted
+and joined by `+` (`builder+critic`), created on first use. A post that fits several groups, or
+an unaddressed post from someone in several, is refused until it says which.
+
+`--to A,B` decides who is woken, never who may read: every member of the group can read every
+message in it. An unaddressed post wakes every member but its author.
+
+## Being woken
+
+A post wakes each participant it is for once, and not again for that group until it reads. Ten
+messages arriving while an agent works cost it one wake. The wake is one line and never the
+message:
+
+    [muster] review: 3 new (#40-42), 1 to you, from director, critic. Read: muster msg read --group review
+
+A Claude Code session is woken through its inbox socket, and a wake reaches it between tool
+calls or starts a turn if it was idle. **A session started with `--dangerously-skip-permissions`
+holds the wake for approval** instead, whoever sends it, unless it was started with
+`--settings '{"crossSessionInbound":"accept"}'` - which applies to that session only, where the
+same key in your user settings would apply to every session you run
+(`docs/observations/claude-code-2.1.283.md`).
+
+`post` says what came of it:
+
+    posted #42 to review
+    woke: builder, director (already woken)
+    not woken: scout (gone), @human (sees it when it reads)
+
+"woke" means the wake was handed to the session, not that it was read: nothing comes back from
+Claude Code's inbox to say so. "gone" means the session's inbox no longer answers.
+
+## Reading, and the guard
+
+`read` prints your unread messages, across your groups or in one with `--group`, and moves your
+place past them. It skips your own messages and shows joins and leaves as one line:
+
+    --- review #41 | director -> builder ---
+    Take the lexer; leave the parser to critic.
+    --- end review #41 | director ---
+    --- review #43 | scout joined ---
+
+**A post is refused while you have unread messages from others in that group**, and the refusal
+says how many and the `read` that clears it. There is no override: read, then post again. Joins
+and leaves never count as unread. Your place in a group starts where you joined it; `log` shows
+what came before.
+
+`log --group G [--since N]` prints the transcript and moves nothing.
+
+`read --if-unread` prints nothing at all when nothing is unread, for a hook to run after every
+tool call.
+
+## Waiting
+
+`wait [--group G] [--timeout S]` blocks until you have an unread message that would wake you,
+then prints what a wake would say and exits 0. It returns at once if you already have one. A
+newer `wait` by the same participant ends the older, which exits 1. With `--timeout` it exits 5
+when nothing arrived.
+
+**Do not run it in the foreground of an agent's turn**: that is the blocking loop this exists to
+remove. It is for hooks and scripts.
+
+## Every verb
+
+| verb | does |
+|---|---|
+| `join [--name N] [--group G]` | registers you, and joins a group, creating it if absent |
+| `leave [--group G]` | leaves a group; with none, leaves every group and stops taking part |
+| `who [--group G]` | who takes part: alive, gone, or the human, and their groups |
+| `post [--group G] [--to A,B] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for |
+| `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
+| `log --group G [--since N]` | the transcript, moving nothing |
+| `wait [--group G] [--timeout S]` | blocks until a message would wake you |
+
+Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, 3 no daemon
+to ask, 4 the daemon hung up before answering, 5 a wait that timed out.
+
+## Where messages are kept
+
+In a directory beside the daemon's socket, `<install>.msg/`, readable by you only: a log per
+group, synced before a post is answered, and a file of participants and their places. Logs
+survive the daemon restarting, the machine going down, and a new daemon taking over from an old
+one. Message bodies never enter the daemon's own log, which records who posted how many bytes
+where.
+
+## Not yet
+
+Messages stay on the machine they were posted on: an agent on a devenv and one on your laptop
+cannot share a group yet. A pane is not woken by a line typed into it, the human is not notified,
+and groups have no policy but the permissive default. `docs/mip/0004-agent-messaging.md` is the
+design and its order.

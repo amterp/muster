@@ -37,6 +37,11 @@ pub const TOPICS: &[Topic] = &[
         text: include_str!("../../../docs/cli/agents.md"),
     },
     Topic {
+        name: "msg",
+        about: "agents posting to each other, being woken, and the unread guard",
+        text: include_str!("../../../docs/cli/msg.md"),
+    },
+    Topic {
         name: "limits",
         about: "what this surface cannot do, and what to do instead",
         text: include_str!("../../../docs/cli/limits.md"),
