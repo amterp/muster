@@ -1077,13 +1077,14 @@ impl<S: Store> Messaging<S> {
 
     /// A group kept here, which its policy and membership are changed on: a replica's are its
     /// home's to change.
+    /// Found by the name every other verb takes, so a bare name that means a replica is
+    /// refused as kept elsewhere rather than as no such group.
     fn kept(&self, group: &str) -> Result<&Group, Refusal> {
-        let kept = self.group(group)?;
+        let key = self.locate(group)?;
+        let kept = &self.groups[&key];
         match &kept.home {
             None => Ok(kept),
-            Some(machine) => {
-                Err(Refusal::KeptElsewhere { group: group.to_string(), machine: machine.clone() })
-            }
+            Some(machine) => Err(Refusal::KeptElsewhere { group: key, machine: machine.clone() }),
         }
     }
 
