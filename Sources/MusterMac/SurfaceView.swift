@@ -238,7 +238,8 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   // a program that asked for the mouse is a report rather than a selection, and what the
   // surface writes for it is dropped by the bridge. The program gets its report from the
   // daemon, which holds the same modes and applies them - shift included, so a shift-drag
-  // selects even there.
+  // selects even there, unless the program asked to be sent shift-clicks (XTSHIFTESCAPE),
+  // which both read from the same bytes.
 
   public override func mouseDown(with event: NSEvent) {
     onClick?()

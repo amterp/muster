@@ -430,8 +430,8 @@ SKIPPED_SUITES = [
       "note": "reaches the network and spends a model turn; ./dev --claude-code runs it" },
     { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 10,
       "note": "need a logged-in session; ./dev --contract runs them" },
-    { "language": "Swift", "suite": "SearchGUITests", "skipped": 1,
-      "note": "needs a logged-in session; ./dev --contract runs it" },
+    { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 2,
+      "note": "need a logged-in session; ./dev --contract runs them" },
 ]
 
 // How many tests this language's entries in the manifest account for.
@@ -1726,7 +1726,7 @@ if contract:
     // view and so wants the same logged-in session the launch above does. They are ordinary
     // tests otherwise, and they skip themselves without this variable rather than failing -
     // the default gate lists them as skipped, which is how a reader knows they exist.
-    $`MUSTER_GUI_TESTS=1 swift test --filter SearchGUITests`
+    $`MUSTER_GUI_TESTS=1 swift test --filter SurfaceGUITests`
 
 if ssh:
     announce("ssh")

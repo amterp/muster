@@ -146,8 +146,8 @@ Muster's principles, adapted to that evidence:
   events, a byte-stream parser - and needs no daemon in any tier, so those stay microseconds. Tests that need a
   daemon spawn one and stay in the default gate, because 25 ms is not a tier boundary. What remains genuinely out
   of the gate is what needs something a developer's machine cannot be assumed to have: `--contract` needs a
-  logged-in GUI session to launch the app - and to draw the one Swift test that stands up a real libghostty
-  surface, `SearchGUITests`, which skips itself in an ordinary run and says so - `--latency` and `--perf`
+  logged-in GUI session to launch the app - and to draw the Swift tests that stand up a real libghostty
+  surface, `SurfaceGUITests`, which skip themselves in an ordinary run and say so - `--latency` and `--perf`
   measure timing and would be flaky as
   assertions (`--latency` prints verdicts against MIP-3's targets and fails only when it cannot measure),
   the SSH tier needs the devenv container - which holds no muster-daemon, so the SSH tier's tests install this
