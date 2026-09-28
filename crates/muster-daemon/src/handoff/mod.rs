@@ -556,6 +556,8 @@ pub(crate) fn take_over(
     }
     shared.lock().release_readers();
     shared.point_link();
+    // Not before the commit: until then the daemon handing over may yet keep its panes, and ring.
+    shared.start_doorbell();
     crate::serve(&shared, signals, stopping)?;
     persister.arm();
     persister.changed();

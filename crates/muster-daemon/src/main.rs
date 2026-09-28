@@ -189,6 +189,9 @@ fn run(
     let persister = Arc::clone(&saved.persister);
     let shared = Shared::new(instance(), stopping.clone(), inherited, places, saved, socket);
     shared.point_link();
+    // The saved panes come back with new shells, and their agents do not: nothing restored is
+    // waited for.
+    shared.start_doorbell();
     serve(&shared, signals, stopping).map_err(Failure::Other)?;
 
     // Once the socket is served: a shell starting in a directory on a hung mount must not keep

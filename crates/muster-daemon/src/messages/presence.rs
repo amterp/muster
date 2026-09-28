@@ -50,9 +50,13 @@ pub(crate) struct Panes {
 
 impl Panes {
     pub(crate) fn of(shared: &Shared) -> Panes {
+        // Until the manifests load, nothing can say whether an agent's prompt is readable, so no
+        // agent is found yet and one may still come to any pane.
         let manifests = shared.detecting.manifests();
+        let loaded = manifests.is_some();
         let read = shared.lock().each_pane(|record, io| {
-            let seen = record.agent.clone().filter(|_| !io.is_closed()).map(|agent| Seen {
+            let agent = record.agent.clone().filter(|_| loaded && !io.is_closed());
+            let seen = agent.map(|agent| Seen {
                 activity: activity(record),
                 rings: manifests
                     .as_ref()
@@ -60,7 +64,7 @@ impl Panes {
                 agent,
                 io: io.clone(),
             });
-            (record.pane.clone(), seen, io.age() < AGENT_TO_COME)
+            (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME)
         });
         let mut panes = Panes::default();
         for (pane, seen, young) in read {

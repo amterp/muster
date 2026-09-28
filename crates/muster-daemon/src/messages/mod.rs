@@ -94,6 +94,8 @@ impl Messages {
             let files = self.service.store().clone();
             let found = files.load();
             self.service = Messaging::restore(files, found.saved, found.logs);
+            // Every wake still unread is rung again, so a ring from before is not also pressed.
+            self.rung.clear();
             self.pending = self.service.outstanding();
         }
     }

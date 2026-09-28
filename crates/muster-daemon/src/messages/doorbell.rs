@@ -39,6 +39,11 @@ pub(crate) const QUIET: Duration = Duration::from_secs(3);
 /// pane whose agent is not yet found, or whose prompt holds a draft.
 const LOOK_AGAIN: Duration = Duration::from_secs(5);
 
+/// How long the thread sleeps with nothing to ring, where only a post or a change in a pane,
+/// which wake it, can make a difference. Bounded only so that a daemon that is stopping ends the
+/// thread.
+const IDLE: Duration = Duration::from_mins(1);
+
 /// How long a rung agent has to take the ring - go to work, or read what it was rung for -
 /// before Return is pressed again.
 const ANSWER: Duration = Duration::from_secs(5);
@@ -181,20 +186,17 @@ impl Doorbell {
 fn run(shared: &Weak<Shared>) {
     // What each watched pane's agent was doing when last looked at, to see it go idle.
     let mut before: HashMap<String, Option<Activity>> = HashMap::new();
-    let mut sleep: Option<Duration> = None;
+    // The first look is at once: a daemon that starts may already hold wakes to ring again.
+    let mut sleep = Duration::ZERO;
     loop {
-        match sleep {
-            Some(duration) => std::thread::park_timeout(duration),
-            None => std::thread::park(),
-        }
+        std::thread::park_timeout(sleep);
         let Some(shared) = shared.upgrade() else { return };
         sleep = look(&shared, &mut before);
     }
 }
 
-/// Rings what may be rung, and says how long to sleep before looking again: nothing when only a
-/// post or a change in a pane can make a difference.
-fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Option<Duration> {
+/// Rings what may be rung, and says how long to sleep before looking again.
+fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Duration {
     {
         let messages = shared.messages();
         if messages.pending.is_empty()
@@ -202,7 +204,7 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Opti
             && messages.service.watched().is_empty()
         {
             before.clear();
-            return None;
+            return IDLE;
         }
     }
     let panes = Panes::of(shared);
@@ -214,7 +216,7 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Opti
     {
         let mut messages = shared.messages();
         if messages.handing_over {
-            return Some(LOOK_AGAIN);
+            return LOOK_AGAIN;
         }
         let watched = messages.service.watched();
         before.retain(|pane, _| watched.iter().any(|(_, watched)| watched == pane));
@@ -277,11 +279,10 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Opti
     if press_again(shared, pressing) {
         sooner(&mut next, Instant::now() + ANSWER);
     }
-    let until_due = next.map(|next| next.saturating_duration_since(Instant::now()));
-    match until_due {
-        Some(duration) => Some(duration.min(LOOK_AGAIN)),
-        None if unfound => Some(LOOK_AGAIN),
-        None => None,
+    match next {
+        Some(next) => next.saturating_duration_since(Instant::now()).min(LOOK_AGAIN),
+        None if unfound => LOOK_AGAIN,
+        None => IDLE,
     }
 }
 

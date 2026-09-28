@@ -116,7 +116,7 @@ impl Shared {
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, executable, data, log } = places;
         let Saved { persister, settings, restoring } = saved;
-        let shared = Arc::new_cyclic(|shared: &Weak<Shared>| {
+        Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
             let publisher = std::thread::Builder::new()
@@ -187,10 +187,13 @@ impl Shared {
                 instance,
                 socket,
             }
-        });
-        // Started once the shared state is whole, which is the first thing it reads.
-        shared.doorbell.start(Arc::downgrade(&shared));
-        shared
+        })
+    }
+
+    /// Starts the doorbell, once the panes this daemon begins with are in: its first look rings
+    /// the wakes it loaded, and drops those whose pane it cannot find.
+    pub(crate) fn start_doorbell(self: &Arc<Self>) {
+        self.doorbell.start(Arc::downgrade(self));
     }
 
     pub(crate) fn lock(&self) -> Locked<'_> {

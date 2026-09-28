@@ -287,6 +287,7 @@ fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> (Reply, Option<
         return (reply, Some(Stop::HandedOff));
     }
     shared.messages().handing_over(false);
+    shared.doorbell.nudge();
     (reply, None)
 }
 
