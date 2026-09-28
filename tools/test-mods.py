@@ -67,9 +67,13 @@ def roots() -> list[tuple[Path, list[Path], tuple[str, ...]]]:
         for main in sorted(targets.glob("*/main.rs")):
             found.append((main.parent, [main], ()))
         single = sorted(targets.glob("*.rs"))
+        for root in single:
+            if root.with_suffix("").is_dir():
+                found.append((root.with_suffix(""), [root], ()))
         if single:
             binaries = tuple(main.parent.name for main in targets.glob("*/main.rs"))
-            found.append((targets, single, binaries))
+            own = tuple(root.stem for root in single if root.with_suffix("").is_dir())
+            found.append((targets, single, binaries + own))
     return found
 
 
