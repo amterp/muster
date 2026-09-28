@@ -352,10 +352,25 @@ enum Place {
 }
 
 impl<S: Store> Messaging<S> {
-    /// A link to `machine` is up.
-    pub fn linked(&mut self, machine: &str) {
-        self.linked.insert(machine.to_string());
-        self.met.insert(machine.to_string());
+    /// A link to `peer` is up.
+    pub fn linked(&mut self, peer: &Peer) {
+        self.linked.insert(peer.name.clone());
+        self.met.insert(peer.name.clone());
+        self.called.insert(peer.calls_us.clone());
+    }
+
+    /// `name` as this machine writes it, when it is written as another machine writes one of
+    /// this machine's own - `review@devenv` on the devenv is `review` - so a name copied from
+    /// another machine's answer means here what it meant there.
+    pub(crate) fn own<'a>(&self, name: &'a str) -> &'a str {
+        let ours = |machine: &str| {
+            self.called.contains(machine)
+                || self.human_home.as_ref().is_some_and(|home| home.calls_us == machine)
+        };
+        match split_machine(name) {
+            Some((base, machine)) if ours(machine) => base,
+            _ => name,
+        }
     }
 
     /// Refuses making a group here by a name nothing here holds while a machine this one has
@@ -1072,6 +1087,7 @@ impl<S: Store> Messaging<S> {
     }
 
     fn place(&self, group: &str) -> Result<Place, Refusal> {
+        let group = self.own(group);
         if let Some(kept) = self.groups.get(group) {
             return Ok(match &kept.home {
                 None => Place::Here,

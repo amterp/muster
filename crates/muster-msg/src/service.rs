@@ -383,6 +383,8 @@ pub struct Messaging<S: Store> {
     /// Every machine a link has come up to since this daemon started, whether or not it is up
     /// now: those that may keep a group by a name nothing here holds.
     pub(crate) met: BTreeSet<String>,
+    /// What those machines call this one.
+    pub(crate) called: BTreeSet<String>,
     /// Replicas a change to went unanswered, until their home is next heard from.
     pub(crate) unanswered: BTreeSet<String>,
     /// Where the human is homed, once a daemon there has dialed this one.
@@ -453,6 +455,7 @@ impl<S: Store> Messaging<S> {
             kept: Saved::default(),
             linked: BTreeSet::new(),
             met: BTreeSet::new(),
+            called: BTreeSet::new(),
             unanswered: BTreeSet::new(),
             human_home: saved.human_home,
         };
@@ -1136,6 +1139,7 @@ impl<S: Store> Messaging<S> {
     /// The member of `group` that `name` means: that member, or else the one on another machine
     /// going by it, which is not a participant here (MIP-4, section 11).
     fn member_named(&self, group: &str, name: &str) -> Result<Option<String>, Refusal> {
+        let name = self.own(name);
         let members = &self.groups[group].members;
         if members.contains(name) {
             return Ok(Some(name.to_string()));
@@ -1209,6 +1213,7 @@ impl<S: Store> Messaging<S> {
         group: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
+        let name = self.own(name);
         if name == HUMAN
             && let Some(home) = self.human_elsewhere(presence)
         {
@@ -1501,6 +1506,7 @@ impl<S: Store> Messaging<S> {
     /// name, or else the one replica of a group by that name on another machine, so `review`
     /// finds `review@devenv` when nothing here is called that (MIP-4, section 11).
     pub(crate) fn locate(&self, name: &str) -> Result<String, Refusal> {
+        let name = self.own(name);
         if self.groups.contains_key(name) {
             return Ok(name.to_string());
         }

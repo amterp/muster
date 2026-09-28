@@ -388,7 +388,7 @@ fn serve_in_background(shared: &Arc<Shared>, stream: UnixStream, peer: Peer) -> 
 
 fn up(shared: &Arc<Shared>, link: &Arc<Link>, dialed: bool) {
     shared.peers.links().push(Arc::clone(link));
-    shared.messages().service.linked(&link.peer.name);
+    shared.messages().service.linked(&link.peer);
     if !dialed && let Err(refusal) = shared.messages().service.dialed_by(&link.peer) {
         log::warn(
             "msg.peer.home_unsaved",

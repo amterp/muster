@@ -128,8 +128,8 @@ impl Wire {
     /// The link comes up, and each side refetches the replicas it holds, as a daemon does.
     fn mend(&mut self) {
         self.up = true;
-        self.laptop.linked("devenv");
-        self.devenv.linked("lap");
+        self.laptop.linked(&Side::Laptop.peer());
+        self.devenv.linked(&Side::Devenv.peer());
         for side in [Side::Laptop, Side::Devenv] {
             let machine = side.peer().name;
             for (group, head) in self.service(side).replicas_of(&machine) {
@@ -1348,4 +1348,30 @@ fn a_message_before_a_new_ring_set_in_one_batch_rings_under_the_old() {
 
     let applied = catch_up(&mut wire, head);
     assert_eq!(applied.reached, [("critic".to_string(), Reach::Woken)]);
+}
+
+/// A name copied from the other machine's answer means what it meant there: the devenv reads
+/// `review@devenv` and `critic@devenv`, as the laptop writes them, as its own `review` and
+/// `critic`.
+#[test]
+fn a_name_written_as_the_other_machine_writes_ours_is_ours() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    assert_eq!(
+        wire.join(Side::Laptop, &builder, Some("builder"), "review@devenv"),
+        "review@devenv"
+    );
+
+    let posted =
+        wire.post(Side::Devenv, &critic, Some("review@devenv"), &["builder@lap"], "one").unwrap();
+    assert_eq!(posted.group, "review");
+    wire.read(Side::Laptop, &builder, None);
+    let posted = wire.post(Side::Laptop, &builder, None, &["critic@devenv"], "two").unwrap();
+    assert_eq!(woke(&posted), [("critic@devenv", Reach::Woken)]);
+    wire.read(Side::Devenv, &critic, None);
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let refused =
+        devenv.post(&critic, Some("review"), &["critic@devenv".to_string()], "me", sessions, 9);
+    assert_eq!(refused.unwrap_err(), Refusal::AddressedSelf);
 }
