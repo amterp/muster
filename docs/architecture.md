@@ -782,11 +782,17 @@ an event rather than freezing the window (`muster-daemon-client`'s `input`).
 
 Agents post to each other through the daemon on their own machine, not through a window (MIP-4). The rules -
 participants, groups, each group's log, every participant's place in it, the guard, and who is due a wake - are
-`muster-msg`, a crate that knows nothing of panes, protobuf or files, so they are tested as conformance cases
-(`corpus/conformance/messaging.json`) with no daemon running. `muster-daemon` hosts it behind the `msg` requests,
-under a lock of its own so that a post never waits behind the pane tree, keeps each group's log in `<install>.msg/`
-beside its socket, synced before a post is answered, and delivers wakes after releasing that lock, because a wake is
-a connection to another process that may be slow or gone.
+`muster-msg`, a crate that knows a pane only as a name and knows nothing of protobuf or files, so they are tested as
+conformance cases (`corpus/conformance/messaging.json`) with no daemon running. `muster-daemon` hosts it behind the
+`msg` requests, under a lock of its own so that a post never waits behind the pane tree, keeps each group's log in
+`<install>.msg/` beside its socket, synced before a post is answered, and delivers wakes after releasing that lock,
+because a wake is a connection to another process that may be slow or gone.
+
+**An agent in a pane is woken through the pane, and whether it is there is the pane's agent state.** Each request
+reads every pane's agent and state with the session held, lets it go, and only then takes the messaging lock, so the
+two are never held together. A wake for an agent that is busy, blocked, or being typed at is not typed in then: it
+waits in the daemon, and a thread of its own - woken when an agent's state changes, never on a timer - rings it once
+the agent is idle and the pane has been quiet for three seconds (MIP-4, section 6).
 
 **This is the one request path that does not run through the core.** Messaging has to work with no window open, and
 the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,

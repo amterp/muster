@@ -4,8 +4,9 @@
 //! Everything here is a function of that state and what a caller asks. How to reach a
 //! participant, whether it is still there, and where the logs are kept belong to whatever hosts
 //! this - muster-daemon, over its sockets and its disk - and reach it through [`Store`] and
-//! [`Presence`], or leave it as a [`Wake`] for the host to deliver. So the crate names no pane,
-//! tab or window, and its tests run with no daemon.
+//! [`Presence`], or leave it as a [`Wake`] for the host to deliver. So a pane is an address the
+//! crate knows only by name, as it knows an inbox only by path; it names no tab or window, and
+//! its tests run with no daemon.
 
 mod entry;
 mod names;

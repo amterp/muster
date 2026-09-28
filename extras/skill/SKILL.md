@@ -1,6 +1,6 @@
 ---
 name: muster
-description: Drive a Muster window - make panes, start agents in them, read what every agent is doing, and send them instructions. Use when running inside a Muster pane, or when a task involves several agents working side by side.
+description: Drive a Muster window - make panes, start agents in them, read what every agent is doing, and message them. Use when running inside a Muster pane, or when a task involves several agents working side by side.
 ---
 
 # Muster
@@ -18,7 +18,8 @@ muster --help
 Both come out of the running binary, so they describe the version you are talking to rather than
 whatever a page on the internet last said. `muster docs overview` is the vocabulary,
 `muster docs window` is every field of `muster window --json`, `muster docs agents` is making
-panes and instructing what runs in them, and `muster docs limits` is what this cannot do.
+panes and instructing what runs in them, `muster docs msg` is messaging other agents, and
+`muster docs limits` is what this cannot do.
 
 ## Before you reach for it
 
@@ -60,8 +61,13 @@ To follow several agents, `muster window --watch` prints a line each time any of
 run it where each line reaches you as it arrives, such as a background monitor, rather than
 waiting for it to exit. It never does.
 
-**Send anything longer than a line from a file.** `muster pane send --pane X --file brief.md
---enter` needs no quoting, and `-` reads the text from stdin.
+**Tell an agent something with a message, not with the keyboard.** `muster msg post --to X --file
+brief.md` reaches the agent in pane X whole, however long, once it is idle, and it can answer with
+a message that wakes you - so after posting, end your turn rather than waiting in a loop.
+`muster pane send` types into a pane: keep it for answering a prompt the agent is blocked on.
+
+**A message you are woken for says how to read it.** Run the `muster msg read` it names before
+posting to that group again; a post is refused while you have unread messages there.
 
 **You can read a pane, not just its state.** `muster pane read --pane X` hands back what that
 pane has printed. `muster window` tells you an agent is `blocked` or `done`; only this tells you

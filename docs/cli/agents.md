@@ -1,7 +1,8 @@
 # Running agents from a pane
 
 An agent in a Muster pane can make panes, start agents in them, and tell them what to do. It
-needs nothing but `$MUSTER_PANE` and `$MUSTER_SOCKET`, which Muster already set.
+needs nothing but `$MUSTER_PANE`, `$MUSTER_SOCKET` and `$MUSTER_DAEMON_SOCKET`, which Muster
+already set.
 
 Make a pane below this one, running an agent, called something a person can pick out:
 
@@ -11,8 +12,13 @@ Make a pane below this one, running an agent, called something a person can pick
 which is what makes the next line possible:
 
     B=$(muster pane new --down --run claude --name '🤖 B')
-    muster pane send --pane "$A" 'read AGENTS.md, then implement the parser' --enter
-    muster pane send --pane "$B" 'read AGENTS.md, then write the tests' --enter
+    muster msg post --to "$A" --file parser-brief.md
+    muster msg post --to "$B" 'read AGENTS.md, then write the tests'
+
+A message to a pane reaches the agent in it however long it is, and whenever the agent is ready:
+it is rung once it is idle, reads the message whole with `muster msg read`, and can answer with a
+message of its own that wakes you. `muster docs msg` is all of it. `pane send`, below, is the
+keyboard: for answering a prompt, not for telling an agent something.
 
 Neither split moved the keyboard. Making a pane is not the same act as looking at one, and an
 agent opening three panes should not drag somebody's cursor through all three. `--focus` asks
@@ -51,7 +57,7 @@ tell. Waiting changes nothing, so run it again once `muster window` shows that d
 `--until` is a condition rather than an event, so a pane already there answers at once. After
 handing an idle agent work, wait for it to start before waiting for it to stop:
 
-    muster pane send --pane p1w3r0ab2n 'read brief.md and start' --enter
+    muster msg post --to p1w3r0ab2n --file brief.md
     muster pane wait --pane p1w3r0ab2n --until working --timeout 60 &&
       muster pane wait --pane p1w3r0ab2n --until idle,blocked
 
@@ -88,8 +94,9 @@ text and the Return rather than that the agent heard it. Where that matters, ask
 round trip and it proves arrival rather than submission; `muster docs limits` is what it does
 and does not catch.
 
-Multi-line instructions are one send. The text reaches the harness as a single paste rather than
-as a submission per line, so a brief with paragraphs in it arrives as a brief.
+Multi-line text is one send. It reaches the harness as a single paste rather than as a
+submission per line - though a harness may fold a long paste into a placeholder that waits for a
+person, which is one reason a brief goes by `muster msg post` instead.
 
 Text with quotes in it does not have to be quoted at all. `--file` sends what a file holds, and
 `-` sends what arrives on stdin:

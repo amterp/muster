@@ -240,8 +240,14 @@ boundary Claude Code draws around its inbox socket and Muster around `MUSTER_SOC
 gone takes it over, cursors included. Joining with the name of one that is alive is refused, and
 the refusal says where that participant is.
 
-**A pane that never joined** can be addressed by its pane name if the daemon has detected an agent
-in it; the daemon creates the participant on first address, with the pane as its wake address.
+**A pane that never joined** can be addressed by its pane name; the daemon creates the participant
+on first address, named after the pane, with the pane as its wake address. As built, any open
+pane can be, not only one where an agent has been found: `pane new --run claude` and the post
+that follows it come a moment apart, before detection has found the agent, and the ring waits
+for one anyway. A pane identifies the caller running a command in it only once an agent is found
+there, since a person's shell in a pane is the human. A pane's label does not name the
+participant: labels hold emoji and spaces that names cannot, and the integrator already has the
+pane name in hand.
 That is what lets `msg post` replace `pane send` for an agent started by `muster pane new --run
 claude`, which has joined nothing (section 14).
 
@@ -261,8 +267,9 @@ woke: builder (working), director (idle)
 not woken: scout (gone)
 ```
 
-A post that wakes no live participant is still appended, and exits with a code of its own, so an
-agent does not end its turn expecting an answer nobody will send. The human always counts as
+A post that wakes no live participant is still appended, and exits 6, so an agent does not end
+its turn expecting an answer nobody will send. Live means woken, already woken, to be rung once
+its pane allows (`rung once idle: critic (working)`), or the human. The human always counts as
 live, since messages to the human wait for them. v1's last agent waiting forever on the human
 becomes something the agent can see.
 
@@ -321,6 +328,12 @@ Three adapters, tried in this order; the first whose address is present and aliv
 of them is Muster assuming a harness: each is one thing Muster supports, in the sense of kan
 `a_2AJS0Xz7I`, and the doorbell works for any harness in a pane.
 
+As built in stage 2, an agent in a pane is rung by the doorbell even when it has Claude's inbox
+too, so the order is hooks, doorbell, inbox. A session that bypasses permission prompts holds an
+inbox message for a person's approval (`docs/observations/claude-code-2.1.283.md`), the daemon
+cannot tell which sessions do, and agents in panes are usually started that way. The inbox
+remains the adapter for a session outside any pane.
+
 **Hooks (`--pull`).** For a harness whose hooks can run a command and hand its output to the
 model. For Claude Code the configuration is two hooks, shipped as a snippet in `extras/`, not as
 Muster code:
@@ -350,7 +363,7 @@ whether or not it carries the session's token, and delivers it once the session 
 Nothing comes back on the socket either way, so the post's answer says the wake was handed over,
 not that it was read.
 
-**A one-line doorbell into the pane.** For an agent in a pane with neither of the above. The
+**A one-line doorbell into the pane.** For an agent in a pane, as built, whatever else it has. The
 daemon queues the notice on the pane's writer as a paste followed by Return, the path `pane send`
 uses. It is one line, well under a canonical-mode line limit and under the length at which Claude
 Code folds a paste. The daemon never rings a pane whose agent is blocked, since a Return would
@@ -358,12 +371,23 @@ answer the dialog, and waits until no keystroke has arrived from a window for th
 seconds, so a person's half-typed prompt is not submitted with the notice in it. Cyclops, a
 prior-art tool that rings agents in tmux panes, guards its doorbell the same way.
 
+As built, a pane is rung only while its agent is idle or waiting, and only once nothing has been
+typed or sent into it for three seconds. Working is ruled out as well as blocked, because a dialog
+can open between the check and the write, and the Return would answer it. A waiting agent is rung:
+it is at its prompt, and a message addressed to it may be what it is waiting for. What cannot be
+rung at once waits in the daemon, and one thread rings it when the pane allows. That thread is
+woken by changes in agents' states rather than by a timer, and also delivers the second wake of
+section 5. A daemon that starts rings again every wake it finds recorded and unread, since it
+cannot tell which its predecessor rang: at worst a wake too many.
+
 ### 7. Presence
 
 A participant is working, blocked, idle, done, alive, or gone:
 
 - **In a pane on its home daemon**: the pane's agent state from detection. Gone when the pane
-  closes or detection sees the agent exit.
+  closes or detection sees the agent exit. As built, `waiting` is an idle agent that declared it is
+  waiting on work of its own, and an agent in a pane is there while the pane has an agent, whatever
+  its inbox says.
 - **Elsewhere, with Claude's socket**: alive while the socket accepts a connection, with no finer
   state.
 - **With hooks only**: alive while a `wait` is connected or a hook has run in the last few minutes.
@@ -546,6 +570,8 @@ muster msg post --to p1w3r07bsd --file brief.md
 The integrator's `post` registers it (section 3). The doorbell reaches the new agent once its
 trust dialog is gone, the agent runs `muster msg read`, and the brief arrives whole however long
 it is. Its answer is a message that wakes the integrator, rather than a `pane read` of its screen.
+`./dev --claude-code` runs this flow against the Claude Code installed here, with a 20 KB brief
+and the worker bypassing permission prompts.
 
 ### 15. Testing
 
@@ -697,7 +723,9 @@ wakes the session with stderr as a system reminder. Untested: whether a hook sta
 keeps running across turns, and whether its wake starts a turn in a session idle for hours.
 
 **Whether the doorbell's guards are enough.** Deferring while blocked and after recent keystrokes
-is inferred from Cyclops and from the dialog hazard in `docs/cli/limits.md`, not measured.
+is inferred from Cyclops and from the dialog hazard in `docs/cli/limits.md`, not measured. One gap
+is known: a prompt someone left half typed for longer than three seconds is submitted with the
+ring, since the daemon cannot see what is on a pane's input line.
 
 **Claude Code's limits** come from its documentation: about a million characters per message, at
 most 50 accepted messages queued and 100 held. Only the notice crosses the socket, so none should
@@ -741,3 +769,6 @@ bind.
   timing answered (sections 3 and 5), `wait`'s output convention (section 6).
 - 2026-09-28 Stage 1 reviewed: group names unique regardless of case, and a torn log line cut at
   load (section 12); `--as` held to the rule `join --name` is (section 3).
+- 2026-09-28 Stage 2 built: presence from detection, panes addressed by name before they join,
+  the doorbell rung only while idle or waiting and after three quiet seconds, and exit 6 for a
+  post that wakes nobody live (sections 3, 4, 6, 7 and 14).

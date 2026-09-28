@@ -46,7 +46,10 @@ those, so a small count costs a small answer however much the pane holds. A daem
 window sends the whole history instead, and the window takes the last N itself: the same answer,
 at the cost of the history on the wire.
 
-## A send that exits 0 was queued, not necessarily received
+## Typing into a pane: a send that exits 0 was queued, not necessarily received
+
+This is about the keyboard. To tell an agent something, post it a message
+(`muster docs msg`): it arrives whole, and the post says whom it woke.
 
 `muster pane send` exits 0 when the window queued the text for the pane's daemon, and the daemon
 answers nothing about it (below). That is not the same as the program in the pane having received

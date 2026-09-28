@@ -109,7 +109,7 @@ core and this is the other door into it.
 
     muster window
     muster pane new --down --run claude --name "🤖 A"
-    muster pane send --pane p1w3r07bsd "read AGENTS.md and wait" --enter
+    muster msg post --to p1w3r07bsd --file brief.md
     muster pane wait --pane p1w3r07bsd --until idle,blocked
     muster tab focus t1w3r07bsd
     muster window --json

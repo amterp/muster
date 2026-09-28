@@ -23,6 +23,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **command endpoint** - the unix socket a window answers requests on, at
   `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
   which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
+- **doorbell** - a wake typed into the pane an agent runs in, one line and a Return, only while its agent is idle
+  or waiting and nobody has typed there for three seconds (MIP-4, section 6).
 - **frame** - one message on a socket: a four-byte length, then that many bytes (`muster-frame`).
 - **group** - a set of participants and the one log of messages they share (MIP-4). Addressing a message decides
   whom it wakes, never who may read it.
@@ -63,7 +65,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **vocabulary** - the backend contract's nouns and verbs, owned by Muster; the contract corpus is its executable
   form.
 - **wake** - the one-line notice that messages are waiting, sent to a participant once per group until it reads;
-  never the message itself. For Claude Code, a line on its inbox socket.
+  never the message itself. For an agent in a pane it is rung by the doorbell; for a Claude Code session outside
+  one, it is a line on its inbox socket.
 - **window** - the unit that holds an ordered list of Muster tabs and shows one of them, with an arrangement of its
   own under `~/.muster/state/windows/`. Two windows are two arrangements rather than two views of one, and a window is
   named after its arrangement (`window-2`), so it is the same window after a quit.

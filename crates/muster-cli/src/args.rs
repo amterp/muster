@@ -136,7 +136,7 @@ const EXAMPLES: &str = "\
 Examples:
   muster window --json
   muster pane new --down --run claude --name '🤖 A'
-  muster pane send --pane p1w3r07bsd 'read AGENTS.md and wait' --enter
+  muster msg post --to p1w3r07bsd --file brief.md
   muster pane wait --pane p1w3r07bsd --until idle,blocked --timeout 600
   muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd
   muster tab new --run claude --name '🤖 reviewer'
