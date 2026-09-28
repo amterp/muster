@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "a-relaunched-window",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790602447365,
   "creator": "Alexander Terp",
   "description": "MUSTER_SOCKET names the window that made a pane: command-\u003cpid\u003e.sock on the laptop, window-\u003cname\u003e.sock on a devenv (forwarded over the ssh master). A pane outlives its window, so after Muster is relaunched every existing pane's muster says its window has quit, on both machines, and only panes the new window made reach it. A name kept per arrangement (or a stable per-install path the newest window takes over) would let old panes reach the reopened window. muster docs limits states the limit today.",
   "id": "a_2YCgaUTuS",
-  "position": "b0H",
+  "position": "Yzc",
   "title": "A relaunched window leaves every pane's MUSTER_SOCKET pointing at the old window",
   "type": "bug",
-  "updated_at_millis": 1790602447365,
+  "updated_at_millis": 1790620413409,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790602447365}
+    {"field":"column","value":"backlog-hi","at":1790602447365},
+    {"field":"column","value":"done","at":1790620413409}
   ]
 }

@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "the-swift-suite",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790597571361,
   "creator": "Alexander Terp",
   "description": "About 3 runs in 16 of ./dev, on sources before and after 2026-09-28's rounds, the Swift test run crashes with an unexpected thread in ViewBridge. It is not tied to one change. Worth a symbolized crash log and a look at which test touches a view off the main thread.",
   "id": "a_2YAdjxmgM",
-  "position": "ay",
+  "position": "Yzb",
   "title": "The Swift suite sometimes crashes in AppKit's ViewBridge",
   "type": "bug",
-  "updated_at_millis": 1790597571361,
+  "updated_at_millis": 1790620413482,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790597571361}
+    {"field":"column","value":"backlog-lo","at":1790597571361},
+    {"field":"column","value":"done","at":1790620413482}
   ]
 }
