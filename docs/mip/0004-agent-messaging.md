@@ -498,8 +498,8 @@ A group's policy is four fields. `ring` and `allow` are keyed by author. Every g
 permissive default unless its creator passes a policy:
 
 ```toml
-ring = { "*" = ["*"] }    # an unaddressed post wakes every member but its author
-allow = { "*" = ["*"] }   # anyone may address anyone
+ring = { "*" = ["*", "@human"] }  # an unaddressed post wakes every member but its author
+allow = { "*" = ["*"] }           # anyone may address anyone
 membership = ["*"]        # anyone may join, and any member may leave
 paused = false
 ```
@@ -509,14 +509,14 @@ A council convened around a director might be:
 ```toml
 # extras/skill/council/directed.toml
 ring = { director = ["*"], "*" = ["director"] }
-allow = { director = ["*"], "*" = ["director", "@human"] }
+allow = { director = ["*"], "@human" = ["*"], "*" = ["director", "@human"] }
 membership = ["director", "@human"]
 paused = false
 ```
 
-Under that policy the director's unaddressed post wakes every member, a member's wakes only the
-director, a member may address only the director or the human, and only those two may add or
-remove a member, including the member itself: `muster msg leave` is refused with a message naming
+Under that policy the director's unaddressed post wakes every member but the human, a member's
+wakes only the director, a member may address only the director or the human, the director and
+the human may address anyone, and only those two may add or remove a member, including the member itself: `muster msg leave` is refused with a message naming
 who may dismiss it. `@human` is the reserved name for the human (section 10), so a preset works
 for whoever runs it.
 
@@ -526,6 +526,10 @@ also decides who may change the policy, and every change is a notice in the log.
 
 As built in stage 4:
 
+- **A ring set's `*` is every member but the human.** Waking the human raises a notification,
+  which interrupts a person, so a ring set wakes the human only by naming `@human` (section 10).
+  The default names it, so a group nobody gave a policy rings the human as before; a directed
+  council's director does not, though the human who convened it is a member.
 - **`allow` is checked against a post's addressees**, once `--to` has resolved pane names to
   the participants in them. An addressee outside the author's list is refused with
   `not_allowed`, naming whom the author may address. An unaddressed post is `ring`'s business,

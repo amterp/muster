@@ -416,9 +416,7 @@ fn a_directed_council_holds_its_members_to_its_policy() {
     let plan = ["msg", "--as", "director", "post", "--group", "council", "the", "plan"];
     assert_eq!(
         ok(&muster(&daemon, &plan)),
-        "posted #8 to council\n\
-         held while council is paused: builder, critic\n\
-         not woken: @human (notified when a window opens)"
+        "posted #8 to council\nheld while council is paused: builder, critic"
     );
     assert_eq!(
         ok(&muster(&daemon, &["msg", "resume", "council"])),

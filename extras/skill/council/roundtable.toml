@@ -1,5 +1,6 @@
-# A council of peers: every post wakes every other member, and anyone may address anyone. Only
-# the human adds or removes members or changes this policy, so nobody leaves on their own.
+# A council of peers: every post wakes every other member but the human, who is woken only
+# when addressed, and anyone may address anyone. Only the human adds or removes members or
+# changes this policy, so nobody leaves on their own.
 ring = { "*" = ["*"] }
 allow = { "*" = ["*"] }
 membership = ["@human"]

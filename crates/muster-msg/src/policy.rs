@@ -3,14 +3,16 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::Refusal;
-use crate::names::check_participant;
+use crate::names::{HUMAN, check_participant};
 
 /// A group's rules (MIP-4, section 8), enforced by the service, since a rule a prompt carries
 /// has faded by turn 40 (section 9). Names are participants' names; `*` is anyone, and `@human`
 /// the human.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Policy {
-    /// Whom an unaddressed post wakes, by author; `*` is any author, or every member.
+    /// Whom an unaddressed post wakes, by author; `*` is any author, or every member but the
+    /// human. Waking the human interrupts a person (section 10), so a ring set does it only by
+    /// naming `@human`.
     pub ring: BTreeMap<String, Vec<String>>,
     /// Whom an author may address, by author.
     pub allow: BTreeMap<String, Vec<String>>,
@@ -23,7 +25,7 @@ impl Default for Policy {
     fn default() -> Policy {
         let everyone = || BTreeMap::from([("*".to_string(), vec!["*".to_string()])]);
         Policy {
-            ring: everyone(),
+            ring: BTreeMap::from([("*".to_string(), vec!["*".to_string(), HUMAN.to_string()])]),
             allow: everyone(),
             membership: vec!["*".to_string()],
             paused: false,
@@ -34,7 +36,10 @@ impl Default for Policy {
 impl Policy {
     /// Whether an unaddressed post by `author` wakes `member`. Never the author itself.
     pub(crate) fn rings(&self, author: &str, member: &str) -> bool {
-        author != member && names(by_author(&self.ring, author), member)
+        author != member
+            && by_author(&self.ring, author)
+                .iter()
+                .any(|each| each == member || (each == "*" && member != HUMAN))
     }
 
     /// Whether `author` may address `addressee`.
@@ -82,7 +87,16 @@ mod tests {
     fn the_default_rings_everyone_but_the_author() {
         let policy = Policy::default();
         assert!(policy.rings("a", "b"));
+        assert!(policy.rings("a", "@human"));
         assert!(!policy.rings("a", "a"));
+    }
+
+    #[test]
+    fn a_ring_set_rings_the_human_only_by_name() {
+        let policy = directed();
+        assert!(policy.rings("director", "builder"));
+        assert!(!policy.rings("director", "@human"));
+        assert!(policy.rings("@human", "director"));
     }
 
     #[test]
@@ -108,6 +122,7 @@ mod tests {
             ]),
             allow: BTreeMap::from([
                 ("director".to_string(), set(&["*"])),
+                ("@human".to_string(), set(&["*"])),
                 ("*".to_string(), set(&["director", "@human"])),
             ]),
             membership: set(&["director", "@human"]),
@@ -122,6 +137,7 @@ mod tests {
         assert!(policy.allows("builder", "@human"));
         assert!(!policy.allows("builder", "critic"));
         assert!(policy.allows("director", "critic"));
+        assert!(policy.allows("@human", "critic"));
     }
 
     #[test]

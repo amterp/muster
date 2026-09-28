@@ -1,8 +1,9 @@
 # A council convened around a director (MIP-4, section 8). The director's unaddressed post
-# wakes every member, and a member's wakes only the director. A member may address only the
-# director or the human, and only those two may add or remove members, the member itself
-# included, or change this policy.
+# wakes every member but the human, who is woken only when addressed, and a member's wakes only
+# the director. A member may address only the director or the human; the director and the human
+# may address anyone. Only those two may add or remove members, the member itself included, or
+# change this policy.
 ring = { director = ["*"], "*" = ["director"] }
-allow = { director = ["*"], "*" = ["director", "@human"] }
+allow = { director = ["*"], "@human" = ["*"], "*" = ["director", "@human"] }
 membership = ["director", "@human"]
 paused = false

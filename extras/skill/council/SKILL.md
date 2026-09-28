@@ -53,8 +53,9 @@ whom you may address.
 
 ## Directing
 
-In a directed council you are named `director`, your unaddressed post wakes every member, and
-members' posts wake only you. So a member learns of another's answer only when you wake it.
+In a directed council you are named `director`, your unaddressed post wakes every member but
+the human, and members' posts wake only you. So a member learns of another's answer only when
+you wake it, and the human only when you address `@human`.
 
 - Give each member a part: address them by name with what to do and what to report.
 - When one member's part needs another's answer, ask the first alone; when it answers, address

@@ -437,7 +437,7 @@ fn read_body(from: &TextSource, input: &mut impl Read) -> Result<String, Trouble
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PolicyFile {
-    #[serde(default = "everyone_by_author")]
+    #[serde(default = "everyone_and_the_human_by_author")]
     ring: BTreeMap<String, Vec<String>>,
     #[serde(default = "everyone_by_author")]
     allow: BTreeMap<String, Vec<String>>,
@@ -453,6 +453,11 @@ fn everyone() -> Vec<String> {
 
 fn everyone_by_author() -> BTreeMap<String, Vec<String>> {
     BTreeMap::from([("*".to_string(), everyone())])
+}
+
+/// A ring set's `*` leaves out the human, who is rung only by name, so the default names it.
+fn everyone_and_the_human_by_author() -> BTreeMap<String, Vec<String>> {
+    BTreeMap::from([("*".to_string(), vec!["*".to_string(), "@human".to_string()])])
 }
 
 fn read_policy(path: &str) -> Result<msg_request::Policy, Trouble> {

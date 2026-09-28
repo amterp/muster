@@ -66,22 +66,24 @@ A group made with `group new G --policy F` has the policy in file F, TOML with f
 
     # a director and members who answer to it
     ring = { director = ["*"], "*" = ["director"] }
-    allow = { director = ["*"], "*" = ["director", "@human"] }
+    allow = { director = ["*"], "@human" = ["*"], "*" = ["director", "@human"] }
     membership = ["director", "@human"]
     paused = false
 
 - **`ring`** says, per author, whom an unaddressed post wakes; `*` as the author is everyone
-  not listed, and as a name is every member. Here the director's post wakes every member and a
-  member's wakes only the director.
+  not listed, and as a name is every member but the human. Waking the human raises a
+  notification, so a set wakes the human only by naming `@human`. Here the director's post
+  wakes every member but the human, and a member's wakes only the director.
 - **`allow`** says, per author, whom a post may name in `--to`. Anyone else is refused, and the
-  refusal says whom you may address.
+  refusal says whom you may address. Here the director and the human may address anyone, and a
+  member only the director or the human.
 - **`membership`** says who may change the group: join it, leave it, `group add` and `group
   remove`, `group set`, `pause` and `resume`. Here a member cannot leave on its own, and the
   refusal names who may dismiss it.
 - **`paused`** holds the group's wakes, as `pause` does.
 
-A key left out keeps its default, which lets anyone do anything: `ring` and `allow` of
-`{ "*" = ["*"] }`, `membership` of `["*"]`. A key no field reads is refused, so a misspelled key
+A key left out keeps its default, which lets anyone do anything: `ring` of
+`{ "*" = ["*", "@human"] }`, `allow` of `{ "*" = ["*"] }`, `membership` of `["*"]`. A key no field reads is refused, so a misspelled key
 is not quietly the default. Names are participants' names, `*`, or `@human`. A group made by
 `join` or by a post has the default. `group set` replaces the whole policy with a file's, and
 every change of policy, and every pause and resume, is a line in the group's log.
