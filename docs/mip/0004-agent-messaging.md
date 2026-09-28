@@ -380,6 +380,15 @@ woken by changes in agents' states rather than by a timer, and also delivers the
 section 5. A daemon that starts rings again every wake it finds recorded and unread, since it
 cannot tell which its predecessor rang: at worst a wake too many.
 
+An idle agent may not be ready for a ring. Detection reads an agent as idle as soon as it finds
+it, before anything on its screen says so. Claude Code 2.1.283, while it starts, keeps what is
+typed as the text of its prompt and drops the Return, so a ring that lands then sits in the
+prompt unsent. Once its prompt is up, a Return in the same write as the text is sent with it: a
+Return that arrives while a paste is being taken is held until the paste is in, then pressed. So
+a ring counts as taken once the agent goes to work or reads what it was rung for. Until then the
+doorbell presses Return again every five seconds, at most six times, under the ring's own guards,
+and a Return at an empty prompt does nothing.
+
 ### 7. Presence
 
 A participant is working, blocked, idle, done, alive, or gone:
@@ -772,3 +781,5 @@ bind.
 - 2026-09-28 Stage 2 built: presence from detection, panes addressed by name before they join,
   the doorbell rung only while idle or waiting and after three quiet seconds, and exit 6 for a
   post that wakes nobody live (sections 3, 4, 6, 7 and 14).
+- 2026-09-28 A ring typed while Claude Code starts sits unsent in its prompt: Return is pressed
+  again until the agent takes the ring (section 6).

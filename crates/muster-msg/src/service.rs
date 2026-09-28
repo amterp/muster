@@ -1049,6 +1049,11 @@ impl<S: Store> Messaging<S> {
         wakes
     }
 
+    /// Whether `name` was woken for `group` and has not read it since.
+    pub fn woken_for(&self, name: &str, group: &str) -> bool {
+        self.participants.get(name).is_some_and(|participant| participant.woken.contains(group))
+    }
+
     /// Participants woken for a group they have not read since, which have not yet been woken
     /// a second time for it, with the pane each is in: whose going idle the host watches for.
     pub fn watched(&self) -> Vec<(String, String)> {

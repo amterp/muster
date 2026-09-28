@@ -69,6 +69,10 @@ one can open while the agent works, and only once nothing has been typed into th
 seconds. Until then the wake waits in the daemon, and is rung as soon as the pane allows. A
 prompt you leave half typed in the pane for longer than that is sent with it.
 
+An agent that neither starts work nor reads within five seconds of a ring has Return pressed
+again, a few times. Claude Code keeps what is typed while it is starting as its prompt, unsent,
+and the later Return sends it.
+
 An agent that goes idle with what it was woken for still unread is woken once more, with `still
 unread` on the end, and then not again until it reads.
 

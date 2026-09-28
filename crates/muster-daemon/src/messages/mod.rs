@@ -47,6 +47,8 @@ pub(crate) struct Messages {
     waits: HashMap<u64, Sender<WaitEnded>>,
     /// Wakes for agents in panes that could not be rung yet, which the doorbell rings.
     pending: Vec<Wake>,
+    /// Rings their agents have not yet taken, which the doorbell presses Return for again.
+    rung: Vec<doorbell::Rung>,
 }
 
 #[derive(Debug)]
@@ -68,6 +70,7 @@ impl Messages {
             // it rang cannot be told from one it did not, so each is rung again once its pane
             // allows: at worst a wake too many.
             pending: service.outstanding(),
+            rung: Vec::new(),
             service,
             handing_over: false,
             waits: HashMap::new(),
@@ -253,9 +256,7 @@ fn posting(
         shared.doorbell.nudge();
     }
 
-    for (wake, seen) in &ringing {
-        doorbell::rang(wake, doorbell::ring(seen, wake));
-    }
+    doorbell::ring_all(shared, ringing);
     let failed = wake(&sending);
     if !failed.is_empty() {
         let mut messages = shared.messages();
