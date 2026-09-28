@@ -819,7 +819,8 @@ fn is_human(name: &str) -> bool {
 }
 
 /// What a post did for each participant it was for. Nobody live heard it - nobody woken, to be
-/// rung, already woken, or the human - is [`Trouble::Unheard`], printed the same way.
+/// rung, already woken, held for a resume or a link, or the human - is [`Trouble::Unheard`],
+/// printed the same way.
 fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Trouble> {
     use msg_answer::Reach;
     let named = |wanted: Reach| -> Vec<&msg_answer::Reached> {
@@ -835,6 +836,7 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         || !deferred.is_empty()
         || !already.is_empty()
         || !paused.is_empty()
+        || !unreachable.is_empty()
         || waiting.iter().any(|reached| is_human(&reached.name));
     let text = if json {
         let listed = |reached: &[&msg_answer::Reached]| -> Vec<String> {
@@ -911,8 +913,16 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
                 }),
             )
         }));
+        // A window is what links the machines, so the human there hears it when one opens.
         not.extend(unreachable.iter().map(|reached| {
-            with(reached, Some("its machine cannot be reached; it sees this once it can"))
+            with(
+                reached,
+                Some(if is_human(&reached.name) {
+                    "notified when a window opens"
+                } else {
+                    "its machine cannot be reached; it sees this once it can"
+                }),
+            )
         }));
         if !not.is_empty() {
             lines.push(format!("not woken: {}", not.join(", ")));
