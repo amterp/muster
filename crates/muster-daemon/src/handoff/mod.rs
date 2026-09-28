@@ -145,6 +145,7 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
     if let Err(why) = launch(&replacement.program, patience) {
         return failed(replacement, &why);
     }
+    faults.pause("after-launch", &shared.socket.path);
     // Refused as the request would have been had it come now: nothing failed, and whatever the
     // daemon is doing instead goes on.
     if let Err(why) = shared.lock().begin_replacing() {

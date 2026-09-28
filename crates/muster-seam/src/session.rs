@@ -545,6 +545,8 @@ struct Handover {
     data: Option<PathBuf>,
     /// The version the older daemon said it is.
     running: String,
+    /// Which run of that daemon was found, so that one already handed over is not asked again.
+    instance: u64,
 }
 
 /// What to ask of a daemon Muster found running rather than started, by how its version
@@ -561,7 +563,9 @@ fn handover_for(
 ) -> Option<Handover> {
     let running = welcome.daemon_version.clone();
     match handover::age(&running) {
-        handover::Age::Older => Some(Handover { program, data, running }),
+        handover::Age::Older => {
+            Some(Handover { program, data, running, instance: welcome.instance })
+        }
         handover::Age::Same => None,
         handover::Age::Newer => {
             log::info(
@@ -641,8 +645,9 @@ fn hand_over_later(daemon: &DaemonId, socket: String, handover: Handover) {
                 Path::new(&socket),
                 &handover.program,
                 handover.data.as_deref(),
+                handover.instance,
             ) {
-                Ok(serving) => log::info(
+                Ok(handover::Handed::Over(serving) | handover::Handed::ByAnother(serving)) => log::info(
                     "daemon.handed_over",
                     fields! {
                         "daemon" => daemon.to_string(),
@@ -650,7 +655,13 @@ fn hand_over_later(daemon: &DaemonId, socket: String, handover: Handover) {
                         "to" => serving.daemon_version,
                     },
                 ),
-                Err(refusal) => {
+                Err(not_handed) => {
+                    let refusal = match not_handed {
+                        handover::NotHanded::Refused(reason) | handover::NotHanded::Gone(reason) => {
+                            reason
+                        }
+                        handover::NotHanded::Unanswered => "it did not answer".to_string(),
+                    };
                     log::warn(
                         "daemon.handover.refused",
                         fields! {

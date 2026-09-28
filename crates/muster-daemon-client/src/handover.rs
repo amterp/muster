@@ -58,31 +58,56 @@ fn numbers(version: &str) -> Option<(u64, u64, u64)> {
 /// and then the exchange, whose steps each have ten seconds.
 const ANSWER_PATIENCE: Duration = LAUNCH_PATIENCE.saturating_add(Duration::from_mins(1));
 
+/// How a handoff that went through came about.
+#[derive(Debug)]
+pub enum Handed {
+    /// This call asked, and the daemon that answers now is the one it asked for.
+    Over(Welcome),
+    /// Somebody else asked first - another window, or this app before a relaunch - and the
+    /// daemon adopted has already handed over or is doing so.
+    ByAnother(Welcome),
+}
+
+/// Why a handoff did not go through, each saying only what is known.
+#[derive(Debug)]
+pub enum NotHanded {
+    /// The daemon answered no, with its reason, and serves every pane as it was.
+    Refused(String),
+    /// Nothing answers on the socket afterwards, so the daemon is gone rather than refusing.
+    Gone(String),
+    /// No answer came within the patience, so the handoff may still be under way.
+    Unanswered,
+}
+
 /// Asks the daemon on `socket` to hand every pane to `program`, and waits for it to answer.
 ///
-/// Returns who serves the socket afterwards. The follower already connected there goes on by
-/// itself: it hears `Replaced` and connects again, as it does after any handoff. A refusal comes
-/// back with the daemon's reason, and the daemon that refused goes on exactly as it was.
-pub fn hand_over(socket: &Path, program: &Path, data: Option<&Path>) -> Result<Welcome, String> {
+/// `adopted` is the instance the caller found there and decided to ask about. The follower
+/// already connected there goes on by itself: it hears `Replaced` and connects again, as it
+/// does after any handoff.
+pub fn hand_over(
+    socket: &Path,
+    program: &Path,
+    data: Option<&Path>,
+    adopted: u64,
+) -> Result<Handed, NotHanded> {
+    let _ = adopted;
     let control = Control::open(socket, "muster handover", |_, _| {})
-        .map_err(|error| format!("could not reach the daemon to ask ({error})"))?;
+        .map_err(|error| NotHanded::Refused(format!("could not reach the daemon to ask ({error})")))?;
     let before = control.welcome().instance;
     let answered = control.replace(program, data).wait(ANSWER_PATIENCE);
     drop(control);
+    let refused = |reason: String| NotHanded::Refused(reason);
     match answered {
-        Ok(answer) if answer.outcome() == proto::Outcome::Done => serving(socket, before),
-        Ok(answer) => Err(if answer.reason.is_empty() {
+        Ok(answer) if answer.outcome() == proto::Outcome::Done => {
+            serving(socket, before).map(Handed::Over).map_err(refused)
+        }
+        Ok(answer) => Err(refused(if answer.reason.is_empty() {
             format!("it answered {:?} and gave no reason", answer.outcome())
         } else {
             answer.reason
-        }),
-        // The old daemon exits once it has answered, and a connection it ended first may have
-        // taken the answer with it; who serves now says whether it went through.
-        Err(Unanswered::Ended) => serving(socket, before),
-        Err(Unanswered::TimedOut) => Err(format!(
-            "it did not answer within {}s, and is still in charge of its panes",
-            ANSWER_PATIENCE.as_secs()
-        )),
+        })),
+        Err(Unanswered::Ended) => serving(socket, before).map(Handed::Over).map_err(refused),
+        Err(Unanswered::TimedOut) => Err(NotHanded::Unanswered),
     }
 }
 
