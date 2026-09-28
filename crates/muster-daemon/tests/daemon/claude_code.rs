@@ -68,3 +68,38 @@ fn a_daemon_that_never_answers_never_holds_the_statusline_up() {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
+const HOOKS: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/claude-code/hooks/hooks.json"));
+
+/// What the SessionStart hook with no matcher prints, which Claude Code adds to the session's
+/// context, when run in an environment holding `variables`.
+fn session_start_context(variables: &[(&str, &str)]) -> String {
+    let hooks: serde_json::Value = serde_json::from_str(HOOKS).unwrap();
+    let groups = hooks["hooks"]["SessionStart"].as_array().expect("a SessionStart hook");
+    let every_session = groups.iter().find(|group| group.get("matcher").is_none());
+    let command = every_session.expect("one for every session")["hooks"][0]["command"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let ran = Command::new("/bin/sh")
+        .args(["-c", &command])
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .envs(variables.iter().copied())
+        .output()
+        .unwrap();
+    assert!(ran.status.success(), "the hook never fails a session");
+    String::from_utf8(ran.stdout).unwrap()
+}
+
+/// An agent in a Muster pane is told, in one line, how to say it is waiting on its own work.
+/// Nowhere else: the line costs every session some context, and outside Muster it means nothing.
+#[test]
+fn only_a_session_in_a_muster_pane_is_told_how_to_say_it_is_waiting() {
+    let told = session_start_context(&[("MUSTER_PANE", "p1"), ("MUSTER_DAEMON", "/bin/true")]);
+    assert_eq!(told.lines().count(), 1, "{told}");
+    assert!(told.contains("report --waiting"), "{told}");
+    assert_eq!(session_start_context(&[("MUSTER_DAEMON", "/bin/true")]), "");
+    assert_eq!(session_start_context(&[]), "");
+}

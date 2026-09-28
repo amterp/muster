@@ -711,6 +711,18 @@ as long as it runs and hands it over with the record, and never writes it to the
 since a restored pane has no agent to have finished anything. A window showing the pane when the
 fact arrives sends `Seen` at once, and draws the pane as seen meanwhile.
 
+**Waiting is the agent's word, not a state.** An agent that ends its turn to wait on work it
+started, a gate or a build in the background, reads idle, and has not finished. Only the agent
+knows the difference: a background task still running looks the same whether it is being waited on
+or was left behind. So before it ends such a turn the agent reports what it is waiting on,
+`"$MUSTER_DAEMON" report --waiting "the full gate"`, and the pane's facts carry it. While they do,
+`finished_unseen` is not set, and declaring it clears one already set. It lasts until the agent's
+next turn: the first working or waiting on you after the pane reads idle, whether a person
+prompted it or the finished work woke it. The turn that declared it keeps it, which matters because
+declaring it is itself a tool call, and a hook reports working after every tool. The daemon logs
+`daemon.agent.turn_ended` at debug with whether the agent had declared a wait, so how often agents
+do can be counted from the run log.
+
 **When.** A pane is checked every 500 ms with no agent identified and every 300 ms with one. A
 newly identified agent gets three seconds of grace. Working to idle is debounced: an idle that
 comes from no rule matching is confirmed by checks 100 ms apart and published only after three in

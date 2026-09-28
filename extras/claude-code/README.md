@@ -40,6 +40,11 @@ and a background task can keep the screen busy after `Stop`. `SubagentStart` and
 count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
 `/clear` runs.
 
+In a Muster pane, `SessionStart` also adds one line to the session's context: when Claude Code ends
+a turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`.
+Muster then holds off calling the pane done until its next turn. An agent that forgets reads as
+done, as before.
+
 Muster takes a report for the pane in `$MUSTER_PANE`, whichever process sent it. A `claude -p`
 that Claude Code starts from its Bash tool inherits that, and with the plugin installed at user
 level its own `Stop` reports the pane idle mid-turn. Start it as `env -u MUSTER_DAEMON claude -p

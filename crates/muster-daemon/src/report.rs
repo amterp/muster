@@ -24,11 +24,14 @@ const PATIENCE: Duration = Duration::from_secs(2);
 
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
     [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
-    [--fact KEY=VALUE]... [--clear] [--agent NAME --state working|blocked|idle]\n\n\
+    [--fact KEY=VALUE]... [--waiting TEXT] [--clear] \
+    [--agent NAME --state working|blocked|idle]\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
-    reported before, and applies first. --state is the agent's own word on what it is doing, \
+    reported before, and applies first. --waiting says what the agent ended its turn to wait \
+    on, work it started itself; it lasts until the agent's next turn, and an empty one clears \
+    it. --state is the agent's own word on what it is doing, \
     which outranks what detection reads off its screen while fresh; --agent names the agent, \
     as its detection manifest does (claude), and the state counts only while that agent is \
     the pane's.";
@@ -117,6 +120,7 @@ fn parse(
                     given.split_once('=').ok_or(format!("--fact {given} is not KEY=VALUE"))?;
                 facts.insert(key.to_string(), value.to_string());
             }
+            "--waiting" => report.waiting = Some(value("--waiting")?),
             "--clear" => report.clear = true,
             "--agent" => report.agent = value("--agent")?,
             "--state" => {
@@ -226,6 +230,8 @@ mod tests {
         assert_eq!(report.model.as_deref(), Some("Opus"));
         assert_eq!(report.facts.get("branch").map(String::as_str), Some("main"));
         assert!(report.clear);
+        let waiting = parsed(&["--waiting", "the full gate"], Some("p1")).unwrap();
+        assert_eq!(waiting.waiting.as_deref(), Some("the full gate"));
         let started = parsed(&["--subagent-started", "--pane", "p2"], Some("p1")).unwrap();
         assert_eq!(
             (started.pane.as_str(), started.subagent()),

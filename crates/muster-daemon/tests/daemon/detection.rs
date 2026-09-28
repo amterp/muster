@@ -427,6 +427,47 @@ fn a_finish_nobody_has_seen_is_kept_until_somebody_sees_it() {
     assert!(!finished_unseen(&mut control, "p1"), "seen alongside a pane that is gone");
 }
 
+fn report_waiting(control: &mut Control, waiting: &str) {
+    let report = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        waiting: Some(waiting.to_string()),
+        ..Default::default()
+    };
+    expect(control, pane(proto::pane_request::Request::Report(report)), proto::Outcome::Done);
+}
+
+fn waiting_on(control: &mut Control) -> Option<String> {
+    let record = snapshot(control).panes.into_iter().find(|record| record.pane == "p1").unwrap();
+    record.facts.and_then(|facts| facts.waiting)
+}
+
+/// An agent that ends its turn to wait on work it started has not finished: nothing is marked
+/// unseen while it waits, and its next turn forgets the wait. Read off the screen here, so it
+/// holds for a harness with no hooks.
+#[test]
+fn an_agent_waiting_on_its_own_work_has_not_finished() {
+    let home = Home::new("waiting", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    report_waiting(&mut control, "the full gate");
+    settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
+    assert!(!finished_unseen(&mut control, "p1"), "waiting is not done");
+    assert_eq!(waiting_on(&mut control).as_deref(), Some("the full gate"));
+
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    assert_eq!(waiting_on(&mut control), None, "the next turn forgets the wait");
+    settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
+    assert!(finished_unseen(&mut control, "p1"), "and ends as any other");
+
+    report_waiting(&mut control, "a review");
+    assert!(!finished_unseen(&mut control, "p1"), "said after the finish, it takes it back");
+}
+
 /// What nobody has seen yet is still unseen after a handoff, since the pane's record goes over
 /// whole.
 #[test]

@@ -1,5 +1,5 @@
-//! What an agent says about itself: its context, its sub-agents, its model and cost, and
-//! whatever else its harness passes on (`PaneRequest.Report`).
+//! What an agent says about itself: its context, its sub-agents, its model and cost, what it is
+//! waiting on, and whatever else its harness passes on (`PaneRequest.Report`).
 //!
 //! The daemon keeps these on the pane's record because the view is a function of the daemon's
 //! state: they survive the app quitting, and reach a window from a devenv with nothing else in
@@ -40,6 +40,10 @@ pub(crate) fn apply(
             return Err(format!("cost_usd is {cost_usd}, and must be a sum not below zero"));
         }
         facts.cost_usd = Some(cost_usd);
+    }
+    if let Some(waiting) = report.waiting {
+        text("waiting", &waiting, VALUE_BYTES)?;
+        facts.waiting = Some(waiting).filter(|waiting| !waiting.is_empty());
     }
     match subagent {
         proto::SubagentChange::Started => facts.subagents = facts.subagents.saturating_add(1),
@@ -87,6 +91,16 @@ mod tests {
 
     fn applied(current: Option<&proto::AgentFacts>, report: Report) -> proto::AgentFacts {
         apply(current, report).expect("a valid report").expect("something known")
+    }
+
+    #[test]
+    fn what_an_agent_waits_on_is_set_bounded_and_cleared_by_an_empty_one() {
+        let waiting = applied(None, Report { waiting: Some("the full gate".into()), ..report() });
+        assert_eq!(waiting.waiting.as_deref(), Some("the full gate"));
+        let cleared = apply(Some(&waiting), Report { waiting: Some(String::new()), ..report() });
+        assert_eq!(cleared, Ok(None));
+        let long = Report { waiting: Some("x".repeat(VALUE_BYTES + 1)), ..report() };
+        assert!(apply(None, long).unwrap_err().contains("waiting"));
     }
 
     #[test]

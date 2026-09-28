@@ -10,6 +10,14 @@
             "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --clear >/dev/null 2>&1 || true"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_PANE\" ] || [ -z \"$MUSTER_DAEMON\" ] || echo 'In Muster: if you end a turn to wait on work you started, first run \"$MUSTER_DAEMON\" report --waiting \"<what>\".'"
+          }
+        ]
       }
     ],
     "SubagentStart": [

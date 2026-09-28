@@ -312,6 +312,8 @@ message PaneRequest {
     // needs its agent.
     string agent = 8;
     optional AgentState state = 9;
+    // What the agent is waiting on (AgentFacts.waiting). Empty clears it.
+    optional string waiting = 10;
   }
 }
 
@@ -699,6 +701,11 @@ message AgentFacts {
   // Anything else, passed through: at most 16 keys, each 1 to 64 bytes, each value at most 256
   // bytes, with no control characters in either.
   map<string, string> other = 5;
+  // What the agent says it is waiting on, having ended its turn to wait for work it started: "the
+  // full gate". At most 256 bytes. The daemon clears it when the agent next starts working or
+  // waiting on you after reading idle, which is its next turn, and sets no finished_unseen while
+  // it holds: an agent waiting on its own work has not finished.
+  optional string waiting = 6;
 }
 
 enum AgentState {

@@ -1284,7 +1284,16 @@ impl Session {
         };
         let facts_changed = record.facts != facts;
         if facts_changed {
+            let declared = is_waiting(facts.as_ref()) && !is_waiting(record.facts.as_ref());
             record.facts = facts;
+            if declared {
+                // An agent waiting on its own work has not finished.
+                record.finished_unseen = false;
+                log::debug(
+                    "daemon.report.waiting",
+                    fields! { "pane" => record.pane, "agent" => agent.as_str() },
+                );
+            }
             let record = record.clone();
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
@@ -1383,11 +1392,28 @@ impl Session {
                 if record.agent.is_some() && record.agent != agent {
                     record.facts = None;
                 }
-                record.finished_unseen = finished_unseen(
-                    (record.agent.as_deref(), record.agent_state()),
-                    (agent.as_deref(), state),
-                    record.finished_unseen,
-                );
+                let turn = Turn::between(record.agent_state(), state);
+                if turn == Turn::Started {
+                    stop_waiting(record);
+                }
+                let waiting = is_waiting(record.facts.as_ref());
+                if turn == Turn::Ended && record.agent == agent {
+                    log::debug(
+                        "daemon.agent.turn_ended",
+                        fields! {
+                            "pane" => name,
+                            "agent" => agent.as_deref().unwrap_or_default(),
+                            "waiting" => waiting,
+                        },
+                    );
+                }
+                if !waiting {
+                    record.finished_unseen = finished_unseen(
+                        (record.agent.as_deref(), record.agent_state()),
+                        (agent.as_deref(), state),
+                        record.finished_unseen,
+                    );
+                }
                 record.agent = agent;
                 record.set_agent_state(state);
                 record.state_reported = reported;
@@ -2215,6 +2241,41 @@ fn finished_unseen(
     }
     let stopped = after.1 == Idle || after.0 != before.0;
     was || (before.0.is_some() && busy(before.1) && stopped)
+}
+
+/// Where a change of agent state leaves the agent's turn: working or waiting on you after not
+/// doing either is a turn started, and idle after either is one ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Turn {
+    Started,
+    Ended,
+    Neither,
+}
+
+impl Turn {
+    fn between(before: proto::AgentState, after: proto::AgentState) -> Turn {
+        use proto::AgentState::{Blocked, Idle, Working};
+        let busy = |state| matches!(state, Working | Blocked);
+        match (busy(before), busy(after)) {
+            (false, true) => Turn::Started,
+            (true, false) if after == Idle => Turn::Ended,
+            _ => Turn::Neither,
+        }
+    }
+}
+
+fn is_waiting(facts: Option<&proto::AgentFacts>) -> bool {
+    facts.is_some_and(|facts| facts.waiting.is_some())
+}
+
+/// Forgets what the agent was waiting on, once its next turn has begun: the wait is over, or
+/// the person moved it on.
+fn stop_waiting(record: &mut proto::Pane) {
+    let Some(facts) = record.facts.as_mut() else { return };
+    facts.waiting = None;
+    if *facts == proto::AgentFacts::default() {
+        record.facts = None;
+    }
 }
 
 /// The first of `panes` that none of `tabs` holds.
