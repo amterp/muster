@@ -36,17 +36,27 @@ impl PaneText {
     /// wire, up to the 4 MiB a daemon puts in one page. That is a bounded, human-frequency
     /// request - a person or an agent asking what a pane has printed - rather than anything on
     /// the render path.
+    ///
+    /// And it counts from the last row with anything on it, for the same reason: the rows
+    /// beneath a prompt are the blank rest of the screen, which a backend hands back as rows.
+    /// Leaving them out is not truncation, since nothing was printed there.
     #[must_use]
     pub fn tail(self, rows: u32) -> PaneText {
         let held = rows_of(&self.text);
-        let wanted = rows as usize;
-        if rows == 0 || held.len() <= wanted {
+        let written =
+            held.iter().rposition(|row| !row.trim().is_empty()).map_or(0, |last| last + 1);
+        let from = if rows == 0 { 0 } else { written.saturating_sub(rows as usize) };
+        if from == 0 && written == held.len() {
             return self;
         }
         PaneText {
-            text: held[held.len() - wanted..].join("\n") + "\n",
+            text: if written == from {
+                String::new()
+            } else {
+                held[from..written].join("\n") + "\n"
+            },
             // There is history this answer did not reach, because Muster dropped it.
-            truncated: true,
+            truncated: self.truncated || from > 0,
         }
     }
 }
