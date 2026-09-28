@@ -1,7 +1,8 @@
 {
   "concept": "detection.prompt",
   "source": "authored",
-  "why": "The doorbell types into a pane only when its agent's screen reads as that agent at an empty prompt (MIP-4, section 6). Each case is a screen as drawn, its title and progress, and the same screen as typed - every faint cell blank - and says whether the rule deciding the screen shows the prompt, and what the prompt holds. The Claude screens are corpus/conformance/agent-detection-recorded.json's; the typed view is authored from how Claude Code 2.1.283 draws a suggestion (faint, held to the installed version by claude_code_doorbell's live check). A case with no `typed` reads the screen as typed whole.",
+  "citation": "MIP-4, section 6: the doorbell rings only an empty prompt. The Claude screens are corpus/conformance/agent-detection-recorded.json's, recorded from Claude Code 2.1.283; how it draws a suggestion nobody typed, every cell faint, is held to the installed Claude Code by claude_code_doorbell's live check.",
+  "why": "The doorbell types into a pane only when its agent's screen reads as that agent at an empty prompt. Each case is a screen as drawn, its title and progress, and the same screen as typed - every faint cell blank - and says whether the rule deciding the screen shows the prompt, and what the prompt holds. A case with no `typed` reads the screen as typed whole.",
   "cases": [
     {
       "name": "claude 2.1.283: a new prompt showing a suggestion is empty",
