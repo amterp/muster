@@ -128,7 +128,15 @@ pub fn survey(
     environment: &BTreeMap<String, String>,
     request: &Request,
 ) -> Vec<(String, Result<Response, Trouble>)> {
-    candidates(environment)
+    survey_of(candidates(environment), request)
+}
+
+/// [`survey`], of these windows.
+pub fn survey_of(
+    windows: Vec<String>,
+    request: &Request,
+) -> Vec<(String, Result<Response, Trouble>)> {
+    windows
         .into_iter()
         .filter_map(|path| match dial(&path) {
             Ok(stream) => Some((path.clone(), exchange(&path, stream, request, PATIENCE))),
@@ -217,19 +225,36 @@ fn reach(
         });
     }
 
-    if let Some(path) = environment.get(environment::WINDOW_SOCKET).filter(|p| !p.is_empty()) {
-        return dial(path).map(|stream| (path.clone(), stream)).map_err(|error| {
-            Trouble::Unreachable(format!(
-                "nothing is listening on {path} ({error}), which is the window ${} names. That \
-                 window has quit, and this pane outlived it - the pane's daemon kept it running. \
-                 Name another with --socket, or open Muster again.",
-                environment::WINDOW_SOCKET
-            ))
-        });
-    }
+    // A pane whose own window has quit asks the windows open beside it now: Muster relaunched,
+    // and one of them holds the pane's tab (`siblings`).
+    let (around, nobody) = match environment.get(environment::WINDOW_SOCKET) {
+        Some(path) if !path.is_empty() => match dial(path) {
+            Ok(stream) => return Ok((path.clone(), stream)),
+            Err(error) => (
+                siblings(path),
+                format!(
+                    "nothing is listening on {path} ({error}), which is the window ${} names, and \
+                     no other window of Muster is listening beside it. That window has quit, and \
+                     this pane outlived it - the pane's daemon kept it running. Open Muster \
+                     again, or name a window with --socket.",
+                    environment::WINDOW_SOCKET
+                ),
+            ),
+        },
+        _ => (
+            candidates(environment),
+            format!(
+                "no Muster window is listening. ${} is not set, so this is not running in a pane \
+                 Muster made, and nothing under {} answered. Open Muster, or name a window with \
+                 --socket.",
+                environment::WINDOW_SOCKET,
+                state_directory(environment).unwrap_or_else(|| "~/.muster/state".to_string())
+            ),
+        ),
+    };
 
     let mut answered = Vec::new();
-    for path in candidates(environment) {
+    for path in around {
         if let Ok(stream) = dial(&path) {
             answered.push((path, stream));
         }
@@ -238,13 +263,7 @@ fn reach(
     match answered.len() {
         1 => Ok(answered.remove(0)),
         count if count > 1 && any_will_do => Ok(answered.remove(0)),
-        0 => Err(Trouble::Unreachable(format!(
-            "no Muster window is listening. ${} is not set, so this is not running in a pane \
-             Muster made, and nothing under {} answered. Open Muster, or name a window with \
-             --socket.",
-            environment::WINDOW_SOCKET,
-            state_directory(environment).unwrap_or_else(|| "~/.muster/state".to_string())
-        ))),
+        0 => Err(Trouble::Unreachable(nobody)),
         count => Err(Trouble::Unreachable(format!(
             "{count} Muster windows are listening and nothing says which one this is about: {}. \
              Run this inside one of their panes, where ${} names it, or pick one with --socket.",
@@ -255,17 +274,67 @@ fn reach(
 }
 
 /// Whether the window a caller who named none means would answer: the one `$MUSTER_SOCKET`
-/// names, or with that unset, any in Muster's state directory.
+/// names or, when that has quit, one beside it; or with that unset, any in Muster's state
+/// directory.
 ///
 /// Asked only after a request found no window, to tell "nothing is listening" - when this
 /// machine's daemon can answer instead - from "several are, and nothing says which", which is
-/// the caller's to settle. A pane whose own window has quit is the first case whatever other
-/// windows are open: its daemon still holds it, and another window is a guess.
+/// the caller's to settle.
 pub fn any_window_answers(environment: &BTreeMap<String, String>) -> bool {
     match environment.get(environment::WINDOW_SOCKET).filter(|path| !path.is_empty()) {
-        Some(path) => dial(path).is_ok(),
+        Some(path) => dial(path).is_ok() || siblings(path).iter().any(|path| dial(path).is_ok()),
         None => candidates(environment).iter().any(|path| dial(path).is_ok()),
     }
+}
+
+/// Whether the window `$MUSTER_SOCKET` names is gone: set, and nothing answering there.
+pub fn own_window_gone(environment: &BTreeMap<String, String>) -> bool {
+    environment
+        .get(environment::WINDOW_SOCKET)
+        .is_some_and(|path| !path.is_empty() && dial(path).is_err())
+}
+
+/// The windows to ask when nobody named one: beside a pane's own window when that has quit,
+/// and otherwise every window in Muster's state directory.
+pub fn around(environment: &BTreeMap<String, String>) -> Vec<String> {
+    match environment.get(environment::WINDOW_SOCKET).filter(|path| !path.is_empty()) {
+        Some(path) => siblings(path),
+        None => candidates(environment),
+    }
+}
+
+/// The other windows of the same Muster listening beside `path`, the socket of a window that
+/// has quit: every socket in its directory whose name shares everything up to its last `-`.
+///
+/// That is `command-*.sock` in the state directory of this install on this machine, and
+/// `window-<install>-*.sock` beside the install's daemon on a machine attached over ssh, where
+/// each window forwards its own socket. A window's socket is named after its process, so a
+/// relaunched Muster listens beside the one a pane was told of rather than at it - and the pane
+/// is reached from there, since every window carries a request naming a pane to the window
+/// holding that pane's tab. A name with no `-` has no siblings.
+///
+/// A pane made before a devenv's windows carried their install in the name holds
+/// `window-<window>.sock`, whose siblings are every install's windows there.
+pub fn siblings(path: &str) -> Vec<String> {
+    let path = std::path::Path::new(path);
+    let (Some(directory), Some(own)) = (path.parent(), path.file_name().and_then(|n| n.to_str()))
+    else {
+        return Vec::new();
+    };
+    let Some((kind, _)) = own.rsplit_once('-') else { return Vec::new() };
+    let kind = format!("{kind}-");
+    let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
+    let mut found: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            name != own && name.starts_with(&kind) && name.ends_with(".sock")
+        })
+        .map(|entry| entry.path().to_string_lossy().into_owned())
+        .collect();
+    found.sort();
+    found
 }
 
 fn dial(path: &str) -> std::io::Result<UnixStream> {

@@ -197,7 +197,7 @@ pub fn run(
     // through to `ask`, so the message about there being no window to talk to stays the one that
     // command already wrote.
     if asks_around(&request, named.as_deref(), environment) {
-        let answers = dial::survey(environment, &request);
+        let answers = dial::survey_of(dial::around(environment), &request);
         if answers.len() > 1 {
             let text = render::answers(&answers, json);
             let _ = writeln!(out, "{}", text.trim_end());
@@ -461,16 +461,17 @@ fn report(trouble: &Trouble, json: bool, errors: &mut impl Write) -> i32 {
 /// there are. It has to be a question, which `muster_proto::only_reads` decides and the window
 /// itself reads for a different purpose. And the caller has to have named no window: `--socket`
 /// and `$MUSTER_SOCKET` each mean one, and the second is set in every pane Muster makes - so a
-/// command run where somebody is working already knows which window it is about, and this
-/// reaches only a caller standing outside every pane.
+/// command run where somebody is working already knows which window it is about. So this
+/// reaches a caller standing outside every pane, and one in a pane whose window has quit, which
+/// asks the windows open beside it (`dial::around`).
 fn asks_around(
     request: &muster_proto::Request,
     named: Option<&str>,
     environment: &BTreeMap<String, String>,
 ) -> bool {
-    if named.is_some()
-        || environment.get(environment::WINDOW_SOCKET).is_some_and(|path| !path.is_empty())
-    {
+    let in_a_pane =
+        environment.get(environment::WINDOW_SOCKET).is_some_and(|path| !path.is_empty());
+    if named.is_some() || (in_a_pane && !dial::own_window_gone(environment)) {
         return false;
     }
     request.payload.as_ref().is_some_and(muster_proto::only_reads)
