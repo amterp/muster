@@ -594,6 +594,41 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A daemon adopted rather than started still leaves its machine a `muster`: one installed
+    /// before the install carried the CLI has none, and adopting it puts the CLI there.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    fn an_adopted_daemon_whose_machine_has_no_cli_gets_one() {
+        let root = scratch("adopt-cli");
+        let cli = root.join("carried-cli");
+        executable(&cli, "#!/bin/sh\necho cli\n");
+        let carried = Carried {
+            mac_cli: Some(cli),
+            ..carrying(
+                muster_harness::built_daemon(),
+                muster_vt::library_path().expect("a Mac build loads libghostty-vt from a file"),
+                PathBuf::from(muster_harness::DAEMON_DATA),
+            )
+        };
+        let installed = installed_in(&root);
+        let given =
+            environment(&[("HOME", &root.display().to_string()), ("PATH", "/usr/bin:/bin")]);
+        let (reached, _) =
+            ensure_running(&Here, &installed, &carried, &installed.socket, &given).unwrap();
+        assert_eq!(reached, Reached::Started);
+        let link = installed.commands.join("muster");
+        std::fs::remove_file(&link).unwrap();
+        std::fs::remove_file(installed.directory.join("muster")).unwrap();
+
+        let (reached, _) =
+            ensure_running(&Here, &installed, &carried, &installed.socket, &given).unwrap();
+        assert_eq!(reached, Reached::Adopted);
+        assert_eq!(std::fs::read_link(&link).unwrap(), installed.directory.join("muster"));
+
+        crate::launch::stop(&installed.socket, Duration::from_secs(10)).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// The CLI an install carries is what `muster` in the commands directory runs from then on,
     /// so a shell over there with that directory on its PATH messages through this build.
     #[test]
