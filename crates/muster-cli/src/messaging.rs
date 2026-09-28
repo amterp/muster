@@ -903,26 +903,14 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         not.extend(
             no_doorbell.iter().map(|reached| with(reached, Some("its prompt cannot be read"))),
         );
-        not.extend(waiting.iter().map(|reached| {
-            with(
-                reached,
-                Some(if is_human(&reached.name) {
-                    "notified when a window opens"
-                } else {
-                    "sees it when it reads"
-                }),
-            )
-        }));
-        // A window is what links the machines, so the human there hears it when one opens.
+        not.extend(
+            waiting
+                .iter()
+                .map(|reached| with(reached, Some(unless_human(reached, "sees it when it reads")))),
+        );
         not.extend(unreachable.iter().map(|reached| {
-            with(
-                reached,
-                Some(if is_human(&reached.name) {
-                    "notified when a window opens"
-                } else {
-                    "its machine cannot be reached; it sees this once it can"
-                }),
-            )
+            let why = "its machine cannot be reached; it sees this once it can";
+            with(reached, Some(unless_human(reached, why)))
         }));
         if !not.is_empty() {
             lines.push(format!("not woken: {}", not.join(", ")));
@@ -930,6 +918,12 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         lines.join("\n")
     };
     if heard { Ok(text) } else { Err(Trouble::Unheard(text)) }
+}
+
+/// Why `reached` was not woken: `why`, unless it is the human, who is notified when a window
+/// opens - which is also what links the machines when the human is on one that cannot be reached.
+fn unless_human(reached: &msg_answer::Reached, why: &'static str) -> &'static str {
+    if is_human(&reached.name) { "notified when a window opens" } else { why }
 }
 
 /// What a deferred ring waits for, as the post's answer says it. A daemon from before the
