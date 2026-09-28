@@ -473,16 +473,12 @@ struct AppMenuTests {
   @Test("select all goes to a field being typed in, and otherwise to the pane")
   func selectAllGoesToTheFieldBeingTypedIn() {
     // The menu item targets the window, so a field in a sheet or the find bar never heard cmd+A.
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled],
-      backing: .buffered, defer: true)
-    let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 100, height: 24))
-    window.contentView?.addSubview(field)
-    #expect(MusterWindow.textBeingEdited(in: window) == nil, "nothing is being typed in yet")
-
-    window.makeFirstResponder(field)
-    #expect(MusterWindow.textBeingEdited(in: window) != nil)
-    #expect(MusterWindow.textBeingEdited(in: nil) == nil)
+    // Asked of the responder rather than by making a field first responder in a window: that
+    // starts the input method, whose remote view answers off the main thread and brought the
+    // whole suite down in AppKit (kan a_2YAdjxmgM). A text view is what AppKit's field editor is.
+    #expect(MusterWindow.textBeingEdited(by: NSTextView()) != nil, "a field being typed in")
+    #expect(MusterWindow.textBeingEdited(by: NSView()) == nil, "a pane's surface is no field")
+    #expect(MusterWindow.textBeingEdited(by: nil) == nil, "nothing has the keyboard")
   }
 
   @MainActor

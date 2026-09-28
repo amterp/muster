@@ -930,17 +930,17 @@ extension MusterWindow {
   /// sheet, the find bar - in which case that field's. The menu item targets this window
   /// directly, so without this a field never hears cmd+A.
   @objc public func selectAllInPane(_ sender: Any?) {
-    if let field = MusterWindow.textBeingEdited(in: NSApp.keyWindow) {
+    if let field = MusterWindow.textBeingEdited(by: NSApp.keyWindow?.firstResponder) {
       field.selectAll(sender)
       return
     }
     performOnSurface(.selectAll)
   }
 
-  /// The text a field in `window` holds while the person types in it: the field editor AppKit
-  /// makes first responder for a text field. A pane's surface is never one.
-  static func textBeingEdited(in window: NSWindow?) -> NSText? {
-    window?.firstResponder as? NSText
+  /// The text a field holds while the person types in it, given what has the keyboard: the field
+  /// editor AppKit makes first responder for a text field. A pane's surface is never one.
+  static func textBeingEdited(by firstResponder: NSResponder?) -> NSText? {
+    firstResponder as? NSText
   }
 
   // The two the pane's daemon carries out, handed the keystroke that asked when one did: a menu
