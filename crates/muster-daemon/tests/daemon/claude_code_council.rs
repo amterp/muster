@@ -4,7 +4,9 @@
 //! as its hooks, and bypasses permission prompts, as workers do. The test is the human: it
 //! tells each session its part, convenes the group from the directed preset, adds two of the
 //! panes, and posts the third its brief as director; after that nothing prompts any session, so
-//! every turn from there on was started by a wake.
+//! every turn from there on was started by a wake. Once the agents have posted [`WRAP_UP_AT`]
+//! messages, the human tells the director to finish, as a person dismisses a council: a model
+//! counting its own way to a number stopped at 31 in one run.
 //!
 //! Ignored by the gate, which may not reach the network; `./dev --claude-code` runs it. It
 //! prints what the sessions spent, read off their transcripts.
@@ -29,6 +31,10 @@ const BUDGET: Duration = Duration::from_mins(25);
 /// in a directed council somebody always holds the turn until the outcome is posted.
 const STRANDED: Duration = Duration::from_mins(3);
 
+/// How many messages the agents post before the human tells the director to finish, which
+/// clears the proof's forty with room for the rounds already under way.
+const WRAP_UP_AT: usize = 45;
+
 const MEMBERS: [&str; 2] = ["builder", "critic"];
 
 const TOPIC: &str = "the on-disk format and the command line of a small to-do list tool for one \
@@ -45,10 +51,10 @@ fn brief() -> String {
          address critic with the number of builder's message to review; when critic answers, \
          decide the aspect in a post to the group with no `--to`, and start the next round. \
          After each post end your turn: you are woken when the member you addressed answers, \
-         and a member hears another's post only when you address it. Keep going until the \
-         message numbers you are woken with pass 60, taking the aspects again in more detail if \
-         you run out; do not address @human before then. Then post the design in one \
-         paragraph to @human in the group, starting with DONE:, and end your turn."
+         and a member hears another's post only when you address it. Keep going, taking the \
+         aspects again in more detail as you run out, until @human tells you to finish; do not \
+         address @human before then. Then post the design in one paragraph to @human in the \
+         group, starting with DONE:, and end your turn."
     )
 }
 
@@ -137,7 +143,11 @@ fn a_directed_council_of_three_sessions_runs_past_forty_messages_with_nobody_lea
     std::fs::write(&brief_file, brief()).unwrap();
     human(&["msg", "post", "--to", "director", "--file", &brief_file.display().to_string()]);
 
-    let outcome = watch(&mut control, panes);
+    let wrap_up = || {
+        let finish = "That is enough rounds: post the design to @human now, starting with DONE:.";
+        human(&["msg", "post", "--group", "council", "--to", "director", finish]);
+    };
+    let outcome = watch(&mut control, panes, wrap_up);
 
     let posts = outcome.posts();
     let messages: usize = posts.values().sum();
@@ -163,20 +173,33 @@ fn a_directed_council_of_three_sessions_runs_past_forty_messages_with_nobody_lea
     }
 }
 
-/// Watches the council's log until the director posts its outcome, failing if the budget runs
-/// out or all three sessions sit idle together for longer than [`STRANDED`].
-fn watch(control: &mut Control, panes: [&str; 3]) -> Outcome {
+/// Watches the council's log until the director posts its outcome, having `wrap_up` tell it to
+/// once the agents have posted [`WRAP_UP_AT`] messages, and failing if the budget runs out or all
+/// three sessions sit idle together for longer than [`STRANDED`].
+fn watch(control: &mut Control, panes: [&str; 3], wrap_up: impl Fn()) -> Outcome {
     let began = Instant::now();
     let mut idle_since: Option<Instant> = None;
     let mut longest_idle = Duration::ZERO;
+    let mut told = false;
     loop {
         let entries = entries_of(control, "council");
         let done = entries.iter().any(|entry| {
             matches!(&entry.what, Some(What::Message(message))
-                if message.author == "director" && message.body.contains("DONE"))
+                if message.author == "director" && message.body.trim_start().starts_with("DONE:"))
         });
         if done {
             return Outcome { entries, took: began.elapsed(), longest_idle };
+        }
+        let posted = entries
+            .iter()
+            .filter(|entry| {
+                matches!(&entry.what, Some(What::Message(message))
+                    if panes.contains(&message.author.as_str()))
+            })
+            .count();
+        if !told && posted >= WRAP_UP_AT {
+            wrap_up();
+            told = true;
         }
         let all_idle =
             panes.iter().all(|pane| agent_state(control, pane) == proto::AgentState::Idle);
