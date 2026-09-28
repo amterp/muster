@@ -176,6 +176,14 @@ impl DaemonBackend {
     }
 }
 
+/// Whether a read that asked for the last `rows` rows got them.
+///
+/// A daemon that predates reading from the end reads from the first row instead, which it gives
+/// away by sending more rows than were asked for.
+fn answers_the_tail(page: &proto::PaneText, rows: u32) -> bool {
+    rows > 0 && page.rows <= rows
+}
+
 fn reaches_the_end(page: &proto::PaneText) -> bool {
     page.first_row + u64::from(page.rows) >= page.total_rows
 }
@@ -284,9 +292,7 @@ impl BackendChannel for DaemonBackend {
         // would otherwise have to drain before it could answer, and twenty rows fit a socket's
         // buffer where 12000 do not.
         let first = self.read_page(pane, 0, rows)?;
-        // A daemon that predates reading from the end reads from the first row instead, which
-        // it gives away by sending more rows than were asked for.
-        if rows > 0 && first.rows <= rows {
+        if answers_the_tail(&first, rows) {
             return Ok(PaneText { truncated: first.first_row > 0, text: first.text });
         }
         let whole = first;
@@ -340,5 +346,27 @@ impl InputSink for DaemonInput {
 
     fn description(&self) -> &str {
         &self.description
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(first_row: u64, rows: u32, total_rows: u64) -> proto::PaneText {
+        proto::PaneText { first_row, rows, total_rows, ..proto::PaneText::default() }
+    }
+
+    #[test]
+    fn a_tail_is_told_from_an_older_daemons_first_page() {
+        // A daemon that reads from the end: the last rows with text, a screen of blank rows
+        // below them left out, or everything when the pane holds fewer.
+        assert!(answers_the_tail(&page(9_980, 20, 10_024), 20));
+        assert!(answers_the_tail(&page(0, 12, 40), 20));
+        // An older daemon answers from row 0, cut at its 4 MiB, which can still be fewer rows
+        // than a large count asked for. Those are the oldest rows, not the newest.
+        assert!(!answers_the_tail(&page(0, 42_000, 100_000), 100_000));
+        // And more rows than were asked for is an older daemon's whole answer.
+        assert!(!answers_the_tail(&page(0, 300, 300), 20));
     }
 }
