@@ -196,6 +196,8 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
             }
             // This daemon exits once it has answered, and a bridge whose detach was still
             // queued would read a hang-up rather than REPLACED, and end rather than attach again.
+            // The detach goes ahead of queued output, so it is written within this bound unless
+            // the bridge has stopped reading altogether.
             let deadline = Instant::now() + FLUSH;
             for subscriber in subscribers {
                 subscriber.flush(deadline.saturating_duration_since(Instant::now()));

@@ -10,12 +10,12 @@
 
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use muster_core::diagnostics::log;
+use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, stream_message, stream_request};
@@ -129,11 +129,15 @@ pub(crate) struct Bridge {
     id: u64,
     frames: Sender<Vec<u8>>,
     written: Written,
+    urgent: Urgent,
     credit: Credit,
     /// The connection, to end the thread reading it once the pane lets the bridge go. That
     /// thread holds the pane, and a bridge that has stopped sending would keep it forever.
     socket: UnixStream,
 }
+
+/// A frame the writer sends next, ahead of whatever is still queued, which it then drops.
+type Urgent = Arc<Mutex<Option<Vec<u8>>>>;
 
 /// Ends once a stream's writer has written everything queued for it, or given the connection up.
 #[derive(Debug)]
@@ -189,10 +193,20 @@ impl Bridge {
     /// Tells the bridge why it is let go. Its reading half is shut, which lets go of the pane
     /// at once; the frames already queued, this one last, are still written, and what is
     /// returned says when they have been.
+    ///
+    /// Except for a pane handed to another daemon, whose detach goes ahead of everything queued
+    /// and the rest is dropped. The daemon handing over exits a moment later, and a bridge on a
+    /// slow link can have megabytes of output ahead of it: one that read a hang-up instead
+    /// would end rather than attach to the new daemon, whose replay redraws that output anyway.
     pub(crate) fn detach(self, reason: proto::DetachReason) -> Written {
-        self.send(stream_message::Message::Detached(stream_message::Detached {
-            reason: reason.into(),
-        }));
+        let detached =
+            stream_message::Message::Detached(stream_message::Detached { reason: reason.into() });
+        if reason == proto::DetachReason::Replaced {
+            let frame = proto::StreamMessage { message: Some(detached) }.encode_to_vec();
+            *poison::lock(&self.urgent, "daemon.stream.urgent") = Some(frame);
+        } else {
+            self.send(detached);
+        }
         let _ = self.socket.shutdown(Shutdown::Read);
         self.written
     }
@@ -204,7 +218,7 @@ impl Bridge {
 
 /// Serves a welcomed stream connection until its bridge or its pane goes.
 pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
-    let (frames, written) = match writer(&stream) {
+    let (frames, written, urgent) = match writer(&stream) {
         Ok(writer) => writer,
         Err(error) => {
             log::error(
@@ -273,7 +287,8 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
         }
     };
     let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
-    let bridge = Bridge { id, frames, written, credit: Credit::new(window(attach.window)), socket };
+    let credit = Credit::new(window(attach.window));
+    let bridge = Bridge { id, frames, written, urgent, credit, socket };
     if let Err(refusal) = io.attach(bridge, grid, attach.takeover) {
         refuse(refusal.frames, refusal.kind, refusal.reason);
         return;
@@ -333,17 +348,25 @@ const STALLED_WRITE: Duration = Duration::from_secs(30);
 /// Starts the thread that writes a stream's frames, and returns where to queue them. When every
 /// sender has gone, it writes what is left and hangs the connection up, which ends the thread
 /// reading it.
-fn writer(stream: &UnixStream) -> std::io::Result<(Sender<Vec<u8>>, Written)> {
+fn writer(stream: &UnixStream) -> std::io::Result<(Sender<Vec<u8>>, Written, Urgent)> {
     let (frames, queued) = mpsc::channel::<Vec<u8>>();
     // Never sent on: dropped as the thread ends, which is what the receiver waits for.
     let (finished, written) = mpsc::channel::<()>();
+    let urgent: Urgent = Arc::default();
+    let jumping = Arc::clone(&urgent);
     let mut writing = stream.try_clone()?;
     writing.set_write_timeout(Some(STALLED_WRITE))?;
     let slow_detach = crate::handoff::Faults::read().has("slow-detach");
     std::thread::Builder::new().name("stream write".to_string()).spawn(move || {
         let _finished = finished;
         crate::priority::interactive();
+        let next = || poison::lock(&jumping, "daemon.stream.urgent").take();
+        let mut urgent = None;
         for frame in queued {
+            urgent = next();
+            if urgent.is_some() {
+                break;
+            }
             if slow_detach && is_detach(&frame) {
                 std::thread::sleep(SLOW_DETACH);
             }
@@ -351,9 +374,16 @@ fn writer(stream: &UnixStream) -> std::io::Result<(Sender<Vec<u8>>, Written)> {
                 break;
             }
         }
+        // Only an urgent frame is left to write: the queue ended, or was dropped for it.
+        if let Some(frame) = urgent.or_else(next) {
+            if slow_detach {
+                std::thread::sleep(SLOW_DETACH);
+            }
+            let _ = muster_frame::write_frame(&mut writing, &frame);
+        }
         let _ = writing.shutdown(Shutdown::Both);
     })?;
-    Ok((frames, Written(written)))
+    Ok((frames, Written(written), urgent))
 }
 
 /// How long the `slow-detach` fault holds a detach back: longer than a handed-off daemon takes
@@ -374,7 +404,8 @@ impl Bridge {
         let (socket, _) = UnixStream::pair().expect("a socket pair");
         let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
         let written = Written(written);
-        (Bridge { id, frames, written, credit: Credit::new(WINDOW), socket }, received)
+        let urgent = Urgent::default();
+        (Bridge { id, frames, written, urgent, credit: Credit::new(WINDOW), socket }, received)
     }
 }
 
