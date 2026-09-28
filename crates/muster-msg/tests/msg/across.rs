@@ -1038,3 +1038,62 @@ fn a_member_on_another_machine_can_be_removed_and_is_let_go_there() {
     assert!(wire.devenv.replicas_of("lap").is_empty(), "nothing left to refetch");
     assert_eq!(wire.ended, [(Side::Devenv, ticket)]);
 }
+
+/// A replica replayed from nothing a page at a time lets a member go only by where the whole log
+/// leaves it: one that left and came back, its leave closing one page and its return in the
+/// next, keeps its cursor, its wait and the replica.
+#[test]
+fn a_member_that_left_and_rejoined_across_a_page_boundary_is_kept() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    // Eight bodies nearly fill a page, and the ninth opens the next: a page ends only before a
+    // message, so the leave closes the first page and the return falls in the second.
+    let body = "x".repeat(muster_msg::LARGEST_BODY - 1024);
+    for _ in 0..8 {
+        wire.post(Side::Laptop, &builder, None, &[], &body).unwrap();
+    }
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let away = devenv.route_leave(&critic, Some("review@lap"), sessions).unwrap();
+    for away in away {
+        wire.send(Side::Devenv, &away.call).unwrap();
+    }
+    wire.post(Side::Laptop, &builder, None, &[], &body).unwrap();
+    wire.join(Side::Devenv, &critic, Some("critic"), "review@lap");
+    let rejoined = wire.laptop.log("review", 0).unwrap().last().unwrap().seq;
+    assert_eq!(wire.devenv.participant("critic").unwrap().cursors["review@lap"], rejoined);
+
+    let saved = wire.devenv.store().saved.clone().unwrap();
+    wire.devenv = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+    wire.cut();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let waited = devenv.wait(&critic, Some("review@lap"), false, sessions).unwrap();
+    let muster_msg::Waited::Waiting { ticket, .. } = waited else { panic!("nothing unread") };
+
+    let (mut after, mut pages, mut more, mut ended) = (0, Vec::new(), true, Vec::new());
+    while more {
+        let page = wire.laptop.since("review", after).unwrap();
+        let (devenv, sessions) = wire.split(Side::Devenv);
+        let applied = devenv.apply(&Side::Devenv.peer(), page.clone(), sessions, 99).unwrap();
+        ended.extend(applied.ended);
+        after = page.entries.last().unwrap().seq;
+        more = page.more;
+        pages.push(page.entries.last().unwrap().what.clone());
+    }
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert_eq!(pages[0], What::Left { who: "critic@devenv".to_string() }, "the leave ends a page");
+    assert!(ended.is_empty(), "no wait ended: {ended:?}");
+    assert_eq!(wire.devenv.participant("critic").unwrap().cursors["review@lap"], rejoined);
+    let replica = wire.devenv.log("review@lap", 0).expect("the replica is kept");
+    assert_eq!(
+        replica.iter().filter(|entry| matches!(entry.what, What::Message { .. })).count(),
+        9
+    );
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let again = devenv.wait(&critic, Some("review@lap"), false, sessions).unwrap();
+    assert!(
+        matches!(again, muster_msg::Waited::Waiting { superseded: Some(old), .. } if old == ticket),
+        "the first wait was still kept: {again:?}"
+    );
+}
