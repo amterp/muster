@@ -610,6 +610,31 @@ mod tests {
         Wheel { dx: 0.0, dy, precise, modifiers: Modifiers::NONE, position: (0.0, 0.0) }
     }
 
+    /// What a clear sends the program after it. On the alternate screen that is the key that
+    /// asked, which is typed: its echo is somebody's keystroke, not the program at work. The
+    /// form feed a shell is sent to draw its prompt again answers the clear, not a person.
+    #[test]
+    fn the_key_a_clear_hands_a_program_counts_as_typed_and_the_form_feed_does_not() {
+        let key = OwnedKey {
+            action: KeyAction::Press,
+            code: 30,
+            modifiers: 8,
+            consumed_modifiers: 0,
+            text: "k".to_string(),
+            unshifted_codepoint: u32::from('k'),
+            composing: false,
+            option_as_alt: OptionAsAlt::Never,
+        };
+        let sent = Input::after_clear(Cleared::Alternate, Some(key.clone()));
+        assert!(matches!(&sent, Some(Input::Key(sent)) if *sent == key), "{sent:?}");
+        assert!(sent.is_some_and(|sent| sent.is_typed()));
+
+        let redraw = Input::after_clear(Cleared::AtPrompt, Some(key.clone())).unwrap();
+        assert!(matches!(&redraw, Input::Reply(bytes) if bytes == &[0x0c]), "{redraw:?}");
+        assert!(!redraw.is_typed());
+        assert!(Input::after_clear(Cleared::Elsewhere, Some(key)).is_none());
+    }
+
     #[test]
     fn a_discrete_tick_is_three_rows_and_a_precise_turn_waits_for_a_whole_row() {
         let mut scroll = Scroll::default();
