@@ -403,3 +403,43 @@ fn a_peer_acting_as_this_machines_own_is_refused() {
         "builder is still in review: {whats:?}"
     );
 }
+
+/// The human is homed on the machine the app runs on (MIP-4, section 10), which is the one whose
+/// daemon dials the link. The daemon it dials has no human of its own: a person's shell there
+/// is the near machine's human, whose cursors and notices are kept on the near daemon, and an
+/// agent there that asks for the human reaches the near one, which alone tells its windows.
+#[test]
+fn a_daemon_dialed_from_the_apps_machine_has_no_human_of_its_own() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    let person = msg_request::Caller::default();
+
+    join(&mut far_control, &named("critic"), "critic", "review");
+    assert_eq!(join(&mut near_control, &person, "@human", "review"), "review@far");
+    let asked = Asked::Join(msg_request::Join {
+        name: None,
+        group: Some("review".to_string()),
+        pull: false,
+    });
+    let refused = far_control.ask(msg(&person, asked));
+    assert_eq!(msg_answer(&refused).refusal, "human_elsewhere", "{}", refused.answer.reason);
+
+    let posted = expect(
+        &mut far_control,
+        post(&named("critic"), None, &[], "the lexer is done"),
+        proto::Outcome::Done,
+    );
+    let reached = reached(&posted);
+    assert_eq!(reached.len(), 1, "one human, on the near machine: {reached:?}");
+    assert!(reached[0].0.starts_with("@human@"), "{reached:?}");
+    assert!(snapshot(&mut far_control).human.is_empty(), "the far daemon told of a human");
+    let told = snapshot(&mut near_control).human;
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert_eq!((told[0].group.as_str(), told[0].count), ("review@far", 1));
+
+    join(&mut far_control, &named("scout"), "scout", "other");
+    let refused = far_control.ask(post(&named("scout"), None, &["@human"], "a question"));
+    assert_eq!(msg_answer(&refused).refusal, "no_shared_group", "{}", refused.answer.reason);
+}
