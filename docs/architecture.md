@@ -850,7 +850,8 @@ Each daemon wakes only its own members. Each machine writes its own members bare
 and whatever crosses the link is turned into the receiver's names on arrival. That happens in `muster-msg`, so the
 rules are tested with two services and no daemon (`crates/muster-msg/tests/msg/across.rs`). With no window there is
 no link: a change to a group kept elsewhere is refused at once, naming the machine. Replicas are not kept on disk,
-so a link that comes up refetches them.
+so a link that comes up refetches them, a page of at most 8 MiB of bodies at a time, since a link carries 16 MiB in a
+frame and a log is never cut short.
 
 **A group's policy binds at its home, whichever machine a request came from.** A forwarded post runs through the
 same `post_as` as a local one, so the home checks whom its author may address and whether the group is paused, and
