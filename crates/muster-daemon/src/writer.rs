@@ -731,6 +731,39 @@ mod tests {
         assert!(writing.io.input_at().is_some(), "a paste nobody has read yet is not typed");
     }
 
+    /// A paste written over seconds is echoed as each piece is taken, and the echo of every
+    /// piece is typing, not only the first and the last.
+    #[test]
+    fn a_paste_counts_as_typed_each_time_the_program_takes_more_of_it() {
+        let mut writing = Writing::new();
+        writing.send(
+            crate::input::input_of(Event::Paste(input_event::Paste {
+                text: "a".repeat(1024 * 1024),
+                confirmed: true,
+            }))
+            .expect("a paste"),
+        );
+        let started = until_input(&writing, None);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let mut taken = vec![0; 256 * 1024];
+        writing.written.read_exact(&mut taken).expect("the writer wrote");
+        until_input(&writing, Some(started));
+    }
+
+    /// Waits for the pane's input time to be set, and later than `after`.
+    fn until_input(writing: &Writing, after: Option<Instant>) -> Instant {
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Some(at) =
+                writing.io.input_at().filter(|&at| after.is_none_or(|after| at > after))
+            {
+                return at;
+            }
+            assert!(Instant::now() < deadline, "no input time after {after:?}");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
     /// A binding's bytes, such as shift+enter's `text:\n` or option+left's word jump, are
     /// typed as surely as the key they replace.
     #[test]
