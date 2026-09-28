@@ -4750,7 +4750,8 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
                 session.state_since.entry(key.clone()).or_insert_with(clock::wall_clock_millis);
             }
             let finished = session.finished_unseen(&key);
-            if session.attention.met(&key, finished) {
+            let state = session.agent_state(&key).unwrap_or(AgentState::Unknown);
+            if session.attention.met(&key, state, finished) {
                 session.report_seen(std::slice::from_ref(&key));
             }
             None

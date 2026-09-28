@@ -63,7 +63,8 @@ fn notifying_conformance() {
                     .collect();
                 (!rung.is_empty()).then(|| json!(rung))
             }),
-            // And the set left standing, which is what a shell would have on screen.
+            // And every pane still asking, in the order the chord to the pane that asked walks
+            // them - with a banner or without one.
             (
                 "asking",
                 Some(json!(
@@ -158,7 +159,7 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
         if event.get("appeared").is_some() {
             let pane = read_pane(event, "appeared")?;
             let state = read_state(event, "state")?;
-            if run.attention.met(&pane, finished(event)) {
+            if run.attention.met(&pane, state, finished(event)) {
                 run.reported.push(pane.to_string());
             }
             run.backend.insert(pane, state);

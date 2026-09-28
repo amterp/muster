@@ -231,7 +231,7 @@ impl Attention {
     ///
     /// Returns whether the window is already showing it to somebody, in which case it is
     /// reported seen: a daemon's panes are published before they are met.
-    pub fn met(&mut self, pane: &PaneKey, finished: bool) -> bool {
+    pub fn met(&mut self, pane: &PaneKey, _state: AgentState, finished: bool) -> bool {
         if !finished {
             return false;
         }

@@ -2,7 +2,7 @@
   "concept": "attention.notifying",
   "source": "authored",
   "citation": "README.md desiderata (attention routing: when an agent needs you, the notification says why) and docs/architecture.md, attention routing - the core owns the unread set and the shell only delivers. The rules here are Muster's own policy; there is no oracle above them.",
-  "why": "Glanceable states are the floor rather than the ceiling. A border says an agent needs you only to somebody looking at it, and the pane most likely to be waiting is the one no region is showing - so something has to interrupt, and what it chooses to interrupt for is the whole difference between a feature people keep and one they turn off. Everything notifying is the same as nothing notifying.\n\nSeparate from attention.json, which is seen-ness. That decides what a pane *is*, and is not a person's to configure; this decides what Muster does about it, and is. Keeping them in one file would make every seen-ness case state an assertion about banners it was never written to make, and would let a preference about interruptions quietly change the state vocabulary the whole product is built on - a muted window still paints `done` and still lists it.\n\nThe expectations are a sequence rather than a final state, because a notification is an event. What has to be right is which moments produce one, and a final state cannot tell being interrupted once from being interrupted three times on the way there. `asking` beside it is the set left standing, which is what a shell would have on screen.\n\nWithdrawal is here for the same reason raising is. A banner for an agent that has moved on, been looked at, or closed lands a person on a pane that does not want them - which is the exact failure the notification exists to prevent, arriving one step later.",
+  "why": "Glanceable states are the floor rather than the ceiling. A border says an agent needs you only to somebody looking at it, and the pane most likely to be waiting is the one no region is showing - so something has to interrupt, and what it chooses to interrupt for is the whole difference between a feature people keep and one they turn off. Everything notifying is the same as nothing notifying.\n\nSeparate from attention.json, which is seen-ness. That decides what a pane *is*, and is not a person's to configure; this decides what Muster does about it, and is. Keeping them in one file would make every seen-ness case state an assertion about banners it was never written to make, and would let a preference about interruptions quietly change the state vocabulary the whole product is built on - a muted window still paints `done` and still lists it.\n\nThe expectations are a sequence rather than a final state, because a notification is an event. What has to be right is which moments produce one, and a final state cannot tell being interrupted once from being interrupted three times on the way there. `asking` beside it is every pane still asking for somebody, in the order going to the pane that asked walks them. It is not the banners left standing: a state switched off, or a pane already asking when the window met it, asks with no banner, and the banners are the `notified` sequence.\n\nWithdrawal is here for the same reason raising is. A banner for an agent that has moved on, been looked at, or closed lands a person on a pane that does not want them - which is the exact failure the notification exists to prevent, arriving one step later.",
   "cases": [
     {
       "name": "an agent that blocks while nobody is looking asks for somebody",
@@ -283,8 +283,8 @@
       }
     },
     {
-      "name": "a pane that was already finished when the window arrived says nothing",
-      "why": "History rather than news. The daemon kept the finish while no window was open, and quitting and coming back is the ordinary case - so notifying here would mean every launch after a break opens with a stack of banners about work that finished yesterday. The roster and the border still say it, which is what they are for.",
+      "name": "a pane that was already finished when the window arrived says nothing, and still asks",
+      "why": "History rather than news. The daemon kept the finish while no window was open, and quitting and coming back is the ordinary case - so notifying here would mean every launch after a break opens with a stack of banners about work that finished yesterday. The roster and the border still say it, which is what they are for. It is still asking, though: the finish is `done` on its border, so going to the pane that asked reaches it.",
       "given": {
         "focused": true,
         "visible": [
@@ -300,7 +300,9 @@
       },
       "expect": {
         "notified": [],
-        "asking": []
+        "asking": [
+          "local/w1:p2 done"
+        ]
       }
     },
     {
@@ -339,13 +341,14 @@
           "local/w1:p3 done"
         ],
         "asking": [
+          "local/w1:p2 done",
           "local/w1:p3 done"
         ]
       }
     },
     {
       "name": "one state can be switched off without switching off the other",
-      "why": "The two are different questions. `blocked` is somebody being waited on right now; `done` is somebody having been waited on at some point - and a person who wants one and not the other has to be able to say so, or they turn both off.",
+      "why": "The two are different questions. `blocked` is somebody being waited on right now; `done` is somebody having been waited on at some point - and a person who wants one and not the other has to be able to say so, or they turn both off. Switching a state off silences its banner and nothing else: the pane still asks, and going to the pane that asked still reaches it.",
       "given": {
         "focused": true,
         "visible": [
@@ -371,7 +374,8 @@
           "local/w1:p3 blocked"
         ],
         "asking": [
-          "local/w1:p3 blocked"
+          "local/w1:p3 blocked",
+          "local/w1:p2 done"
         ]
       }
     },
@@ -396,12 +400,14 @@
       },
       "expect": {
         "notified": [],
-        "asking": []
+        "asking": [
+          "local/w1:p2 done"
+        ]
       }
     },
     {
       "name": "the mute silences both",
-      "why": "The quiet path, and it has to exist in the first version rather than a later one. Somebody running fifteen agents gets fifteen banners, and a feature that cannot be turned off in one line is one people turn off by uninstalling it.",
+      "why": "The quiet path, and it has to exist in the first version rather than a later one. Somebody running fifteen agents gets fifteen banners, and a feature that cannot be turned off in one line is one people turn off by uninstalling it. Silenced, not hidden: both still ask, and a chord somebody presses is not an interruption.",
       "given": {
         "focused": true,
         "visible": [
@@ -424,12 +430,15 @@
       },
       "expect": {
         "notified": [],
-        "asking": []
+        "asking": [
+          "local/w1:p2 blocked",
+          "local/w1:p3 done"
+        ]
       }
     },
     {
       "name": "muting takes down what is already asking",
-      "why": "Otherwise a mute means 'no new ones', which is not what somebody typing it at four in the afternoon means. The file is read again on save, so the moment they write it is the moment the noise should stop.",
+      "why": "Otherwise a mute means 'no new ones', which is not what somebody typing it at four in the afternoon means. The file is read again on save, so the moment they write it is the moment the noise should stop. The banner goes, and the pane still asks.",
       "given": {
         "focused": true,
         "visible": [
@@ -452,7 +461,9 @@
           "local/w1:p2 blocked",
           "local/w1:p2 withdrawn"
         ],
-        "asking": []
+        "asking": [
+          "local/w1:p2 blocked"
+        ]
       }
     },
     {
@@ -480,7 +491,9 @@
       },
       "expect": {
         "notified": [],
-        "asking": []
+        "asking": [
+          "local/w1:p2 blocked"
+        ]
       }
     },
     {
@@ -581,6 +594,117 @@
         "asking": [
           "local/w1:p2 blocked",
           "local/w1:p1 blocked"
+        ]
+      }
+    },
+    {
+      "name": "a pane blocked before the window arrived asks without a banner",
+      "why": "Quitting Muster leaves the agents working, and some of them block before it comes back. The window meets them already blocked and announces nothing, since it saw no change happen, but they are asking all the same: the sidebar shows them blocked, and going to the pane that asked has to reach them.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "appeared": "local/w1:p2",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": [
+          "local/w1:p2 blocked"
+        ]
+      }
+    },
+    {
+      "name": "panes asking before the window arrived come before panes that ask after",
+      "why": "A pane that was already blocked when the window met it has waited at least as long as the window has been open, which is longer than any pane that blocks afterwards.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "appeared": "local/w1:p3",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 blocked"
+        ],
+        "asking": [
+          "local/w1:p3 blocked",
+          "local/w1:p1 blocked"
+        ]
+      }
+    },
+    {
+      "name": "a finish taken back on reconnect asks again, without a banner",
+      "why": "A daemon that comes back may never have heard its finish was seen, so the pane is `done` again until a look finds it. `done` is asking, so going to the pane that asked reaches it. Nothing is announced: the window saw no new finish.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p2"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          },
+          {
+            "reconnected": "local"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": [
+          "local/w1:p2 done"
+        ]
+      }
+    },
+    {
+      "name": "a finish whose report was refused asks again, without a banner",
+      "why": "A daemon partway through a handoff refuses the report that a finish was seen, so the pane is `done` again, as every other window still has it. It asks as any `done` pane does.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p2"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          },
+          {
+            "refused": "local/w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": [
+          "local/w1:p2 done"
         ]
       }
     },
@@ -751,7 +875,9 @@
       },
       "expect": {
         "notified": [],
-        "asking": []
+        "asking": [
+          "local/w1:p1 notified"
+        ]
       }
     },
     {
@@ -959,7 +1085,9 @@
       },
       "expect": {
         "notified": [],
-        "asking": []
+        "asking": [
+          "local/w1:p2 done"
+        ]
       }
     },
     {
@@ -1088,7 +1216,9 @@
           "local/w1:p2 notified: tests passed",
           "local/w1:p2 withdrawn"
         ],
-        "asking": []
+        "asking": [
+          "local/w1:p2 notified"
+        ]
       }
     }
   ]
