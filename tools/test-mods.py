@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Is every Rust file compiled?
+"""Is every Rust file compiled that a crate holds as code?
 
 cargo builds only what a crate root reaches through `mod` lines. A file whose `mod` line is
 missing compiles to nothing: its code and its tests never run, the gate stays green, and nothing
@@ -8,8 +8,10 @@ in an integration test binary, since nothing calls into one. This fails for ever
 naming the line to add.
 
 The roots are each crate's `src/lib.rs` and `src/main.rs`, each file or `main.rs` under
-`src/bin/`, and each integration test binary's `tests/<name>/main.rs`. A module's own files are
-in its directory: `mod.rs`'s, a root's, or `foo/` beside `foo.rs`. A directory that is none of
+`src/bin/`, and each file or `<name>/main.rs` directly under `tests/` and `examples/`. A module's
+own files are in its directory: `mod.rs`'s, a `main.rs` root's, or `foo/` beside `foo.rs`; and a
+directory with a `mod.rs` directly under `tests/` or `examples/`, as `tests/support/`, is shared
+by that directory's single-file roots, one of which must declare it. A directory that is none of
 those is data, not code, and is left alone. Nothing here uses `#[path]`, and the `include!`s
 only reach files cargo generates.
 
@@ -28,7 +30,7 @@ MOD = re.compile(r"^\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s
 
 def missing(
     directory: Path, declarers: list[Path], skip: tuple[str, ...] = ()
-) -> list[tuple[Path, str]]:
+) -> list[tuple[list[Path], str]]:
     """The modules in `directory` that none of `declarers` declares, and those under them."""
     declared = {name for declarer in declarers for name in MOD.findall(declarer.read_text())}
     found = []
@@ -45,7 +47,7 @@ def missing(
         else:
             continue
         if name not in declared:
-            found.append((declarers[0], name))
+            found.append((declarers, name))
     return found
 
 
@@ -61,8 +63,13 @@ def roots() -> list[tuple[Path, list[Path], tuple[str, ...]]]:
                 found.append((binary.with_suffix(""), [binary], ()))
         for main in sorted((src / "bin").glob("*/main.rs")):
             found.append((main.parent, [main], ()))
-    for main in sorted(REPO.glob("crates/*/tests/*/main.rs")):
-        found.append((main.parent, [main], ()))
+    for targets in sorted([*REPO.glob("crates/*/tests"), *REPO.glob("crates/*/examples")]):
+        for main in sorted(targets.glob("*/main.rs")):
+            found.append((main.parent, [main], ()))
+        single = sorted(targets.glob("*.rs"))
+        if single:
+            binaries = tuple(main.parent.name for main in targets.glob("*/main.rs"))
+            found.append((targets, single, binaries))
     return found
 
 
@@ -76,18 +83,24 @@ def main() -> int:
         for directory, declarers, skip in checked
         for problem in missing(directory, declarers, skip)
     ]
-    for root, name in problems:
-        relative = root.relative_to(REPO)
-        # An integration test binary is compiled only for tests, so it needs no cfg.
-        hint = "" if relative.parts[2] == "tests" else " (under #[cfg(test)] if it holds tests)"
+    for declarers, name in problems:
+        relative = declarers[0].relative_to(REPO)
+        # Several declarers are the single-file roots of one tests/ or examples/ directory.
+        missing_line = (
+            f"no file directly in {relative.parent} declares"
+            if len(declarers) > 1
+            else f"{relative} does not declare"
+        )
+        # Only src/ holds tests beside code; a test or example target is compiled as itself.
+        hint = " (under #[cfg(test)] if it holds tests)" if relative.parts[2] == "src" else ""
         print(
-            f"{relative} does not declare `mod {name};`, so {name} is never compiled and its "
-            f"tests never run. Add the line{hint}, or delete the file.",
+            f"{missing_line} `mod {name};`, so {name} is never compiled and its tests never "
+            f"run. Add the line{hint}, or delete the file.",
             file=sys.stderr,
         )
     if problems:
         return 1
-    print(f"test-mods: every Rust file is declared, under {len(checked)} crate and test roots")
+    print(f"test-mods: every Rust module file is declared, under {len(checked)} roots")
     return 0
 
 
