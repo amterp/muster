@@ -744,10 +744,17 @@ reader, which gives it to detection at once, and it counts until one of these:
 - for working, ten seconds pass with no output from the pane. A working agent animates something,
   and one interrupted mid-turn, which no hook reports, sits still at its prompt. This asks only
   that the screen move, not that a rule match it, so it holds when the rules have broken;
-- for blocked or idle, the pane produces output in each of three seconds running after the report.
-  A prompt waiting on you and an idle prompt both sit still. An approved tool fires no hook until
-  it ends, and can run for minutes with the screen moving; a background task keeps the screen
-  moving after an idle report. Either way the rules read that screen instead.
+- for blocked or idle that the rules have read the same way, since the report came or as it came,
+  the rules read something else for two seconds. No hook says a prompt went: Esc and a denial run
+  none, and an approved tool runs none until it ends. What the rules confirmed and then stopped
+  seeing has gone, however much else on the screen still moves. Claude Code's two permission rules
+  that read only the dialog under the last horizontal rule rank above its working rules, so a
+  prompt shown while sub-agents animate beside it still reads blocked;
+- for blocked or idle that the rules have never read the same way, the pane produces output in
+  each of three seconds running after the report. That is a prompt the rules cannot read, where
+  the report is all there is to go on, and a prompt waiting on you sits still. An approved tool
+  can run for minutes with the screen moving, and a background task keeps it moving after an idle
+  report; either way the rules read that screen instead.
 
 While a report counts, its state is published as it stands, with no startup grace and no idle
 debounce, and the pane's record says `state_reported`. The rules still read the screen underneath,

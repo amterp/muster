@@ -35,8 +35,10 @@ shows:
 
 A working state with nothing moving on the screen for ten seconds is let go, since pressing Esc
 mid-turn fires no hook, and Muster reads the screen again. Waiting on you or idle is let go once
-the screen has moved for three seconds running: an approved tool fires no hook until it finishes,
-and a background task can keep the screen busy after `Stop`. `SubagentStart` and `SubagentStop`
+Muster's screen rules, having read it the same way, read something else for two seconds: Esc or
+No at a permission prompt fires no hook either. If the rules never read it that way, it is let go
+once the screen has moved for three seconds running: an approved tool fires no hook until it
+finishes, and a background task can keep the screen busy after `Stop`. `SubagentStart` and `SubagentStop`
 count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
 `/clear` runs.
 

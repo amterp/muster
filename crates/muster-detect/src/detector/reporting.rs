@@ -17,10 +17,17 @@ use crate::{Agent, State};
 /// rule match it, so it holds when the rules do not.
 pub(crate) const QUIET: Duration = Duration::from_secs(10);
 
-/// A blocked or idle report stops counting once the pane has produced output in this many
-/// seconds running since the report came. A prompt waiting on you and an idle prompt both sit
-/// still, while an approved tool, or a background task the idle report knows nothing of, keeps
-/// the screen moving and fires no hook until it ends; the rules read that screen instead.
+/// A blocked or idle report the rules have read the same way stops counting once they have read
+/// something else for this long. No hook says a prompt went: Esc and a denial run none, and an
+/// approved tool runs none until it ends. What the rules confirmed and then stopped seeing has
+/// gone. The wait lets a prompt finish drawing.
+pub(crate) const DISAGREE: Duration = Duration::from_secs(2);
+
+/// A blocked or idle report the rules have never read the same way stops counting once the pane
+/// has produced output in this many seconds running since the report came. Such a report is all
+/// there is to go on for a prompt the rules cannot read, and a prompt waiting on you sits still,
+/// while an approved tool, or a background task the idle report knows nothing of, keeps the
+/// screen moving; the rules read that screen instead.
 pub(crate) const RESTLESS_SECONDS: usize = 3;
 
 /// How long a report from an agent the pane is not yet known to run waits to be confirmed: a
@@ -40,6 +47,8 @@ pub(crate) struct SelfReport {
     pub(crate) agent: Agent,
     pub(crate) state: State,
     pub(crate) at: Instant,
+    /// Whether the rules have read the state reported since it came, or were reading it then.
+    pub(crate) confirmed: bool,
 }
 
 /// How far along drift is, for another process to go on from: how long ago each of its spans
@@ -59,8 +68,9 @@ pub(crate) struct Reporting {
     last_output_at: Option<Instant>,
     /// The start of each second, of the last [`DRIFT`], in which the pane produced output.
     active_seconds: VecDeque<Instant>,
-    /// Since when every screen the rules read came to idle.
-    rules_idle_since: Option<Instant>,
+    /// What the rules read the last screen as, and since when every screen they read came to
+    /// that.
+    reading: Option<(State, Instant)>,
     /// Since when no rule matched any screen they read.
     unmatched_since: Option<Instant>,
     /// Since when a working report has counted without a break.
@@ -70,7 +80,8 @@ pub(crate) struct Reporting {
 
 impl Reporting {
     pub(crate) fn report(&mut self, agent: Agent, state: State, now: Instant) {
-        self.report = Some(SelfReport { agent, state, at: now });
+        let confirmed = self.reading.is_some_and(|(read, _)| read == state);
+        self.report = Some(SelfReport { agent, state, at: now, confirmed });
     }
 
     /// Takes the pane's content count, each tick while an agent is identified.
@@ -90,10 +101,11 @@ impl Reporting {
 
     /// What the rules made of a screen they read: its state, and whether any rule matched.
     pub(crate) fn rules(&mut self, state: State, matched: bool, now: Instant) {
-        if state == State::Idle {
-            self.rules_idle_since.get_or_insert(now);
-        } else {
-            self.rules_idle_since = None;
+        if self.reading.is_none_or(|(read, _)| read != state) {
+            self.reading = Some((state, now));
+        }
+        if let Some(report) = self.report.as_mut().filter(|report| report.state == state) {
+            report.confirmed = true;
         }
         if matched {
             self.unmatched_since = None;
@@ -104,7 +116,7 @@ impl Reporting {
 
     /// The pane's agent changed: what was learned of the last one's screen is no guide.
     pub(crate) fn agent_changed(&mut self) {
-        self.rules_idle_since = None;
+        self.reading = None;
         self.unmatched_since = None;
         self.working_since = None;
         self.active_seconds.clear();
@@ -115,7 +127,8 @@ impl Reporting {
     /// runs. A report stops counting when a newer one comes, when the pane's agent is not the
     /// one that reported (after [`UNCONFIRMED`] for one not yet identified), when the agent's
     /// process has exited, for working after [`QUIET`] without output, and for blocked or idle
-    /// after [`RESTLESS_SECONDS`] of output running.
+    /// after [`DISAGREE`] of the rules reading otherwise once they have read it the same way, or
+    /// else after [`RESTLESS_SECONDS`] of output running.
     pub(crate) fn in_force(
         &mut self,
         agent: Option<&Agent>,
@@ -127,6 +140,10 @@ impl Reporting {
         let quiet_since = self.last_output_at.map_or(report.at, |at| at.max(report.at));
         let stale = if report.state == State::Working {
             now.duration_since(quiet_since) >= QUIET
+        } else if report.confirmed {
+            self.reading.is_some_and(|(read, since)| {
+                read != report.state && now.duration_since(since) >= DISAGREE
+            })
         } else {
             self.restless_since(report.at, now)
         };
@@ -136,6 +153,11 @@ impl Reporting {
             return None;
         }
         confirmed.then_some(report.state)
+    }
+
+    /// Since when every screen the rules read came to idle.
+    fn rules_idle_since(&self) -> Option<Instant> {
+        self.reading.filter(|&(read, _)| read == State::Idle).map(|(_, since)| since)
     }
 
     /// Whether the pane has produced output in each of the last [`RESTLESS_SECONDS`] seconds,
@@ -175,7 +197,7 @@ impl Reporting {
         }
         let held = |since: Option<Instant>| since.is_some_and(|at| now.duration_since(at) >= DRIFT);
         let moving = self.active_seconds.len() >= DRIFT_ACTIVE_SECONDS;
-        let contradicted = held(self.working_since) && held(self.rules_idle_since);
+        let contradicted = held(self.working_since) && held(self.rules_idle_since());
         let unmatched = reported.is_none() && held(self.unmatched_since);
         self.unreadable = moving && (contradicted || unmatched);
         self.unreadable
@@ -200,7 +222,7 @@ impl Reporting {
     pub(crate) fn drift(&self, now: Instant) -> Drift {
         let ago = |at: Instant| now.saturating_duration_since(at);
         Drift {
-            rules_idle_ago: self.rules_idle_since.map(ago),
+            rules_idle_ago: self.rules_idle_since().map(ago),
             unmatched_ago: self.unmatched_since.map(ago),
             working_ago: self.working_since.map(ago),
             active_ago: self.active_seconds.iter().copied().map(ago).collect(),
@@ -214,11 +236,15 @@ impl Reporting {
         now: Instant,
     ) -> Reporting {
         let at = |ago: Duration| now.checked_sub(ago);
+        // Whether the rules confirmed the report is not carried: they read the screen afresh
+        // at the first tick here, and confirm it then if they still agree.
+        let report = report.and_then(|(agent, state, ago)| {
+            Some(SelfReport { agent, state, at: at(ago)?, confirmed: false })
+        });
         Reporting {
-            report: report
-                .and_then(|(agent, state, ago)| Some(SelfReport { agent, state, at: at(ago)? })),
+            report,
             last_output_at: output_ago.and_then(at),
-            rules_idle_since: drift.rules_idle_ago.and_then(at),
+            reading: drift.rules_idle_ago.and_then(at).map(|since| (State::Idle, since)),
             unmatched_since: drift.unmatched_ago.and_then(at),
             working_since: drift.working_ago.and_then(at),
             active_seconds: drift.active_ago.into_iter().filter_map(at).collect(),

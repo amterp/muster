@@ -1,7 +1,7 @@
 {
   "concept": "detection.bundledManifests",
   "source": "ported",
-  "citation": "herdr v0.8.0 src/detect/manifest/tests.rs, the tests of herdr's bundled manifests; each case names the test it came from. Codex cases follow the catalog manifest Muster vendors (2026.09.23.1) where it deliberately changed v0.8.0's verdict; each such case says so.",
+  "citation": "herdr v0.8.0 src/detect/manifest/tests.rs, the tests of herdr's bundled manifests; each case names the test it came from. Codex cases follow the catalog manifest Muster vendors (2026.09.23.1), and Claude cases Muster's own change to that manifest (2026.09.27.1), where either deliberately changed v0.8.0's verdict; each such case says so.",
   "why": "herdr's manifests are data written against herdr's engine, so the only evidence that this engine reads them the same way is herdr's own verdicts on the screens its authors wrote them for. Each case is a screen, a title and an OSC 9 payload in, and the state, deciding rule, visibility and skip flag out - the whole of what the publish loop acts on. `screen` is the region input as herdr's test passed it, not wrapped by screen_text. Where herdr's test asserted a state but not the deciding rule (the Devin idle, working and blocked screens other than the live footer and narrow welcome), the rule is this engine's reading of herdr's manifest, and a re-pin that moves it is worth a look rather than a rewrite.",
   "cases": [
     {
@@ -163,7 +163,7 @@
     },
     {
       "name": "claude: a bash permission prompt outranks an idle title",
-      "why": "The title can say idle while a permission prompt is on screen, and the prompt is the truth: the blocked rule's priority (850) is above the title's (250). (claude_blocker_screen_outranks_osc_idle_title)",
+      "why": "The title can say idle while a permission prompt is on screen, and the prompt is the truth: the blocked rule's priority is above the title's (250). herdr decided this with bash_permission_prompt (850); Muster's manifest ranks generic_permission_prompt above every working rule (1150), so a prompt still reads blocked while sub-agents animate beside it, and that rule now decides. (claude_blocker_screen_outranks_osc_idle_title)",
       "given": {
         "agent": "claude",
         "screen": "do you want to proceed?\nbash command: rm -rf /tmp/test\n❯ 1. Yes\n   2. No\n\nEsc to cancel · Tab to amend · ctrl+e to explain\n",
@@ -171,7 +171,7 @@
       },
       "expect": {
         "state": "blocked",
-        "rule": "bash_permission_prompt",
+        "rule": "generic_permission_prompt",
         "visible": true
       }
     },

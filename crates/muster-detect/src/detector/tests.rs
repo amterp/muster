@@ -971,6 +971,22 @@ fn a_blocked_report_the_rules_agree_with_holds_while_the_screen_moves() {
     assert_eq!(waiting, [], "the report stopped counting");
 }
 
+/// A hook can run before its prompt is drawn, while the rules still read the turn's spinner.
+/// The prompt drawn a moment later confirms the report rather than the spinner ending it.
+#[test]
+fn a_blocked_report_that_comes_before_its_prompt_is_drawn_holds() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.run_for(Duration::from_secs(2), Some("busy"));
+    run.report(State::Blocked);
+    run.run_for(Duration::from_millis(300), Some("busy"));
+    run.paint("allow?");
+    let waiting = run.run_for(Duration::from_secs(30), None);
+    assert!(waiting.iter().all(|publication| publication.reported), "{waiting:?}");
+    assert_eq!(run.detector.effective(run.now), Some(reported(State::Blocked)));
+}
+
 /// An idle report while a background task keeps the screen moving is the rules' to read.
 #[test]
 fn an_idle_report_yields_to_a_screen_that_keeps_moving() {

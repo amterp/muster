@@ -1,7 +1,7 @@
 id = "claude"
-version = "2026.09.11.1"
+version = "2026.09.27.1"
 min_engine_version = 2
-updated_at = "2026-09-11T00:00:00Z"
+updated_at = "2026-09-27T00:00:00Z"
 aliases = ["claude-code"]
 
 [[rules]]
@@ -79,7 +79,11 @@ any = [
 [[rules]]
 id = "live_blocked_form"
 state = "blocked"
-priority = 980
+# Above every working rule, the title's included: a dialog open below the last horizontal rule
+# is waiting on you, whatever else on screen still animates (sub-agents running beside it).
+# The region is what keeps stale text out: once the dialog closes, below the last rule is the
+# status footer again.
+priority = 1150
 region = "after_last_horizontal_rule"
 visible_blocker = true
 contains = ["esc to cancel"]
@@ -181,7 +185,9 @@ all = [
 [[rules]]
 id = "generic_permission_prompt"
 state = "blocked"
-priority = 840
+# Above every working rule, for live_blocked_form's reason. bash_permission_prompt stays below
+# them, because it reads the whole recent screen.
+priority = 1150
 region = "after_last_horizontal_rule"
 visible_blocker = true
 contains = ["do you want to proceed?", "esc to cancel"]
