@@ -4,8 +4,8 @@
 
 use std::path::{Path, PathBuf};
 
-/// The directory's name, and where the daemon looks for it when `--data` does not say: beside
-/// its own executable.
+/// The directory's name. Where the daemon looks for it when `--data` does not say is
+/// [`unnamed`].
 pub(crate) const NAME: &str = "muster-daemon-data";
 
 /// What a pane needs from it. Checked once at start, because a pane started without them runs
@@ -23,12 +23,25 @@ const REQUIRED: [&str; 8] = [
 ];
 
 /// How to get a complete directory, for every error that lacks one.
-const FIX: &str = "Install the directory beside the daemon, or pass --data with its path; a \
-                   checkout builds it with ./dev -d, at deps/ghostty/zig-out/muster-daemon-data.";
+const FIX: &str = "Install the directory beside the daemon (in a bundle, in its \
+                   Contents/Resources), or pass --data with its path; a checkout builds it with \
+                   ./dev -d, at deps/ghostty/zig-out/muster-daemon-data.";
 
-/// Where the directory is for a daemon at `executable` when `--data` does not say.
+/// Where the directory is for a daemon at `executable` when `--data` does not say: in the
+/// bundle's `Contents/Resources` for one in a bundle's `Contents/MacOS`, where `./dev --bundle`
+/// puts it, and beside the executable anywhere else.
 fn unnamed(executable: &Path) -> PathBuf {
-    executable.with_file_name(NAME)
+    let folder = executable.parent();
+    let contents = folder.and_then(Path::parent);
+    let named = |path: Option<&Path>, name: &str| {
+        path.and_then(Path::file_name).is_some_and(|file| file == name)
+    };
+    match contents {
+        Some(contents) if named(folder, "MacOS") && named(Some(contents), "Contents") => {
+            contents.join("Resources").join(NAME)
+        }
+        _ => executable.with_file_name(NAME),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +50,7 @@ pub(crate) struct Data {
 }
 
 impl Data {
-    /// The directory `--data` named, or the one beside the executable. Absolute, since shells
+    /// The directory `--data` named, or the one [`unnamed`] says. Absolute, since shells
     /// in every other directory are pointed at it. An error is worded to be printed as it
     /// stands.
     pub(crate) fn locate(named: Option<&Path>) -> Result<Data, String> {
