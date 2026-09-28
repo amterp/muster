@@ -76,6 +76,10 @@ public final class PaneSurfaces {
 
   public func chrome(for key: PaneKey) -> PaneChrome? { held[key]?.chrome }
 
+  public func window(visible: Bool) {}
+
+  public func window(key: Bool) {}
+
   /// Every pane this window is holding, on screen or parked. For a repaint that is about the
   /// colours rather than about any one pane - a config file saved changes no state, so nothing
   /// else would ever tell a parked pane its border moved.

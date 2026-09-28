@@ -331,6 +331,10 @@ public final class Surface {
     ghostty_surface_set_focus(surface, focused)
   }
 
+  public func setOcclusion(visible: Bool) {
+    ghostty_surface_set_occlusion(surface, visible)
+  }
+
   /// Sizes this pane's text, in points away from what the configuration asked for.
   ///
   /// An offset rather than a size, because the size it is offsetting from may be the renderer's

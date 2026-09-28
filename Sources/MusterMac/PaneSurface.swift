@@ -16,6 +16,10 @@ public protocol PaneSurface: AnyObject {
   func setSize(width: UInt32, height: UInt32)
   func setFocus(_ focused: Bool)
 
+  /// Whether the window holding this surface can be seen. A surface that cannot stops drawing,
+  /// which is the renderer's work for a window that is hidden, covered or on a locked screen.
+  func setOcclusion(visible: Bool)
+
   /// Sizes this pane's text, in points away from what the configuration asked for. Zero puts it
   /// back. An offset rather than a size because the size it offsets from may be the renderer's
   /// own, and this side of the seam never learns what that is.

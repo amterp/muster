@@ -50,7 +50,12 @@ final class RecordingSurface: PaneSurface {
   init(selection: String? = nil) { selectedText = selection }
 
   func setSize(width: UInt32, height: UInt32) {}
-  func setFocus(_ focused: Bool) {}
+  /// Every focus it was given, in order.
+  var focuses: [Bool] = []
+  func setFocus(_ focused: Bool) { focuses.append(focused) }
+  /// Every visibility it was told, in order.
+  var occlusions: [Bool] = []
+  func setOcclusion(visible: Bool) { occlusions.append(visible) }
   func setFontSizeOffset(_ points: Int32) -> [String] {
     fontSizeOffsets.append(points)
     return []
