@@ -470,6 +470,22 @@ struct AppMenuTests {
   }
 
   @MainActor
+  @Test("select all goes to a field being typed in, and otherwise to the pane")
+  func selectAllGoesToTheFieldBeingTypedIn() {
+    // The menu item targets the window, so a field in a sheet or the find bar never heard cmd+A.
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 100, height: 24))
+    window.contentView?.addSubview(field)
+    #expect(MusterWindow.textBeingEdited(in: window) == nil, "nothing is being typed in yet")
+
+    window.makeFirstResponder(field)
+    #expect(MusterWindow.textBeingEdited(in: window) != nil)
+    #expect(MusterWindow.textBeingEdited(in: nil) == nil)
+  }
+
+  @MainActor
   @Test("a rename sends the name, and an empty one asks for the name to be taken away")
   func renamingSendsWhatWasTyped() {
     let recorder = recorder()

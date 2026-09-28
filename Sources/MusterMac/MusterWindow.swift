@@ -900,7 +900,22 @@ extension MusterWindow {
     performOnSurface(.jumpToPreviousPrompt)
   }
   @objc public func jumpToNextPrompt(_ sender: Any?) { performOnSurface(.jumpToNextPrompt) }
-  @objc public func selectAllInPane(_ sender: Any?) { performOnSurface(.selectAll) }
+  /// The pane's text, unless a field the person is typing in has the keyboard - the rename
+  /// sheet, the find bar - in which case that field's. The menu item targets this window
+  /// directly, so without this a field never hears cmd+A.
+  @objc public func selectAllInPane(_ sender: Any?) {
+    if let field = MusterWindow.textBeingEdited(in: NSApp.keyWindow) {
+      field.selectAll(sender)
+      return
+    }
+    performOnSurface(.selectAll)
+  }
+
+  /// The text a field in `window` holds while the person types in it: the field editor AppKit
+  /// makes first responder for a text field. A pane's surface is never one.
+  static func textBeingEdited(in window: NSWindow?) -> NSText? {
+    window?.firstResponder as? NSText
+  }
 
   // The two the pane's daemon carries out, handed the keystroke that asked when one did: a menu
   // item's action runs inside the key event it was chosen by.
