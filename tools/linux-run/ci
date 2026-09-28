@@ -1,0 +1,50 @@
+#!/bin/sh
+# Runs the Linux tests tools/linux-run/build-tests packed, on a Linux machine with docker and
+# this checkout, and none of the toolchain that built them.
+#
+#     tools/linux-run/ci <target> <tarball>
+#
+# Each executable runs through tools/linux-run/run, as cargo runs it for ./dev --linux, with this
+# checkout mounted where the build's checkout was: the tests find the daemon and its data by
+# paths compiled into them. All of them run; it fails if any failed, or if none ran.
+set -eu
+target=$1
+tarball=$2
+
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(cd "$here/../.." && pwd)
+case "$target" in
+    x86_64-*) platform=linux/amd64 ;;
+    aarch64-*) platform=linux/arm64 ;;
+    *) echo "ci: no platform known for $target" >&2; exit 2 ;;
+esac
+
+tar -xzf "$tarball" -C "$root"
+manifest="$root/target/$target/linux-run-manifest"
+built=$(awk -F '\t' '$1 == "root" { print $2 }' "$manifest")
+if [ -z "$built" ]; then
+    echo "ci: $manifest says nowhere the tests were built" >&2
+    exit 1
+fi
+
+ran=0
+failed=""
+tab=$(printf '\t')
+while IFS="$tab" read -r kind package executable; do
+    [ "$kind" = test ] || continue
+    ran=$((ran + 1))
+    echo "== $executable (from $package)"
+    if ! (cd "$root/$package" && MUSTER_LINUX_ROOT="$built" "$here/run" "$platform" "$built/$executable" </dev/null); then
+        failed="$failed $executable"
+    fi
+done < "$manifest"
+
+if [ "$ran" -eq 0 ]; then
+    echo "ci: the manifest lists no tests, so nothing was checked" >&2
+    exit 1
+fi
+if [ -n "$failed" ]; then
+    echo "ci: failed on $platform:$failed" >&2
+    exit 1
+fi
+echo "ci: $ran test executable(s) passed on $platform"

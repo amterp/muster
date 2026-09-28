@@ -221,6 +221,9 @@ compiles otherwise. `./dev --linux` runs those two packages' suites on Linux, wh
 for the musl targets puts each test binary in a Debian container with this checkout mounted at its own path. The
 architecture docker runs natively runs in full, the other under emulation without the three tests whose subject the
 emulator replaces. The container keeps Debian's own `/bin/sh`, dash, because a real devenv does. `--ssh` runs it too.
+CI runs the same suites after the gate, as the gate workflow's `linux` job: the macOS runner builds the test
+executables (`tools/linux-run/build-tests`), and a Linux runner of each architecture runs them natively in that
+container (`tools/linux-run/ci`), with no Rust, Zig or Rad on it.
 
 `./dev -d` also assembles `muster-daemon-data` beside libghostty: Ghostty's terminfo entry and its shell integration,
 copied unchanged from the pin, which the daemon gives every shell it starts. It is a directory that ships beside the

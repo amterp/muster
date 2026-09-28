@@ -13,6 +13,10 @@
 # The Linux half - replaying the recorded corpus against the devenv container's daemon - is
 # its own workflow, `corpus-linux`. It shares no toolchain with this one and runs on a Linux
 # runner, so folding it in here would mean a job that waits for a build it does not use.
+#
+# The daemon's and detection's own suites on Linux - `./dev --linux` - are the `linux` job below.
+# They are built here, on the runner that has the toolchain `./dev` sets up, and run on Linux
+# runners of both architectures, natively, from the executables this job hands over.
 
 name: gate
 
@@ -140,3 +144,46 @@ jobs:
 
       - name: The gate
         run: ./dev
+
+      # After the gate, so a red gate costs nothing more. The libghostty-vt archives and the
+      # Linux daemons are already built by it; this adds their test executables.
+      - name: Build the Linux tests
+        run: |
+          set -euo pipefail
+          for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            tools/linux-run/build-tests "$target" "$RUNNER_TEMP/linux-tests-$target.tar.gz"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-tests
+          path: ${{ runner.temp }}/linux-tests-*.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  # The suites `./dev --linux` runs, in the same Debian container (tools/linux-run/run), on a
+  # Linux runner of each architecture: natively on both, where a Mac runs one under emulation
+  # and skips the three tests whose subject the emulator replaces.
+  linux:
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-tests
+          path: ${{ runner.temp }}
+
+      - name: The daemon's and detection's suites on Linux
+        run: tools/linux-run/ci ${{ matrix.target }} "$RUNNER_TEMP/linux-tests-${{ matrix.target }}.tar.gz"

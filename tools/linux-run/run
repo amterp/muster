@@ -19,11 +19,16 @@ if ! docker image inspect "$tag" >/dev/null 2>&1; then
     docker build -q --platform "$platform" -t "$tag" "$here" >/dev/null
 fi
 
+# Where the binaries were built, which is this checkout unless they were built elsewhere and
+# brought here (tools/linux-run/ci): the checkout is mounted there, so the paths compiled into
+# them resolve.
+mount=${MUSTER_LINUX_ROOT:-$root}
+
 # --init puts a reaping init at pid 1, as a real machine has: a daemon that hands its panes
 # over exits, and whoever adopts their processes must reap them, which a test binary at pid 1
 # never would.
 set -- --rm --init --platform "$platform" --user "$(id -u):$(id -g)" \
-    -v "$root:$root" -w "$PWD" -e HOME=/tmp "$tag" "$@"
+    -v "$root:$mount" -w "$mount${PWD#"$root"}" -e HOME=/tmp "$tag" "$@"
 for name in $(env | sed -n 's/^\(RUST_[A-Za-z0-9_]*\)=.*/\1/p') MUSTER_WAIT_LOG; do
     if [ -n "$(printenv "$name" || true)" ]; then
         set -- -e "$name" "$@"
