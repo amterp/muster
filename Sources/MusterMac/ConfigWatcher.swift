@@ -9,19 +9,20 @@ import Foundation
 /// the menu item and a chord dispatch, so there is one place a reload happens and one place to
 /// look when it goes wrong ("one action path", `docs/architecture.md`).
 ///
-/// **It watches the directory, not the file.** Every editor worth using saves by writing a
-/// temporary file and renaming it over the original, which replaces the inode - so a watch on
-/// the file itself fires once, for the deletion, and then watches something nothing will ever
-/// write to again. Watching the directory survives that, at the cost of waking on any change
-/// inside it; there are two files in there and reading one of them is cheap.
+/// **It watches the directory and the file.** Most editors save by writing a temporary file and
+/// renaming it over the original, which replaces the inode - so a watch on the file alone fires
+/// once, for the deletion, and then watches something nothing will ever write to again. The
+/// directory sees that save. It does not see a write into the file itself, which is what
+/// `printf > config.toml` and an editor's write-in-place mode do, so the file is watched as well,
+/// and watched again after every change in case the change replaced it.
 ///
 /// The debounce is not about frequency, it is about torn reads: a save is often a write followed
 /// by a rename, and reading between the two gets half a file. A tenth of a second is below
 /// noticing and comfortably past both.
 @MainActor
 public final class ConfigWatcher {
-  private var source: DispatchSourceFileSystemObject?
-  private var descriptor: CInt = -1
+  private var directorySource: DispatchSourceFileSystemObject?
+  private var fileSource: DispatchSourceFileSystemObject?
   private var pending: DispatchWorkItem?
   private let onChange: @MainActor () -> Void
 
@@ -43,26 +44,19 @@ public final class ConfigWatcher {
   public func start() -> Bool {
     stop()
     let directory = URL(fileURLWithPath: path).deletingLastPathComponent().path
-    descriptor = open(directory, O_EVTONLY)
-    guard descriptor >= 0 else { return false }
-
-    let source = DispatchSource.makeFileSystemObjectSource(
-      fileDescriptor: descriptor, eventMask: [.write, .rename, .delete], queue: .main)
-    source.setEventHandler { [weak self] in self?.settle() }
-    source.setCancelHandler { [descriptor] in close(descriptor) }
-    self.source = source
-    source.resume()
+    directorySource = watch(directory, for: [.write, .rename, .delete])
+    guard directorySource != nil else { return false }
+    watchFile()
     return true
   }
 
   public func stop() {
     pending?.cancel()
     pending = nil
-    source?.cancel()
-    source = nil
-    // Closing is the cancel handler's, so that a descriptor is never closed while the source
-    // still holds it - which is a crash rather than a leak.
-    descriptor = -1
+    directorySource?.cancel()
+    directorySource = nil
+    fileSource?.cancel()
+    fileSource = nil
   }
 
   /// Isolated, because both handles are main-actor state and cancelling a dispatch source from
@@ -72,11 +66,37 @@ public final class ConfigWatcher {
     stop()
   }
 
+  /// Watches `path` for `events`, or nil when it cannot be opened.
+  private func watch(_ path: String, for events: DispatchSource.FileSystemEvent)
+    -> DispatchSourceFileSystemObject?
+  {
+    let descriptor = open(path, O_EVTONLY)
+    guard descriptor >= 0 else { return nil }
+    let source = DispatchSource.makeFileSystemObjectSource(
+      fileDescriptor: descriptor, eventMask: events, queue: .main)
+    source.setEventHandler { [weak self] in self?.settle() }
+    // Closing is the cancel handler's, so that a descriptor is never closed while the source
+    // still holds it - which is a crash rather than a leak.
+    source.setCancelHandler { close(descriptor) }
+    source.resume()
+    return source
+  }
+
+  /// Watches the file as it is now. A file not there yet is watched once the directory says it
+  /// has arrived.
+  private func watchFile() {
+    fileSource?.cancel()
+    fileSource = watch(path, for: [.write, .extend, .delete, .rename])
+  }
+
   /// Waits for the writing to stop before asking anybody to read.
   private func settle() {
     pending?.cancel()
     let work = DispatchWorkItem { [weak self] in
-      MainActor.assumeIsolated { self?.onChange() }
+      MainActor.assumeIsolated {
+        self?.watchFile()
+        self?.onChange()
+      }
     }
     pending = work
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)

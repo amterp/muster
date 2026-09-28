@@ -68,3 +68,21 @@ private func reached(_ calls: Calls, _ count: Int) async -> Bool {
   #expect(await reached(calls, 1), "a write in place was never noticed")
   watcher.stop()
 }
+
+@MainActor
+@Test func aWriteInPlaceAfterAReplacingSaveIsReadAgain() async throws {
+  // The replacing save leaves a new file where the watched one was, and a watch still on the old
+  // one would miss every write in place after it.
+  let scratch = try Scratch()
+  defer { scratch.remove() }
+  let calls = Calls()
+  let watcher = ConfigWatcher(path: scratch.config.path) { calls.count += 1 }
+  #expect(watcher.start())
+
+  try scratch.replace("scrollback = 2\n")
+  #expect(await reached(calls, 1), "a replacing save was never noticed")
+  try scratch.writeInPlace("scrollback = 3\n")
+
+  #expect(await reached(calls, 2), "a write in place after a replacing save was never noticed")
+  watcher.stop()
+}
