@@ -468,6 +468,80 @@ fn an_agent_waiting_on_its_own_work_has_not_finished() {
     assert!(!finished_unseen(&mut control, "p1"), "said after the finish, it takes it back");
 }
 
+/// With hooks, the agent's own turn end settles a wait, not a working report. A sub-agent's
+/// tool call can report working after the turn that declared the wait has ended, and is no new
+/// turn of the agent's.
+#[test]
+fn a_wait_outlasts_a_working_report_after_the_turn_that_declared_it() {
+    use proto::AgentState::{Idle, Working};
+    let home = Home::new("waiting-hooks", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+
+    assert_eq!(report_state(&mut control, "claude", Working).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Working);
+    report_waiting(&mut control, "the full gate");
+    assert_eq!(report_state(&mut control, "claude", Idle).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    assert_eq!(waiting_on(&mut control).as_deref(), Some("the full gate"));
+
+    assert_eq!(report_state(&mut control, "claude", Working).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Working);
+    assert_eq!(
+        waiting_on(&mut control).as_deref(),
+        Some("the full gate"),
+        "a working report with no turn end is no new turn"
+    );
+}
+
+/// With hooks, a turn the agent ends without declaring the wait again ends it, and a person's
+/// prompt ends it at once.
+#[test]
+fn a_wait_ends_with_the_next_turn_that_does_not_declare_it() {
+    use proto::AgentState::{Idle, Working};
+    let home = Home::new("waiting-turns", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    let turn = |control: &mut Control, waiting: Option<&str>| {
+        assert_eq!(report_state(control, "claude", Working).outcome(), proto::Outcome::Done);
+        until_detected(control, "p1", Some("claude"), Working);
+        if let Some(waiting) = waiting {
+            report_waiting(control, waiting);
+        }
+        assert_eq!(report_state(control, "claude", Idle).outcome(), proto::Outcome::Done);
+        until_detected(control, "p1", Some("claude"), Idle);
+    };
+
+    turn(&mut control, Some("the full gate"));
+    turn(&mut control, Some("the full gate"));
+    assert_eq!(waiting_on(&mut control).as_deref(), Some("the full gate"), "declared again");
+    assert!(!finished_unseen(&mut control, "p1"));
+    turn(&mut control, None);
+    assert_eq!(waiting_on(&mut control), None, "a turn that did not declare it");
+    assert!(finished_unseen(&mut control, "p1"), "and the turn ends as any other");
+
+    turn(&mut control, Some("a review"));
+    let mut prompted = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        waiting: Some(String::new()),
+        ..Default::default()
+    };
+    prompted.set_state(Working);
+    expect(
+        &mut control,
+        pane(proto::pane_request::Request::Report(prompted)),
+        proto::Outcome::Done,
+    );
+    assert_eq!(waiting_on(&mut control), None, "a person's prompt");
+}
+
 /// What nobody has seen yet is still unseen after a handoff, since the pane's record goes over
 /// whole.
 #[test]
