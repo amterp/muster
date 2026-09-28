@@ -20,9 +20,9 @@ same signature.
 ## What it is
 
 Split a window into panes, put a coding agent in each, and read the whole lot at a glance. Every
-agent's state - working, blocked on you, waiting on its own build, done, idle - sits on its row in the agent list down the
-side, and a pane whose agent wants noticing carries it on its own edge too. Fifteen agents is
-something you read rather than something you click through.
+agent's state - working, blocked on you, waiting on its own build, done, idle - sits on its row in
+the agent list down the side, and a pane whose agent wants noticing carries it on its own edge too.
+Fifteen agents is something you read rather than something you click through.
 
 It is a real terminal underneath: every pane is a
 [libghostty](https://github.com/ghostty-org/ghostty) surface, the same engine Ghostty renders with,
@@ -111,8 +111,8 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- A pane on an SSH machine cannot drive the window it is drawn in: no `muster` for Linux ships, and
-  nothing carries the window's address over the connection.
+- A pane on an SSH machine cannot drive the window it is drawn in: nothing carries the window's
+  address over the connection.
 - A split keeps the direction it was made in. Its size can be dragged and evened out, but a side by
   side pair cannot be turned into one above the other, and a pane moved into a tab lands where Muster
   puts it.

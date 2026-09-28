@@ -139,8 +139,8 @@ rather than the window, so it works from a plain terminal and with no window ope
 `muster docs` is the reference and it ships inside the binary, so it describes the version you are
 running. `muster --help` has the grammar, `muster completions zsh` writes a completion script.
 
-Every pane Muster makes can drive the window it is drawn in without being set up first: the
-command is on its `PATH` from `~/.muster/bin`, `$MUSTER_PANE` says which pane it is, and
+Every pane Muster makes on this machine can drive the window it is drawn in without being set up
+first: the command is on its `PATH` from `~/.muster/bin`, `$MUSTER_PANE` says which pane it is, and
 `$MUSTER_SOCKET` says which window to tell. So `muster pane new` inside a pane splits that pane,
 and an agent told "split two panes below you and start an agent in each" can do it.
 

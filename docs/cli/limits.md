@@ -8,9 +8,9 @@ concludes it is not in a window it can drive. That pane can still be addressed b
 local pane, and `muster window` still describes it.
 
 `$MUSTER_PANE` *is* set over there, so such a pane knows which pane it is and has no way to say
-so. Closing this means forwarding the endpoint over the ssh master Muster already opens, and
-putting a `muster` on the far machine for it to reach - the command is built from this repo and
-nothing ships a Linux one.
+so. The machine has a `muster` of its own, installed beside its daemon at `~/.muster/bin/muster`
+for `muster msg`, but nothing on it reaches the window. Closing this means forwarding the
+endpoint over the ssh master Muster already opens.
 
 ## A pane restored after a daemon restart cannot say which window it is in
 
