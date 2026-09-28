@@ -463,6 +463,22 @@
         "died",
         "muster-5 registered (took over)"
       ] }
+    },
+    {
+      "name": "the human's wait is answered by a post for the human",
+      "why": "Nothing wakes the human's window until attention routing does, but a person's script waiting on a message is a wait like any other (MIP-4, sections 10 and 13).",
+      "given": { "steps": [
+        {"do": "join", "group": "g"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"do": "wait"},
+        {"session": "a", "do": "post", "to": ["@human"], "body": "need input"}
+      ] },
+      "expect": { "said": [
+        "@human joined g (created)",
+        "a joined g",
+        "waiting 1",
+        "a posted #4 to g; woke @human [g #4-4 x1 to-you:1 from a]"
+      ] }
     }
   ]
 }
