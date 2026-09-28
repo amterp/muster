@@ -542,6 +542,32 @@ fn a_wait_ends_with_the_next_turn_that_does_not_declare_it() {
     assert_eq!(waiting_on(&mut control), None, "a person's prompt");
 }
 
+/// A turn that ends a wait finishes as any turn does, even one the screen never read as working:
+/// a woken turn with no tool call can end while the agent's last idle report still counts.
+#[test]
+fn a_wait_ended_by_a_turn_the_screen_never_saw_is_a_finish() {
+    use proto::AgentState::{Idle, Working};
+    let home = Home::new("waiting-quiet-turn", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    assert_eq!(report_state(&mut control, "claude", Working).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Working);
+    report_waiting(&mut control, "the full gate");
+    assert_eq!(report_state(&mut control, "claude", Idle).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    assert!(!finished_unseen(&mut control, "p1"), "waiting is not finished");
+
+    assert_eq!(report_state(&mut control, "claude", Idle).outcome(), proto::Outcome::Done);
+    assert_eq!(waiting_on(&mut control), None, "a turn that did not declare it");
+    assert!(
+        finished_unseen(&mut control, "p1"),
+        "the turn the awaited work woke finished, and nobody is told: the pane reads idle"
+    );
+}
+
 /// What nobody has seen yet is still unseen after a handoff, since the pane's record goes over
 /// whole.
 #[test]
