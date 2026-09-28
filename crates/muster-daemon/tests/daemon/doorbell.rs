@@ -17,6 +17,9 @@ use proto::request::Service;
 /// rung.
 const QUIET: Duration = Duration::from_secs(3);
 
+/// How long the daemon gives a rung agent to take the ring before pressing Return again.
+const ANSWER: Duration = Duration::from_secs(5);
+
 struct Agent {
     daemon: Daemon,
     control: Control,
@@ -50,6 +53,19 @@ impl Agent {
             .filter(|line| line.starts_with("[muster] "))
             .map(str::to_string)
             .collect()
+    }
+
+    /// Everything the agent has read, in order: a Return pressed again is an empty line.
+    fn heard(&self) -> Vec<String> {
+        std::fs::read_to_string(self.heard_file())
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn pressed(&self) -> usize {
+        self.heard().iter().filter(|line| line.is_empty()).count()
     }
 
     fn until_rung(&self, times: usize) -> Vec<String> {
@@ -180,4 +196,53 @@ fn a_ring_typed_while_the_agent_starts_is_sent_by_a_later_return() {
 
     let rung = agent.until_rung(1);
     assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+}
+
+/// A Return pressed again is a Return typed at the agent, under the ring's own guards, checked
+/// again each time: an agent that turns blocked after its ring - at a permission prompt, say -
+/// is pressed nothing, however long it stays there.
+#[test]
+fn a_return_is_never_pressed_again_at_an_agent_that_turned_blocked() {
+    let mut agent = Agent::in_a_pane();
+    agent.post("p1", "a brief");
+    agent.until_rung(1);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+
+    std::thread::sleep(ANSWER + QUIET + Duration::from_secs(2));
+    assert_eq!(agent.pressed(), 0, "Return pressed at a blocked agent: {:?}", agent.heard());
+
+    // Out of the dialog with the message unread, it is woken once more.
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    let rung = agent.until_rung(2);
+    assert!(rung[1].contains("still unread"), "{rung:?}");
+}
+
+/// Nor is Return pressed again within the quiet period of something typed into the pane, where
+/// it would send a person's half-written prompt.
+#[test]
+fn a_return_is_pressed_again_only_once_the_pane_has_been_quiet() {
+    let mut agent = Agent::in_a_pane();
+    agent.post("p1", "a brief");
+    agent.until_rung(1);
+
+    // Just before the Return is due, a person types.
+    std::thread::sleep(ANSWER.saturating_sub(Duration::from_secs(1)));
+    let typed = Instant::now();
+    Input::connect(agent.daemon.socket_path()).send(
+        "p1",
+        proto::input_event::Input::Send(proto::input_event::Send {
+            text: "a person typing".to_string(),
+            enter: true,
+        }),
+    );
+    until_some("a Return pressed again", || (agent.pressed() > 0).then_some(()));
+    assert!(
+        typed.elapsed() >= QUIET,
+        "Return pressed {:?} after something was typed, inside the quiet period",
+        typed.elapsed()
+    );
+    let heard = agent.heard();
+    let person = heard.iter().position(|line| line == "a person typing");
+    let pressed = heard.iter().position(String::is_empty);
+    assert!(person < pressed, "Return pressed before the person typed: {heard:?}");
 }
