@@ -995,6 +995,28 @@
       ] }
     },
     {
+      "name": "setting a paused group's policy leaves it paused, and resuming wakes what it held",
+      "why": "Pausing forgets what members were woken for, and resuming wakes each once for what it missed; a policy file that happened to say `paused = false` would otherwise unpause the group with nobody woken for what it held. Whether a group is paused is `pause` and `resume`'s (MIP-4, section 8).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "pause", "group": "g"},
+        {"session": "a", "do": "post", "body": "while paused"},
+        {"session": "a", "do": "group set", "group": "g", "policy": {"ring": {"*": ["*", "@human"]}, "allow": {"*": ["*"]}, "membership": ["*"], "paused": false}},
+        {"session": "a", "do": "groups"},
+        {"session": "a", "do": "resume", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a paused g (#4)",
+        "a posted #5 to g; paused b",
+        "a set the policy of g (#6)",
+        "g [a,b] paused",
+        "a resumed g (#7); woke b [g #5-5 x1 to-you:0 from a]"
+      ] }
+    },
+    {
       "name": "a group is made once, with a policy that names only what a participant could be called",
       "why": "A policy file is read from a person's disk; a name in it that no participant could have would make a rule that never applies (MIP-4, section 8).",
       "given": { "steps": [
