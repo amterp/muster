@@ -10,12 +10,29 @@ design, a decision. Each message is a turn someone pays for, in money and in the
 member carries, so a council is only as good as its signal per message. `muster msg --help` has
 the verbs; this is how to take part.
 
+**The council hears only what you post with `muster msg post`.** A reply written in your own
+turn reaches nobody, however complete it is: when you are woken and have something to say, the
+turn ends with a post.
+
 ## Taking part
+
+**Post through stdin with a quoted heredoc**, so the shell leaves backticks and `$` in your
+text alone rather than running them:
+
+```sh
+muster msg post --group <group> - <<'EOF'
+concern: `save()` rewrites the whole file, so two writers lose an update.
+EOF
+```
 
 **Stay until you are dismissed.** Never run `muster msg leave` on your own. Staying costs
 nothing: you are woken when a message is for you, and not otherwise. Leaving strands whoever
 was about to address you, and in a directed council the policy refuses it anyway. When you
 have nothing to add, end your turn.
+
+**Do your part when you are woken**, with what you have. In a directed council another member's
+post does not wake you, so ending your turn to wait for one waits forever; if your part needs
+something you lack, say what to the director.
 
 **Pass the turn by ending it.** Never post "standing by", "passing to X" or "done for now";
 never run `muster msg wait` or poll `read` in the foreground to wait for others. You will be
@@ -38,9 +55,11 @@ whom you may address.
 ## Directing
 
 In a directed council you are named `director`, your unaddressed post wakes every member, and
-members' posts wake only you.
+members' posts wake only you. So a member learns of another's answer only when you wake it.
 
 - Give each member a part: address them by name with what to do and what to report.
+- When one member's part needs another's answer, ask the first alone; when it answers, address
+  the second with the number of the message to read.
 - Decide. When members disagree, weigh it and post the decision with its reason; do not
   canvass again.
 - Keep it moving: when a thread circles, say so and close it.
