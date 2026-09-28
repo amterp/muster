@@ -176,7 +176,8 @@ Muster's principles, adapted to that evidence:
   through `muster::testing` and put back by `fresh_session`, and a test that uses the seam's one session takes that
   turn first; a bridge test's `Typing` takes it for you. A test that needs a process of its own stays a top-level
   file, which cargo builds as its own binary, and says why at the top: `muster-seam/tests/named_daemon.rs` is the
-  one. `muster-herdr` keeps a binary per file, since it goes with herdr.
+  one. `muster-herdr` keeps a binary per file, since it goes with herdr. A file without its `mod` line compiles to
+  nothing and the gate stays green, so `tools/test-mods.py` fails the gate on one.
 - **A Swift test that points the seam somewhere holds it while it does.** `Core.dispatcher` is one mutable global
   for the process, so a test that swaps it is writing where every other test reads. These tests all run on the main
   actor and so are never truly concurrent - but a test that awaits gives the actor up, and another test's recorder

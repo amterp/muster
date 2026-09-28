@@ -1766,6 +1766,14 @@ if test:
         exit(1)
     print(dim(stdout.trim()))
 
+    // The same claim about the tests themselves: a test file without its `mod` line in its
+    // binary's main.rs compiles to nothing, and the suite below stays green without it.
+    stdout, stderr, code = $`python3 tools/test-mods.py` catch:
+        print_err(red("A test file is never compiled."))
+        print_err(stderr.trim())
+        exit(1)
+    print(dim(stdout.trim()))
+
     // Beside the corpus check because it is the same kind of claim: a file checked in to
     // describe something, which nothing else notices has stopped describing it. The thing
     // here is what the bundle redistributes, and a dependency arrives inside a change about
