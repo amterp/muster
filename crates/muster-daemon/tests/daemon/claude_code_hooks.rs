@@ -79,8 +79,9 @@ fn script(dir: &Path, name: &str, text: &str) -> PathBuf {
 }
 
 /// Starts Claude Code in pane `name`, bypassing permission prompts, with `hooks` as its only
-/// hooks, and waits for its prompt. Returns the pane's project directory.
-fn start(
+/// hooks and the `muster` built beside the daemon first on its `PATH`, and waits for its prompt.
+/// Returns the pane's project directory.
+pub(super) fn start(
     daemon: &Daemon,
     control: &mut Control,
     input: &mut Input,
@@ -105,7 +106,11 @@ fn start(
     make(
         control,
         proto::pane_request::Create {
-            command: Some(format!("claude {}", command.join(" "))),
+            command: Some(format!(
+                "PATH={}:\"$PATH\" claude {}",
+                quoted(&muster_harness::built_daemon().parent().unwrap().display().to_string()),
+                command.join(" ")
+            )),
             cwd: Some(project.display().to_string()),
             grid: Some(proto::Grid { cols: 110, rows: 35, width_px: 1100, height_px: 700 }),
             ..create(name, placement)
@@ -115,11 +120,11 @@ fn start(
     project
 }
 
-fn prompt(input: &mut Input, pane: &str, text: &str) {
+pub(super) fn prompt(input: &mut Input, pane: &str, text: &str) {
     input.send(pane, Event::Send(input_event::Send { text: text.to_string(), enter: true }));
 }
 
-fn environment() -> Vec<(&'static str, String)> {
+pub(super) fn environment() -> Vec<(&'static str, String)> {
     let home = std::env::var("HOME").expect("HOME is set");
     let mut environment = vec![("HOME", home), ("USER", std::env::var("USER").unwrap_or_default())];
     if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
@@ -128,7 +133,7 @@ fn environment() -> Vec<(&'static str, String)> {
     environment
 }
 
-fn skipped() -> bool {
+pub(super) fn skipped() -> bool {
     let skip = std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none();
     if skip {
         eprintln!(
@@ -138,7 +143,7 @@ fn skipped() -> bool {
     skip
 }
 
-fn arguments_or_fail(what: &str) -> Vec<String> {
+pub(super) fn arguments_or_fail(what: &str) -> Vec<String> {
     how_to_run().unwrap_or_else(|why| {
         panic!(
             "claude-code: could not run Claude Code: {why}.\n  Impact: nothing checked {what}, \

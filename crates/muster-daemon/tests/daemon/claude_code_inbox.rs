@@ -382,9 +382,9 @@ fn claude_code_inbox_delivers_holds_or_refuses_as_recorded() {
     }
 }
 
-/// What a group's log holds, as `author: body` per message.
-pub(super) fn log_of(control: &mut Control, group: &str) -> Vec<String> {
-    use proto::msg_answer::{Answer, entry::What};
+/// Every entry of a group's log, as the daemon has it.
+pub(super) fn entries_of(control: &mut Control, group: &str) -> Vec<proto::msg_answer::Entry> {
+    use proto::msg_answer::Answer;
     let log = proto::msg_request::Log { group: group.to_string(), since: 0, follow: false };
     let caller = proto::msg_request::Caller {
         as_name: Some("observer".to_string()),
@@ -402,11 +402,15 @@ pub(super) fn log_of(control: &mut Control, group: &str) -> Vec<String> {
     else {
         return Vec::new();
     };
-    entries
-        .groups
-        .iter()
-        .flat_map(|group| &group.entries)
-        .filter_map(|entry| match &entry.what {
+    entries.groups.into_iter().flat_map(|group| group.entries).collect()
+}
+
+/// What a group's log holds, as `author: body` per message.
+pub(super) fn log_of(control: &mut Control, group: &str) -> Vec<String> {
+    use proto::msg_answer::entry::What;
+    entries_of(control, group)
+        .into_iter()
+        .filter_map(|entry| match entry.what {
             Some(What::Message(message)) => Some(format!("{}: {}", message.author, message.body)),
             _ => None,
         })
@@ -427,7 +431,7 @@ fn members_of(control: &mut Control, group: &str) -> Vec<String> {
     }
 }
 
-fn agent_state(control: &mut Control, pane: &str) -> proto::AgentState {
+pub(super) fn agent_state(control: &mut Control, pane: &str) -> proto::AgentState {
     snapshot(control)
         .panes
         .iter()

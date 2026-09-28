@@ -2,6 +2,7 @@
 
 mod arranging;
 mod claude_code;
+mod claude_code_council;
 mod claude_code_doorbell;
 mod claude_code_hooks;
 mod claude_code_inbox;
