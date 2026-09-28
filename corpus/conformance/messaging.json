@@ -361,6 +361,52 @@
       "expect": { "said": [
         "refused bad_name has space"
       ] }
+    },
+    {
+      "name": "a group whose name differs from another's only in case is refused",
+      "why": "On a filesystem that ignores case, which is macOS's default, two such groups would share one log file and merge after a restart; a person would not tell them apart either (MIP-4, section 12).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "Review"},
+        {"session": "b", "do": "join", "name": "b", "group": "review"},
+        {"session": "b", "do": "join", "group": "Review"}
+      ] },
+      "expect": { "said": [
+        "a joined Review (created)",
+        "refused group_name_clash review Review",
+        "b joined Review"
+      ] }
+    },
+    {
+      "name": "a group name is short enough to be a file name",
+      "why": "Each group's log is a file named after it, and a file name has at most 255 bytes (MIP-4, section 12).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"},
+        {"session": "a", "do": "join", "group": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"}
+      ] },
+      "expect": { "said": [
+        "refused bad_name ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii",
+        "a joined ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii (created)"
+      ] }
+    },
+    {
+      "name": "a post to so many that their group's name would be too long is refused",
+      "why": "A post to agents who share no group creates the group of exactly them, named after them; past the length a group name may be, the author has to make a group and name it (MIP-4, sections 2 and 12).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        {"session": "b", "do": "join", "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+        {"session": "c", "do": "join", "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+        {"session": "d", "do": "join", "name": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+        {"session": "e", "do": "join", "name": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+        {"session": "a", "do": "post", "to": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"], "body": "all of you"}
+      ] },
+      "expect": { "said": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa registered",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb registered",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc registered",
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd registered",
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee registered",
+        "refused pair_too_long aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      ] }
     }
   ]
 }
