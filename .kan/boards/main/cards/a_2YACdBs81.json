@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "a-remote-pane-s-path",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790596529285,
   "creator": "Alexander Terp",
   "description": "The remote install links the Linux muster CLI at ~/.muster/bin/muster, but the daemon's environment for a far pane (muster-daemon-client environment.rs for_far_daemon) adds nothing to PATH, so an agent on a devenv must spell ~/.muster/bin/muster or have it on its own PATH. Locally the daemon puts ~/.muster/bin first.",
   "id": "a_2YACdBs81",
   "parent": "a_2Y3ODvuwa",
-  "position": "ao",
+  "position": "Yzi",
   "title": "A remote pane's PATH lacks ~/.muster/bin",
   "type": "bug",
-  "updated_at_millis": 1790596529285,
+  "updated_at_millis": 1790600868835,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790596529285}
+    {"field":"column","value":"backlog-lo","at":1790596529285},
+    {"field":"column","value":"done","at":1790600868835}
   ]
 }

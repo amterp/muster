@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "two-checkouts",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790596648220,
   "creator": "Alexander Terp",
   "description": "./dev --contract uses /tmp/muster-contract for every checkout, so two worktrees running the tier at once share it: on 2026-09-28 one check's home vanished and two saw command.unprotected (a command connection dropped before it was served) while another checkout's --contract ran. Each run should get a directory of its own (per checkout or per process), still short enough for socket paths.",
   "id": "a_2YAFj101A",
-  "position": "as",
+  "position": "Yzh",
   "title": "Two checkouts' contract tiers collide in /tmp/muster-contract",
   "type": "bug",
-  "updated_at_millis": 1790596648220,
+  "updated_at_millis": 1790600868918,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790596648220}
+    {"field":"column","value":"backlog-lo","at":1790596648220},
+    {"field":"column","value":"done","at":1790600868918}
   ]
 }
