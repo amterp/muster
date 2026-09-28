@@ -21,7 +21,8 @@ move` hands one to another window. Any command works from any window all the sam
 tab or pane another window holds is carried to that window and answered there.
 
 Panes outlive the window: quitting Muster leaves the daemons running, and the agents in their
-panes keep working - and the window keeps its tabs, so reopening it comes back to them.
+panes keep working - and the window keeps its tabs, so reopening it comes back to them, and
+`muster` in a pane made before the relaunch reaches the window open now.
 
 ## Pane names
 

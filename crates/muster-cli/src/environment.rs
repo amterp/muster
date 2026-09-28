@@ -15,9 +15,9 @@ pub const PANE_NAME: &str = "MUSTER_PANE";
 /// What a pane reads to find the window it is in.
 ///
 /// Set per window rather than looked up, because a machine can have several Musters open and a
-/// pane belongs to exactly one. A pane on another machine is told nothing here - a unix socket
-/// path means nothing across an ssh tunnel - so a program there correctly concludes it is not in
-/// a window it can drive.
+/// pane belongs to exactly one. A pane on a machine attached over ssh is told the path there
+/// that the window's ssh master forwards back to it. Named after the window's process, so a pane
+/// whose window has quit asks the windows beside it instead (`dial::siblings`).
 pub const WINDOW_SOCKET: &str = "MUSTER_SOCKET";
 
 /// Where Muster keeps everything that is its own rather than the user's.

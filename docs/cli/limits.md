@@ -1,15 +1,18 @@
 # What this cannot do
 
-## A pane outlives the window that made it
+## With no window open, a pane has only its daemon
 
-`$MUSTER_SOCKET` names the window that made a pane, and the pane outlives that window: quitting
-Muster leaves it running, and the window that opens next listens somewhere else. So `muster` run
-in a pane made before the window you are looking at says that window has quit, on this machine
-and on an SSH machine alike. A pane the open window made reaches it from either machine; on this
-one, `--socket` with a path from `muster window list` does too. With no window answering at all,
-the pane's own daemon answers what it can in the window's place: `muster window`, `pane read`,
-`pane send` and `pane wait` work on that machine's own panes (`muster docs overview`, "With no
-window"), and everything else waits for a window.
+`$MUSTER_SOCKET` names the window that made a pane, and the pane outlives that window. When it
+has quit and another window of the same Muster is open - Muster relaunched - `muster` asks that
+one instead, on this machine and on an SSH machine alike, and it carries a change to whichever
+window holds the pane. With no window open at all, the pane's own daemon answers what it can in
+the window's place: `muster window`, `pane read`, `pane send` and `pane wait` work on that
+machine's own panes (`muster docs overview`, "With no window"), and everything else waits for a
+window.
+
+On an SSH machine, a pane made by Muster 0.10.1 cannot tell one Muster's windows there from
+another's, so with two installs forwarding to that machine its `muster` may reach the other's
+window. A pane made since carries the install in the name it is told.
 
 ## A pane restored after a daemon restart cannot say which window it is in
 

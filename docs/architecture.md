@@ -649,13 +649,19 @@ since every window follows the same daemons.
 and a single fixed path would mean the second window to open silently took the first one's callers. Which window a
 pane belongs to is settled when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that request,
 beside the `MUSTER_PANE` that says which pane it is, and between them a program inside a pane can drive the window it
-is drawn in without being configured.
+is drawn in without being configured. The pane outlives that process, so a pane whose window has quit asks the sockets
+beside its own that share its name up to the process - the other windows of the same Muster on that machine - and a
+change names its pane, so whichever answers carries it to the window holding the pane's tab. A name kept per
+arrangement was the other way, and would have left every pane already running unreachable after the relaunch that
+brought it in.
 
 **A devenv pane is told a path on the devenv, which the window's ssh master carries back.** A unix socket path means
 nothing on another machine, so the window asks the master it already holds for that daemon to forward its socket to
-`window-<name>.sock` beside the daemon's own socket over there, and that is what the pane is told. Beside the daemon's
-socket because that directory is Muster's however the daemon was configured, and named with a name minted the way a
-pane's is, because two laptops can attach one devenv and a pid is unique only on its own machine. Asked of the master
+`window-<install>-<name>.sock` beside the daemon's own socket over there, and that is what the pane is told. Beside the
+daemon's socket because that directory is Muster's however the daemon was configured; with the install, the daemon
+socket's own name, because a development build and the release can both forward there and a pane asking its quit
+window's neighbours must meet only its own Muster's; and with a name minted the way a pane's is, because two laptops
+can attach one devenv and a pid is unique only on its own machine. Asked of the master
 through its control path rather than given at its start: the master exits on any forward it cannot make, and a far
 sshd that refuses this one should cost a program over there its window, not every pane on that machine. Made again
 at the same path whenever the master reconnects, so a pane told it before a dropped VPN reaches the window after, and
@@ -864,7 +870,8 @@ the next command all read - so a rename is one edit.
 
 **The other is a window's questions about panes when no window answers.** `muster window`, `pane read`, `pane send`
 and `pane wait` ask the same daemon when `$MUSTER_SOCKET` names a window that is not there, or none is listening: on
-an SSH devenv nothing forwards a window to, or in a pane whose window has quit. The CLI builds the window's own
+an SSH devenv nothing forwards a window to, or in a pane whose window has quit with no other window of that Muster
+open. The CLI builds the window's own
 answers from the daemon's records, so one renderer prints both. It stays a second path in transport only: the rules
 the window applies on the way - paging to a pane's newest rows (`muster-daemon-proto`'s `pane_text`), counting rows
 and confirming a send (`muster-core`'s `pane_text`), and which states end a wait (`AgentState::counts_as`) - are
