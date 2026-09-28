@@ -65,9 +65,15 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
 /// Muster quit and its agents went on, and one blocked meanwhile. The window that opens next
 /// announces nothing about it, since it saw nothing change, and the pane is still the one asking:
 /// the sidebar shows it blocked, so going to the pane that asked has to reach it.
+///
+/// Waits for the state the shell is told to paint, not for `ReadWindow`. That reads the daemon's
+/// picture as the window last heard it, which is ahead of the asking list for as long as the
+/// window takes to publish what it heard; the painted state is told after the list.
 #[test]
 fn a_pane_blocked_before_the_window_opened_is_reached() {
     let _turn = muster::testing::fresh_session();
+    muster::ffi::muster_set_event_callback(Some(note));
+    PAINTED.lock().expect("a panicking test poisoned the log").clear();
     let daemon = Daemon::start_detecting();
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
@@ -84,9 +90,15 @@ fn a_pane_blocked_before_the_window_opened_is_reached() {
         assert_ok(&answer(payload));
     }
     until(
-        "the window to show p2 blocked",
-        || state_of("p2") == "blocked",
-        || format!("the window reads p2 as {:?}", state_of("p2")),
+        "the window to paint p2 blocked",
+        || painted("p2").as_deref() == Some("blocked"),
+        || {
+            format!(
+                "the window last painted p2 {:?}, and reads it as {:?}",
+                painted("p2"),
+                state_of("p2")
+            )
+        },
     );
 
     let went = focus_asking();
@@ -150,12 +162,34 @@ fn asked() -> Vec<AttentionChanged> {
 
 static ASKED: Mutex<Vec<AttentionChanged>> = Mutex::new(Vec::new());
 
+/// The state the shell was last told to paint for a pane.
+fn painted(pane: &str) -> Option<String> {
+    PAINTED
+        .lock()
+        .expect("a panicking test poisoned the log")
+        .iter()
+        .rev()
+        .find(|(painted, _)| painted == pane)
+        .map(|(_, state)| state.clone())
+}
+
+static PAINTED: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
-    if let Some(event::Payload::AttentionChanged(asked)) = event.payload {
-        ASKED.lock().expect("a panicking test poisoned the log").push(asked);
+    match event.payload {
+        Some(event::Payload::AttentionChanged(asked)) => {
+            ASKED.lock().expect("a panicking test poisoned the log").push(asked);
+        }
+        Some(event::Payload::PaneStateChanged(state)) => {
+            PAINTED
+                .lock()
+                .expect("a panicking test poisoned the log")
+                .push((state.pane_id, state.state));
+        }
+        _ => {}
     }
 }
