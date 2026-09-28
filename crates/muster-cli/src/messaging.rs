@@ -411,6 +411,16 @@ fn render(
         Answer::Posted(posted) => posted_text(posted, json),
         Answer::Entries(entries) => {
             let reading = matches!(request.request, Some(Asked::Read(_)));
+            // A hook hands this to the model after every tool call; joins and leaves alone
+            // are nothing to interrupt it with.
+            let any_message = entries
+                .groups
+                .iter()
+                .flat_map(|group| &group.entries)
+                .any(|entry| matches!(entry.what, Some(What::Message(_))));
+            if if_unread && !any_message && !json {
+                return Ok(String::new());
+            }
             entries_text(entries, reading && !if_unread, json)
         }
         Answer::Members(members) => members_text(members, json),
