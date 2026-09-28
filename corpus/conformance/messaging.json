@@ -529,8 +529,8 @@
       ] }
     },
     {
-      "name": "a pane with no agent in it is no address, and a shell there is the human",
-      "why": "A person's own shell in a pane has no agent identity; only a pane where an agent has been found can be addressed or identify its caller (MIP-4, section 3).",
+      "name": "a pane that is not open is no address, and a shell in a pane is the human",
+      "why": "Only an open pane can be addressed by its name, and only a pane where an agent has been found identifies whoever runs a command in it; a person's own shell there has no agent identity (MIP-4, section 3).",
       "given": { "steps": [
         {"session": "a", "do": "join", "name": "a"},
         {"session": "a", "do": "post", "to": ["p9"], "body": "anyone?"},
@@ -586,6 +586,78 @@
         "rewoke nobody",
         "a posted #5 to g; woke b [g #5-5 x1 to-you:0 from a] rung p1",
         "rewoke b [g #5-5 x1 to-you:0 from a again] rung p1"
+      ] }
+    },
+    {
+      "name": "an agent that exits to its shell is not counted woken by later posts",
+      "why": "Woken already means it will read this too, which an agent that has left its pane will not; a post that reaches nobody else says so, and exits 6 (MIP-4, section 4).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "one"},
+        {"do": "agent", "pane": "p1", "state": "gone"},
+        {"do": "pane", "pane": "p1", "state": "old"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "two"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "a registered",
+        "a posted #4 to a+p1; woke p1 [a+p1 #4-4 x1 to-you:1 from a] rung p1",
+        "p1 gone",
+        "p1 old",
+        "a posted #5 to a+p1; no agent p1"
+      ] }
+    },
+    {
+      "name": "an agent whose pane closed after its ring is not counted woken",
+      "why": "The pane is gone, and with it anything that could read (MIP-4, section 7).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "one"},
+        {"do": "agent", "pane": "p1", "state": "gone"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "two"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "a registered",
+        "a posted #4 to a+p1; woke p1 [a+p1 #4-4 x1 to-you:1 from a] rung p1",
+        "p1 gone",
+        "a posted #5 to a+p1; no agent p1"
+      ] }
+    },
+    {
+      "name": "an agent whose prompt cannot be read is never rung",
+      "why": "The doorbell types only into a prompt it has read as empty, so an agent whose manifest cannot read its prompt is reached by its inbox or not at all, and the post says which (MIP-4, section 6).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "unreadable"},
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "one"}
+      ] },
+      "expect": { "said": [
+        "p1 unreadable",
+        "a registered",
+        "a posted #4 to a+p1; no doorbell p1"
+      ] }
+    },
+    {
+      "name": "a pane just made is rung once its agent is found, and an old one with none is not",
+      "why": "A post right after `muster pane new --run` comes before detection has found the agent, and waits for it; a pane that has had its shell for a while has no agent coming, and nothing waits (MIP-4, section 14).",
+      "given": { "steps": [
+        {"do": "pane", "pane": "p1", "state": "new"},
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "one"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "two"},
+        {"do": "pane", "pane": "p1", "state": "old"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "three"}
+      ] },
+      "expect": { "said": [
+        "p1 new",
+        "a registered",
+        "a posted #4 to a+p1; deferred p1 [a+p1 #4-4 x1 to-you:1 from a] rung p1",
+        "a posted #5 to a+p1; already woken p1",
+        "p1 old",
+        "a posted #6 to a+p1; no agent p1"
       ] }
     },
     {

@@ -101,6 +101,37 @@ pub trait Presence {
     fn has_pane(&self, pane: &str) -> bool {
         self.agent_in(pane)
     }
+
+    /// Whether the doorbell can reach whoever is in `pane` (MIP-4, section 6).
+    fn doorbell(&self, pane: &str) -> Doorbell {
+        if self.agent_in(pane) {
+            Doorbell::Rings
+        } else if self.has_pane(pane) {
+            Doorbell::AgentToCome
+        } else {
+            Doorbell::NoAgent
+        }
+    }
+}
+
+/// Whether the doorbell can reach whoever is in a pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Doorbell {
+    /// An agent is there, and the host can read its prompt.
+    Rings,
+    /// An agent is there whose prompt the host cannot read, so it is never rung.
+    NoPrompt,
+    /// No agent has been found there yet, in a pane new enough that one is likely starting.
+    AgentToCome,
+    /// No agent is there, and none is expected: the pane is closed, or its agent has left.
+    NoAgent,
+}
+
+impl Doorbell {
+    /// Whether a wake for the pane is worth keeping to ring.
+    fn rings(self) -> bool {
+        matches!(self, Doorbell::Rings | Doorbell::AgentToCome)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +197,11 @@ pub enum Reach {
     /// Nothing can wake it, so it sees the message when it next reads.
     Waiting,
     Gone,
+    /// In a pane where no agent is, or is coming, to be rung, and with nothing else to wake it.
+    NoAgent,
+    /// In a pane whose agent's prompt the host cannot read, so it is never rung, and with
+    /// nothing else to wake it.
+    NoDoorbell,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1011,12 +1047,22 @@ impl<S: Store> Messaging<S> {
         if name == HUMAN {
             return Reach::Waiting;
         }
+        let via = Self::via(participant, presence);
+        // Woken already only while something is there to take this too: an agent whose pane
+        // closed, or who left it, was woken for nothing it will read (MIP-4, section 7).
+        let to_come = participant
+            .pane
+            .as_ref()
+            .is_some_and(|pane| presence.doorbell(pane) == Doorbell::AgentToCome);
+        let _ = to_come;
         if participant.woken.contains(group) {
             return Reach::AlreadyWoken;
         }
-        let Some(via) = Self::via(participant, presence) else {
-            return Reach::Waiting;
+        let via = match via {
+            Ok(via) => via,
+            Err(reach) => return reach,
         };
+        let participant = self.participants.get_mut(name).expect("looked up above");
         participant.woken.insert(group.to_string());
         posted.wakes.push(Wake { name: name.to_string(), via, notice });
         Reach::Woken
@@ -1026,11 +1072,15 @@ impl<S: Store> Messaging<S> {
     /// too: a session that bypasses permission prompts holds an inbox message for a person's
     /// approval (`docs/observations/claude-code-2.1.283.md`), the host cannot tell which
     /// sessions do, and the doorbell's guards make typing into a pane safe (MIP-4, section 6).
-    fn via(participant: &Participant, presence: &dyn Presence) -> Option<Via> {
+    ///
+    /// When nothing can, says how the post reached it instead: a pane with no agent, one whose
+    /// agent the doorbell cannot read, or nothing at all, so it reads the message when it next
+    /// reads.
+    fn via(participant: &Participant, presence: &dyn Presence) -> Result<Via, Reach> {
         if let Some(pane) = participant.pane.as_ref().filter(|pane| presence.has_pane(pane)) {
-            return Some(Via::Pane(pane.clone()));
+            return Ok(Via::Pane(pane.clone()));
         }
-        participant.inbox.clone().map(Via::Inbox)
+        participant.inbox.clone().map(Via::Inbox).ok_or(Reach::Waiting)
     }
 
     /// A wake for every group an agent in a pane was woken for and has not read: what a host
@@ -1093,7 +1143,7 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
     ) -> (Vec<Wake>, Option<String>) {
         let Some(participant) = self.participants.get(name) else { return (Vec::new(), None) };
-        let Some(via) = Self::via(participant, presence) else { return (Vec::new(), None) };
+        let Ok(via) = Self::via(participant, presence) else { return (Vec::new(), None) };
         let groups: Vec<String> = participant
             .woken
             .iter()

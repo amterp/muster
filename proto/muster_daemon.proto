@@ -589,6 +589,11 @@ message MsgAnswer {
     // An agent in a pane that is busy, at a dialog or being typed into: it is rung there once
     // it is idle and nobody has typed into it for a few seconds.
     REACH_DEFERRED = 5;
+    // In a pane with no agent in it, and none coming, and nothing else can wake it.
+    REACH_NO_AGENT = 6;
+    // In a pane whose agent's prompt the daemon cannot read, so the doorbell never rings it,
+    // and nothing else can wake it.
+    REACH_NO_DOORBELL = 7;
   }
 
   // What an agent in a pane is doing, as detection reads the pane.

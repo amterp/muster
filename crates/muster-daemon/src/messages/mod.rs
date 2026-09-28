@@ -626,6 +626,8 @@ fn reach_of(reach: Reach) -> msg_answer::Reach {
     match reach {
         Reach::Woken => msg_answer::Reach::Woken,
         Reach::Deferred => msg_answer::Reach::Deferred,
+        Reach::NoAgent => msg_answer::Reach::NoAgent,
+        Reach::NoDoorbell => msg_answer::Reach::NoDoorbell,
         Reach::AlreadyWoken => msg_answer::Reach::AlreadyWoken,
         Reach::Waiting => msg_answer::Reach::Waiting,
         Reach::Gone => msg_answer::Reach::Gone,

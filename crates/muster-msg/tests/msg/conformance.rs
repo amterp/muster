@@ -7,17 +7,21 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{Conformance, fields};
 use muster_msg::{
-    Activity, Caller, Inbox, Liveness, Memory, Messaging, Notice, Participant, Posted, Presence,
-    Reach, Refusal, Via, What,
+    Activity, Caller, Doorbell, Inbox, Liveness, Memory, Messaging, Notice, Participant, Posted,
+    Presence, Reach, Refusal, Via, What,
 };
 use serde_json::{Value, json};
 
 /// Every inbox answers except those whose session has died, and a pane has an agent in it while
-/// a step has said so.
+/// a step has said so. A pane may also be open with no agent in it, new or not.
 #[derive(Default)]
 struct Sessions {
     dead: RefCell<BTreeSet<String>>,
     agents: RefCell<BTreeMap<String, Activity>>,
+    /// Agents whose prompt the host cannot read.
+    unreadable: RefCell<BTreeSet<String>>,
+    /// Open panes with no agent, and whether each is new.
+    open: RefCell<BTreeMap<String, bool>>,
 }
 
 impl Sessions {
@@ -43,6 +47,22 @@ impl Presence for Sessions {
 
     fn agent_in(&self, pane: &str) -> bool {
         self.agents.borrow().contains_key(pane)
+    }
+
+    fn has_pane(&self, pane: &str) -> bool {
+        self.agent_in(pane) || self.open.borrow().contains_key(pane)
+    }
+
+    fn doorbell(&self, pane: &str) -> Doorbell {
+        if self.agent_in(pane) && self.unreadable.borrow().contains(pane) {
+            Doorbell::NoPrompt
+        } else if self.agent_in(pane) {
+            Doorbell::Rings
+        } else if self.open.borrow().get(pane) == Some(&true) {
+            Doorbell::AgentToCome
+        } else {
+            Doorbell::NoAgent
+        }
     }
 }
 
@@ -144,12 +164,18 @@ fn strings(value: Option<&Value>) -> Vec<String> {
 }
 
 /// Delivers a post's wakes the way the daemon does - to every inbox that has not died, marking
-/// the others gone - and says what the post did for each participant it was meant to wake.
+/// the others gone, and leaving a pane whose agent is still to come to ring once it is - and
+/// says what the post did for each participant it was meant to wake.
 fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Posted) -> String {
     let mut failed = BTreeSet::new();
+    let mut deferred = BTreeSet::new();
     for wake in &posted.wakes {
         let reached = match &wake.via {
             Via::Inbox(inbox) => sessions.answers(inbox),
+            Via::Pane(pane) if sessions.doorbell(pane) == Doorbell::AgentToCome => {
+                deferred.insert(wake.name.clone());
+                continue;
+            }
             Via::Pane(pane) => sessions.agent_in(pane),
         };
         service.delivered(wake, reached).unwrap();
@@ -164,12 +190,20 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
         ("already woken", Reach::AlreadyWoken),
         ("waiting", Reach::Waiting),
         ("gone", Reach::Gone),
+        ("no agent", Reach::NoAgent),
+        ("no doorbell", Reach::NoDoorbell),
     ] {
         let names: Vec<String> = posted
             .reached
             .iter()
             .filter(|(name, reach)| {
-                let reach = if failed.contains(name) { Reach::Gone } else { *reach };
+                let reach = if failed.contains(name) {
+                    Reach::Gone
+                } else if deferred.contains(name) {
+                    Reach::Deferred
+                } else {
+                    *reach
+                };
                 reach == wanted
             })
             .map(|(name, _)| {
@@ -196,7 +230,20 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
     parts.join("; ")
 }
 
-/// Says what a pane's agent is doing, or with `gone` that the pane has none.
+/// Opens a pane with no agent in it, `new` when one is likely starting there, or closes it.
+fn pane(sessions: &Sessions, step: &Value) -> String {
+    let text = |key: &str| step.get(key).and_then(Value::as_str).unwrap_or_default();
+    let pane = text("pane").to_string();
+    match text("state") {
+        "new" => sessions.open.borrow_mut().insert(pane.clone(), true),
+        "old" => sessions.open.borrow_mut().insert(pane.clone(), false),
+        _ => sessions.open.borrow_mut().remove(&pane),
+    };
+    format!("{pane} {}", text("state"))
+}
+
+/// Says what a pane's agent is doing, or with `gone` that the pane has none. `unreadable` makes
+/// it an idle agent whose prompt the host cannot read.
 fn agent(sessions: &Sessions, step: &Value) -> String {
     let text = |key: &str| step.get(key).and_then(Value::as_str).unwrap_or_default();
     let pane = text("pane").to_string();
@@ -205,6 +252,10 @@ fn agent(sessions: &Sessions, step: &Value) -> String {
         "blocked" => Some(Activity::Blocked),
         "idle" => Some(Activity::Idle),
         "waiting" => Some(Activity::Waiting),
+        "unreadable" => {
+            sessions.unreadable.borrow_mut().insert(pane.clone());
+            Some(Activity::Idle)
+        }
         _ => None,
     };
     match state {
@@ -314,6 +365,7 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
             service.log(text("group").unwrap_or_default(), since).map(|entries| list(&entries))
         }
         "agent" => Ok(agent(sessions, step)),
+        "pane" => Ok(pane(sessions, step)),
         "idle" => Ok(idle(service, sessions, text("name").unwrap_or_default())),
         "dies" => {
             sessions.dead.borrow_mut().insert(socket(text("session").unwrap_or_default()));
