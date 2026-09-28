@@ -5,17 +5,26 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Facts reach the sidebar, muster window and --json (round of 2026-09-28). Left: a pane wait keyed on a fact, and the app installing or pointing at extras/claude-code; both raised as their own cards.",
+      "created_at_millis": 1790587966099,
+      "id": "c_2Y6brdYmz"
+    }
+  ],
   "created_at_millis": 1790487709943,
   "creator": "Alexander Terp",
   "description": "amterp asked to see at a glance how full an agent's context is, whether it has sub-agents running, and similar (a_2XMXOShAA). muster-daemon now stores and publishes those facts on each pane's record (Pane.facts: context used %, sub-agents running, model, cost, free-form keys), reported by the agent through muster-daemon report. What remains is the app: the core's mirror holds Pane.facts, the sidebar row renders context and sub-agents without clutter, muster window and its --json show them, and muster pane wait may key on one (e.g. context over 80%). Lands after the cut-over (C12/C13), when the app reads muster-daemon. The app should also ship or point at extras/claude-code/. Note for amterp: his tai-managed statusline needs the report call (extras/claude-code/statusline.sh wraps an existing statusline command).",
   "id": "a_2XQXk8sou",
   "parent": "a_2XJ1fUIyr",
-  "position": "aw",
+  "position": "Yzx",
   "title": "Show agent facts in the sidebar and muster window",
   "type": "feature",
-  "updated_at_millis": 1790487709943,
+  "updated_at_millis": 1790587966165,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790487709943}
+    {"field":"column","value":"backlog-hi","at":1790487709943},
+    {"field":"column","value":"done","at":1790587966165}
   ]
 }

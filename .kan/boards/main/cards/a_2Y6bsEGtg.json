@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "the-app-installs-or",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790587966485,
+  "creator": "Alexander Terp",
+  "description": "extras/claude-code carries the hooks that make agent state exact (state reports, the waiting fact, context and sub-agent facts), but a person has to find and install it. The v2 app's own panes run without it, so no run log holds daemon.agent.turn_ended yet. The app could offer to install it, or muster docs could lead with it.",
+  "id": "a_2Y6bsEGtg",
+  "position": "b0C",
+  "title": "The app installs or points at the Claude Code plugin",
+  "type": "feature",
+  "updated_at_millis": 1790587966485,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790587966485}
+  ]
+}

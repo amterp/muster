@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "measure-how-often",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790587966591,
+  "creator": "Alexander Terp",
+  "description": "Once agents run with the Claude Code plugin, count daemon.agent.turn_ended waiting=true and daemon.report.waiting_cleared by=... per agent over a week (the plugin tells agents in Muster panes to declare a wait when they end a turn on their own background work; forgetting reads as done). amterp worried about added load on the model; this is the evidence either way.",
+  "id": "a_2Y6bsOHIP",
+  "position": "aj",
+  "title": "Measure how often agents declare the waiting fact",
+  "type": "chore",
+  "updated_at_millis": 1790587966591,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790587966591}
+  ]
+}
