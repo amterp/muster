@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 
 use crate::AgentState;
-use crate::mirror::backend::{Health, LayoutNode, Pane, PaneId, Snapshot, Tab, TabId};
+use crate::mirror::backend::{Health, LayoutNode, Pane, PaneId, Progress, Snapshot, Tab, TabId};
 use crate::mirror::event::{BackendEvent, Change};
 use crate::mirror::ordered::Ordered;
 
@@ -31,6 +31,9 @@ pub struct Mirror {
     /// no tab. Held here rather than shown, because everything that draws or lists a pane
     /// does so by its tab; it is added when a tree names it.
     unplaced: BTreeMap<PaneId, Pane>,
+    /// What each pane's program last said of its progress. Not on the daemon's record: it
+    /// arrives as an effect, which no snapshot repeats, so a new connection starts without.
+    progress: BTreeMap<PaneId, Progress>,
     /// The daemon is still bringing back its saved tabs.
     restoring: bool,
     health: Health,
@@ -58,6 +61,7 @@ impl Mirror {
         let previous_panes = std::mem::take(&mut self.panes);
         let previous_tabs = std::mem::take(&mut self.tabs);
         self.unplaced.clear();
+        let previous_progress = std::mem::take(&mut self.progress);
         self.restoring = snapshot.restoring;
         self.health = Health::Connected;
         self.health_detail.clear();
@@ -107,6 +111,12 @@ impl Mirror {
                     if relabelled(before, pane) {
                         changes.push(Change::PaneRelabelled(id.clone()));
                     }
+                    if described(before, pane) {
+                        changes.push(Change::AgentDescribed(id.clone()));
+                    }
+                    if previous_progress.contains_key(id) {
+                        changes.push(Change::ProgressChanged(id.clone()));
+                    }
                 }
             }
         }
@@ -141,6 +151,7 @@ impl Mirror {
             }
             BackendEvent::PaneClosed(id) => {
                 self.unplaced.remove(&id);
+                self.progress.remove(&id);
                 match self.panes.remove(&id) {
                     Some(_) => vec![Change::PaneRemoved(id)],
                     None => Vec::new(),
@@ -159,6 +170,23 @@ impl Mirror {
             BackendEvent::ClipboardWrite { pane, text } => {
                 vec![Change::ClipboardWrite { pane, text }]
             }
+            BackendEvent::Bell { pane } if self.panes.contains_key(&pane) => {
+                vec![Change::Rang(pane)]
+            }
+            BackendEvent::Notified { pane, title, body } if self.panes.contains_key(&pane) => {
+                vec![Change::Notified { pane, title, body }]
+            }
+            BackendEvent::Progress { pane, progress } if self.panes.contains_key(&pane) => {
+                let before = match progress {
+                    Some(progress) => self.progress.insert(pane.clone(), progress),
+                    None => self.progress.remove(&pane),
+                };
+                if before == progress { Vec::new() } else { vec![Change::ProgressChanged(pane)] }
+            }
+            // For a pane no tree names yet, which draws nowhere.
+            BackendEvent::Bell { .. }
+            | BackendEvent::Notified { .. }
+            | BackendEvent::Progress { .. } => Vec::new(),
         }
     }
 
@@ -285,6 +313,11 @@ impl Mirror {
     /// How a tab arranges its panes, if the mirror holds the tab.
     pub fn tree(&self, tab: &TabId) -> Option<&LayoutNode> {
         self.tabs.get(tab).map(|tab| &tab.root)
+    }
+
+    /// What a pane's program last said of its progress, if it is still saying anything.
+    pub fn progress(&self, id: &PaneId) -> Option<Progress> {
+        self.progress.get(id).copied()
     }
 
     pub fn agent_state(&self, id: &PaneId) -> Option<AgentState> {

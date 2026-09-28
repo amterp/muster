@@ -1275,6 +1275,172 @@
           "layoutChanged:t1"
         ]
       }
+    },
+    {
+      "name": "a pane's program's effects pass through, and its progress stays until it is taken back",
+      "why": "A bell and a notification are things that happened, which the mirror passes on and holds nothing of. Progress is a statement that stands until the program takes it back, so the mirror keeps it, a new record of the pane leaves it alone, the same progress again is no news, and taking it back is. Effects for a pane no tree names are dropped, since nothing draws it.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "bell",
+            "pane": "p1"
+          },
+          {
+            "kind": "notified",
+            "pane": "p1",
+            "title": "build",
+            "body": "tests passed"
+          },
+          {
+            "kind": "progress",
+            "pane": "p1",
+            "state": "running",
+            "percent": 40
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src"
+          },
+          {
+            "kind": "progress",
+            "pane": "p1",
+            "state": "running",
+            "percent": 40
+          },
+          {
+            "kind": "progress",
+            "pane": "p1",
+            "state": "error"
+          },
+          {
+            "kind": "bell",
+            "pane": "p9"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "p1"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1"
+        },
+        "agentStates": {
+          "p1": "idle"
+        },
+        "layouts": {
+          "t1": "p1"
+        },
+        "health": "connected",
+        "restoring": false,
+        "progress": {
+          "p1": "error"
+        },
+        "changes": [
+          "rang:p1",
+          "notified:p1:build:tests passed",
+          "progress:p1",
+          "progress:p1"
+        ]
+      }
+    },
+    {
+      "name": "progress goes with a new connection and with its pane",
+      "why": "No snapshot repeats an effect, so a reconnect cannot tell whether the work a program reported is still running; holding its last word would show a bar that may never move again. The reconnect says so for each pane that had progress, so a reader drops the bar. Taking it back and closing the pane end it too.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "progress",
+            "pane": "p1",
+            "state": "running",
+            "percent": 40
+          },
+          {
+            "kind": "progress",
+            "pane": "p1"
+          },
+          {
+            "kind": "progress",
+            "pane": "p1",
+            "state": "indeterminate"
+          }
+        ],
+        "resnapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "panes": [
+          "p1"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1"
+        },
+        "agentStates": {
+          "p1": "idle"
+        },
+        "layouts": {
+          "t1": "p1"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "progress:p1",
+          "progress:p1",
+          "progress:p1",
+          "progress:p1"
+        ]
+      }
     }
   ]
 }

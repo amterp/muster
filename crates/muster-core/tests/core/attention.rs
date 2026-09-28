@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::AgentState;
-use muster_core::attention::{Attend, Attention, Noticed, Notifications};
+use muster_core::attention::{Attend, Attention, Note, Noticed, Notifications};
 use muster_core::composition::{DaemonId, PaneKey};
 use muster_core::mirror::backend::PaneId;
 use serde_json::{Map, Value, json};
@@ -53,6 +53,16 @@ fn notifying_conformance() {
             // moments produce one, and an end state cannot say whether somebody was
             // interrupted twice on the way there.
             ("notified", Some(json!(run.notified))),
+            // Panes marked by a bell nobody has seen, when any are: a mark and never a banner.
+            ("rung", {
+                let rung: Vec<String> = run
+                    .backend
+                    .keys()
+                    .filter(|pane| run.attention.has_rung(pane))
+                    .map(ToString::to_string)
+                    .collect();
+                (!rung.is_empty()).then(|| json!(rung))
+            }),
             // And the set left standing, which is what a shell would have on screen.
             (
                 "asking",
@@ -154,6 +164,27 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
             run.backend.insert(pane, state);
             continue;
         }
+        // A program in the pane rang the bell.
+        if event.get("rang").is_some() {
+            let pane = read_pane(event, "rang")?;
+            run.attention.bell(&pane);
+            continue;
+        }
+        // A program in the pane asked for a notification, and said what.
+        if let Some(note) = event.get("notification") {
+            let pane = read_pane(event, "pane")?;
+            let said = |key: &str| note.get(key).and_then(Value::as_str).unwrap_or_default();
+            let note = Note { title: said("title").to_string(), body: said("body").to_string() };
+            if let Some(Attend::Raised(alert)) = run.attention.notified(&pane, note) {
+                let body = run.attention.note(&pane).map(|note| note.body.clone());
+                run.notified.push(format!(
+                    "{pane} {}: {}",
+                    alert.as_str(),
+                    body.unwrap_or_default()
+                ));
+            }
+            continue;
+        }
         // A pane's record as its daemon now has it.
         let pane = read_pane(event, "pane")?;
         let state = read_state(event, "state")?;
@@ -196,6 +227,7 @@ fn read_notifications(given: &Value) -> Option<Notifications> {
     let mut notifications = Notifications::default();
     for (key, held) in [
         ("blocked", &mut notifications.blocked),
+        ("programs", &mut notifications.programs),
         ("done", &mut notifications.done),
         ("muted", &mut notifications.muted),
     ] {

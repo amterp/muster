@@ -5,7 +5,7 @@
 //! is applied as it stands, and a mirror never has to decide whether one is old news.
 
 use crate::AgentState;
-use crate::mirror::backend::{Pane, PaneId, Tab, TabId};
+use crate::mirror::backend::{Pane, PaneId, Progress, Tab, TabId};
 
 /// One thing a daemon says happened.
 ///
@@ -37,6 +37,21 @@ pub enum BackendEvent {
     ClipboardWrite {
         pane: PaneId,
         text: String,
+    },
+    /// A program rang the bell.
+    Bell {
+        pane: PaneId,
+    },
+    /// A program asked for a desktop notification (OSC 9 or OSC 777).
+    Notified {
+        pane: PaneId,
+        title: String,
+        body: String,
+    },
+    /// A program said how far along it is (OSC 9;4), or that it is done saying: `None`.
+    Progress {
+        pane: PaneId,
+        progress: Option<Progress>,
     },
 }
 
@@ -110,6 +125,18 @@ pub enum Change {
         pane: PaneId,
         text: String,
     },
+    /// A program in this pane rang the bell. Passed through: whether it marks the pane is the
+    /// window's to say, since only the window knows whether somebody is looking at it.
+    Rang(PaneId),
+    /// A program in this pane asked to notify somebody. Passed through, like `Rang`.
+    Notified {
+        pane: PaneId,
+        title: String,
+        body: String,
+    },
+    /// What a program in this pane says of its progress has moved. Announced with the pane's
+    /// agent, as its facts are, since it blinks as often.
+    ProgressChanged(PaneId),
 }
 
 impl Change {
@@ -129,6 +156,9 @@ impl Change {
             Change::Restored(_) => "restored",
             Change::PasteHeld { .. } => "paste_held",
             Change::ClipboardWrite { .. } => "clipboard_write",
+            Change::Rang(_) => "rang",
+            Change::Notified { .. } => "notified",
+            Change::ProgressChanged(_) => "progress",
         }
     }
 
@@ -150,6 +180,9 @@ impl Change {
                 | Change::TabRelabelled(_)
                 | Change::PasteHeld { .. }
                 | Change::ClipboardWrite { .. }
+                | Change::Rang(_)
+                | Change::Notified { .. }
+                | Change::ProgressChanged(_)
         )
     }
 
@@ -184,6 +217,8 @@ impl Change {
             Change::AgentStateChanged { pane, .. }
             | Change::FinishedUnseen { pane, .. }
             | Change::AgentDescribed(pane)
+            | Change::Rang(pane)
+            | Change::ProgressChanged(pane)
             | Change::PaneAdded(pane) => Some(pane),
             _ => None,
         }

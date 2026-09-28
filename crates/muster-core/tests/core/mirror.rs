@@ -3,9 +3,9 @@
 
 use crate::support::backend::{read_pane, read_snapshot, read_tab, text};
 use conformance::{Conformance, fields};
-use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::mirror::backend::{PaneId, Progress, ProgressState, TabId};
 use muster_core::mirror::{BackendEvent, Change, Mirror, Restored};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 #[test]
 fn mirror_conformance() {
@@ -41,6 +41,7 @@ fn mirror_conformance() {
             ("layouts", Some(layouts(&mirror))),
             ("health", Some(json!(mirror.health().as_str()))),
             ("restoring", Some(json!(mirror.restoring()))),
+            ("progress", progress(&mirror)),
             ("changes", Some(json!(changes.iter().map(describe).collect::<Vec<_>>()))),
         ]))
     });
@@ -50,7 +51,7 @@ fn mirror_conformance() {
 }
 
 fn pane_tabs(mirror: &Mirror) -> Value {
-    let mut map = serde_json::Map::new();
+    let mut map = Map::new();
     for pane in mirror.panes() {
         map.insert(pane.id.to_string(), json!(pane.tab.as_str()));
     }
@@ -61,7 +62,7 @@ fn pane_tabs(mirror: &Mirror) -> Value {
 /// either. Absent when no pane in the case has one, so a case about structure does not carry a
 /// map of empty objects.
 fn named(mirror: &Mirror) -> Option<Value> {
-    let mut map = serde_json::Map::new();
+    let mut map = Map::new();
     for pane in mirror.panes() {
         let described = fields([
             ("name", pane.name.as_ref().map(|name| json!(name))),
@@ -76,7 +77,7 @@ fn named(mirror: &Mirror) -> Option<Value> {
 
 /// What each named tab is called, absent when none is.
 fn tab_labels(mirror: &Mirror) -> Option<Value> {
-    let mut map = serde_json::Map::new();
+    let mut map = Map::new();
     for tab in mirror.tabs() {
         if let Some(label) = &tab.label {
             map.insert(tab.id.to_string(), json!(label));
@@ -86,16 +87,30 @@ fn tab_labels(mirror: &Mirror) -> Option<Value> {
 }
 
 fn agent_states(mirror: &Mirror) -> Value {
-    let mut map = serde_json::Map::new();
+    let mut map = Map::new();
     for pane in mirror.panes() {
         map.insert(pane.id.to_string(), json!(pane.agent_state.as_str()));
     }
     Value::Object(map)
 }
 
+/// What each pane's program says of its progress, when any says anything.
+fn progress(mirror: &Mirror) -> Option<Value> {
+    let said: Map<String, Value> = mirror
+        .panes()
+        .filter_map(|pane| {
+            let progress = mirror.progress(&pane.id)?;
+            let percent =
+                progress.percent.map(|percent| format!(" {percent}%")).unwrap_or_default();
+            Some((pane.id.to_string(), json!(format!("{}{percent}", progress.state.as_str()))))
+        })
+        .collect();
+    (!said.is_empty()).then_some(Value::Object(said))
+}
+
 /// Each tab's tree on one line, keyed by tab.
 fn layouts(mirror: &Mirror) -> Value {
-    let mut map = serde_json::Map::new();
+    let mut map = Map::new();
     for tab in mirror.tabs() {
         let mut described = tab.root.to_string();
         if let Some(zoomed) = &tab.zoomed {
@@ -135,6 +150,9 @@ fn describe(change: &Change) -> String {
         ),
         Change::PasteHeld { pane, text } => format!("pasteHeld:{pane}:{}", text.len()),
         Change::ClipboardWrite { pane, text } => format!("clipboardWrite:{pane}:{}", text.len()),
+        Change::Rang(pane) => format!("rang:{pane}"),
+        Change::Notified { pane, title, body } => format!("notified:{pane}:{title}:{body}"),
+        Change::ProgressChanged(pane) => format!("progress:{pane}"),
     }
 }
 
@@ -168,6 +186,28 @@ fn read_event(given: &Value) -> BackendEvent {
         "clipboardWrite" => BackendEvent::ClipboardWrite {
             pane: PaneId::new(text(given, "pane")),
             text: text(given, "text"),
+        },
+        "bell" => BackendEvent::Bell { pane: PaneId::new(text(given, "pane")) },
+        "notified" => BackendEvent::Notified {
+            pane: PaneId::new(text(given, "pane")),
+            title: text(given, "title"),
+            body: text(given, "body"),
+        },
+        "progress" => BackendEvent::Progress {
+            pane: PaneId::new(text(given, "pane")),
+            progress: given.get("state").and_then(Value::as_str).map(|state| Progress {
+                state: match state {
+                    "running" => ProgressState::Running,
+                    "error" => ProgressState::Error,
+                    "indeterminate" => ProgressState::Indeterminate,
+                    "paused" => ProgressState::Paused,
+                    other => panic!("corpus case names a progress state nobody reads: {other:?}"),
+                },
+                percent: given
+                    .get("percent")
+                    .and_then(Value::as_u64)
+                    .and_then(|percent| u8::try_from(percent).ok()),
+            }),
         },
         // Loudly, because a case naming an event this driver cannot build would otherwise pass
         // by exercising nothing at all.

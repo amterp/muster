@@ -97,6 +97,7 @@ fn notifications(notifications: Notifications) -> Vec<String> {
     let mut set = Vec::new();
     for (name, said, default) in [
         ("blocked", notifications.blocked, shipped.blocked),
+        ("programs", notifications.programs, shipped.programs),
         ("done", notifications.done, shipped.done),
         ("muted", notifications.muted, shipped.muted),
     ] {

@@ -30,14 +30,17 @@ use crate::composition::{DaemonId, PaneKey};
 
 /// What a pane is asking of the person, when it is asking anything.
 ///
-/// Two of the five states ask, and they ask the same question from opposite ends: `blocked`
-/// is an agent that has stopped and wants an answer, and `done` is an agent that has stopped
-/// and nobody has noticed. Neither `working` nor `idle` asks for anybody, and `unknown` is
-/// the absence of an answer rather than one.
+/// Two of the states ask, and they ask the same question from opposite ends: `blocked` is an
+/// agent that has stopped and wants an answer, and `done` is an agent that has stopped and
+/// nobody has noticed. Neither `working`, `waiting` nor `idle` asks for anybody, and `unknown`
+/// is the absence of an answer rather than one. The third is not a state: a program in the pane
+/// asked for a notification, in words of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Alert {
     /// An agent waiting on somebody. First, because it is the one somebody is holding up.
     Blocked,
+    /// A program asked to tell somebody something, and said what ([`Note`]).
+    Notified,
     /// An agent that finished while nobody was looking.
     Done,
 }
@@ -46,9 +49,17 @@ impl Alert {
     pub fn as_str(self) -> &'static str {
         match self {
             Alert::Blocked => "blocked",
+            Alert::Notified => "notified",
             Alert::Done => "done",
         }
     }
+}
+
+/// What a program's notification said (OSC 9 or OSC 777).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Note {
+    pub title: String,
+    pub body: String,
 }
 
 /// Which of those are worth interrupting somebody for.
@@ -57,16 +68,21 @@ impl Alert {
 /// notifies is a state you have to go and look for. The mute is the answer for fifteen
 /// agents at once, and it is a third key rather than "set both to false" so that turning
 /// the noise off for an afternoon does not cost you the two answers underneath it.
+///
+/// A program's own notification is on by default for the same reason: a program that asks to
+/// notify somebody has said it is worth it, which a bell never has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(clippy::struct_excessive_bools, reason = "one answer per key of `[notifications]`")]
 pub struct Notifications {
     pub blocked: bool,
+    pub programs: bool,
     pub done: bool,
     pub muted: bool,
 }
 
 impl Default for Notifications {
     fn default() -> Notifications {
-        Notifications { blocked: true, done: true, muted: false }
+        Notifications { blocked: true, programs: true, done: true, muted: false }
     }
 }
 
@@ -75,6 +91,7 @@ impl Notifications {
         !self.muted
             && match alert {
                 Alert::Blocked => self.blocked,
+                Alert::Notified => self.programs,
                 Alert::Done => self.done,
             }
     }
@@ -144,6 +161,14 @@ pub struct Attention {
     /// banners silently change the state vocabulary this product is built on.
     raised: BTreeMap<PaneKey, Alert>,
 
+    /// What each pane raised as [`Alert::Notified`] said.
+    notes: BTreeMap<PaneKey, Note>,
+
+    /// Panes whose program rang the bell since somebody last looked at them. A mark on the
+    /// pane and never a banner: shells ring for a completion that found nothing, and a banner
+    /// for each would teach somebody to mute everything.
+    rang: BTreeSet<PaneKey>,
+
     notifications: Notifications,
 }
 
@@ -169,6 +194,7 @@ impl Attention {
             .collect();
         for pane in &stale {
             self.raised.remove(pane);
+            self.notes.remove(pane);
         }
         stale
     }
@@ -227,6 +253,9 @@ impl Attention {
         }
         let attend = if state == AgentState::Blocked {
             self.raise(pane, Alert::Blocked)
+        } else if self.raised.get(pane) == Some(&Alert::Notified) {
+            // A program's request stands until somebody looks, whatever its agent does next.
+            None
         } else if newly_finished {
             self.raise(pane, Alert::Done)
         } else if finished && self.raised.get(pane) == Some(&Alert::Done) {
@@ -235,6 +264,39 @@ impl Attention {
             self.withdraw(pane)
         };
         Observed { attend, reported: false }
+    }
+
+    /// A program in the pane rang the bell. Returns whether that marked the pane, which it does
+    /// unless somebody is looking at it or it is marked already.
+    pub fn bell(&mut self, pane: &PaneKey) -> bool {
+        !self.seen(pane) && self.rang.insert(pane.clone())
+    }
+
+    /// Whether a bell in this pane has gone unseen.
+    pub fn has_rung(&self, pane: &PaneKey) -> bool {
+        self.rang.contains(pane)
+    }
+
+    /// A program in the pane asked to notify somebody.
+    ///
+    /// Asks unless somebody is looking at the pane, the file says programs are not worth
+    /// interrupting for, or the pane is already blocked, which is the more urgent ask. Each
+    /// notification is news, even from a pane already asking with one: it says something new.
+    pub fn notified(&mut self, pane: &PaneKey, note: Note) -> Option<Attend> {
+        if self.seen(pane)
+            || !self.notifications.allows(Alert::Notified)
+            || self.raised.get(pane) == Some(&Alert::Blocked)
+        {
+            return None;
+        }
+        self.notes.insert(pane.clone(), note);
+        self.raised.insert(pane.clone(), Alert::Notified);
+        Some(Attend::Raised(Alert::Notified))
+    }
+
+    /// What the pane's program said, while the pane is asking with it.
+    pub fn note(&self, pane: &PaneKey) -> Option<&Note> {
+        if self.raised.get(pane) == Some(&Alert::Notified) { self.notes.get(pane) } else { None }
     }
 
     /// What the window should show for a pane, given what its daemon says the agent is doing.
@@ -283,6 +345,7 @@ impl Attention {
     /// Says so when the pane was asking for somebody, because a notification outliving its
     /// pane is one that answers a click by focusing nothing.
     pub fn forget(&mut self, pane: &PaneKey) -> Option<Attend> {
+        self.rang.remove(pane);
         self.finished.remove(pane);
         self.reported.remove(pane);
         self.visible.remove(pane);
@@ -334,8 +397,20 @@ impl Attention {
             self.raised.keys().filter(|pane| self.visible.contains(*pane)).cloned().collect();
         for pane in &withdrawn {
             self.raised.remove(pane);
+            self.notes.remove(pane);
         }
-        Noticed { settled: reported.clone(), reported, withdrawn }
+        let heard: Vec<PaneKey> = self
+            .rang
+            .intersection(&self.visible)
+            .filter(|pane| !reported.contains(*pane))
+            .cloned()
+            .collect();
+        for pane in &heard {
+            self.rang.remove(pane);
+        }
+        let mut settled = reported.clone();
+        settled.extend(heard);
+        Noticed { settled, reported, withdrawn }
     }
 
     /// Starts this pane asking, unless the file says that state is not worth interrupting for.
@@ -356,6 +431,7 @@ impl Attention {
     }
 
     fn withdraw(&mut self, pane: &PaneKey) -> Option<Attend> {
+        self.notes.remove(pane);
         self.raised.remove(pane).map(|_| Attend::Withdrawn)
     }
 

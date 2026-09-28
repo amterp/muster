@@ -59,6 +59,9 @@ fn every_change_is_in_the_corpus() {
         "layoutChanged",
         "restored",
         "pasteHeld",
+        "rang",
+        "notified",
+        "progressChanged",
     ] {
         assert!(
             covered.contains(&kind),
@@ -95,6 +98,13 @@ fn read_change(given: &Value) -> Result<Change, CaseError> {
         "layoutChanged" => Change::LayoutChanged(TabId::new(text("tab")?)),
         "restored" => Change::Restored(Restored::default()),
         "pasteHeld" => Change::PasteHeld { pane: PaneId::new(text("pane")?), text: String::new() },
+        "rang" => Change::Rang(PaneId::new(text("pane")?)),
+        "notified" => Change::Notified {
+            pane: PaneId::new(text("pane")?),
+            title: String::new(),
+            body: String::new(),
+        },
+        "progressChanged" => Change::ProgressChanged(PaneId::new(text("pane")?)),
         other => return Err(CaseError::new(format!("no change is spelled `{other}`"))),
     })
 }

@@ -112,6 +112,35 @@ impl Pane {
     }
 }
 
+/// What a program in a pane last said of its own progress (OSC 9;4), until it takes it back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    pub state: ProgressState,
+    /// How far along, from 0 to 100, when the program said.
+    pub percent: Option<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgressState {
+    Running,
+    /// The work failed, and the program is saying so.
+    Error,
+    /// Running, with no idea how far along. Some agents say this for as long as they work.
+    Indeterminate,
+    Paused,
+}
+
+impl ProgressState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ProgressState::Running => "running",
+            ProgressState::Error => "error",
+            ProgressState::Indeterminate => "indeterminate",
+            ProgressState::Paused => "paused",
+        }
+    }
+}
+
 /// What an agent reports about itself, in its own words (MIP-3, section 2). Never read off its
 /// screen, and forgotten when the pane's agent changes or leaves.
 #[derive(Debug, Clone, Default, PartialEq)]

@@ -1341,6 +1341,25 @@
       }
     },
     {
+      "name": "a program's own notifications can be silenced apart from the agents'",
+      "why": "A tool that notifies too often is not a reason to stop hearing that an agent is waiting on you. `programs` is its own key for that, on by default because a program that asks to notify somebody has said it is worth it.",
+      "given": {
+        "file": [
+          "[notifications]",
+          "programs = false"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "notifications": [
+          "programs=false"
+        ]
+      }
+    },
+    {
       "name": "the mute is its own key, not both of them set to false",
       "why": "The quiet path for somebody running fifteen agents, and it is a third key so that going quiet for an afternoon does not cost you the two answers underneath. Writing `blocked = false` and `done = false` to get silence would mean re-deciding both when you want the noise back.",
       "given": {
@@ -1382,7 +1401,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file's [notifications] has a key called \"mute\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: blocked, done, muted."
+        "refused": "the config file's [notifications] has a key called \"mute\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: blocked, programs, done, muted."
       }
     },
     {

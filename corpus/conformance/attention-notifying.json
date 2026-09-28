@@ -543,6 +543,207 @@
           "devenv/w1:p1 blocked"
         ]
       }
+    },
+    {
+      "name": "a program's notification asks, in its own words, until somebody looks",
+      "why": "A program that asks to notify somebody has said it is worth it, and said why: the banner carries its words, which is the notification saying why. It stands whatever the agent does next, since the agent working again has not answered it, and a look at the pane takes it back.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle"
+          },
+          {
+            "pane": "local/w1:p1",
+            "notification": {
+              "title": "build",
+              "body": "tests passed"
+            }
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "working"
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 notified: tests passed",
+          "local/w1:p1 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "a bell marks the pane and never asks",
+      "why": "Shells ring for a completion that found nothing, and a banner for each would teach somebody to mute everything. So a bell marks the pane where the window lists it, until somebody looks, and interrupts nobody.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle"
+          },
+          {
+            "rang": "local/w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "rung": [
+          "local/w1:p1"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "a bell in a pane somebody is looking at marks nothing",
+      "why": "They heard it. A mark on the pane in front of them would be one more thing to clear.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle"
+          },
+          {
+            "rang": "local/w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "a look clears a bell's mark",
+      "why": "The mark says a bell went unheard, and once somebody looks at the pane it has been.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle"
+          },
+          {
+            "rang": "local/w1:p1"
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "programs can be told not to interrupt",
+      "why": "`programs = false` in `[notifications]` is somebody whose tools notify too often. Their agents still interrupt them.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "notifications": {
+          "programs": false
+        },
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle"
+          },
+          {
+            "pane": "local/w1:p1",
+            "notification": {
+              "title": "build",
+              "body": "tests passed"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "a blocked agent outranks its program's notification",
+      "why": "The pane is already asking, for something more urgent: somebody is holding the agent up. Replacing that banner with a program's words would bury the question.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p1",
+            "notification": {
+              "title": "build",
+              "body": "tests passed"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 blocked"
+        ],
+        "asking": [
+          "local/w1:p1 blocked"
+        ]
+      }
+    },
+    {
+      "name": "a finish does not replace what a program asked",
+      "why": "The program's banner says more than `has finished` does, and the pane is `done` on its border anyway. A second banner for the same pane would replace the first, since one pane holds one.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "working"
+          },
+          {
+            "pane": "local/w1:p1",
+            "notification": {
+              "title": "build",
+              "body": "tests passed"
+            }
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 notified: tests passed"
+        ],
+        "asking": [
+          "local/w1:p1 notified"
+        ]
+      }
     }
   ]
 }

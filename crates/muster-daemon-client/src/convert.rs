@@ -8,7 +8,9 @@ use muster_core::config::{CursorStyle, Rgb, ShellMode};
 use muster_core::daemon_settings::{DaemonSettings, Palette};
 use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, OptionAsAlt};
 use muster_core::intent::{Branch, Side};
-use muster_core::mirror::backend::{AgentFacts, LayoutNode, Pane, PaneId, SplitAxis, Tab, TabId};
+use muster_core::mirror::backend::{
+    AgentFacts, LayoutNode, Pane, PaneId, Progress, ProgressState, SplitAxis, Tab, TabId,
+};
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
 use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
 
@@ -35,8 +37,8 @@ pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
 }
 
 /// What an event means to the mirror. None for one the mirror holds nothing about: a setting
-/// changed, which this app sent; an effect the window does not act on; and a daemon handing
-/// over, whose connection ends right after, which is what the follower acts on.
+/// changed, which this app sent; a clipboard a Mac does not have; and a daemon handing over,
+/// whose connection ends right after, which is what the follower acts on.
 pub fn event(event: proto::Event) -> Option<BackendEvent> {
     Some(match event.event? {
         event::Event::PaneOpened(opened) => BackendEvent::PaneOpened(pane(opened.pane?)),
@@ -49,18 +51,42 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
         event::Event::PasteHeld(held) => {
             BackendEvent::PasteHeld { pane: PaneId::new(held.pane), text: held.text }
         }
-        event::Event::PaneEffect(proto::PaneEffect {
-            pane,
-            effect: Some(pane_effect::Effect::ClipboardWrite(write)),
-        }) if write.clipboard() == proto::ClipboardKind::Standard => {
-            BackendEvent::ClipboardWrite { pane: PaneId::new(pane), text: write.text }
+        event::Event::PaneEffect(proto::PaneEffect { pane, effect: Some(effect) }) => {
+            let pane = PaneId::new(pane);
+            match effect {
+                pane_effect::Effect::ClipboardWrite(write)
+                    if write.clipboard() == proto::ClipboardKind::Standard =>
+                {
+                    BackendEvent::ClipboardWrite { pane, text: write.text }
+                }
+                // The selection and primary clipboards are X11's, and a Mac has neither.
+                pane_effect::Effect::ClipboardWrite(_) => return None,
+                pane_effect::Effect::Bell(_) => BackendEvent::Bell { pane },
+                pane_effect::Effect::Notification(said) => {
+                    BackendEvent::Notified { pane, title: said.title, body: said.body }
+                }
+                pane_effect::Effect::Progress(said) => {
+                    BackendEvent::Progress { pane, progress: progress(&said) }
+                }
+            }
         }
-        // The selection and primary clipboards are X11's, and a Mac has neither; the bell,
-        // notifications and progress are not carried yet.
         event::Event::SettingsChanged(_)
         | event::Event::PaneEffect(_)
         | event::Event::Replaced(_) => return None,
     })
+}
+
+/// What a program says of its progress, or `None` once it takes it back.
+fn progress(said: &pane_effect::Progress) -> Option<Progress> {
+    let state = match said.state() {
+        proto::ProgressState::Remove | proto::ProgressState::Unspecified => return None,
+        proto::ProgressState::Set => ProgressState::Running,
+        proto::ProgressState::Error => ProgressState::Error,
+        proto::ProgressState::Indeterminate => ProgressState::Indeterminate,
+        proto::ProgressState::Pause => ProgressState::Paused,
+    };
+    let percent = said.percent.map(|percent| u8::try_from(percent.min(100)).unwrap_or(100));
+    Some(Progress { state, percent })
 }
 
 fn lost(restored: proto::Restored) -> Restored {
@@ -289,4 +315,55 @@ pub fn cursor(settings: &DaemonSettings) -> proto::Cursor {
 
 fn rgb(color: Rgb) -> u32 {
     u32::from_be_bytes([0, color.red, color.green, color.blue])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn effect(effect: pane_effect::Effect) -> Option<BackendEvent> {
+        event(proto::Event {
+            seq: 1,
+            event: Some(event::Event::PaneEffect(proto::PaneEffect {
+                pane: "p1".to_string(),
+                effect: Some(effect),
+            })),
+        })
+    }
+
+    fn progress(state: proto::ProgressState, percent: Option<u32>) -> Option<BackendEvent> {
+        let mut said = pane_effect::Progress { percent, ..Default::default() };
+        said.set_state(state);
+        effect(pane_effect::Effect::Progress(said))
+    }
+
+    #[test]
+    fn a_programs_effects_reach_the_mirror() {
+        let pane = PaneId::new("p1");
+        assert_eq!(
+            effect(pane_effect::Effect::Bell(pane_effect::Bell {})),
+            Some(BackendEvent::Bell { pane: pane.clone() })
+        );
+        let said = pane_effect::Notification { title: "build".into(), body: "passed".into() };
+        assert_eq!(
+            effect(pane_effect::Effect::Notification(said)),
+            Some(BackendEvent::Notified {
+                pane: pane.clone(),
+                title: "build".into(),
+                body: "passed".into()
+            })
+        );
+        assert_eq!(
+            progress(proto::ProgressState::Set, Some(140)),
+            Some(BackendEvent::Progress {
+                pane: pane.clone(),
+                progress: Some(Progress { state: ProgressState::Running, percent: Some(100) }),
+            }),
+            "a percentage past the end is the end"
+        );
+        assert_eq!(
+            progress(proto::ProgressState::Remove, None),
+            Some(BackendEvent::Progress { pane, progress: None })
+        );
+    }
 }

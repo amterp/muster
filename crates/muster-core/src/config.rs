@@ -571,7 +571,7 @@ const CURSOR_KEYS: [&str; 2] = ["style", "blink"];
 const SHELL_KEYS: [&str; 5] = ["command", "mode", "ssh_env", "ssh_terminfo", "sudo"];
 
 /// The keys `[notifications]` may carry.
-const NOTIFICATION_KEYS: [&str; 3] = ["blocked", "done", "muted"];
+const NOTIFICATION_KEYS: [&str; 4] = ["blocked", "programs", "done", "muted"];
 
 /// Reads a config file's text.
 ///
@@ -639,6 +639,7 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
     let mut notifications = Notifications::default();
     for (key, held) in [
         ("blocked", &mut notifications.blocked),
+        ("programs", &mut notifications.programs),
         ("done", &mut notifications.done),
         ("muted", &mut notifications.muted),
     ] {

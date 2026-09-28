@@ -176,6 +176,45 @@
         "republishes": false,
         "announcesAgentState": "w1:p3"
       }
+    },
+    {
+      "name": "a bell is announced with the pane's agent, and moves nothing else",
+      "why": "Whether it marks the pane is the window's to say, since only the window knows whether somebody is looking. The mark travels with the pane's state, like its facts, and a shell that rings twice a second must not republish the roster each time.",
+      "given": {
+        "change": "rang",
+        "pane": "w1:p1"
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": "w1:p1"
+      }
+    },
+    {
+      "name": "a program's notification moves nothing",
+      "why": "It is a request for somebody's attention, which attention routing decides on and the notifier delivers. Nothing about the arrangement, the roster or the pane's state changed.",
+      "given": {
+        "change": "notified",
+        "pane": "w1:p1"
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": null
+      }
+    },
+    {
+      "name": "progress is announced with the pane's agent",
+      "why": "A build reporting its percentage moves it every few hundred milliseconds, so it travels with the pane's state as the facts do, and republishes nothing.",
+      "given": {
+        "change": "progressChanged",
+        "pane": "w1:p1"
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": "w1:p1"
+      }
     }
   ]
 }
