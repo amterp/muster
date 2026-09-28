@@ -3,6 +3,7 @@
 //! test that reads what it is sent, as `docs/observations/claude-code-2.1.283.md` records Claude
 //! Code's own reading one line per message and saying nothing back.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixListener;
@@ -384,6 +385,51 @@ fn a_window_hears_nothing_waits_once_the_human_is_removed_from_the_group() {
     expect(&mut control, msg(&named("a"), remove), DONE);
     let told = human_notice(&mut window);
     assert_eq!((told.group.as_str(), told.count), ("g", 0));
+}
+
+/// A group whose policy changes may wake the human for what is already there, or no longer:
+/// the window is told what waits under the new one, rather than keeping the old count until
+/// the next message.
+#[test]
+fn a_window_hears_what_waits_for_the_human_under_a_new_policy() {
+    let daemon = daemon();
+    let mut window = daemon.connect();
+    attend(&mut window);
+    let mut control = daemon.connect();
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &named("a"), "a", "g");
+    join(&mut control, &named("b"), "b", "g");
+    for body in ["one", "two", "three"] {
+        expect(&mut control, post(&named("a"), body), DONE);
+        human_notice(&mut window);
+    }
+    let ringing = |names: &[&str]| {
+        let names = names.iter().map(ToString::to_string).collect();
+        let ring = HashMap::from([("*".to_string(), msg_request::Names { names })]);
+        let policy = msg_request::Policy { ring, ..default_policy() };
+        Asked::GroupSet(msg_request::GroupSet { group: "g".to_string(), policy: Some(policy) })
+    };
+
+    expect(&mut control, msg(&named("a"), ringing(&["*"])), DONE);
+    let told = human_notice(&mut window);
+    assert_eq!((told.group.as_str(), told.count), ("g", 0), "the agents' ring kept the banner");
+
+    expect(&mut control, msg(&named("a"), ringing(&["*", "@human"])), DONE);
+    let told = human_notice(&mut window);
+    assert_eq!((told.group.as_str(), told.count), ("g", 3), "ringing the human again said nothing");
+}
+
+/// The default policy, as the schema writes it.
+fn default_policy() -> msg_request::Policy {
+    let names = |names: &[&str]| msg_request::Names {
+        names: names.iter().map(ToString::to_string).collect(),
+    };
+    msg_request::Policy {
+        ring: HashMap::from([("*".to_string(), names(&["*", "@human"]))]),
+        allow: HashMap::from([("*".to_string(), names(&["*"]))]),
+        membership: vec!["*".to_string()],
+        paused: false,
+    }
 }
 
 /// With no window attending, the human is not woken, and what waits is in the snapshot of the
