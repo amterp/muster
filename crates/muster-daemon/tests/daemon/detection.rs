@@ -442,8 +442,8 @@ fn waiting_on(control: &mut Control) -> Option<String> {
 }
 
 /// An agent that ends its turn to wait on work it started has not finished: nothing is marked
-/// unseen while it waits, and its next turn forgets the wait. Read off the screen here, so it
-/// holds for a harness with no hooks.
+/// unseen while it waits, and a later turn that does not say it again forgets the wait as it
+/// ends. Read off the screen here, so it holds for a harness with no hooks.
 #[test]
 fn an_agent_waiting_on_its_own_work_has_not_finished() {
     let home = Home::new("waiting", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
@@ -460,8 +460,8 @@ fn an_agent_waiting_on_its_own_work_has_not_finished() {
     assert_eq!(waiting_on(&mut control).as_deref(), Some("the full gate"));
 
     settle(&mut control, &mut input, "working", proto::AgentState::Working);
-    assert_eq!(waiting_on(&mut control), None, "the next turn forgets the wait");
     settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
+    assert_eq!(waiting_on(&mut control), None, "the next turn forgets the wait as it ends");
     assert!(finished_unseen(&mut control, "p1"), "and ends as any other");
 
     report_waiting(&mut control, "a review");

@@ -1279,6 +1279,7 @@ impl Session {
             Some(_) => return Reply::refused("an agent reports itself working, blocked or idle"),
         };
         let agent = std::mem::take(&mut report.agent);
+        let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
         let record = &mut self.panes[index].record;
         let facts = match facts::apply(record.facts.as_ref(), report) {
             Ok(facts) => facts,
@@ -1287,7 +1288,14 @@ impl Session {
         let facts_changed = record.facts != facts;
         if facts_changed {
             let declared = is_waiting(facts.as_ref()) && !is_waiting(record.facts.as_ref());
+            let withdrawn = !is_waiting(facts.as_ref()) && is_waiting(record.facts.as_ref());
             record.facts = facts;
+            if withdrawn {
+                log::debug(
+                    "daemon.report.waiting_cleared",
+                    fields! { "pane" => record.pane, "by" => "report" },
+                );
+            }
             if declared {
                 // An agent waiting on its own work has not finished.
                 record.finished_unseen = false;
@@ -1299,12 +1307,26 @@ impl Session {
             let record = record.clone();
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
+        let pane = &mut self.panes[index];
+        if says_waiting {
+            pane.wait_declared = true;
+        }
         // Detection decides what the state comes to, and publishes it as any other change.
         if let Some(state) = own_state {
+            if pane.record.agent.as_deref() == Some(agent.as_str()) {
+                pane.reports_turns = true;
+                if state == muster_detect::State::Idle
+                    && settle_wait(&mut pane.record, &mut pane.wait_declared, "reported turn end")
+                {
+                    let record = pane.record.clone();
+                    self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+                }
+            }
             self.panes[index].io.report_state(agent, state);
             return Reply::done();
         }
-        if facts_changed { Reply::done() } else { Reply::already() }
+        // Said again, a wait outlasts one more turn, which is a change even in the same words.
+        if facts_changed || says_waiting { Reply::done() } else { Reply::already() }
     }
 
     /// Clears the finish nobody had seen on each named pane there is. A pane named that is not
@@ -1351,7 +1373,8 @@ impl Session {
             return;
         };
         let name = self.panes[index].record.pane.clone();
-        let record = &mut self.panes[index].record;
+        let pane = &mut self.panes[index];
+        let record = &mut pane.record;
         match report.what {
             Reported::Title(title) => {
                 if record.title != title {
@@ -1393,10 +1416,13 @@ impl Session {
                 // and that report is the new agent's.
                 if record.agent.is_some() && record.agent != agent {
                     record.facts = None;
+                    pane.reports_turns = false;
                 }
                 let turn = Turn::between(record.agent_state(), state);
-                if turn == Turn::Started {
-                    stop_waiting(record);
+                // An agent that reports its own state ends its own turns: a sub-agent's tool
+                // call can read as a turn here after the agent's turn has ended.
+                if turn == Turn::Ended && !pane.reports_turns {
+                    settle_wait(record, &mut pane.wait_declared, "detected turn end");
                 }
                 let waiting = is_waiting(record.facts.as_ref());
                 if turn == Turn::Ended && record.agent == agent {
@@ -2298,14 +2324,22 @@ fn is_waiting(facts: Option<&proto::AgentFacts>) -> bool {
     facts.is_some_and(|facts| facts.waiting.is_some())
 }
 
-/// Forgets what the agent was waiting on, once its next turn has begun: the wait is over, or
-/// the person moved it on.
-fn stop_waiting(record: &mut proto::Pane) {
-    let Some(facts) = record.facts.as_mut() else { return };
-    facts.waiting = None;
+/// At the end of an agent's turn, forgets what it was waiting on unless it said so again during
+/// that turn: its work has woken it and it has finished, or the person moved it on. Says
+/// whether the wait was forgotten.
+fn settle_wait(record: &mut proto::Pane, declared: &mut bool, by: &str) -> bool {
+    if std::mem::replace(declared, false) {
+        return false;
+    }
+    let Some(facts) = record.facts.as_mut() else { return false };
+    if facts.waiting.take().is_none() {
+        return false;
+    }
     if *facts == proto::AgentFacts::default() {
         record.facts = None;
     }
+    log::debug("daemon.report.waiting_cleared", fields! { "pane" => record.pane, "by" => by });
+    true
 }
 
 /// The first of `panes` that none of `tabs` holds.

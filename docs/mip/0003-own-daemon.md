@@ -722,18 +722,25 @@ started, a gate or a build in the background, reads idle, and has not finished. 
 knows the difference: a background task still running looks the same whether it is being waited on
 or was left behind. So before it ends such a turn the agent reports what it is waiting on,
 `"$MUSTER_DAEMON" report --waiting "the full gate"`, and the pane's facts carry it. While they do,
-`finished_unseen` is not set, and declaring it clears one already set. It lasts until the agent's
-next turn: the first working or waiting on you after the pane reads idle, whether a person
-prompted it or the finished work woke it. The turn that declared it keeps it, which matters because
-declaring it is itself a tool call, and a hook reports working after every tool. Two waits outlive
-their work for the same reason. One the agent finishes within the turn that declared it still
-stands when that turn ends, and one on work that never wakes the agent, a CI run elsewhere, stands
-until somebody prompts it; either way the pane is not called done. Telling a declaration the
-agent went on from apart from the working reports that follow any tool call, a background
-sub-agent's included, would need the hooks to say which call each came from, so the limit is
-documented instead: the agent is told to declare it last. The daemon logs
-`daemon.agent.turn_ended` at debug with whether the agent had declared a wait, so how often agents
-do can be counted from the run log.
+`finished_unseen` is not set, and declaring it clears one already set. It lasts until a later
+turn of the agent's ends without the agent saying it again, or until a person prompts it. When
+the finished work wakes the agent, that turn's end clears the wait, unless the agent declares it
+again because something is still running. The turn that declared it keeps it.
+
+Which turn end counts depends on who reports the agent's turns. An agent that reports its own
+state ends its own turns: the plugin's `Stop` hook reports idle, and that report settles the wait.
+A working report is no turn: a background sub-agent's tool call can report working after the
+agent's turn has ended, and so ends no wait. The plugin's `UserPromptSubmit` hook reports the
+prompt with an empty wait, which clears it. For an agent with no hooks, detection's reading of a
+turn's end (working or waiting on you, then idle) settles the wait instead. A pane whose
+declaration this daemon did not see, handed over or restored, keeps its wait through one more turn
+end, so the wait lasts a turn too long rather than too short.
+
+One wait still outlives its work: a wait on something that never wakes the agent, a CI run
+elsewhere, stands until somebody prompts it, and the pane is not called done meanwhile. The daemon
+logs `daemon.agent.turn_ended` at debug with whether the agent had declared a wait, so how often
+agents do can be counted from the run log, and `daemon.report.waiting_cleared` with what cleared
+one.
 
 **When.** A pane is checked every 500 ms with no agent identified and every 300 ms with one. A
 newly identified agent gets three seconds of grace. Working to idle is debounced: an idle that

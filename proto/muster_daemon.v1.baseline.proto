@@ -716,9 +716,9 @@ message AgentFacts {
   // bytes, with no control characters in either.
   map<string, string> other = 5;
   // What the agent says it is waiting on, having ended its turn to wait for work it started: "the
-  // full gate". At most 256 bytes. The daemon clears it when the agent next starts working or
-  // waiting on you after reading idle, which is its next turn, and sets no finished_unseen while
-  // it holds: an agent waiting on its own work has not finished.
+  // full gate". At most 256 bytes. The daemon clears it when a later turn of the agent's ends
+  // without the agent declaring it again, and sets no finished_unseen while it holds: an agent
+  // waiting on its own work has not finished.
   optional string waiting = 6;
 }
 
@@ -878,7 +878,8 @@ message InputEvent {
     oneof action {
       ClearScreen clear_screen = 1;
       Reset reset = 2;
-      // `text:`, `csi:` and `esc:` bindings, already resolved to bytes.
+      // Bytes a person typed that need no encoding: `text:`, `csi:` and `esc:` bindings, already
+      // resolved, and text an input method committed.
       bytes raw = 3;
     }
     // Was the key's own bytes, which only the daemon can encode, since they depend on the pane's

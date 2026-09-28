@@ -106,3 +106,34 @@ fn only_a_session_in_a_muster_pane_is_told_how_to_say_it_is_waiting() {
     assert_eq!(session_start_context(&[("MUSTER_DAEMON", "/bin/true")]), "");
     assert_eq!(session_start_context(&[]), "");
 }
+
+/// A person's prompt ends any wait the agent declared: whatever it was waiting on, the person
+/// has moved it on.
+#[test]
+fn a_prompt_reports_working_and_ends_a_wait() {
+    let scratch = Scratch::new("prompt-hook");
+    let arguments = scratch.0.join("arguments");
+    let daemon = scratch.0.join("daemon");
+    std::fs::write(
+        &daemon,
+        format!("#!/bin/sh\nprintf '[%s]' \"$@\" > '{}'\n", arguments.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let hooks: serde_json::Value = serde_json::from_str(HOOKS).unwrap();
+    let command = hooks["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"].as_str().unwrap();
+
+    let ran = Command::new("/bin/sh")
+        .args(["-c", command])
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("MUSTER_DAEMON", &daemon)
+        .status()
+        .unwrap();
+
+    assert!(ran.success());
+    assert_eq!(
+        std::fs::read_to_string(&arguments).unwrap(),
+        "[report][--agent][claude][--state][working][--waiting][]"
+    );
+}

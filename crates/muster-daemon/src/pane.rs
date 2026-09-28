@@ -548,6 +548,13 @@ pub(crate) struct Pane {
     process: Option<i32>,
     /// Whether that process is another daemon's child, which this one never reaps.
     adopted: bool,
+    /// Whether the agent said what it waits on since its last turn ended, which keeps the wait
+    /// past the end of the turn it was said in. Taken as said for a pane this daemon did not
+    /// see the wait declared in, so a wait lasts a turn too long rather than too short.
+    pub(crate) wait_declared: bool,
+    /// Whether the agent reports its own state, so that its own idle report ends its turns
+    /// rather than detection's reading of the screen.
+    pub(crate) reports_turns: bool,
 }
 
 /// A pane's process, as the daemon holding the pane knows it.
@@ -694,7 +701,16 @@ impl Pane {
                 .map_err(failed)?;
         }
 
-        Ok(Pane { record, serial, io, wake, process, adopted: !child && process.is_some() })
+        Ok(Pane {
+            record,
+            serial,
+            io,
+            wake,
+            process,
+            adopted: !child && process.is_some(),
+            wait_declared: true,
+            reports_turns: false,
+        })
     }
 
     pub(crate) fn process(&self) -> Option<i32> {
