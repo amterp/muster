@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "accept-an-agent-s",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790555246457,
+  "creator": "Alexander Terp",
+  "description": "A nested claude -p, or a tmux server started in a pane, inherits MUSTER_PANE and MUSTER_DAEMON and can report state for the outer agent (documented as a limit in MIP-3 section 8 and the plugin README, with an env -u MUSTER_DAEMON workaround). The daemon could read the sender's pid off the socket (LOCAL_PEERPID, SO_PEERCRED) and accept a state report only when its nearest agent ancestor is the pane's identified agent; that needs a parent lookup and ancestor identification in muster-detect's process probe, and a wrong answer drops a real report.",
+  "id": "a_2XssfzCUV",
+  "parent": "a_2XJ1fUIyr",
+  "position": "ag",
+  "title": "Accept an agent's state report only from the pane's own agent",
+  "type": "enhancement",
+  "updated_at_millis": 1790555246506,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790555246457}
+  ]
+}
