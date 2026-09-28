@@ -131,7 +131,7 @@ pub(crate) fn input_of(input: input_event::Input) -> Option<Input> {
         Event::Send(send) => Some(Input::Send { text: send.text, enter: send.enter }),
         Event::Focus(focus) => Some(Input::Focus(focus.focused)),
         Event::Perform(input_event::Perform { action: Some(action), key }) => match action {
-            perform::Action::Raw(bytes) => Some(Input::Reply(bytes)),
+            perform::Action::Raw(bytes) => Some(Input::Bound(bytes)),
             perform::Action::Reset(_) => Some(Input::Reset),
             perform::Action::ClearScreen(_) => Some(Input::ClearScreen { key: key.map(owned_key) }),
         },

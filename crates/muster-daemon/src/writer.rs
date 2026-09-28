@@ -42,9 +42,11 @@ const FALLBACK_CELL: f64 = 16.0;
 /// Something for a pane's program to read.
 #[derive(Debug)]
 pub(crate) enum Input {
-    /// Bytes as they are: a query's answer, a report the program asked for, or a binding's
-    /// resolved bytes.
+    /// Bytes as they are: a query's answer, or a report the program asked for.
     Reply(Vec<u8>),
+    /// Bytes a person typed that need no encoding, as they are: a `text:`, `csi:` or `esc:`
+    /// binding's, and text an input method committed. Typed, where a reply is not.
+    Bound(Vec<u8>),
     Key(OwnedKey),
     Mouse(MouseEvent),
     Wheel(Wheel),
@@ -86,7 +88,8 @@ impl Input {
     fn is_typed(&self) -> bool {
         matches!(
             self,
-            Input::Key(_)
+            Input::Bound(_)
+                | Input::Key(_)
                 | Input::Mouse(_)
                 | Input::Wheel(_)
                 | Input::Paste { .. }
@@ -303,7 +306,7 @@ impl Writer {
         let mut encoding = poison::lock(&shared, "daemon.pane.encoding");
         let modes = encoding.modes;
         match input {
-            Input::Reply(bytes) => bytes,
+            Input::Reply(bytes) | Input::Bound(bytes) => bytes,
             Input::Key(key) => self.key(&mut encoding, &key),
             Input::Mouse(event) => {
                 if !modes.mouse_tracking {

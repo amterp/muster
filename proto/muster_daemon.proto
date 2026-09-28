@@ -872,7 +872,8 @@ message InputEvent {
     oneof action {
       ClearScreen clear_screen = 1;
       Reset reset = 2;
-      // `text:`, `csi:` and `esc:` bindings, already resolved to bytes.
+      // Bytes a person typed that need no encoding: `text:`, `csi:` and `esc:` bindings, already
+      // resolved, and text an input method committed.
       bytes raw = 3;
     }
     // Was the key's own bytes, which only the daemon can encode, since they depend on the pane's
