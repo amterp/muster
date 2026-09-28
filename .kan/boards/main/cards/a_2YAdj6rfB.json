@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "a-reaches-a-pane",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790597570829,
+  "creator": "Alexander Terp",
+  "description": "focus_asking goes only to panes this window would post a notification for: its own tabs, and those of a closed window. A pane asking in another open window is that window's to go to. The chord could instead bring that window forward and go there, as a banner click does.",
+  "id": "a_2YAdj6rfB",
+  "position": "at",
+  "title": "⌘⇧A reaches a pane another open window holds",
+  "type": "feature",
+  "updated_at_millis": 1790597570829,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790597570829}
+  ]
+}

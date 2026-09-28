@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "an-ssh-master-can",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790597571044,
+  "creator": "Alexander Terp",
+  "description": "Found building the --ssh tier's handover test: a process that exits without dropping its ssh session leaves the ControlMaster running, which holds any pipeline reading its output open. The window resets its session before the test's cleanup now; Muster itself may leave masters behind on a crash.",
+  "id": "a_2YAdjRtMB",
+  "position": "av",
+  "title": "An ssh master can outlive a process that exits without dropping its session",
+  "type": "bug",
+  "updated_at_millis": 1790597571044,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790597571044}
+  ]
+}
