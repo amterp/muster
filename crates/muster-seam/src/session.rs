@@ -3251,8 +3251,9 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
 /// the window opened: its regions, with their widths and the pane each was on, in the places
 /// the arrangement had them among whatever the window holds by now (`Saved::keeping`).
 ///
-/// The keyboard is not moved to them. A daemon arriving seconds after launch finds somebody
-/// already typing, and moving the keyboard would send what they type next to another machine.
+/// Neither the tab on screen nor the keyboard moves, nor which half of any tab the keyboard
+/// would land in. A daemon arriving seconds after launch finds somebody already typing, and
+/// moving the keyboard would send what they type next to another machine.
 fn restore_late(daemon: &DaemonId) {
     {
         let mut session = poison::lock(&SESSION, "session");
@@ -3278,7 +3279,7 @@ fn restore_late(daemon: &DaemonId) {
                 };
                 session.composition.set_weight(id, region.weight);
                 if let Some(pane) = &region.pane {
-                    session.composition.focus_pane(id, pane.clone());
+                    session.composition.set_pane(id, pane.clone());
                 }
                 regions += 1;
             }

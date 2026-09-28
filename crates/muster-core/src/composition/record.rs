@@ -500,6 +500,15 @@ impl Composition {
         self.showing = Some(id);
     }
 
+    /// Says which pane a region last fed, without pointing the keyboard there or bringing its
+    /// tab on screen: for a region put back while somebody may be typing elsewhere.
+    pub fn set_pane(&mut self, region: RegionId, pane: PaneId) {
+        let Some(tab) = self.tab_holding_mut(region) else { return };
+        if let Some(found) = tab.regions.iter_mut().find(|held| held.id == region) {
+            found.pane = Some(pane);
+        }
+    }
+
     /// Points the window's keyboard at a region, keeping whichever pane it last fed.
     pub fn focus_region(&mut self, region: RegionId) {
         let Some(tab) = self.tab_holding_mut(region) else { return };
