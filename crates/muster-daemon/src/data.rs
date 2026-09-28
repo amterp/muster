@@ -26,6 +26,11 @@ const REQUIRED: [&str; 8] = [
 const FIX: &str = "Install the directory beside the daemon, or pass --data with its path; a \
                    checkout builds it with ./dev -d, at deps/ghostty/zig-out/muster-daemon-data.";
 
+/// Where the directory is for a daemon at `executable` when `--data` does not say.
+fn unnamed(executable: &Path) -> PathBuf {
+    executable.with_file_name(NAME)
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Data {
     dir: PathBuf,
@@ -45,8 +50,8 @@ impl Data {
                          {NAME} beside it. The daemon has not started. Pass --data with the \
                          directory's path."
                     )
-                })?
-                .with_file_name(NAME),
+                })
+                .map(|executable| unnamed(&executable))?,
         };
         Data::check(&dir)
     }
@@ -104,6 +109,31 @@ impl Data {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_daemon_built_here_finds_it_beside_itself() {
+        assert_eq!(
+            unnamed(Path::new("/src/muster/target/debug/muster-daemon")),
+            Path::new("/src/muster/target/debug/muster-daemon-data")
+        );
+    }
+
+    #[test]
+    fn a_daemon_in_a_bundle_finds_it_in_the_bundles_resources() {
+        // Where `./dev --bundle` puts it, since a bundle keeps its executables apart from
+        // everything else. `muster-daemon replace` named no directory, and a handoff by hand in
+        // an installed Muster failed for want of one.
+        assert_eq!(
+            unnamed(Path::new(
+                "/Applications/Muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/\
+                 muster-daemon"
+            )),
+            Path::new(
+                "/Applications/Muster.app/Contents/Library/MusterSessions.app/Contents/Resources/\
+                 muster-daemon-data"
+            )
+        );
+    }
 
     #[test]
     fn a_missing_directory_is_called_missing() {
