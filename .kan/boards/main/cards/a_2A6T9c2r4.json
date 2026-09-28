@@ -1,38 +1,44 @@
 {
   "_v": 3,
-  "id": "a_2A6T9c2r4",
-  "alias": "try-out-control",
+  "alias": "tab-then-pane",
   "alias_explicit": false,
-  "title": "try out control scheme: select tab then pane e.g. cmd+2 \u003e cmd+2 selects the 2nd tab \u003e 2nd pane in that tab",
-  "creator": "Alexander Terp",
-  "created_at_millis": 1787041310779,
-  "updated_at_millis": 1788724225813,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
   "comments": [
     {
-      "id": "c_2AAcuicN4",
+      "author": "Alexander Terp",
       "body": "Built on main2 as d6620ea, behind `numbered_chords = \"tab_then_pane\"` in\n~/.muster/config.toml. The default is unchanged, and saving the file switches\nit live either way.\n\nWhat to feel for while driving it:\n\n- Pressing cmd+2 then cmd+3 expecting the third TAB, and landing on the third\n  pane of tab 2. This is the prefix-key tax and it is not fixable inside the\n  scheme. If it bites often, that is the answer.\n- Whether acting on the first press feels right or premature: cmd+2 moves you\n  before you have said what you wanted.\n- Whether the numbers moving in the sidebar is enough to know which state you\n  are in, or whether you end up guessing anyway. There is deliberately no\n  timeout, so a first press waits forever - watch for coming back to the\n  keyboard armed without knowing it.\n- Whether nine tabs is a better nine than nine panes for the windows you\n  actually run.\n\nLeft in in-progress: the card asks for a decision after using it, and that has\nnot happened yet.",
-      "author": "Alexander Terp",
-      "created_at_millis": 1787051218920
+      "created_at_millis": 1787051218920,
+      "id": "c_2AAcuicN4"
     },
     {
-      "id": "c_2AB4I2xXV",
+      "author": "Alexander Terp",
       "body": "**Built and landed; the trying-out has not happened yet, which is the half this card is actually about.** Left in-progress deliberately rather than moved to done - the code is in `main` and green, but nothing has been decided.\n\n`numbered_chords = \"tab_then_pane\"` puts ⌘1-⌘9 on tabs and the press after one of them on the panes inside the tab it named. `panes` stays the default and is exactly what it was.\n\nDecisions made while building it, each reversible and each worth arguing with after a day of driving:\n\n- The first press acts immediately rather than waiting for a second.\n- Nothing times out. A read keeps the tab a press named; anything that changes something takes it back - so a keystroke, an Escape, another chord, a click or a divider drag all end it, and a request added later ends it by default.\n- The numbers move as the indicator: at rest on the tab captions, and on that tab's panes once a chord has named one. Exactly one thing in the window carries numbers at any moment.\n- The nine `focus_pane_N` action names stay, which makes the whole thing cheap to delete. Under the prototype they read as \"the Nth numbered chord\" rather than \"the Nth pane\", which is a small lie the alternative did not justify - renaming nine actions, nine menu titles and nine config spellings is what would have made this expensive to take out.\n\nWhat to feel for: whether a two-stage chord reads as a prefix key in the hand. \"Native feel\" says no prefix key, and the README argues at length for the flat numbering this sits beside. Neither argument can be settled by reading it again.",
-      "author": "Alexander Terp",
-      "created_at_millis": 1787052271262
+      "created_at_millis": 1787052271262,
+      "id": "c_2AB4I2xXV"
     },
     {
-      "id": "c_2LUbSvKAa",
-      "body": "The legibility half is fixed and the prefix-key tax is not (a_2LSUoy7dd, landed). Every pane row now draws its whole chord and nothing moves as you type; pressing cmd+4 turns that tab's pane digits accent blue and changes nothing else. So a pane in a tab you are not looking at has a readable address for the first time, and the accent says which tab you named rather than leaving you to infer it from where the numbers landed.\n\nOne edge worth knowing while you drive it: a tab holding one pane does not arm, so its pane's chord is one press. The row draws a single digit rather than two, because the two-digit version would name a different tab.\n\nWhat this does not touch: pressing cmd+2 then cmd+3 expecting the third tab and landing on the third pane of tab 2. Full chords make the destination legible before you commit, which is the half a display can fix; the tax itself is in the scheme. So the trial can be judged on that alone now.",
       "author": "Alexander Terp",
-      "created_at_millis": 1788724225813
+      "body": "The legibility half is fixed and the prefix-key tax is not (a_2LSUoy7dd, landed). Every pane row now draws its whole chord and nothing moves as you type; pressing cmd+4 turns that tab's pane digits accent blue and changes nothing else. So a pane in a tab you are not looking at has a readable address for the first time, and the accent says which tab you named rather than leaving you to infer it from where the numbers landed.\n\nOne edge worth knowing while you drive it: a tab holding one pane does not arm, so its pane's chord is one press. The row draws a single digit rather than two, because the two-digit version would name a different tab.\n\nWhat this does not touch: pressing cmd+2 then cmd+3 expecting the third tab and landing on the third pane of tab 2. Full chords make the destination legible before you commit, which is the half a display can fix; the tax itself is in the scheme. So the trial can be judged on that alone now.",
+      "created_at_millis": 1788724225813,
+      "id": "c_2LUbSvKAa"
     }
   ],
-  "column": "in-progress",
-  "position": "a0",
+  "created_at_millis": 1787041310779,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-09-28, after a day on it: make numbered_chords = \"tab_then_pane\" the default, and remove the older scheme where cmd+N reaches the Nth pane down the window. Asked whether to keep the old one as an option: no, remove it.\n\ndocs/configuration.md calls tab_then_pane a prototype that \"may be deleted rather than finished\"; this is the decision the other way. What goes with the old scheme: the setting's other value (a config still naming it should be refused with a message saying what replaced it, as the focus_tab_N removal was), its code paths in the core and shell, its tests and corpus cases, and the docs' argument for it. Whether the numbered_chords key stays at all once it has one value is part of the work.",
+  "id": "a_2A6T9c2r4",
+  "position": "Zz",
+  "title": "🎹 tab_then_pane becomes the only numbered-chord scheme",
+  "type": "enhancement",
+  "updated_at_millis": 1790639783357,
   "history": [
     {"field":"column","value":"backlog-lo","at":1787041310779},
     {"field":"column","value":"in-progress","at":1787041483308},
     {"field":"column","value":"next","at":1787047305148},
-    {"field":"column","value":"in-progress","at":1787049242884}
+    {"field":"column","value":"in-progress","at":1787049242884},
+    {"field":"column","value":"next","at":1790639776030}
   ]
 }

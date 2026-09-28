@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "an-agent-can-compact",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790639776473,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-09-28: \"self compaction\", then \"maybe both? Claude Code right now claims it can't self compact but through muster we maybe could.\"\n\nTwo halves:\n- An agent asks Muster to compact it. Claude Code has no tool for /compact, but Muster can type into the agent's own pane; a line typed while the agent is working is queued and runs when its turn ends. A verb (or documented recipe) for this, with a focus argument, and the skill telling agents when to use it.\n- Muster compacts an agent past a threshold on its own, e.g. context over 80% while idle. Muster already knows context used from the statusline hooks (extras/claude-code). Needs a setting, and care never to type into a prompt a person is using: the doorbell's rules (ring only an empty prompt it reads positively) are the model.\n\nRelated: a_2Y6brssqH (muster pane wait on context over 80%).",
+  "id": "a_2YSLgi7gs",
+  "position": "b0M",
+  "title": "🗜️ An agent can compact itself, and Muster can compact one past a threshold",
+  "type": "feature",
+  "updated_at_millis": 1790639776473,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790639776473}
+  ]
+}

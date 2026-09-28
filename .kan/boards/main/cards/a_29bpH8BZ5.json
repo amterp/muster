@@ -7,7 +7,15 @@
   "description": "use ~/src/ghostty as an example for how it should work and the UI",
   "creator": "Alexander Terp",
   "created_at_millis": 1786968279324,
-  "updated_at_millis": 1788359294922,
+  "updated_at_millis": 1790639776214,
+  "comments": [
+    {
+      "id": "c_2YSLgL1J2",
+      "body": "amterp, 2026-09-28: wants this (\"allow mouse move panes around\"): drag a pane to a new place in the layout with the mouse.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1790639776214
+    }
+  ],
   "column": "backlog-hi",
   "position": "a2",
   "history": [

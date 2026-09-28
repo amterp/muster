@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "agents-in-one",
+  "alias_explicit": false,
+  "column": "uncommitted",
+  "created_at_millis": 1790639776577,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-09-28: \"council: encourage agents to organically coordinate if they're working on the same cwd or whatever.\" Then: \"let's talk more about this another time; if implemented poorly it could get anything and subvert the user's intention.\"\n\nNot ready to build. The open question is how agents discover a neighbor (same directory, same repo, same worktree) and what they may do about it without a person's say, so that coordination never overrides what the person asked each agent to do.",
+  "id": "a_2YSLgtM5f",
+  "position": "aP",
+  "title": "🤝 Agents in one directory find each other and coordinate",
+  "type": "feature",
+  "updated_at_millis": 1790639776577,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1790639776577}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "cmd-clicking-a-link",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1790639757103,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-09-28: \"hyperlink clicking doesn't seem to work?\"\n\nlibghostty reports a cmd-click on a link (an OSC 8 hyperlink or a URL it detects) to the app as an open-URL action. The shell's action callback handles only the search actions, so the request is dropped and nothing opens. Ghostty's own macOS app (~/src/ghostty) opens the URL with NSWorkspace; do the same, and check a devenv pane's link opens on the laptop too.",
+  "id": "a_2YSLBTjzT",
+  "position": "a4",
+  "title": "🔗 Cmd-clicking a link in a pane does nothing",
+  "type": "bug",
+  "updated_at_millis": 1790639757103,
+  "history": [
+    {"field":"column","value":"next","at":1790639757103}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-chord-digits-in",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1790639757332,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-09-28: \"more visible pane switch numbers\", meaning the digits beside each row in the agent list (\"they're currently very faint\").\n\nUnder numbered_chords = \"tab_then_pane\" each row shows the chord that reaches it, with the tab digit drawn faint and the pane digit at full weight (docs/configuration.md). In use both read as too faint to find at a glance, which is the point of drawing them. Make them readable in light and dark appearance, keeping the difference between the tab digit and the pane digit.",
+  "id": "a_2YSLBqN6a",
+  "position": "a6",
+  "title": "🔢 The chord digits in the agent list are too faint to read",
+  "type": "enhancement",
+  "updated_at_millis": 1790639757332,
+  "history": [
+    {"field":"column","value":"next","at":1790639757332}
+  ]
+}

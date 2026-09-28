@@ -1,20 +1,29 @@
 {
   "_v": 3,
-  "alias": "restore-a-workspace",
+  "alias": "after-a-daemon",
   "alias_explicit": false,
   "area": [
     "backend"
   ],
-  "column": "uncommitted",
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "amterp, 2026-09-28, confirmed the direction: record what each pane was running (for Claude Code, its session id) and start it again after a daemon restart or a reboot, e.g. claude --resume \u003cid\u003e. The herdr notes above predate muster-daemon, which now owns the session shape and could keep the reference itself. Moved out of uncommitted.",
+      "created_at_millis": 1790639776270,
+      "id": "c_2YSLgRDPS"
+    }
+  ],
   "created_at_millis": 1786646075311,
   "creator": "Alexander Terp",
   "description": "Now concrete rather than speculative, because the measurements exist (observations/herdr-0.8.0.md section 12).\n\nWhat is already true: herdr restores its own session shape across a daemon restart - pane ids, tree, cwds - and loses every process and all scrollback. layout.export/layout.apply round-trip a tree with cwds, though apply is additive rather than reconciling.\n\nWhat a real 'resume' would add on top: per pane, the harness's own session reference, so a restored pane relaunches its agent with --resume rather than fresh. herdr already carries the pointer (pane.report_agent_session, taking agent_session_id or agent_session_path); nothing reports it today.\n\nThe open questions, in the order they matter:\n- Do we commit to a restore feature at all, or is the daemon's own recovery enough? Naming matters here: 'restore layout' promises what it can deliver, 'resume' promises conversation state we cannot.\n- Who reports the agent session reference? Muster is well placed to, but inferring one by reading agent output is the agent-framework non-goal. Only a reference the harness hands over is metadata.\n- Cross-daemon restore is ours by elimination - herdr's export cannot describe a workspace spanning a laptop and a devenv. Is that worth building before multi-daemon exists at all?\n\nMost of the leverage is upstream. Material for a_26BJbJeZL.",
   "id": "a_27QdHGMeC",
-  "position": "aC",
-  "title": "Restore a workspace: how far do we go, and whose job is it?",
+  "position": "!!!!!F",
+  "title": "🔁 After a daemon restart or reboot, each pane's agent resumes where it was",
   "type": "chore",
-  "updated_at_millis": 1786646075311,
+  "updated_at_millis": 1790639776367,
   "history": [
-    {"field":"column","value":"uncommitted","at":1786646075311}
+    {"field":"column","value":"uncommitted","at":1786646075311},
+    {"field":"column","value":"backlog-hi","at":1790639776367}
   ]
 }
