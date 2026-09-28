@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "a-group-s-policy-can",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790619584799,
+  "creator": "Alexander Terp",
+  "description": "Policies and muster msg group add refuse name@machine, so a directed council cannot name a devenv agent (as director or member), and a group whose membership is not '*' cannot be joined from another machine at all. @human already means the human on any machine.",
+  "id": "a_2YJsPVYNr",
+  "parent": "a_2Y3ODvuwa",
+  "position": "b0J",
+  "title": "A group's policy can name a member on another machine",
+  "type": "feature",
+  "updated_at_millis": 1790619584799,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790619584799}
+  ]
+}
