@@ -44,6 +44,7 @@ use muster_daemon_client::{
     environment, handover, install as remote_install, launch, records, remote,
 };
 use muster_daemon_proto::install;
+use muster_daemon_proto::launch::LAUNCH_PATIENCE;
 use muster_ssh::{Forward, State as TunnelState, Tunnel, remote_environment};
 
 use crate::bridge_link::{PaneLink, Reports};
@@ -625,13 +626,16 @@ fn remote_handover(
 /// Asks an older daemon, on a thread of its own, to hand its panes to this build's daemon.
 ///
 /// Off the window's way, because the new daemon's first launch can take most of a minute. The
-/// follower already connected hears `Replaced` and connects again by itself. A refusal is said
-/// once, as a problem, and not asked again until the next launch: the daemon that refused keeps
-/// every pane exactly as it was, and asking again in a loop would only repeat the refusal.
+/// follower already connected hears `Replaced` and connects again by itself. Asked once, and
+/// not again until the next launch: a daemon that refused keeps every pane exactly as it was,
+/// and asking again in a loop would only repeat the refusal.
 fn hand_over_later(daemon: &DaemonId, socket: String, handover: Handover) {
     let daemon = daemon.clone();
     let spawned =
         std::thread::Builder::new().name(format!("muster-handover-{daemon}")).spawn(move || {
+            if !finished_restoring(&daemon) {
+                return;
+            }
             log::info(
                 "daemon.handover.asking",
                 fields! {
@@ -641,56 +645,13 @@ fn hand_over_later(daemon: &DaemonId, socket: String, handover: Handover) {
                     "program" => handover.program.display().to_string(),
                 },
             );
-            match handover::hand_over(
+            let asked = handover::hand_over(
                 Path::new(&socket),
                 &handover.program,
                 handover.data.as_deref(),
                 handover.instance,
-            ) {
-                Ok(handover::Handed::Over(serving) | handover::Handed::ByAnother(serving)) => log::info(
-                    "daemon.handed_over",
-                    fields! {
-                        "daemon" => daemon.to_string(),
-                        "from" => &handover.running,
-                        "to" => serving.daemon_version,
-                    },
-                ),
-                Err(not_handed) => {
-                    let refusal = match not_handed {
-                        handover::NotHanded::Refused(reason) | handover::NotHanded::Gone(reason) => {
-                            reason
-                        }
-                        handover::NotHanded::Unanswered => "it did not answer".to_string(),
-                    };
-                    log::warn(
-                        "daemon.handover.refused",
-                        fields! {
-                            "daemon" => daemon.to_string(),
-                            "running" => &handover.running,
-                            "ours" => handover::OURS,
-                            "detail" => &refusal,
-                            "impact" => "the older daemon keeps serving every pane as it was; \
-                                         fixes in the newer daemon do not reach them until it \
-                                         is handed over or restarted",
-                            "check" => "the older daemon's log beside its socket, which says \
-                                        why it refused; Muster asks again at its next launch",
-                        },
-                    );
-                    raise_problem(
-                        &format!("handover:{daemon}"),
-                        Severity::Warning,
-                        &format!(
-                            "The daemon {daemon} is version {} and this Muster carries {}, and \
-                             it would not hand its panes to the newer one: {refusal}. Its panes \
-                             keep running and nothing in them is lost; the newer daemon's fixes \
-                             reach them only once it hands over, which Muster asks for again \
-                             at its next launch.",
-                            handover.running,
-                            handover::OURS,
-                        ),
-                    );
-                }
-            }
+            );
+            said_how_it_went(&daemon, &handover.running, asked);
         });
     if let Err(error) = spawned {
         log::warn(
@@ -701,6 +662,144 @@ fn hand_over_later(daemon: &DaemonId, socket: String, handover: Handover) {
                 "check" => "whether this process has run out of threads",
             },
         );
+    }
+}
+
+/// Waits until `daemon` has finished bringing back its saved tabs, which is when it will
+/// consider handing them over: before then it refuses, and a refusal that would have been a
+/// yes seconds later would stand until the next launch.
+///
+/// False when the window stopped following it meanwhile, or it took longer than a launch may.
+fn finished_restoring(daemon: &DaemonId) -> bool {
+    let deadline = std::time::Instant::now() + LAUNCH_PATIENCE;
+    loop {
+        let restoring = {
+            let session = poison::lock(&SESSION, "session");
+            let Some(backend) = session.backends.get(daemon) else { return false };
+            poison::lock(&backend.mirror, "mirror").restoring()
+        };
+        if !restoring {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            log::warn(
+                "daemon.handover.unasked",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "detail" => "it was still bringing back its saved tabs",
+                    "impact" => "the older daemon keeps serving every pane and is not asked to \
+                                 hand them over this launch",
+                    "check" => "the daemon's log beside its socket, for what it is restoring; \
+                                Muster asks again at its next launch",
+                },
+            );
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+/// Logs how a handoff this window asked for went, and says so as a problem when the older
+/// daemon is still serving or has gone. Each problem claims only what is known.
+fn said_how_it_went(
+    daemon: &DaemonId,
+    running: &str,
+    asked: Result<handover::Handed, handover::NotHanded>,
+) {
+    let key = format!("handover:{daemon}");
+    let ours = handover::OURS;
+    match asked {
+        Ok(handover::Handed::Over(serving)) => log::info(
+            "daemon.handed_over",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "from" => running,
+                "to" => serving.daemon_version,
+            },
+        ),
+        Ok(handover::Handed::ByAnother(serving)) => log::info(
+            "daemon.handover.by_another",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "from" => running,
+                "to" => serving.daemon_version,
+            },
+        ),
+        Err(handover::NotHanded::Kept(reason)) => {
+            log::warn(
+                "daemon.handover.refused",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "running" => running,
+                    "ours" => ours,
+                    "detail" => &reason,
+                    "impact" => "the older daemon keeps serving every pane as it was; fixes in \
+                                 the newer daemon do not reach them until it is handed over or \
+                                 restarted",
+                    "check" => "the older daemon's log beside its socket, which says why it \
+                                refused; Muster asks again at its next launch",
+                },
+            );
+            raise_problem(
+                &key,
+                Severity::Warning,
+                &format!(
+                    "The daemon {daemon} is version {running} and this Muster carries {ours}, and \
+                     it did not hand its panes to the newer one: {reason}. Its panes keep \
+                     running and nothing in them is lost; the newer daemon's fixes reach them \
+                     only once it hands over, which Muster asks for again at its next launch."
+                ),
+            );
+        }
+        Err(handover::NotHanded::Gone(detail)) => {
+            log::warn(
+                "daemon.handover.gone",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "running" => running,
+                    "ours" => ours,
+                    "detail" => &detail,
+                    "impact" => "nothing serves that daemon's socket, so its panes may have \
+                                 ended with it; the window reconnects if a daemon serves there \
+                                 again",
+                    "check" => "the older daemon's log and stderr beside its socket, for why it \
+                                stopped, and whether its pane processes are still running",
+                },
+            );
+            raise_problem(
+                &key,
+                Severity::Warning,
+                &format!(
+                    "Muster asked the daemon {daemon} (version {running}) to hand its panes to \
+                     the one this Muster carries ({ours}), and it stopped answering: {detail}. \
+                     Its log beside its socket says why."
+                ),
+            );
+        }
+        Err(handover::NotHanded::Unanswered) => {
+            log::warn(
+                "daemon.handover.unanswered",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "running" => running,
+                    "ours" => ours,
+                    "impact" => "the handoff may still be under way; the window reconnects by \
+                                 itself if it goes through, and keeps the older daemon if not",
+                    "check" => "the older daemon's log beside its socket, for how far the \
+                                handoff got",
+                },
+            );
+            raise_problem(
+                &key,
+                Severity::Warning,
+                &format!(
+                    "Muster asked the daemon {daemon} (version {running}) to hand its panes to \
+                     the one this Muster carries ({ours}), and it has not answered. The handoff \
+                     may still be under way; the window reconnects by itself if it goes \
+                     through."
+                ),
+            );
+        }
     }
 }
 

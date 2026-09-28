@@ -35,7 +35,7 @@ fn a_refused_handoff_leaves_the_daemon_serving_and_says_why() {
     let before = daemon.connect().welcome().clone();
 
     let refused = match ask(&daemon, before.instance) {
-        Err(NotHanded::Refused(reason)) => reason,
+        Err(NotHanded::Kept(reason)) => reason,
         other => panic!("a handoff the successor refused was reported as {other:?}"),
     };
 

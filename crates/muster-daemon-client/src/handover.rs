@@ -5,7 +5,7 @@
 //! adopts a daemon older than the one it carries; a daemon that refuses keeps serving as it was.
 
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_daemon_proto::launch::LAUNCH_PATIENCE;
 use muster_daemon_proto::{self as proto, ConnectionKind, Welcome};
@@ -64,61 +64,119 @@ pub enum Handed {
     /// This call asked, and the daemon that answers now is the one it asked for.
     Over(Welcome),
     /// Somebody else asked first - another window, or this app before a relaunch - and the
-    /// daemon adopted has already handed over or is doing so.
+    /// daemon found has handed over to the one that answers now.
     ByAnother(Welcome),
 }
 
 /// Why a handoff did not go through, each saying only what is known.
 #[derive(Debug)]
 pub enum NotHanded {
-    /// The daemon answered no, with its reason, and serves every pane as it was.
-    Refused(String),
+    /// The daemon found still serves every pane as it was: it refused, with this reason, or
+    /// could not be asked.
+    Kept(String),
     /// Nothing answers on the socket afterwards, so the daemon is gone rather than refusing.
     Gone(String),
     /// No answer came within the patience, so the handoff may still be under way.
     Unanswered,
 }
 
+/// What a daemon says when it is asked to hand over while another handoff is under way.
+///
+/// Matched by its text, because every daemon this is ever said by is older than this build:
+/// a distinct outcome added now would reach none of them, and the text is fixed in the
+/// binaries that already say it.
+const UNDER_WAY: &str = "the daemon is already being replaced";
+
 /// Asks the daemon on `socket` to hand every pane to `program`, and waits for it to answer.
 ///
-/// `adopted` is the instance the caller found there and decided to ask about. The follower
-/// already connected there goes on by itself: it hears `Replaced` and connects again, as it
-/// does after any handoff.
+/// `found` is the instance the caller adopted and decided to ask about, and only that one is
+/// asked. Several windows, or a relaunch, can adopt the same older daemon; one that asked after
+/// another's handoff would otherwise ask the new daemon to hand every pane to a copy of itself.
+///
+/// The follower already connected there goes on by itself: it hears `Replaced` and connects
+/// again, as it does after any handoff.
 pub fn hand_over(
     socket: &Path,
     program: &Path,
     data: Option<&Path>,
-    adopted: u64,
+    found: u64,
 ) -> Result<Handed, NotHanded> {
-    let _ = adopted;
-    let control = Control::open(socket, "muster handover", |_, _| {})
-        .map_err(|error| NotHanded::Refused(format!("could not reach the daemon to ask ({error})")))?;
-    let before = control.welcome().instance;
+    let control = match Control::open(socket, "muster handover", |_, _| {}) {
+        Ok(control) => control,
+        // A daemon handing over takes no connections until its successor serves, so one made
+        // meanwhile can stall; who serves once that is over says which it was.
+        Err(error) => {
+            return settled(socket, found, ANSWER_PATIENCE, &format!("could not ask it ({error})"));
+        }
+    };
+    if control.welcome().instance != found {
+        return Ok(Handed::ByAnother(control.welcome().clone()));
+    }
     let answered = control.replace(program, data).wait(ANSWER_PATIENCE);
     drop(control);
-    let refused = |reason: String| NotHanded::Refused(reason);
     match answered {
         Ok(answer) if answer.outcome() == proto::Outcome::Done => {
-            serving(socket, before).map(Handed::Over).map_err(refused)
+            serving_after(socket, found, "it said the handoff was done")
         }
-        Ok(answer) => Err(refused(if answer.reason.is_empty() {
+        Ok(answer) if answer.reason == UNDER_WAY => settled(
+            socket,
+            found,
+            ANSWER_PATIENCE,
+            "somebody else had asked it to hand over, and that handoff did not go through",
+        ),
+        Ok(answer) => Err(NotHanded::Kept(if answer.reason.is_empty() {
             format!("it answered {:?} and gave no reason", answer.outcome())
         } else {
             answer.reason
         })),
-        Err(Unanswered::Ended) => serving(socket, before).map(Handed::Over).map_err(refused),
+        // The old daemon exits once it has answered, and a connection it ended first may have
+        // taken the answer with it; who serves now says whether it went through.
+        Err(Unanswered::Ended) => {
+            serving_after(socket, found, "it ended the connection without answering")
+        }
         Err(Unanswered::TimedOut) => Err(NotHanded::Unanswered),
     }
 }
 
-/// Who serves `socket` after a handoff, which went through when that is no longer `before`.
-fn serving(socket: &Path, before: u64) -> Result<Welcome, String> {
-    let (_, welcome) = crate::dial(socket, ConnectionKind::Control, "muster handover")
-        .map_err(|error| format!("nothing answered on the socket after the handoff ({error})"))?;
-    if welcome.instance == before {
-        return Err("the same daemon is still serving, so the handoff did not happen".to_string());
+/// Who serves `socket` right after this call's handoff: the one asked for, when that is no
+/// longer `found`.
+fn serving_after(socket: &Path, found: u64, said: &str) -> Result<Handed, NotHanded> {
+    match serving(socket) {
+        Ok(welcome) if welcome.instance != found => Ok(Handed::Over(welcome)),
+        Ok(_) => Err(NotHanded::Kept(format!("{said}, and the same daemon is still serving"))),
+        Err(error) => Err(NotHanded::Gone(format!("{said}, and then {error}"))),
     }
-    Ok(welcome)
+}
+
+/// Who serves `socket` once somebody else's handoff is over: waits up to `patience` for a
+/// daemon other than `found`, and says why nothing changed when none comes.
+fn settled(socket: &Path, found: u64, patience: Duration, why: &str) -> Result<Handed, NotHanded> {
+    let deadline = Instant::now() + patience;
+    loop {
+        let now = serving(socket);
+        match &now {
+            Ok(welcome) if welcome.instance != found => {
+                return Ok(Handed::ByAnother(welcome.clone()));
+            }
+            _ if Instant::now() >= deadline => {
+                return Err(match now {
+                    Ok(_) => NotHanded::Kept(why.to_string()),
+                    Err(error) => NotHanded::Gone(format!("{why}, and then {error}")),
+                });
+            }
+            _ => std::thread::sleep(SETTLING),
+        }
+    }
+}
+
+/// How often [`settled`] asks who serves.
+const SETTLING: Duration = Duration::from_millis(200);
+
+/// Who answers on `socket`.
+fn serving(socket: &Path) -> Result<Welcome, String> {
+    crate::dial(socket, ConnectionKind::Control, "muster handover")
+        .map(|(_, welcome)| welcome)
+        .map_err(|error| format!("nothing answered on the socket ({error})"))
 }
 
 #[cfg(test)]
