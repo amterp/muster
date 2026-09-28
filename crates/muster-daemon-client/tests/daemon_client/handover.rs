@@ -120,18 +120,21 @@ fn two_windows_asking_at_once_hand_over_once_and_neither_is_refused() {
     std::thread::sleep(std::time::Duration::from_secs(1));
     daemon.resume();
 
-    let mut answers = [
-        first.join().expect("the first window's thread panicked"),
-        second.join().expect("the second window's thread panicked"),
-    ];
-    answers.sort_by_key(|answer| !matches!(answer, Ok(Handed::Over(_))));
-    let [done, other] = answers;
-    let done = handed(done);
-    daemon.served_by(done.pid.cast_signed());
-    assert!(
-        matches!(&other, Ok(Handed::ByAnother(welcome)) if welcome.instance == done.instance),
-        "one window reported {other:?} while the other's handoff went through"
-    );
+    let first = first.join().expect("the first window's thread panicked");
+    let second = second.join().expect("the second window's thread panicked");
+    // Which of the two did it is not always knowable: a window whose connection the old daemon
+    // ended as it handed over cannot tell its own request from the other's. That they agree on
+    // one new daemon, and that neither reports a refusal, is.
+    let serving = |answer: &Result<Handed, NotHanded>| match answer {
+        Ok(Handed::Over(welcome) | Handed::ByAnother(welcome)) => Some(welcome.clone()),
+        Err(_) => None,
+    };
+    let (Some(one), Some(other)) = (serving(&first), serving(&second)) else {
+        panic!("a window reported a refusal while a handoff went through: {first:?}, {second:?}");
+    };
+    daemon.served_by(one.pid.cast_signed());
+    assert_eq!(one.instance, other.instance, "the two windows handed over twice");
+    assert_eq!(daemon.connect().welcome().instance, one.instance, "it was handed over again");
 }
 
 /// A window asking, on a thread of its own, about the daemon it found.
