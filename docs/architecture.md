@@ -873,11 +873,6 @@ did not happen is a refusal, and answering it with a success would tell the call
 herdr, this took reading a reason herdr put beside an ordinary answer, since herdr answered a zoom, swap, move or
 resize it had considered and not performed as a success, and the one symptom was a window that did not move.
 
-A refusal that proves the window is stale is worth more than a message. Muster picks between swapping two panes and
-moving one by reading which tabs its mirror has them in, so a daemon refusing that choice has said the mirror is
-wrong - which is `Refusal::NotThere` and costs a fresh snapshot, the same answer as a pane the daemon does not hold
-at all.
-
 ## Durability
 
 What survives what. Written down because "sessions outlive everything" reads as one guarantee and is really four,
