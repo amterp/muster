@@ -73,6 +73,9 @@ pub struct Retry {
     /// condition that stays true has nothing new to say, which is the rule the problem list is
     /// built on.
     pub report: bool,
+
+    /// Whether this failure is worth a line in the run log.
+    pub logged: bool,
 }
 
 /// One connection's run of failures.
@@ -100,7 +103,12 @@ impl Attempts {
         let report = self.failures >= PATIENCE && !self.reported;
         self.reported |= report;
         let step = usize::try_from(self.failures - 1).unwrap_or(usize::MAX);
-        Retry { attempt: self.failures, after: BACKOFF_NS[step.min(BACKOFF_NS.len() - 1)], report }
+        Retry {
+            attempt: self.failures,
+            after: BACKOFF_NS[step.min(BACKOFF_NS.len() - 1)],
+            report,
+            logged: true,
+        }
     }
 
     /// The connection is up right now, and something checked rather than assumed it.

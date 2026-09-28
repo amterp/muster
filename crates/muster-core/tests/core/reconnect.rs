@@ -15,6 +15,17 @@ fn reconnect_conformance() {
     let corpus = Conformance::load("reconnect.json");
 
     let ran = corpus.run(|given| {
+        // A long run of failures, for what reaches the run log: spelled as a count, since
+        // forty-five identical steps would say nothing more.
+        if let Some(failures) = given.get("failures").and_then(Value::as_u64) {
+            let mut attempts = Attempts::new();
+            let logged_at: Vec<Value> = (0..failures)
+                .map(|_| attempts.failed())
+                .filter(|retry| retry.logged)
+                .map(|retry| json!(retry.attempt))
+                .collect();
+            return Ok(fields([("logged_at", Some(Value::Array(logged_at)))]));
+        }
         let mut attempts = Attempts::new();
         let mut answers = Vec::new();
         let mut recovered = Vec::new();
