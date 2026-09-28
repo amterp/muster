@@ -1400,8 +1400,8 @@ fn assemble_daemon_data():
     quiet $`cp {compiled}/ghostty.terminfo {staged}/terminfo/ghostty.terminfo`
     // Muster's own, beside Ghostty's files rather than in them (the README says which is which).
     quiet $`mkdir -p {staged}/bin`
-    quiet $`cp packaging/muster-daemon-data/bin/ghostty {staged}/bin/ghostty`
-    quiet $`chmod 755 {staged}/bin/ghostty`
+    quiet $`cp packaging/muster-daemon-data/bin/ghostty packaging/muster-daemon-data/bin/muster {staged}/bin/`
+    quiet $`chmod 755 {staged}/bin/ghostty {staged}/bin/muster`
     quiet $`mkdir -p {staged}/shell-integration/fish`
     quiet $`cp -R {integration}/bash {integration}/zsh {staged}/shell-integration/`
     quiet $`cp -R {integration}/fish/vendor_conf.d {staged}/shell-integration/fish/`

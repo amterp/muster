@@ -46,6 +46,10 @@ pub(crate) struct Reachable {
 const NOT_INHERITED: [&str; 6] =
     [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND, DAEMON, DAEMON_SOCKET, "MUSTER_LOG_FILE"];
 
+/// Where Ghostty's integration finds the `ghostty` its ssh features run, and the directory its
+/// `path` feature appends to the PATH (`Data::bin`).
+const BIN_DIR: &str = "GHOSTTY_BIN_DIR";
+
 /// Variables from a Ghostty the daemon was started in - its resources, its binary, its surface -
 /// which describe that terminal rather than this pane. A requested copy is still honored.
 const GHOSTTY_PREFIX: &str = "GHOSTTY_";
@@ -60,7 +64,8 @@ pub(crate) fn start(
     scripts: &Path,
 ) -> (Vec<String>, Vec<(OsString, OsString)>) {
     let integration = shell_integration::for_shell(shell, &environment, scripts);
-    let argv = argv(shell, login, runs_command, &integration);
+    let commands = environment.iter().any(|(name, value)| name == BIN_DIR && !value.is_empty());
+    let argv = argv(shell, login, runs_command, commands, &integration);
     // A command's shell runs it clean; the integration is for the shell it becomes, and the
     // exec line carries it there (`argv`).
     if !runs_command {
@@ -91,13 +96,27 @@ pub(crate) fn start(
 /// command exports the integration's variables itself just before its `exec`, rather than
 /// handing them to `env`: `env` would be found through a `PATH` the command may have changed,
 /// and reads any argument containing `=` as another variable, a shell's path included.
-fn argv(shell: &str, login: bool, runs_command: bool, integration: &Integration) -> Vec<String> {
+///
+/// Without the integration, nothing gives the command the `path` feature either, so with
+/// `commands` the script first appends [`BIN_DIR`] to the PATH as that feature would. It runs
+/// after the login profile, which a `-l -c` shell reads before its script.
+fn argv(
+    shell: &str,
+    login: bool,
+    runs_command: bool,
+    commands: bool,
+    integration: &Integration,
+) -> Vec<String> {
     let flags: &[&str] = if login { &["-l", "-i"] } else { &["-i"] };
     let mut argv = vec![shell.to_string()];
     if runs_command {
         let language = Language::of(shell);
         argv.extend(flags.iter().map(|flag| (*flag).to_string()));
-        let mut script = vec![format!("{} \"${PANE_COMMAND}\"", language.evaluate())];
+        let mut script = Vec::new();
+        if commands {
+            script.push(language.append_to_path(BIN_DIR));
+        }
+        script.push(format!("{} \"${PANE_COMMAND}\"", language.evaluate()));
         script.extend(
             integration.environment.iter().map(|(name, value)| language.export(name, value)),
         );
@@ -155,6 +174,20 @@ impl Language {
         }
     }
 
+    /// Appends the directory `variable` names to the PATH unless it is there already, as
+    /// Ghostty's `path` feature does. `variable` is always [`BIN_DIR`], so the line is fixed text.
+    fn append_to_path(self, variable: &str) -> String {
+        match self {
+            Language::Posix | Language::Zsh => format!(
+                "case \":$PATH:\" in *\":${variable}:\"*) ;; \
+                 *) export PATH=\"$PATH:${variable}\" ;; esac"
+            ),
+            Language::Fish => {
+                format!("contains -- \"${variable}\" $PATH; or set -gx PATH $PATH \"${variable}\"")
+            }
+        }
+    }
+
     /// Exports `name` to what the shell execs. `name` is one of the integration's own, never
     /// anything a request supplied, so it needs no quoting.
     fn export(self, name: &str, value: &str) -> String {
@@ -180,8 +213,11 @@ pub(crate) const GHOSTTY_VERSION: &str = env!("MUSTER_GHOSTTY_VERSION");
 /// given the entry and the terminal's name, through `$GHOSTTY_BIN_DIR/ghostty +ssh`, which is
 /// Muster's stand-in (`data.rs`). `sudo` (off unless set on) wraps `sudo` so that it keeps
 /// `$TERMINFO`, which sudo's reset environment would drop; that needs a sudoers rule allowing
-/// SETENV, and breaks sudo under one that does not, which is why it is off. `path`, which would
-/// put that directory on the PATH, stays off: it holds no Ghostty.
+/// SETENV, and breaks sudo under one that does not, which is why it is off. `path` appends that
+/// directory to the PATH once the login profile has run, for the `muster` it holds: a profile
+/// can set PATH outright, as Debian's /etc/profile does, and drop the commands directory the
+/// daemon was handed. The stand-in `ghostty` comes with it, last, and passes anything but `+ssh`
+/// to a real one earlier on the PATH.
 ///
 /// `cursor` makes every prompt set a bar cursor, blinking or steady as `cursor-style-blink` is,
 /// which is Ghostty's rule and applies here while the app's `[cursor]` names no shape. A shape it
@@ -195,6 +231,7 @@ fn shell_features(cursor: Option<&proto::Cursor>, shell: &proto::Shell) -> Strin
     if !named {
         features.push(if blink { "cursor:blink" } else { "cursor:steady" });
     }
+    features.push("path");
     if shell.ssh_env.unwrap_or(true) {
         features.push("ssh-env");
     }
@@ -271,7 +308,7 @@ pub(crate) fn environment(
     {
         put(&mut environment, "TERMINFO", home);
     }
-    put(&mut environment, "GHOSTTY_BIN_DIR", data.bin());
+    put(&mut environment, BIN_DIR, data.bin());
     if let Some(daemon) = &reachable.daemon {
         put(&mut environment, DAEMON, daemon);
     }
@@ -343,20 +380,23 @@ mod tests {
     #[test]
     fn a_shell_alone_is_interactive_and_login_unless_asked_otherwise() {
         assert_eq!(
-            argv("/bin/zsh", true, false, &Integration::default()),
+            argv("/bin/zsh", true, false, false, &Integration::default()),
             ["/bin/zsh", "-l", "-i"]
         );
-        assert_eq!(argv("/bin/zsh", false, false, &Integration::default()), ["/bin/zsh", "-i"]);
+        assert_eq!(
+            argv("/bin/zsh", false, false, false, &Integration::default()),
+            ["/bin/zsh", "-i"]
+        );
     }
 
     #[test]
     fn a_command_is_evaluated_and_then_the_shell_becomes_itself() {
         assert_eq!(
-            argv("/bin/zsh", true, true, &Integration::default()),
+            argv("/bin/zsh", true, true, false, &Integration::default()),
             ["/bin/zsh", "-l", "-i", "-c", "eval \"$MUSTER_PANE_COMMAND\"\nexec '/bin/zsh' -l -i"]
         );
         assert_eq!(
-            argv("/opt/it's/fish", false, true, &Integration::default()),
+            argv("/opt/it's/fish", false, true, false, &Integration::default()),
             [
                 "/opt/it's/fish",
                 "-i",
@@ -365,7 +405,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            argv("/bin/sh", true, true, &Integration::default()),
+            argv("/bin/sh", true, true, false, &Integration::default()),
             [
                 "/bin/sh",
                 "-l",
@@ -532,20 +572,20 @@ mod tests {
         let cursor = |style, blink| proto::Cursor { style: style as i32, blink };
         let unnamed = proto::CursorStyle::Unspecified;
         let default = proto::Shell::default();
-        assert_eq!(shell_features(None, &default), "cursor:blink,ssh-env,ssh-terminfo,title");
+        assert_eq!(shell_features(None, &default), "cursor:blink,path,ssh-env,ssh-terminfo,title");
         assert_eq!(
             shell_features(Some(&cursor(unnamed, None)), &default),
-            "cursor:blink,ssh-env,ssh-terminfo,title"
+            "cursor:blink,path,ssh-env,ssh-terminfo,title"
         );
         assert_eq!(
             shell_features(Some(&cursor(unnamed, Some(false))), &default),
-            "cursor:steady,ssh-env,ssh-terminfo,title"
+            "cursor:steady,path,ssh-env,ssh-terminfo,title"
         );
         let block = cursor(proto::CursorStyle::Block, Some(false));
-        assert_eq!(shell_features(Some(&block), &default), "ssh-env,ssh-terminfo,title");
+        assert_eq!(shell_features(Some(&block), &default), "path,ssh-env,ssh-terminfo,title");
         assert_eq!(
             shell_features(Some(&cursor(proto::CursorStyle::Bar, None)), &default),
-            "ssh-env,ssh-terminfo,title"
+            "path,ssh-env,ssh-terminfo,title"
         );
     }
 

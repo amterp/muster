@@ -43,7 +43,10 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
             std::fs::read_to_string(&out).ok().filter(|text| text.ends_with('\n'))
         })
     };
-    assert_eq!(features(&mut control, "p1", "t1"), "cursor:blink,ssh-env,ssh-terminfo,title\n");
+    assert_eq!(
+        features(&mut control, "p1", "t1"),
+        "cursor:blink,path,ssh-env,ssh-terminfo,title\n"
+    );
 
     let steady =
         proto::Cursor { style: proto::CursorStyle::Unspecified.into(), blink: Some(false) };
@@ -53,7 +56,10 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
         session(proto::session_request::Request::SetCursor(set)),
         proto::Outcome::Done,
     );
-    assert_eq!(features(&mut control, "p2", "t2"), "cursor:steady,ssh-env,ssh-terminfo,title\n");
+    assert_eq!(
+        features(&mut control, "p2", "t2"),
+        "cursor:steady,path,ssh-env,ssh-terminfo,title\n"
+    );
 
     let bar = proto::Cursor { style: proto::CursorStyle::Bar.into(), blink: None };
     let set = proto::SetCursor { cursor: Some(bar) };
@@ -62,7 +68,7 @@ fn the_prompt_cursor_follows_the_cursor_the_app_sent() {
         session(proto::session_request::Request::SetCursor(set)),
         proto::Outcome::Done,
     );
-    assert_eq!(features(&mut control, "p3", "t3"), "ssh-env,ssh-terminfo,title\n");
+    assert_eq!(features(&mut control, "p3", "t3"), "path,ssh-env,ssh-terminfo,title\n");
 }
 
 #[test]

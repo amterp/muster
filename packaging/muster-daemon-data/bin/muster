@@ -1,0 +1,14 @@
+#!/bin/sh
+# Muster's, and not Ghostty's (README.md). Ghostty's shell integration appends this directory to
+# a pane's PATH once the login profile has run, which a PATH the daemon hands a shell does not
+# survive: Debian's /etc/profile sets PATH outright. So `muster` is found here too, and runs the
+# one in Muster's own commands directory, which is the one a pane would have found first.
+commands="${MUSTER_HOME:-$HOME/.muster}/bin"
+if [ -x "$commands/muster" ]; then
+    exec "$commands/muster" "$@"
+fi
+echo "muster: there is no $commands/muster for this to run." >&2
+echo "  Impact: nothing Muster's CLI does is reachable from this pane by that name." >&2
+echo "  Fix: open Muster once on this machine, or attach it from a Muster window over ssh;" >&2
+echo "  either puts the CLI there." >&2
+exit 127
