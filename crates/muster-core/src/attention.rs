@@ -408,17 +408,13 @@ impl Attention {
             self.raised.remove(pane);
             self.notes.remove(pane);
         }
-        let heard: Vec<PaneKey> = self
-            .rang
-            .intersection(&self.visible)
-            .filter(|pane| !reported.contains(*pane))
-            .cloned()
-            .collect();
+        let heard: Vec<PaneKey> = self.rang.intersection(&self.visible).cloned().collect();
         for pane in &heard {
             self.rang.remove(pane);
         }
+        // A pane that finished and rang is announced once, for both.
         let mut settled = reported.clone();
-        settled.extend(heard);
+        settled.extend(heard.into_iter().filter(|pane| !reported.contains(pane)));
         Noticed { settled, reported, withdrawn }
     }
 
