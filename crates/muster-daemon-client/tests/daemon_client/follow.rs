@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use muster_core::config::{ClipboardWrite, Cursor, CursorStyle};
+use muster_core::config::{ClipboardWrite, Cursor, CursorStyle, Shell, ShellMode};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::input::NotSent;
 use muster_core::intent::{BackendChannel, BackendIntent, Side};
@@ -205,7 +205,8 @@ fn a_daemon_that_comes_back_is_followed_again() {
 }
 
 /// Settings reach a daemon at connect and when they change, which is how the palette and the
-/// cursor programs are told come to match the window's.
+/// cursor programs are told come to match the window's, and how a new pane's shell gets the
+/// features the config asks for.
 #[test]
 fn settings_reach_the_daemon() {
     let daemon = Daemon::start_built();
@@ -214,6 +215,12 @@ fn settings_reach_the_daemon() {
         scrollback_bytes: Some(1 << 20),
         cursor: Cursor { style: Some(CursorStyle::Bar), blink: Some(false) },
         clipboard_write: ClipboardWrite::Deny,
+        shell: Shell {
+            mode: ShellMode::Login,
+            ssh_env: Some(false),
+            sudo: Some(true),
+            ..Shell::default()
+        },
         ..DaemonSettings::default()
     };
     followed.follower.configure(&settings);
@@ -226,6 +233,9 @@ fn settings_reach_the_daemon() {
     let cursor = held.cursor.expect("the cursor was sent");
     assert_eq!((cursor.style(), cursor.blink), (proto::CursorStyle::Bar, Some(false)));
     assert_eq!(held.clipboard_write, Some(false), "a program is told it may not copy");
+    let shell = held.shell.expect("the shell was sent");
+    assert_eq!(shell.mode(), proto::ShellMode::Login);
+    assert_eq!((shell.ssh_env, shell.ssh_terminfo, shell.sudo), (Some(false), None, Some(true)));
 }
 
 /// A daemon Muster started is in the census with what it holds, asked of it rather than read

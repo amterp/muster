@@ -241,8 +241,13 @@ pub fn input(
 }
 
 pub fn shell(settings: &DaemonSettings) -> proto::Shell {
-    let mut shell =
-        proto::Shell { command: settings.shell.command.clone(), ..proto::Shell::default() };
+    let mut shell = proto::Shell {
+        command: settings.shell.command.clone(),
+        ssh_env: settings.shell.ssh_env,
+        ssh_terminfo: settings.shell.ssh_terminfo,
+        sudo: settings.shell.sudo,
+        ..proto::Shell::default()
+    };
     shell.set_mode(match settings.shell.mode {
         ShellMode::Auto => proto::ShellMode::Default,
         ShellMode::Login => proto::ShellMode::Login,
