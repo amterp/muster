@@ -283,8 +283,14 @@ impl Attention {
     /// Asks unless somebody is looking at the pane, the file says programs are not worth
     /// interrupting for, or the pane is already blocked, which is the more urgent ask. Each
     /// notification is news, even from a pane already asking with one: it says something new.
-    pub fn notified(&mut self, pane: &PaneKey, note: Note, _agent: Option<&str>) -> Option<Attend> {
-        if self.seen(pane)
+    ///
+    /// Nor does a pane running an agent Muster recognizes. An agent notifies at the moments its
+    /// state already asks about - Claude Code when it has sat idle, and at a permission prompt -
+    /// so a banner of its own is `done` or `blocked` asked twice, and one that ignores what the
+    /// file says about them. Its shell's programs ask again once it has gone.
+    pub fn notified(&mut self, pane: &PaneKey, note: Note, agent: Option<&str>) -> Option<Attend> {
+        if agent.is_some()
+            || self.seen(pane)
             || !self.notifications.allows(Alert::Notified)
             || self.raised.get(pane) == Some(&Alert::Blocked)
         {

@@ -4110,6 +4110,12 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
             let note = Note { title: title.clone(), body: body.clone() };
             let mut session = poison::lock(&SESSION, "session");
             let agent = session.recognized_agent(&key);
+            if let Some(agent) = &agent {
+                log::debug(
+                    "attention.notification.agent",
+                    fields! { "pane" => key.to_string(), "agent" => agent.as_str(), "title" => title.as_str() },
+                );
+            }
             let attended = session.attention.notified(&key, note, agent.as_deref());
             attended.map(|attend| (key, attend))
         }
