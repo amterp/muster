@@ -383,7 +383,7 @@ fn claude_code_inbox_delivers_holds_or_refuses_as_recorded() {
 }
 
 /// What a group's log holds, as `author: body` per message.
-fn log_of(control: &mut Control, group: &str) -> Vec<String> {
+pub(super) fn log_of(control: &mut Control, group: &str) -> Vec<String> {
     use proto::msg_answer::{Answer, entry::What};
     let log = proto::msg_request::Log { group: group.to_string(), since: 0 };
     let caller = proto::msg_request::Caller {
@@ -437,7 +437,11 @@ fn agent_state(control: &mut Control, pane: &str) -> proto::AgentState {
 
 /// Polls `condition` every two seconds until it holds or `within` runs out - a model's turn is
 /// what is being waited on, and it has no event of its own.
-fn until_turns(within: Duration, what: &str, mut condition: impl FnMut() -> bool) -> bool {
+pub(super) fn until_turns(
+    within: Duration,
+    what: &str,
+    mut condition: impl FnMut() -> bool,
+) -> bool {
     let deadline = Instant::now() + within;
     while Instant::now() < deadline {
         if condition() {
