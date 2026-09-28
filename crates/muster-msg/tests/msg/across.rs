@@ -16,6 +16,8 @@ struct Sessions {
     /// A window attends the laptop's daemon, which is what wakes the human there. The devenv's
     /// has no human of its own in these cases, so one flag serves both.
     attended: Cell<bool>,
+    /// Panes an agent was found in, on either machine.
+    agents: RefCell<BTreeSet<String>>,
 }
 
 impl Presence for Sessions {
@@ -26,6 +28,10 @@ impl Presence for Sessions {
     fn attended(&self) -> bool {
         self.attended.get()
     }
+
+    fn agent_in(&self, pane: &str) -> bool {
+        self.agents.borrow().contains(pane)
+    }
 }
 
 fn session(name: &str) -> Caller {
@@ -33,6 +39,11 @@ fn session(name: &str) -> Caller {
         inbox: Some(Inbox { socket: format!("/tmp/cc-socks/{name}.sock"), inode: 1 }),
         ..Caller::default()
     }
+}
+
+/// An agent the daemon found in `pane`, which it rings there.
+fn in_pane(pane: &str) -> Caller {
+    Caller { pane: Some(pane.to_string()), ..Caller::default() }
 }
 
 /// A person's shell: no agent's address, so the human.
@@ -450,6 +461,51 @@ fn a_cursor_on_a_group_kept_elsewhere_survives_a_restart() {
     wire.mend();
     assert!(wire.read(Side::Devenv, &critic, None).is_empty(), "read before the restart");
     wire.post(Side::Devenv, &critic, None, &[], "nothing unread, so this goes").unwrap();
+}
+
+/// A replica is not kept, so a daemon that starts holds an empty one for each group kept
+/// elsewhere that a cursor names. An agent in a pane woken for it and not yet reading neither
+/// stops the daemon starting nor goes unwoken, and the group answers, empty and behind, until
+/// the link returns: a bare join finds it rather than making a group of the same name here.
+#[test]
+fn a_group_kept_elsewhere_is_held_from_the_start_after_a_restart() {
+    let mut wire = Wire::new();
+    wire.sessions.agents.borrow_mut().insert("p1".to_string());
+    let (builder, critic) = (in_pane("p1"), session("critic"));
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    assert_eq!(wire.join(Side::Laptop, &builder, Some("builder"), "review"), "review@devenv");
+    let posted = wire.post(Side::Devenv, &critic, None, &[], "unread at the restart").unwrap();
+    assert_eq!(woke(&posted), [("builder@lap", Reach::Woken)]);
+
+    let saved = wire.laptop.store().saved.clone().unwrap();
+    wire.laptop = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+    wire.cut();
+    assert!(wire.laptop.outstanding().is_empty(), "nothing is rung before the refetch");
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    assert!(laptop.went_idle("builder", sessions, 99).0.is_empty());
+    assert_eq!(laptop.log("review@devenv", 0), Ok(Vec::new()));
+    assert_eq!(laptop.behind("review"), Some("devenv"));
+    assert_eq!(
+        laptop.route_join(&builder, Some("builder"), Some("review"), sessions),
+        Err(Refusal::Unreachable {
+            group: "review@devenv".to_string(),
+            machine: "devenv".to_string()
+        })
+    );
+
+    wire.wakes.clear();
+    wire.mend();
+    let rung: Vec<u64> = wire
+        .wakes
+        .iter()
+        .filter(|(side, wake)| *side == Side::Laptop && wake.name == "builder")
+        .map(|(_, wake)| wake.notice.count)
+        .collect();
+    assert_eq!(rung, [1], "woken once, for what it had not read");
+    assert_eq!(
+        wire.read(Side::Laptop, &builder, None),
+        ["review@devenv critic@devenv: unread at the restart"]
+    );
 }
 
 /// The same entries twice change nothing; entries after a gap are refused with the head the

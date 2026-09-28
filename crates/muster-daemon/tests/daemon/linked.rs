@@ -269,3 +269,55 @@ fn a_cut_link_refuses_posts_across_at_once_and_local_groups_still_post() {
     };
     assert_eq!(caught_up, [format!("{there} builder@{host}: while you were away")]);
 }
+
+/// A daemon that restarts or hands over holds a group kept on another machine from its first
+/// answer: empty, and saying it may be behind, until the link returns and the refetch brings
+/// what was posted meanwhile. Replicas are not kept, and before this the group did not exist
+/// until the relink.
+fn a_replica_is_held_across(start_again: fn(&mut Daemon)) {
+    let (near, mut far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+    let there = join(&mut far_control, &named("critic"), "critic", "review");
+    let host = there.trim_start_matches("review@").to_string();
+    expect(&mut near_control, post(&named("builder"), None, &[], "before"), proto::Outcome::Done);
+    assert_eq!(read(&mut far_control, &named("critic")).0.len(), 1);
+    cut(holding, &mut near_log, &mut far_log, 1);
+    drop((far_control, far_log));
+
+    start_again(&mut far);
+    let mut far_control = far.connect();
+    expect(&mut near_control, post(&named("builder"), None, &[], "meanwhile"), proto::Outcome::Done);
+    let (messages, behind) = read(&mut far_control, &named("critic"));
+    assert!(messages.is_empty(), "nothing is there before the relink: {messages:?}");
+    assert_eq!(behind, [host.clone()], "the group is held, and may be behind");
+
+    let _holding = link(&near, &far, &mut near_log, 2);
+    let deadline = Instant::now() + LINKING;
+    let caught_up = loop {
+        let (messages, _) = read(&mut far_control, &named("critic"));
+        if !messages.is_empty() || Instant::now() > deadline {
+            break messages;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(caught_up, [format!("{there} builder@{host}: meanwhile")]);
+}
+
+#[test]
+fn a_replica_is_held_across_a_restart_and_catches_up_on_relink() {
+    a_replica_is_held_across(|daemon| {
+        daemon.kill();
+        daemon.restart();
+    });
+}
+
+#[test]
+fn a_replica_is_held_across_a_handoff_and_catches_up_on_relink() {
+    a_replica_is_held_across(|daemon| {
+        let answer = daemon.replace(None);
+        assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    });
+}
