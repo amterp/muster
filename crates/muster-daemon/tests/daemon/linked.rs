@@ -289,7 +289,11 @@ fn a_replica_is_held_across(start_again: fn(&mut Daemon)) {
 
     start_again(&mut far);
     let mut far_control = far.connect();
-    expect(&mut near_control, post(&named("builder"), None, &[], "meanwhile"), proto::Outcome::Done);
+    expect(
+        &mut near_control,
+        post(&named("builder"), None, &[], "meanwhile"),
+        proto::Outcome::Done,
+    );
     let (messages, behind) = read(&mut far_control, &named("critic"));
     assert!(messages.is_empty(), "nothing is there before the relink: {messages:?}");
     assert_eq!(behind, [host.clone()], "the group is held, and may be behind");
@@ -320,4 +324,82 @@ fn a_replica_is_held_across_a_handoff_and_catches_up_on_relink() {
         let answer = daemon.replace(None);
         assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
     });
+}
+
+/// Whatever dials a daemon as a peer is held to the names an honest one sends: it cannot join or
+/// leave as one of this machine's own participants, and a replicate it sends for a group this
+/// machine keeps, or for a name no group could have, is refused and changes nothing here.
+#[test]
+fn a_peer_acting_as_this_machines_own_is_refused() {
+    use proto::peer_frame::Frame;
+    use proto::{peer_call, peer_reply};
+    let near = daemon();
+    let mut near_control = near.connect();
+    join(&mut near_control, &named("builder"), "builder", "review");
+    let before = read(&mut near_control, &named("builder"));
+
+    let (mut peer, _) = proto::connection::connect(
+        near.socket_path(),
+        proto::ConnectionKind::Peer,
+        "a test posing as another machine",
+    )
+    .expect("the daemon takes a peer");
+    let introduce = proto::Introduce { name: "far".to_string(), you: "here".to_string() };
+    let frame = |frame| proto::PeerFrame { frame: Some(frame) };
+    proto::connection::send(&mut peer, &frame(Frame::Introduce(introduce))).unwrap();
+    let _: Option<proto::PeerFrame> = proto::connection::receive(&mut peer).unwrap();
+
+    let caught = |group: &str| proto::Caught {
+        group: group.to_string(),
+        entries: Vec::new(),
+        policy: Some(msg_request::Policy {
+            membership: vec!["*".to_string()],
+            ..msg_request::Policy::default()
+        }),
+        more: false,
+    };
+    let calls = [
+        peer_call::Call::Join(peer_call::Join {
+            name: "builder@here".to_string(),
+            group: "review".to_string(),
+            head: 0,
+        }),
+        peer_call::Call::Leave(peer_call::Leave {
+            name: "builder@here".to_string(),
+            group: "review".to_string(),
+            head: 0,
+        }),
+        peer_call::Call::Replicate(caught("review@here")),
+        peer_call::Call::Replicate(caught("x'; sh; '")),
+    ];
+    for (id, call) in (1..).zip(calls) {
+        let asked = proto::PeerCall { id, call: Some(call.clone()) };
+        proto::connection::send(&mut peer, &frame(Frame::Call(asked))).unwrap();
+        let reply = loop {
+            match proto::connection::receive::<proto::PeerFrame>(&mut peer).unwrap() {
+                Some(proto::PeerFrame { frame: Some(Frame::Reply(reply)) }) => break reply,
+                Some(_) => {}
+                None => panic!("the daemon hung up on {call:?}"),
+            }
+        };
+        let Some(peer_reply::Reply::Refused(refused)) = reply.reply else {
+            panic!("{call:?} was answered {:?}", reply.reply);
+        };
+        assert_eq!(refused.code, "bad_name", "{call:?}: {}", refused.words);
+    }
+    assert_eq!(read(&mut near_control, &named("builder")), before, "nothing changed here");
+    let log = expect(
+        &mut near_control,
+        msg(
+            &named("builder"),
+            Asked::Log(msg_request::Log { group: "review".to_string(), ..Default::default() }),
+        ),
+        proto::Outcome::Done,
+    );
+    let Some(Answer::Entries(entries)) = &msg_answer(&log).answer else { panic!("a log") };
+    let whats: Vec<_> = entries.groups[0].entries.iter().map(|entry| entry.what.clone()).collect();
+    assert!(
+        whats.iter().all(|what| !matches!(what, Some(msg_answer::entry::What::Left(_)))),
+        "builder is still in review: {whats:?}"
+    );
 }

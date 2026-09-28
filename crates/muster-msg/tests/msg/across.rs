@@ -6,8 +6,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use muster_msg::{
-    Action, Call, Caller, HUMAN, Inbox, Liveness, Memory, Messaging, Participant, Peer, Policy,
-    Posted, Presence, Reach, Refusal, Reply, Route, Settled, Tell, Via, Wake, What,
+    Action, Call, Caller, Caught, Entry, HUMAN, Inbox, Liveness, Member, Memory, Messaging,
+    Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply, Route, Settled, Tell, Via,
+    Wake, What,
 };
 
 #[derive(Default)]
@@ -843,4 +844,97 @@ fn a_log_bigger_than_a_frame_is_fetched_in_pages() {
     let replica = wire.devenv.log("review@lap", 0).unwrap();
     let messages = replica.iter().filter(|entry| matches!(entry.what, What::Message { .. }));
     assert_eq!(messages.count(), 18);
+}
+
+fn bad_name(result: Result<(), Refusal>) -> bool {
+    matches!(result, Err(Refusal::BadName { .. }))
+}
+
+/// Whoever joins, leaves or posts in a call is the asker's own participant, and the group is one
+/// kept here, so both are bare as the asker writes them. A call naming this machine's own
+/// participant, the human included, would otherwise become that participant on arrival, and a
+/// name no participant could have never reaches anything here.
+#[test]
+fn a_call_acting_as_this_machines_own_or_naming_no_name_is_refused() {
+    let mut wire = Wire::new();
+    wire.join(Side::Laptop, &session("builder"), Some("builder"), "review");
+    let post = |author: &str, to: &[&str]| Call::Post {
+        author: author.to_string(),
+        group: "review".to_string(),
+        to: to.iter().map(ToString::to_string).collect(),
+        body: "done".to_string(),
+        cursor: 99,
+        head: 0,
+    };
+    let forged = [
+        Call::Join { name: "builder@lap".to_string(), group: "review".to_string(), head: 0 },
+        Call::Leave { name: "builder@lap".to_string(), group: "review".to_string(), head: 0 },
+        post("@human@lap", &[]),
+        post("critic", &["a b"]),
+        Call::Join { name: "critic".to_string(), group: "x'; sh; '".to_string(), head: 0 },
+        Call::Since { group: "review@lap".to_string(), after: 0 },
+    ];
+    let before = wire.laptop.log("review", 0).unwrap();
+    for call in forged {
+        assert!(bad_name(call.check()), "{call:?}");
+        let (laptop, sessions) = wire.split(Side::Laptop);
+        let answered = laptop.answer(&Side::Laptop.peer(), call.clone(), sessions, 50);
+        let refused = matches!(
+            answered.reply,
+            Reply::Refused { refusal: Refusal::BadName { .. }, caught: None }
+        );
+        assert!(refused, "{call:?} answered {:?}", answered.reply);
+    }
+    assert_eq!(wire.laptop.log("review", 0).unwrap(), before, "nothing changed here");
+    assert_eq!(post("critic", &["builder@lap", "@human@lap", "scout@third"]).check(), Ok(()));
+}
+
+/// A home's entries name its own members bare and everyone else's with their machine, the
+/// receiver's own included, and its group bare: a group written `review@<receiver>` would land
+/// on a group the receiver keeps. Names no participant could have are refused whole, so none of
+/// them reaches a window.
+#[test]
+fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
+    let entry = |author: &str| Entry {
+        seq: 1,
+        at_ms: 1,
+        what: What::Message { author: author.to_string(), to: Vec::new(), body: "x".to_string() },
+    };
+    let caught = |group: &str, author: &str| Caught {
+        group: group.to_string(),
+        policy: Policy::default(),
+        entries: vec![entry(author)],
+        more: false,
+    };
+    assert_eq!(caught("review", "critic").check(), Ok(()));
+    assert_eq!(caught("review", "@human@lap").check(), Ok(()), "a human who posted from there");
+    assert!(bad_name(caught("review@lap", "critic").check()));
+    assert!(bad_name(caught("x'; sh; '", "critic").check()));
+    assert!(bad_name(caught("review", "critic\u{1b}[2J").check()));
+    let mut ruled = caught("review", "critic");
+    ruled.policy.membership = vec!["a b".to_string()];
+    assert!(bad_name(ruled.check()));
+
+    let member = |name: &str| Member {
+        name: name.to_string(),
+        liveness: Liveness::Alive,
+        activity: None,
+        groups: Vec::new(),
+        inbox: None,
+        pane: None,
+    };
+    assert_eq!(Reply::Members(vec![member("critic")]).check(), Ok(()));
+    assert!(bad_name(Reply::Members(vec![member("critic\n")]).check()));
+    let posted = |name: &str| Reply::Posted {
+        seq: 1,
+        reached: vec![(name.to_string(), Reach::Woken)],
+        caught: caught("review", "critic"),
+    };
+    assert_eq!(posted("builder@lap").check(), Ok(()));
+    assert!(bad_name(posted("a;b").check()));
+    let refused = Reply::Refused {
+        refusal: Refusal::AddressedSelf,
+        caught: Some(caught("review@lap", "critic")),
+    };
+    assert!(bad_name(refused.check()));
 }

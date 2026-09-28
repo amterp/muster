@@ -155,6 +155,11 @@ pub enum Call {
 }
 
 impl Call {
+    /// Refuses a call whose names are not ones an honest asker sends. Not checked yet.
+    pub fn check(&self) -> Result<(), Refusal> {
+        Ok(())
+    }
+
     /// The group the call is about, as its home names it.
     pub fn group(&self) -> &str {
         match self {
@@ -204,6 +209,13 @@ pub struct Caught {
 /// entries around the bodies take room too; one entry always goes, whatever its size.
 pub const CAUGHT_BYTES: usize = 8 << 20;
 
+impl Caught {
+    /// Refuses entries whose names are not ones an honest home sends. Not checked yet.
+    pub fn check(&self) -> Result<(), Refusal> {
+        Ok(())
+    }
+}
+
 /// The answer to a [`Call`]. Each that changed a group carries the entries after the asker's
 /// head, so a replica that fell behind catches up in the same reply, a refusal included.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,6 +227,13 @@ pub enum Reply {
     Caught(Caught),
     Members(Vec<Member>),
     Refused { refusal: Refusal, caught: Option<Caught> },
+}
+
+impl Reply {
+    /// Refuses a reply whose names are not ones an honest home sends. Not checked yet.
+    pub fn check(&self) -> Result<(), Refusal> {
+        Ok(())
+    }
 }
 
 /// A call answered, and what the answering host still has to do: wake its own members, end the
