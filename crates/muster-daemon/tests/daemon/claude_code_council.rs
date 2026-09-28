@@ -40,13 +40,15 @@ fn brief() -> String {
         "You are the director of the council `council`. First run `muster msg join --name \
          director --group council`. Its members are builder, who proposes, and critic, who finds \
          what is wrong with a proposal. The question is {TOPIC}.\n\n\
-         Settle one aspect per round. In each round, post one message to the group with \
-         `muster msg post --group council` and no `--to`, giving builder and critic each their \
-         part, then end your turn: you are woken when they answer. Then decide the aspect and \
-         start the next round. Keep going until the message numbers you are woken with pass \
-         55, taking the aspects again in more detail if you run out; do not address @human \
-         before then. Then post the design in one paragraph to @human in the group, starting \
-         with DONE:, and end your turn."
+         Settle one aspect per round. In each round, address builder with \
+         `muster msg post --group council --to builder` and ask for a proposal; when it answers, \
+         address critic with the number of builder's message to review; when critic answers, \
+         decide the aspect in a post to the group with no `--to`, and start the next round. \
+         After each post end your turn: you are woken when the member you addressed answers, \
+         and a member hears another's post only when you address it. Keep going until the \
+         message numbers you are woken with pass 60, taking the aspects again in more detail if \
+         you run out; do not address @human before then. Then post the design in one \
+         paragraph to @human in the group, starting with DONE:, and end your turn."
     )
 }
 
