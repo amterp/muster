@@ -228,8 +228,15 @@ All three resolve the same way if allowed, and the refusal exists because of how
 action is a menu item, and the menu is offered a key equivalent before the keystroke reaches
 the window at all. So the shortcut wins every time and whatever it took stops working
 silently - `opt+left` rebound to `focus_left` ends word motion in every shell in the window,
-with nothing on screen connecting the two. None of the shipped defaults collide, so this only
-ever answers a chord you chose.
+with nothing on screen connecting the two.
+
+**A default gives its chord up to yours.** That refusal is about chords the file chose. When
+the file gives a default's chord to `[text]` or to another action, and does not name the
+default's action itself, the default gives the chord up: the action keeps its menu item without
+a shortcut, and the run log says so as `config.keymap.default_given_up`. So a file that sent
+bytes on `cmd+k` before `clear_screen` shipped there goes on sending them, where refusing it
+would throw away everything else in the file for a collision nobody in it made. A `[keymap]`
+line gives the action a chord back.
 
 **`find` is Ghostty's search, over the pane's whole history.** `cmd+f` opens a bar over the
 pane with the keyboard, `cmd+g` and `cmd+shift+g` walk the matches, and landing on one scrolls

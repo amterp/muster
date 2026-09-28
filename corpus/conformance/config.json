@@ -506,7 +506,8 @@
         "daemons": [],
         "keymap": ["clear_screen=(unbound)"],
         "option_as_alt": "never",
-        "text": ["super+KeyK=0c"]
+        "text": ["super+KeyK=0c"],
+        "given_up": ["clear_screen=super+KeyK to [text]"]
       }
     },
     {
@@ -520,9 +521,10 @@
       },
       "expect": {
         "daemons": [],
-        "keymap": ["clear_screen=(unbound)", "find=super+KeyK"],
+        "keymap": ["find=super+KeyK", "clear_screen=(unbound)"],
         "option_as_alt": "never",
-        "text": []
+        "text": [],
+        "given_up": ["clear_screen=super+KeyK to find"]
       }
     },
     {

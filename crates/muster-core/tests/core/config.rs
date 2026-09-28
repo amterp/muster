@@ -7,7 +7,7 @@
 use crate::support::backend::describe_daemon;
 use conformance::Conformance;
 use muster_core::attention::Notifications;
-use muster_core::config;
+use muster_core::config::{self, GivenUp, TakenBy};
 use muster_core::input::{Action, Bindings, Chord, Modifiers};
 use serde_json::{Value, json};
 
@@ -137,6 +137,14 @@ fn panes(panes: &config::Panes) -> Vec<String> {
     set
 }
 
+fn describe_given_up(given_up: GivenUp) -> String {
+    let taken_by = match given_up.taken_by {
+        TakenBy::Text => "[text]",
+        TakenBy::Action(action) => action.as_str(),
+    };
+    format!("{}={} to {taken_by}", given_up.action.as_str(), spell(given_up.chord))
+}
+
 #[test]
 fn config_conformance() {
     let corpus = Conformance::load("config.json");
@@ -172,6 +180,14 @@ fn config_conformance() {
                             })
                             .collect::<Vec<_>>()
                     )),
+                ),
+                // Only when a default gave its chord up, which almost no file makes happen.
+                (
+                    "given_up",
+                    Some(json!(
+                        parsed.given_up.iter().copied().map(describe_given_up).collect::<Vec<_>>()
+                    ))
+                    .filter(|given_up| given_up != &json!([])),
                 ),
                 // Only what the file set, so the two dozen cases about daemons and keymaps do
                 // not each carry two knobs and a dozen colours they say nothing about.

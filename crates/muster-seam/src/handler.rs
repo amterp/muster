@@ -2021,6 +2021,23 @@ fn read_config(path: &str, reading: Reading) -> Option<config::Config> {
     match config::parse(&text) {
         Ok(config) => {
             session::clear_problem(CONFIG_PROBLEM, "accepted");
+            for given_up in &config.given_up {
+                let taken_by = match given_up.taken_by {
+                    config::TakenBy::Text => "[text]",
+                    config::TakenBy::Action(action) => action.as_str(),
+                };
+                log::info(
+                    "config.keymap.default_given_up",
+                    fields! {
+                        "action" => given_up.action.as_str(),
+                        "key" => given_up.chord.key.as_str(),
+                        "mods" => given_up.chord.modifiers.names().join("+"),
+                        "taken_by" => taken_by,
+                        "impact" => "the action keeps its menu item, without a shortcut",
+                        "check" => "give the action a chord of its own in [keymap] to have both",
+                    },
+                );
+            }
             Some(config)
         }
         Err(refusal) => {

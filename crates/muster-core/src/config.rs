@@ -19,7 +19,7 @@
 //! else (`docs/observations/herdr-0.8.0.md` section 6). A typo in a file someone
 //! typed deserves a sentence naming it, not a daemon that never appears.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use toml::Value;
 
@@ -53,6 +53,31 @@ pub struct Config {
     pub panes: Panes,
     /// Which agent states are worth interrupting somebody for.
     pub notifications: Notifications,
+    /// Default chords the file took for something of its own, which the actions they shipped
+    /// on gave up. Empty for almost every file; the caller logs each one.
+    pub given_up: Vec<GivenUp>,
+}
+
+/// A default chord the file put something else on.
+///
+/// The file wins, because somebody chose it and nobody chose the default: a chord that sent
+/// bytes before an update gave an action a default on it should go on sending them. Refusing
+/// instead would throw away the whole file for a collision its author never made. The action
+/// keeps its menu item without a shortcut, and a `[keymap]` line gives it one back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GivenUp {
+    pub action: Action,
+    pub chord: Chord,
+    pub taken_by: TakenBy,
+}
+
+/// What a file put on a default's chord.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TakenBy {
+    /// Bytes to send, in `[text]`.
+    Text,
+    /// Another action, in `[keymap]`.
+    Action(Action),
 }
 
 /// What Muster looks like.
@@ -591,9 +616,11 @@ pub fn parse(text: &str) -> Result<Config, String> {
     // a collision from inside itself, and a chord claimed by both goes to the menu and never
     // reaches the pane.
     let text = read_text(root)?;
+    let (bindings, given_up) = read_keymap(root, &text)?;
     Ok(Config {
         daemons,
-        bindings: read_keymap(root, &text)?,
+        bindings,
+        given_up,
         input: PaneInputSettings { option_as_alt: read_option_as_alt(root)?, text },
         feel: read_feel(root)?,
         appearance: read_appearance(root)?,
@@ -1074,13 +1101,18 @@ fn quoted(names: &[&str]) -> String {
 /// An empty chord unbinds outright, which is different from not mentioning it. Somebody who
 /// wants ⌘W back for closing the window has to be able to say so, and the alternative is
 /// binding it to a chord nobody presses and hoping.
-fn read_keymap(root: &toml::Table, text: &BTreeMap<Binding, Vec<u8>>) -> Result<Bindings, String> {
+fn read_keymap(
+    root: &toml::Table,
+    text: &BTreeMap<Binding, Vec<u8>>,
+) -> Result<(Bindings, Vec<GivenUp>), String> {
     let mut bindings = Bindings::default();
     // What each chord this block binds was written as, so a refusal can quote the spelling
     // somebody typed rather than a canonical one they would have to recognise.
-    let mut claimed: BTreeMap<Binding, (String, String)> = BTreeMap::new();
+    let mut claimed: BTreeMap<Binding, (Action, String)> = BTreeMap::new();
+    let mut named = BTreeSet::new();
     let Some(value) = root.get("keymap") else {
-        return Ok(bindings);
+        let given_up = give_up_taken_defaults(&mut bindings, &named, &claimed, text);
+        return Ok((bindings, given_up));
     };
     let block = value.as_table().ok_or_else(|| {
         format!(
@@ -1112,6 +1144,7 @@ fn read_keymap(root: &toml::Table, text: &BTreeMap<Binding, Vec<u8>>) -> Result<
                 described(chord)
             )
         })?;
+        named.insert(action);
         if chord.trim().is_empty() {
             bindings.unbind(action);
             continue;
@@ -1133,6 +1166,7 @@ fn read_keymap(root: &toml::Table, text: &BTreeMap<Binding, Vec<u8>>) -> Result<
             .map_err(|refusal| format!("{refusal} None of the file was applied."))?;
 
         if let Some((held, spelling)) = claimed.get(&binding) {
+            let held = held.as_str();
             return Err(format!(
                 "the config file's [keymap] binds both `{held}` and `{name}` to `{chord}`, and \
                  only one menu item can hold a shortcut - which of them the key reaches is not \
@@ -1165,9 +1199,38 @@ fn read_keymap(root: &toml::Table, text: &BTreeMap<Binding, Vec<u8>>) -> Result<
                  put `{chord}` in [text] to say what it should send instead."
             ));
         }
-        claimed.insert(binding, (name.clone(), chord.to_string()));
+        claimed.insert(binding, (action, chord.to_string()));
     }
-    Ok(bindings)
+    let given_up = give_up_taken_defaults(&mut bindings, &named, &claimed, text);
+    Ok((bindings, given_up))
+}
+
+/// Unbinds each default the file did not name whose chord it gave to `[text]` or to another
+/// action, and says which ([`GivenUp`]).
+fn give_up_taken_defaults(
+    bindings: &mut Bindings,
+    named: &BTreeSet<Action>,
+    claimed: &BTreeMap<Binding, (Action, String)>,
+    text: &BTreeMap<Binding, Vec<u8>>,
+) -> Vec<GivenUp> {
+    let taken: Vec<GivenUp> = bindings
+        .all()
+        .filter(|(action, _)| !named.contains(action))
+        .filter_map(|(action, chord)| {
+            let chord = chord?;
+            let binding = Binding::new(chord.key, chord.modifiers);
+            let taken_by = if text.contains_key(&binding) {
+                TakenBy::Text
+            } else {
+                TakenBy::Action(claimed.get(&binding)?.0)
+            };
+            Some(GivenUp { action, chord, taken_by })
+        })
+        .collect();
+    for given_up in &taken {
+        bindings.unbind(given_up.action);
+    }
+    taken
 }
 
 /// The `[[daemon]]` blocks, or an empty list when the file names none.
