@@ -6,6 +6,9 @@ pub const HUMAN: &str = "@human";
 
 const LONGEST: usize = 64;
 
+/// A group's log is a file named `<group>.log`, and a file name is at most 255 bytes.
+pub const LONGEST_GROUP: usize = 250;
+
 fn allowed(character: char) -> bool {
     character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
 }
@@ -21,7 +24,7 @@ pub(crate) fn check_participant(name: &str) -> Result<(), Refusal> {
 /// A group name is a participant name, or several joined by `+` (see [`pair_group`]).
 pub(crate) fn check_group(name: &str) -> Result<(), Refusal> {
     let parts_fit = name.split('+').all(|part| check_participant(part).is_ok());
-    if name.len() <= LONGEST * 4 && parts_fit {
+    if name.len() <= LONGEST_GROUP && parts_fit {
         Ok(())
     } else {
         Err(Refusal::BadName { name: name.to_string() })

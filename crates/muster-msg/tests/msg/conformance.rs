@@ -61,7 +61,8 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::NameInUse { name, inbox } => {
             format!("{name} at {}", inbox.as_deref().unwrap_or("no inbox"))
         }
-        Refusal::NoSuchGroup { group } => group.clone(),
+        Refusal::NoSuchGroup { group } | Refusal::PairTooLong { group } => group.clone(),
+        Refusal::GroupNameClash { group, existing } => format!("{group} {existing}"),
         Refusal::NotAMember { name, group } | Refusal::AddresseeNotInGroup { name, group } => {
             format!("{name} {group}")
         }

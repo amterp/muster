@@ -636,6 +636,12 @@ impl<S: Store> Messaging<S> {
         if self.groups.contains_key(name) {
             return Ok(false);
         }
+        if let Some(existing) = self.groups.keys().find(|other| other.eq_ignore_ascii_case(name)) {
+            return Err(Refusal::GroupNameClash {
+                group: name.to_string(),
+                existing: existing.clone(),
+            });
+        }
         let group = Group { policy: Policy::default(), members: BTreeSet::new(), log: Vec::new() };
         self.groups.insert(name.to_string(), group);
         if let Err(refusal) = self.append(name, What::Created { by: by.to_string() }, now_ms) {
@@ -714,6 +720,9 @@ impl<S: Store> Messaging<S> {
                 let mut everyone: Vec<&str> = vec![author];
                 everyone.extend(addressees.iter().map(String::as_str));
                 let group = pair_group(&everyone);
+                if check_group(&group).is_err() {
+                    return Err(Refusal::PairTooLong { group });
+                }
                 self.ensure_group(&group, author, now_ms)?;
                 for name in everyone {
                     self.add_member(&group, name, now_ms)?;

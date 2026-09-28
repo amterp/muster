@@ -17,7 +17,9 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, JOIN, READ, WHO};
-use muster_msg::{Caller, Entry, Inbox, LARGEST_BODY, Liveness, Messaging, Reach, Refusal, What};
+use muster_msg::{
+    Caller, Entry, Inbox, LARGEST_BODY, LONGEST_GROUP, Liveness, Messaging, Reach, Refusal, What,
+};
 use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
 use proto::msg_request::Request as Asked;
@@ -377,7 +379,10 @@ fn words(refusal: &Refusal) -> String {
     let join = |group: &str| messaging::command(JOIN, &format!("--group {group}"));
     match refusal {
         Refusal::BadName { name } => {
-            format!("{name:?} cannot be a name: use letters, digits, '.', '_' and '-'")
+            format!(
+                "{name:?} cannot be a name: use letters, digits, '.', '_' and '-', at most 64 \
+                 of them, or {LONGEST_GROUP} for a group"
+            )
         }
         Refusal::NameInUse { name, inbox } => format!(
             "{name} is the name of a session that is still running ({}); join under another \
@@ -387,6 +392,15 @@ fn words(refusal: &Refusal) -> String {
         Refusal::NoSuchGroup { group } => {
             format!("there is no group {group}; create it with `{}`", join(group))
         }
+        Refusal::GroupNameClash { group, existing } => format!(
+            "there is already a group {existing}, which differs from {group} only in case; use \
+             --group {existing}, or another name"
+        ),
+        Refusal::PairTooLong { group: _ } => format!(
+            "a post to all of these would make a group named after them, longer than a group \
+             name may be; make one with `{}`, have them join it, and post with --group",
+            messaging::command(JOIN, "--group <group>")
+        ),
         Refusal::NoSuchParticipant { name } => {
             format!("nobody here is called {name}; `{}` lists who is", messaging::command(WHO, ""))
         }

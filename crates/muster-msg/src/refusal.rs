@@ -13,6 +13,17 @@ pub enum Refusal {
     NoSuchGroup {
         group: String,
     },
+    /// A group already goes by this name in another case. On a filesystem that ignores case,
+    /// the two would share one log.
+    GroupNameClash {
+        group: String,
+        existing: String,
+    },
+    /// A post to agents who share no group would create the group of exactly them, and its
+    /// name, made from theirs, would be longer than a group name may be.
+    PairTooLong {
+        group: String,
+    },
     NoSuchParticipant {
         name: String,
     },
@@ -57,6 +68,8 @@ impl Refusal {
             Refusal::BadName { .. } => "bad_name",
             Refusal::NameInUse { .. } => "name_in_use",
             Refusal::NoSuchGroup { .. } => "no_such_group",
+            Refusal::GroupNameClash { .. } => "group_name_clash",
+            Refusal::PairTooLong { .. } => "pair_too_long",
             Refusal::NoSuchParticipant { .. } => "no_such_participant",
             Refusal::NotAParticipant { .. } => "not_a_participant",
             Refusal::NotAMember { .. } => "not_a_member",

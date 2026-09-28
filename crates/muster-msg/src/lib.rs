@@ -15,7 +15,7 @@ mod service;
 mod store;
 
 pub use entry::{Entry, What};
-pub use names::{HUMAN, default_name, pair_group};
+pub use names::{HUMAN, LONGEST_GROUP, default_name, pair_group};
 pub use policy::Policy;
 pub use refusal::Refusal;
 pub use service::{
