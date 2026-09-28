@@ -1192,26 +1192,27 @@ mod tests {
         assert!(!patience.allows_another(at(310_400), at(310_600)));
     }
 
-    /// A member on a machine that cannot be reached is not woken, and says why; a post heard
-    /// by nobody else exits as unheard.
+    /// A member on a machine that cannot be reached is not woken yet, and says why. It is
+    /// woken when the link returns, as a paused group's members are on resume, so the post was
+    /// heard: exit 6 would tell its author that no answer is coming. The human there is notified
+    /// once a window opens, since a window is what links the machines.
     #[test]
-    fn a_member_on_an_unreachable_machine_is_named_as_such() {
+    fn a_member_on_an_unreachable_machine_is_named_as_such_and_hears_it_later() {
+        let unreachable = |name: &str| msg_answer::Reached {
+            name: name.to_string(),
+            reach: msg_answer::Reach::Unreachable.into(),
+            ..msg_answer::Reached::default()
+        };
         let posted = msg_answer::Posted {
             group: "review".to_string(),
             seq: 7,
-            reached: vec![msg_answer::Reached {
-                name: "critic@devenv".to_string(),
-                reach: msg_answer::Reach::Unreachable.into(),
-                ..msg_answer::Reached::default()
-            }],
+            reached: vec![unreachable("critic@devenv"), unreachable("@human@lap")],
         };
-        let Err(Trouble::Unheard(text)) = posted_text(&posted, false) else {
-            panic!("nobody heard it");
-        };
+        let text = posted_text(&posted, false).expect("heard once the link returns");
         assert_eq!(
             text,
             "posted #7 to review\nnot woken: critic@devenv (its machine cannot be reached; it \
-             sees this once it can)"
+             sees this once it can), @human@lap (notified when a window opens)"
         );
     }
 
