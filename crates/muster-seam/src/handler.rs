@@ -1279,9 +1279,11 @@ pub(crate) fn watch_panes(request: &proto::WatchPanes) -> Result<watch::Watch, B
         // Strict rather than `from_backend`, which reads a word it does not know as `unknown`:
         // a caller who typed `idel` would otherwise be waiting for a shell.
         let Some(state) = AgentState::ALL.into_iter().find(|state| state.as_str() == word) else {
+            let states: Vec<_> = AgentState::ALL.iter().map(|state| state.as_str()).collect();
             return Err(Box::new(Response::failure(format!(
                 "`{word}` is not a state a pane can be in, so there is nothing to wait for. The \
-                 states are working, blocked, idle, done and unknown."
+                 states are {}.",
+                states.join(", ")
             ))));
         };
         until.push(state);
