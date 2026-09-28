@@ -836,8 +836,13 @@ fn said_how_it_went(
 /// What every pane this window makes is handed beyond what its daemon gives it: the window's own
 /// socket, so a program in the pane can drive the window it is drawn in. The daemon gives the
 /// pane its name (`MUSTER_PANE`) itself, from the request that makes it.
-fn pane_environment(window: Option<String>, _on_this_machine: bool) -> BTreeMap<String, String> {
+///
+/// Only on this machine. The socket is a path here, and on a devenv that path names nothing or
+/// some unrelated socket, so a pane there is told nothing and its programs correctly conclude
+/// they are not in a window they can drive.
+fn pane_environment(window: Option<String>, on_this_machine: bool) -> BTreeMap<String, String> {
     window
+        .filter(|_| on_this_machine)
         .map(|socket| BTreeMap::from([(environment::WINDOW_SOCKET.to_string(), socket)]))
         .unwrap_or_default()
 }
