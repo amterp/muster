@@ -126,7 +126,8 @@ pub enum Change {
         text: String,
     },
     /// A program in this pane rang the bell. Passed through: whether it marks the pane is the
-    /// window's to say, since only the window knows whether somebody is looking at it.
+    /// window's to say, since only the window knows whether somebody is looking at it. So it
+    /// announces nothing by itself, and the window announces the pane when a bell marks it.
     Rang(PaneId),
     /// A program in this pane asked to notify somebody. Passed through, like `Rang`.
     Notified {
@@ -217,7 +218,6 @@ impl Change {
             Change::AgentStateChanged { pane, .. }
             | Change::FinishedUnseen { pane, .. }
             | Change::AgentDescribed(pane)
-            | Change::Rang(pane)
             | Change::ProgressChanged(pane)
             | Change::PaneAdded(pane) => Some(pane),
             _ => None,

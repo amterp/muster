@@ -4031,6 +4031,16 @@ fn report(daemon: &DaemonId, change: &Change) {
     if let Some(pane) = change.announces_agent_state() {
         announce_state(&PaneKey::new(daemon, pane));
     }
+    // A bell never asks for anybody. It marks the pane, and only the first one nobody has
+    // heard changes the mark, so only that one is announced: a shell holding Tab rings for
+    // every keystroke.
+    if let Change::Rang(pane) = change {
+        let key = PaneKey::new(daemon, pane);
+        let marked = poison::lock(&SESSION, "session").attention.bell(&key);
+        if marked {
+            announce_state(&key);
+        }
+    }
     if let Change::PaneRemoved(pane) = change {
         watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
     }
@@ -4098,12 +4108,6 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
             session.pane_focus.forget(&key);
             let attended = session.attention.forget(&key);
             attended.map(|attend| (key, attend))
-        }
-        // Marks the pane, which the pane's agent announces; a bell never asks for anybody.
-        Change::Rang(pane) => {
-            let key = PaneKey::new(daemon, pane);
-            poison::lock(&SESSION, "session").attention.bell(&key);
-            None
         }
         Change::Notified { pane, title, body } => {
             let key = PaneKey::new(daemon, pane);
