@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "an-adopted-remote",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790596529601,
+  "creator": "Alexander Terp",
+  "description": "The Linux muster CLI rides the daemon install. A remote daemon that is adopted rather than installed (already running at this version) is not reinstalled, so a machine attached before the CLI shipped has no ~/.muster/bin/muster until its daemon is next installed.",
+  "id": "a_2YACdh1Vl",
+  "parent": "a_2Y3ODvuwa",
+  "position": "aq",
+  "title": "An adopted remote daemon gives its machine no muster CLI until the next install",
+  "type": "bug",
+  "updated_at_millis": 1790596529601,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790596529601}
+  ]
+}

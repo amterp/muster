@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "freeing-a-replaced-surface",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "renderer"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790594943467,
+  "creator": "Alexander Terp",
+  "description": "Seen on v2 (0.9.0 dev build, daemon dev-0b6b665c7988) on 2026-09-28 at 08:31 UTC, under heavy memory pressure (swap full, requests taking 9-23 s).\n\nPane p277794a1p's bridge link dropped (\"reading p277794a1p's stream: failed to fill whole buffer\"), and the core replaced its bridge twice in 9 seconds (pane.surface.rebuilt, bridge_restarts 3 then 4). While freeing one of the old surfaces, the main thread blocked in ghostty_surface_free -\u003e pthread_join and never returned. The core, the command socket and the daemon kept working: `muster window` answered and all seven agents were alive. The window took no input and painted nothing for three hours, until the app was killed.\n\nThe thread being joined is that surface's `io` thread. Its renderer thread had already exited, and the io thread was waiting in __ulock_wait2 (a Zig mutex or futex wait, not a join). The frames are unsymbolized. A likely cause is ghostty's io thread pushing to a surface or app mailbox that only the main thread drains, while the main thread is joining it, but that is unverified. Symbolizing the frames against a build of the same pin would settle it.\n\nRecovery: kill the app (not the daemon) and relaunch it. Every pane comes back.\n\nEvidence:\n- ~/Library/Logs/muster/v2-hang-surface-free-2026-09-28.sample (3 s `sample` of the hung app)\n- ~/Library/Logs/muster/v2-hang-runlog-2026-09-28.jsonl (run log; the hang starts after view.received at 08:31:39Z)\n\nTwo separate problems here: freeing a surface on the main thread can block it without bound, and a bridge restart under load rebuilds surfaces quickly enough to make that likely.",
+  "id": "a_2Y9XNJ2YI",
+  "position": "b0E",
+  "title": "🧊 Freeing a replaced surface can deadlock the main thread, and the window never answers again",
+  "type": "bug",
+  "updated_at_millis": 1790594943467,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790594943467}
+  ]
+}

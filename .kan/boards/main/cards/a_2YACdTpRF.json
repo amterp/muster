@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "record-claude-code-s",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790596529462,
+  "creator": "Alexander Terp",
+  "description": "MIP-4's Claude observation (docs/observations/claude-code-2.1.283.md) ran the four macOS cases only. The four Linux cases (default and bypass, with and without the token, from a non-child) were not run: no Linux machine reachable here has Claude Code with credentials.",
+  "id": "a_2YACdTpRF",
+  "parent": "a_2Y3ODvuwa",
+  "position": "ap",
+  "title": "Record Claude Code's inbox on Linux",
+  "type": "chore",
+  "updated_at_millis": 1790596529462,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790596529462}
+  ]
+}
