@@ -403,7 +403,7 @@ fn coming_to_the_front_takes_the_tabs_left_for_the_window_that_was() {
 /// not followed, this window would give up its own tab on a slow devenv the moment it opened,
 /// leaving it to whichever window came to the front next. Staged with a daemon slow to send its
 /// state, which is followed from the start; a daemon not yet followed at all is
-/// `holding_while_starting.rs`, in a binary of its own.
+/// `daemon_still_starting.rs`, in a binary of its own.
 #[test]
 fn a_tab_on_a_daemon_still_attaching_stays_this_windows() {
     let _turn = muster::testing::fresh_session();

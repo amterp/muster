@@ -1,0 +1,138 @@
+//! A daemon Muster starts that is still on its way: the window opens without waiting for it, and
+//! the tabs this window holds on it stay this window's.
+//!
+//! What stages "on its way" is a daemon program that never answers, so the launch is still
+//! waiting while the window opens. Its own binary because it points `MUSTER_HOME` at a scratch
+//! home before anything reads it, so the daemon Muster starts is this test's rather than the
+//! developer's.
+
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+
+use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
+use muster_core::composition::holding::{from_toml, to_toml};
+use muster_core::composition::{DaemonId, HeldWindow, Holders, WindowName};
+use muster_core::mirror::backend::TabId;
+use muster_harness::DAEMON_DATA;
+use prost::Message;
+
+/// The daemon Muster finds for itself, with no `[[daemon]]` configured, is started on a thread of
+/// its own like a configured one. The first launch after an update can take most of a minute
+/// while macOS checks the new binary, and a window that waited for it was a Muster that seemed
+/// not to start.
+#[test]
+fn a_window_opens_while_the_daemon_it_found_is_still_starting() {
+    let home = scratch_home();
+    let config = home.join("no-daemons.toml");
+    std::fs::write(&config, "").expect("the config can be written");
+
+    let _turn = muster::testing::fresh_session();
+    let asked = Instant::now();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        daemon_path: silent_daemon().to_string_lossy().into_owned(),
+        daemon_data_path: DAEMON_DATA.to_string(),
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: home.join("window-2.toml").to_string_lossy().into_owned(),
+        tab_holders_path: home.join("holding/tabs-2.toml").to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    let waited = asked.elapsed();
+    assert!(
+        waited < Duration::from_secs(5),
+        "the window waited {waited:?} for a daemon that has not answered"
+    );
+}
+
+/// The record of who holds each tab forgets a tab no daemon describes, unless the window holding
+/// it follows a daemon that has not answered, which may be where the tab is. A daemon still on
+/// its way is one this window will show, so it counts as followed; were it not, this window
+/// would give up its own tabs on a slow machine the moment it opened, leaving them to whichever
+/// window came to the front next.
+///
+/// A daemon at a socket somebody named cannot stage this, because it is followed as soon as an
+/// attempt begins, answering or not; one Muster starts is not followed until it answers.
+#[test]
+fn a_tab_on_a_daemon_still_starting_stays_this_windows() {
+    let home = scratch_home();
+    let silent = silent_daemon();
+    let config = home.join("config.toml");
+    std::fs::write(&config, "[[daemon]]\nid = \"local\"\n").expect("the config can be written");
+
+    // The record as a launch left it: this window, closed, holding a tab on that daemon.
+    let arrangement = home.join("window-1.toml");
+    let record = home.join("holding/tabs.toml");
+    let mut holders = Holders::default();
+    holders.opened(HeldWindow {
+        name: WindowName::new("window-1"),
+        arrangement: arrangement.to_string_lossy().into_owned(),
+        socket: String::new(),
+        pid: 1,
+        focused: 0,
+        daemons: std::iter::once(DaemonId::new("local")).collect(),
+    });
+    holders.take(TabId::new("t-left"), &WindowName::new("window-1"));
+    holders.closed(&WindowName::new("window-1"));
+    std::fs::create_dir_all(record.parent().expect("the record is in a directory"))
+        .expect("the record's directory can be made");
+    std::fs::write(&record, to_toml(&holders)).expect("the record can be written");
+
+    let _turn = muster::testing::fresh_session();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        daemon_path: silent.to_string_lossy().into_owned(),
+        daemon_data_path: DAEMON_DATA.to_string(),
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: arrangement.to_string_lossy().into_owned(),
+        tab_holders_path: record.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    let now = from_toml(&std::fs::read_to_string(&record).unwrap_or_default())
+        .expect("the record this window writes reads back");
+    let held: Vec<String> =
+        now.held_by(&WindowName::new("window-1")).map(ToString::to_string).collect();
+    assert_eq!(held, ["t-left"], "the window let go of its tab on a daemon still starting");
+}
+
+/// A home these tests own, so nothing here can resolve to a real one.
+fn scratch_home() -> &'static Path {
+    static HOME: OnceLock<PathBuf> = OnceLock::new();
+    HOME.get_or_init(|| {
+        let path =
+            PathBuf::from(format!("/tmp/muster-test/daemon-starting-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).expect("the harness root should be writable");
+        // SAFETY: the first thing every test here does, so no thread of this binary has read the
+        // environment yet; a test arriving meanwhile waits in `get_or_init`. The seam reads it on
+        // the first request rather than at load.
+        unsafe {
+            std::env::set_var("MUSTER_HOME", &path);
+        }
+        let silent = path.join("silent-daemon");
+        std::fs::write(&silent, "#!/bin/sh\nexec sleep 15\n").expect("the home is writable");
+        std::fs::set_permissions(&silent, std::fs::Permissions::from_mode(0o755))
+            .expect("the script can be made executable");
+        path
+    })
+}
+
+/// A daemon program that never answers, so a launch waits for it well past the window opening.
+/// It outlives each test by a few seconds at most.
+fn silent_daemon() -> PathBuf {
+    scratch_home().join("silent-daemon")
+}
+
+fn answer(payload: request::Payload) -> Response {
+    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let reply = muster::dispatch(&bytes);
+    Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
+}
+
+fn assert_ok(response: &Response) {
+    if let Some(response::Payload::Failure(failure)) = &response.payload {
+        panic!("the core refused: {}", failure.reason);
+    }
+}
