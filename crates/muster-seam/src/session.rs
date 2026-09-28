@@ -1222,6 +1222,13 @@ impl Session {
         mirror.agent_state(&pane.pane)
     }
 
+    /// The state this window paints for a pane before `done` is laid over it: `waiting` for an
+    /// idle agent waiting on its own work.
+    fn presented_state(&self, pane: &PaneKey) -> Option<AgentState> {
+        let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
+        mirror.pane(&pane.pane).map(muster_core::mirror::Pane::presented_state)
+    }
+
     /// Whether a pane's daemon says its agent finished and nobody has seen it since.
     fn finished_unseen(&self, pane: &PaneKey) -> bool {
         self.backends.get(&pane.daemon).is_some_and(|backend| {
@@ -1279,11 +1286,11 @@ impl Session {
         }
     }
 
-    /// One pane's agent as this window paints it, from what its daemon said.
-    fn presented(&self, pane: &PaneKey, backend: AgentState) -> PaneAgent {
+    /// One pane's agent as this window paints it, from what its daemon said, `waiting` included.
+    fn presented(&self, pane: &PaneKey, state: AgentState) -> PaneAgent {
         PaneAgent {
             pane: pane.clone(),
-            state: self.attention.presented(pane, backend),
+            state: self.attention.presented(pane, state),
             since_ms: self.state_since.get(pane).copied().unwrap_or_default(),
         }
     }
@@ -1294,7 +1301,7 @@ impl Session {
         for (id, backend) in &self.backends {
             let mirror = poison::lock(&backend.mirror, "mirror");
             for pane in mirror.panes() {
-                agents.push(self.presented(&PaneKey::new(id, &pane.id), pane.agent_state));
+                agents.push(self.presented(&PaneKey::new(id, &pane.id), pane.presented_state()));
             }
         }
         agents
@@ -4248,8 +4255,8 @@ fn announce_state(pane: &PaneKey) {
 /// reported seen (`attention`).
 fn presented(pane: &PaneKey) -> Option<PaneAgent> {
     let session = poison::lock(&SESSION, "session");
-    let backend = session.agent_state(pane)?;
-    Some(session.presented(pane, backend))
+    let state = session.presented_state(pane)?;
+    Some(session.presented(pane, state))
 }
 
 /// Shows the roster or puts it away, and says what it settled on.

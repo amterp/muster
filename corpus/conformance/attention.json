@@ -692,6 +692,27 @@
           "local/w1:p1"
         ]
       }
+    },
+    {
+      "name": "an agent waiting on its own work is not laid over with done",
+      "why": "The daemon sets no finish while an agent waits and clears one when it declares a wait, so the two should never meet. If a finish this window holds meets a wait anyway, the wait wins: the agent said it has not finished, and calling it done would send somebody to a pane with nothing for them.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "waiting",
+            "finished": true
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "waiting"
+        },
+        "reported": []
+      }
     }
   ]
 }

@@ -242,8 +242,9 @@ impl Attention {
     /// A finish is `done` whether the agent is idle or has left the pane, which is how a crash
     /// or a one-shot run ends. The daemon clears it when the agent works or waits on somebody
     /// again, so a busy state should never arrive carrying one; if it does, the busy state wins.
+    /// So does `waiting`, which the daemon sets no finish under and clears one for.
     pub fn presented(&self, pane: &PaneKey, state: AgentState) -> AgentState {
-        let busy = matches!(state, AgentState::Working | AgentState::Blocked);
+        let busy = matches!(state, AgentState::Working | AgentState::Blocked | AgentState::Waiting);
         if !busy && self.finished.contains(pane) && !self.reported.contains(pane) {
             AgentState::Done
         } else {

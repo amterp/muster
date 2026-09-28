@@ -53,3 +53,21 @@ fn counts_as_conformance() {
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
 }
+
+#[test]
+fn an_idle_agent_waiting_on_its_own_work_reads_waiting() {
+    let pane = |state: &str, waiting: Option<&str>| {
+        crate::support::backend::read_pane(&json!({
+            "id": "p1",
+            "agentState": state,
+            "cwd": "/src",
+            "facts": { "waiting": waiting },
+        }))
+        .presented_state()
+    };
+    assert_eq!(pane("idle", Some("the full gate")), AgentState::Waiting);
+    assert_eq!(pane("idle", None), AgentState::Idle);
+    // A wait is shown only once the agent has stopped: while it works, it is working.
+    assert_eq!(pane("working", Some("the full gate")), AgentState::Working);
+    assert_eq!(pane("blocked", Some("the full gate")), AgentState::Blocked);
+}

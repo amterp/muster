@@ -17,6 +17,12 @@
       "expect": { "state": "blocked" }
     },
     {
+      "name": "waiting",
+      "why": "An agent idle because it ended its turn to wait on work it started itself. No daemon sends it: a window presents an idle agent with a waiting fact this way, and the seam and the CLI read it back.",
+      "given": { "backendValue": "waiting" },
+      "expect": { "state": "waiting" }
+    },
+    {
       "name": "idle",
       "why": "Nothing running. Distinct from done, which herdr derives as idle-on-an-unseen-pane rather than storing.",
       "given": { "backendValue": "idle" },

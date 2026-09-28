@@ -99,6 +99,19 @@ pub struct Pane {
     pub unreadable: bool,
 }
 
+impl Pane {
+    /// The state a window paints for this pane before attention lays `done` over it: `waiting`
+    /// for an idle agent that said it is waiting on its own work, and otherwise what the daemon
+    /// said.
+    pub fn presented_state(&self) -> AgentState {
+        if self.agent_state == AgentState::Idle && self.facts.waiting.is_some() {
+            AgentState::Waiting
+        } else {
+            self.agent_state
+        }
+    }
+}
+
 /// What an agent reports about itself, in its own words (MIP-3, section 2). Never read off its
 /// screen, and forgotten when the pane's agent changes or leaves.
 #[derive(Debug, Clone, Default, PartialEq)]

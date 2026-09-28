@@ -45,6 +45,18 @@
       "why": "A plain shell reads `unknown`, so a caller waiting for a harness to exit and leave its shell behind can wait for this.",
       "given": { "state": "unknown", "wanted": "unknown" },
       "expect": { "counts": true }
+    },
+    {
+      "name": "an agent waiting on its own work has not finished",
+      "why": "A caller waiting for `idle` wants the agent done with its work, and `muster pane wait --until idle` is how an orchestrator waits for one. An agent that ended its turn to wait on its own gate would otherwise answer that wait while the gate still runs.",
+      "given": { "state": "waiting", "wanted": "idle" },
+      "expect": { "counts": false }
+    },
+    {
+      "name": "waiting counts as itself",
+      "why": "A caller can wait for an agent to settle into waiting on its work, as for any state.",
+      "given": { "state": "waiting", "wanted": "waiting" },
+      "expect": { "counts": true }
     }
   ]
 }
