@@ -1,0 +1,69 @@
+# who macOS charges for a pane's program after a daemon hands its panes over
+#
+# recorded 2026-09-28T09:15Z on macOS 26.4.1 arm64
+# read in docs/observations/macos-26.4.1.md section 9
+#
+# A bundle built by `./dev --bundle` from this checkout, launched into a scratch
+# HOME. Its app started the daemon through Launch Services (pid 76909, route
+# launch_services), as a shipped Muster does. Its one pane then ran the probes
+# below. Then `muster-daemon replace` handed every pane to a successor that the
+# old daemon spawned (pid 79385), which is the same daemon-side path a handoff
+# the app asks for takes. The old daemon exited. The pane that lived through the
+# handoff ran the probes again, and so did a pane the successor made.
+#
+# Two sources, recorded side by side because they disagree:
+#
+# - `who`, a process asking responsibility_get_pid_responsible_for_pid about
+#   itself (the only query that answers truthfully, section 7);
+# - tccd's own AUTHREQ lines from `log show`, which name the identity it charges
+#   and the subject it judges against.
+#
+# The protected reads are of Full Disk Access folders, which are denied without a
+# prompt. Nothing here could put a prompt on screen, and none appeared.
+#
+# Not recorded: tccd's lines for the Full Disk Access reads after the handoff.
+# They were denied without tccd being asked again, so what they were charged to
+# is not in its log. The requests that did reach tccd after the handoff are
+# Developer Tool checks that syspolicyd makes when a new unsigned binary runs,
+# made for the `peek*` binaries as each pane started them. <scratch> stands for
+# the directory they were built in.
+
+## ps, after the handoff (the old daemon, 76909, had exited)
+
+    PID  PPID COMM
+  79385     1 /Users/amterp/src/muster-1/.build/muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-dae
+
+## who, and each read, in the order run
+
+  shell=76958
+  before-handoff:existing-pane  pid=77985 ppid=76958 responsible=76909 responsible-is=/Users/amterp/src/muster-1/.build/muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon
+  ls: /Users/amterp/Library/Safari: Operation not permitted
+  shell=76958
+  after-handoff:existing-pane  pid=79728 ppid=76958 responsible=79728 responsible-is=itself
+  ls: /Users/amterp/Library/Messages: Operation not permitted
+  shell=79812
+  after-handoff:new-pane  pid=79889 ppid=79812 responsible=79889 responsible-is=itself
+  ls: /Users/amterp/Library/Mail: Operation not permitted
+  peek /Users/amterp/Library/Messages: The file “Messages” couldn’t be opened because you don’t have permission to view it.
+  peek /Users/amterp/Library/Safari: The file “Safari” couldn’t be opened because you don’t have permission to view it.
+  peek /Users/amterp/Library/Mail: The file “Mail” couldn’t be opened because you don’t have permission to view it.
+  peek /Users/amterp/Library/Safari: The file “Safari” couldn’t be opened because you don’t have permission to view it.
+  peekexisting-pid=87279
+  peek /Users/amterp/Library/Mail: The file “Mail” couldn’t be opened because you don’t have permission to view it.
+  peeknew-pid=87518
+  peek /Users/amterp/Library/Mail: The file “Mail” couldn’t be opened because you don’t have permission to view it.
+
+## tccd
+
+  2026-09-28 04:15:43.340904 AUTHREQ_ATTRIBUTION: msgID=46976.8, attribution={responsible={TCCDProcess: identifier=dev.amterp.muster.sessions, pid=76909, responsible_path=/Users/amterp/src/muster-1/.build/muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon, binary_path=/Users/amterp/src/muster-1/.build/muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon}, accessing={TCCDProcess: identifier=com.apple.ls, pid=78008, binary_path=/bin/ls}, requesting={TCCDProcess: identifier=com.apple.sandboxd, pid=46976, binary_path=/usr/libexec/sandboxd}, },
+  2026-09-28 04:15:43.360890 AUTHREQ_SUBJECT: msgID=46976.8, subject=dev.amterp.muster,
+  2026-09-28 04:15:43.368345 AUTHREQ_RESULT: msgID=46976.8, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),
+  2026-09-28 04:17:31.635661 AUTHREQ_ATTRIBUTION: msgID=510.7138, attribution={responsible={TCCDProcess: identifier=dev.amterp.muster.sessions, pid=83019, responsible_path=/Users/amterp/src/muster-1/.build/muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon, binary_path=<scratch>/peek}, accessing={TCCDProcess: identifier=peek, pid=83019, binary_path=<scratch>/peek}, requesting={TCCDProcess: identifier=com.apple.syspolicyd, pid=510, binary_path=/usr/libexec/syspolicyd}, },
+  2026-09-28 04:17:31.647029 AUTHREQ_SUBJECT: msgID=510.7138, subject=dev.amterp.muster,
+  2026-09-28 04:17:31.647344 AUTHREQ_RESULT: msgID=510.7138, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),
+  2026-09-28 04:18:28.194194 AUTHREQ_ATTRIBUTION: msgID=510.7139, attribution={responsible={TCCDProcess: identifier=dev.amterp.muster.sessions, pid=87279, responsible_path=/Users/amterp/src/muster-1/.build/muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon, binary_path=<scratch>/peekexisting}, accessing={TCCDProcess: identifier=peekexisting, pid=87279, binary_path=<scratch>/peekexisting}, requesting={TCCDProcess: identifier=com.apple.syspolicyd, pid=510, binary_path=/usr/libexec/syspolicyd}, },
+  2026-09-28 04:18:28.204627 AUTHREQ_SUBJECT: msgID=510.7139, subject=dev.amterp.muster,
+  2026-09-28 04:18:28.206024 AUTHREQ_RESULT: msgID=510.7139, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),
+  2026-09-28 04:18:31.097319 AUTHREQ_ATTRIBUTION: msgID=510.7140, attribution={responsible={TCCDProcess: identifier=dev.amterp.muster.sessions, pid=87518, responsible_path=/Users/amterp/src/muster-1/.build/muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon, binary_path=<scratch>/peeknew}, accessing={TCCDProcess: identifier=peeknew, pid=87518, binary_path=<scratch>/peeknew}, requesting={TCCDProcess: identifier=com.apple.syspolicyd, pid=510, binary_path=/usr/libexec/syspolicyd}, },
+  2026-09-28 04:18:31.102014 AUTHREQ_SUBJECT: msgID=510.7140, subject=dev.amterp.muster,
+  2026-09-28 04:18:31.102281 AUTHREQ_RESULT: msgID=510.7140, authValue=0, authReason=5, authVersion=1, desired_auth=0, error=(null),

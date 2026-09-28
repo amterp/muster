@@ -999,9 +999,11 @@ is held, writes down where detection stands - the agent, the state it published,
 new agent's grace, an idle not yet believed - and the new daemon goes on from there, so a working
 agent stays working rather than being recognized anew and shown idle through the grace.
 
-**Not yet measured:** whether macOS charges a pane's permission prompts (TCC) to the new daemon when
-the process asking is the old one's child, which the stage that puts the daemon in its helper
-bundle measures.
+**Permission prompts (TCC) are charged as before.** The new daemon is the old one's child rather
+than a process Launch Services started. Even so, after a handoff tccd charges a request from a pane
+that lived through it, or from one the new daemon made, to `dev.amterp.muster.sessions`, the
+identity it charged before. Measured in `docs/observations/macos-26.4.1.md`, section 9. What is
+not measured is a grant being honored afterwards, which needs a person to give one.
 
 ### 11. Crates
 

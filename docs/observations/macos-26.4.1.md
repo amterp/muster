@@ -232,3 +232,39 @@ stops it, and it leaves exactly what launchd gives any GUI process.
 
 The SSH case is untouched. A remote daemon has no TCC subject on this machine, and `remote::start`
 keeps starting it with `nohup`.
+
+## 9. After a handoff, panes are still charged to Muster Sessions
+
+Measured 2026-09-28 on a bundle from `./dev --bundle`, whose daemon Launch Services started, by
+handing its panes to a successor with `muster-daemon replace`. The transcript is
+`corpus/macos-26.4.1/handoff-responsibility.txt`. A handoff runs the successor as a child of the
+old daemon, and not through Launch Services, so the question was whether section 8's arrangement
+survives it. Every update runs one once the app asks an older daemon to hand over (MIP-3,
+section 10).
+
+**tccd charges them to the same identity as before.** Before the handoff, a protected read from
+the pane was charged to `dev.amterp.muster.sessions`, pid 76909, the daemon, and judged against
+the subject `dev.amterp.muster`. After it, with that daemon gone, requests from the pane that lived
+through the handoff and from a pane the successor made were charged to the same identifier and
+judged against the same subject.
+
+**The responsibility call disagrees, and tccd is the one that decides.** Asked by those same
+processes about themselves, `responsibility_get_pid_responsible_for_pid` answered "itself". tccd
+also named each process as its own responsible pid, but kept the identity and the `responsible_path`
+of the Launch Services daemon. So a pid of "itself" does not mean a nameless subject, which is
+what section 1's `prompts-say` column derived. That column was never measured (section 7), and
+this suggests re-measuring it with tccd's log beside the probe.
+
+**What is not measured:**
+
+- **Full Disk Access after the handoff.** tccd was asked for the reads before the handoff and not
+  for the ones after, which were denied from a cache. The requests after the handoff that do name
+  the identity are the Developer Tool checks syspolicyd makes as a new unsigned binary starts. The
+  identity is the process's rather than the service's, so they answer the question, but by a
+  different request than the one somebody would grant.
+- **A grant being honored after the handoff.** Nothing held a grant, and every answer was a
+  denial.
+
+Settling both needs a person: grant Muster Sessions a folder, then read that folder from a pane
+that lived through a handoff. Nothing here raised a prompt, deliberately, because a prompt lands
+on the screen of whoever is at the machine.
