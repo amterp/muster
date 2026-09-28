@@ -29,10 +29,11 @@ use crate::daemon_log::DaemonLog;
 use crate::data::Data;
 use crate::descriptors::Sealing;
 use crate::effects::Reported;
+use crate::pane::Turns;
 use crate::persist::{self, Persister};
 use crate::pty::Grid;
 use crate::server::Socket;
-use crate::session::{Handing, Places, Replacement, Reply, Saved, Shared, Stop};
+use crate::session::{Handing, Places, Replacement, Reply, Resuming, Saved, Shared, Stop};
 
 /// How long either side waits for the other at one step before giving the handoff up.
 const STEP: Duration = Duration::from_secs(10);
@@ -330,6 +331,8 @@ fn handed(
                 process: pane.process,
                 replay_length: replay.len() as u64,
                 detection: pane.io.carried_detection(),
+                wait_declared: Some(pane.turns.wait_declared),
+                reports_turns: pane.turns.reports_turns,
             })),
         )?;
         for piece in replay.chunks(PIECE) {
@@ -686,7 +689,13 @@ fn adopt_panes(link: &mut UnixStream, shared: &Shared, panes: u32) -> Result<(),
             master,
             pane.process,
             &replay,
-            pane.detection.as_ref(),
+            Resuming {
+                detection: pane.detection.as_ref(),
+                turns: Turns {
+                    wait_declared: pane.wait_declared.unwrap_or(Turns::default().wait_declared),
+                    reports_turns: pane.reports_turns,
+                },
+            },
         );
         if let Err(problem) = adopted {
             return refuse(link, problem);

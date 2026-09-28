@@ -43,7 +43,7 @@ use crate::data::Data;
 use crate::detect::{self, Detecting};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
-use crate::pane::{Ended, Pane, PaneIo, Process, Watching};
+use crate::pane::{Ended, Pane, PaneIo, Process, Turns, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
@@ -441,10 +441,18 @@ pub(crate) struct Handing {
     pub(crate) log: Option<Arc<DaemonLog>>,
 }
 
+/// Where a pane handed over had got to with its agent, beyond what its record says.
+#[derive(Clone, Copy)]
+pub(crate) struct Resuming<'a> {
+    pub(crate) detection: Option<&'a proto::handoff::Detection>,
+    pub(crate) turns: Turns,
+}
+
 pub(crate) struct HandedPane {
     pub(crate) record: proto::Pane,
     pub(crate) process: Option<i32>,
     pub(crate) io: Arc<PaneIo>,
+    pub(crate) turns: Turns,
 }
 
 /// Why a daemon being replaced refuses a request that changes anything. A caller that means to
@@ -1158,6 +1166,7 @@ impl Session {
             persister: &self.persister,
             held: false,
             detection: None,
+            turns: Turns::default(),
         };
         let pane = Pane::start(
             record,
@@ -1309,14 +1318,18 @@ impl Session {
         }
         let pane = &mut self.panes[index];
         if says_waiting {
-            pane.wait_declared = true;
+            pane.turns.wait_declared = true;
         }
         // Detection decides what the state comes to, and publishes it as any other change.
         if let Some(state) = own_state {
             if pane.record.agent.as_deref() == Some(agent.as_str()) {
-                pane.reports_turns = true;
+                pane.turns.reports_turns = true;
                 if state == muster_detect::State::Idle
-                    && settle_wait(&mut pane.record, &mut pane.wait_declared, "reported turn end")
+                    && settle_wait(
+                        &mut pane.record,
+                        &mut pane.turns.wait_declared,
+                        "reported turn end",
+                    )
                 {
                     // The turn that ended the wait has finished. Detection marks a finish when it
                     // sees the agent stop, and a pane it already reads idle shows it no stop.
@@ -1421,13 +1434,13 @@ impl Session {
                 // and that report is the new agent's.
                 if record.agent.is_some() && record.agent != agent {
                     record.facts = None;
-                    pane.reports_turns = false;
+                    pane.turns.reports_turns = false;
                 }
                 let turn = Turn::between(record.agent_state(), state);
                 // An agent that reports its own state ends its own turns: a sub-agent's tool
                 // call can read as a turn here after the agent's turn has ended.
-                if turn == Turn::Ended && !pane.reports_turns {
-                    settle_wait(record, &mut pane.wait_declared, "detected turn end");
+                if turn == Turn::Ended && !pane.turns.reports_turns {
+                    settle_wait(record, &mut pane.turns.wait_declared, "detected turn end");
                 }
                 let waiting = is_waiting(record.facts.as_ref());
                 if turn == Turn::Ended && record.agent == agent {
@@ -2020,6 +2033,7 @@ impl Session {
                     record: pane.record.clone(),
                     process: pane.process(),
                     io: Arc::clone(&pane.io),
+                    turns: pane.turns,
                 })
                 .collect(),
             persister: Arc::clone(&self.persister),
@@ -2107,7 +2121,7 @@ impl Session {
         master: OwnedFd,
         process: Option<i32>,
         replay: &[u8],
-        detection: Option<&proto::handoff::Detection>,
+        resuming: Resuming<'_>,
     ) -> Result<(), String> {
         let mut screen = Screen::new(grid, &self.settled).map_err(|error| error.to_string())?;
         drop(screen.output(replay));
@@ -2119,7 +2133,8 @@ impl Session {
             detecting: &self.detecting,
             persister: &self.persister,
             held: true,
-            detection,
+            detection: resuming.detection,
+            turns: resuming.turns,
         };
         let name = record.pane.clone();
         let pane = Pane::start(

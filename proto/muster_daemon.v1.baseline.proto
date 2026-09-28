@@ -1090,6 +1090,13 @@ message Handoff {
     // Where the pane's agent detection stood, so the new daemon goes on from there rather than
     // recognizing the agent anew. Absent from a daemon that sends none: detection starts over.
     Detection detection = 5;
+    // Whether the agent declared the wait it holds since its last turn ended, which keeps the wait
+    // past the end of the turn it was declared in. Absent from a daemon that sends none: taken as
+    // declared, so a wait lasts a turn too long rather than too short.
+    optional bool wait_declared = 6;
+    // Whether the agent reports its own state, so that its own idle report ends its turns rather
+    // than the screen.
+    bool reports_turns = 7;
   }
 
   // One pane's agent detection, as `muster-detect`'s detector holds it. Times are carried as

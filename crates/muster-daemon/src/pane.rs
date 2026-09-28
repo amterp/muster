@@ -548,13 +548,27 @@ pub(crate) struct Pane {
     process: Option<i32>,
     /// Whether that process is another daemon's child, which this one never reaps.
     adopted: bool,
+    pub(crate) turns: Turns,
+}
+
+/// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
+/// with the pane, since a daemon that took a pane over cannot tell either from its screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Turns {
     /// Whether the agent said what it waits on since its last turn ended, which keeps the wait
-    /// past the end of the turn it was said in. Taken as said for a pane this daemon did not
-    /// see the wait declared in, so a wait lasts a turn too long rather than too short.
+    /// past the end of the turn it was said in.
     pub(crate) wait_declared: bool,
     /// Whether the agent reports its own state, so that its own idle report ends its turns
     /// rather than detection's reading of the screen.
     pub(crate) reports_turns: bool,
+}
+
+impl Default for Turns {
+    /// Taken as said for a pane nothing has told this daemon about, so a wait lasts a turn too
+    /// long rather than too short.
+    fn default() -> Turns {
+        Turns { wait_declared: true, reports_turns: false }
+    }
 }
 
 /// A pane's process, as the daemon holding the pane knows it.
@@ -587,6 +601,8 @@ pub(crate) struct Watching<'a> {
     pub(crate) held: bool,
     /// Where a pane handed over had got to in detecting its agent.
     pub(crate) detection: Option<&'a proto::handoff::Detection>,
+    /// Where a pane handed over had got to in its agent's turns.
+    pub(crate) turns: Turns,
 }
 
 impl Pane {
@@ -708,8 +724,7 @@ impl Pane {
             wake,
             process,
             adopted: !child && process.is_some(),
-            wait_declared: true,
-            reports_turns: false,
+            turns: watching.turns,
         })
     }
 
