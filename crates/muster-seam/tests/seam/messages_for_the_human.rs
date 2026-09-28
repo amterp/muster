@@ -94,6 +94,32 @@ fn a_message_sent_while_no_window_was_open_notifies_when_one_opens() {
     assert_eq!(messages_asked()[0].group, "g");
 }
 
+/// A group's name reaches a shell only as a group's name: one that could be read as a command
+/// gets no transcript, rather than a tab whose shell runs it.
+#[test]
+fn a_group_name_that_is_a_command_opens_nothing() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    open_window(&daemon);
+
+    for group in ["x'; touch owned; '", "x\ntouch owned", "a b", "-x\\y"] {
+        let opened = answer(request::Payload::OpenTranscript(muster::proto::OpenTranscript {
+            daemon_id: "local".to_string(),
+            group: group.to_string(),
+        }));
+        assert!(
+            matches!(opened.payload, Some(response::Payload::Failure(_))),
+            "{group:?} was answered with {opened:?}"
+        );
+    }
+    let commands: Vec<String> =
+        snapshot(&mut control).panes.iter().filter_map(|pane| pane.command.clone()).collect();
+    assert!(commands.is_empty(), "a pane was made to run {commands:?}");
+}
+
 /// The human, `a` and `b` in group `g`.
 fn group_of_three(control: &mut Control) {
     for (caller, name) in [(the_human(), "@human"), (named("a"), "a"), (named("b"), "b")] {
