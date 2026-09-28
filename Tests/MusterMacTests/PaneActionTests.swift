@@ -242,8 +242,7 @@ struct AppMenuTests {
   /// becomes a menu item AppKit will actually dispatch.
   ///
   /// Drift between the two lists - an action the core has and this shell does not - is caught
-  /// where it matters rather than here: building the menu logs `menu.action.unknown`, and a
-  /// contract run fails on any warning it did not expect.
+  /// against the core's own answer, by `everyBoundChordIsAKeyEquivalent`.
   static let published: [Core.Binding] = [
     Core.Binding(action: "new_tab", key: "KeyT", modifiers: ["super"]),
     Core.Binding(action: "split_right", key: "KeyD", modifiers: ["super"]),
@@ -284,6 +283,38 @@ struct AppMenuTests {
     #expect(actions.count == items.count)
     let chords = Set(items.map { "\($0.modifiers.rawValue):\($0.key)" })
     #expect(chords.count == items.count)
+  }
+
+  @MainActor
+  @Test("every chord the core binds is a key equivalent in the menu")
+  func everyBoundChordIsAKeyEquivalent() throws {
+    // The core's own answer rather than the fixture above, because this is the guarantee that
+    // keeps a chord from the pane: the core hands a pane every key that reaches it, and none
+    // of its window actions is in the pane's keymap (`keymap.rs`, `KeymapAction`). On macOS the
+    // menu takes a chord before any view sees it, so a bound action with no key equivalent
+    // here would be typed into the program instead.
+    let bound = Core.bindings().filter { !$0.key.isEmpty }
+    try #require(bound.contains { $0.action == "split_right" }, "the core published no chords")
+
+    var items: [String: NSMenuItem] = [:]
+    func collect(_ menu: NSMenu) {
+      for item in menu.items {
+        if let name = item.representedObject as? String { items[name] = item }
+        if let submenu = item.submenu { collect(submenu) }
+      }
+    }
+    collect(AppMenu.build(target: MusterWindow.self, bindings: Core.bindings()))
+
+    for binding in bound {
+      let chord = "\(binding.modifiers.joined(separator: "+"))+\(binding.key)"
+      let item = items[binding.action]
+      #expect(item != nil, "\(binding.action) is bound to \(chord) and has no menu item")
+      #expect(
+        menuKeyEquivalent(forKeyNamed: binding.key) != nil,
+        "\(binding.action)'s \(chord) has no key equivalent AppKit can express")
+      #expect(item?.keyEquivalent == menuKeyEquivalent(forKeyNamed: binding.key), "\(chord)")
+      #expect(item?.keyEquivalentModifierMask == menuModifiers(binding.modifiers), "\(chord)")
+    }
   }
 
   @MainActor
