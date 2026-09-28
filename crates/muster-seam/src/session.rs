@@ -3260,12 +3260,18 @@ pub(crate) fn window() -> WindowNow {
 /// unreachable devenv should cost its own panes and nothing else, and a window that refused to
 /// open because a container was down would be worse than no window at all.
 pub(crate) fn follow_configured(config: &Config) {
+    follow_in_background(&config.daemons);
+}
+
+/// Attaches each daemon on a thread of its own, retried until it answers, and waits at most
+/// [`GRACE`] for them, as [`follow_configured`] says.
+fn follow_in_background(daemons: &[Daemon]) {
     let generation = {
         let mut attaches = poison::lock(&ATTACHES, "attaches");
-        attaches.under_way.extend(config.daemons.iter().map(|daemon| daemon.id.clone()));
+        attaches.under_way.extend(daemons.iter().map(|daemon| daemon.id.clone()));
         attaches.generation
     };
-    for daemon in &config.daemons {
+    for daemon in daemons {
         let attaching = daemon.clone();
         let spawned = std::thread::Builder::new()
             .name(format!("muster-attach-{}", daemon.id))
@@ -3572,7 +3578,7 @@ pub(crate) enum AttachError {
 /// for a tab. That last one is what a fresh machine needs, where Muster has just started a
 /// daemon that has not answered anything yet.
 pub(crate) fn open() -> Result<(), String> {
-    follow_implicitly_if_nothing_else()?;
+    follow_implicitly_if_nothing_else(Implicitly::InBackground)?;
     restore_presentation();
     restore_font_sizes();
     say_this_window_is_open();
@@ -3836,7 +3842,8 @@ fn reopen_what_was_left() {
     );
 }
 
-/// Attaches the daemon on this machine when no config file named any.
+/// Attaches the daemon on this machine when no config file named any, on a thread of its own
+/// like a configured one or while the caller waits, as `how` says.
 ///
 /// Recorded as the wish that produced it - Muster's own daemon, wherever that turns out to be
 /// - rather than as the path that answered today.
@@ -3849,7 +3856,7 @@ fn reopen_what_was_left() {
 /// configured daemon's id, and nothing on screen says which session it is looking at. Under
 /// load that is how the suite's own tests once reached a developer's live herdr (kan a_2L19sAmLZ),
 /// and a person whose devenv is briefly slow would get the same window with no way to tell.
-fn follow_implicitly_if_nothing_else() -> Result<(), String> {
+fn follow_implicitly_if_nothing_else(how: Implicitly) -> Result<(), String> {
     if following_anything() {
         return Ok(());
     }
@@ -3866,7 +3873,26 @@ fn follow_implicitly_if_nothing_else() -> Result<(), String> {
     }
     let implicit =
         Daemon { id: DaemonId::new(LOCAL), endpoint: Endpoint::Local { socket_path: None } };
-    attach_daemon(&implicit)
+    match how {
+        Implicitly::InBackground => {
+            follow_in_background(std::slice::from_ref(&implicit));
+            Ok(())
+        }
+        Implicitly::Waiting => attach_daemon(&implicit),
+    }
+}
+
+/// Whether a window following the daemon Muster found for itself waits for it.
+#[derive(Clone, Copy)]
+enum Implicitly {
+    /// A window opened onto whatever the daemons hold, which opens at once and shows the daemon's
+    /// panes when it answers. Its first start after an update can take most of a minute while
+    /// macOS checks the new binary, and a window that waited that long read as a Muster that
+    /// did not start.
+    InBackground,
+    /// A window asked for one pane, which has nothing else to show until the daemon holding it
+    /// answers, however long its launch takes.
+    Waiting,
 }
 
 /// Every daemon a config file named, said the way the file named it.
@@ -4036,7 +4062,7 @@ pub(crate) fn first_attached_daemon() -> Option<DaemonId> {
 /// to ask, this install's own daemon on this machine.
 pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let pane = PaneId::new(pane_id);
-    follow_implicitly_if_nothing_else().map_err(AttachError::Unreachable)?;
+    follow_implicitly_if_nothing_else(Implicitly::Waiting).map_err(AttachError::Unreachable)?;
     // A window opened onto one pane is a window like any other: it holds tabs, and a tab nobody
     // holds joins it. Without this it never said it was open, so it held nothing but the tab on
     // screen, and every other tab the daemon had was listed by no window at all.
