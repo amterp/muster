@@ -576,7 +576,10 @@ fn ask_around(
         }
     }
     match keeping.as_slice() {
-        [] => Ok(Route::Here),
+        [] => {
+            shared.messages().service.unchecked(group)?;
+            Ok(Route::Here)
+        }
         [there] => shared.messages().service.route_join(caller, name, Some(there), panes),
         _ => Err(Refusal::WhichGroup { candidates: keeping }),
     }
@@ -1076,6 +1079,13 @@ pub(super) fn words(refusal: &Refusal) -> String {
             "{group} is kept on {machine}, which this machine cannot reach now: messages cross \
              machines only while a Muster window is attached to both, and its connection to \
              {machine} may have dropped. Groups kept on this machine still work"
+        ),
+        Refusal::Unchecked { group, machines } => format!(
+            "no group here is called {group}, and {} cannot be reached now to ask whether it \
+             keeps one. Join it by its full name, {group}@<machine>, once the connection is \
+             back, or make a group here with `{}`",
+            machines.join(" and "),
+            messaging::command(GROUP, &format!("new {group}"))
         ),
         Refusal::KeptElsewhere { group, machine } => format!(
             "{group} is kept on {machine}, so its members, policy and pause are changed there, \

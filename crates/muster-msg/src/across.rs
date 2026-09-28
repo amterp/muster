@@ -262,6 +262,17 @@ impl<S: Store> Messaging<S> {
     /// A link to `machine` is up.
     pub fn linked(&mut self, machine: &str) {
         self.linked.insert(machine.to_string());
+        self.met.insert(machine.to_string());
+    }
+
+    /// Refuses making a group here by a name nothing here holds while a machine this one has
+    /// linked to cannot be asked whether it keeps one; `group new` makes one here regardless.
+    pub fn unchecked(&self, group: &str) -> Result<(), Refusal> {
+        let machines: Vec<String> = self.met.difference(&self.linked).cloned().collect();
+        if machines.is_empty() {
+            return Ok(());
+        }
+        Err(Refusal::Unchecked { group: group.to_string(), machines })
     }
 
     /// The link to `machine` is down: changes to its groups are refused until it is back.
@@ -313,7 +324,10 @@ impl<S: Store> Messaging<S> {
         let Some(group) = group else { return Ok(Route::Here) };
         let (key, machine) = match self.place(group)? {
             Place::Here => return Ok(Route::Here),
-            Place::Nowhere if self.linked.is_empty() => return Ok(Route::Here),
+            Place::Nowhere if self.linked.is_empty() => {
+                self.unchecked(group)?;
+                return Ok(Route::Here);
+            }
             Place::Nowhere => return Ok(Route::Ask { group: group.to_string() }),
             Place::Elsewhere { key, machine } => (key, machine),
         };

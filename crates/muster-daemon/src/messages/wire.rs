@@ -233,6 +233,10 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.group = group;
         }
         Refusal::WhichGroup { candidates } => refused.candidates = candidates,
+        Refusal::Unchecked { group, machines } => {
+            refused.group = group;
+            refused.candidates = machines;
+        }
         Refusal::Unread { group, count } => {
             refused.group = group;
             refused.count = count;
@@ -282,6 +286,7 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "addressed_self" => Refusal::AddressedSelf,
         "no_group" => Refusal::NoGroup,
         "which_group" => Refusal::WhichGroup { candidates },
+        "unchecked" => Refusal::Unchecked { group, machines: candidates },
         "unread" => Refusal::Unread { group, count },
         "empty_body" => Refusal::EmptyBody,
         "body_too_large" => {

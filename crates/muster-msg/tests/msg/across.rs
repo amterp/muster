@@ -699,4 +699,9 @@ fn a_bare_name_join_is_not_made_a_group_here_while_a_known_machine_is_down() {
     let (laptop, sessions) = wire.split(Side::Laptop);
     let route = laptop.route_join(&builder, Some("builder"), Some("review"), sessions);
     assert!(!matches!(route, Ok(Route::Here)), "would shadow review@devenv: {route:?}");
+    let Err(Refusal::Unchecked { group, machines }) = route else { panic!("{route:?}") };
+    assert_eq!((group.as_str(), machines), ("review", vec!["devenv".to_string()]));
+
+    let made = laptop.group_new(&builder, "review", None, sessions, 1);
+    assert!(made.is_ok(), "group new makes it here regardless: {made:?}");
 }

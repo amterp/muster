@@ -254,7 +254,10 @@ from the other:
   laptop calls a machine by its `[[daemon]] id`, and the machine calls the laptop by its host
   name. A bare name is the one kept on this machine, or else the one elsewhere that goes by it,
   and `review@devenv` says which when both machines have one. `join` with a bare name asks the
-  linked machines first, and makes the group here only if none keeps one.
+  linked machines first, and makes the group here only if none keeps one. While a machine linked
+  to since the daemon started is down, it cannot be asked, so that `join` is refused,
+  `unchecked`: join by the full name once the link is back, or make the group here with `group
+  new`.
 - **Each machine wakes its own agents.** A post is numbered on the group's machine, and the guard
   counts what you have not read there, so it holds across machines as it does on one. A post's
   answer says what each machine did for its own agents.

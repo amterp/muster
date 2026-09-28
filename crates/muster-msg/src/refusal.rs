@@ -42,6 +42,12 @@ pub enum Refusal {
         group: String,
         machine: String,
     },
+    /// No group here has the name, and machines this one has linked to, which may keep one,
+    /// cannot be asked now: a new group here would take the name the other means.
+    Unchecked {
+        group: String,
+        machines: Vec<String>,
+    },
     /// The group is kept on another machine, whose daemon changes its policy and members: this
     /// one holds a replica (MIP-4, section 11).
     KeptElsewhere {
@@ -115,6 +121,7 @@ impl Refusal {
             Refusal::WhichParticipant { .. } => "which_participant",
             Refusal::NoSharedGroup { .. } => "no_shared_group",
             Refusal::Unreachable { .. } => "unreachable",
+            Refusal::Unchecked { .. } => "unchecked",
             Refusal::KeptElsewhere { .. } => "kept_elsewhere",
             Refusal::NotAParticipant { .. } => "not_a_participant",
             Refusal::NotAMember { .. } => "not_a_member",

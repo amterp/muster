@@ -370,6 +370,9 @@ pub struct Messaging<S: Store> {
     kept: Saved,
     /// Machines a link to is up now.
     pub(crate) linked: BTreeSet<String>,
+    /// Every machine a link has come up to since this daemon started, whether or not it is up
+    /// now: those that may keep a group by a name nothing here holds.
+    pub(crate) met: BTreeSet<String>,
 }
 
 impl<S: Store> Messaging<S> {
@@ -425,6 +428,7 @@ impl<S: Store> Messaging<S> {
             next_ticket: 1,
             kept: Saved::default(),
             linked: BTreeSet::new(),
+            met: BTreeSet::new(),
         };
         messaging.kept = messaging.snapshot();
         messaging

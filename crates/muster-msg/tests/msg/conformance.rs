@@ -133,6 +133,7 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::Unreachable { group, machine } | Refusal::KeptElsewhere { group, machine } => {
             format!("{group} {machine}")
         }
+        Refusal::Unchecked { group, machines } => format!("{group} {}", machines.join(",")),
         Refusal::NotAParticipant { name } => {
             name.clone().unwrap_or_else(|| "this session".to_string())
         }
