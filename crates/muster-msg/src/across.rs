@@ -743,6 +743,7 @@ impl<S: Store> Messaging<S> {
         {
             self.wake_resumed(&key, &by, &mut posted, presence, now_ms);
         }
+        keep_last_human_wake(&mut posted.wakes);
         self.unanswered.remove(&key);
         let unsaved = match self.save() {
             Err(Refusal::Store { error }) => Some(error),
@@ -1008,4 +1009,16 @@ fn base(key: &str) -> String {
 
 fn mismatched(call: &Call) -> Refusal {
     Refusal::Store { error: format!("the answer to {call:?} was for another kind of call") }
+}
+
+/// Keeps only the last of `wakes` that tells the windows what waits for the human: it holds the
+/// whole batch, and one per message would raise the notice again for each (MIP-4, section 10).
+fn keep_last_human_wake(wakes: &mut Vec<Wake>) {
+    if let Some(last) = wakes.iter().rposition(|wake| wake.via == Via::Human) {
+        let mut index = 0;
+        wakes.retain(|wake| {
+            index += 1;
+            wake.via != Via::Human || index - 1 == last
+        });
+    }
 }
