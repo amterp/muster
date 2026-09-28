@@ -673,21 +673,27 @@ fn members_text(members: &msg_answer::Members, json: bool) -> String {
     if members.members.is_empty() {
         return "nobody".to_string();
     }
+    let states: Vec<String> = members
+        .members
+        .iter()
+        .map(|member| match activity(member.activity()) {
+            Some(doing) => format!("{} ({doing})", liveness(member)),
+            None => liveness(member).to_string(),
+        })
+        .collect();
     let width = members.members.iter().map(|member| member.name.len()).max().unwrap_or(0);
+    let state_width = states.iter().map(String::len).max().unwrap_or(0);
     members
         .members
         .iter()
-        .map(|member| {
+        .zip(&states)
+        .map(|(member, state)| {
             let groups = if member.groups.is_empty() {
                 "in no group".to_string()
             } else {
                 member.groups.join(", ")
             };
-            let state = match activity(member.activity()) {
-                Some(doing) => format!("{} ({doing})", liveness(member)),
-                None => liveness(member).to_string(),
-            };
-            format!("{:<width$}  {state:<14}  {groups}", member.name)
+            format!("{:<width$}  {state:<state_width$}  {groups}", member.name)
         })
         .collect::<Vec<_>>()
         .join("\n")
