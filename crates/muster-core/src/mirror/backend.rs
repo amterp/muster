@@ -263,7 +263,7 @@ pub struct Snapshot {
     /// says it has finished, a daemon holding nothing is not an empty one.
     pub restoring: bool,
     /// What waits for the human, by group, in each group with anything waiting (MIP-4,
-    /// section 10). Empty from a daemon that is not the human's home.
+    /// section 10). Empty from a daemon over ssh, since the human is homed where the app runs.
     pub human: BTreeMap<String, HumanNotice>,
 }
 

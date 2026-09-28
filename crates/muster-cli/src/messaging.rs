@@ -49,8 +49,9 @@ Who you are: `--as NAME` if given, else the Claude Code session you run in (from
 $CLAUDE_CODE_MESSAGING_SOCKET), else you are the human. A session that never joined under a \
 name is named after its working directory.
 
-A message to @human notifies the person at the Muster window on this machine, and choosing the \
-notification opens the group's transcript: `muster msg log --group G --follow`.
+A message to @human notifies the person at the Muster window, and choosing the notification \
+opens the group's transcript: `muster msg log --group G --follow`. On a machine that window \
+reaches over ssh, @human is the same person, whose messages are kept where the app runs.
 
 A Claude Code session started with --dangerously-skip-permissions holds a wake for approval \
 unless it was also started with --settings '{\"crossSessionInbound\":\"accept\"}'.

@@ -917,8 +917,9 @@ message Event {
     Restored restored = 19;
     Replaced replaced = 20;
     // What waits for the human in one group, sent whenever it changes: a message that wakes
-    // the human, or the human reading. A count of 0 means nothing waits there any more. Only
-    // the human's home daemon sends it (MIP-4, sections 10 and 11).
+    // the human, the human reading, or a policy that rings the human differently. A count of 0
+    // means nothing waits there any more. A window takes it only from a daemon on its own
+    // machine, the human's home (MIP-4, sections 10 and 11).
     MsgAnswer.Notice human_notice = 21;
   }
 }

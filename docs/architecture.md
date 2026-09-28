@@ -862,8 +862,10 @@ the policy, so a replica wakes its members as the home would, and a pause or res
 replica's members too. A policy, its members and its pause are changed only at the home; on a replica those verbs
 are refused, naming the home. The human is homed on the machine the app runs on, and a policy's `@human` means that
 person on any machine, so the human on the laptop is rung in a group kept on the devenv as in one kept on the
-laptop. Only the human's home daemon tells windows what waits for the human, and the guard never holds the human's
-post on either machine.
+laptop. A daemon that a link dialed learns from it which machine the human is homed on, and from then on has no human
+of its own: a person's shell there is the laptop's human, which may post in and change a group kept there but reads
+and waits only at home, and an agent's `@human` there means the laptop's. A window takes what waits for the human
+only from the daemon on its own machine, and the guard never holds the human's post on either machine.
 
 **Messaging is one of two request paths that do not run through the core.** Messaging has to work with no window
 open, and the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,

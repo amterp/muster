@@ -622,8 +622,18 @@ As built in stage 3, under Decision 1 (a):
   the banner comes down once the daemon says nothing waits. A transcript somebody is reading in
   a focused window reads what arrives there, and raises nothing.
 - **The human's home publishes.** For a group homed elsewhere, the home daemon's replica wakes
-  the human the way a local post does (section 11), so only the daemon on the app's machine ever
-  tells a window what waits for the human.
+  the human the way a local post does (section 11), and a window takes what waits for the human
+  only from a daemon on its own machine, so only the daemon on the app's machine ever tells a
+  window.
+- **A far daemon has no human.** The app's daemon is the one that dials a link, so a daemon that
+  was dialed records the dialer's machine as the human's home, and keeps it across restarts. From
+  then on, unless a window attends it, a person's shell there is that machine's human,
+  `@human@laptop`, and an agent's `@human` means the same. The person may post in a group kept
+  there that they are in, and change its policy, members or pause. Reading, waiting, joining,
+  leaving and making a group need the human's cursors, so they, and a post in a group kept
+  anywhere else, are refused as `human_elsewhere`, naming the machine to run them on. An agent there reaches the
+  human only in a group the human joined, as it reaches any member on another machine. A daemon
+  no link has dialed yet keeps a human of its own, which no window hears of.
 
 The display name of this section's first paragraph is not built: messages name the human
 `@human`.

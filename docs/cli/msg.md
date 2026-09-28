@@ -29,7 +29,8 @@ Every verb works out who is asking, in this order:
   sets in every command a session runs.
 - The pane it runs in, from `$MUSTER_PANE`, once the daemon has found an agent there.
 - Otherwise the human: a person's own shell has no agent identity, and is `@human`. So is a
-  shell in a pane with no agent in it.
+  shell in a pane with no agent in it. On a devenv the laptop has linked to, that is you as the
+  laptop's member, `@human@<laptop>` (below).
 
 `join --name NAME` takes a name. A session that runs any other verb first is registered under
 the last part of its working directory - `muster-5` for a session in `~/src/muster-5` - with
@@ -284,7 +285,12 @@ from the other:
   each machine's members.
 - **The human is on the laptop.** `@human` in a policy means you wherever the group is kept, and
   a devenv post that wakes you notifies through the laptop's windows. The guard never holds your
-  post, on either machine.
+  post, on either machine. Once the laptop has linked to a devenv, the devenv has no human of its
+  own: an agent there that addresses `@human` means you, in a group you have joined, and your own
+  shell there is you as the laptop's member. From that shell you can post in and change a group
+  kept on the devenv that you are in, and read its log. Reading, waiting, joining, leaving,
+  making a group, and posting in a group kept elsewhere are refused, `human_elsewhere`, naming
+  the laptop, where your cursors are.
 
 ## Where messages are kept
 
