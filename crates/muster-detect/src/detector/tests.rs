@@ -991,6 +991,36 @@ fn a_blocked_report_that_comes_before_its_prompt_is_drawn_holds() {
     assert_eq!(run.detector.effective(run.now), Some(reported(State::Blocked)));
 }
 
+/// Two sub-agents at once: one asks permission, and the other goes on calling tools, each of
+/// which reports working when it ends, while their timer keeps the screen moving. The prompt
+/// is still waiting on you, and the pane says so; once it closes, the working report counts
+/// again.
+#[test]
+fn a_prompt_on_screen_outranks_a_working_report_from_beside_it() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.run_for(Duration::from_secs(2), Some("busy"));
+    run.report(State::Blocked);
+    run.run_for(Duration::from_secs(3), Some("allow? busy"));
+    assert_eq!(run.detector.effective(run.now), Some(reported(State::Blocked)));
+
+    let mut seen = Vec::new();
+    for _ in 0..60 {
+        run.report(State::Working);
+        seen.extend(run.run_for(Duration::from_secs(1), Some("allow? busy")));
+        assert_eq!(
+            run.detector.effective(run.now).map(|publication| publication.state),
+            Some(State::Blocked),
+            "{seen:?}"
+        );
+    }
+    assert!(seen.iter().all(|publication| publication.state == State::Blocked), "{seen:?}");
+
+    let approved = run.run_for(Duration::from_secs(3), Some("busy"));
+    assert_eq!(approved.last(), Some(&reported(State::Working)), "{approved:?}");
+}
+
 /// A report the rules never read the same way stops counting after output in each of three
 /// seconds running, and output every 1.8 s, which leaves some seconds out, is not that.
 #[test]
