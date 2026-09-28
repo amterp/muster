@@ -6,7 +6,7 @@
     "backend",
     "devenv"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -32,11 +32,12 @@
   "description": "MIP-3 sections 1 and 12, stage 3.\n\n- `MusterSessions.app` runs `muster-daemon` instead of herdr; same bundle id `dev.amterp.muster.sessions`, same Launch Services start, usage strings and entitlement. The daemon opts out of App Nap and timer coalescing.\n- The app bundle carries the Linux daemons under `Contents/Resources`; a remote install copies the matching one to `~/.muster/daemon/\u003cversion\u003e/` and starts it with `setsid`. A remote Mac gets the app's arm64 daemon. No download, no pin.\n- `release.yml` builds the Linux daemons into the bundle; `--ssh` installs a daemon built from the commit under test.\n- devenv: fake agents that detection recognizes, `devenv/config.toml` and `install-daemon` updated; the `corpus-linux` workflow either builds the daemon in its job to keep a Linux-vs-macOS diff, or is retired.\n- Release notes for the cut: old herdr daemons keep running until their panes end, the new app does not show them, and how to stop them.",
   "id": "a_2XJ1ie3Ep",
   "parent": "a_2XJ1fUIyr",
-  "position": "ai",
+  "position": "ZT",
   "title": "Ship muster-daemon: helper app, bundled Linux daemons, remote install",
   "type": "feature",
-  "updated_at_millis": 1790486960891,
+  "updated_at_millis": 1790580163853,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790469795995}
+    {"field":"column","value":"backlog-hi","at":1790469795995},
+    {"field":"column","value":"done","at":1790580163853}
   ]
 }

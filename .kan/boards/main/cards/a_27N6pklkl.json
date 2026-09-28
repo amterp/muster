@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "uncommitted",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,17 +18,24 @@
       "body": "Measured before the sidebar was built (observations/herdr-0.8.0.md section 11). Sixteen watchers cost one thread and ~48 KB per pane, idle at zero CPU - so this drops from something to press for to something to mention. Muster ships the sidebar without it.",
       "created_at_millis": 1786785046349,
       "id": "c_28MwY6Ftw"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Moot: herdr left Muster with the MIP-3 cut-over; muster-daemon replaces it. Closed without action.",
+      "created_at_millis": 1790580165998,
+      "id": "c_2Y3KwpbKi"
     }
   ],
   "created_at_millis": 1786637678329,
   "creator": "Alexander Terp",
   "id": "a_27N6pklkl",
-  "position": "a6",
+  "position": "Z9",
   "title": "🔌 Upstream: agent state needs a subscription per pane",
   "type": "chore",
-  "updated_at_millis": 1786806598137,
+  "updated_at_millis": 1790580166066,
   "history": [
     {"field":"column","value":"backlog-hi","at":1786637678329},
-    {"field":"column","value":"uncommitted","at":1786806598137}
+    {"field":"column","value":"uncommitted","at":1786806598137},
+    {"field":"column","value":"done","at":1790580166066}
   ]
 }

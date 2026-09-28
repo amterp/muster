@@ -6,7 +6,7 @@
     "testing",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -19,6 +19,12 @@
       "body": "Needed before the seam's tests move: CARGO_BIN_EXE_muster-daemon exists only inside the muster-daemon package, so tests in other packages (core, cli, the seam) need another way to get the daemon binary built and located.",
       "created_at_millis": 1790491693559,
       "id": "c_2XSDNLcdo"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done with the cut-over. One correction to this card and MIP-3 section 14: herdr's license and NOTICE lines stay. muster-detect is an Apache-2.0 port of herdr's detection, so its license travels with it; MIP-3 section 14 now says so.",
+      "created_at_millis": 1790580164496,
+      "id": "c_2Y3KuP1Ix"
     }
   ],
   "created_at_millis": 1790469795855,
@@ -26,11 +32,12 @@
   "description": "MIP-3 stage 2, tests and removal. Lands with a_2XJ1hqla3 and a_2XJ1i5JiA.\n\n- Every daemon-backed test (about 200 of the workspace's 460 Rust tests, most of `muster-seam`) runs against `muster-daemon` through the neutral harness.\n- `corpus/herdr-0.8.0` becomes the migration reference: the probe's scenarios run against the new daemon for every behavior Muster keeps, and every difference is recorded in the corpus with its reason. The 8 recorded conformance files and the herdr-shaped authored ones (`backend-intent`, `daemon-*`, `remote-daemon`, `socket-discovery`, `own-socket`) are relabelled or replaced.\n- Delete: `crates/muster-herdr`, `crates/herdr-harness`, `deps/herdr.pin`, herdr steps in `./dev` (fetch, verify, schema check, staging) and CI caches, `HerdrLocation.swift` and the `--herdr-*` flags, herdr's license and NOTICE lines, `tools/herdr-probe` once the migration diff is done.\n- `muster-perf`: `frame.decode` goes; `frame.vt_parse` and `mirror.apply` need re-recorded input.\n- Close or retire the herdr-upstream cards in `uncommitted` that the cut-over makes moot.",
   "id": "a_2XJ1iQGQ6",
   "parent": "a_2XJ1fUIyr",
-  "position": "ah",
+  "position": "ZK",
   "title": "Cut-over: the suite runs on muster-daemon, and herdr is deleted",
   "type": "chore",
-  "updated_at_millis": 1790491693559,
+  "updated_at_millis": 1790580164562,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790469795855}
+    {"field":"column","value":"backlog-hi","at":1790469795855},
+    {"field":"column","value":"done","at":1790580164562}
   ]
 }

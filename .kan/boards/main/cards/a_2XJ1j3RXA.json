@@ -6,17 +6,18 @@
     "shell",
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790469796255,
   "creator": "Alexander Terp",
   "description": "MIP-3, Consequences. After the cut, users' old herdr daemons keep running until their panes end. `muster daemons` prints a herdr stop command today (`crates/muster-cli/src/render.rs:883`) and the records under `~/.muster/state/daemons/` have no field naming the backend; `./dev --doctor` finds daemons by the `herdr` process name and the `terminal session control` argv.\n\nFor the first release with `muster-daemon`, both commands should list new daemons with what they hold, and old herdr daemons as herdr daemons with how to stop them. A later release can drop the herdr half.",
   "id": "a_2XJ1j3RXA",
   "parent": "a_2XJ1fUIyr",
-  "position": "ak",
+  "position": "ZS",
   "title": "muster daemons and ./dev --doctor recognize both daemons for the transition release",
   "type": "chore",
-  "updated_at_millis": 1790469797523,
+  "updated_at_millis": 1790580163922,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790469796255}
+    {"field":"column","value":"backlog-hi","at":1790469796255},
+    {"field":"column","value":"done","at":1790580163922}
   ]
 }

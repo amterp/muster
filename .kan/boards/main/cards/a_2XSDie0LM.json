@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "the-app-follows-each",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -16,11 +16,12 @@
   "description": "muster-daemon writes its own bounded log beside its socket and streams records to a control connection that sends FollowLog (MIP-3 section 1). At the cut-over the app must: start the helper daemon without MUSTER_LOG_FILE; on every control connection send FollowLog, with no after for a Welcome instance it has not seen and with the last LogLine.number on a reconnect to the same one; append each line to the run log with a field naming the daemon; for a remote daemon, stamp its own receipt mono_ns and keep the daemon's as another field; and write a record when LogFollowed.oldest shows a gap. Remote daemons are covered by the same control connection.",
   "id": "a_2XSDie0LM",
   "parent": "a_2XJ1fUIyr",
-  "position": "ax",
+  "position": "ZL",
   "title": "The app follows each daemon's log into its run log",
   "type": "feature",
-  "updated_at_millis": 1790507185029,
+  "updated_at_millis": 1790580164442,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790491706788}
+    {"field":"column","value":"backlog-hi","at":1790491706788},
+    {"field":"column","value":"done","at":1790580164442}
   ]
 }

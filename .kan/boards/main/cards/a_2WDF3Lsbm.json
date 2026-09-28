@@ -12,6 +12,12 @@
       "body": "From round 1 (slot 1): new muster-perf costs need baselining too - vt.text_read, vt.cell_read, vt.replay_compose, vt.replay_parse. Measured at load average 40-50, where view.build also showed a 2.1x 'regression' that is load.",
       "created_at_millis": 1790477135708,
       "id": "c_2XM6ewttz"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "The cut-over landed (main c2c55a6). When re-recording: frame.decode goes, and frame.vt_parse and mirror.apply need new input on muster-daemon. Needs a quiet machine and ./devenv/devenv down first.",
+      "created_at_millis": 1790580185780,
+      "id": "c_2Y3LSkFVY"
     }
   ],
   "created_at_millis": 1790308245557,
@@ -21,7 +27,7 @@
   "position": "aK",
   "title": "📉 Re-record perf/baseline.json on a quiet machine",
   "type": "chore",
-  "updated_at_millis": 1790477135708,
+  "updated_at_millis": 1790580185780,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790308245557}
   ]

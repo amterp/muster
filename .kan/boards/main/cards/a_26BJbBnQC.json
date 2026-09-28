@@ -6,16 +6,25 @@
     "backend",
     "testing"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Moot: herdr left Muster with the MIP-3 cut-over; muster-daemon replaces it. Closed without action.",
+      "created_at_millis": 1790580164730,
+      "id": "c_2Y3KunALy"
+    }
+  ],
   "created_at_millis": 1786461806292,
   "creator": "Alexander Terp",
   "description": "Their socket API is not a stability contract yet. Pin a tested herdr version per muster release; contract-test corpus doubles as the upgrade gate.",
   "id": "a_26BJbBnQC",
-  "position": "a1",
+  "position": "ZJ",
   "title": "herdr version compatibility policy",
   "type": "chore",
-  "updated_at_millis": 1786461806292,
+  "updated_at_millis": 1790580164802,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1786461806292}
+    {"field":"column","value":"backlog-lo","at":1786461806292},
+    {"field":"column","value":"done","at":1790580164802}
   ]
 }

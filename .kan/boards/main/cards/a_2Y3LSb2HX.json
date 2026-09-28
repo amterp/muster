@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "a-closed-pane-test",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790580185720,
+  "creator": "Alexander Terp",
+  "description": "`streams::a_closed_pane_lets_go_of_its_terminal_even_when_its_bridge_has_stopped_reading` failed once alone at load 27, then passed 3/3. Its flooding program traps HUP; at nice 10 and starved past the 3 s grace it is killed before it writes `done`, which the test reads the same as a terminal that was never let go. The test should distinguish the two (for example, check the program's exit or the terminal's state directly) so a load flake and a real leak look different.",
+  "id": "a_2Y3LSb2HX",
+  "position": "ah",
+  "title": "A closed-pane test cannot tell a killed program from a held terminal",
+  "type": "chore",
+  "updated_at_millis": 1790580185720,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790580185720}
+  ]
+}

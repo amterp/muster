@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "uncommitted",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,21 +18,28 @@
       "body": "**Landed.** All four sides split, and the two herdr has no request for cost about a millisecond more than the two it does.\n\nThe 100.4 ms this card was built around was never the price of the pair - it is the gap between two *broadcasts*, and the recording measures both clocks now: the pair answers in 15.3 ms, of which `pane.swap` is 1.5, and `PaneSwapResult` carries the whole settled arrangement. Muster was throwing that answer away and waiting to be told the same thing again.\n\nSo: the adapter issues the pair and hands back what the daemon said, the mirror applies it, and the broadcast it overtook is dropped once. No timeout and no clock - an arrangement is only suppressed while the daemon still owes a broadcast of it, and each entry is spent on its first match.\n\nThree things the real app caught that the corpus did not:\n\n- **A swap moves daemon focus to the source pane**, so the arrangement published between the halves differs from the settled one in its cursor as well as its shape. Whole-layout equality let the flash straight through; suppression names the arrangement instead. Recorded in observations 14.\n- **Arming whatever the mirror held before was too broad.** Closing a pane collapses a tab back to a shape it held earlier, and that broadcast is the only thing saying the pane is gone - suppressing it left a dead square nothing could dismiss.\n- **The keyboard did not follow a split.** Pre-existing and racy in all four directions; deterministic here because settling from the answer publishes before the pane event lands. Fixed the way tabs already did it - a pane Muster made is *wanted* until the daemon describes it.\n\nGhostty ships `split_left` and `split_up` unbound, so Muster does too: the actions are in the menu and one `[keymap]` line from a chord.\n\nThe upstream ask is unchanged and now purely an economy - a four-way `SplitDirection` would delete the second request, the reconstruction and half the suppression. It rides on a_26BJbJeZL.",
       "created_at_millis": 1786832970355,
       "id": "c_28h3GtfKD"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Moot: herdr left Muster with the MIP-3 cut-over; muster-daemon replaces it. Closed without action.",
+      "created_at_millis": 1790580165362,
+      "id": "c_2Y3Kvo4gN"
     }
   ],
   "created_at_millis": 1786809650935,
   "creator": "Alexander Terp",
   "description": "herdr's `SplitDirection` is `right` and `down`, and a split always puts the new pane on the `second` side. So a four-way splitting keymap - which is what people arrive from Ghostty expecting, and what a real config binds - has no direct request behind it. Two of the four chords do nothing in Muster today.\n\nBuilding it out of `pane.split` + `pane.swap` was measured rather than assumed, and it is not good enough. Both arrangements get published, **100.4 ms apart**: the new pane appears on the right, sits there for six frames at 60fps, then jumps left. Muster renders what the daemon says, so that is a flash a person sees, in a project whose premise is native feel.\n\n**The ask:** a four-way `SplitDirection`, or a split that names which side the new pane lands on.\n\n**What Muster could do alone, and why it is not doing it yet:** hold a tab's layout updates between issuing the split and the swap returning, then apply the settled layout `pane.swap` already answers with. That is a new power in the mirror - suppressing published truth while an intent is in flight - and it interacts with reconciliation. Not worth taking on for two chords while an upstream answer is plausible.\n\nAlso recorded on the way: a `pane.swap` naming no target raises `invalid_pane_swap` rather than returning one of its four refusal reasons, and it would arrive *after* a split that already succeeded - so a caller treating it as a plain failure leaves a pane it never undoes.\n\nEvidence: `corpus/herdr-0.8.0/split-sides/`, `docs/observations/herdr-0.8.0.md` section 14.",
   "id": "a_28XGcvXEg",
-  "position": "a1",
+  "position": "ZE",
   "title": "🪓 Upstream: there is no splitting leftward, and faking it flashes",
   "type": "chore",
-  "updated_at_millis": 1788705639785,
+  "updated_at_millis": 1790580165431,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786809650935},
     {"field":"column","value":"backlog-hi","at":1786809661872},
     {"field":"column","value":"next","at":1786820325509},
     {"field":"column","value":"done","at":1786832951082},
-    {"field":"column","value":"uncommitted","at":1788705639785}
+    {"field":"column","value":"uncommitted","at":1788705639785},
+    {"field":"column","value":"done","at":1790580165431}
   ]
 }

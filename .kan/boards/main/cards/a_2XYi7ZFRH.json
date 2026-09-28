@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "streamrefused-carries",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790507175123,
   "creator": "Alexander Terp",
   "description": "muster-bridge tells a refused attach apart by the refusal text starting with \"another bridge\" (crates/muster-bridge/src/daemon.rs). A reason enum on StreamRefused would make that a field rather than a string match, which a reworded message silently breaks.",
   "id": "a_2XYi7ZFRH",
   "parent": "a_2XJ1fUIyr",
-  "position": "ac",
+  "position": "ZM",
   "title": "StreamRefused carries a reason code",
   "type": "enhancement",
-  "updated_at_millis": 1790507184828,
+  "updated_at_millis": 1790580164374,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790507175123}
+    {"field":"column","value":"backlog-lo","at":1790507175123},
+    {"field":"column","value":"done","at":1790580164374}
   ]
 }

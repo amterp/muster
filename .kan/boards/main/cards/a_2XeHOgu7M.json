@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "a-first-launch-may",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790520447567,
   "creator": "Alexander Terp",
   "description": "macOS scans a new binary on its first run. Measured here: 44 s for a freshly built app and 16 s for the debug daemon, then milliseconds. The app gives the daemon it starts 10 s, so a person's first launch of a downloaded release may report the daemon as failed. Unverified for a notarized release (the scan may be faster or skipped): measure one on a clean machine, and if it can exceed the wait, wait longer on first launch or say why in the window.",
   "id": "a_2XeHOgu7M",
   "parent": "a_2XJ1fUIyr",
-  "position": "b03",
+  "position": "ZU",
   "title": "A first launch may time out waiting for its daemon while macOS scans it",
   "type": "bug",
-  "updated_at_millis": 1790520447663,
+  "updated_at_millis": 1790580163777,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790520447567}
+    {"field":"column","value":"backlog-hi","at":1790520447567},
+    {"field":"column","value":"done","at":1790580163777}
   ]
 }

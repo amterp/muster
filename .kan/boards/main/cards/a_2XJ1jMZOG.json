@@ -7,17 +7,18 @@
     "shell",
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790469796435,
   "creator": "Alexander Terp",
   "description": "MIP-3 section 15, stage 3. Once the cut-over lands, the living docs describe a daemon that no longer exists.\n\n- AGENTS.md: the non-goal \"Not a multiplexer or session daemon - herdr is.\", \"Swappable organs\", \"Green suite\", \"One action path\" (find in a window is a view action), the Shape diagram, Configuring, the Building section's herdr-pin paragraph and tiers, the intro.\n- `docs/architecture.md`: control and data plane, ownership of truth, input precedence, the renderer seam, degradation, durability.\n- `docs/glossary.md`: adapter, backend, daemon, devenv container, frame, pane channel, tab.\n- `docs/testing.md`, `docs/configuration.md` (keys that translated onward to herdr), `docs/cli/*` (shipped inside the binary), README where it names limits herdr imposed.\n- MIP-3 to Implemented, with History.\n\n`docs/origin.md` and `docs/observations/herdr-0.8.0.md` are history and stay as they are.",
   "id": "a_2XJ1jMZOG",
   "parent": "a_2XJ1fUIyr",
-  "position": "al",
+  "position": "ZP",
   "title": "Rewrite the doctrine for MIP-3",
   "type": "docs",
-  "updated_at_millis": 1790469797574,
+  "updated_at_millis": 1790580164160,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790469796435}
+    {"field":"column","value":"backlog-hi","at":1790469796435},
+    {"field":"column","value":"done","at":1790580164160}
   ]
 }
