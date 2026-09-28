@@ -473,11 +473,14 @@ process itself rather than on a system shell that runs it.
 `~/.muster/agent-detection/`. A `[[daemon]]` with a `host` starts the daemon of this Muster's
 version over there, `~/.muster/daemon/<version>/muster-daemon` with its data beside it, or reuses
 one still running from last time, agents and all. One left running by an older Muster is asked to
-hand its panes to the new daemon, which keeps every agent running; the same happens on this machine. The first time, or when that directory holds
+hand its panes to the new daemon, which keeps every agent running; the same happens on this
+machine. Older means a lower version number, and every Muster so far says 0.9.0, so the first
+such handoff comes with the first release after it. The first time, or when that directory holds
 another build, Muster copies its own daemon there over the same ssh connection; nothing is
 downloaded. Linux on x86_64 or aarch64 and macOS on Apple silicon are the machines it carries a
-daemon for, and the run log says so for any other. Naming a `socket` in a `[[daemon]]` block still attaches whatever is
-listening at it, on either machine - that is how you ask for somebody else's daemon on purpose.
+daemon for, and the run log says so for any other. Naming a `socket` in a `[[daemon]]` block still
+attaches whatever is listening at it, on either machine, and never asks it to hand over - that is
+how you ask for somebody else's daemon on purpose.
 
 **A machine that is slow or away does not hold the window closed.** Muster waits a second for the
 daemons the file names, opens the window without any that have not answered by then, and their

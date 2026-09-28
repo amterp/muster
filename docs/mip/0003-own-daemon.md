@@ -899,15 +899,23 @@ finds an older daemon running.
 **When the app asks.** Once, when it adopts a daemon at the socket its own install uses - never one
 somebody named in the config, which is theirs to replace - and only when that daemon's `daemon_version`
 is older than the one the app carries, compared as `major.minor.patch` numbers with anything after a
-`-` or `+` ignored. An equal version is left alone, since two development builds share one and
-handing over between them at every launch would buy no fix; a newer one is left alone and logged; a
-version that does not read is left alone and warned about. The window follows the older daemon at
-once, and the request is made on a thread of its own once it does, so the new daemon's first launch
+`-` or `+` ignored. Every daemon built before this rule says 0.9.0, like the app, so the first
+automatic handoff happens at the first version after it. An equal version is left alone, since two
+development builds share one and handing over between them at every launch would buy no fix; a
+newer one is left alone and logged; a version that does not read is left alone and warned about.
+The window follows the older daemon at once, and the request is made on a thread of its own once it
+does and once the daemon has finished bringing back its saved tabs, so the new daemon's first launch
 never holds the window: the panes are there throughout, and come back through the ordinary reconnect
 when the new daemon serves. On a machine attached over ssh, this build's daemon is installed there
-first, because the older daemon is what runs it. A refusal is said once, as a warning in the
-window's problems with the daemon's reason, and the older daemon goes on serving; the app asks again
-at its next launch, not in a loop.
+first, on that same thread, because the older daemon is what runs it.
+
+Only the run of the daemon the window found is asked. Several windows, or a relaunch, can find the
+same one, and one asking after another's handoff would otherwise ask the new daemon to hand every
+pane to a copy of itself. A daemon that says it is already being replaced is somebody else's
+handoff under way, and is waited out rather than reported. A refusal is said once, as a warning in
+the window's problems with the daemon's reason, and the older daemon goes on serving; the app asks
+again at its next launch, not in a loop. A daemon that stops answering, or does not answer in
+time, is said differently, since then nothing is known about its panes.
 
 **A launch first.** Before it touches anything, the old daemon runs the program once with
 `--version` and waits up to a minute for it to exit well, logging how long it took as
