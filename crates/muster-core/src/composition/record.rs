@@ -512,6 +512,9 @@ impl Composition {
         self.tabs.iter_mut().find(|tab| tab.regions.iter().any(|held| held.id == region))
     }
 
+    /// Puts the tabs, and each tab's regions, in the order `order` has them.
+    pub fn arrange_like(&mut self, _order: &super::saved::Saved) {}
+
     /// Moves the line between a region and the one to its right.
     ///
     /// `ratio` is the named region's share of the two of them together, so the pair keeps

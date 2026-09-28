@@ -58,6 +58,101 @@ fn composition_saved_conformance() {
     assert!(ran > 0);
 }
 
+/// A daemon that answers after the window has opened. Cases live in
+/// corpus/conformance/composition-saved-late.json.
+#[test]
+fn composition_saved_late_conformance() {
+    let corpus = Conformance::load("composition-saved-late.json");
+
+    let ran = corpus.run(|given| {
+        let left = saved_from(given, "left")?;
+        let late: BTreeSet<DaemonId> = given
+            .get("late")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                CaseError::new("`late` is missing: nothing says which daemons are late")
+            })?
+            .iter()
+            .filter_map(Value::as_str)
+            .map(DaemonId::new)
+            .collect();
+        let mut now = composition_of(given, "now")?;
+        let kept =
+            Saved::of(&now, Presentation::default(), &FontSizes::default()).keeping(&left, &late);
+
+        // The late daemons answer: each opens its regions where a reconcile would, at the end,
+        // with the widths the file had, and the window is then put in the order the file says.
+        for daemon in &late {
+            now.attach_daemon(Daemon {
+                id: daemon.clone(),
+                endpoint: Endpoint::Local { socket_path: None },
+            });
+        }
+        for tab in &left.tabs {
+            for region in tab.regions.iter().filter(|region| late.contains(&region.daemon)) {
+                if let Some(id) = now.open_region(&region.daemon, tab.id.clone()) {
+                    now.set_weight(id, region.weight);
+                }
+            }
+        }
+        let wanted =
+            Saved::of(&now, Presentation::default(), &FontSizes::default()).keeping(&left, &late);
+        now.arrange_like(&wanted);
+        let arrived = Saved::of(&now, Presentation::default(), &FontSizes::default());
+
+        Ok(fields([
+            ("kept", Some(json!(described(&kept.tabs)))),
+            ("arrived", Some(json!(described(&arrived.tabs)))),
+        ]))
+    });
+
+    assert_eq!(ran, corpus.cases.len());
+    assert!(ran > 0);
+}
+
+/// Tabs as a case spells them: `t1 local@2*`, a star on the region the keyboard was in.
+fn described(tabs: &[SavedTab]) -> Vec<String> {
+    tabs.iter()
+        .map(|tab| {
+            let regions: Vec<String> = tab
+                .regions
+                .iter()
+                .map(|region| {
+                    format!(
+                        "{}@{:.0}{}",
+                        region.daemon,
+                        region.weight,
+                        if region.keyboard { "*" } else { "" }
+                    )
+                })
+                .collect();
+            format!("{} {}", tab.id, regions.join(" "))
+        })
+        .collect()
+}
+
+/// A composition holding the regions a case lists under `key`, in that order.
+fn composition_of(given: &Value, key: &str) -> Result<Composition, CaseError> {
+    let listed = saved_from(given, key)?;
+    let mut composition = Composition::new();
+    for tab in &listed.tabs {
+        for region in &tab.regions {
+            composition.attach_daemon(Daemon {
+                id: region.daemon.clone(),
+                endpoint: Endpoint::Local { socket_path: None },
+            });
+            let id = composition
+                .open_region(&region.daemon, tab.id.clone())
+                .ok_or_else(|| CaseError::new("a region could not be opened"))?;
+            composition.set_weight(id, region.weight);
+            if region.keyboard {
+                composition.focus_region(id);
+            }
+        }
+    }
+    Ok(composition)
+}
+
 #[test]
 fn what_is_written_is_what_comes_back() {
     // The file is the only thing between one run and the next, so a field that writes and
@@ -268,10 +363,13 @@ fn an_arrangement_from_a_muster_on_herdr_keeps_its_window_and_its_machines() {
 /// The rows are flat and each names its tab, the way the file itself spells them, and the tabs
 /// come out in the order their first row appears.
 fn saved(given: &Value) -> Result<Saved, CaseError> {
-    let regions = given
-        .get("regions")
-        .and_then(Value::as_array)
-        .ok_or_else(|| CaseError::new("`regions` is missing: there is nothing to restore"))?;
+    saved_from(given, "regions")
+}
+
+fn saved_from(given: &Value, key: &str) -> Result<Saved, CaseError> {
+    let regions = given.get(key).and_then(Value::as_array).ok_or_else(|| {
+        CaseError::new(format!("`{key}` is missing: there is nothing to restore"))
+    })?;
     let mut tabs: Vec<SavedTab> = Vec::new();
     for region in regions {
         let id = TabId::new(region["tab"].as_str().unwrap_or_default());

@@ -16,7 +16,7 @@
 //! dropped rather than rendered empty, and a window whose regions all fail that check opens
 //! the way a first launch does.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::presentation::{FontSizes, Frame, Presentation};
 use crate::composition::record::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
@@ -120,6 +120,11 @@ impl Saved {
                 })
                 .collect(),
         }
+    }
+
+    /// This arrangement, with what `left` had on the daemons in `awaiting` put back.
+    pub fn keeping(self, _left: &Saved, _awaiting: &BTreeSet<DaemonId>) -> Saved {
+        self
     }
 
     /// The tabs worth reopening, given what each daemon turns out to hold.

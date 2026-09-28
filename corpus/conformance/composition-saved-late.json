@@ -1,0 +1,263 @@
+{
+  "concept": "composition.saved.late",
+  "source": "authored",
+  "citation": "docs/architecture.md, durability: a window reopens as it was left. The rules for a daemon that answers after the window has opened are Muster's own; there is no oracle above them.",
+  "why": "A window no longer waits for every daemon it names before opening, so a devenv slow to answer arrives in a window that has already restored the rest and already saved. Two things have to hold for it. The file keeps what it had for a daemon still on its way, or the first save after a slow launch erases that daemon's part of the arrangement. And when the daemon does arrive, its tabs and its halves of shared tabs go back where they were, with their widths, among whatever the window holds by then.\n\n`kept` is what the window writes while the late daemons are still on their way. `arrived` is the window once they have answered, with their regions opened and put in place.",
+  "cases": [
+    {
+      "name": "a tab on a daemon still on its way keeps its place in the file",
+      "why": "The window saves as soon as it opens, and a devenv that has not answered yet has no tab in it to save. Written as it stood, the file would lose that tab's place and width at the first save, and the next launch would open it as a stranger even if the devenv were quick that time.",
+      "given": {
+        "left": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 2
+          },
+          {
+            "tab": "t2",
+            "daemon": "devenv",
+            "weight": 3
+          },
+          {
+            "tab": "t3",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ],
+        "late": [
+          "devenv"
+        ],
+        "now": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 2
+          },
+          {
+            "tab": "t3",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ]
+      },
+      "expect": {
+        "kept": [
+          "t1 local@2*",
+          "t2 devenv@3",
+          "t3 local@1*"
+        ],
+        "arrived": [
+          "t1 local@2*",
+          "t2 devenv@3*",
+          "t3 local@1*"
+        ]
+      }
+    },
+    {
+      "name": "a tab made since opening stays where it was made",
+      "why": "Somebody who made a tab while the devenv was on its way put it where it is. The late tab goes back between the tabs it sat between, and the new one keeps its place after them.",
+      "given": {
+        "left": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 1.0
+          },
+          {
+            "tab": "t2",
+            "daemon": "devenv",
+            "weight": 1.0
+          },
+          {
+            "tab": "t3",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ],
+        "late": [
+          "devenv"
+        ],
+        "now": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 1.0
+          },
+          {
+            "tab": "t3",
+            "daemon": "local",
+            "weight": 1.0
+          },
+          {
+            "tab": "t4",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ]
+      },
+      "expect": {
+        "kept": [
+          "t1 local@1*",
+          "t2 devenv@1",
+          "t3 local@1*",
+          "t4 local@1*"
+        ],
+        "arrived": [
+          "t1 local@1*",
+          "t2 devenv@1*",
+          "t3 local@1*",
+          "t4 local@1*"
+        ]
+      }
+    },
+    {
+      "name": "a late daemon's tab that came first comes first",
+      "why": "Nothing on screen came before it, so what came after it says where it goes.",
+      "given": {
+        "left": [
+          {
+            "tab": "t0",
+            "daemon": "devenv",
+            "weight": 1.0
+          },
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ],
+        "late": [
+          "devenv"
+        ],
+        "now": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ]
+      },
+      "expect": {
+        "kept": [
+          "t0 devenv@1",
+          "t1 local@1*"
+        ],
+        "arrived": [
+          "t0 devenv@1*",
+          "t1 local@1*"
+        ]
+      }
+    },
+    {
+      "name": "the late half of a tab across two machines goes back on its own side",
+      "why": "A tab holding a devenv's panes beside the laptop's is laid out left to right as it was left. A half arriving late would otherwise land on the far side of the one already there, which is a window somebody has to rearrange every time the devenv is slow.",
+      "given": {
+        "left": [
+          {
+            "tab": "t1",
+            "daemon": "devenv",
+            "weight": 1
+          },
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 2,
+            "keyboard": true
+          }
+        ],
+        "late": [
+          "devenv"
+        ],
+        "now": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 2,
+            "keyboard": true
+          }
+        ]
+      },
+      "expect": {
+        "kept": [
+          "t1 devenv@1 local@2*"
+        ],
+        "arrived": [
+          "t1 devenv@1 local@2*"
+        ]
+      }
+    },
+    {
+      "name": "a late half does not take the keyboard",
+      "why": "By the time a devenv answers, somebody may be typing into the half that was there. Moving the keyboard to the half that arrived would send what they type next to another machine.",
+      "given": {
+        "left": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 1.0
+          },
+          {
+            "tab": "t1",
+            "daemon": "devenv",
+            "weight": 1,
+            "keyboard": true
+          }
+        ],
+        "late": [
+          "devenv"
+        ],
+        "now": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 1,
+            "keyboard": true
+          }
+        ]
+      },
+      "expect": {
+        "kept": [
+          "t1 local@1* devenv@1"
+        ],
+        "arrived": [
+          "t1 local@1* devenv@1"
+        ]
+      }
+    },
+    {
+      "name": "a daemon that answered and no longer holds a tab does not keep it",
+      "why": "Keeping is for a daemon that has not said yet. One that answered without the tab has closed it, and a file that kept it would reopen a region onto nothing at every launch.",
+      "given": {
+        "left": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 1.0
+          },
+          {
+            "tab": "t2",
+            "daemon": "devenv",
+            "weight": 1.0
+          }
+        ],
+        "late": [],
+        "now": [
+          {
+            "tab": "t1",
+            "daemon": "local",
+            "weight": 1.0
+          }
+        ]
+      },
+      "expect": {
+        "kept": [
+          "t1 local@1*"
+        ],
+        "arrived": [
+          "t1 local@1*"
+        ]
+      }
+    }
+  ]
+}
