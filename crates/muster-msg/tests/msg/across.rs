@@ -725,3 +725,22 @@ fn a_change_to_a_group_kept_elsewhere_by_its_bare_name_says_where_it_is_kept() {
         })
     );
 }
+
+/// Entries that would leave a gap are not taken, and neither is the policy they came with: a
+/// pause ahead of the entries that explain it would hold wakes for no reason anybody can read.
+#[test]
+fn a_batch_refused_for_a_gap_leaves_the_replicas_policy_alone() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+
+    let mut ahead = wire.laptop.since("review", 0).unwrap();
+    let head = ahead.entries.last().unwrap().seq;
+    ahead.entries.iter_mut().for_each(|entry| entry.seq += head + 1);
+    ahead.policy.paused = true;
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    assert_eq!(devenv.apply(&Side::Devenv.peer(), ahead, sessions, 90), Err(head));
+    let replica = devenv.groups().into_iter().find(|group| group.name == "review@lap").unwrap();
+    assert!(!replica.policy.paused, "took the policy of a batch it refused");
+}
