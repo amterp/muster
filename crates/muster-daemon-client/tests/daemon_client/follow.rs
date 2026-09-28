@@ -225,10 +225,16 @@ fn settings_reach_the_daemon() {
     };
     followed.follower.configure(&settings);
 
+    // Each setting is a request of its own, so the wait is for every one this test reads, not
+    // for the first to land.
     let mut control = daemon.connect();
     let held = until_some("the settings to arrive", || {
         let settings = snapshot(&mut control).settings.unwrap_or_default();
-        (settings.scrollback_bytes == Some(1 << 20)).then_some(settings)
+        let arrived = settings.scrollback_bytes == Some(1 << 20)
+            && settings.cursor.is_some()
+            && settings.clipboard_write.is_some()
+            && settings.shell.is_some();
+        arrived.then_some(settings)
     });
     let cursor = held.cursor.expect("the cursor was sent");
     assert_eq!((cursor.style(), cursor.blink), (proto::CursorStyle::Bar, Some(false)));
