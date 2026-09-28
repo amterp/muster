@@ -513,6 +513,78 @@
       }
     },
     {
+      "name": "within one state, the pane that has waited longest comes first",
+      "why": "Somebody working down the list reaches the agent that has been held up longest first, which is the one whose wait has cost most. The order panes happen to be named in says nothing about that. A pane reported blocked again keeps its place, as it keeps its silence: nothing new happened to it.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p3",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p3",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p3 blocked",
+          "local/w1:p1 blocked",
+          "local/w1:p2 blocked"
+        ],
+        "asking": [
+          "local/w1:p3 blocked",
+          "local/w1:p1 blocked",
+          "local/w1:p2 blocked"
+        ]
+      }
+    },
+    {
+      "name": "a pane that asks for more has waited for it since it asked",
+      "why": "A pane that finished and then blocked has been held up only since it blocked, so a pane that blocked before it is further up the list. Its earlier finish was a different, smaller ask.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 done",
+          "local/w1:p2 blocked",
+          "local/w1:p1 blocked"
+        ],
+        "asking": [
+          "local/w1:p2 blocked",
+          "local/w1:p1 blocked"
+        ]
+      }
+    },
+    {
       "name": "two machines' panes are two panes",
       "why": "A window shows a laptop and a devenv, and both daemons hand out `w1:p1`. Keyed by pane alone, one machine's agent going quiet would take down the other machine's banner - a class of bug that only appears on the setup this product is for.",
       "given": {
