@@ -1079,12 +1079,8 @@ fn rules_reading_idle_while_the_agent_reports_working_are_unreadable() {
     assert_eq!((last.state, last.reported, last.unreadable), (State::Working, true, true));
 }
 
-/// Many harnesses' manifests say nothing of idle and leave it to the fallback, so a screen no
-/// rule matches is how they read idle. Typing a long prompt into one keeps its screen moving,
-/// and that is not the rules failing to read it.
-#[test]
-fn typing_into_an_agent_whose_manifest_has_no_idle_rule_is_not_unreadable() {
-    let manifest = r#"
+/// A manifest that says nothing of idle, as 11 of the built-in ones do.
+const NO_IDLE_RULE: &str = r#"
 id = "claude"
 version = "9999.1"
 min_engine_version = 1
@@ -1095,7 +1091,24 @@ state = "working"
 priority = 10
 contains = ["busy"]
 "#;
-    let mut run = Run::with_manifest(manifest);
+
+/// A harness whose manifest leaves idle to the fallback, reworded so no rule reads it while it
+/// works: its screen keeps moving and nothing matches, which is what drift exists to say.
+#[test]
+fn a_moving_screen_is_unreadable_for_a_manifest_with_no_idle_rule() {
+    let mut run = Run::with_manifest(NO_IDLE_RULE);
+    run.tick();
+    run.start_agent();
+    let published = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("⣾ reworded"));
+    assert!(published.last().is_some_and(|last| last.unreadable), "{published:?}");
+}
+
+/// Many harnesses' manifests say nothing of idle and leave it to the fallback, so a screen no
+/// rule matches is how they read idle. Typing a long prompt into one keeps its screen moving,
+/// and that is not the rules failing to read it.
+#[test]
+fn typing_into_an_agent_whose_manifest_has_no_idle_rule_is_not_unreadable() {
+    let mut run = Run::with_manifest(NO_IDLE_RULE);
     run.tick();
     run.start_agent();
     let typed = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("> a long prompt"));
