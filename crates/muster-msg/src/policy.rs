@@ -2,9 +2,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// A group's rules (MIP-4, section 8). Every group has the permissive default for now; the
-/// fields are all here so that a group convened with a policy of its own changes what is
-/// enforced, not what is stored.
+use crate::Refusal;
+use crate::names::check_participant;
+
+/// A group's rules (MIP-4, section 8), enforced by the service, since a rule a prompt carries
+/// has faded by turn 40 (section 9). Names are participants' names; `*` is anyone, and `@human`
+/// the human.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Policy {
     /// Whom an unaddressed post wakes, by author; `*` is any author, or every member.
@@ -31,14 +34,44 @@ impl Default for Policy {
 impl Policy {
     /// Whether an unaddressed post by `author` wakes `member`. Never the author itself.
     pub(crate) fn rings(&self, author: &str, member: &str) -> bool {
-        if author == member {
-            return false;
-        }
-        let Some(set) = self.ring.get(author).or_else(|| self.ring.get("*")) else {
-            return false;
-        };
-        set.iter().any(|name| name == "*" || name == member)
+        author != member && names(by_author(&self.ring, author), member)
     }
+
+    /// Whether `author` may address `addressee`.
+    pub(crate) fn allows(&self, author: &str, addressee: &str) -> bool {
+        names(by_author(&self.allow, author), addressee)
+    }
+
+    /// Whom `author` may address, as the policy spells it.
+    pub(crate) fn allowed(&self, author: &str) -> Vec<String> {
+        by_author(&self.allow, author).to_vec()
+    }
+
+    /// Whether `name` may add or remove members, itself included, and change the policy.
+    pub(crate) fn permits(&self, name: &str) -> bool {
+        names(&self.membership, name)
+    }
+
+    /// Every name the policy holds, which must each be a participant's name, `*`, or `@human`.
+    pub(crate) fn check(&self) -> Result<(), Refusal> {
+        let keys = self.ring.keys().chain(self.allow.keys());
+        let sets = self.ring.values().chain(self.allow.values()).flatten();
+        for name in keys.chain(sets).chain(&self.membership) {
+            if name != "*" {
+                check_participant(name)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The set a map gives `author`, or failing that the one it gives `*`.
+fn by_author<'a>(map: &'a BTreeMap<String, Vec<String>>, author: &str) -> &'a [String] {
+    map.get(author).or_else(|| map.get("*")).map_or(&[], Vec::as_slice)
+}
+
+fn names(set: &[String], name: &str) -> bool {
+    set.iter().any(|each| each == "*" || each == name)
 }
 
 #[cfg(test)]
@@ -64,5 +97,47 @@ mod tests {
         assert!(policy.rings("director", "builder"));
         assert!(policy.rings("builder", "director"));
         assert!(!policy.rings("builder", "critic"));
+    }
+
+    fn directed() -> Policy {
+        let set = |names: &[&str]| names.iter().map(ToString::to_string).collect::<Vec<_>>();
+        Policy {
+            ring: BTreeMap::from([
+                ("director".to_string(), set(&["*"])),
+                ("*".to_string(), set(&["director"])),
+            ]),
+            allow: BTreeMap::from([
+                ("director".to_string(), set(&["*"])),
+                ("*".to_string(), set(&["director", "@human"])),
+            ]),
+            membership: set(&["director", "@human"]),
+            paused: false,
+        }
+    }
+
+    #[test]
+    fn a_directed_member_may_address_only_the_director_and_the_human() {
+        let policy = directed();
+        assert!(policy.allows("builder", "director"));
+        assert!(policy.allows("builder", "@human"));
+        assert!(!policy.allows("builder", "critic"));
+        assert!(policy.allows("director", "critic"));
+    }
+
+    #[test]
+    fn only_those_named_in_membership_may_change_it() {
+        let policy = directed();
+        assert!(policy.permits("director"));
+        assert!(policy.permits("@human"));
+        assert!(!policy.permits("builder"));
+        assert!(Policy::default().permits("builder"));
+    }
+
+    #[test]
+    fn a_policy_naming_what_no_participant_could_be_called_is_refused() {
+        let mut policy = directed();
+        assert_eq!(policy.check(), Ok(()));
+        policy.membership.push("two words".to_string());
+        assert_eq!(policy.check(), Err(Refusal::BadName { name: "two words".to_string() }));
     }
 }

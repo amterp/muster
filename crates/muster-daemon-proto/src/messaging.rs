@@ -14,13 +14,19 @@ pub const POST: &str = "post";
 pub const READ: &str = "read";
 pub const LOG: &str = "log";
 pub const WAIT: &str = "wait";
+pub const GROUPS: &str = "groups";
+/// Makes a group or changes one: `group new`, `group set`, `group add`, `group remove`.
+pub const GROUP: &str = "group";
+pub const PAUSE: &str = "pause";
+pub const RESUME: &str = "resume";
 
 /// What the human is called as a participant: a name no agent's can be, since names do not
 /// start with `@`. The same as `muster_msg::HUMAN`, which muster-daemon's tests hold it to.
 pub const HUMAN: &str = "@human";
 
 /// Every verb, in the order `--help` lists them.
-pub const VERBS: [&str; 7] = [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT];
+pub const VERBS: [&str; 11] =
+    [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT, GROUPS, GROUP, PAUSE, RESUME];
 
 /// `muster msg <verb>`, followed by `arguments` when there are any.
 pub fn command(verb: &str, arguments: &str) -> String {

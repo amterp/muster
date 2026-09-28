@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::names::{check_group, check_participant};
 use crate::{
-    Entry, GroupRecord, HUMAN, LARGEST_BODY, Policy, Refusal, Saved, Store, What, default_name,
-    pair_group,
+    Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Policy, Refusal, Saved, Store, What,
+    default_name, pair_group,
 };
 
 /// A Claude Code session's inbox socket. The socket's path is the session's process id, which
@@ -29,7 +29,14 @@ pub struct Caller {
     pub pane: Option<String>,
     /// The caller's working directory, which a default name is made from.
     pub directory: Option<String>,
+    /// When the host took the request, in milliseconds since the Unix epoch: how the service
+    /// knows a participant's hooks have run lately.
+    pub at_ms: u64,
 }
+
+/// How long after a participant's hooks last ran they still count as running: a turn's tool
+/// calls come further apart than this only in a turn stuck on one, which its `Stop` hook ends.
+const HOOKS_LIVE_MS: u64 = 5 * 60 * 1000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Participant {
@@ -51,6 +58,10 @@ pub struct Participant {
     /// reading: never a third (MIP-4, section 5).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub rewoken: BTreeSet<String>,
+    /// Its hooks fetch its messages (MIP-4, section 6): a `PostToolUse` hook reads between tool
+    /// calls, and a `Stop` hook waits with `--due` once a turn ends.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pull: bool,
 }
 
 impl Participant {
@@ -63,6 +74,7 @@ impl Participant {
             cursors: BTreeMap::new(),
             woken: BTreeSet::new(),
             rewoken: BTreeSet::new(),
+            pull: false,
         }
     }
 }
@@ -210,6 +222,8 @@ pub enum Reach {
     /// In a pane whose agent's prompt the host cannot read, so it is never rung, and with
     /// nothing else to wake it.
     NoDoorbell,
+    /// The group is paused: woken once it is resumed (MIP-4, section 8).
+    Paused,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,6 +266,40 @@ pub struct Left {
     pub ended: Option<u64>,
 }
 
+/// A change to a group: made, its policy set, members added or removed, paused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Changed {
+    pub by: String,
+    pub group: String,
+    /// The notice logged for it; none when it changed nothing.
+    pub seq: Option<u64>,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+    /// Waits a removal ended.
+    pub ended: Vec<u64>,
+}
+
+/// A group as `groups` lists it.
+impl Changed {
+    fn by(by: &str, group: &str, seq: Option<u64>) -> Changed {
+        Changed {
+            by: by.to_string(),
+            group: group.to_string(),
+            seq,
+            added: Vec::new(),
+            removed: Vec::new(),
+            ended: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupSummary {
+    pub name: String,
+    pub members: Vec<String>,
+    pub policy: Policy,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Read {
     pub name: String,
@@ -285,6 +333,9 @@ impl Group {
 struct Waiter {
     ticket: u64,
     group: Option<String>,
+    /// Answered only with a wake that is due, never a second one for the same batch: a `Stop`
+    /// hook's wait, whose answer starts a turn.
+    due: bool,
 }
 
 /// The message service. Every call that changes something has been kept by the store before it
@@ -295,6 +346,9 @@ pub struct Messaging<S: Store> {
     participants: BTreeMap<String, Participant>,
     groups: BTreeMap<String, Group>,
     waiters: BTreeMap<String, Waiter>,
+    /// When each participant last ran a verb, in the host's milliseconds. Not kept: a host that
+    /// starts has seen nobody's hooks run.
+    seen_ms: BTreeMap<String, u64>,
     next_ticket: u64,
     /// What the store last took, so a request that changed nothing costs no sync.
     kept: Saved,
@@ -345,6 +399,7 @@ impl<S: Store> Messaging<S> {
             participants,
             groups,
             waiters: BTreeMap::new(),
+            seen_ms: BTreeMap::new(),
             next_ticket: 1,
             kept: Saved::default(),
         };
@@ -389,9 +444,15 @@ impl<S: Store> Messaging<S> {
                 (name.to_string(), took_over)
             }
         };
+        self.seen(&name, caller);
         let mut created = false;
         if let Some(group) = group {
             check_group(group)?;
+            if let Some(existing) = self.groups.get(group)
+                && !existing.members.contains(&name)
+            {
+                self.permitted(group, &name, Action::Join)?;
+            }
             created = self.ensure_group(group, &name, now_ms)?;
             self.add_member(group, &name, now_ms)?;
         }
@@ -420,6 +481,7 @@ impl<S: Store> Messaging<S> {
             if !members.contains(&name) {
                 return Err(Refusal::NotAMember { name, group: group.to_string() });
             }
+            self.permitted(group, &name, Action::Leave)?;
             self.remove_member(group, &name, now_ms)?;
             let kept_to_it = self
                 .waiters
@@ -430,6 +492,9 @@ impl<S: Store> Messaging<S> {
             Left { name, groups: vec![group.to_string()], stopped: false, ended }
         } else {
             let groups = self.memberships(&name);
+            for group in &groups {
+                self.permitted(group, &name, Action::Leave)?;
+            }
             for group in &groups {
                 self.remove_member(group, &name, now_ms)?;
             }
@@ -469,6 +534,14 @@ impl<S: Store> Messaging<S> {
             }
         }
         let group = self.resolve_group(&author, &addressees, group, now_ms)?;
+        let policy = &self.groups[&group].policy;
+        if let Some(addressee) = addressees.iter().find(|name| !policy.allows(&author, name)) {
+            return Err(Refusal::NotAllowed {
+                addressee: addressee.clone(),
+                group,
+                allowed: policy.allowed(&author),
+            });
+        }
 
         // The guard keeps a model from acting on context that has gone stale. The human reads
         // the transcript as it arrives, and the daemon cannot see a person's screen, so it has
@@ -504,8 +577,13 @@ impl<S: Store> Messaging<S> {
             answered: Vec::new(),
             unsaved: None,
         };
+        let paused = self.groups[&group].policy.paused;
         for target in targets {
-            let reach = self.reach(&target, &group, &mut posted, presence);
+            let reach = if paused && target != HUMAN {
+                Reach::Paused
+            } else {
+                self.reach(&target, &group, &mut posted, presence, now_ms)
+            };
             posted.reached.push((target, reach));
         }
         if let Err(Refusal::Store { error }) = self.save() {
@@ -583,25 +661,67 @@ impl<S: Store> Messaging<S> {
     /// Returns at once when the caller has unread messages that would wake it; otherwise
     /// registers a wait that the next such post answers. A newer wait for the same participant
     /// ends the older one, so at most one runs.
+    /// Answers at once if the caller has waking messages unread, and otherwise waits for one.
+    ///
+    /// With `due`, which is how a `Stop` hook waits (MIP-4, section 6), it answers only with a
+    /// wake the caller is due under section 5: once per batch, and once more "still unread",
+    /// then nothing until it reads. It counts as a wake, and marks the caller as fetching its
+    /// messages with its hooks.
     pub fn wait(
         &mut self,
         caller: &Caller,
         group: Option<&str>,
+        due: bool,
         presence: &dyn Presence,
     ) -> Result<Waited, Refusal> {
         let name = self.identify(caller, presence)?;
         let groups = self.chosen_groups(&name, group)?;
+        if due && let Some(participant) = self.participants.get_mut(&name) {
+            participant.pull = true;
+        }
+        let mut ready: Vec<Notice> = Vec::new();
+        for group in &groups {
+            let Some(mut notice) = self.notice(&name, group) else { continue };
+            if due {
+                let participant = self.participants.get_mut(&name).expect("identified");
+                if !participant.woken.contains(group) {
+                    participant.woken.insert(group.clone());
+                } else if !participant.rewoken.contains(group) {
+                    participant.rewoken.insert(group.clone());
+                    notice.again = true;
+                } else {
+                    continue;
+                }
+            }
+            ready.push(notice);
+        }
         self.save()?;
-        let ready: Vec<Notice> =
-            groups.iter().filter_map(|group| self.notice(&name, group)).collect();
         if !ready.is_empty() {
             return Ok(Waited::Ready(ready));
         }
         let ticket = self.next_ticket;
         self.next_ticket += 1;
-        let waiter = Waiter { ticket, group: group.map(str::to_string) };
+        let waiter = Waiter { ticket, group: group.map(str::to_string), due };
         let superseded = self.waiters.insert(name, waiter).map(|older| older.ticket);
         Ok(Waited::Waiting { ticket, superseded })
+    }
+
+    /// Marks `name` as fetching its messages with its hooks: `join --pull`.
+    pub fn pulls(&mut self, name: &str) -> Result<(), Refusal> {
+        if let Some(participant) = self.participants.get_mut(name) {
+            participant.pull = true;
+        }
+        self.save()
+    }
+
+    /// Whether `name`'s hooks will fetch what it is sent: it fetches with hooks, and a wait of
+    /// its own is connected or it ran a verb lately (MIP-4, section 7). While they will, the
+    /// host rings nothing for it.
+    pub fn hooked(&self, name: &str, now_ms: u64) -> bool {
+        let pull = self.participants.get(name).is_some_and(|participant| participant.pull);
+        let lately =
+            self.seen_ms.get(name).is_some_and(|seen| now_ms.saturating_sub(*seen) < HOOKS_LIVE_MS);
+        pull && (self.waiters.contains_key(name) || lately)
     }
 
     /// Forgets a wait its caller stopped waiting for.
@@ -641,6 +761,221 @@ impl<S: Store> Messaging<S> {
                 }
             })
             .collect())
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Groups and their policy (MIP-4, section 8)
+
+    pub fn groups(&self) -> Vec<GroupSummary> {
+        self.groups
+            .iter()
+            .map(|(name, group)| GroupSummary {
+                name: name.clone(),
+                members: group.members.iter().cloned().collect(),
+                policy: group.policy.clone(),
+            })
+            .collect()
+    }
+
+    /// Makes a group, with `policy` or the default, and the caller its first member.
+    pub fn group_new(
+        &mut self,
+        caller: &Caller,
+        group: &str,
+        policy: Option<Policy>,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Changed, Refusal> {
+        check_group(group)?;
+        if let Some(policy) = &policy {
+            policy.check()?;
+        }
+        if self.groups.contains_key(group) {
+            return Err(Refusal::GroupExists { group: group.to_string() });
+        }
+        let by = self.identify(caller, presence)?;
+        self.ensure_group(group, &by, now_ms)?;
+        self.add_member(group, &by, now_ms)?;
+        let mut seq = None;
+        if let Some(policy) = policy.filter(|policy| *policy != Policy::default()) {
+            seq = Some(self.set_policy(group, &by, policy, now_ms)?);
+        }
+        self.save()?;
+        Ok(Changed::by(&by, group, seq))
+    }
+
+    /// Replaces a group's policy whole.
+    pub fn group_set(
+        &mut self,
+        caller: &Caller,
+        group: &str,
+        policy: Policy,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Changed, Refusal> {
+        policy.check()?;
+        self.group(group)?;
+        let by = self.identify(caller, presence)?;
+        self.permitted(group, &by, Action::SetPolicy)?;
+        let seq = self.set_policy(group, &by, policy, now_ms)?;
+        self.save()?;
+        Ok(Changed::by(&by, group, Some(seq)))
+    }
+
+    /// Adds and removes members. Names are read as a post's `--to` reads them, so a pane can
+    /// be added before its agent ever joined anything.
+    pub fn group_members(
+        &mut self,
+        caller: &Caller,
+        group: &str,
+        add: &[String],
+        remove: &[String],
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Changed, Refusal> {
+        self.group(group)?;
+        let by = self.identify(caller, presence)?;
+        if !add.is_empty() {
+            self.permitted(group, &by, Action::Add)?;
+        }
+        if !remove.is_empty() {
+            self.permitted(group, &by, Action::Remove)?;
+        }
+        let mut changed = Changed::by(&by, group, None);
+        for name in add {
+            check_participant(name)?;
+            let name = self.addressee(name, presence)?;
+            if !self.groups[group].members.contains(&name) {
+                self.add_member(group, &name, now_ms)?;
+                changed.added.push(name);
+            }
+        }
+        for name in remove {
+            let Some(name) = self.lookup_name(name) else {
+                return Err(Refusal::NoSuchParticipant { name: name.clone() });
+            };
+            if !self.groups[group].members.contains(&name) {
+                return Err(Refusal::NotAMember { name, group: group.to_string() });
+            }
+            self.remove_member(group, &name, now_ms)?;
+            let kept_to_it = self
+                .waiters
+                .get(&name)
+                .is_some_and(|waiter| waiter.group.as_deref() == Some(group));
+            if kept_to_it && let Some(waiter) = self.waiters.remove(&name) {
+                changed.ended.push(waiter.ticket);
+            }
+            changed.removed.push(name);
+        }
+        let any = !changed.added.is_empty() || !changed.removed.is_empty();
+        changed.seq = any.then(|| self.groups[group].head());
+        self.save()?;
+        Ok(changed)
+    }
+
+    /// Pauses a group: its posts are kept and wake nobody but the human until it is resumed.
+    /// What its members were woken for and have not read is forgotten, so a ring still waiting
+    /// for its pane is not typed while the group is paused, and resuming wakes them afresh.
+    pub fn pause(
+        &mut self,
+        caller: &Caller,
+        group: &str,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Changed, Refusal> {
+        self.group(group)?;
+        let by = self.identify(caller, presence)?;
+        self.permitted(group, &by, Action::Pause)?;
+        if self.groups[group].policy.paused {
+            return Ok(Changed::by(&by, group, None));
+        }
+        let seq =
+            self.append(group, What::Changed { by: by.clone(), change: Change::Paused }, now_ms)?;
+        self.groups.get_mut(group).expect("looked up above").policy.paused = true;
+        let members: Vec<String> = self.groups[group].members.iter().cloned().collect();
+        for name in members {
+            if let Some(participant) = self.participants.get_mut(&name) {
+                participant.woken.remove(group);
+                participant.rewoken.remove(group);
+            }
+        }
+        self.save()?;
+        Ok(Changed::by(&by, group, Some(seq)))
+    }
+
+    /// Resumes a paused group, and wakes each member once for what it has unread there - the
+    /// same wakes a post would have, so the host delivers them the same way.
+    pub fn resume(
+        &mut self,
+        caller: &Caller,
+        group: &str,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Posted, Refusal> {
+        self.group(group)?;
+        let by = self.identify(caller, presence)?;
+        self.permitted(group, &by, Action::Resume)?;
+        let mut posted = Posted {
+            author: by.clone(),
+            group: group.to_string(),
+            seq: self.groups[group].head(),
+            reached: Vec::new(),
+            wakes: Vec::new(),
+            answered: Vec::new(),
+            unsaved: None,
+        };
+        if !self.groups[group].policy.paused {
+            return Ok(posted);
+        }
+        posted.seq =
+            self.append(group, What::Changed { by: by.clone(), change: Change::Resumed }, now_ms)?;
+        self.groups.get_mut(group).expect("looked up above").policy.paused = false;
+        let members: Vec<String> = self.groups[group].members.iter().cloned().collect();
+        for name in members {
+            if name != by && self.notice(&name, group).is_some() {
+                let reach = self.reach(&name, group, &mut posted, presence, now_ms);
+                posted.reached.push((name, reach));
+            }
+        }
+        if let Err(Refusal::Store { error }) = self.save() {
+            posted.unsaved = Some(error);
+        }
+        Ok(posted)
+    }
+
+    fn set_policy(
+        &mut self,
+        group: &str,
+        by: &str,
+        policy: Policy,
+        now_ms: u64,
+    ) -> Result<u64, Refusal> {
+        let change = What::Changed { by: by.to_string(), change: Change::SetPolicy };
+        let seq = self.append(group, change, now_ms)?;
+        self.groups.get_mut(group).expect("a group that exists").policy = policy;
+        Ok(seq)
+    }
+
+    /// Refuses `name` an action its group's `membership` does not give it.
+    fn permitted(&self, group: &str, name: &str, action: Action) -> Result<(), Refusal> {
+        let policy = &self.group(group)?.policy;
+        if policy.permits(name) {
+            return Ok(());
+        }
+        Err(Refusal::NotPermitted {
+            name: name.to_string(),
+            group: group.to_string(),
+            action,
+            permitted: policy.membership.clone(),
+        })
+    }
+
+    /// The participant a name means, by its own name or its pane's, without making one.
+    fn lookup_name(&self, name: &str) -> Option<String> {
+        if self.participants.contains_key(name) {
+            return Some(name.to_string());
+        }
+        self.by_pane(name)
     }
 
     /// The participant `name` means in a post's `--to`: a participant by that name; else the
@@ -728,7 +1063,16 @@ impl<S: Store> Messaging<S> {
     /// The participant the caller is, registering it under a default name if it is new
     /// (MIP-4, section 3). Refreshes the addresses it carries.
     fn identify(&mut self, caller: &Caller, presence: &dyn Presence) -> Result<String, Refusal> {
-        self.identify_reporting(caller, presence).map(|(name, _)| name)
+        let (name, _) = self.identify_reporting(caller, presence)?;
+        self.seen(&name, caller);
+        Ok(name)
+    }
+
+    /// Notes that `name` ran a verb, which is how its hooks are seen to run.
+    fn seen(&mut self, name: &str, caller: &Caller) {
+        if name != HUMAN {
+            self.seen_ms.insert(name.to_string(), caller.at_ms);
+        }
     }
 
     /// [`Self::identify`], also saying whether the caller took over a name a gone session held.
@@ -1027,6 +1371,10 @@ impl<S: Store> Messaging<S> {
     fn notice(&self, name: &str, group: &str) -> Option<Notice> {
         let cursor = self.cursor(name, group);
         let policy = &self.groups[group].policy;
+        // A paused group wakes nobody but the human, however it would (MIP-4, section 8).
+        if policy.paused && name != HUMAN {
+            return None;
+        }
         let mut notice: Option<Notice> = None;
         for entry in self.groups[group].log.iter().filter(|entry| entry.seq > cursor) {
             let What::Message { author, to, .. } = &entry.what else { continue };
@@ -1061,6 +1409,7 @@ impl<S: Store> Messaging<S> {
         group: &str,
         posted: &mut Posted,
         presence: &dyn Presence,
+        now_ms: u64,
     ) -> Reach {
         let Some(participant) = self.participants.get(name) else {
             return Reach::Gone;
@@ -1071,10 +1420,12 @@ impl<S: Store> Messaging<S> {
         let Some(notice) = self.notice(name, group) else {
             return Reach::Waiting;
         };
-        let waiting = self
-            .waiters
-            .get(name)
-            .is_some_and(|waiter| waiter.group.as_deref().is_none_or(|filter| filter == group));
+        let woken_before = participant.woken.contains(group);
+        let waiting = self.waiters.get(name).is_some_and(|waiter| {
+            waiter.group.as_deref().is_none_or(|filter| filter == group)
+                && !(waiter.due && woken_before)
+        });
+        let hooked = self.hooked(name, now_ms);
         if name == HUMAN {
             posted.wakes.push(Wake {
                 name: name.to_string(),
@@ -1112,6 +1463,14 @@ impl<S: Store> Messaging<S> {
             && (to_come || presence.alive(participant))
         {
             return Reach::AlreadyWoken;
+        }
+        // Mid-turn, its next PostToolUse hook reads this; at the turn's end its Stop hook is told.
+        if hooked {
+            if woken_before {
+                return Reach::AlreadyWoken;
+            }
+            participant.woken.insert(group.to_string());
+            return Reach::Woken;
         }
         let via = match via {
             Ok(via) => via,
@@ -1216,7 +1575,12 @@ impl<S: Store> Messaging<S> {
         &mut self,
         name: &str,
         presence: &dyn Presence,
+        now_ms: u64,
     ) -> (Vec<Wake>, Option<String>) {
+        // Its Stop hook asks for the "still unread" wake itself (`wait --due`).
+        if self.hooked(name, now_ms) {
+            return (Vec::new(), None);
+        }
         let Some(participant) = self.participants.get(name) else { return (Vec::new(), None) };
         let Ok(via) = Self::via(participant, presence) else { return (Vec::new(), None) };
         let groups: Vec<String> = participant

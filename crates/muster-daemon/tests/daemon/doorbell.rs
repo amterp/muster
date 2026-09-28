@@ -95,6 +95,23 @@ impl Agent {
         })
     }
 
+    /// Pauses or resumes a group, as the integrator.
+    fn pausing(&mut self, group: &str, paused: bool) {
+        let group = group.to_string();
+        let asked = if paused {
+            Asked::Pause(msg_request::Pause { group })
+        } else {
+            Asked::Resume(msg_request::Resume { group })
+        };
+        let caller = msg_request::Caller {
+            as_name: Some("integrator".to_string()),
+            ..msg_request::Caller::default()
+        };
+        let service =
+            Service::Msg(proto::MsgRequest { caller: Some(caller), request: Some(asked) });
+        expect(&mut self.control, service, proto::Outcome::Done);
+    }
+
     fn post(&mut self, to: &str, body: &str) -> msg_answer::Posted {
         let asked = Asked::Post(msg_request::Post {
             body: body.to_string(),
@@ -370,4 +387,25 @@ fn a_daemon_that_took_over_rings_a_wake_still_unread() {
     assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
     let rung = agent.until_rung(2);
     assert!(rung[1].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+}
+
+/// A paused group's posts ring nobody, and resuming it rings its agent once for everything it
+/// has unread (MIP-4, section 8).
+#[test]
+fn a_paused_group_rings_nobody_and_resuming_it_rings_once() {
+    let mut agent = Agent::in_a_pane();
+    agent.post("p1", "one");
+    agent.until_rung(1);
+
+    agent.pausing("integrator+p1", true);
+    let posted = agent.post("p1", "two");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Paused);
+    std::thread::sleep(QUIET + Duration::from_secs(2));
+    assert_eq!(agent.rung().len(), 1, "rung while paused: {:?}", agent.rung());
+
+    agent.pausing("integrator+p1", false);
+    let rung = agent.until_rung(2);
+    assert!(rung[1].contains("2 new"), "{rung:?}");
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rung().len(), 2, "rung more than once on resuming: {:?}", agent.rung());
 }

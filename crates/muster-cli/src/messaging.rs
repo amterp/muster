@@ -14,7 +14,9 @@ use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand};
 use muster_daemon_proto::connection;
-use muster_daemon_proto::messaging::{self as spelling, JOIN, LEAVE, LOG, POST, READ, WAIT, WHO};
+use muster_daemon_proto::messaging::{
+    self as spelling, GROUP, GROUPS, JOIN, LEAVE, LOG, PAUSE, POST, READ, RESUME, WAIT, WHO,
+};
 use muster_daemon_proto::msg_answer::{self, Answer, Until, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_daemon_proto::{self as proto, ConnectionKind, request::Service};
@@ -53,6 +55,10 @@ notification opens the group's transcript: `muster msg log --group G --follow`.
 A Claude Code session started with --dangerously-skip-permissions holds a wake for approval \
 unless it was also started with --settings '{\"crossSessionInbound\":\"accept\"}'.
 
+A group convened with a policy decides whom an unaddressed post wakes, whom you may address, and \
+who may add or remove members, you included; a refusal says what it allows. `muster msg groups` \
+shows each group's policy.
+
 Do not run `muster msg wait` in the foreground: it blocks until a message arrives, which is the \
 loop this exists to remove. It is for hooks and scripts.
 
@@ -77,6 +83,10 @@ pub enum Verb {
         /// The group to join
         #[arg(long, value_name = "GROUP")]
         group: Option<String>,
+        /// Your hooks fetch your messages (a PostToolUse read and a Stop `wait --due`), so
+        /// nothing is typed into your pane while they run
+        #[arg(long)]
+        pull: bool,
     },
 
     /// Leave a group, or with no --group stop taking part at all
@@ -141,6 +151,65 @@ pub enum Verb {
         /// Give up after this many seconds, exiting 5
         #[arg(long, value_name = "SECONDS")]
         timeout: Option<u32>,
+        /// Only for a wake you are due - once per batch, and once more "still unread" - as a
+        /// Stop hook waits; marks you as fetching with hooks
+        #[arg(long)]
+        due: bool,
+    },
+
+    /// Every group, with its members and whether it is paused
+    #[command(name = GROUPS)]
+    Groups,
+
+    /// Make a group with a policy, change its policy, or add and remove its members
+    #[command(name = GROUP, subcommand)]
+    Group(GroupVerb),
+
+    /// Pause a group: its posts are kept and wake nobody but the human until it is resumed
+    #[command(name = PAUSE)]
+    Pause {
+        #[arg(value_name = "GROUP")]
+        group: String,
+    },
+
+    /// Resume a paused group, waking each member once for what it has unread
+    #[command(name = RESUME)]
+    Resume {
+        #[arg(value_name = "GROUP")]
+        group: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GroupVerb {
+    /// Make a group, and join it as its first member
+    New {
+        #[arg(value_name = "GROUP")]
+        group: String,
+        /// A policy file (TOML: ring, allow, membership, paused); the default lets anyone do anything
+        #[arg(long, value_name = "PATH")]
+        policy: Option<String>,
+    },
+    /// Replace a group's policy with a file's
+    Set {
+        #[arg(value_name = "GROUP")]
+        group: String,
+        #[arg(long, value_name = "PATH")]
+        policy: String,
+    },
+    /// Add members: participants' names, or panes'
+    Add {
+        #[arg(value_name = "GROUP")]
+        group: String,
+        #[arg(value_name = "NAME", required = true)]
+        names: Vec<String>,
+    },
+    /// Remove members
+    Remove {
+        #[arg(value_name = "GROUP")]
+        group: String,
+        #[arg(value_name = "NAME", required = true)]
+        names: Vec<String>,
     },
 }
 
@@ -150,6 +219,8 @@ pub struct Messaging {
     pub request: proto::MsgRequest,
     /// Where a post's body comes from when it is not on the command line.
     pub body_from: Option<TextSource>,
+    /// The policy file a group is made with or set to, read when the request is sent.
+    pub policy_from: Option<String>,
     pub if_unread: bool,
     /// A log to keep printing as it grows, rather than answer once.
     pub follow: bool,
@@ -173,11 +244,12 @@ pub fn parse(
         directory: here.map(|here| here.display().to_string()),
     };
     let mut body_from = None;
+    let mut policy_from = None;
     let mut if_unread = false;
     let mut follow = false;
     let asked = match verb {
-        Verb::Join { name, group } => {
-            Asked::Join(msg_request::Join { name: name.clone(), group: group.clone() })
+        Verb::Join { name, group, pull } => {
+            Asked::Join(msg_request::Join { name: name.clone(), group: group.clone(), pull: *pull })
         }
         Verb::Leave { group } => Asked::Leave(msg_request::Leave { group: group.clone() }),
         Verb::Who { group } => Asked::Who(msg_request::Who { group: group.clone() }),
@@ -206,13 +278,41 @@ pub fn parse(
             follow = *following;
             Asked::Log(msg_request::Log { group: group.clone(), since: *since, follow: false })
         }
-        Verb::Wait { group, timeout } => Asked::Wait(msg_request::Wait {
+        Verb::Wait { group, timeout, due } => Asked::Wait(msg_request::Wait {
             group: group.clone(),
             timeout_ms: timeout.map(|seconds| seconds.saturating_mul(1000)),
+            due: *due,
         }),
+        Verb::Groups => Asked::Groups(msg_request::Groups {}),
+        Verb::Group(GroupVerb::New { group, policy }) => {
+            if let Some(policy) = policy {
+                policy_from = Some(crate::args::file_to_read(policy, here)?);
+            }
+            Asked::GroupNew(msg_request::GroupNew { group: group.clone(), policy: None })
+        }
+        Verb::Group(GroupVerb::Set { group, policy }) => {
+            policy_from = Some(crate::args::file_to_read(policy, here)?);
+            Asked::GroupSet(msg_request::GroupSet { group: group.clone(), policy: None })
+        }
+        Verb::Group(GroupVerb::Add { group, names }) => {
+            Asked::GroupMembers(msg_request::GroupMembers {
+                group: group.clone(),
+                add: names.clone(),
+                remove: Vec::new(),
+            })
+        }
+        Verb::Group(GroupVerb::Remove { group, names }) => {
+            Asked::GroupMembers(msg_request::GroupMembers {
+                group: group.clone(),
+                add: Vec::new(),
+                remove: names.clone(),
+            })
+        }
+        Verb::Pause { group } => Asked::Pause(msg_request::Pause { group: group.clone() }),
+        Verb::Resume { group } => Asked::Resume(msg_request::Resume { group: group.clone() }),
     };
     let request = proto::MsgRequest { caller: Some(caller), request: Some(asked) };
-    Ok(Messaging { request, body_from, if_unread, follow })
+    Ok(Messaging { request, body_from, policy_from, if_unread, follow })
 }
 
 /// Sends the request to this machine's daemon and renders its answer.
@@ -226,6 +326,14 @@ pub fn run(
         let body = read_body(from, input)?;
         if let Some(Asked::Post(post)) = messaging.request.request.as_mut() {
             post.body = body;
+        }
+    }
+    if let Some(path) = &messaging.policy_from {
+        let policy = read_policy(path)?;
+        match messaging.request.request.as_mut() {
+            Some(Asked::GroupNew(new)) => new.policy = Some(policy),
+            Some(Asked::GroupSet(set)) => set.policy = Some(policy),
+            _ => {}
         }
     }
     if let Some(inbox) = messaging.request.caller.as_mut().and_then(|caller| caller.inbox.as_mut())
@@ -321,6 +429,50 @@ fn read_body(from: &TextSource, input: &mut impl Read) -> Result<String, Trouble
     };
     String::from_utf8(bytes).map_err(|error| {
         Trouble::Refused(format!("the message is not UTF-8 text ({error}), so nothing was posted."))
+    })
+}
+
+/// A policy file as a person writes it: any field left out keeps the default's value, which
+/// lets anyone do anything (MIP-4, section 8).
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PolicyFile {
+    #[serde(default = "everyone_by_author")]
+    ring: BTreeMap<String, Vec<String>>,
+    #[serde(default = "everyone_by_author")]
+    allow: BTreeMap<String, Vec<String>>,
+    #[serde(default = "everyone")]
+    membership: Vec<String>,
+    #[serde(default)]
+    paused: bool,
+}
+
+fn everyone() -> Vec<String> {
+    vec!["*".to_string()]
+}
+
+fn everyone_by_author() -> BTreeMap<String, Vec<String>> {
+    BTreeMap::from([("*".to_string(), everyone())])
+}
+
+fn read_policy(path: &str) -> Result<msg_request::Policy, Trouble> {
+    let text = std::fs::read_to_string(path).map_err(|error| {
+        Trouble::Refused(format!("could not read the policy file {path} ({error})."))
+    })?;
+    let file: PolicyFile = toml::from_str(&text).map_err(|error| {
+        Trouble::Refused(format!(
+            "{path} is not a policy: {error}\nA policy has `ring` and `allow` (tables of author \
+             to names), `membership` (names) and `paused`; `muster docs msg` has an example."
+        ))
+    })?;
+    let names = |map: BTreeMap<String, Vec<String>>| {
+        map.into_iter().map(|(author, names)| (author, msg_request::Names { names })).collect()
+    };
+    Ok(msg_request::Policy {
+        ring: names(file.ring),
+        allow: names(file.allow),
+        membership: file.membership,
+        paused: file.paused,
     })
 }
 
@@ -485,6 +637,24 @@ fn render(
             entries_text(entries, reading && !if_unread, json)
         }
         Answer::Members(members) => members_text(members, json),
+        Answer::Changed(changed) => changed_text(request, changed, json),
+        Answer::Resumed(resumed) => {
+            // Resuming is heard or not by the members, not by whoever resumed it.
+            let text = match posted_text(resumed, json) {
+                Ok(text) | Err(Trouble::Unheard(text)) => text,
+                Err(other) => return Err(other),
+            };
+            if json {
+                text
+            } else {
+                text.replacen(
+                    &format!("posted #{} to {}", resumed.seq, resumed.group),
+                    &format!("resumed {}", resumed.group),
+                    1,
+                )
+            }
+        }
+        Answer::Groups(groups) => groups_text(groups, json),
         Answer::Notices(notices) => {
             if json {
                 let notices: Vec<_> = notices.notices.iter().map(notice_json).collect();
@@ -495,6 +665,81 @@ fn render(
             }
         }
     })
+}
+
+fn changed_text(request: &proto::MsgRequest, changed: &msg_answer::Changed, json: bool) -> String {
+    if json {
+        return serde_json::json!({
+            "group": changed.group,
+            "seq": changed.seq,
+            "added": changed.added,
+            "removed": changed.removed,
+        })
+        .to_string();
+    }
+    let group = &changed.group;
+    match (&request.request, changed.seq) {
+        (Some(Asked::GroupNew(_)), _) => format!("made {group} and joined it"),
+        (Some(Asked::GroupSet(_)), _) => format!("set {group}'s policy"),
+        (Some(Asked::Pause(_)), Some(_)) => format!("paused {group}"),
+        (Some(Asked::Pause(_)), None) => format!("{group} was already paused"),
+        (Some(Asked::GroupMembers(_)), None) => format!("{group}'s members are unchanged"),
+        _ => {
+            let mut lines = Vec::new();
+            if !changed.added.is_empty() {
+                lines.push(format!("added {} to {group}", changed.added.join(", ")));
+            }
+            if !changed.removed.is_empty() {
+                lines.push(format!("removed {} from {group}", changed.removed.join(", ")));
+            }
+            lines.join("\n")
+        }
+    }
+}
+
+fn groups_text(groups: &msg_answer::Groups, json: bool) -> String {
+    let policy_json = |policy: Option<&msg_request::Policy>| {
+        let policy = policy.cloned().unwrap_or_default();
+        let map = |map: &std::collections::HashMap<String, msg_request::Names>| {
+            map.iter()
+                .map(|(author, names)| (author.clone(), serde_json::json!(names.names)))
+                .collect::<serde_json::Map<_, _>>()
+        };
+        serde_json::json!({
+            "ring": map(&policy.ring),
+            "allow": map(&policy.allow),
+            "membership": policy.membership,
+            "paused": policy.paused,
+        })
+    };
+    if json {
+        let groups: Vec<_> = groups
+            .groups
+            .iter()
+            .map(|group| {
+                serde_json::json!({
+                    "name": group.name,
+                    "members": group.members,
+                    "policy": policy_json(group.policy.as_ref()),
+                })
+            })
+            .collect();
+        return serde_json::json!({ "groups": groups }).to_string();
+    }
+    if groups.groups.is_empty() {
+        return "no groups".to_string();
+    }
+    let width = groups.groups.iter().map(|group| group.name.len()).max().unwrap_or(0);
+    groups
+        .groups
+        .iter()
+        .map(|group| {
+            let paused = group.policy.as_ref().is_some_and(|policy| policy.paused);
+            let line = format!("{:<width$}  {}", group.name, group.members.join(", "));
+            if paused { format!("{line}  (paused)") } else { line }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn joined_text(joined: &msg_answer::Joined, json: bool) -> String {
@@ -542,9 +787,11 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
     let (already, waiting, gone) =
         (named(Reach::AlreadyWoken), named(Reach::Waiting), named(Reach::Gone));
     let (no_agent, no_doorbell) = (named(Reach::NoAgent), named(Reach::NoDoorbell));
+    let paused = named(Reach::Paused);
     let heard = !woke.is_empty()
         || !deferred.is_empty()
         || !already.is_empty()
+        || !paused.is_empty()
         || waiting.iter().any(|reached| reached.name == spelling::HUMAN);
     let text = if json {
         let listed = |reached: &[&msg_answer::Reached]| -> Vec<String> {
@@ -571,6 +818,7 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
             "gone": listed(&gone),
             "no_agent": listed(&no_agent),
             "no_doorbell": listed(&no_doorbell),
+            "paused": listed(&paused),
             "doing": doing,
             "until": until,
         })
@@ -599,6 +847,10 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
             if !later.is_empty() {
                 lines.push(format!("rung once {}: {}", until_text(until), later.join(", ")));
             }
+        }
+        if !paused.is_empty() {
+            let held: Vec<String> = paused.iter().map(|reached| with(reached, None)).collect();
+            lines.push(format!("held while {} is paused: {}", posted.group, held.join(", ")));
         }
         let mut not: Vec<String> = gone.iter().map(|reached| with(reached, Some("gone"))).collect();
         not.extend(no_agent.iter().map(|reached| with(reached, Some("no agent in its pane"))));
@@ -691,6 +943,9 @@ fn entries_text(entries: &msg_answer::Entries, say_when_empty: bool, json: bool)
                 Some(What::Created(by)) => format!("--- {name} #{seq} | created by {by} ---"),
                 Some(What::Joined(who)) => format!("--- {name} #{seq} | {who} joined ---"),
                 Some(What::Left(who)) => format!("--- {name} #{seq} | {who} left ---"),
+                Some(What::Changed(changed)) => {
+                    format!("--- {name} #{seq} | {} {} ---", changed.by, change_text(changed))
+                }
                 None => continue,
             });
         }
@@ -699,6 +954,16 @@ fn entries_text(entries: &msg_answer::Entries, say_when_empty: bool, json: bool)
         return "nothing unread".to_string();
     }
     blocks.join("\n")
+}
+
+fn change_text(changed: &msg_answer::entry::Changed) -> &'static str {
+    use msg_answer::entry::Change;
+    match changed.change() {
+        Change::SetPolicy => "set the policy",
+        Change::Paused => "paused it",
+        Change::Resumed => "resumed it",
+        Change::Unspecified => "changed it",
+    }
 }
 
 fn entry_json(entry: &msg_answer::Entry) -> serde_json::Value {
@@ -712,6 +977,10 @@ fn entry_json(entry: &msg_answer::Entry) -> serde_json::Value {
         Some(What::Created(by)) => value["created"] = by.clone().into(),
         Some(What::Joined(who)) => value["joined"] = who.clone().into(),
         Some(What::Left(who)) => value["left"] = who.clone().into(),
+        Some(What::Changed(changed)) => {
+            value["changed"] =
+                serde_json::json!({ "by": changed.by, "change": change_text(changed) });
+        }
         None => {}
     }
     value

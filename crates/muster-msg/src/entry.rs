@@ -30,6 +30,19 @@ pub enum What {
     Left {
         who: String,
     },
+    /// A change to the group itself: its policy set, or the group paused or resumed.
+    Changed {
+        by: String,
+        change: Change,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Change {
+    SetPolicy,
+    Paused,
+    Resumed,
 }
 
 impl Entry {
@@ -45,7 +58,7 @@ impl Entry {
     pub(crate) fn subject(&self) -> Option<&str> {
         match &self.what {
             What::Message { .. } => None,
-            What::Created { by } => Some(by),
+            What::Created { by } | What::Changed { by, .. } => Some(by),
             What::Joined { who } | What::Left { who } => Some(who),
         }
     }

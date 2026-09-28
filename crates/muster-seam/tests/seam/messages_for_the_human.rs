@@ -100,6 +100,7 @@ fn group_of_three(control: &mut Control) {
         let join = Asked::Join(msg_request::Join {
             name: Some(name.to_string()),
             group: Some("g".to_string()),
+            pull: false,
         });
         expect(control, msg(&caller, join), daemon_proto::Outcome::Done);
     }

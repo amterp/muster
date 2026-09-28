@@ -230,7 +230,7 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Dura
             // Idle after the wake, not before it: one still waiting to be rung is not late.
             let unrung = messages.pending.iter().any(|wake| wake.name == name);
             if went_idle && !unrung {
-                let (wakes, unsaved) = messages.service.went_idle(&name, &panes);
+                let (wakes, unsaved) = messages.service.went_idle(&name, &panes, super::now_ms());
                 if let Some(error) = unsaved {
                     super::kept_nothing(&muster_msg::Refusal::Store { error });
                 }
@@ -239,6 +239,21 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Dura
         }
         for wake in std::mem::take(&mut messages.pending) {
             let Via::Pane(pane) = &wake.via else { continue };
+            // Forgotten since: its group was paused, or it read. Resuming wakes it afresh.
+            let why = if !messages.service.woken_for(&wake.name, &wake.notice.group) {
+                Some("no longer woken")
+            } else if messages.service.hooked(&wake.name, super::now_ms()) {
+                Some("its hooks fetch it")
+            } else {
+                None
+            };
+            if let Some(why) = why {
+                log::info(
+                    "msg.ring.dropped",
+                    fields! { "name" => wake.name, "pane" => pane, "why" => why },
+                );
+                continue;
+            }
             let dropped = match (panes.get(pane), panes.doorbell(pane)) {
                 (Some(seen), Ringable::Rings) => {
                     match may_ring(seen, now) {

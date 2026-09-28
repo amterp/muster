@@ -57,6 +57,7 @@ fn join(control: &mut Control, caller: &msg_request::Caller, name: &str, group: 
     let asked = Asked::Join(msg_request::Join {
         name: Some(name.to_string()),
         group: Some(group.to_string()),
+        pull: false,
     });
     expect(control, msg(caller, asked), proto::Outcome::Done);
 }
@@ -359,6 +360,28 @@ fn a_window_hears_each_message_for_the_human_once_and_no_chatter() {
     assert_eq!((told.first, told.last, told.count, told.to_you), (5, 7, 2, 2));
 
     expect(&mut control, read(&the_human()), DONE);
+    let told = human_notice(&mut window);
+    assert_eq!((told.group.as_str(), told.count), ("g", 0));
+}
+
+/// Removed from a group by a member, the human has left it, so nothing waits there any more.
+#[test]
+fn a_window_hears_nothing_waits_once_the_human_is_removed_from_the_group() {
+    let daemon = daemon();
+    let mut window = daemon.connect();
+    attend(&mut window);
+    let mut control = daemon.connect();
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &named("a"), "a", "g");
+    expect(&mut control, post_to(&named("a"), "@human", "need input"), DONE);
+    assert_eq!(human_notice(&mut window).count, 1);
+
+    let remove = Asked::GroupMembers(msg_request::GroupMembers {
+        group: "g".to_string(),
+        add: Vec::new(),
+        remove: vec!["@human".to_string()],
+    });
+    expect(&mut control, msg(&named("a"), remove), DONE);
     let told = human_notice(&mut window);
     assert_eq!((told.group.as_str(), told.count), ("g", 0));
 }

@@ -608,7 +608,9 @@ dependencies = [
  "muster-proto",
  "muster-seam",
  "prost",
+ "serde",
  "serde_json",
+ "toml",
  "unicode-width 0.2.2",
 ]
 

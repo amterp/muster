@@ -175,6 +175,12 @@ once Ctrl-C has stopped the follow and left its shell.
 | `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
 | `log --group G [--since N] [--follow]` | the transcript, moving nothing; `--follow` keeps printing |
 | `wait [--group G] [--timeout S]` | blocks until a message would wake you |
+| `groups` | every group, its members, and whether it is paused; `--json` has each policy |
+| `group new G [--policy F]` | makes a group with that policy, and joins it as its first member |
+| `group set G --policy F` | replaces a group's policy |
+| `group add G NAME...` / `group remove G NAME...` | adds or removes members, by name or pane |
+| `pause G` | holds a group's wakes: its posts wake nobody but the human |
+| `resume G` | wakes each member once for what it has unread, and lets posts wake again |
 
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, 3 no daemon
 to ask, 4 the daemon hung up before answering, 5 a wait that timed out, 6 a post that woke

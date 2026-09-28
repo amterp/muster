@@ -4,11 +4,12 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 
 use conformance::{Conformance, fields};
 use muster_msg::{
-    Activity, Caller, Inbox, Liveness, Memory, Messaging, Notice, Participant, Posted, Presence,
-    Reach, Refusal, Ringable, Via, What,
+    Action, Activity, Caller, Change, Changed, Inbox, Liveness, Memory, Messaging, Notice,
+    Participant, Policy, Posted, Presence, Reach, Refusal, Ringable, Via, What,
 };
 use serde_json::{Value, json};
 
@@ -86,6 +87,7 @@ fn caller(step: &Value) -> Caller {
         }),
         pane: text("pane"),
         directory: text("directory"),
+        at_ms: 0,
     }
 }
 
@@ -129,7 +131,9 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::NameInUse { name, inbox } => {
             format!("{name} at {}", inbox.as_deref().unwrap_or("no inbox"))
         }
-        Refusal::NoSuchGroup { group } | Refusal::PairTooLong { group } => group.clone(),
+        Refusal::NoSuchGroup { group }
+        | Refusal::PairTooLong { group }
+        | Refusal::GroupExists { group } => group.clone(),
         Refusal::GroupNameClash { group, existing } => format!("{group} {existing}"),
         Refusal::NotAMember { name, group } | Refusal::AddresseeNotInGroup { name, group } => {
             format!("{name} {group}")
@@ -137,10 +141,28 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::WhichGroup { candidates } => candidates.join(","),
         Refusal::Unread { group, count } => format!("{group} {count}"),
         Refusal::BodyTooLarge { bytes } => bytes.to_string(),
+        Refusal::NotAllowed { addressee, group, allowed } => {
+            format!("{addressee} {group} (may address {})", allowed.join(","))
+        }
+        Refusal::NotPermitted { name, group, action, permitted } => {
+            format!("{name} {} {group} (only {})", action_word(*action), permitted.join(","))
+        }
         Refusal::Store { error } => error.clone(),
         Refusal::AddressedSelf | Refusal::NoGroup | Refusal::EmptyBody => String::new(),
     };
     format!("refused {} {detail}", refusal.code()).trim_end().to_string()
+}
+
+fn action_word(action: Action) -> &'static str {
+    match action {
+        Action::Join => "join",
+        Action::Leave => "leave",
+        Action::Add => "add to",
+        Action::Remove => "remove from",
+        Action::SetPolicy => "set the policy of",
+        Action::Pause => "pause",
+        Action::Resume => "resume",
+    }
 }
 
 fn entry(entry: &muster_msg::Entry) -> String {
@@ -154,6 +176,14 @@ fn entry(entry: &muster_msg::Entry) -> String {
         What::Created { by } => format!("#{} created by {by}", entry.seq),
         What::Joined { who } => format!("#{} {who} joined", entry.seq),
         What::Left { who } => format!("#{} {who} left", entry.seq),
+        What::Changed { by, change } => {
+            let change = match change {
+                Change::SetPolicy => "set the policy",
+                Change::Paused => "paused",
+                Change::Resumed => "resumed",
+            };
+            format!("#{} {by} {change}", entry.seq)
+        }
     }
 }
 
@@ -193,6 +223,17 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
         }
     }
     let mut parts = vec![format!("{} posted #{} to {}", posted.author, posted.seq, posted.group)];
+    reached(posted, &failed, &deferred, &mut parts);
+    parts.join("; ")
+}
+
+/// What a post or a resume did for each participant it was meant to wake, one part per kind.
+fn reached(
+    posted: &Posted,
+    failed: &BTreeSet<String>,
+    deferred: &BTreeSet<String>,
+    parts: &mut Vec<String>,
+) {
     for (label, wanted) in [
         ("woke", Reach::Woken),
         ("deferred", Reach::Deferred),
@@ -201,6 +242,7 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
         ("gone", Reach::Gone),
         ("no agent", Reach::NoAgent),
         ("no doorbell", Reach::NoDoorbell),
+        ("paused", Reach::Paused),
     ] {
         let names: Vec<String> = posted
             .reached
@@ -236,7 +278,41 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
             parts.push(format!("{label} {}", names.join(", ")));
         }
     }
-    parts.join("; ")
+}
+
+/// Delivers a resume's wakes as a post's are, and says whom it woke.
+fn resumed(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Posted) -> String {
+    let line = delivered(service, sessions, posted);
+    let head = format!("{} posted #{} to {}", posted.author, posted.seq, posted.group);
+    line.replacen(
+        &head,
+        &format!("{} resumed {} (#{})", posted.author, posted.group, posted.seq),
+        1,
+    )
+}
+
+fn changed(changed: &Changed, what: &str) -> String {
+    let mut line = match changed.seq {
+        Some(seq) => format!("{} {what} {} (#{seq})", changed.by, changed.group),
+        None => format!("{} {what} {}, which changed nothing", changed.by, changed.group),
+    };
+    if !changed.added.is_empty() {
+        let _ = write!(line, "; added {}", changed.added.join(","));
+    }
+    if !changed.removed.is_empty() {
+        let _ = write!(line, "; removed {}", changed.removed.join(","));
+    }
+    if !changed.ended.is_empty() {
+        let ended: Vec<String> = changed.ended.iter().map(ToString::to_string).collect();
+        let _ = write!(line, "; ended wait {}", ended.join(","));
+    }
+    line
+}
+
+fn policy(step: &Value) -> Option<Policy> {
+    step.get("policy").map(|policy| {
+        serde_json::from_value(policy.clone()).expect("messaging.json: a policy the service reads")
+    })
 }
 
 /// Opens a pane with no agent in it, `new` when one is likely starting there, or closes it.
@@ -275,8 +351,8 @@ fn agent(sessions: &Sessions, step: &Value) -> String {
 }
 
 /// Tells the service `name`'s agent went idle, and says whom that woke again.
-fn idle(service: &mut Messaging<Memory>, sessions: &Sessions, name: &str) -> String {
-    let (wakes, _) = service.went_idle(name, sessions);
+fn idle(service: &mut Messaging<Memory>, sessions: &Sessions, name: &str, now: u64) -> String {
+    let (wakes, _) = service.went_idle(name, sessions, now);
     let told: Vec<String> = wakes
         .iter()
         .map(|wake| format!("{} [{}]{}", wake.name, notice(&wake.notice), rung(&wake.via)))
@@ -303,41 +379,113 @@ fn waits_for_the_human(service: &Messaging<Memory>) -> String {
     format!("@human: {}", notices.iter().map(notice).collect::<Vec<_>>().join("; "))
 }
 
+/// A step that makes or changes a group, or lists them.
+fn group_step(
+    service: &mut Messaging<Memory>,
+    sessions: &Sessions,
+    step: &Value,
+    who: &Caller,
+    now: u64,
+) -> Result<String, Refusal> {
+    let text = |key: &str| step.get(key).and_then(Value::as_str);
+    let group = text("group").unwrap_or_default();
+    match text("do").unwrap_or_default() {
+        "group new" => service
+            .group_new(who, group, policy(step), sessions, now)
+            .map(|made| changed(&made, "made")),
+        "group set" => service
+            .group_set(who, group, policy(step).unwrap_or_default(), sessions, now)
+            .map(|set| changed(&set, "set the policy of")),
+        "members" => service
+            .group_members(
+                who,
+                group,
+                &strings(step.get("add")),
+                &strings(step.get("remove")),
+                sessions,
+                now,
+            )
+            .map(|members| changed(&members, "changed the members of")),
+        "pause" => {
+            service.pause(who, group, sessions, now).map(|paused| changed(&paused, "paused"))
+        }
+        "resume" => service
+            .resume(who, group, sessions, now)
+            .map(|posted| resumed(service, sessions, &posted)),
+        "groups" => Ok(service
+            .groups()
+            .iter()
+            .map(|group| {
+                let paused = if group.policy.paused { " paused" } else { "" };
+                format!("{} [{}]{paused}", group.name, group.members.join(","))
+            })
+            .collect::<Vec<_>>()
+            .join(", ")),
+        other => unreachable!("{other} is not a group step"),
+    }
+}
+
+fn left_text(left: &muster_msg::Left) -> String {
+    let line = if left.stopped && left.groups.is_empty() {
+        format!("{} stopped", left.name)
+    } else if left.stopped {
+        format!("{} stopped (left {})", left.name, left.groups.join(","))
+    } else {
+        format!("{} left {}", left.name, left.groups.join(","))
+    };
+    match left.ended {
+        Some(ticket) => format!("{line}, ended wait {ticket}"),
+        None => line,
+    }
+}
+
+fn waited_text(waited: &muster_msg::Waited) -> String {
+    match waited {
+        muster_msg::Waited::Ready(notices) => {
+            format!("ready {}", notices.iter().map(notice).collect::<Vec<_>>().join("; "))
+        }
+        muster_msg::Waited::Waiting { ticket, superseded: None } => format!("waiting {ticket}"),
+        muster_msg::Waited::Waiting { ticket, superseded: Some(older) } => {
+            format!("waiting {ticket}, ended {older}")
+        }
+    }
+}
+
 /// Runs one step and says what came of it in one line.
 fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now: u64) -> String {
     let text = |key: &str| step.get(key).and_then(Value::as_str);
-    let who = caller(step);
+    // A step may say when it happens, to put minutes between two; otherwise steps are a
+    // millisecond apart.
+    let now = step.get("at_ms").and_then(Value::as_u64).unwrap_or(now);
+    let mut who = caller(step);
+    who.at_ms = now;
     let action = text("do").unwrap_or_default();
     let result = match action {
-        "join" => service.join(&who, text("name"), text("group"), sessions, now).map(|joined| {
-            let mut line = format!("{} joined", joined.name);
-            if let Some(group) = &joined.group {
-                line = format!("{line} {group}");
-            }
-            if joined.group.is_none() {
-                line = format!("{} registered", joined.name);
-            }
-            if joined.created {
-                line.push_str(" (created)");
-            }
-            if joined.took_over {
-                line.push_str(" (took over)");
-            }
-            line
-        }),
-        "leave" => service.leave(&who, text("group"), sessions, now).map(|left| {
-            let line = if left.stopped && left.groups.is_empty() {
-                format!("{} stopped", left.name)
-            } else if left.stopped {
-                format!("{} stopped (left {})", left.name, left.groups.join(","))
-            } else {
-                format!("{} left {}", left.name, left.groups.join(","))
-            };
-            match left.ended {
-                Some(ticket) => format!("{line}, ended wait {ticket}"),
-                None => line,
-            }
-        }),
+        "join" => service
+            .join(&who, text("name"), text("group"), sessions, now)
+            .and_then(|joined| {
+                if step.get("pull").and_then(Value::as_bool) == Some(true) {
+                    service.pulls(&joined.name)?;
+                }
+                Ok(joined)
+            })
+            .map(|joined| {
+                let mut line = format!("{} joined", joined.name);
+                if let Some(group) = &joined.group {
+                    line = format!("{line} {group}");
+                }
+                if joined.group.is_none() {
+                    line = format!("{} registered", joined.name);
+                }
+                if joined.created {
+                    line.push_str(" (created)");
+                }
+                if joined.took_over {
+                    line.push_str(" (took over)");
+                }
+                line
+            }),
+        "leave" => service.leave(&who, text("group"), sessions, now).map(|left| left_text(&left)),
         "post" => {
             let to = strings(step.get("to"));
             let body = text("body").unwrap_or_default();
@@ -358,15 +506,10 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
                 format!("{} read {}", read.name, groups.join("; "))
             }
         }),
-        "wait" => service.wait(&who, text("group"), sessions).map(|waited| match waited {
-            muster_msg::Waited::Ready(notices) => {
-                format!("ready {}", notices.iter().map(notice).collect::<Vec<_>>().join("; "))
-            }
-            muster_msg::Waited::Waiting { ticket, superseded: None } => format!("waiting {ticket}"),
-            muster_msg::Waited::Waiting { ticket, superseded: Some(older) } => {
-                format!("waiting {ticket}, ended {older}")
-            }
-        }),
+        "wait" => {
+            let due = step.get("due").and_then(Value::as_bool) == Some(true);
+            service.wait(&who, text("group"), due, sessions).map(|waited| waited_text(&waited))
+        }
         "who" => service.who(text("group"), sessions).map(|members| {
             members
                 .iter()
@@ -388,9 +531,12 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
             let since = step.get("since").and_then(Value::as_u64).unwrap_or(0);
             service.log(text("group").unwrap_or_default(), since).map(|entries| list(&entries))
         }
+        "group new" | "group set" | "members" | "pause" | "resume" | "groups" => {
+            group_step(service, sessions, step, &who, now)
+        }
         "agent" => Ok(agent(sessions, step)),
         "pane" => Ok(pane(sessions, step)),
-        "idle" => Ok(idle(service, sessions, text("name").unwrap_or_default())),
+        "idle" => Ok(idle(service, sessions, text("name").unwrap_or_default(), now)),
         "attend" => Ok(attend(sessions, text("state") != Some("off"))),
         "human" => Ok(waits_for_the_human(service)),
         "dies" => {

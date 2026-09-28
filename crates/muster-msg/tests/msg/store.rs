@@ -112,7 +112,7 @@ fn a_request_that_changes_nothing_saves_nothing() {
 
     service.read(&session("b"), None, &Everyone).unwrap();
     service.join(&session("b"), Some("b"), Some("g"), &Everyone, 3).unwrap();
-    let waited = service.wait(&session("b"), None, &Everyone).unwrap();
+    let waited = service.wait(&session("b"), None, false, &Everyone).unwrap();
     assert!(matches!(waited, muster_msg::Waited::Waiting { .. }), "{waited:?}");
     assert_eq!(service.store().saves, saves);
 }

@@ -98,7 +98,7 @@
     },
     {
       "name": "a participant whose inbox is gone is not woken",
-      "why": "A wake address is found dead at first use and marks its participant gone until it returns (MIP-4, sections 5 and 12).",
+      "why": "Council v1's joined agents sat asleep with no way to tell, since membership was not presence. A wake address is found dead at first use and marks its participant gone until it returns, and `who` says so (MIP-4, sections 5, 7 and 12).",
       "given": { "steps": [
         {"session": "a", "do": "join", "name": "a", "group": "g"},
         {"session": "b", "do": "join", "name": "b", "group": "g"},
@@ -784,6 +784,252 @@
         "a alive, b alive (working)",
         "p1 gone",
         "a alive, b gone"
+      ] }
+    },
+    {
+      "name": "a member of a directed council may not leave, and is told who may dismiss it",
+      "why": "Council v1 sessions ended in leave cascades within a minute of the first \"signing off\", and one agent left on the turn it was told not to: prompting failed. A policy's `membership` is enforced, so only those it names may remove a member, the member included (MIP-4, sections 8 and 9).",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"session": "sb", "do": "join", "name": "builder"},
+        {"session": "sc", "do": "join", "name": "critic"},
+        {"do": "members", "group": "council", "add": ["builder", "critic"]},
+        {"session": "sb", "do": "leave", "group": "council"},
+        {"session": "sb", "do": "leave"},
+        {"do": "members", "group": "council", "remove": ["builder"]}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "director joined council",
+        "builder registered",
+        "critic registered",
+        "@human changed the members of council (#6); added builder,critic",
+        "refused not_permitted builder leave council (only director,@human)",
+        "refused not_permitted builder leave council (only director,@human)",
+        "@human changed the members of council (#7); removed builder"
+      ] }
+    },
+    {
+      "name": "a member of a directed council may address only the director and the human",
+      "why": "Council v1's \"orchestrated mode\" existed only as a sentence in its skill, so nothing held agents to it. `allow` is enforced by the service (MIP-4, section 8).",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"session": "sb", "do": "join", "name": "builder"},
+        {"session": "sc", "do": "join", "name": "critic"},
+        {"do": "members", "group": "council", "add": ["builder", "critic"]},
+        {"session": "sb", "do": "post", "group": "council", "to": ["critic"], "body": "over to you"},
+        {"session": "sb", "do": "post", "group": "council", "to": ["director"], "body": "done"}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "director joined council",
+        "builder registered",
+        "critic registered",
+        "@human changed the members of council (#6); added builder,critic",
+        "refused not_allowed critic council (may address director,@human)",
+        "builder posted #7 to council; woke director [council #7-7 x1 to-you:1 from builder]"
+      ] }
+    },
+    {
+      "name": "in a directed council a member's unaddressed post wakes only the director",
+      "why": "Council v1 agents spent whole turns only passing the turn (\"Standing by\", \"Passing to Moderator\"). An agent ends its turn and is woken when it is wanted; the ring set decides whom an unaddressed post wakes (MIP-4, sections 5 and 8).",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"session": "sb", "do": "join", "name": "builder"},
+        {"session": "sc", "do": "join", "name": "critic"},
+        {"do": "members", "group": "council", "add": ["builder", "critic"]},
+        {"session": "sd", "do": "post", "group": "council", "body": "plan"},
+        {"session": "sb", "do": "read"},
+        {"session": "sb", "do": "post", "group": "council", "body": "done"}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "director joined council",
+        "builder registered",
+        "critic registered",
+        "@human changed the members of council (#6); added builder,critic",
+        "director posted #7 to council; woke builder [council #7-7 x1 to-you:0 from director], critic [council #7-7 x1 to-you:0 from director]; waiting @human [council #7-7 x1 to-you:0 from director] for the windows",
+        "builder read council: #6 critic joined | #7 director: plan",
+        "builder posted #8 to council; woke director [council #8-8 x1 to-you:0 from builder]"
+      ] }
+    },
+    {
+      "name": "a paused group's posts wake nobody, and resuming wakes each member once",
+      "why": "Council v1's human typed \"wait\" into messages arriving every 15 seconds, and had only another message to ask with. A paused group keeps its posts and wakes no agent; resuming wakes each member once for what it has unread (MIP-4, section 8).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "a", "do": "pause", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "a", "do": "post", "body": "two"},
+        {"session": "b", "do": "wait", "group": "g"},
+        {"session": "a", "do": "resume", "group": "g"},
+        {"session": "a", "do": "post", "body": "three"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c joined g",
+        "a paused g (#5)",
+        "a posted #6 to g; paused b, c",
+        "a posted #7 to g; paused b, c",
+        "waiting 1",
+        "a resumed g (#8); woke b [g #6-7 x2 to-you:0 from a], c [g #6-7 x2 to-you:0 from a]",
+        "a posted #9 to g; already woken b, c"
+      ] }
+    },
+    {
+      "name": "the human is still reached while a group is paused",
+      "why": "Pausing is how the human asks the agents to stop; a message meant for the human is not what it was paused against (MIP-4, section 8).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"do": "join", "group": "g"},
+        {"do": "pause", "group": "g"},
+        {"do": "wait", "group": "g"},
+        {"session": "a", "do": "post", "group": "g", "to": ["@human"], "body": "a question"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "@human joined g",
+        "@human paused g (#4)",
+        "waiting 1",
+        "a posted #5 to g; woke @human [g #5-5 x1 to-you:1 from a] for the windows"
+      ] }
+    },
+    {
+      "name": "resuming rings an agent in a pane once for what it has unread",
+      "why": "What a member was woken for before the pause is forgotten when it is paused, so a ring still waiting for its pane is not typed into it meanwhile, and resuming wakes it afresh (MIP-4, section 8).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "one"},
+        {"session": "a", "do": "pause", "group": "a+p1"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "two"},
+        {"session": "a", "do": "resume", "group": "a+p1"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "a registered",
+        "a posted #4 to a+p1; woke p1 [a+p1 #4-4 x1 to-you:1 from a] rung p1",
+        "a paused a+p1 (#5)",
+        "a posted #6 to a+p1; paused p1",
+        "a resumed a+p1 (#7); woke p1 [a+p1 #4-6 x2 to-you:2 from a] rung p1"
+      ] }
+    },
+    {
+      "name": "only those a policy names may join a group, change its policy, or pause it",
+      "why": "`membership` also decides who may change the policy, so a directed council's rules hold after the prompt that set them has faded (MIP-4, sections 8 and 9).",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"session": "sb", "do": "join", "name": "builder"},
+        {"session": "sc", "do": "join", "name": "critic"},
+        {"do": "members", "group": "council", "add": ["builder", "critic"]},
+        {"session": "sx", "do": "join", "name": "stranger", "group": "council"},
+        {"session": "sb", "do": "group set", "group": "council", "policy": {"ring": {"*": ["*"]}, "allow": {"*": ["*"]}, "membership": ["*"], "paused": false}},
+        {"session": "sb", "do": "pause", "group": "council"},
+        {"session": "sd", "do": "pause", "group": "council"},
+        {"session": "sd", "do": "resume", "group": "council"}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "director joined council",
+        "builder registered",
+        "critic registered",
+        "@human changed the members of council (#6); added builder,critic",
+        "refused not_permitted stranger join council (only director,@human)",
+        "refused not_permitted builder set the policy of council (only director,@human)",
+        "refused not_permitted builder pause council (only director,@human)",
+        "director paused council (#7)",
+        "director resumed council (#8)"
+      ] }
+    },
+    {
+      "name": "a group is made once, with a policy that names only what a participant could be called",
+      "why": "A policy file is read from a person's disk; a name in it that no participant could have would make a rule that never applies (MIP-4, section 8).",
+      "given": { "steps": [
+        {"do": "group new", "group": "g"},
+        {"do": "group new", "group": "g"},
+        {"do": "group new", "group": "h", "policy": {"ring": {"*": ["*"]}, "allow": {"*": ["*"]}, "membership": ["two words"], "paused": false}},
+        {"do": "groups"}
+      ] },
+      "expect": { "said": [
+        "@human made g, which changed nothing",
+        "refused group_exists g",
+        "refused bad_name two words",
+        "g [@human]"
+      ] }
+    },
+    {
+      "name": "a wait returns when its member is addressed, whoever else has left",
+      "why": "Council v1 agents were stranded waiting for a turn designated to someone who had stopped looping. A wait here answers the post that is for it, and nobody's leaving holds it up (MIP-4, sections 5 and 6).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "c", "do": "leave", "group": "g"},
+        {"session": "b", "do": "wait", "group": "g"},
+        {"session": "a", "do": "post", "group": "g", "to": ["b"], "body": "your turn"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c joined g",
+        "c left g",
+        "waiting 1",
+        "a posted #6 to g; woke b [g #6-6 x1 to-you:1 from a]"
+      ] }
+    },
+    {
+      "name": "a Stop hook's wait is answered once per batch, once more still unread, then not until a read",
+      "why": "A Stop hook's wait starts a turn each time it is answered, so it follows the wake rule: one wake per batch, one more saying still unread, and none after that until the agent reads, or an agent that ended its turn without reading would be woken at the end of every turn (MIP-4, sections 5 and 6).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "b", "do": "wait", "group": "g", "due": true},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "b", "do": "wait", "group": "g", "due": true},
+        {"session": "b", "do": "wait", "group": "g", "due": true},
+        {"session": "a", "do": "post", "body": "two"},
+        {"session": "b", "do": "read"},
+        {"session": "b", "do": "wait", "group": "g", "due": true},
+        {"session": "a", "do": "post", "body": "three"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "waiting 1",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "ready g #4-4 x1 to-you:0 from a again",
+        "waiting 2",
+        "a posted #5 to g; already woken b",
+        "b read g: #4 a: one | #5 a: two",
+        "waiting 3, ended 2",
+        "a posted #6 to g; woke b [g #6-6 x1 to-you:0 from a]"
+      ] }
+    },
+    {
+      "name": "an agent whose hooks fetch its messages is not rung while they run, and is once they stop",
+      "why": "Between tool calls its PostToolUse hook reads, and at the end of a turn its Stop hook waits, so typing into its pane would only repeat them. Hooks that have run in the last five minutes are running; after that the doorbell takes over, in case they stopped (MIP-4, sections 6 and 7).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1", "pull": true},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "s1", "do": "read", "pane": "p1"},
+        {"session": "a", "do": "post", "body": "two", "at_ms": 400000}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "b joined g (created)",
+        "a joined g",
+        "a posted #4 to g; woke b",
+        "b read g: #3 a joined | #4 a: one",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:0 from a] rung p1"
       ] }
     }
   ]

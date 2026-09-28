@@ -56,6 +56,25 @@ pub enum Refusal {
     BodyTooLarge {
         bytes: usize,
     },
+    /// The group's policy does not let the author address this participant (MIP-4, section 8).
+    NotAllowed {
+        addressee: String,
+        group: String,
+        /// Whom the author may address there.
+        allowed: Vec<String>,
+    },
+    /// The group's policy does not let `name` do this: join or leave it, add or remove a
+    /// member, or change its policy.
+    NotPermitted {
+        name: String,
+        group: String,
+        action: Action,
+        /// Who may.
+        permitted: Vec<String>,
+    },
+    GroupExists {
+        group: String,
+    },
     /// The store could not keep what was asked, so it was not done.
     Store {
         error: String,
@@ -81,7 +100,22 @@ impl Refusal {
             Refusal::Unread { .. } => "unread",
             Refusal::EmptyBody => "empty_body",
             Refusal::BodyTooLarge { .. } => "body_too_large",
+            Refusal::NotAllowed { .. } => "not_allowed",
+            Refusal::NotPermitted { .. } => "not_permitted",
+            Refusal::GroupExists { .. } => "group_exists",
             Refusal::Store { .. } => "store",
         }
     }
+}
+
+/// What a group's `membership` governs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Join,
+    Leave,
+    Add,
+    Remove,
+    SetPolicy,
+    Pause,
+    Resume,
 }

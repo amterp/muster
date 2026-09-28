@@ -66,6 +66,12 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(msg_request::Request::Read(_)) => "msg.read",
             Some(msg_request::Request::Log(_)) => "msg.log",
             Some(msg_request::Request::Wait(_)) => "msg.wait",
+            Some(msg_request::Request::Groups(_)) => "msg.groups",
+            Some(msg_request::Request::GroupNew(_)) => "msg.group_new",
+            Some(msg_request::Request::GroupSet(_)) => "msg.group_set",
+            Some(msg_request::Request::GroupMembers(_)) => "msg.group_members",
+            Some(msg_request::Request::Pause(_)) => "msg.pause",
+            Some(msg_request::Request::Resume(_)) => "msg.resume",
             None => "msg",
         },
     }

@@ -479,6 +479,12 @@ message MsgRequest {
     Read read = 14;
     Log log = 15;
     Wait wait = 16;
+    Groups groups = 17;
+    GroupNew group_new = 18;
+    GroupSet group_set = 19;
+    GroupMembers group_members = 20;
+    Pause pause = 21;
+    Resume resume = 22;
   }
 
   message Caller {
@@ -503,6 +509,9 @@ message MsgRequest {
   message Join {
     optional string name = 1;
     optional string group = 2;
+    // The caller's hooks fetch its messages (MIP-4, section 6), so nothing rings it while they
+    // run.
+    bool pull = 3;
   }
 
   // Leaves `group`, or with none leaves every group and stops being a participant.
@@ -537,12 +546,65 @@ message MsgRequest {
     bool follow = 3;
   }
 
+  // A group's rules (MIP-4, section 8). Names are participants' names, `*` for anyone, and
+  // `@human` for the human.
+  message Policy {
+    // Whom an unaddressed post wakes, by author; `*` is any author, or every member.
+    map<string, Names> ring = 1;
+    // Whom an author may address, by author.
+    map<string, Names> allow = 2;
+    // Who may add or remove members, themselves included, and change the policy.
+    repeated string membership = 3;
+    bool paused = 4;
+  }
+
+  message Names {
+    repeated string names = 1;
+  }
+
+  // Every group this daemon holds, with its members and policy.
+  message Groups {}
+
+  // Makes a group, with `policy` or the default, and the caller its first member. Refused as
+  // `group_exists` when it is there already.
+  message GroupNew {
+    string group = 1;
+    optional Policy policy = 2;
+  }
+
+  // Replaces a group's policy whole.
+  message GroupSet {
+    string group = 1;
+    Policy policy = 2;
+  }
+
+  // Adds and removes members, read as a post's `to` is read, so a pane is a name here too.
+  message GroupMembers {
+    string group = 1;
+    repeated string add = 2;
+    repeated string remove = 3;
+  }
+
+  // While paused, a group's posts are kept and wake nobody but the human.
+  message Pause {
+    string group = 1;
+  }
+
+  // Answered as a post is: each member with waking messages unread is woken once.
+  message Resume {
+    string group = 1;
+  }
+
   // Answered once the caller has unread messages that would wake it: at once if it already
   // does. A newer wait for the same participant ends this one, refused as `superseded`.
   message Wait {
     optional string group = 1;
     // Refused as `timed_out` after this long. None waits for as long as the connection lasts.
     optional uint32 timeout_ms = 2;
+    // Answered only with a wake the caller is due: once per batch, and once more "still
+    // unread", as a ring would be. A Stop hook's wait, whose answer starts a turn; it marks
+    // the caller as fetching with hooks.
+    bool due = 3;
   }
 }
 
@@ -559,6 +621,28 @@ message MsgAnswer {
     Entries entries = 13;
     Members members = 14;
     Notices notices = 15;
+    Changed changed = 16;
+    // A resume, which wakes as a post does: `seq` is the notice it logged.
+    Posted resumed = 17;
+    Groups groups = 18;
+  }
+
+  // A change to a group. No `seq` when it changed nothing: pausing a group already paused.
+  message Changed {
+    string group = 1;
+    optional uint64 seq = 2;
+    repeated string added = 3;
+    repeated string removed = 4;
+  }
+
+  message Groups {
+    repeated Group groups = 1;
+  }
+
+  message Group {
+    string name = 1;
+    repeated string members = 2;
+    MsgRequest.Policy policy = 3;
   }
 
   message Joined {
@@ -618,6 +702,8 @@ message MsgAnswer {
     // In a pane whose agent's prompt the daemon cannot read, so the doorbell never rings it,
     // and nothing else can wake it.
     REACH_NO_DOORBELL = 7;
+    // The group is paused: woken once it is resumed.
+    REACH_PAUSED = 8;
   }
 
   // What an agent in a pane is doing, as detection reads the pane.
@@ -651,6 +737,20 @@ message MsgAnswer {
       string created = 11;
       string joined = 12;
       string left = 13;
+      Changed changed = 14;
+    }
+
+    // Who changed the group itself, and how.
+    message Changed {
+      string by = 1;
+      Change change = 2;
+    }
+
+    enum Change {
+      CHANGE_UNSPECIFIED = 0;
+      CHANGE_SET_POLICY = 1;
+      CHANGE_PAUSED = 2;
+      CHANGE_RESUMED = 3;
     }
   }
 

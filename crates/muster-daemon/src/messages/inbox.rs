@@ -71,6 +71,7 @@ mod tests {
             cursors: std::collections::BTreeMap::default(),
             woken: std::collections::BTreeSet::default(),
             rewoken: std::collections::BTreeSet::default(),
+            pull: false,
         };
         assert!(!Sockets.alive(&participant));
     }

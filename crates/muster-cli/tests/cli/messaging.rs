@@ -377,3 +377,77 @@ fn a_post_to_an_agent_whose_pane_closed_is_unheard() {
         "posted #5 to lead+p1\nnot woken: p1 (no agent in its pane)"
     );
 }
+
+/// The preset a directed council is convened with (MIP-4, section 8).
+const DIRECTED: &str = include_str!("../../../../extras/skill/council/directed.toml");
+
+/// A council convened with a policy holds its members to it: a member may not leave on its own
+/// or address another member, and a paused council's posts wake nobody until it is resumed.
+#[test]
+fn a_directed_council_holds_its_members_to_its_policy() {
+    let daemon = Daemon::start_built();
+    let policy = daemon.root().join("directed.toml");
+    std::fs::write(&policy, DIRECTED).unwrap();
+    let policy = policy.display().to_string();
+    let council = ["msg", "group", "new", "council", "--policy", policy.as_str()];
+    assert_eq!(ok(&muster(&daemon, &council)), "made council and joined it");
+    ok(&muster(&daemon, &["msg", "--as", "director", "join", "--group", "council"]));
+    ok(&muster(&daemon, &["msg", "--as", "builder", "join"]));
+    ok(&muster(&daemon, &["msg", "--as", "critic", "join"]));
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "group", "add", "council", "builder", "critic"])),
+        "added builder, critic to council"
+    );
+
+    let left = muster(&daemon, &["msg", "--as", "builder", "leave", "--group", "council"]);
+    assert_eq!(left.status.code(), Some(1), "{}", said(&left));
+    assert!(complained(&left).contains("only director or @human may"), "{}", complained(&left));
+    let aside = ["msg", "--as", "builder", "post", "--group", "council", "--to", "critic", "hi"];
+    let aside = muster(&daemon, &aside);
+    assert_eq!(aside.status.code(), Some(1), "{}", said(&aside));
+    assert!(
+        complained(&aside).contains("you may address director or @human"),
+        "{}",
+        complained(&aside)
+    );
+
+    assert_eq!(ok(&muster(&daemon, &["msg", "pause", "council"])), "paused council");
+    assert_eq!(ok(&muster(&daemon, &["msg", "pause", "council"])), "council was already paused");
+    let plan = ["msg", "--as", "director", "post", "--group", "council", "the", "plan"];
+    assert_eq!(
+        ok(&muster(&daemon, &plan)),
+        "posted #8 to council\n\
+         held while council is paused: builder, critic\n\
+         not woken: @human (notified when a window opens)"
+    );
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "resume", "council"])),
+        "resumed council\n\
+         not woken: builder (sees it when it reads), critic (sees it when it reads)"
+    );
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "groups"])),
+        "council  @human, builder, critic, director"
+    );
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "--as", "builder", "read"])),
+        "--- council #6 | critic joined ---\n\
+         --- council #7 | @human paused it ---\n\
+         --- council #8 | director ---\nthe plan\n--- end council #8 | director ---\n\
+         --- council #9 | @human resumed it ---"
+    );
+}
+
+/// A policy file with a key the service does not know is refused before anything is sent,
+/// rather than read as a policy that allows more than its author meant.
+#[test]
+fn a_policy_file_with_a_key_nobody_reads_is_refused() {
+    let daemon = Daemon::start_built();
+    let policy = daemon.root().join("typo.toml");
+    std::fs::write(&policy, "membrship = [\"director\"]\n").unwrap();
+    let made =
+        muster(&daemon, &["msg", "group", "new", "g", "--policy", &policy.display().to_string()]);
+    assert_eq!(made.status.code(), Some(1), "{}", said(&made));
+    assert!(complained(&made).contains("is not a policy"), "{}", complained(&made));
+    assert_eq!(ok(&muster(&daemon, &["msg", "groups"])), "no groups");
+}
