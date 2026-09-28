@@ -407,6 +407,28 @@
         "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee registered",
         "refused pair_too_long aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       ] }
+    },
+    {
+      "name": "a session cannot act as a live participant it is not",
+      "why": "join --name refuses the name of a live participant, and --as on any verb is held to the same rule: otherwise a mistyped --as moves that participant's inbox to the caller, and the real one is never woken again. A caller with no session of its own, such as a script, may act as it without moving anything (MIP-4, section 3).",
+      "given": { "steps": [
+        {"session": "s1", "do": "join", "name": "builder", "group": "g"},
+        {"session": "s2", "do": "join", "name": "critic", "group": "g"},
+        {"session": "s2", "do": "read", "as": "builder"},
+        {"session": "s2", "do": "join", "name": "builder", "as": "builder"},
+        {"do": "read", "as": "builder"},
+        {"session": "s1", "do": "read"},
+        {"session": "s2", "do": "read"}
+      ] },
+      "expect": { "said": [
+        "builder joined g (created)",
+        "critic joined g",
+        "refused name_in_use builder at /tmp/cc-socks/s1.sock",
+        "refused name_in_use builder at /tmp/cc-socks/s1.sock",
+        "builder read g: #3 critic joined",
+        "builder read nothing",
+        "critic read nothing"
+      ] }
     }
   ]
 }
