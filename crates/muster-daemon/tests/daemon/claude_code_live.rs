@@ -24,7 +24,7 @@ const TURN: Duration = Duration::from_mins(3);
 /// How this machine can run Claude Code without anyone's own settings getting in the way: an
 /// API key with `--bare`, which loads no settings, hooks or plugins at all; or the login it
 /// has, with only the project's settings, of which a scratch directory has none.
-fn how_to_run() -> Result<Vec<String>, String> {
+pub(super) fn how_to_run() -> Result<Vec<String>, String> {
     let version = Command::new("claude")
         .arg("--version")
         .output()
@@ -47,7 +47,7 @@ fn how_to_run() -> Result<Vec<String>, String> {
     Ok([isolated, vec!["--model".to_string(), "haiku".to_string()]].concat())
 }
 
-fn quoted(argument: &str) -> String {
+pub(super) fn quoted(argument: &str) -> String {
     format!("'{}'", argument.replace('\'', r"'\''"))
 }
 
@@ -81,8 +81,8 @@ fn until_both_settle(control: &mut Control, panes: [&str; 2]) -> [Vec<proto::Pan
 }
 
 /// Waits for Claude Code's prompt, answering the question about trusting a new folder if it
-/// asks, and sends it a prompt.
-fn prompt(control: &mut Control, input: &mut Input, pane: &str) {
+/// asks.
+pub(super) fn until_ready(control: &mut Control, input: &mut Input, pane: &str) {
     let deadline = Instant::now() + TURN;
     loop {
         let screen = read_text(control, pane, 0, 0).text;
@@ -94,6 +94,11 @@ fn prompt(control: &mut Control, input: &mut Input, pane: &str) {
         assert!(Instant::now() < deadline, "{pane}: Claude Code never showed its prompt: {screen}");
         std::thread::sleep(Duration::from_millis(500));
     }
+}
+
+/// Waits for Claude Code's prompt and sends it one.
+fn prompt(control: &mut Control, input: &mut Input, pane: &str) {
+    until_ready(control, input, pane);
     // Past the grace a newly found agent is held idle through, which Claude Code's start can
     // outlast by less than a short turn takes.
     std::thread::sleep(Duration::from_secs(4));

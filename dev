@@ -426,8 +426,8 @@ SKIPPED_SUITES = [
       "note": "an illustration in a doc comment rather than a test, so nothing runs it" },
     { "language": "Rust", "suite": "muster-daemon's echo latency", "skipped": 1,
       "note": "a measurement, not a property; cargo test --release -p muster-daemon --test daemon -- flood::echo_latency --ignored --nocapture prints it" },
-    { "language": "Rust", "suite": "muster-daemon's live Claude Code check", "skipped": 1,
-      "note": "reaches the network and spends a model turn; ./dev --claude-code runs it" },
+    { "language": "Rust", "suite": "muster-daemon's live Claude Code checks", "skipped": 2,
+      "note": "reach the network and spend model turns; ./dev --claude-code runs them" },
     { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 10,
       "note": "need a logged-in session; ./dev --contract runs them" },
     { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 3,
@@ -1736,11 +1736,12 @@ if ssh:
 if claude_code:
     announce("claude-code")
     // The one tier that reaches the network and a real model, with whatever Claude Code is
-    // installed here: it says whether an update broke the hooks or the screen rules. With this
+    // installed here: it says whether an update broke the hooks or the screen rules, or changed
+    // what Claude Code does with a message the daemon sends its inbox. With this
     // variable the test fails, saying which is missing, without claude or a login or
     // ANTHROPIC_API_KEY; without it the test skips itself, so the remote tier's run of every
     // ignored test leaves it alone.
-    $`MUSTER_CLAUDE_CODE_TESTS=1 cargo test -p muster-daemon --test daemon -- claude_code_live --ignored --nocapture`
+    $`MUSTER_CLAUDE_CODE_TESTS=1 cargo test -p muster-daemon --test daemon -- claude_code_live claude_code_inbox --ignored --nocapture`
 
 // The remote tier needs docker anyway, and a remote pane is a Linux daemon's pane.
 if linux or ssh:

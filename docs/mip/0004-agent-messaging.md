@@ -207,9 +207,10 @@ a skill.
 
 `muster msg join --name critic --group review` registers the caller as participant `critic` and
 adds it to `review`, creating the group if it does not exist. The caller hands over every wake
-address in its own environment: Claude Code's `CLAUDE_CODE_MESSAGING_SOCKET` and
-`CLAUDE_CODE_MESSAGING_TOKEN`, and `MUSTER_PANE`; `--pull` says its hooks fetch messages (section
-6). The verb runs inside the agent's session and inherits the addresses, so the daemon never has
+address in its own environment: Claude Code's `CLAUDE_CODE_MESSAGING_SOCKET` and `MUSTER_PANE`;
+`--pull` says its hooks fetch messages (section 6). Not `CLAUDE_CODE_MESSAGING_TOKEN`: it
+verifies nothing when the daemon sends it (`docs/observations/claude-code-2.1.283.md`), so the
+daemon never holds the secret. The verb runs inside the agent's session and inherits the addresses, so the daemon never has
 to map panes to processes. Any other verb from a caller that has not joined registers it the same
 way, under a default name.
 
@@ -322,11 +323,16 @@ not hold its output for approval, as it may hold an inbox message ("What is not 
 It costs setup the other two do not.
 
 **Claude Code's inbox socket.** When a wake is due the daemon connects to the participant's
-`CLAUDE_CODE_MESSAGING_SOCKET`, sends `{"type":"auth","token":...}` with the token handed over at
-join, then one `{"type":"user","message":...}` line carrying the notice, and closes. It connects
-only once the text is ready, because Claude Code closes a connection that has sent no line within
-30 seconds. The socket accepting a connection is also the participant's liveness. Nothing needs
-configuring, and it works for a Claude session in a plain terminal.
+`CLAUDE_CODE_MESSAGING_SOCKET`, sends one `{"type":"user","message":...}` line carrying the
+notice, and closes. It connects only once the text is ready, because Claude Code closes a
+connection that has sent no line within 30 seconds. The socket accepting a connection is also the
+participant's liveness, and a connection that sends nothing shows nothing in the session. It works
+for a Claude session in a plain terminal, and needs nothing configured unless the session bypasses
+permission prompts: Claude Code 2.1.283 holds the daemon's message for approval in such a session,
+whether or not it carries the session's token, and delivers it once the session was started with
+`--settings '{"crossSessionInbound":"accept"}'` (`docs/observations/claude-code-2.1.283.md`).
+Nothing comes back on the socket either way, so the post's answer says the wake was handed over,
+not that it was read.
 
 **A one-line doorbell into the pane.** For an agent in a pane with neither of the above. The
 daemon queues the notice on the pane's writer as a paste followed by Return, the path `pane send`
@@ -643,19 +649,12 @@ and a Claude observation that needs re-recording when a Claude release changes t
 
 ## What is not yet verified
 
-**Whether Claude Code delivers the daemon's wake to a session that bypasses permission prompts.**
-The cross-session messaging documentation ("Control inbound messages", "The session's inbox
-socket") says that with no `crossSessionInbound` set, such a session holds every message for
-approval unless the sender also bypasses or is verified as the session's own child. It verifies a
-child by process evidence, or, on macOS once the poster has exited, by the session's token in the
-auth line. The daemon is the session's ancestor, not its child, and whether a non-child presenting
-the token counts as verified is not stated. amterp's sessions commonly bypass prompts, so this
-decides whether the inbox adapter works for him by default. To settle it: start `claude` in
-default and in bypass mode, on macOS and on Linux; from a process that is not a descendant, send a
-message with the token and without it; record delivered, held or refused for all eight cases. If
-bypass sessions hold it, the ways out are `crossSessionInbound: "accept"` in user settings, which
-the docs name for unattended sessions and which applies to every session, or the hooks adapter,
-whose hook is a child.
+**Whether Claude Code delivers the daemon's wake on Linux.** Settled for macOS in
+`docs/observations/claude-code-2.1.283.md`: from a process that is not the session's child, a
+session in default mode delivers, one in bypass mode holds for approval whether or not the token is
+sent, and `crossSessionInbound: "accept"` passed with `--settings` makes a bypass session deliver.
+The four Linux cases were not run, because no Linux machine this repository reaches has a Claude
+Code with credentials. Until they are, the inbox adapter is assumed to behave the same there.
 
 **Whether `asyncRewake` behaves as the hooks adapter needs.** The hooks documentation says exit 2
 wakes the session with stderr as a system reminder. Untested: whether a hook started on `Stop`

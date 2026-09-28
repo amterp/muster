@@ -2,6 +2,7 @@
 
 mod arranging;
 mod claude_code;
+mod claude_code_inbox;
 mod claude_code_live;
 mod detection;
 mod devenv_terminfo;

@@ -1,0 +1,89 @@
+# what Claude Code 2.1.283 does with a message on its inbox socket from a
+# process that is not its child: bypassPermissions mode, no auth line
+#
+# recorded 2026-09-28T07:49:11Z on macOS 26.4.1 arm64
+# by crates/muster-daemon/tests/daemon/claude_code_inbox.rs
+# (MUSTER_RECORD_CLAUDE_INBOX=1 ./dev --claude-code);
+# read in docs/observations/claude-code-2.1.283.md
+#
+# The sender is the test process; Claude Code runs in a pane of a daemon the test
+# started, so the sender is neither the session nor any child of it.
+
+outcome: held
+
+screen three seconds after a connection that sent nothing:
+     ▐▛███▛█   Claude Code v2.1.283
+    ▝▜██████▀  Haiku 4.5 · Claude Max
+     ▝▝   ▝▝   /private/tmp/muster-test/d32466-0/bypass-none
+    
+    
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    ❯ Try "create a util logging.py that..."
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+      ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+sent, one line each:
+    {"message":{"content":"Observation bypass-none: reply with only the word ACKNOWLEDGED.","role":"user"},"type":"user"}
+
+received back before the connection closed or three seconds passed: ""
+
+screen once the outcome showed:
+     ▐▛███▛█   Claude Code v2.1.283
+    ▝▜██████▀  Haiku 4.5 · Claude Max
+     ▝▝   ▝▝   /private/tmp/muster-test/d32466-0/bypass-none
+    
+    
+    ⏺ Held peer message — from an unidentified session [verified pid 32466]; preview: «Observation
+      bypass-none: reply with only the word ACKNOWLEDGED.» — not delivered to Claude (1 held). The sender
+      did not attest its permission mode and this session bypasses prompts. Review it below, or set
+      "crossSessionInbound" to "accept".
+    
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+     Held message from another session
+    
+      Another Claude session sent a message: from an unidentified session [verified pid 32466]
+    
+      The sender did not attest its permission mode, and this session bypasses permission prompts.
+    
+      Message body (this is what will be delivered):
+      «Observation bypass-none: reply with only the word ACKNOWLEDGED.»
+    
+      ❯ Deny — drop it and tell the sender it was declined
+        Deliver this message to Claude
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    

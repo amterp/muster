@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {
+      "case": "default-none",
+      "describe": "default mode, no auth line",
+      "outcome": "delivered",
+      "transcript": "inbox-default-none.txt"
+    },
+    {
+      "case": "default-token",
+      "describe": "default mode, auth line with the session's token",
+      "outcome": "delivered",
+      "transcript": "inbox-default-token.txt"
+    },
+    {
+      "case": "bypass-none",
+      "describe": "bypassPermissions mode, no auth line",
+      "outcome": "held",
+      "transcript": "inbox-bypass-none.txt"
+    },
+    {
+      "case": "bypass-token",
+      "describe": "bypassPermissions mode, auth line with the session's token",
+      "outcome": "held",
+      "transcript": "inbox-bypass-token.txt"
+    },
+    {
+      "case": "bypass-none-accept",
+      "describe": "bypassPermissions mode, no auth line, crossSessionInbound \"accept\" passed with --settings",
+      "outcome": "delivered",
+      "transcript": "inbox-bypass-none-accept.txt"
+    }
+  ],
+  "claude_code": "2.1.283",
+  "os": "macOS 26.4.1 arm64",
+  "recorded": "2026-09-28T07:49:11Z"
+}
