@@ -661,6 +661,44 @@
       ] }
     },
     {
+      "name": "an agent addressed by its pane keeps its wake when it first runs a command",
+      "why": "Running a command adds the session's inbox to the participant the post made; that is the agent the wake was for, not a new session taking the name over, so it is still woken (MIP-4, section 5).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "one"},
+        {"session": "s1", "do": "wait", "pane": "p1"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "two"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "a registered",
+        "a posted #4 to a+p1; woke p1 [a+p1 #4-4 x1 to-you:1 from a] rung p1",
+        "ready a+p1 #4-4 x1 to-you:1 from a",
+        "a posted #5 to a+p1; already woken p1"
+      ] }
+    },
+    {
+      "name": "an agent addressed by its pane that joins under a name takes the pane's messages",
+      "why": "The agent the post rang is the one joining, so the brief it was rung for is read under its new name rather than stranded with the name of its pane (MIP-4, section 3).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "to": ["p1"], "body": "brief"},
+        {"session": "s1", "do": "join", "name": "builder", "pane": "p1"},
+        {"session": "s1", "do": "read", "pane": "p1"},
+        {"do": "who", "group": "a+p1"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "a registered",
+        "a posted #4 to a+p1; woke p1 [a+p1 #4-4 x1 to-you:1 from a] rung p1",
+        "builder registered",
+        "builder read a+p1: #4 a->p1: brief",
+        "a alive, builder alive (idle)"
+      ] }
+    },
+    {
       "name": "an agent whose pane has lost its agent is gone",
       "why": "A pane closing, or detection seeing its agent exit, is how a pane participant leaves without saying so (MIP-4, section 7).",
       "given": { "steps": [
