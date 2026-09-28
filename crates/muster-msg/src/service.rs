@@ -393,11 +393,11 @@ impl<S: Store> Messaging<S> {
 
     /// What became of the wakes a post returned: a participant whose inbox would not take one
     /// is gone until it joins again.
-    pub fn delivered(&mut self, name: &str, reached: bool) -> Result<(), Refusal> {
+    pub fn delivered(&mut self, wake: &Wake, reached: bool) -> Result<(), Refusal> {
         if reached {
             return Ok(());
         }
-        let Some(participant) = self.participants.get_mut(name) else {
+        let Some(participant) = self.participants.get_mut(&wake.name) else {
             return Ok(());
         };
         participant.gone = true;

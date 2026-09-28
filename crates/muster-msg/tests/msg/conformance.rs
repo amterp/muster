@@ -108,7 +108,7 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
     let mut failed = BTreeSet::new();
     for wake in &posted.wakes {
         let reached = !sessions.dead.borrow().contains(&wake.inbox.socket);
-        service.delivered(&wake.name, reached).unwrap();
+        service.delivered(wake, reached).unwrap();
         if !reached {
             failed.insert(wake.name.clone());
         }

@@ -201,13 +201,14 @@ fn posting(shared: &Shared, caller: &Caller, post: &proto::msg_request::Post) ->
     if !failed.is_empty() {
         let mut messages = shared.messages();
         if !messages.handing_over {
-            for name in &failed {
-                if let Err(refusal) = messages.service.delivered(name, false) {
+            for wake in &failed {
+                if let Err(refusal) = messages.service.delivered(wake, false) {
                     kept_nothing(&refusal);
                 }
             }
         }
     }
+    let failed: Vec<&str> = failed.iter().map(|wake| wake.name.as_str()).collect();
     if let Some(error) = &posted.unsaved {
         kept_nothing(&Refusal::Store { error: error.clone() });
     }
@@ -216,7 +217,7 @@ fn posting(shared: &Shared, caller: &Caller, post: &proto::msg_request::Post) ->
         .reached
         .iter()
         .map(|(name, reach)| {
-            let reach = if failed.contains(name) { Reach::Gone } else { *reach };
+            let reach = if failed.contains(&name.as_str()) { Reach::Gone } else { *reach };
             msg_answer::Reached { name: name.clone(), reach: reach_of(reach).into() }
         })
         .collect();
@@ -225,7 +226,7 @@ fn posting(shared: &Shared, caller: &Caller, post: &proto::msg_request::Post) ->
             .reached
             .iter()
             .filter(|(name, reach)| {
-                (if failed.contains(name) { Reach::Gone } else { *reach }) == wanted
+                (if failed.contains(&name.as_str()) { Reach::Gone } else { *reach }) == wanted
             })
             .map(|(name, _)| name.as_str())
             .collect();
@@ -253,8 +254,8 @@ fn posting(shared: &Shared, caller: &Caller, post: &proto::msg_request::Post) ->
     answered(posted.author, answer)
 }
 
-/// Delivers each wake, returning who could not be reached.
-fn wake(wakes: &[muster_msg::Wake]) -> Vec<String> {
+/// Delivers each wake, returning those that could not be.
+fn wake(wakes: &[muster_msg::Wake]) -> Vec<&muster_msg::Wake> {
     let mut failed = Vec::new();
     for wake in wakes {
         let notice = notice_of(&wake.notice);
@@ -281,7 +282,7 @@ fn wake(wakes: &[muster_msg::Wake]) -> Vec<String> {
                                     that is still running and refuses its inbox is a bug",
                     },
                 );
-                failed.push(wake.name.clone());
+                failed.push(wake);
             }
         }
     }
