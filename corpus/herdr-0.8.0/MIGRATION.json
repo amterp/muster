@@ -1,5 +1,5 @@
 {
-  "why": "herdr 0.8.0's recorded behavior, one verdict per fact, taken before herdr left the repository. Each fact is pinned to the test that holds muster-daemon to the same behavior, says how Muster deliberately differs, or is marked as describing only herdr's own API or implementation. crates/muster-daemon/tests/migration.rs fails when a fact has no verdict, when a verdict names a fact that is gone, and when a pinned test no longer exists.",
+  "why": "herdr 0.8.0's recorded behavior, one verdict per fact, taken before herdr left the repository. Each fact is pinned to the test that holds muster-daemon to the same behavior, says how Muster deliberately differs, or is marked as describing only herdr's own API or implementation. crates/muster-daemon/tests/daemon/migration.rs fails when a fact has no verdict, when a verdict names a fact that is gone, and when a pinned test no longer exists.",
   "scenarios": {
     "agent-states": {
       "agent_detected_event_seen": {

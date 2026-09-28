@@ -68,7 +68,7 @@ Muster's principles, adapted to that evidence:
   time beside herdr's. Everything else herdr was recorded doing is kept as a
   reference: `corpus/herdr-0.8.0/MIGRATION.json` gives each recorded fact a verdict - pinned to the test that holds
   muster-daemon to the same behavior, different on purpose and why, or about herdr alone - and
-  `crates/muster-daemon/tests/migration.rs` fails when a fact has none or a verdict names a test that is gone.
+  `crates/muster-daemon/tests/daemon/migration.rs` fails when a fact has none or a verdict names a test that is gone.
 
   A lost answer is staged the same way. `Daemon::withholding_answers_where` puts a relay in front of the real
   daemon that passes every connection through and, for the requests a test picks out, reads the daemon's answer and

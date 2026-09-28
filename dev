@@ -520,7 +520,7 @@ fn run_ssh_tier():
         print_err(red("The remote tier discovered no tests."))
         print_err("An empty tier passes, so this is a failure rather than a green run.")
         print_err("Check that the #[ignore] tests in crates/muster-ssh/tests/ssh/,")
-        print_err("crates/muster-daemon-client/tests/devenv.rs and")
+        print_err("crates/muster-daemon-client/tests/daemon_client/devenv.rs and")
         print_err("crates/muster-daemon/tests/daemon/devenv_terminfo.rs still exist.")
         exit(1)
     print(dim("{len(names)} remote test(s) discovered"))

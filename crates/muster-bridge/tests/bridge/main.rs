@@ -3,6 +3,7 @@
 mod bridge_death;
 mod bridge_taken_over;
 mod input_path;
+mod link;
 mod resize;
 mod support;
 mod typing_reload;

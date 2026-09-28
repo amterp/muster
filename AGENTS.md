@@ -287,8 +287,8 @@ share a version, and a version alone would start whichever was there first. A Sw
 Linux daemons beside the app, in `daemons/`.
 
 Nothing about herdr is built or fetched any more. What it was recorded doing stays in `corpus/herdr-0.8.0/`, with
-a verdict per fact in `MIGRATION.json` that `crates/muster-daemon/tests/migration.rs` keeps current, and its license
-stays in `licenses/` because muster-detect is a port of its agent detection.
+a verdict per fact in `MIGRATION.json` that `crates/muster-daemon/tests/daemon/migration.rs` keeps current, and its
+license stays in `licenses/` because muster-detect is a port of its agent detection.
 
 The seam's types are generated from `proto/muster.proto` on both sides and committed on neither, so a checkout
 cannot hold a shell and a core that disagree. Neither generator is a thing you install: Rust compiles the schema
