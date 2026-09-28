@@ -51,4 +51,16 @@ struct EmptyWindowTests {
     // somebody looking for a bug in a window that is working.
     #expect(EmptyWindow.message(bindings: []).headline == "No panes open.")
   }
+
+  @Test("a window waiting on a daemon says which one, rather than that nothing is open")
+  func connectingNamesTheDaemon() {
+    let bindings = [Core.Binding(action: "new_tab", key: "KeyT", modifiers: ["super"])]
+    #expect(
+      EmptyWindow.message(bindings: bindings, connecting: ["devenv"]).headline
+        == "Connecting to devenv.")
+    #expect(
+      EmptyWindow.message(bindings: bindings, connecting: ["box", "devenv", "gpu"]).headline
+        == "Connecting to box, devenv and gpu.")
+    #expect(EmptyWindow.message(bindings: bindings).headline == "No panes open.")
+  }
 }

@@ -2279,7 +2279,8 @@ message BackendHealth {
   // the window would let a dropped VPN read as though everything had gone.
   string daemon_id = 3;
 
-  // connected, stale, or disconnected.
+  // connected, stale, or disconnected; or connecting, for a daemon the config names that has
+  // not been attached yet, which has no connection to be any of the other three.
   string state = 1;
 
   // Why, for the title bar, the log and a watch. Empty when connected.

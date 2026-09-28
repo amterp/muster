@@ -28,6 +28,7 @@ const SLOW: Duration = Duration::from_secs(5);
 #[test]
 fn a_slow_daemon_does_not_hold_the_window_closed() {
     let _turn = muster::testing::fresh_session();
+    watch_problems();
     let daemon = Daemon::start_built();
     let relay = daemon.delaying_answers_where(subscribes, SLOW);
 
@@ -44,10 +45,20 @@ fn a_slow_daemon_does_not_hold_the_window_closed() {
     );
 
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_eq!(
+        health_of("local").first().map(String::as_str),
+        Some("connecting"),
+        "the window was not told what it is waiting for"
+    );
     until(
         "the slow daemon's pane to arrive in the open window",
         || listed_panes() == 1,
         || format!("the window lists {} panes", listed_panes()),
+    );
+    until(
+        "the window to be told the daemon is connected",
+        || health_of("local").last().map(String::as_str) == Some("connected"),
+        || format!("the window was told {:?}", health_of("local")),
     );
     drop(relay);
 }
@@ -173,10 +184,23 @@ fn saved_tabs(arrangement: &Path) -> Vec<String> {
 }
 
 static PROBLEMS: Mutex<Option<ProblemsChanged>> = Mutex::new(None);
+static HEALTH: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 
-/// Throws away what the last test heard and listens again.
+/// Every health the window was told about one daemon, in order.
+fn health_of(daemon: &str) -> Vec<String> {
+    HEALTH
+        .lock()
+        .expect("a panicking test poisoned the health")
+        .iter()
+        .filter(|(said_of, _)| said_of == daemon)
+        .map(|(_, state)| state.clone())
+        .collect()
+}
+
+/// Throws away what the last test heard and listens again: problems and daemon health.
 fn watch_problems() {
     *PROBLEMS.lock().expect("a panicking test poisoned the problems") = None;
+    HEALTH.lock().expect("a panicking test poisoned the health").clear();
     muster::ffi::muster_set_event_callback(Some(note));
 }
 
@@ -185,8 +209,17 @@ extern "C" fn note(bytes: *const u8, len: usize) {
     // the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
-    if let Some(event::Payload::ProblemsChanged(problems)) = event.payload {
-        *PROBLEMS.lock().expect("a panicking test poisoned the problems") = Some(problems);
+    match event.payload {
+        Some(event::Payload::ProblemsChanged(problems)) => {
+            *PROBLEMS.lock().expect("a panicking test poisoned the problems") = Some(problems);
+        }
+        Some(event::Payload::BackendHealth(health)) => {
+            HEALTH
+                .lock()
+                .expect("a panicking test poisoned the health")
+                .push((health.daemon_id, health.state));
+        }
+        _ => {}
     }
 }
 

@@ -68,6 +68,8 @@ public final class MusterWindow: NSObject {
   /// Per daemon, because health is per connection: a devenv behind a dropped VPN says nothing
   /// about the laptop beside it, and one window-wide state would report the loss of both.
   private var health: [String: DaemonHealth] = [:]
+  /// The chords this window was last given, which the empty window's hint names.
+  private var bindings: [Core.Binding] = []
 
   private struct DaemonHealth {
     let state: String
@@ -171,7 +173,8 @@ public final class MusterWindow: NSObject {
     split.onSidebarVisibilityChanged = { [weak self] in self?.applyTitle() }
     strip.attach(empty: empty)
     let bindings = Core.bindings()
-    empty.apply(EmptyWindow.message(bindings: bindings))
+    self.bindings = bindings
+    applyEmptyMessage()
     chordModifiers = NumberedChord.modifiers(bindings)
     window.contentView = split
     window.delegate = self
@@ -482,7 +485,8 @@ public final class MusterWindow: NSObject {
     NSApp.mainMenu = AppMenu.build(target: self, bindings: bindings)
     // The empty window names a chord, so a rebind has to reach it too. A window sitting empty
     // while somebody edits the config file is exactly when a stale hint would be read.
-    empty.apply(EmptyWindow.message(bindings: bindings))
+    self.bindings = bindings
+    applyEmptyMessage()
     // Rebinding the nine onto another modifier moves which release ends a two-stage chord, and
     // a stale answer here is a gesture that either never ends or ends on the wrong key.
     chordModifiers = NumberedChord.modifiers(bindings)
@@ -502,6 +506,13 @@ public final class MusterWindow: NSObject {
   public func apply(daemon: String, health state: String, detail: String) {
     health[daemon] = DaemonHealth(state: state, detail: detail)
     applyTitle()
+    applyEmptyMessage()
+  }
+
+  /// What the empty window says, which names the daemons still being attached.
+  private func applyEmptyMessage() {
+    let connecting = health.filter { $0.value.state == "connecting" }.keys.sorted()
+    empty.apply(EmptyWindow.message(bindings: bindings, connecting: connecting))
   }
 
   /// A window with no daemon behind it: one surface running the user's shell.
@@ -641,7 +652,7 @@ public final class MusterWindow: NSObject {
   /// Nothing attached is disconnected rather than fine, because a window with no daemon
   /// behind it is not a healthy window.
   private var worstHealth: (daemon: String, state: String, detail: String) {
-    let ranked = ["connected": 0, "": 0, "stale": 1, "disconnected": 2]
+    let ranked = ["connected": 0, "": 0, "connecting": 1, "stale": 1, "disconnected": 2]
     guard
       let worst = health.max(by: { (ranked[$0.value.state] ?? 3) < (ranked[$1.value.state] ?? 3) })
     else {

@@ -3035,8 +3035,10 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
     let key = reconnect::key(daemon.id.as_str());
     let mut attempts = reconnect::Attempts::new();
     loop {
+        connecting(&daemon.id);
         match attach_daemon_in(daemon, generation) {
             Ok(()) => {
+                health(&daemon.id, Health::Connected, "");
                 if attempts.failures() > 0 {
                     clear_problem(&key, "attached");
                 }
@@ -3119,6 +3121,21 @@ fn restore_late(daemon: &DaemonId) {
         );
     }
     publish("restored_late");
+}
+
+/// Tells the shell a daemon is being attached, so the title and an empty window can say what
+/// the window is waiting for.
+///
+/// Its own word rather than one of the mirror's health states: those describe a connection
+/// that exists, and this daemon has none yet.
+fn connecting(daemon: &DaemonId) {
+    ffi::emit(&Event {
+        payload: Some(event::Payload::BackendHealth(crate::proto::BackendHealth {
+            daemon_id: daemon.to_string(),
+            state: "connecting".to_string(),
+            detail: String::new(),
+        })),
+    });
 }
 
 /// What to tell somebody whose configured daemon has not attached since launch.

@@ -31,7 +31,11 @@ public enum EmptyWindow {
   /// A tab rather than a split, because a split needs a pane to split and there is none.
   static let recovery = "new_tab"
 
-  public static func message(bindings: [Core.Binding]) -> Message {
+  /// `connecting` names the daemons the window is still attaching. An empty window waiting on a
+  /// devenv is not the same window as one whose panes all closed, and saying "No panes open."
+  /// there reads as the devenv's panes being gone.
+  public static func message(bindings: [Core.Binding], connecting: [String] = []) -> Message {
+    let headline = connecting.isEmpty ? noPanes : "Connecting to \(listed(connecting))."
     let chord = bindings.first { $0.action == recovery }.map(Shortcuts.spell) ?? ""
     let described = MenuActions.byName[recovery]
     guard !chord.isEmpty else {
@@ -45,7 +49,14 @@ public enum EmptyWindow {
     return Message(headline: headline, hint: "Press \(chord) to open one.")
   }
 
-  private static let headline = "No panes open."
+  private static let noPanes = "No panes open."
+
+  /// Names as a sentence lists them: `a`, `a and b`, `a, b and c`.
+  static func listed(_ names: [String]) -> String {
+    guard let last = names.last else { return "" }
+    guard names.count > 1 else { return last }
+    return names.dropLast().joined(separator: ", ") + " and " + last
+  }
 
   private static func menu(_ described: MenuActions.Described) -> String {
     "\(described.group.rawValue) menu"
