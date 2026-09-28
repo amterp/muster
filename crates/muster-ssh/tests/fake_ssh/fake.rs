@@ -87,11 +87,8 @@ impl Scratch {
     pub(crate) fn new() -> Scratch {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         install();
-        let directory = home().join(format!(
-            "{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
+        let directory =
+            home().join(format!("{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
         std::fs::create_dir_all(&directory).expect("the scratch directory should be makeable");
         Scratch(directory)
     }

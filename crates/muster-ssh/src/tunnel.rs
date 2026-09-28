@@ -302,6 +302,8 @@ impl Tunnel {
         let stopping = Arc::clone(&self.stopping);
         std::thread::spawn(move || {
             let mut attempts = Attempts::new();
+            // Whether the last check went unanswered, which is what one more is allowed.
+            let mut silent = false;
             while !stopping.load(Ordering::Relaxed) {
                 if !sleep_unless_stopping(HEALTH_POLL, &stopping) {
                     return;
@@ -313,6 +315,7 @@ impl Tunnel {
 
                 let down = match control(&forward, "check") {
                     Ok(()) => {
+                        silent = false;
                         // `ExitOnForwardFailure` means a master that is still running is one
                         // whose forward stood up, so a master that answers is the honest
                         // reading of "up" once a reopen has been confirmed once. What it
@@ -324,7 +327,33 @@ impl Tunnel {
                         }
                         continue;
                     }
-                    Err(silence) => silence,
+                    // Asked again before anything is ended, because a check that times out is
+                    // never a dropped network: a master whose connection dies exits once
+                    // ServerAlive gives up, and the check after that fails at once. What is left
+                    // is a master that is slow or wedged, or a checking ssh that was slow to
+                    // start. Ending on the first cost a loaded Mac a master that was carrying
+                    // seven panes, every one of which lost its bridge (kan a_2YQCqiInL); asking
+                    // once more costs a wedged master one poll.
+                    Err(Unanswered::Silent(detail)) if !silent => {
+                        silent = true;
+                        log::warn(
+                            "tunnel.slow",
+                            fields! {
+                                "host" => forward.host.clone(),
+                                "detail" => detail,
+                                "impact" => "nothing yet: the master is asked again on the next \
+                                             poll, and ended only if it stays silent",
+                                "check" => "whether this machine is heavily loaded, or whether \
+                                            the personal ssh config does slow work for every \
+                                            ssh it runs, such as a `Match exec`",
+                            },
+                        );
+                        continue;
+                    }
+                    Err(failure) => {
+                        silent = false;
+                        failure.into_detail()
+                    }
                 };
 
                 let retry = attempts.failed();
@@ -354,62 +383,71 @@ impl Tunnel {
                     return;
                 }
 
-                // Ended rather than abandoned, and this is where the leak started: the loop
-                // used to unlink both paths and spawn over the top, so a master that was
-                // still connected went on holding an authenticated session nothing could
-                // reach. Nineteen of them were counted against one control path, one per
-                // reopen (kan a_2J1KYPWhZ). Doing it here rather than sweeping at `Drop` time
-                // stops them accumulating instead of tidying up after.
-                end_master(&forward, &child);
-                match spawn(&forward) {
-                    Ok(fresh) => {
-                        *poison::lock(&child, "ssh-child") = fresh;
-                        if stopping.load(Ordering::Relaxed) {
-                            // Dropped while this reconnect was in flight. `Drop` asked the
-                            // control path to leave before this master bound it, so it is one
-                            // nothing else will ever end.
-                            end_master(&forward, &child);
-                            return;
-                        }
-                        match confirm(&forward, &child, &stopping) {
-                            Ok(()) => {
-                                log::info(
-                                    "tunnel.reopened",
-                                    fields! {
-                                        "host" => forward.host.clone(),
-                                        "confirmed" => "the forwarded socket is bound and a \
-                                                        command came back over the master",
-                                    },
-                                );
-                                // At the path it had before, so whatever was told that path
-                                // while the old master carried it reaches this one.
-                                forward_back(&forward);
-                            }
-                            Err(detail) => log::warn(
-                                "tunnel.reopen_failed",
-                                fields! {
-                                    "host" => forward.host.clone(),
-                                    "detail" => detail,
-                                    "impact" => "this daemon stays unreachable and its panes \
-                                                 stay as they were; the window is otherwise \
-                                                 unaffected",
-                                },
-                            ),
-                        }
-                    }
-                    Err(refusal) => log::warn(
-                        "tunnel.reopen_failed",
-                        fields! {
-                            "host" => forward.host.clone(),
-                            "detail" => refusal,
-                            "impact" => "this daemon stays unreachable and its panes stay as \
-                                         they were; the window is otherwise unaffected",
-                        },
-                    ),
+                if !reopen(&forward, &child, &stopping) {
+                    return;
                 }
             }
         });
     }
+}
+
+/// Ends the master that stopped answering and starts another, saying whether it is worth going
+/// on: `false` when the tunnel was dropped while this was under way.
+fn reopen(forward: &Forward, child: &Arc<Mutex<Child>>, stopping: &Arc<AtomicBool>) -> bool {
+    // Ended rather than abandoned, and this is where the leak started: the loop
+    // used to unlink both paths and spawn over the top, so a master that was
+    // still connected went on holding an authenticated session nothing could
+    // reach. Nineteen of them were counted against one control path, one per
+    // reopen (kan a_2J1KYPWhZ). Doing it here rather than sweeping at `Drop` time
+    // stops them accumulating instead of tidying up after.
+    end_master(forward, child);
+    match spawn(forward) {
+        Ok(fresh) => {
+            *poison::lock(child, "ssh-child") = fresh;
+            if stopping.load(Ordering::Relaxed) {
+                // Dropped while this reconnect was in flight. `Drop` asked the
+                // control path to leave before this master bound it, so it is one
+                // nothing else will ever end.
+                end_master(forward, child);
+                return false;
+            }
+            match confirm(forward, child, stopping) {
+                Ok(()) => {
+                    log::info(
+                        "tunnel.reopened",
+                        fields! {
+                            "host" => forward.host.clone(),
+                            "confirmed" => "the forwarded socket is bound and a \
+                                            command came back over the master",
+                        },
+                    );
+                    // At the path it had before, so whatever was told that path
+                    // while the old master carried it reaches this one.
+                    forward_back(forward);
+                }
+                Err(detail) => log::warn(
+                    "tunnel.reopen_failed",
+                    fields! {
+                        "host" => forward.host.clone(),
+                        "detail" => detail,
+                        "impact" => "this daemon stays unreachable and its panes \
+                                     stay as they were; the window is otherwise \
+                                     unaffected",
+                    },
+                ),
+            }
+        }
+        Err(refusal) => log::warn(
+            "tunnel.reopen_failed",
+            fields! {
+                "host" => forward.host.clone(),
+                "detail" => refusal,
+                "impact" => "this daemon stays unreachable and its panes stay as \
+                             they were; the window is otherwise unaffected",
+            },
+        ),
+    }
+    true
 }
 
 /// The longest a sleeping supervisor waits before noticing the tunnel is being taken down.
@@ -473,7 +511,7 @@ fn sleep_unless_stopping(wait: Duration, stopping: &Arc<AtomicBool>) -> bool {
 /// ssh's own words are folded into the error rather than inherited, unlike [`spawn`]: a host
 /// that is away would otherwise print "Control socket connect: No such file or directory" to
 /// this process's stderr every second for as long as the outage lasts.
-fn control(forward: &Forward, request: &str) -> Result<(), String> {
+fn control(forward: &Forward, request: &str) -> Result<(), Unanswered> {
     bounded(
         forward,
         &format!("-O {request}"),
@@ -481,8 +519,29 @@ fn control(forward: &Forward, request: &str) -> Result<(), String> {
     )
 }
 
+/// Why a request through the control path came to nothing.
+///
+/// Two kinds, because they mean different things to the supervisor: a request that failed at
+/// once found nothing answering on the path, and one that timed out found something holding it
+/// that did not answer in time.
+#[derive(Debug)]
+enum Unanswered {
+    /// Nothing answered within [`CONTROL_WITHIN`], and the request was killed.
+    Silent(String),
+    /// It could not be run, or it finished and said no.
+    Failed(String),
+}
+
+impl Unanswered {
+    fn into_detail(self) -> String {
+        match self {
+            Unanswered::Silent(detail) | Unanswered::Failed(detail) => detail,
+        }
+    }
+}
+
 /// Runs one ssh through the master's control path, and gives up on it after [`CONTROL_WITHIN`].
-fn bounded<I, S>(forward: &Forward, what: &str, arguments: I) -> Result<(), String>
+fn bounded<I, S>(forward: &Forward, what: &str, arguments: I) -> Result<(), Unanswered>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
@@ -493,29 +552,33 @@ where
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("could not run ssh to ask for `{what}` ({error})"))?;
+        .map_err(|error| {
+            Unanswered::Failed(format!("could not run ssh to ask for `{what}` ({error})"))
+        })?;
 
     let deadline = Instant::now() + CONTROL_WITHIN;
     loop {
         match asked.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
             Ok(Some(status)) => {
-                return Err(format!(
+                return Err(Unanswered::Failed(format!(
                     "the master refused `{what}` ({status}): {}",
                     stderr_of(asked)
-                ));
+                )));
             }
-            Err(error) => return Err(format!("ssh would not finish `{what}` ({error})")),
+            Err(error) => {
+                return Err(Unanswered::Failed(format!("ssh would not finish `{what}` ({error})")));
+            }
             Ok(None) => {}
         }
         if Instant::now() >= deadline {
             let _ = asked.kill();
             let _ = asked.wait();
-            return Err(format!(
+            return Err(Unanswered::Silent(format!(
                 "the master on {} did not answer `{what}` within {}s",
                 forward.control_path,
                 CONTROL_WITHIN.as_secs(),
-            ));
+            )));
         }
         std::thread::sleep(Duration::from_millis(25));
     }
@@ -545,7 +608,10 @@ fn forward_back(forward: &Forward) {
                 quoted(directory),
                 quoted(&reverse.remote_path)
             ))
-            .and_then(|_| bounded(forward, "-O forward -R", reverse_arguments(forward, reverse)))
+            .and_then(|_| {
+                bounded(forward, "-O forward -R", reverse_arguments(forward, reverse))
+                    .map_err(Unanswered::into_detail)
+            })
     };
     match outcome {
         Ok(()) => log::info(
@@ -581,7 +647,7 @@ fn take_back(forward: &Forward) {
     let mut arguments = client_arguments(&forward.host, &forward.control_path);
     arguments.extend(["rm".to_string(), "-f".to_string(), quoted(&reverse.remote_path)]);
     let removed = bounded(forward, "rm -f", arguments);
-    if let Err(detail) = removed {
+    if let Err(detail) = removed.map_err(Unanswered::into_detail) {
         log::debug(
             "tunnel.reverse_left",
             fields! {
@@ -610,7 +676,7 @@ fn stderr_of(mut asked: Child) -> String {
 /// (kan a_2J1KYPWhZ). So the master is asked to leave through its control path first; the kill
 /// stays as the fallback for one that never answered, and is also what reaps the handle.
 fn end_master(forward: &Forward, child: &Arc<Mutex<Child>>) {
-    let asked = control(forward, "exit");
+    let asked = control(forward, "exit").map_err(Unanswered::into_detail);
     {
         let mut child = poison::lock(child, "ssh-child");
         let _ = child.kill();
