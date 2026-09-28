@@ -872,15 +872,18 @@ static WINDOW_NAME: LazyLock<String> = LazyLock::new(|| Minter::default().window
 /// is no home over there to work from.
 fn window_over_there(remote_socket: &str) -> Option<Reverse> {
     let local_path = command::listening_at()?;
+    Some(Reverse { remote_path: window_beside(remote_socket, &WINDOW_NAME)?, local_path })
+}
+
+/// `window-<install>-<window>.sock` beside a daemon's socket, the install being that socket's
+/// own name. A pane whose window has quit asks the sockets beside its own that share its name
+/// up to the window (`muster-cli/src/dial.rs`, `siblings`), so the install in it keeps two
+/// Musters forwarding to one machine from answering for each other.
+fn window_beside(remote_socket: &str, window: &str) -> Option<String> {
     let remote = Path::new(remote_socket);
     let directory = remote.parent().filter(|_| remote.is_absolute())?;
-    Some(Reverse {
-        remote_path: directory
-            .join(format!("window-{}.sock", *WINDOW_NAME))
-            .to_string_lossy()
-            .into_owned(),
-        local_path,
-    })
+    let install = remote.file_stem()?.to_str()?;
+    Some(directory.join(format!("window-{install}-{window}.sock")).to_string_lossy().into_owned())
 }
 
 fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
@@ -5608,7 +5611,12 @@ mod tests {
         let here = pane_environment(window.clone(), None);
         assert_eq!(here.get(environment::WINDOW_SOCKET), window.as_ref());
 
-        let far = Some("/home/dev/.muster/daemon/window-w1w3r07bsd.sock".to_string());
+        let far = window_beside("/home/dev/.muster/daemon/dev-0123456789ab.sock", "w1w3r07bsd");
+        assert_eq!(
+            far.as_deref(),
+            Some("/home/dev/.muster/daemon/window-dev-0123456789ab-w1w3r07bsd.sock"),
+            "the window's socket over there does not say which install it belongs to"
+        );
         let there = pane_environment(None, far.clone());
         assert_eq!(
             there.get(environment::WINDOW_SOCKET),
