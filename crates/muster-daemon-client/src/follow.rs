@@ -20,7 +20,7 @@ use muster_core::diagnostics::{log, monotonic_now};
 use muster_core::fields;
 use muster_core::input::NotSent;
 use muster_core::mirror::backend::PaneId;
-use muster_core::mirror::{Change, Mirror};
+use muster_core::mirror::{BackendEvent, Change, Mirror};
 use muster_core::reconnect::Attempts;
 use muster_daemon_proto::{self as proto, answer};
 
@@ -444,9 +444,15 @@ fn delivery(
     let connection = Arc::clone(connection);
     let generation = connection.generation.load(Ordering::Relaxed);
     let mut reconnected = reconnecting;
+    // The human is homed on the machine the app runs on, so only the daemon here says what
+    // waits for the human (MIP-4, section 10). One over ssh that no link has dialed yet still has
+    // a human of its own, and hearing it would raise a second banner.
     move |delivered, requests| match delivered {
         Delivered::Subscribed(snapshot) => {
-            let (snapshot, unreadable) = convert::snapshot(*snapshot);
+            let (mut snapshot, unreadable) = convert::snapshot(*snapshot);
+            if remote {
+                snapshot.human.clear();
+            }
             let changes = mirror.lock().unwrap_or_else(PoisonError::into_inner).bootstrap(snapshot);
             // Published here, between the snapshot and the notice: a request made before it is
             // refused as not connected, where it could be answered while the mirror still held
@@ -465,6 +471,9 @@ fn delivery(
         }
         Delivered::Event(event) => {
             let Some(event) = convert::event(*event) else { return };
+            if remote && matches!(event, BackendEvent::HumanNotice { .. }) {
+                return;
+            }
             let changes = mirror.lock().unwrap_or_else(PoisonError::into_inner).apply(event);
             for change in changes {
                 notify(Notice::Changed(change));
