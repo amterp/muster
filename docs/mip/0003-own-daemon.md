@@ -896,7 +896,9 @@ it waits: panes are made, resized, renamed and closed, and hooks report, as at a
 checks above are made again when it answers, and the daemon is marked as being replaced only then;
 a request they refuse is logged as `daemon.handoff.refused`, since nothing was started to fail. A
 stop signal that comes meanwhile stops the daemon at once, closing its panes as at any other time,
-and the request is never answered: its connection closes with the daemon.
+and the request is usually never answered: its connection closes with the daemon. If the program
+answers while the daemon is still closing its panes, the request is refused as the daemon
+stopping.
 
 **The exchange.** The old daemon starts the new one in a session of its own, with one end of a socket
 pair as descriptor 3 (`--handoff 3`), and they speak `Handoff` frames over it, never over the
