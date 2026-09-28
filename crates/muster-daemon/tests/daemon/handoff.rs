@@ -461,7 +461,7 @@ fn a_replace_asked_during_another_is_refused_as_such_and_the_first_goes_on() {
 
     let log = written(&daemon.root().join("daemon.log"));
     let line = log.lines().find(|line| line.contains("already being replaced")).expect("logged");
-    assert!(!line.contains("daemon.handoff.failed"), "logged as a failure: {line}");
+    assert!(line.contains("daemon.handoff.refused"), "not logged as refused: {line}");
 }
 
 /// The program asked its version gets none of the daemon's descriptors, as the successor does
