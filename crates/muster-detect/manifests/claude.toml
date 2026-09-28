@@ -1,5 +1,5 @@
 id = "claude"
-version = "2026.09.27.2"
+version = "2026.09.27.3"
 min_engine_version = 2
 updated_at = "2026-09-27T00:00:00Z"
 aliases = ["claude-code"]
@@ -86,11 +86,7 @@ priority = 1160
 region = "after_last_horizontal_rule"
 skip_state_update = true
 contains = ["esc to cancel"]
-any = [
-  { line_regex = ['(?i)^\s*hooks\s*$'] },
-  { line_regex = ['(?i)^\s*manage mcp servers\s*$'] },
-  { line_regex = ['(?i)^\s*memory\s*$'] },
-]
+regex = ['(?im)\A\s*(hooks|manage mcp servers|memory)[ \t]*$']
 
 [[rules]]
 id = "live_blocked_form"
