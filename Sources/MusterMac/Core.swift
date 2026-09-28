@@ -1296,5 +1296,21 @@ private func coreEventArrived(_ bytes: UnsafePointer<UInt8>?, _ length: Int) {
   guard let bytes, length > 0 else { return }
   let copied = Data(bytes: bytes, count: length)
   guard let event = try? Muster_Event(serializedBytes: copied) else { return }
-  Task { @MainActor in Core.deliver(event) }
+  guard case .viewChanged = event.payload else {
+    Task { @MainActor in Core.deliver(event) }
+    return
+  }
+  // Skipped where it stands rather than moved up to the newest, so every other event keeps its
+  // place between the views it arrived between.
+  let view = views.next()
+  Task { @MainActor in
+    guard views.isLatest(view) else {
+      Core.debug("view.skipped", ["why": "a newer view arrived before this one was applied"])
+      return
+    }
+    Core.deliver(event)
+  }
 }
+
+/// Every view the core has sent, so a main thread that fell behind applies only the newest.
+private let views = ViewSequence()

@@ -24,5 +24,5 @@ final class ViewSequence: Sendable {
   }
 
   /// Whether no view has arrived since this one.
-  func isLatest(_ view: UInt64) -> Bool { true }
+  func isLatest(_ view: UInt64) -> Bool { issued.withLock { $0 == view } }
 }
