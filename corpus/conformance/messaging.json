@@ -808,7 +808,7 @@
       "name": "a member of a directed council may not leave, and is told who may dismiss it",
       "why": "Council v1 sessions ended in leave cascades within a minute of the first \"signing off\", and one agent left on the turn it was told not to: prompting failed. A policy's `membership` is enforced, so only those it names may remove a member, the member included (MIP-4, sections 8 and 9).",
       "given": { "steps": [
-        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
         {"session": "sd", "do": "join", "name": "director", "group": "council"},
         {"session": "sb", "do": "join", "name": "builder"},
         {"session": "sc", "do": "join", "name": "critic"},
@@ -832,7 +832,7 @@
       "name": "a member of a directed council may address only the director and the human",
       "why": "Council v1's \"orchestrated mode\" existed only as a sentence in its skill, so nothing held agents to it. `allow` is enforced by the service (MIP-4, section 8).",
       "given": { "steps": [
-        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
         {"session": "sd", "do": "join", "name": "director", "group": "council"},
         {"session": "sb", "do": "join", "name": "builder"},
         {"session": "sc", "do": "join", "name": "critic"},
@@ -854,7 +854,7 @@
       "name": "in a directed council a member's unaddressed post wakes only the director",
       "why": "Council v1 agents spent whole turns only passing the turn (\"Standing by\", \"Passing to Moderator\"). An agent ends its turn and is woken when it is wanted; the ring set decides whom an unaddressed post wakes (MIP-4, sections 5 and 8).",
       "given": { "steps": [
-        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
         {"session": "sd", "do": "join", "name": "director", "group": "council"},
         {"session": "sb", "do": "join", "name": "builder"},
         {"session": "sc", "do": "join", "name": "critic"},
@@ -869,9 +869,37 @@
         "builder registered",
         "critic registered",
         "@human changed the members of council (#6); added builder,critic",
-        "director posted #7 to council; woke builder [council #7-7 x1 to-you:0 from director], critic [council #7-7 x1 to-you:0 from director]; waiting @human [council #7-7 x1 to-you:0 from director] for the windows",
+        "director posted #7 to council; woke builder [council #7-7 x1 to-you:0 from director], critic [council #7-7 x1 to-you:0 from director]",
         "builder read council: #6 critic joined | #7 director: plan",
         "builder posted #8 to council; woke director [council #8-8 x1 to-you:0 from builder]"
+      ] }
+    },
+    {
+      "name": "in a directed council the human is woken only when addressed, and may address anyone",
+      "why": "Waking the human raises a notification, which interrupts a person; addressing the human, or a ring set that names the human, is what should (MIP-4, section 10). A ring set's `*` is every member but the human, so the director's unaddressed posts wake the members, and the human, who convened the council, may still speak to any of them.",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"session": "sb", "do": "join", "name": "builder"},
+        {"session": "sc", "do": "join", "name": "critic"},
+        {"do": "members", "group": "council", "add": ["builder", "critic"]},
+        {"session": "sd", "do": "post", "group": "council", "body": "builder takes the lexer, critic the tests"},
+        {"session": "sc", "do": "read", "group": "council"},
+        {"do": "post", "group": "council", "to": ["critic"], "body": "check the fuzz cases too"},
+        {"session": "sd", "do": "read", "group": "council"},
+        {"session": "sd", "do": "post", "group": "council", "to": ["@human"], "body": "ship it?"}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "director joined council",
+        "builder registered",
+        "critic registered",
+        "@human changed the members of council (#6); added builder,critic",
+        "director posted #7 to council; woke builder [council #7-7 x1 to-you:0 from director], critic [council #7-7 x1 to-you:0 from director]",
+        "critic read council: #7 director: builder takes the lexer, critic the tests",
+        "@human posted #8 to council; woke critic [council #8-8 x1 to-you:1 from @human]",
+        "director read council: #5 builder joined | #6 critic joined | #8 @human->critic: check the fuzz cases too",
+        "director posted #9 to council; waiting @human [council #9-9 x1 to-you:1 from director] for the windows"
       ] }
     },
     {
@@ -942,7 +970,7 @@
       "name": "only those a policy names may join a group, change its policy, or pause it",
       "why": "`membership` also decides who may change the policy, so a directed council's rules hold after the prompt that set them has faded (MIP-4, sections 8 and 9).",
       "given": { "steps": [
-        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
         {"session": "sd", "do": "join", "name": "director", "group": "council"},
         {"session": "sb", "do": "join", "name": "builder"},
         {"session": "sc", "do": "join", "name": "critic"},
