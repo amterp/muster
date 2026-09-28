@@ -435,9 +435,10 @@ both; nothing is fetched from the network. A file is one agent's manifest in her
 named for the agent - `claude.toml` replaces the built-in claude, and a new name adds an agent
 Muster never knew. A file named for a different agent than its `id`, or needing a newer
 detection engine than the daemon has, is ignored and the daemon's log says why. The directory is
-read when the daemon starts and again whenever the app sends manifests, which it does on
-connect; only panes running an agent whose manifest changed start their detection over, so
-reconnecting never makes a working agent flash idle.
+read when the daemon starts and again whenever the app sends manifests, which it does every time
+it connects, so an edit here takes effect when Muster is next launched and ends nothing; only
+panes running an agent whose manifest changed start their detection over, so reconnecting never
+makes a working agent flash idle.
 
 **`MUSTER_AGENT` names the agent a process is, whatever its executable is called.** Set it in
 the environment a wrapper script starts its agent with - `MUSTER_AGENT=claude` - and the daemon

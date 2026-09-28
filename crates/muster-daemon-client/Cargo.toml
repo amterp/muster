@@ -8,6 +8,7 @@ publish.workspace = true
 libc.workspace = true
 muster-core.workspace = true
 muster-daemon-proto.workspace = true
+muster-detect.workspace = true
 muster-ssh.workspace = true
 prost.workspace = true
 sha2.workspace = true

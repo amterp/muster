@@ -368,6 +368,11 @@ fn connect(
     if let Some(settings) = settings {
         send_settings(&control, None, &settings);
     }
+    // At every connect, a reconnect after a handoff included: the daemon keeps its panes across
+    // an update of the app, and this is how the rules the new app carries reach them. The daemon
+    // reads its override directory again at the same moment, and changes nothing in a pane
+    // whose agent's rules came out the same.
+    control.send_manifests(muster_detect::ENGINE_VERSION, app_manifests());
 
     log::info(
         "daemon.followed",
@@ -507,6 +512,17 @@ fn send_settings(control: &Control, previous: Option<&DaemonSettings>, settings:
     }) {
         control.set_scroll_multiplier(settings.scroll_multiplier);
     }
+}
+
+/// The detection manifests this app was built with, each under its file's name.
+fn app_manifests() -> Vec<proto::Manifest> {
+    muster_detect::Manifests::built_in_sources()
+        .iter()
+        .map(|(file, text)| proto::Manifest {
+            agent: file.trim_end_matches(".toml").to_string(),
+            toml: (*text).to_string(),
+        })
+        .collect()
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

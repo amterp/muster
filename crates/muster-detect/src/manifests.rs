@@ -135,6 +135,12 @@ impl Manifests {
         Manifests::indexed(entries)
     }
 
+    /// The manifests compiled into this crate as written, by file name: what an app built
+    /// against it sends a daemon, which may be older than the app.
+    pub fn built_in_sources() -> &'static [(&'static str, &'static str)] {
+        BUILT_IN
+    }
+
     /// The built-in manifests, then those the app sent, then the overrides in a directory
     /// (`~/.muster/agent-detection/` in practice). A missing directory is no overrides.
     pub fn load(app: &[(String, String)], overrides: Option<&Path>) -> (Manifests, Vec<Warning>) {
