@@ -6,6 +6,7 @@ mod claude_code_inbox;
 mod claude_code_live;
 mod detection;
 mod devenv_terminfo;
+mod doorbell;
 mod environment;
 mod facts;
 mod flood;

@@ -43,7 +43,7 @@ use crate::data::Data;
 use crate::detect::{self, Detecting};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
-use crate::messages::Messages;
+use crate::messages::{Doorbell, Messages};
 use crate::pane::{Ended, Pane, PaneIo, Process, Turns, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
@@ -95,6 +95,8 @@ pub(crate) struct Shared {
     pub(crate) session: Mutex<Session>,
     /// Messages between agents, under a lock of their own (see [`crate::messages`]).
     pub(crate) messages: Mutex<Messages>,
+    /// Rings agents in panes once they can be rung.
+    pub(crate) doorbell: Doorbell,
     /// Told when the daemon should exit, and why.
     pub(crate) stopping: Sender<Stop>,
     pub(crate) instance: u64,
@@ -112,7 +114,7 @@ impl Shared {
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, executable, data, log } = places;
         let Saved { persister, settings, restoring } = saved;
-        Arc::new_cyclic(|shared: &Weak<Shared>| {
+        let shared = Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
             let publisher = std::thread::Builder::new()
@@ -146,6 +148,7 @@ impl Shared {
             });
             Shared {
                 messages: Mutex::new(Messages::load(&socket.path)),
+                doorbell: Doorbell::default(),
                 session: Mutex::new(Session {
                     instance,
                     seq: 0,
@@ -180,7 +183,10 @@ impl Shared {
                 instance,
                 socket,
             }
-        })
+        });
+        // Started once the shared state is whole, which is the first thing it reads.
+        shared.doorbell.start(Arc::downgrade(&shared));
+        shared
     }
 
     pub(crate) fn lock(&self) -> Locked<'_> {
@@ -2205,6 +2211,12 @@ impl Session {
     /// What a stream or input connection needs of a pane, found by name.
     pub(crate) fn pane_io(&self, pane: &str) -> Option<Arc<PaneIo>> {
         self.pane_index(pane).map(|index| Arc::clone(&self.panes[index].io))
+    }
+
+    /// Something of every pane, read with the session held, for work that goes on without it -
+    /// the message service's presence (MIP-4, section 7).
+    pub(crate) fn each_pane<T>(&self, view: impl Fn(&proto::Pane, &Arc<PaneIo>) -> T) -> Vec<T> {
+        self.panes.iter().map(|pane| view(&pane.record, &pane.io)).collect()
     }
 
     fn pane_index(&self, pane: &str) -> Option<usize> {

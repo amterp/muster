@@ -15,6 +15,10 @@ pub const READ: &str = "read";
 pub const LOG: &str = "log";
 pub const WAIT: &str = "wait";
 
+/// What the human is called as a participant: a name no agent's can be, since names do not
+/// start with `@`. The same as `muster_msg::HUMAN`, which muster-daemon's tests hold it to.
+pub const HUMAN: &str = "@human";
+
 /// Every verb, in the order `--help` lists them.
 pub const VERBS: [&str; 7] = [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT];
 
@@ -41,6 +45,9 @@ pub fn wake_text(notice: &crate::msg_answer::Notice) -> String {
     if !notice.from.is_empty() {
         parts.push(format!("from {}", notice.from.join(", ")));
     }
+    if notice.again {
+        parts.push("still unread".to_string());
+    }
     let read = command(READ, &format!("--group {}", notice.group));
     format!("[{COMMAND}] {}: {}. Read: {read}", notice.group, parts.join(", "))
 }
@@ -59,6 +66,7 @@ mod tests {
             count: 3,
             to_you: 1,
             from: vec!["director".to_string(), "critic".to_string()],
+            again: false,
         };
         assert_eq!(
             wake_text(&notice),
@@ -69,6 +77,14 @@ mod tests {
         assert_eq!(
             wake_text(&one),
             "[muster] review: 1 new (#7), from director, critic. \
+             Read: muster msg read --group review"
+        );
+        // Claude Code drops a message identical to one it had shortly before, so the second
+        // wake says what makes it one.
+        let again = Notice { again: true, ..one };
+        assert_eq!(
+            wake_text(&again),
+            "[muster] review: 1 new (#7), from director, critic, still unread. \
              Read: muster msg read --group review"
         );
     }

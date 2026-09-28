@@ -41,6 +41,10 @@ pub enum Trouble {
     /// A wait ran out before what it was waiting for happened. Waiting changes nothing, so
     /// waiting again is harmless.
     TimedOut(String),
+    /// Done, with nobody there to hear it: a message posted that woke no live participant
+    /// (MIP-4, section 4). The answer is printed as any other, so a script that only wants it
+    /// posted reads it the same way, and one that wants it heard branches on the code.
+    Unheard(String),
 }
 
 impl Trouble {
@@ -56,6 +60,7 @@ impl Trouble {
             Trouble::Unreachable(_) => 3,
             Trouble::Unanswered(_) => 4,
             Trouble::TimedOut(_) => 5,
+            Trouble::Unheard(_) => 6,
         }
     }
 
@@ -64,7 +69,8 @@ impl Trouble {
             Trouble::Refused(detail)
             | Trouble::Unreachable(detail)
             | Trouble::Unanswered(detail)
-            | Trouble::TimedOut(detail) => detail,
+            | Trouble::TimedOut(detail)
+            | Trouble::Unheard(detail) => detail,
         }
     }
 }
@@ -209,6 +215,10 @@ fn finish(
                 let _ = writeln!(out, "{}", text.trim_end());
             }
             0
+        }
+        Err(Trouble::Unheard(text)) => {
+            let _ = writeln!(out, "{}", text.trim_end());
+            6
         }
         Err(trouble) => report(&trouble, json, errors),
     }

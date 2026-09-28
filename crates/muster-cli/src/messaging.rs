@@ -408,7 +408,7 @@ fn render(
     Ok(match said {
         Answer::Joined(joined) => joined_text(joined, json),
         Answer::Left(left) => left_text(left, json),
-        Answer::Posted(posted) => posted_text(posted, json),
+        Answer::Posted(posted) => return posted_text(posted, json),
         Answer::Entries(entries) => {
             let reading = matches!(request.request, Some(Asked::Read(_)));
             // A hook hands this to the model after every tool call; joins and leaves alone
@@ -470,42 +470,80 @@ fn left_text(left: &msg_answer::Left, json: bool) -> String {
     }
 }
 
-fn posted_text(posted: &msg_answer::Posted, json: bool) -> String {
-    let named = |wanted: msg_answer::Reach| -> Vec<&str> {
-        posted
+/// What a post did for each participant it was for. Nobody live heard it - nobody woken, to be
+/// rung, already woken, or the human - is [`Trouble::Unheard`], printed the same way.
+fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Trouble> {
+    use msg_answer::Reach;
+    let named = |wanted: Reach| -> Vec<&msg_answer::Reached> {
+        posted.reached.iter().filter(|reached| reached.reach() == wanted).collect()
+    };
+    let (woke, deferred) = (named(Reach::Woken), named(Reach::Deferred));
+    let (already, waiting, gone) =
+        (named(Reach::AlreadyWoken), named(Reach::Waiting), named(Reach::Gone));
+    let heard = !woke.is_empty()
+        || !deferred.is_empty()
+        || !already.is_empty()
+        || waiting.iter().any(|reached| reached.name == spelling::HUMAN);
+    let text = if json {
+        let listed = |reached: &[&msg_answer::Reached]| -> Vec<String> {
+            reached.iter().map(|reached| reached.name.clone()).collect()
+        };
+        let doing: serde_json::Map<String, serde_json::Value> = posted
             .reached
             .iter()
-            .filter(|reached| reached.reach() == wanted)
-            .map(|reached| reached.name.as_str())
-            .collect()
-    };
-    let woke = named(msg_answer::Reach::Woken);
-    let already = named(msg_answer::Reach::AlreadyWoken);
-    let waiting = named(msg_answer::Reach::Waiting);
-    let gone = named(msg_answer::Reach::Gone);
-    if json {
-        return serde_json::json!({
+            .filter_map(|reached| {
+                Some((reached.name.clone(), activity(reached.activity())?.into()))
+            })
+            .collect();
+        serde_json::json!({
             "group": posted.group,
             "seq": posted.seq,
-            "woke": woke,
-            "already_woken": already,
-            "waiting": waiting,
-            "gone": gone,
+            "woke": listed(&woke),
+            "deferred": listed(&deferred),
+            "already_woken": listed(&already),
+            "waiting": listed(&waiting),
+            "gone": listed(&gone),
+            "doing": doing,
         })
-        .to_string();
+        .to_string()
+    } else {
+        let with = |reached: &msg_answer::Reached, also: Option<&str>| {
+            let said: Vec<&str> = activity(reached.activity()).into_iter().chain(also).collect();
+            if said.is_empty() {
+                reached.name.clone()
+            } else {
+                format!("{} ({})", reached.name, said.join(", "))
+            }
+        };
+        let mut lines = vec![format!("posted #{} to {}", posted.seq, posted.group)];
+        let mut woken: Vec<String> = woke.iter().map(|reached| with(reached, None)).collect();
+        woken.extend(already.iter().map(|reached| with(reached, Some("already woken"))));
+        if !woken.is_empty() {
+            lines.push(format!("woke: {}", woken.join(", ")));
+        }
+        if !deferred.is_empty() {
+            let later: Vec<String> = deferred.iter().map(|reached| with(reached, None)).collect();
+            lines.push(format!("rung once idle: {}", later.join(", ")));
+        }
+        let mut not: Vec<String> = gone.iter().map(|reached| with(reached, Some("gone"))).collect();
+        not.extend(waiting.iter().map(|reached| with(reached, Some("sees it when it reads"))));
+        if !not.is_empty() {
+            lines.push(format!("not woken: {}", not.join(", ")));
+        }
+        lines.join("\n")
+    };
+    if heard { Ok(text) } else { Err(Trouble::Unheard(text)) }
+}
+
+/// What an agent in a pane is doing, as its daemon's detection reads it.
+fn activity(activity: msg_answer::Activity) -> Option<&'static str> {
+    match activity {
+        msg_answer::Activity::Unspecified => None,
+        msg_answer::Activity::Working => Some("working"),
+        msg_answer::Activity::Blocked => Some("blocked"),
+        msg_answer::Activity::Idle => Some("idle"),
+        msg_answer::Activity::Waiting => Some("waiting"),
     }
-    let mut lines = vec![format!("posted #{} to {}", posted.seq, posted.group)];
-    let mut woken: Vec<String> = woke.iter().map(ToString::to_string).collect();
-    woken.extend(already.iter().map(|name| format!("{name} (already woken)")));
-    if !woken.is_empty() {
-        lines.push(format!("woke: {}", woken.join(", ")));
-    }
-    let mut not: Vec<String> = gone.iter().map(|name| format!("{name} (gone)")).collect();
-    not.extend(waiting.iter().map(|name| format!("{name} (sees it when it reads)")));
-    if !not.is_empty() {
-        lines.push(format!("not woken: {}", not.join(", ")));
-    }
-    lines.join("\n")
 }
 
 /// Council v1's framing, a start and an end marker per message, so a model reading several
@@ -588,6 +626,8 @@ fn members_text(members: &msg_answer::Members, json: bool) -> String {
                 serde_json::json!({
                     "name": member.name,
                     "liveness": liveness(member),
+                    "activity": activity(member.activity()),
+                    "pane": member.pane,
                     "groups": member.groups,
                 })
             })
@@ -607,7 +647,11 @@ fn members_text(members: &msg_answer::Members, json: bool) -> String {
             } else {
                 member.groups.join(", ")
             };
-            format!("{:<width$}  {:<6}  {groups}", member.name, liveness(member))
+            let state = match activity(member.activity()) {
+                Some(doing) => format!("{} ({doing})", liveness(member)),
+                None => liveness(member).to_string(),
+            };
+            format!("{:<width$}  {state:<14}  {groups}", member.name)
         })
         .collect::<Vec<_>>()
         .join("\n")

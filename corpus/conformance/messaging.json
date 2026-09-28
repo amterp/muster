@@ -509,6 +509,104 @@
       "expect": { "said": [
         "refused not_a_participant this session"
       ] }
+    },
+    {
+      "name": "an agent in a pane is addressed by its pane before it has run any command",
+      "why": "An agent started by `muster pane new --run claude` has joined nothing, and a brief to it is the first message; a post to its pane makes it a participant, named after the pane, and it is rung there. When it runs a command from that pane it is that participant (MIP-4, sections 3 and 14).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "i", "do": "join", "name": "integrator"},
+        {"session": "i", "do": "post", "to": ["p1"], "body": "brief"},
+        {"session": "s1", "do": "read", "pane": "p1"},
+        {"session": "s1", "do": "post", "pane": "p1", "to": ["integrator"], "body": "done"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "integrator registered",
+        "integrator posted #4 to integrator+p1; woke p1 [integrator+p1 #4-4 x1 to-you:1 from integrator] rung p1",
+        "p1 read integrator+p1: #4 integrator->p1: brief",
+        "p1 posted #5 to integrator+p1; woke integrator [integrator+p1 #5-5 x1 to-you:1 from p1]"
+      ] }
+    },
+    {
+      "name": "a pane with no agent in it is no address, and a shell there is the human",
+      "why": "A person's own shell in a pane has no agent identity; only a pane where an agent has been found can be addressed or identify its caller (MIP-4, section 3).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "to": ["p9"], "body": "anyone?"},
+        {"do": "read", "pane": "p9"}
+      ] },
+      "expect": { "said": [
+        "a registered",
+        "refused no_such_participant p9",
+        "@human read nothing"
+      ] }
+    },
+    {
+      "name": "an agent in a pane is rung there, even when it also has an inbox",
+      "why": "A session that bypasses permission prompts holds an inbox message for a person's approval, which is how agents in panes are started, and the daemon cannot tell which sessions do (MIP-4, section 6).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "go"},
+        {"do": "who", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "b joined g (created)",
+        "a joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a] rung p1",
+        "a alive, b alive (idle)"
+      ] }
+    },
+    {
+      "name": "an agent that goes idle without reading is woken once more, and not again",
+      "why": "A wake may land while an agent is busy with something it then finishes; one more, saying the messages are still unread, and then nothing until it reads (MIP-4, section 5).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"do": "idle", "name": "b"},
+        {"do": "idle", "name": "b"},
+        {"session": "s1", "do": "read", "pane": "p1"},
+        {"do": "idle", "name": "b"},
+        {"session": "a", "do": "post", "body": "two"},
+        {"do": "idle", "name": "b"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "b joined g (created)",
+        "a joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a] rung p1",
+        "rewoke b [g #4-4 x1 to-you:0 from a again] rung p1",
+        "rewoke nobody",
+        "b read g: #3 a joined | #4 a: one",
+        "rewoke nobody",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:0 from a] rung p1",
+        "rewoke b [g #5-5 x1 to-you:0 from a again] rung p1"
+      ] }
+    },
+    {
+      "name": "an agent whose pane has lost its agent is gone",
+      "why": "A pane closing, or detection seeing its agent exit, is how a pane participant leaves without saying so (MIP-4, section 7).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"do": "who", "group": "g"},
+        {"do": "agent", "pane": "p1", "state": "gone"},
+        {"do": "who", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "b joined g (created)",
+        "a joined g",
+        "a alive, b alive (working)",
+        "p1 gone",
+        "a alive, b gone"
+      ] }
     }
   ]
 }

@@ -246,7 +246,12 @@ impl Reports {
 pub(crate) fn publish(receiver: &Receiver<Report>, shared: &Weak<Shared>) {
     publish_with(receiver, |report| {
         let Some(shared) = shared.upgrade() else { return false };
+        let agent = matches!(report.what, Reported::Agent { .. });
         shared.lock().reported(report);
+        // An agent that went idle may be rung now, or woken again (MIP-4, sections 5 and 6).
+        if agent {
+            shared.doorbell.nudge();
+        }
         OVERRUN_WARNED.store(false, Ordering::Relaxed);
         true
     });

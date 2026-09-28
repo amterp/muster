@@ -134,5 +134,7 @@ fn agents_message_each_other_over_there(tunnel: &Tunnel, installed: &Installed) 
         "the wait was answered by the post: {said}"
     );
     assert!(said.contains("refused=1"), "the guard refused a post on unread: {said}");
-    assert!(said.contains("posted=0"), "reading cleared the way: {said}");
+    // 6 rather than 0 because a, a name given with --as, has no session to wake: the post was
+    // kept, and exits saying nobody live heard it.
+    assert!(said.contains("posted=6"), "reading cleared the way: {said}");
 }

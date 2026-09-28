@@ -3,24 +3,46 @@
 //! transcript of what the service said.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{Conformance, fields};
 use muster_msg::{
-    Caller, Inbox, Liveness, Memory, Messaging, Notice, Participant, Posted, Presence, Reach,
-    Refusal, What,
+    Activity, Caller, Inbox, Liveness, Memory, Messaging, Notice, Participant, Posted, Presence,
+    Reach, Refusal, Via, What,
 };
 use serde_json::{Value, json};
 
-/// Every inbox answers except those whose session has died.
+/// Every inbox answers except those whose session has died, and a pane has an agent in it while
+/// a step has said so.
 #[derive(Default)]
 struct Sessions {
     dead: RefCell<BTreeSet<String>>,
+    agents: RefCell<BTreeMap<String, Activity>>,
+}
+
+impl Sessions {
+    fn answers(&self, inbox: &Inbox) -> bool {
+        !self.dead.borrow().contains(&inbox.socket)
+    }
 }
 
 impl Presence for Sessions {
+    /// An agent in a pane is there while its pane has an agent, whatever its inbox says, as in
+    /// the daemon: the pane is what the daemon watches.
     fn alive(&self, participant: &Participant) -> bool {
-        participant.inbox.as_ref().is_none_or(|inbox| !self.dead.borrow().contains(&inbox.socket))
+        match (&participant.pane, &participant.inbox) {
+            (Some(pane), _) => self.agent_in(pane),
+            (None, Some(inbox)) => self.answers(inbox),
+            (None, None) => true,
+        }
+    }
+
+    fn activity(&self, participant: &Participant) -> Option<Activity> {
+        participant.pane.as_ref().and_then(|pane| self.agents.borrow().get(pane).copied())
+    }
+
+    fn agent_in(&self, pane: &str) -> bool {
+        self.agents.borrow().contains_key(pane)
     }
 }
 
@@ -36,21 +58,39 @@ fn caller(step: &Value) -> Caller {
             socket: socket(&session),
             inode: step.get("inode").and_then(Value::as_u64).unwrap_or(1),
         }),
-        pane: None,
+        pane: text("pane"),
         directory: text("directory"),
     }
 }
 
 fn notice(notice: &Notice) -> String {
     format!(
-        "{} #{}-{} x{} to-you:{} from {}",
+        "{} #{}-{} x{} to-you:{} from {}{}",
         notice.group,
         notice.first,
         notice.last,
         notice.count,
         notice.to_you,
-        notice.from.join(",")
+        notice.from.join(","),
+        if notice.again { " again" } else { "" }
     )
+}
+
+fn activity(activity: Activity) -> &'static str {
+    match activity {
+        Activity::Working => "working",
+        Activity::Blocked => "blocked",
+        Activity::Idle => "idle",
+        Activity::Waiting => "waiting",
+    }
+}
+
+/// Where a wake went, when it went to a pane rather than an inbox.
+fn rung(via: &Via) -> String {
+    match via {
+        Via::Inbox(_) => String::new(),
+        Via::Pane(pane) => format!(" rung {pane}"),
+    }
 }
 
 fn refused(refusal: &Refusal) -> String {
@@ -108,7 +148,10 @@ fn strings(value: Option<&Value>) -> Vec<String> {
 fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Posted) -> String {
     let mut failed = BTreeSet::new();
     for wake in &posted.wakes {
-        let reached = !sessions.dead.borrow().contains(&wake.inbox.socket);
+        let reached = match &wake.via {
+            Via::Inbox(inbox) => sessions.answers(inbox),
+            Via::Pane(pane) => sessions.agent_in(pane),
+        };
         service.delivered(wake, reached).unwrap();
         if !reached {
             failed.insert(wake.name.clone());
@@ -117,6 +160,7 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
     let mut parts = vec![format!("{} posted #{} to {}", posted.author, posted.seq, posted.group)];
     for (label, wanted) in [
         ("woke", Reach::Woken),
+        ("deferred", Reach::Deferred),
         ("already woken", Reach::AlreadyWoken),
         ("waiting", Reach::Waiting),
         ("gone", Reach::Gone),
@@ -133,14 +177,14 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
                     .wakes
                     .iter()
                     .find(|wake| wake.name == *name && !failed.contains(name))
-                    .map(|wake| &wake.notice);
+                    .map(|wake| (&wake.notice, rung(&wake.via)));
                 let answered = posted
                     .answered
                     .iter()
                     .find(|answered| answered.name == *name)
-                    .map(|answered| &answered.notice);
+                    .map(|answered| (&answered.notice, String::new()));
                 match told.or(answered) {
-                    Some(told) => format!("{name} [{}]", notice(told)),
+                    Some((told, rung)) => format!("{name} [{}]{rung}", notice(told)),
                     None => name.clone(),
                 }
             })
@@ -150,6 +194,38 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
         }
     }
     parts.join("; ")
+}
+
+/// Says what a pane's agent is doing, or with `gone` that the pane has none.
+fn agent(sessions: &Sessions, step: &Value) -> String {
+    let text = |key: &str| step.get(key).and_then(Value::as_str).unwrap_or_default();
+    let pane = text("pane").to_string();
+    let state = match text("state") {
+        "working" => Some(Activity::Working),
+        "blocked" => Some(Activity::Blocked),
+        "idle" => Some(Activity::Idle),
+        "waiting" => Some(Activity::Waiting),
+        _ => None,
+    };
+    match state {
+        Some(state) => sessions.agents.borrow_mut().insert(pane.clone(), state),
+        None => sessions.agents.borrow_mut().remove(&pane),
+    };
+    format!("{pane} {}", text("state"))
+}
+
+/// Tells the service `name`'s agent went idle, and says whom that woke again.
+fn idle(service: &mut Messaging<Memory>, sessions: &Sessions, name: &str) -> String {
+    let (wakes, _) = service.went_idle(name, sessions);
+    let told: Vec<String> = wakes
+        .iter()
+        .map(|wake| format!("{} [{}]{}", wake.name, notice(&wake.notice), rung(&wake.via)))
+        .collect();
+    if told.is_empty() {
+        "rewoke nobody".to_string()
+    } else {
+        format!("rewoke {}", told.join(", "))
+    }
 }
 
 /// Runs one step and says what came of it in one line.
@@ -174,7 +250,7 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
             }
             line
         }),
-        "leave" => service.leave(&who, text("group"), now).map(|left| {
+        "leave" => service.leave(&who, text("group"), sessions, now).map(|left| {
             let line = if left.stopped && left.groups.is_empty() {
                 format!("{} stopped", left.name)
             } else if left.stopped {
@@ -225,7 +301,10 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
                         Liveness::Gone => "gone",
                         Liveness::Human => "human",
                     };
-                    format!("{} {liveness}", member.name)
+                    match member.activity {
+                        Some(doing) => format!("{} {liveness} ({})", member.name, activity(doing)),
+                        None => format!("{} {liveness}", member.name),
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -234,6 +313,8 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
             let since = step.get("since").and_then(Value::as_u64).unwrap_or(0);
             service.log(text("group").unwrap_or_default(), since).map(|entries| list(&entries))
         }
+        "agent" => Ok(agent(sessions, step)),
+        "idle" => Ok(idle(service, sessions, text("name").unwrap_or_default())),
         "dies" => {
             sessions.dead.borrow_mut().insert(socket(text("session").unwrap_or_default()));
             Ok("died".to_string())

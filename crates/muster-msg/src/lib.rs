@@ -19,8 +19,8 @@ pub use names::{HUMAN, LONGEST_GROUP, default_name, pair_group};
 pub use policy::Policy;
 pub use refusal::Refusal;
 pub use service::{
-    AnsweredWait, Caller, Inbox, Joined, Left, Liveness, Member, Messaging, Notice, Participant,
-    Posted, Presence, Reach, Read, Waited, Wake,
+    Activity, AnsweredWait, Caller, Inbox, Joined, Left, Liveness, Member, Messaging, Notice,
+    Participant, Posted, Presence, Reach, Read, Via, Waited, Wake,
 };
 pub use store::{GroupRecord, Memory, Saved, Store};
 

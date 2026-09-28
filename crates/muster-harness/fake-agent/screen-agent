@@ -9,6 +9,9 @@
 #
 # Commands, one per line: working | blocked | idle | quit, or notify <text>, which asks the
 # terminal to notify somebody the way Claude Code does in Ghostty (OSC 777).
+#
+# Every line it reads is also appended to $HOME/fake-agent-heard, which is how a test sees what
+# was typed into it (a daemon's doorbell, say) after the screen has been painted over.
 
 state=idle
 tick=0
@@ -23,6 +26,7 @@ paint() {
 paint
 
 while IFS= read -r line; do
+    printf '%s\n' "$line" >> "$HOME/fake-agent-heard"
     tick=$((tick + 1))
     case "$line" in
         notify\ *) printf '\033]777;notify;Claude Code;%s\a' "${line#notify }" ;;

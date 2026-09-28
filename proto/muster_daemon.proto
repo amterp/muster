@@ -573,6 +573,8 @@ message MsgAnswer {
   message Reached {
     string name = 1;
     Reach reach = 2;
+    // What its agent is doing, for an agent in a pane.
+    Activity activity = 3;
   }
 
   enum Reach {
@@ -584,6 +586,20 @@ message MsgAnswer {
     // Nothing can wake it; it sees the message when it next reads.
     REACH_WAITING = 3;
     REACH_GONE = 4;
+    // An agent in a pane that is busy, at a dialog or being typed into: it is rung there once
+    // it is idle and nobody has typed into it for a few seconds.
+    REACH_DEFERRED = 5;
+  }
+
+  // What an agent in a pane is doing, as detection reads the pane.
+  enum Activity {
+    // Not in a pane, or its agent's state is not known.
+    ACTIVITY_UNSPECIFIED = 0;
+    ACTIVITY_WORKING = 1;
+    ACTIVITY_BLOCKED = 2;
+    ACTIVITY_IDLE = 3;
+    // Idle, having said it is waiting on work of its own.
+    ACTIVITY_WAITING = 4;
   }
 
   // What `read` and `log` return, a group at a time.
@@ -624,6 +640,8 @@ message MsgAnswer {
     Liveness liveness = 2;
     repeated string groups = 3;
     optional string inbox = 4;
+    Activity activity = 5;
+    optional string pane = 6;
   }
 
   enum Liveness {
@@ -646,6 +664,8 @@ message MsgAnswer {
     uint64 count = 4;
     uint64 to_you = 5;
     repeated string from = 6;
+    // Woken for these once already, and gone idle without reading them.
+    bool again = 7;
   }
 }
 

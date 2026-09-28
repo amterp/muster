@@ -24,6 +24,8 @@ pub struct Caller {
     /// `--as`, which outranks everything else.
     pub as_name: Option<String>,
     pub inbox: Option<Inbox>,
+    /// The pane the caller runs in, by its name. It identifies the caller only while its host
+    /// has found an agent there ([`Presence::agent_in`]).
     pub pane: Option<String>,
     /// The caller's working directory, which a default name is made from.
     pub directory: Option<String>,
@@ -45,6 +47,10 @@ pub struct Participant {
     /// Groups it has been woken for since it last read them: one wake per batch.
     #[serde(default)]
     pub woken: BTreeSet<String>,
+    /// Of those, the groups it has been woken for a second time, having gone idle without
+    /// reading: never a third (MIP-4, section 5).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub rewoken: BTreeSet<String>,
 }
 
 impl Participant {
@@ -56,14 +62,38 @@ impl Participant {
             gone: false,
             cursors: BTreeMap::new(),
             woken: BTreeSet::new(),
+            rewoken: BTreeSet::new(),
         }
     }
 }
 
-/// Whether a participant is still there, as the host can tell: for a Claude session, whether
-/// its inbox socket still accepts a connection.
+/// What an agent in a pane is doing, as its host's detection reads the pane (MIP-4, section 7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Activity {
+    Working,
+    /// At a dialog: a keystroke would answer it.
+    Blocked,
+    Idle,
+    /// Idle, having said it is waiting on work of its own.
+    Waiting,
+}
+
+/// What the host can tell about participants: whether one is still there - for a Claude
+/// session, whether its inbox still accepts a connection; for an agent in a pane, whether the
+/// pane still has an agent in it - and, for a pane, what its agent is doing.
 pub trait Presence {
     fn alive(&self, participant: &Participant) -> bool;
+
+    /// What the agent at the participant's pane is doing, when it has one.
+    fn activity(&self, _participant: &Participant) -> Option<Activity> {
+        None
+    }
+
+    /// Whether `pane` names a pane with an agent in it, which may be addressed by that name
+    /// before it has run any command (MIP-4, section 3).
+    fn agent_in(&self, _pane: &str) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,8 +109,10 @@ pub enum Liveness {
 pub struct Member {
     pub name: String,
     pub liveness: Liveness,
+    pub activity: Option<Activity>,
     pub groups: Vec<String>,
     pub inbox: Option<String>,
+    pub pane: Option<String>,
 }
 
 /// What a woken participant is told: never a body, since only its own `read` moves its cursor
@@ -93,6 +125,17 @@ pub struct Notice {
     pub count: u64,
     pub to_you: u64,
     pub from: Vec<String>,
+    /// Woken for these once already, and gone idle without reading them.
+    pub again: bool,
+}
+
+/// How a wake reaches its participant (MIP-4, section 6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Via {
+    /// A line on a Claude Code session's inbox socket.
+    Inbox(Inbox),
+    /// A line typed into the pane the agent runs in, once its host's guards allow.
+    Pane(String),
 }
 
 /// A wake for the host to deliver, outside whatever lock it holds this under, and to report
@@ -100,7 +143,7 @@ pub struct Notice {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Wake {
     pub name: String,
-    pub inbox: Inbox,
+    pub via: Via,
     pub notice: Notice,
 }
 
@@ -108,6 +151,9 @@ pub struct Wake {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reach {
     Woken,
+    /// To be woken once its host's guards allow: an agent in a pane that is busy, at a dialog,
+    /// or being typed into. The host decides this, not the service.
+    Deferred,
     /// Woken for this group already, and has not read since: it will read this too.
     AlreadyWoken,
     /// Nothing can wake it, so it sees the message when it next reads.
@@ -278,6 +324,7 @@ impl<S: Store> Messaging<S> {
         let (name, took_over) = match name {
             None => self.identify_reporting(caller, presence)?,
             Some(name) => {
+                let caller = &Self::addressed(caller, presence);
                 check_participant(name)?;
                 self.may_become(name, caller, presence)?;
                 let took_over = self.participants.get(name).is_some_and(|existing| {
@@ -301,16 +348,17 @@ impl<S: Store> Messaging<S> {
         &mut self,
         caller: &Caller,
         group: Option<&str>,
+        presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Left, Refusal> {
+        let caller = &Self::addressed(caller, presence);
         let name = self
             .lookup(caller)
             .filter(|name| self.participants.contains_key(name))
             .ok_or_else(|| Refusal::NotAParticipant {
-                name: caller
-                    .as_name
-                    .clone()
-                    .or_else(|| caller.inbox.is_none().then(|| HUMAN.to_string())),
+                name: caller.as_name.clone().or_else(|| {
+                    (caller.inbox.is_none() && caller.pane.is_none()).then(|| HUMAN.to_string())
+                }),
             })?;
         let left = if let Some(group) = group {
             let members = &self.group(group)?.members;
@@ -357,14 +405,9 @@ impl<S: Store> Messaging<S> {
         let mut addressees: Vec<String> = Vec::new();
         for name in to {
             check_participant(name)?;
+            let name = &self.addressee(name, presence)?;
             if *name == author {
                 return Err(Refusal::AddressedSelf);
-            }
-            if !self.participants.contains_key(name) {
-                if name != HUMAN {
-                    return Err(Refusal::NoSuchParticipant { name: name.clone() });
-                }
-                self.participants.insert(HUMAN.to_string(), Participant::named(HUMAN));
             }
             if !addressees.contains(name) {
                 addressees.push(name.clone());
@@ -404,7 +447,7 @@ impl<S: Store> Messaging<S> {
             unsaved: None,
         };
         for target in targets {
-            let reach = self.reach(&target, &group, &mut posted);
+            let reach = self.reach(&target, &group, &mut posted, presence);
             posted.reached.push((target, reach));
         }
         if let Err(Refusal::Store { error }) = self.save() {
@@ -423,7 +466,11 @@ impl<S: Store> Messaging<S> {
             return Ok(());
         };
         // It may have come back from a new session while the wake was out.
-        if participant.inbox.as_ref() != Some(&wake.inbox) {
+        let still_there = match &wake.via {
+            Via::Inbox(inbox) => participant.inbox.as_ref() == Some(inbox),
+            Via::Pane(pane) => participant.pane.as_ref() == Some(pane),
+        };
+        if !still_there {
             return Ok(());
         }
         participant.gone = true;
@@ -456,6 +503,7 @@ impl<S: Store> Messaging<S> {
             let participant = self.participants.get_mut(&name).expect("identified");
             participant.cursors.insert(group.clone(), head);
             participant.woken.remove(&group);
+            participant.rewoken.remove(&group);
             read.groups.push((group, entries));
         }
         // A cursor that moved without being kept would skip these entries after a restart,
@@ -527,11 +575,35 @@ impl<S: Store> Messaging<S> {
                     inbox: participant
                         .and_then(|participant| participant.inbox.as_ref())
                         .map(|inbox| inbox.socket.clone()),
+                    pane: participant.and_then(|participant| participant.pane.clone()),
+                    activity: participant.and_then(|participant| presence.activity(participant)),
                     liveness,
                     name,
                 }
             })
             .collect())
+    }
+
+    /// The participant `name` means in a post's `--to`: a participant by that name; else the
+    /// one in the pane of that name; else, for a pane with an agent in it, a participant made
+    /// for it, named after the pane, which is what lets a post reach an agent that never joined
+    /// (MIP-4, section 3). The human is made on first address too.
+    fn addressee(&mut self, name: &str, presence: &dyn Presence) -> Result<String, Refusal> {
+        if self.participants.contains_key(name) {
+            return Ok(name.to_string());
+        }
+        if let Some(holder) = self.by_pane(name) {
+            return Ok(holder);
+        }
+        if name == HUMAN || presence.agent_in(name) {
+            let mut participant = Participant::named(name);
+            if name != HUMAN {
+                participant.pane = Some(name.to_string());
+            }
+            self.participants.insert(name.to_string(), participant);
+            return Ok(name.to_string());
+        }
+        Err(Refusal::NoSuchParticipant { name: name.to_string() })
     }
 
     // ------------------------------------------------------------------------------------------
@@ -542,10 +614,14 @@ impl<S: Store> Messaging<S> {
         if let Some(name) = &caller.as_name {
             return Some(name.clone());
         }
-        if let Some(inbox) = &caller.inbox {
-            return self.by_inbox(inbox);
+        if let Some(name) = caller.inbox.as_ref().and_then(|inbox| self.by_inbox(inbox)) {
+            return Some(name);
         }
-        Some(HUMAN.to_string())
+        if let Some(name) = caller.pane.as_deref().and_then(|pane| self.by_pane(pane)) {
+            return Some(name);
+        }
+        let agent = caller.inbox.is_some() || caller.pane.is_some();
+        (!agent).then(|| HUMAN.to_string())
     }
 
     fn by_inbox(&self, inbox: &Inbox) -> Option<String> {
@@ -553,6 +629,21 @@ impl<S: Store> Messaging<S> {
             .values()
             .find(|participant| participant.inbox.as_ref() == Some(inbox))
             .map(|participant| participant.name.clone())
+    }
+
+    fn by_pane(&self, pane: &str) -> Option<String> {
+        self.participants
+            .values()
+            .find(|participant| participant.pane.as_deref() == Some(pane))
+            .map(|participant| participant.name.clone())
+    }
+
+    /// The caller as far as its addresses identify it: a pane counts only while detection has
+    /// found an agent in it, since a person's own shell in a pane is the human (MIP-4, section 3).
+    fn addressed(caller: &Caller, presence: &dyn Presence) -> Caller {
+        let mut caller = caller.clone();
+        caller.pane = caller.pane.filter(|pane| presence.agent_in(pane));
+        caller
     }
 
     /// Refuses to make the caller `name` while `name` is a live participant in another
@@ -566,7 +657,8 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
     ) -> Result<(), Refusal> {
         let Some(existing) = self.participants.get(name) else { return Ok(()) };
-        let elsewhere = caller.inbox.is_some() && existing.inbox != caller.inbox;
+        let elsewhere = (caller.inbox.is_some() && existing.inbox != caller.inbox)
+            || (caller.pane.is_some() && existing.pane.is_some() && existing.pane != caller.pane);
         if name != HUMAN && elsewhere && alive(existing, presence) {
             let inbox = existing.inbox.as_ref().map(|inbox| inbox.socket.clone());
             return Err(Refusal::NameInUse { name: name.to_string(), inbox });
@@ -586,25 +678,26 @@ impl<S: Store> Messaging<S> {
         caller: &Caller,
         presence: &dyn Presence,
     ) -> Result<(String, bool), Refusal> {
+        let caller = &Self::addressed(caller, presence);
         if let Some(name) = &caller.as_name {
             check_participant(name)?;
             self.may_become(name, caller, presence)?;
             self.adopt(name, caller);
             return Ok((name.clone(), false));
         }
-        if let Some(inbox) = &caller.inbox {
-            if let Some(name) = self.by_inbox(inbox) {
+        if let Some(name) = self.lookup(caller) {
+            if name == HUMAN {
+                self.participants.entry(name.clone()).or_insert_with(|| Participant::named(HUMAN));
+            } else {
                 self.adopt(&name, caller);
-                return Ok((name, false));
             }
-            let base = default_name(caller.directory.as_deref());
-            let name = self.free_name(&base, presence);
-            let took_over = self.participants.contains_key(&name);
-            self.adopt(&name, caller);
-            return Ok((name, took_over));
+            return Ok((name, false));
         }
-        self.participants.entry(HUMAN.to_string()).or_insert_with(|| Participant::named(HUMAN));
-        Ok((HUMAN.to_string(), false))
+        let base = default_name(caller.directory.as_deref());
+        let name = self.free_name(&base, presence);
+        let took_over = self.participants.contains_key(&name);
+        self.adopt(&name, caller);
+        Ok((name, took_over))
     }
 
     /// `base`, or `base-2`, `base-3` and on: the first that nobody alive holds. A default name
@@ -621,35 +714,48 @@ impl<S: Store> Messaging<S> {
     }
 
     /// Makes `name` the participant the caller's addresses belong to, creating it if needed. An
-    /// inbox belongs to one participant, so any other holding it lets go, and one that is left
+    /// address belongs to one participant, so any other holding it lets go, and one that is left
     /// holding nothing - a default name the caller has since replaced with its own - goes.
     fn adopt(&mut self, name: &str, caller: &Caller) {
         let participant =
             self.participants.entry(name.to_string()).or_insert_with(|| Participant::named(name));
+        let moved = (caller.inbox.is_some() && participant.inbox != caller.inbox)
+            || (caller.pane.is_some() && participant.pane != caller.pane);
+        // A session that takes over a name has been woken for nothing yet, whatever the session
+        // before it was told.
+        if moved {
+            participant.woken.clear();
+            participant.rewoken.clear();
+        }
         if caller.inbox.is_some() {
-            // A session that takes over a name has been woken for nothing yet, whatever the
-            // session before it was told.
-            if participant.inbox != caller.inbox {
-                participant.woken.clear();
-            }
             participant.inbox.clone_from(&caller.inbox);
             participant.gone = false;
         }
         if caller.pane.is_some() {
             participant.pane.clone_from(&caller.pane);
+            participant.gone = false;
         }
-        let Some(inbox) = &caller.inbox else { return };
         let others: Vec<String> = self
             .participants
             .values()
-            .filter(|other| other.name != name && other.inbox.as_ref() == Some(inbox))
+            .filter(|other| other.name != name)
+            .filter(|other| {
+                (caller.inbox.is_some() && other.inbox == caller.inbox)
+                    || (caller.pane.is_some() && other.pane == caller.pane)
+            })
             .map(|other| other.name.clone())
             .collect();
         for other in others {
             if self.memberships(&other).is_empty() {
                 self.participants.remove(&other);
-            } else if let Some(other) = self.participants.get_mut(&other) {
+                continue;
+            }
+            let Some(other) = self.participants.get_mut(&other) else { continue };
+            if caller.inbox.is_some() && other.inbox == caller.inbox {
                 other.inbox = None;
+            }
+            if caller.pane.is_some() && other.pane == caller.pane {
+                other.pane = None;
             }
         }
     }
@@ -849,6 +955,7 @@ impl<S: Store> Messaging<S> {
                 count: 0,
                 to_you: 0,
                 from: Vec::new(),
+                again: false,
             });
             notice.last = entry.seq;
             notice.count += 1;
@@ -861,7 +968,13 @@ impl<S: Store> Messaging<S> {
     }
 
     /// Wakes `name` for `group` if nothing has since the last time it read.
-    fn reach(&mut self, name: &str, group: &str, posted: &mut Posted) -> Reach {
+    fn reach(
+        &mut self,
+        name: &str,
+        group: &str,
+        posted: &mut Posted,
+        presence: &dyn Presence,
+    ) -> Reach {
         let Some(participant) = self.participants.get(name) else {
             return Reach::Gone;
         };
@@ -894,12 +1007,88 @@ impl<S: Store> Messaging<S> {
         if participant.woken.contains(group) {
             return Reach::AlreadyWoken;
         }
-        let Some(inbox) = participant.inbox.clone() else {
+        let Some(via) = Self::via(participant, presence) else {
             return Reach::Waiting;
         };
         participant.woken.insert(group.to_string());
-        posted.wakes.push(Wake { name: name.to_string(), inbox, notice });
+        posted.wakes.push(Wake { name: name.to_string(), via, notice });
         Reach::Woken
+    }
+
+    /// How to wake a participant. An agent in a pane is rung there even when it has an inbox
+    /// too: a session that bypasses permission prompts holds an inbox message for a person's
+    /// approval (`docs/observations/claude-code-2.1.283.md`), the host cannot tell which
+    /// sessions do, and the doorbell's guards make typing into a pane safe (MIP-4, section 6).
+    fn via(participant: &Participant, presence: &dyn Presence) -> Option<Via> {
+        if let Some(pane) = participant.pane.as_ref().filter(|pane| presence.agent_in(pane)) {
+            return Some(Via::Pane(pane.clone()));
+        }
+        participant.inbox.clone().map(Via::Inbox)
+    }
+
+    /// A wake for every group an agent in a pane was woken for and has not read: what a host
+    /// that is starting cannot tell was rung before it stopped, so it rings them again.
+    pub fn outstanding(&self) -> Vec<Wake> {
+        let mut wakes = Vec::new();
+        for participant in self.participants.values() {
+            let Some(pane) = &participant.pane else { continue };
+            for group in &participant.woken {
+                if let Some(notice) = self.notice(&participant.name, group) {
+                    let via = Via::Pane(pane.clone());
+                    wakes.push(Wake { name: participant.name.clone(), via, notice });
+                }
+            }
+        }
+        wakes
+    }
+
+    /// Participants woken for a group they have not read since, which have not yet been woken
+    /// a second time for it, with the pane each is in: whose going idle the host watches for.
+    pub fn watched(&self) -> Vec<(String, String)> {
+        self.participants
+            .values()
+            .filter(|participant| {
+                participant.woken.iter().any(|group| !participant.rewoken.contains(group))
+            })
+            .filter_map(|participant| {
+                participant.pane.clone().map(|pane| (participant.name.clone(), pane))
+            })
+            .collect()
+    }
+
+    /// `name`'s agent went idle. For each group it was woken for and has still not read, wake
+    /// it once more, saying so, and never again until it reads (MIP-4, section 5): the first
+    /// wake may have landed while it was busy with something it then finished.
+    ///
+    /// Also returns why the state could not be saved, when it could not: the wakes stand, and
+    /// what is at risk is a second "still unread" after a restart.
+    pub fn went_idle(
+        &mut self,
+        name: &str,
+        presence: &dyn Presence,
+    ) -> (Vec<Wake>, Option<String>) {
+        let Some(participant) = self.participants.get(name) else { return (Vec::new(), None) };
+        let Some(via) = Self::via(participant, presence) else { return (Vec::new(), None) };
+        let groups: Vec<String> = participant
+            .woken
+            .iter()
+            .filter(|group| !participant.rewoken.contains(*group))
+            .cloned()
+            .collect();
+        let mut wakes = Vec::new();
+        for group in groups {
+            let Some(mut notice) = self.notice(name, &group) else { continue };
+            notice.again = true;
+            if let Some(participant) = self.participants.get_mut(name) {
+                participant.rewoken.insert(group);
+            }
+            wakes.push(Wake { name: name.to_string(), via: via.clone(), notice });
+        }
+        let unsaved = match self.save() {
+            Err(Refusal::Store { error }) => Some(error),
+            _ => None,
+        };
+        (wakes, unsaved)
     }
 
     fn save(&mut self) -> Result<(), Refusal> {

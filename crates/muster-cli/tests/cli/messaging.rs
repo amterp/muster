@@ -52,6 +52,14 @@ fn ok(output: &Output) -> String {
     said(output)
 }
 
+/// A post that was kept and woke nobody live: here, because `--as` names have no session for
+/// the daemon to wake.
+#[track_caller]
+fn unheard(output: &Output) -> String {
+    assert_eq!(output.status.code(), Some(6), "{}", complained(output));
+    said(output)
+}
+
 #[test]
 fn two_agents_post_read_and_are_held_to_the_guard() {
     let daemon = Daemon::start_built();
@@ -64,7 +72,8 @@ fn two_agents_post_read_and_are_held_to_the_guard() {
         "joined review as b"
     );
 
-    let posted = ok(&muster(&daemon, &["msg", "--as", "a", "post", "the", "parser", "is", "in"]));
+    let posted =
+        unheard(&muster(&daemon, &["msg", "--as", "a", "post", "the", "parser", "is", "in"]));
     assert_eq!(posted, "posted #4 to review\nnot woken: b (sees it when it reads)");
 
     let refused = muster(&daemon, &["msg", "--as", "b", "post", "done"]);
@@ -81,7 +90,7 @@ fn two_agents_post_read_and_are_held_to_the_guard() {
     );
     assert_eq!(ok(&muster(&daemon, &["msg", "--as", "b", "read"])), "nothing unread");
     assert_eq!(ok(&muster(&daemon, &["msg", "--as", "b", "read", "--if-unread"])), "");
-    ok(&muster(&daemon, &["msg", "--as", "b", "post", "--to", "a", "done"]));
+    unheard(&muster(&daemon, &["msg", "--as", "b", "post", "--to", "a", "done"]));
 
     let log = ok(&muster(&daemon, &["msg", "--json", "log", "--group", "review"]));
     let log: Value = serde_json::from_str(&log).unwrap();
@@ -104,7 +113,7 @@ fn read_if_unread_says_nothing_when_only_joins_and_leaves_are_new() {
     ok(&muster(&daemon, &["msg", "--as", "c", "join", "--group", "g"]));
     assert_eq!(ok(&muster(&daemon, &["msg", "--as", "b", "read", "--if-unread"])), "");
 
-    ok(&muster(&daemon, &["msg", "--as", "c", "post", "hello"]));
+    unheard(&muster(&daemon, &["msg", "--as", "c", "post", "hello"]));
     assert_eq!(
         ok(&muster(&daemon, &["msg", "--as", "a", "read", "--if-unread"])),
         "--- g #3 | b joined ---\n--- g #4 | c joined ---\n--- g #5 | c ---\nhello\n--- end g #5 | c ---"
@@ -121,8 +130,12 @@ fn a_body_comes_whole_from_a_file_or_stdin() {
     let file = daemon.root().join("brief.md");
     std::fs::write(&file, &brief).unwrap();
 
-    ok(&muster(&daemon, &["msg", "--as", "a", "post", "--file", &file.display().to_string()]));
-    ok(&muster_with(daemon.socket_path(), &["msg", "--as", "a", "post", "-"], Some("from stdin")));
+    unheard(&muster(&daemon, &["msg", "--as", "a", "post", "--file", &file.display().to_string()]));
+    unheard(&muster_with(
+        daemon.socket_path(),
+        &["msg", "--as", "a", "post", "-"],
+        Some("from stdin"),
+    ));
 
     let read = ok(&muster(&daemon, &["msg", "--json", "--as", "b", "read"]));
     let read: Value = serde_json::from_str(&read).unwrap();
@@ -144,7 +157,7 @@ fn a_wait_prints_the_wake_and_a_timeout_exits_5() {
     let timed_out = muster(&daemon, &["msg", "--as", "b", "wait", "--timeout", "1"]);
     assert_eq!(timed_out.status.code(), Some(5), "{}", complained(&timed_out));
 
-    ok(&muster(&daemon, &["msg", "--as", "a", "post", "go"]));
+    unheard(&muster(&daemon, &["msg", "--as", "a", "post", "go"]));
     assert_eq!(
         ok(&muster(&daemon, &["msg", "--as", "b", "wait"])),
         "[muster] g: 1 new (#4), from a. Read: muster msg read --group g"
@@ -168,7 +181,10 @@ fn a_wait_in_progress_when_the_daemon_hands_over_is_answered_by_the_new_one() {
     });
     logging.logged_until("msg.waiting", Duration::from_secs(20));
     assert_eq!(daemon.replace(None).outcome(), proto::Outcome::Done);
-    ok(&muster(&daemon, &["msg", "--as", "a", "post", "after", "the", "handover"]));
+    // Heard or not depends on whether the wait was asked again before the post: either way
+    // the message is unread, and the wait returns with it.
+    let posted = muster(&daemon, &["msg", "--as", "a", "post", "after", "the", "handover"]);
+    assert!(matches!(posted.status.code(), Some(0 | 6)), "{}", complained(&posted));
 
     let waited = waiting.join().unwrap();
     assert_eq!(ok(&waited), "[muster] g: 1 new (#4), from a. Read: muster msg read --group g");
