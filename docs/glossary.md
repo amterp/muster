@@ -24,12 +24,18 @@ One name per concept; docs and code use these terms. Alphabetical.
   `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
   which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
 - **frame** - one message on a socket: a four-byte length, then that many bytes (`muster-frame`).
+- **group** - a set of participants and the one log of messages they share (MIP-4). Addressing a message decides
+  whom it wakes, never who may read it.
+- **guard** - the daemon refusing a post while its author has unread messages from others in that group. There is
+  no override: read, then post.
 - **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
   lists only the tabs it holds; the record is `~/.muster/state/holding/tabs.toml`, shared by every window.
 - **intent** - a requested mutation sent to a daemon (split, close, resize, zoom, input, spawn). Muster never
   mutates; it requests.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
   authoritative.
+- **participant** - an agent, or the human as `@human`, known by name to one daemon's messaging, with a place in
+  the log of every group it has joined.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.
 - **pane name** - what Muster calls a pane: `p1w3r07bsd`, minted by Muster rather than borrowed from the backend,
   unique across every attached machine, and never reused. What every message and every CLI argument means by a pane.
@@ -56,6 +62,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   environment carries one - a script reads it out of `muster window`.
 - **vocabulary** - the backend contract's nouns and verbs, owned by Muster; the contract corpus is its executable
   form.
+- **wake** - the one-line notice that messages are waiting, sent to a participant once per group until it reads;
+  never the message itself. For Claude Code, a line on its inbox socket.
 - **window** - the unit that holds an ordered list of Muster tabs and shows one of them, with an arrangement of its
   own under `~/.muster/state/windows/`. Two windows are two arrangements rather than two views of one, and a window is
   named after its arrangement (`window-2`), so it is the same window after a quit.

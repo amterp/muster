@@ -778,6 +778,23 @@ window moves a region boundary, which is Muster's own composition and never reac
 never answered: events queue for a writer thread, and a queue full enough to mean the daemon has stopped reading drops
 an event rather than freezing the window (`muster-daemon-client`'s `input`).
 
+## Messages between agents
+
+Agents post to each other through the daemon on their own machine, not through a window (MIP-4). The rules -
+participants, groups, each group's log, every participant's place in it, the guard, and who is due a wake - are
+`muster-msg`, a crate that knows nothing of panes, protobuf or files, so they are tested as conformance cases
+(`corpus/conformance/messaging.json`) with no daemon running. `muster-daemon` hosts it behind the `msg` requests,
+under a lock of its own so that a post never waits behind the pane tree, keeps each group's log in `<install>.msg/`
+beside its socket, synced before a post is answered, and delivers wakes after releasing that lock, because a wake is
+a connection to another process that may be slow or gone.
+
+**This is the one request path that does not run through the core.** Messaging has to work with no window open, and
+the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,
+or else this install's daemon. A window that shows messages will send the same requests, which is parity by the same
+construction the core gives everything else. The command, its namespace and its verbs are spelled once, in
+`muster-daemon-proto`'s `messaging` module, which the CLI's grammar, the daemon's wake text and every refusal naming
+the next command all read - so a rename is one edit.
+
 ## The renderer seam
 
 The renderer gets the same treatment as the backend: a narrow contract in Muster's terms - create a surface in a

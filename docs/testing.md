@@ -152,11 +152,15 @@ Muster's principles, adapted to that evidence:
   measure timing and would be flaky as
   assertions (`--latency` prints verdicts against MIP-3's targets and fails only when it cannot measure),
   the SSH tier needs the devenv container - which holds no muster-daemon, so the SSH tier's tests install this
-  build's the way the app does - `--linux`, which runs the daemon's and detection's suites on Linux, needs docker,
+  build's the way the app does - `--linux`, which runs the daemon's, detection's and messaging's suites on Linux,
+  needs docker,
   and `--claude-code` needs the network and a model: it drives the Claude Code installed here for one turn, in a
   pane with Muster's hooks and one without, and checks both read working and then idle. It runs with
   `ANTHROPIC_API_KEY` and `--bare` when that is set, and otherwise with `claude`'s own login and only project
-  settings, so nobody's own hooks take part; with neither it fails and says which is missing. The gate still
+  settings, so nobody's own hooks take part; with neither it fails and says which is missing. It also has two
+  sessions message each other through the daemon, the second woken from idle by its inbox socket, and holds how
+  Claude Code treats a wake from outside the session to the newest recording under `corpus/claude-code-*/`, which
+  `MUSTER_RECORD_CLAUDE_INBOX=1` rewrites (`docs/observations/claude-code-2.1.283.md`). The gate still
   compiles the Linux daemons and lints their Linux code,
   so what `--linux` alone catches is behavior: dash as `/bin/sh`, `/proc`, `close_range`. That is the real line, and it is
   narrower than the one drawn when the backend was going to be faked.

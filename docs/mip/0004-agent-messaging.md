@@ -210,9 +210,16 @@ adds it to `review`, creating the group if it does not exist. The caller hands o
 address in its own environment: Claude Code's `CLAUDE_CODE_MESSAGING_SOCKET` and `MUSTER_PANE`;
 `--pull` says its hooks fetch messages (section 6). Not `CLAUDE_CODE_MESSAGING_TOKEN`: it
 verifies nothing when the daemon sends it (`docs/observations/claude-code-2.1.283.md`), so the
-daemon never holds the secret. The verb runs inside the agent's session and inherits the addresses, so the daemon never has
-to map panes to processes. Any other verb from a caller that has not joined registers it the same
-way, under a default name.
+daemon never holds the secret. The verb runs inside the agent's session and inherits the
+addresses, so the daemon never has to map panes to processes. Any other verb from a caller that
+has not joined registers it the same way, under a default name.
+
+**The default name is the last part of the caller's working directory**, with `-2`, `-3` added
+while a live participant holds it, and a gone holder's name taken over as `join` would. Parallel
+agents already sit in distinct worktrees (`muster-1` to `muster-5`), so that is the name a person
+would use for each, and it never refuses. Claude's session name is not in a Bash call's
+environment, and requiring `--name` first would make an agent's first `read` fail. From stage 2 a
+pane's label takes precedence, since a person chose it.
 
 Every verb identifies its caller by the first of: `--as NAME`; a session address a wake adapter
 recognizes, such as Claude's socket path, which is the same in every Bash call, whereas a variable
@@ -286,7 +293,10 @@ is paused, a post wakes only the human, and only if it would have woken the huma
 group that would wake it goes from zero to more than zero, and not again for that group until it
 reads. Messages that would not wake it, such as a directed council's chatter among others, are
 unread but never trigger a wake. If its agent goes idle with waking messages still unread, it is
-woken once more, and then not until it reads. Ten messages arriving while an agent works cost it
+woken once more, and then not until it reads. That second wake comes on the first transition to
+idle after the first wake, never on a timer: a timer would fire into a turn that is busy acting on
+the first, and idle is the moment an agent can act on a wake at all. Its text says "still unread",
+so Claude Code's filter for identical repeats keeps it. It needs presence, so it lands in stage 2. Ten messages arriving while an agent works cost it
 one wake. Every wake an agent acts on is a turn it pays for, so this rule and the ring set are
 what bound a group's cost.
 
@@ -313,9 +323,11 @@ Muster code:
 
 - `PostToolUse` runs `muster msg read --if-unread` and returns its output as
   `additionalContext`, so messages arrive between tool calls during a turn.
-- `Stop` runs `muster msg wait` as an `asyncRewake` hook. `wait` blocks until the caller has
-  waking messages unread, prints the notice to stderr and exits 2, which the hooks documentation
-  says wakes the session with that text as a system reminder.
+- `Stop` runs `muster msg wait >&2; exit 2` as an `asyncRewake` hook. `wait` blocks until the
+  caller has waking messages unread, then prints the notice and exits 0, like every other verb
+  that succeeded; the hook moves it to stderr and exits 2, which the hooks documentation says
+  wakes the session with that text as a system reminder. A script waiting on a message reads
+  stdout and an exit code of 0, and should not have to know Claude's hook convention.
 
 Because the hook runs `read` itself, this is the one adapter that delivers bodies, and the cursor
 moves because the text did reach the model. A hook is the session's own child, so Claude Code does
@@ -544,6 +556,13 @@ green on its own.
    Proves: two Claude sessions in plain terminals, on the Mac and on the devenv, exchange messages
    with nothing polling; the guard refuses a post on unread; a log survives a daemon restart.
 
+   As built, the devenv half of the Claude proof is not run: no Linux machine this repository
+   reaches has Claude Code with credentials. The `--ssh` tier proves the same exchange there
+   between two callers of the installed `muster`, one of them woken from a blocked `wait`. Left
+   for later: a `msg` verb starting a daemon when none runs, which needs the launch code out of
+   `muster-daemon-client`; a remote pane's `PATH` reaching `~/.muster/bin`; and a daemon adopted
+   rather than installed gets the CLI only at its next install.
+
 2. **Presence, panes, and the end of `pane send` for messages.** Presence from detection; pane
    participants addressed by pane name; the doorbell and its guards; the post answer and its exit
    code for waking nobody; the docs and the muster skill switched. Proves: the integrator flow in
@@ -678,9 +697,6 @@ bind.
 
 ## Open Questions
 
-- **The default participant name** for a caller that has not joined: its pane label, Claude's
-  session name, or neither, requiring `--name` before any other verb.
-- **How long before re-waking** an agent that went idle with waking messages unread.
 - **Whether replicas should persist**, so a remote group's history stays readable while its home
   is unreachable.
 - **Whether an idle group ever closes on its own**, or stays until deleted as proposed.
@@ -704,3 +720,5 @@ bind.
 ## History
 - 2026-09-26 Draft, from kan `a_2Rtd0Ed0l`, a research pass over council v1 and its real sessions,
   and MIP-3.
+- 2026-09-28 Stage 1 built: the Claude observation on macOS, the default name and the re-wake's
+  timing answered (sections 3 and 5), `wait`'s output convention (section 6).

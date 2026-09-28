@@ -13,9 +13,10 @@ that ships Ghostty's chords where Ghostty has one, an agent list carrying a stat
 of the first nine and one to whichever is asking for you, renaming, trading two agents' places by dragging a row, configuration that reloads when you save
 it, a CLI that drives the window from inside a pane, a notification when an agent needs you that takes you to the
 pane that asked, a second daemon on an SSH machine in the same window - where one tab can hold a laptop pane beside
-a devenv pane - and several windows that each hold their own tabs and hand them to each other. Not built, and worth
-knowing before you install rather than after: the shape of a split cannot be changed once it is made, and a pane on
-a devenv cannot drive the window it is drawn in.
+a devenv pane - several windows that each hold their own tabs and hand them to each other, and agents on one machine
+posting messages to each other and being woken by them rather than polling. Not built, and worth knowing before you
+install rather than after: the shape of a split cannot be changed once it is made, a pane on a devenv cannot drive
+the window it is drawn in, and an agent on the devenv cannot message one on the laptop.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.
@@ -86,6 +87,7 @@ how you run your agents.
       └─ core seam     → one symbol   protobuf over a C ABI; events, never bytes
            portable core (Rust)       mirror, keymap, dispatch, attention, config
              └─ daemon seam → muster-daemon   protobuf over a Unix socket; owns the PTYs
+                  ├─ messages → muster-msg    agents posting to each other; needs no window
                   ├─ one bridge per pane      a pane's replay and output onto a surface's PTY
                   ├─ daemon on this machine   local agents
                   └─ daemon on devenv (SSH)   remote agents
@@ -126,6 +128,10 @@ ones somebody reaches for `pkill` over. Muster writes down every daemon it start
 `~/.muster/state/daemons/`, and the verb dials each socket rather than trusting the file.
 Nothing there ends a daemon and nothing will: a process holding somebody's live agent is the
 wrong thing to reap on a schedule.
+
+`muster msg` is for agents talking to each other rather than to a window: `muster msg post` a message of any
+length, `muster msg read` it, and the daemon wakes whoever it is for, so nobody waits in a loop. It asks the daemon
+rather than the window, so it works from a plain terminal and with no window open, and `muster docs msg` is the rest.
 
 `muster docs` is the reference and it ships inside the binary, so it describes the version you are
 running. `muster --help` has the grammar, `muster completions zsh` writes a completion script.
@@ -205,12 +211,13 @@ there the way the app does and then run against it. It leaves that container run
 for. The tier says so on the way out, because the thing most likely to run next is `--perf`, and a container running
 beside a benchmark is enough to move the numbers it judges - `./devenv/devenv down` when you are finished with it.
 
-**The gate builds `muster-daemon` for Linux too**, for `x86_64-unknown-linux-musl` and
+**The gate builds `muster-daemon` and the `muster` CLI for Linux too**, for `x86_64-unknown-linux-musl` and
 `aarch64-unknown-linux-musl`, cross-compiled from the Mac: libghostty-vt from the same patched checkout into a prefix
 per target, rust-lld against the musl rustup ships with each target, and zig for mimalloc's C - so no Linux toolchain
-and nothing new to install. It also runs clippy over the daemon's and detection's Linux code, which no Mac build
-compiles otherwise. `./dev --linux` runs those two packages' suites on Linux, which the gate cannot: cargo's runner
-for the musl targets puts each test binary in a Debian container with this checkout mounted at its own path. The
+and nothing new to install. It also runs clippy over the Linux code of the daemon, detection, messaging and the CLI,
+which no Mac build compiles otherwise. `./dev --linux` runs the daemon's, detection's and messaging's suites on
+Linux, which the gate cannot: cargo's runner for the musl targets puts each test binary in a Debian container with
+this checkout mounted at its own path. The
 architecture docker runs natively runs in full, the other under emulation without the three tests whose subject the
 emulator replaces. The container keeps Debian's own `/bin/sh`, dash, because a real devenv does. `--ssh` runs it too.
 CI runs the same suites after the gate, as the gate workflow's `linux` job: the macOS runner builds the test
@@ -224,8 +231,10 @@ daemon rather than inside it, because the bash and zsh scripts are GPLv3 (`packa
 `./dev --claude-code` reaches a model, where `--notarize` reaches only Apple and `--ssh` only what Docker fetches: it
 drives the Claude Code installed here for one turn, in a pane with `extras/claude-code`'s hooks and one without, and
 checks that both the hooks and the screen rules read it working and then idle - which is what says a Claude Code
-update has broken neither. It needs `ANTHROPIC_API_KEY` or `claude`'s own login, and fails saying which is missing
-when it has neither, since a tier that checked nothing has not passed.
+update has broken neither. It also has two sessions message each other through the daemon, and holds how Claude
+Code treats a message from outside the session to the newest recording in `corpus/claude-code-*/`. It needs
+`ANTHROPIC_API_KEY` or `claude`'s own login, and fails saying which is missing when it has neither, since a tier
+that checked nothing has not passed.
 
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
 against a checked-in baseline and fails on regression, the second times input-to-glyph with `crates/muster-latency`:
@@ -281,7 +290,8 @@ included, is spawned.
 **A machine you attach over SSH gets this build's daemon.** The bundle carries a stripped release build for Linux on
 x86_64 and on aarch64 under `Contents/Resources/daemons/`, and a remote Mac gets the app's own daemon with the
 libghostty-vt it links. Muster asks the machine what it is with `uname -sm`, and sends the matching one with the data
-directory as one archive over the ssh connection, into `~/.muster/daemon/<version>/`. Nothing is downloaded, so there
+directory as one archive over the ssh connection, into `~/.muster/daemon/<version>/`, with the `muster` CLI built
+for the same machine, linked at `~/.muster/bin/muster` so `muster msg` works there. Nothing is downloaded, so there
 is no pin to keep and a machine with no internet access can be installed to. The install leaves a SHA-256 of that
 archive beside the daemon, and a machine holding any other build gets this one in its place: two development builds
 share a version, and a version alone would start whichever was there first. A SwiftPM build stages the gate's debug
