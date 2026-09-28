@@ -68,8 +68,8 @@ mod tests {
             inbox: None,
             pane: None,
             gone: false,
-            cursors: Default::default(),
-            woken: Default::default(),
+            cursors: std::collections::BTreeMap::default(),
+            woken: std::collections::BTreeSet::default(),
         };
         assert!(!Sockets.alive(&participant));
     }

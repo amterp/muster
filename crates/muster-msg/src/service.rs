@@ -307,7 +307,10 @@ impl<S: Store> Messaging<S> {
             .lookup(caller)
             .filter(|name| self.participants.contains_key(name))
             .ok_or_else(|| Refusal::NotAParticipant {
-                name: Some(caller.as_name.clone().unwrap_or_else(|| HUMAN.to_string())),
+                name: caller
+                    .as_name
+                    .clone()
+                    .or_else(|| caller.inbox.is_none().then(|| HUMAN.to_string())),
             })?;
         let left = if let Some(group) = group {
             let members = &self.group(group)?.members;
@@ -315,15 +318,21 @@ impl<S: Store> Messaging<S> {
                 return Err(Refusal::NotAMember { name, group: group.to_string() });
             }
             self.remove_member(group, &name, now_ms)?;
-            Left { name, groups: vec![group.to_string()], stopped: false, ended: None }
+            let kept_to_it = self
+                .waiters
+                .get(&name)
+                .is_some_and(|waiter| waiter.group.as_deref() == Some(group));
+            let ended = if kept_to_it { self.waiters.remove(&name) } else { None };
+            let ended = ended.map(|waiter| waiter.ticket);
+            Left { name, groups: vec![group.to_string()], stopped: false, ended }
         } else {
             let groups = self.memberships(&name);
             for group in &groups {
                 self.remove_member(group, &name, now_ms)?;
             }
             self.participants.remove(&name);
-            self.waiters.remove(&name);
-            Left { name, groups, stopped: true, ended: None }
+            let ended = self.waiters.remove(&name).map(|waiter| waiter.ticket);
+            Left { name, groups, stopped: true, ended }
         };
         self.save()?;
         Ok(left)

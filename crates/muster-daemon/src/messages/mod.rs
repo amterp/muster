@@ -45,6 +45,8 @@ pub(crate) struct Messages {
 enum WaitEnded {
     Ready(Vec<msg_answer::Notice>),
     Superseded,
+    /// Its participant left, so nothing will answer it.
+    Left,
 }
 
 impl Messages {
@@ -106,7 +108,11 @@ impl Messages {
                     (joined.name, answer)
                 }),
             Asked::Leave(leave) => {
+                let waits = &mut self.waits;
                 self.service.leave(caller, leave.group.as_deref(), now_ms()).map(|left| {
+                    if let Some(wait) = left.ended.and_then(|ticket| waits.remove(&ticket)) {
+                        let _ = wait.send(WaitEnded::Left);
+                    }
                     log::info(
                         "msg.left",
                         fields! {
@@ -322,6 +328,13 @@ fn waiting(
         match ended.recv_timeout(LOOK_UP) {
             Ok(WaitEnded::Ready(notices)) => {
                 return answered(String::new(), Answer::Notices(msg_answer::Notices { notices }));
+            }
+            Ok(WaitEnded::Left) => {
+                return refused_as(
+                    "",
+                    "left",
+                    "the participant left, so nothing will answer this wait",
+                );
             }
             Ok(WaitEnded::Superseded) => {
                 return refused_as(
