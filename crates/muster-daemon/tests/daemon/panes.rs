@@ -327,3 +327,16 @@ fn use_shell(control: &mut Control, command: &str, mode: proto::ShellMode) {
     let asked = control.ask(session(proto::session_request::Request::SetShell(set)));
     assert!(matches!(asked.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo));
 }
+
+/// A test that types into a pane and reads it back depends on where the prompt ends, and the
+/// system's prompt names the machine: macOS's is `host:dir user$`. On a runner whose hostname is
+/// 62 characters long, text typed after it reached the 80th column, wrapped, and read back split
+/// in two. So every pane a test starts has the same prompt, wherever the suite runs.
+#[test]
+fn a_panes_prompt_is_the_same_on_every_machine() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let text = until_text(&mut control, "p1", "$");
+    assert_eq!(text.trim_end(), "$", "the prompt names the machine it runs on");
+}
