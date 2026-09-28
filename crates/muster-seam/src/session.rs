@@ -548,6 +548,17 @@ struct Handover {
     running: String,
     /// Which run of that daemon was found, so that one already handed over is not asked again.
     instance: u64,
+    /// For a daemon on another machine, how to put this build's daemon there first.
+    install: Option<Box<RemoteInstall>>,
+}
+
+/// This build's daemon, to be installed on the machine an older one runs on before that one is
+/// asked to run it.
+#[derive(Debug)]
+struct RemoteInstall {
+    remote: muster_ssh::Remote,
+    installed: remote::Installed,
+    carried: remote_install::Carried,
 }
 
 /// What to ask of a daemon Muster found running rather than started, by how its version
@@ -565,7 +576,7 @@ fn handover_for(
     let running = welcome.daemon_version.clone();
     match handover::age(&running) {
         handover::Age::Older => {
-            Some(Handover { program, data, running, instance: welcome.instance })
+            Some(Handover { program, data, running, instance: welcome.instance, install: None })
         }
         handover::Age::Same => None,
         handover::Age::Newer => {
@@ -597,8 +608,8 @@ fn handover_for(
 }
 
 /// What to ask of an older daemon found running on another machine: `handover_for`, with this
-/// build's daemon installed there first, since the older daemon is what runs it. A failed
-/// install costs the handoff and nothing else, because the older daemon is serving already.
+/// build's daemon to be installed there first, since the older daemon is what runs it. The
+/// install is left to the thread that asks, so the machine's panes do not wait for an upload.
 fn remote_handover(
     daemon: &DaemonId,
     welcome: &muster_daemon_proto::Welcome,
@@ -606,21 +617,32 @@ fn remote_handover(
     installed: &remote::Installed,
     carried: &remote_install::Carried,
 ) -> Option<Handover> {
-    let handover = handover_for(daemon, welcome, installed.binary.clone(), None)?;
-    if let Err(detail) = remote::install(&tunnel.remote(), installed, carried) {
-        log::warn(
-            "daemon.handover.uninstalled",
-            fields! {
-                "daemon" => daemon.to_string(),
-                "detail" => detail,
-                "impact" => "the older daemon there keeps serving, and is not asked to hand its \
-                             panes over this launch",
-                "check" => "that machine's disk space and its home directory",
-            },
-        );
-        return None;
-    }
+    let mut handover = handover_for(daemon, welcome, installed.binary.clone(), None)?;
+    handover.install = Some(Box::new(RemoteInstall {
+        remote: tunnel.remote(),
+        installed: installed.clone(),
+        carried: carried.clone(),
+    }));
     Some(handover)
+}
+
+/// Puts this build's daemon on the machine the older one runs on. A failed install costs the
+/// handoff and nothing else, because the older daemon is serving already.
+fn installed_there(daemon: &DaemonId, install: &RemoteInstall) -> bool {
+    let Err(detail) = remote::install(&install.remote, &install.installed, &install.carried) else {
+        return true;
+    };
+    log::warn(
+        "daemon.handover.uninstalled",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "detail" => detail,
+            "impact" => "the older daemon there keeps serving, and is not asked to hand its \
+                         panes over this launch",
+            "check" => "that machine's disk space and its home directory",
+        },
+    );
+    false
 }
 
 /// Asks an older daemon, on a thread of its own, to hand its panes to this build's daemon.
@@ -633,7 +655,9 @@ fn hand_over_later(daemon: &DaemonId, socket: String, handover: Handover) {
     let daemon = daemon.clone();
     let spawned =
         std::thread::Builder::new().name(format!("muster-handover-{daemon}")).spawn(move || {
-            if !finished_restoring(&daemon) {
+            if handover.install.as_deref().is_some_and(|install| !installed_there(&daemon, install))
+                || !finished_restoring(&daemon)
+            {
                 return;
             }
             log::info(
