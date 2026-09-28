@@ -310,8 +310,56 @@ fn a_post_to_the_human_is_heard() {
     let daemon = Daemon::start_built();
     assert_eq!(
         ok(&muster(&daemon, &["msg", "--as", "a", "post", "--to", "@human", "look"])),
-        "posted #4 to @human+a\nnot woken: @human (sees it when it reads)"
+        "posted #4 to @human+a\nnot woken: @human (notified when a window opens)"
     );
+}
+
+/// The transcript: `log --follow` prints what is there, then each entry as it lands, and goes
+/// on across a handover to a new daemon, since a transcript pane outlives any one daemon.
+#[test]
+fn a_followed_log_prints_each_entry_as_it_lands_across_a_handover() {
+    use std::io::{BufRead, BufReader};
+    let mut daemon = Daemon::start_built();
+    ok(&muster(&daemon, &["msg", "--as", "a", "join", "--group", "g"]));
+    // Alone in the group, a wakes nobody with it, which exits 6.
+    unheard(&muster(&daemon, &["msg", "--as", "a", "post", "before"]));
+
+    let mut following = Command::new(env!("CARGO_BIN_EXE_muster"))
+        .args(["msg", "log", "--group", "g", "--follow"])
+        .env_clear()
+        .env("HOME", std::env::temp_dir())
+        .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("the muster binary runs");
+    let (lines, heard) = std::sync::mpsc::channel();
+    let stdout = following.stdout.take().unwrap();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if lines.send(line).is_err() {
+                return;
+            }
+        }
+    });
+    let until_line = |wanted: &str| loop {
+        match heard.recv_timeout(Duration::from_secs(20)) {
+            Ok(line) if line == wanted => return,
+            Ok(_) => {}
+            Err(error) => panic!("the followed log never printed {wanted:?}: {error}"),
+        }
+    };
+    until_line("before");
+
+    ok(&muster(&daemon, &["msg", "--as", "b", "join", "--group", "g"]));
+    until_line("--- g #4 | b joined ---");
+    assert_eq!(daemon.replace(None).outcome(), proto::Outcome::Done);
+    let posted = muster(&daemon, &["msg", "--as", "b", "post", "after", "the", "handover"]);
+    assert!(matches!(posted.status.code(), Some(0 | 6)), "{}", complained(&posted));
+    until_line("after the handover");
+
+    following.kill().expect("the follow is ours to end");
+    let _ = following.wait();
 }
 
 /// An agent whose pane has closed can be woken by nothing, so a post to it alone is unheard.

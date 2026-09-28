@@ -104,7 +104,7 @@ reason.
     rung once idle: critic (blocked)
     rung once its prompt is empty: lexer (idle)
     rung once an agent is found: p2w3r07bsd
-    not woken: scout (gone), p3w3r07bsd (no agent in its pane), @human (sees it when it reads)
+    not woken: scout (gone), p3w3r07bsd (no agent in its pane), @human (notified when a window opens)
 
 "woke" means the wake was handed over - rung, or sent to the session - not that it was read. A
 ring still to come says what it waits for: the agent to be idle, a draft left in its prompt to
@@ -128,11 +128,15 @@ place past them. It skips your own messages and shows joins and leaves as one li
     --- review #43 | scout joined ---
 
 **A post is refused while you have unread messages from others in that group**, and the refusal
-says how many and the `read` that clears it. There is no override: read, then post again. Joins
+says how many and the `read` that clears it. There is no override: read, then post again. The
+human is not held to it: the guard keeps a model from acting on a conversation it has not seen,
+and a person reads the transcript as it arrives, on a screen the daemon cannot see. Joins
 and leaves never count as unread. Your place in a group starts where you joined it; `log` shows
 what came before.
 
-`log --group G [--since N]` prints the transcript and moves nothing.
+`log --group G [--since N]` prints the transcript and moves nothing. With `--follow` it goes on
+printing each entry as it lands until interrupted, across Muster updating its daemon, and with
+`--json` prints one line per entry.
 
 `read --if-unread` prints nothing at all unless a message is unread, for a hook to run after every
 tool call. Joins and leaves on their own print nothing, though your place still moves past them.
@@ -157,7 +161,7 @@ remove. It is for hooks and scripts.
 | `who [--group G]` | who takes part: alive, gone, or the human, what each in a pane is doing, and their groups |
 | `post [--group G] [--to A,B] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for |
 | `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
-| `log --group G [--since N]` | the transcript, moving nothing |
+| `log --group G [--since N] [--follow]` | the transcript, moving nothing; `--follow` keeps printing |
 | `wait [--group G] [--timeout S]` | blocks until a message would wake you |
 
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, 3 no daemon

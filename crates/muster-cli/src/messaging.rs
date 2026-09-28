@@ -37,7 +37,7 @@ how many wait and from whom, and the command that reads them: run `muster msg re
 moves your place, so a message is read once.
 
 A post is refused while you have unread messages in that group: read, then post again. This \
-keeps you from answering a conversation you have not seen.
+keeps you from answering a conversation you have not seen. The human is not held to it.
 
 An unaddressed post wakes every member of its group but you; `--to NAME` wakes only NAME, \
 though every member can still read it. With no --group, a post goes to the one group you share \
@@ -46,6 +46,9 @@ with the people you address, or to a new group of exactly you and them.
 Who you are: `--as NAME` if given, else the Claude Code session you run in (from \
 $CLAUDE_CODE_MESSAGING_SOCKET), else you are the human. A session that never joined under a \
 name is named after its working directory.
+
+A message to @human notifies the person at the Muster window on this machine, and choosing the \
+notification opens the group's transcript: `muster msg log --group G --follow`.
 
 A Claude Code session started with --dangerously-skip-permissions holds a wake for approval \
 unless it was also started with --settings '{\"crossSessionInbound\":\"accept\"}'.
@@ -125,6 +128,9 @@ pub enum Verb {
         /// Only entries after this number
         #[arg(long, value_name = "N", default_value_t = 0)]
         since: u64,
+        /// Keep printing entries as they land, until interrupted; with --json, one line each
+        #[arg(long)]
+        follow: bool,
     },
 
     /// Block until a message that would wake you is unread, then print what a wake would say
@@ -145,6 +151,8 @@ pub struct Messaging {
     /// Where a post's body comes from when it is not on the command line.
     pub body_from: Option<TextSource>,
     pub if_unread: bool,
+    /// A log to keep printing as it grows, rather than answer once.
+    pub follow: bool,
 }
 
 /// Turns a command line into a request, reading nothing: the caller's identity is what its
@@ -166,6 +174,7 @@ pub fn parse(
     };
     let mut body_from = None;
     let mut if_unread = false;
+    let mut follow = false;
     let asked = match verb {
         Verb::Join { name, group } => {
             Asked::Join(msg_request::Join { name: name.clone(), group: group.clone() })
@@ -193,7 +202,8 @@ pub fn parse(
             if_unread = *quiet;
             Asked::Read(msg_request::Read { group: group.clone() })
         }
-        Verb::Log { group, since } => {
+        Verb::Log { group, since, follow: following } => {
+            follow = *following;
             Asked::Log(msg_request::Log { group: group.clone(), since: *since, follow: false })
         }
         Verb::Wait { group, timeout } => Asked::Wait(msg_request::Wait {
@@ -202,7 +212,7 @@ pub fn parse(
         }),
     };
     let request = proto::MsgRequest { caller: Some(caller), request: Some(asked) };
-    Ok(Messaging { request, body_from, if_unread })
+    Ok(Messaging { request, body_from, if_unread, follow })
 }
 
 /// Sends the request to this machine's daemon and renders its answer.
@@ -236,6 +246,66 @@ pub fn run(
     render(&messaging.request, &answer, messaging.if_unread, json)
 }
 
+/// Prints a group's log, then each entry as it lands, until the reader goes away. Each batch is
+/// flushed as it is written: the reader is a person watching a transcript, or a pipe acting on
+/// each line.
+pub fn follow(
+    messaging: &Messaging,
+    environment: &BTreeMap<String, String>,
+    json: bool,
+    out: &mut impl std::io::Write,
+) -> Result<(), Trouble> {
+    let socket = daemon::socket_or_refusal(environment)?;
+    let mut request = messaging.request.clone();
+    loop {
+        let answer = ask(&socket, &request)?;
+        let Some(entries) = render_entries(&answer)? else { return Ok(()) };
+        let Some(Asked::Log(log)) = request.request.as_mut() else {
+            unreachable!("only a log is followed")
+        };
+        if let Some(last) = entries.groups.iter().flat_map(|group| &group.entries).last() {
+            log.since = last.seq;
+        }
+        log.follow = true;
+        let text = if json {
+            let lines: Vec<String> = entries
+                .groups
+                .iter()
+                .flat_map(|group| group.entries.iter().map(|entry| (&group.group, entry)))
+                .map(|(group, entry)| {
+                    let mut value = entry_json(entry);
+                    value["group"] = group.clone().into();
+                    value.to_string()
+                })
+                .collect();
+            lines.join("\n")
+        } else {
+            entries_text(&entries, false, false)
+        };
+        // The reader went away - the pane closed, `| head` had enough. Nobody is left to tell.
+        if !text.is_empty() && writeln!(out, "{text}").and_then(|()| out.flush()).is_err() {
+            return Ok(());
+        }
+    }
+}
+
+/// A log's entries, or why there are none.
+fn render_entries(answer: &proto::Answer) -> Result<Option<msg_answer::Entries>, Trouble> {
+    let Some(proto::answer::Detail::Msg(msg)) = &answer.detail else {
+        return Err(Trouble::Refused(format!(
+            "the muster-daemon answered with nothing to show: {}",
+            answer.reason
+        )));
+    };
+    if answer.outcome() == proto::Outcome::Refused {
+        return Err(Trouble::Refused(answer.reason.clone()));
+    }
+    Ok(match &msg.answer {
+        Some(Answer::Entries(entries)) => Some(entries.clone()),
+        _ => None,
+    })
+}
+
 fn read_body(from: &TextSource, input: &mut impl Read) -> Result<String, Trouble> {
     let bytes = match from {
         TextSource::File(path) => std::fs::read(path).map_err(|error| {
@@ -266,7 +336,7 @@ const PATIENCE: Duration = Duration::from_mins(1);
 /// until the new one serves, and ends the connections of waits in progress.
 fn ask(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trouble> {
     let mut patience = Patience::default();
-    let waits = matches!(request.request, Some(Asked::Wait(_)));
+    let waits = blocks(request);
     let mut answered_before = false;
     loop {
         let began = Instant::now();
@@ -310,9 +380,30 @@ impl Patience {
     }
 }
 
+/// Whether the request is answered only once something happens, so may take any time.
+fn blocks(request: &proto::MsgRequest) -> bool {
+    match &request.request {
+        Some(Asked::Wait(_)) => true,
+        Some(Asked::Log(log)) => log.follow,
+        _ => false,
+    }
+}
+
+/// The first protocol whose daemon answers a follow of a log only once it has something new.
+/// One before it ignores the field and answers at once, which would ask again as fast as it
+/// could.
+const FOLLOWS: u32 = 1;
+
 fn ask_once(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trouble> {
-    let mut stream = daemon::connect(socket, ConnectionKind::Control)?;
-    let waits = matches!(request.request, Some(Asked::Wait(_)));
+    let (mut stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Control)?;
+    let speaks = welcome.protocol.unwrap_or_default();
+    if matches!(&request.request, Some(Asked::Log(log)) if log.follow) && speaks.minor < FOLLOWS {
+        return Err(Trouble::Refused(format!(
+            "this machine's muster-daemon speaks protocol {speaks}, which cannot follow a log. \
+             Update Muster; a new daemon takes over from an old one when the app starts."
+        )));
+    }
+    let waits = blocks(request);
     let _ = stream.set_read_timeout(if waits { None } else { Some(PATIENCE) });
     let request = proto::Request { id: 1, service: Some(Service::Msg(request.clone())) };
     connection::send(&mut stream, &request)
@@ -514,7 +605,16 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         not.extend(
             no_doorbell.iter().map(|reached| with(reached, Some("its prompt cannot be read"))),
         );
-        not.extend(waiting.iter().map(|reached| with(reached, Some("sees it when it reads"))));
+        not.extend(waiting.iter().map(|reached| {
+            with(
+                reached,
+                Some(if reached.name == spelling::HUMAN {
+                    "notified when a window opens"
+                } else {
+                    "sees it when it reads"
+                }),
+            )
+        }));
         if !not.is_empty() {
             lines.push(format!("not woken: {}", not.join(", ")));
         }

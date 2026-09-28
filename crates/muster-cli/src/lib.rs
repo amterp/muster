@@ -159,6 +159,12 @@ pub fn run(
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
+        args::Asking::Message(messaging) if messaging.follow => {
+            return match messaging::follow(&messaging, environment, json, out) {
+                Ok(()) => 0,
+                Err(trouble) => report(&trouble, json, errors),
+            };
+        }
         args::Asking::Message(messaging) => {
             let rendered = messaging::run(*messaging, environment, input, json);
             return finish(rendered, json, out, errors);
