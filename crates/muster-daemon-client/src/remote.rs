@@ -279,7 +279,8 @@ fn put_there(remote: &impl Far, installed: &Installed, payload: &Payload) -> Res
 /// Then it points `muster` in the commands directory at the CLI the install carried, through a
 /// temporary link renamed into place, so a shell there never finds it half made. A link that
 /// cannot be made fails nothing: the daemon still serves every pane, and only messaging from
-/// that machine's shells waits for it.
+/// that machine's shells waits for it. A link an install did not make is left alone: on a Mac
+/// running a Muster of its own, the app keeps it pointed at its own CLI.
 fn install_script(installed: &Installed, stamp: &str) -> String {
     let directory = path(&installed.directory);
     let commands = path(&installed.commands);
@@ -290,9 +291,11 @@ fn install_script(installed: &Installed, stamp: &str) -> String {
          {{ rm -rf \"$s\"; false; }}; }} && \
          {{ if [ -d \"$d\" ]; then mv \"$d\" \"$o\"; fi; mv \"$s\" \"$d\"; }} && \
          rm -rf \"$o\" \"$d/${{s##*/}}\" && \
-         {{ [ ! -f \"$d/muster\" ] || {{ mkdir -p \"$b\" && \
-         ln -sfn \"$d/muster\" \"$b/.muster.$$\" && mv -f \"$b/.muster.$$\" \"$b/muster\"; }} \
-         || true; }}",
+         {{ [ ! -f \"$d/muster\" ] || \
+         case \"$(readlink \"$b/muster\" 2>/dev/null)\" in \"\"|\"${{d%/*}}\"/*) \
+         mkdir -p \"$b\" && \
+         ln -sfn \"$d/muster\" \"$b/.muster.$$\" && mv -f \"$b/.muster.$$\" \"$b/muster\";; \
+         esac || true; }}",
         stamp = quoted(stamp),
     )
 }
