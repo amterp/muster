@@ -32,6 +32,7 @@ use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcom
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restored};
 use muster_core::names::Minter;
+use muster_core::pane_focus::PaneFocus;
 use muster_core::pane_text::PaneText;
 use muster_core::problems::{Problem, Problems, Severity};
 use muster_core::reconnect;
@@ -756,6 +757,10 @@ pub(crate) struct Session {
     /// or it is not, and that answers for a laptop's panes and a devenv's at once.
     attention: Attention,
 
+    /// Which pane has been told it has the keyboard of this window, for a program that asked
+    /// to hear it. Spans the daemons for the reason attention does.
+    pane_focus: PaneFocus,
+
     /// When each pane's agent last changed state, in milliseconds since the epoch.
     ///
     /// Stamped here rather than in the mirror, which is a pure fold over what a daemon said -
@@ -1223,6 +1228,16 @@ impl Session {
             let mirror = poison::lock(&backend.mirror, "mirror");
             mirror.pane(&pane.pane).is_some_and(|record| record.finished_unseen)
         })
+    }
+
+    /// The attached panes to tell they gained or lost focus, held so that telling them can wait
+    /// until this lock is let go. A pane no longer attached has nobody left to tell.
+    fn focus_reports(&self, told: Vec<(PaneKey, bool)>) -> Vec<(Arc<AttachedPane>, bool)> {
+        told.into_iter()
+            .filter_map(|(pane, focused)| {
+                Some((Arc::clone(self.panes.get(&pane.daemon)?.get(&pane.pane)?), focused))
+            })
+            .collect()
     }
 
     /// Hands attention a pane's record as its daemon now has it, and tells the daemon when the
@@ -3659,7 +3674,7 @@ fn publish(cause: &str) {
     // two are settled together rather than left to drift. `noticed` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
-    let (view, roster, numbering, noticed, view_message, roster_message) = {
+    let (view, roster, numbering, noticed, focus, view_message, roster_message) = {
         let mut session = poison::lock(&SESSION, "session");
         // Before the view is built, and over every daemon rather than whichever one prompted
         // this. Several paths change what is on screen without going near a reconcile:
@@ -3681,6 +3696,12 @@ fn publish(cause: &str) {
         let numbering = session.numbering(&roster);
         let noticed = session.attention.showing(view.showing().clone());
         session.report_seen(&noticed.reported);
+        let keyboard = session
+            .composition
+            .focused_region()
+            .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?)));
+        let told = session.pane_focus.keyboard(keyboard);
+        let focus = session.focus_reports(told);
         // The typeable watch is settled against the same set, and for a reason of its own: what
         // it says is that a pane renders and swallows what is typed into it, and a pane no
         // region is drawing renders nothing - so a socket bound for one is owed no bridge until
@@ -3694,7 +3715,7 @@ fn publish(cause: &str) {
         let roster_message = convert::roster(&roster, &numbering);
         let view_message = session.sent.view(&view_message).then_some(view_message);
         let roster_message = session.sent.roster(&roster_message).then_some(roster_message);
-        (view, roster, numbering, noticed, view_message, roster_message)
+        (view, roster, numbering, noticed, focus, view_message, roster_message)
     };
 
     if view_message.is_none() && roster_message.is_none() {
@@ -3740,6 +3761,7 @@ fn publish(cause: &str) {
     }
     drop(publishing);
 
+    tell_focus(focus);
     // After the view, so that a pane surfaced by this very publish has somewhere to be
     // painted before it is told it is no longer waiting on anyone.
     for pane in &noticed.settled {
@@ -3860,6 +3882,14 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             health(daemon, Health::Connected, "");
             report_again(daemon);
         }
+    }
+}
+
+/// Tells panes they gained or lost the keyboard of a focused window. The daemon writes the
+/// report only to a program that asked (`muster_core::pane_focus`).
+fn tell_focus(focus: Vec<(Arc<AttachedPane>, bool)>) {
+    for (pane, focused) in focus {
+        pane.input.focus(focused);
     }
 }
 
@@ -4000,6 +4030,7 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
             let key = PaneKey::new(daemon, pane);
             let mut session = poison::lock(&SESSION, "session");
             session.state_since.remove(&key);
+            session.pane_focus.forget(&key);
             let attended = session.attention.forget(&key);
             attended.map(|attend| (key, attend))
         }
@@ -4498,7 +4529,7 @@ pub(crate) fn follow_the_record() {
 /// rather than a walk of every pane (`architecture.md`, fast is a feature).
 pub(crate) fn window_focused(focused: bool) {
     log::info("window.focus", fields! { "focused" => focused });
-    let noticed = {
+    let (noticed, focus) = {
         let mut session = poison::lock(&SESSION, "session");
         // Coming to the front is what makes this the window a tab nobody holds joins.
         if focused {
@@ -4506,8 +4537,10 @@ pub(crate) fn window_focused(focused: bool) {
         }
         let noticed = session.attention.window_focused(focused);
         session.report_seen(&noticed.reported);
-        noticed
+        let told = session.pane_focus.window_focused(focused);
+        (noticed, session.focus_reports(told))
     };
+    tell_focus(focus);
     for pane in &noticed.settled {
         announce_state(pane);
     }

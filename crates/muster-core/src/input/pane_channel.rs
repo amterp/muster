@@ -29,6 +29,9 @@ pub enum InputEvent {
     Wheel(Wheel),
     /// A button or the pointer moving over the pane, for a program that asked for the mouse.
     Mouse(Mouse),
+    /// The pane gained or lost the keyboard of a focused window. The daemon tells only a
+    /// program that asked to hear it (mode 1004).
+    Focus(bool),
 }
 
 /// A wheel or trackpad turn, as Ghostty's scroll callback takes it.

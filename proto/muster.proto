@@ -581,9 +581,10 @@ message SetRegionBoundary {
 // finishing while this window sits behind a browser has not been seen, and a window that said
 // it had would clear the finish for every window - `idle` at the moment something needs you.
 //
-// So the shell reports what only it can see and the core decides what it means. Nothing else
-// crosses this seam about focus: which pane the keyboard feeds is Muster's own cursor and
-// already travels on the view.
+// So the shell reports what only it can see and the core decides what it means: which panes
+// are seen, and which pane a program that asked to hear focus (mode 1004) is told has it.
+// Nothing else crosses this seam about focus: which pane the keyboard feeds is Muster's own
+// cursor and already travels on the view.
 message WindowFocus {
   bool focused = 1;
 }

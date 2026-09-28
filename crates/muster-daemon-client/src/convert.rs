@@ -195,6 +195,7 @@ pub fn input(
             x: wheel.x,
             y: wheel.y,
         }),
+        InputEvent::Focus(focused) => input_event::Input::Focus(input_event::Focus { focused }),
         InputEvent::Mouse(mouse) => input_event::Input::Mouse(input_event::Mouse {
             action: match mouse.action {
                 MouseAction::Press => proto::MouseAction::Press,

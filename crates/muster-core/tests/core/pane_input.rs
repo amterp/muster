@@ -92,5 +92,6 @@ fn describe(event: &InputEvent) -> Value {
         InputEvent::Mouse(mouse) => {
             json!({ "event": "mouse", "action": format!("{:?}", mouse.action) })
         }
+        InputEvent::Focus(focused) => json!({ "event": "focus", "focused": focused }),
     }
 }

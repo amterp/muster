@@ -20,6 +20,7 @@ pub mod intent;
 pub mod mirror;
 pub mod names;
 pub mod painting;
+pub mod pane_focus;
 pub mod pane_text;
 pub mod problems;
 pub mod reconnect;

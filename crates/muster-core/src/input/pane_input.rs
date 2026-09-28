@@ -141,6 +141,16 @@ impl PaneInput {
     /// Not counted as something reaching the pane: most programs draw nothing for a wheel or a
     /// click, and a pane that stays still after one is not frozen.
     pub fn pointer(&self, event: InputEvent) {
+        self.send_uncounted(event);
+    }
+
+    /// The pane gained or lost the keyboard of a focused window, for a program that asked to
+    /// hear it. Not counted either: a program that never asked draws nothing for it.
+    pub fn focus(&self, focused: bool) {
+        self.send_uncounted(InputEvent::Focus(focused));
+    }
+
+    fn send_uncounted(&self, event: InputEvent) {
         if let Err(not_sent) = self.sink.send(&self.pane, event) {
             log::debug(
                 "input.not_sent",
