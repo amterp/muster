@@ -151,6 +151,8 @@ pub struct Left {
     pub groups: Vec<String>,
     /// Left every group and stopped being a participant.
     pub stopped: bool,
+    /// The wait this ended: the leaver's own, or one it had filtered to the group it left.
+    pub ended: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -305,7 +307,7 @@ impl<S: Store> Messaging<S> {
             .lookup(caller)
             .filter(|name| self.participants.contains_key(name))
             .ok_or_else(|| Refusal::NotAParticipant {
-                name: caller.as_name.clone().unwrap_or_else(|| HUMAN.to_string()),
+                name: Some(caller.as_name.clone().unwrap_or_else(|| HUMAN.to_string())),
             })?;
         let left = if let Some(group) = group {
             let members = &self.group(group)?.members;
@@ -313,7 +315,7 @@ impl<S: Store> Messaging<S> {
                 return Err(Refusal::NotAMember { name, group: group.to_string() });
             }
             self.remove_member(group, &name, now_ms)?;
-            Left { name, groups: vec![group.to_string()], stopped: false }
+            Left { name, groups: vec![group.to_string()], stopped: false, ended: None }
         } else {
             let groups = self.memberships(&name);
             for group in &groups {
@@ -321,7 +323,7 @@ impl<S: Store> Messaging<S> {
             }
             self.participants.remove(&name);
             self.waiters.remove(&name);
-            Left { name, groups, stopped: true }
+            Left { name, groups, stopped: true, ended: None }
         };
         self.save()?;
         Ok(left)

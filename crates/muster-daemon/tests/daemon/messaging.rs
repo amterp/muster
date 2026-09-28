@@ -224,6 +224,26 @@ fn a_wait_returns_when_a_post_arrives_and_a_newer_wait_ends_the_older() {
     assert_eq!(ended.refusal, "superseded");
 }
 
+/// A wait whose participant leaves can never be answered, so it ends rather than holding its
+/// thread until the caller hangs up.
+#[test]
+fn leaving_ends_the_leavers_wait() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &named("a"), "a", "g");
+    join(&mut control, &named("b"), "b", "g");
+    let mut logging = daemon.connect();
+    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut waiting = daemon.connect();
+    waiting.send(msg(&named("b"), Asked::Wait(msg_request::Wait::default())));
+    logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
+
+    let leave = Asked::Leave(msg_request::Leave { group: None });
+    expect(&mut control, msg(&named("b"), leave), proto::Outcome::Done);
+    assert_eq!(until_answer(&mut waiting).refusal, "left");
+}
+
 /// The answer to the one request sent on `control`.
 fn until_answer(control: &mut Control) -> proto::MsgAnswer {
     match control.next_message(std::time::Duration::from_secs(20)) {

@@ -27,9 +27,10 @@ pub enum Refusal {
     NoSuchParticipant {
         name: String,
     },
-    /// The caller is not a participant at all, so there is nothing to leave.
+    /// The caller is not a participant at all, so there is nothing to leave. `name` is what it
+    /// called itself, when it did.
     NotAParticipant {
-        name: String,
+        name: Option<String>,
     },
     NotAMember {
         name: String,

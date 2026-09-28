@@ -479,6 +479,36 @@
         "waiting 1",
         "a posted #4 to g; woke @human [g #4-4 x1 to-you:1 from a]"
       ] }
+    },
+    {
+      "name": "leaving ends the leaver's wait, or one it kept to the group it left",
+      "why": "A wait whose participant has left can never be answered, and holds the daemon's thread until its caller hangs up (MIP-4, section 13).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "b", "do": "wait", "group": "g"},
+        {"session": "b", "do": "leave", "group": "g"},
+        {"session": "a", "do": "wait"},
+        {"session": "a", "do": "leave"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "waiting 1",
+        "b left g, ended wait 1",
+        "waiting 2",
+        "a stopped (left g), ended wait 2"
+      ] }
+    },
+    {
+      "name": "a session that never took part is told so, not called the human",
+      "why": "The refusal names the caller as it asked; a Claude session that never ran a msg command has no name yet (MIP-4, section 3).",
+      "given": { "steps": [
+        {"session": "x", "do": "leave"}
+      ] },
+      "expect": { "said": [
+        "refused not_a_participant this session"
+      ] }
     }
   ]
 }

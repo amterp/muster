@@ -55,9 +55,10 @@ fn notice(notice: &Notice) -> String {
 
 fn refused(refusal: &Refusal) -> String {
     let detail = match refusal {
-        Refusal::BadName { name }
-        | Refusal::NoSuchParticipant { name }
-        | Refusal::NotAParticipant { name } => name.clone(),
+        Refusal::BadName { name } | Refusal::NoSuchParticipant { name } => name.clone(),
+        Refusal::NotAParticipant { name } => {
+            name.clone().unwrap_or_else(|| "this session".to_string())
+        }
         Refusal::NameInUse { name, inbox } => {
             format!("{name} at {}", inbox.as_deref().unwrap_or("no inbox"))
         }
@@ -174,12 +175,16 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
             line
         }),
         "leave" => service.leave(&who, text("group"), now).map(|left| {
-            if left.stopped && left.groups.is_empty() {
+            let line = if left.stopped && left.groups.is_empty() {
                 format!("{} stopped", left.name)
             } else if left.stopped {
                 format!("{} stopped (left {})", left.name, left.groups.join(","))
             } else {
                 format!("{} left {}", left.name, left.groups.join(","))
+            };
+            match left.ended {
+                Some(ticket) => format!("{line}, ended wait {ticket}"),
+                None => line,
             }
         }),
         "post" => {

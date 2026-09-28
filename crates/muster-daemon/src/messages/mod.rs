@@ -422,9 +422,10 @@ fn words(refusal: &Refusal) -> String {
         Refusal::NoSuchParticipant { name } => {
             format!("nobody here is called {name}; `{}` lists who is", messaging::command(WHO, ""))
         }
-        Refusal::NotAParticipant { name } => {
-            format!("{name} is not taking part, so there is nothing to leave")
-        }
+        Refusal::NotAParticipant { name } => format!(
+            "{} not taking part, so there is nothing to leave",
+            name.as_ref().map_or("this session is".to_string(), |name| format!("{name} is"))
+        ),
         Refusal::NotAMember { name, group } => {
             format!("{name} is not in {group}; join it with `{}`", join(group))
         }

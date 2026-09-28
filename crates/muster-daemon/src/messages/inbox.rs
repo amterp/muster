@@ -48,10 +48,9 @@ pub(crate) struct Sockets;
 
 impl Presence for Sockets {
     fn alive(&self, participant: &Participant) -> bool {
-        participant
-            .inbox
-            .as_ref()
-            .is_some_and(|inbox| is_same_socket(inbox) && UnixStream::connect(&inbox.socket).is_ok())
+        participant.inbox.as_ref().is_some_and(|inbox| {
+            is_same_socket(inbox) && UnixStream::connect(&inbox.socket).is_ok()
+        })
     }
 }
 
