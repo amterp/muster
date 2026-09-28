@@ -24,7 +24,7 @@ use muster_core::mirror::{Change, Mirror};
 use muster_core::reconnect::Attempts;
 use muster_daemon_proto::{self as proto, answer};
 
-use crate::control::{Control, Delivered, Requests};
+use crate::control::{Control, Delivered, Pending, Requests};
 use crate::convert;
 use crate::input::Input;
 
@@ -81,6 +81,11 @@ pub struct Connection {
     input: Mutex<Option<Input>>,
     /// What the daemon should be told, sent at every connect and whenever it changes.
     settings: Mutex<Option<DaemonSettings>>,
+    /// The answers to the settings last sent. A change sends only what differs unless one of
+    /// them was refused, or has not come back, since the daemon may then lack a setting that
+    /// `settings` says it has: a daemon partway through a handoff refuses every change, and a
+    /// handoff that fails keeps this connection, so no reconnect puts it right.
+    settings_sent: Mutex<Vec<Pending>>,
     stopping: AtomicBool,
     /// Which connection is current. A reader ending after its connection was replaced says
     /// nothing about the one that replaced it.
@@ -192,11 +197,13 @@ impl Follower {
     }
 
     /// Tells the daemon these settings now, if connected, and at every connect after. Only
-    /// what differs from the last settings is sent.
+    /// what differs from the last settings is sent, once the daemon has taken those.
     pub fn configure(&self, settings: &DaemonSettings) {
         let previous = lock(&self.connection.settings).replace(settings.clone());
         if let Some(control) = self.connection.control() {
-            send_settings(&control, previous.as_ref(), settings);
+            let mut sent = lock(&self.connection.settings_sent);
+            let previous = previous.filter(|_| sent.iter().all(taken));
+            *sent = send_settings(&control, previous.as_ref(), settings);
         }
     }
 }
@@ -366,7 +373,7 @@ fn connect(
 
     let settings = lock(&connection.settings).clone();
     if let Some(settings) = settings {
-        send_settings(&control, None, &settings);
+        *lock(&connection.settings_sent) = send_settings(&control, None, &settings);
     }
     // At every connect, a reconnect after a handoff included: the daemon keeps its panes across
     // an update of the app, and this is how the rules the new app carries reach them. The daemon
@@ -487,31 +494,44 @@ fn sleep_unless_stopping(connection: &Connection, wait: Duration) {
         .wait_timeout_while(ended, wait, |_| !connection.stopping.load(Ordering::Relaxed));
 }
 
-/// Sends each setting that differs from `previous`, or every one when there is none. Answers
-/// are not waited for: a refusal is the daemon's to log, and the next connect sends them again.
-fn send_settings(control: &Control, previous: Option<&DaemonSettings>, settings: &DaemonSettings) {
+/// Sends each setting that differs from `previous`, or every one when there is none, and hands
+/// back the answers on their way. They are not waited for here: the next change reads them
+/// ([`Connection::settings_sent`]).
+fn send_settings(
+    control: &Control,
+    previous: Option<&DaemonSettings>,
+    settings: &DaemonSettings,
+) -> Vec<Pending> {
+    let mut sent = Vec::new();
     if previous.is_none_or(|previous| previous.shell != settings.shell) {
-        control.set_shell(convert::shell(settings));
+        sent.push(control.set_shell(convert::shell(settings)));
     }
     if previous.is_none_or(|previous| previous.scrollback_bytes != settings.scrollback_bytes) {
-        control.set_scrollback(settings.scrollback_bytes);
+        sent.push(control.set_scrollback(settings.scrollback_bytes));
     }
     if previous.is_none_or(|previous| previous.palette != settings.palette)
         && let Some(palette) = &settings.palette
     {
-        control.set_palette(convert::palette(palette));
+        sent.push(control.set_palette(convert::palette(palette)));
     }
     if previous.is_none_or(|previous| previous.cursor != settings.cursor) {
-        control.set_cursor(convert::cursor(settings));
+        sent.push(control.set_cursor(convert::cursor(settings)));
     }
     if previous.is_none_or(|previous| previous.clipboard_write != settings.clipboard_write) {
-        control.set_clipboard_write(settings.clipboard_write.allowed());
+        sent.push(control.set_clipboard_write(settings.clipboard_write.allowed()));
     }
     if previous.is_none_or(|previous| {
         previous.scroll_multiplier.to_bits() != settings.scroll_multiplier.to_bits()
     }) {
-        control.set_scroll_multiplier(settings.scroll_multiplier);
+        sent.push(control.set_scroll_multiplier(settings.scroll_multiplier));
     }
+    sent
+}
+
+/// Whether the daemon has taken a setting sent earlier: it answered, and did not refuse. One not
+/// answered yet counts as not taken, because sending it again costs only an `ALREADY_SO`.
+fn taken(sent: &Pending) -> bool {
+    sent.wait(Duration::ZERO).is_ok_and(|answer| answer.outcome() != proto::Outcome::Refused)
 }
 
 /// The detection manifests this app was built with, each under its file's name.
