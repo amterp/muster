@@ -702,6 +702,23 @@ mod tests {
         assert!(writing.io.input_at().is_some(), "a key is typed");
     }
 
+    /// A paste bigger than the program reads at once is written in pieces as it reads them, and
+    /// it echoes each piece as it goes: the paste is typed from its first byte, not its last.
+    #[test]
+    fn a_paste_counts_as_typed_while_it_is_still_being_written() {
+        let writing = Writing::new();
+        let text = "a".repeat(1024 * 1024);
+        writing.send(
+            crate::input::input_of(Event::Paste(input_event::Paste { text, confirmed: true }))
+                .expect("a paste"),
+        );
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while writing.io.input_at().is_none() && Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(writing.io.input_at().is_some(), "a paste nobody has read yet is not typed");
+    }
+
     /// A binding's bytes, such as shift+enter's `text:\n` or option+left's word jump, are
     /// typed as surely as the key they replace.
     #[test]
