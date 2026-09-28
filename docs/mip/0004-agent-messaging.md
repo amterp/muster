@@ -84,6 +84,8 @@ the other is forwarding the window's socket. If (a) is taken, `report`, a subcom
 binary today, would move beside these for the same reason. Close to one-way: skills, hook
 configurations and agents' habits will spell the verbs, and renaming them means a transition period.
 
+**Decided: (a)**, by amterp on 2026-09-28.
+
 **4. Who holds the link between two machines' daemons.**
 
 - (a) The app. The ssh master it already opens for each `[[daemon]]` forwards the far daemon's
@@ -885,3 +887,4 @@ bind.
 - 2026-09-28 Stage 3 built: windows attend the daemon on their machine, what waits for the
   human is state in events and the snapshot, one banner per group lands on the transcript, and
   the human is exempt from the guard (sections 4 and 10).
+- 2026-09-28 Decision 3 decided: `muster msg <verb>` on both platforms.
