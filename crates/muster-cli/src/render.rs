@@ -661,13 +661,6 @@ impl Widths {
     }
 }
 
-/// How long something has held since `since_ms`, in the one largest unit that fits: `45s`,
-/// `12m`, `3h`, `2d`.
-///
-/// One unit, because a row read at a glance wants "blocked 40m" and nothing finer - somebody
-/// deciding which agent has waited longest is comparing orders of magnitude. Empty for zero,
-/// which is a window too old to say, and a clock that has gone backwards reads as `0s` rather
-/// than as a negative.
 /// What an agent says about itself, with what it has not said as null rather than as zero: an
 /// agent that never reported its context has not used none of it.
 fn facts_json(facts: &muster_proto::AgentFacts) -> Value {
@@ -682,6 +675,13 @@ fn facts_json(facts: &muster_proto::AgentFacts) -> Value {
     })
 }
 
+/// How long something has held since `since_ms`, in the one largest unit that fits: `45s`,
+/// `12m`, `3h`, `2d`.
+///
+/// One unit, because a row read at a glance wants "blocked 40m" and nothing finer - somebody
+/// deciding which agent has waited longest is comparing orders of magnitude. Empty for zero,
+/// which is a window too old to say, and a clock that has gone backwards reads as `0s` rather
+/// than as a negative.
 fn held_for(since_ms: i64, now_ms: i64) -> String {
     if since_ms == 0 {
         return String::new();

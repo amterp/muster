@@ -95,8 +95,9 @@ One entry per pane every followed daemon holds, on screen or not.
   guessed.
 - `facts` - what the agent says about itself, `null` while it has said nothing: `context_used`
   (0 to 100), `subagents`, `model`, `cost_usd`, `waiting` (what it ended its turn to wait on) and
-  `other`, its own keys. Anything it has not said is `null`, since an agent that never reported
-  its context has not used none of it.
+  `other`, its own keys. `context_used`, `model`, `cost_usd` and `waiting` are `null` until the
+  agent says them, since an agent that never reported its context has not used none of it;
+  `subagents` is `0` and `other` is `{}` until then.
 - `progress` - what a program in the pane says of its progress, `{"state", "percent"}`, or `null`.
   `state` is `running`, `error`, `indeterminate` or `paused`; `percent` is `null` when the program
   gave none.
