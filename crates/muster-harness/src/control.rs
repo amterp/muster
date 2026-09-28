@@ -140,8 +140,18 @@ impl Control {
     /// The log lines that have arrived on this connection so far, reading for up to `within`
     /// more until one holds `needle`. Every line read stays here.
     pub fn logged_until(&mut self, needle: &str, within: Duration) -> &[proto::LogLine] {
+        self.logged_times_until(needle, 1, within)
+    }
+
+    /// [`Control::logged_until`], until `times` lines hold `needle`.
+    pub fn logged_times_until(
+        &mut self,
+        needle: &str,
+        times: usize,
+        within: Duration,
+    ) -> &[proto::LogLine] {
         let deadline = Instant::now() + within;
-        while !self.logged.iter().any(|line| line.line.contains(needle)) {
+        while self.logged.iter().filter(|line| line.line.contains(needle)).count() < times {
             match self.next_frame(deadline) {
                 None => break,
                 Some(Frame::Logged) => {}

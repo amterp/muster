@@ -218,6 +218,9 @@ fn a_wait_returns_when_a_post_arrives_and_a_newer_wait_ends_the_older() {
     expect(&mut control, read(&named("b")), proto::Outcome::Done);
     let mut older = daemon.connect();
     older.send(wait());
+    // Each connection is served on a thread of its own, so the newer wait is sent only once the
+    // older is in the daemon: sent together, the newer can arrive first and be the one ended.
+    logging.logged_times_until("msg.waiting", 2, std::time::Duration::from_secs(20));
     let mut newer = daemon.connect();
     newer.send(wait());
     let ended = until_answer(&mut older);
