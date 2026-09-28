@@ -2197,9 +2197,10 @@ message PaneStateChanged {
   string daemon_id = 3;
   string pane_id = 1;
 
-  // working, blocked, idle, done, or unknown. Never empty - a pane whose harness the
+  // working, blocked, waiting, idle, done, or unknown. Never empty - a pane whose harness the
   // backend cannot classify is `unknown`, which renders as itself. An agent we failed to
-  // read is not an agent that finished.
+  // read is not an agent that finished. `waiting` is an idle agent that said it ended its
+  // turn to wait on work it started itself, and `facts.waiting` says on what.
   string state = 2;
 
   // When the agent last changed what it was doing, in milliseconds since the epoch.
@@ -2211,6 +2212,36 @@ message PaneStateChanged {
   // this window first saw it, because nothing earlier is known. Zero from a window older than
   // the field.
   int64 since_ms = 4;
+
+  // Whether `state` is the agent's own report rather than what its daemon read off its screen.
+  bool reported = 5;
+
+  // Whether the daemon's rules have stopped reading this agent's screen. Its state then comes
+  // only from what the agent reports, and is `unknown` while it has reported nothing: said
+  // rather than guessed, because a confident wrong state is worse than none.
+  bool unreadable = 6;
+
+  // What the agent says about itself. Absent while it has said nothing.
+  AgentFacts facts = 7;
+}
+
+// What an agent reports about itself, in its own words: never read off its screen, and
+// forgotten when the pane's agent changes or leaves. It travels with the agent's state, not
+// in the roster, because an agent reports how full its context is as often as it redraws.
+message AgentFacts {
+  // How much of its context window is in use, from 0 to 100.
+  optional float context_used = 1;
+  // How many sub-agents it has running.
+  uint32 subagents = 2;
+  // Empty when it has not said.
+  string model = 3;
+  // What its session has cost, in US dollars.
+  optional double cost_usd = 4;
+  // What it ended its turn to wait on, work it started itself: "the full gate". Empty when it
+  // is waiting on nothing.
+  string waiting = 5;
+  // Anything else it chose to say, by name.
+  map<string, string> other = 6;
 }
 
 // How much of the backend's truth the core currently has.

@@ -16,7 +16,7 @@ use muster::proto::{
     SplitPane, Startup, WatchPanes, Window, WindowFocus, request, response,
 };
 use muster_daemon_proto::AgentState;
-use muster_harness::requests::{create, in_new_tab, make, snapshot};
+use muster_harness::requests::{create, expect, in_new_tab, make, pane, snapshot};
 use muster_harness::{Daemon, PATIENCE, until, until_some};
 use prost::Message;
 
@@ -212,6 +212,46 @@ fn a_wait_ends_when_a_pane_gets_where_it_was_asked_to() {
     assert_ended(&mut finish);
 }
 
+/// What an agent says about itself reaches the window with its state, and an idle agent that said
+/// it is waiting on its own work reads `waiting`. A wait for `idle` does not end there, since the
+/// agent has not finished: it ends when a later turn finishes without the wait.
+#[test]
+fn an_agents_own_word_reaches_the_window_and_a_wait_for_idle_outlasts_waiting() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+    open.report(AgentState::Working);
+    until_state(&open, "working");
+    open.say(muster_daemon_proto::pane_request::Report {
+        context_used: Some(64.0),
+        waiting: Some("the full gate".to_string()),
+        ..Default::default()
+    });
+    open.report(AgentState::Idle);
+
+    let waiting = until_state(&open, "waiting");
+    let facts = waiting.facts.expect("the agent's facts");
+    assert_eq!(facts.context_used, Some(64.0));
+    assert_eq!(facts.waiting, "the full gate");
+    assert!(!waiting.reported, "read off the screen, not reported");
+    assert!(!waiting.unreadable);
+
+    let mut finish = watching(
+        &open.socket,
+        WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["idle".to_string()] },
+    );
+    until(
+        "the window to hold the wait open",
+        || muster::testing::watchers() == 1,
+        || format!("{} watches are open", muster::testing::watchers()),
+    );
+    open.report(AgentState::Working);
+    open.report(AgentState::Idle);
+    let finished = state_frame(&mut finish);
+    assert_eq!(finished.state, "done", "answered with {finished:?}, not the finish after the wait");
+    assert_eq!(finished.facts.map(|facts| facts.waiting), Some(String::new()));
+    assert_ended(&mut finish);
+}
+
 /// A wait on a pane that closes is refused, rather than left waiting on something that is gone.
 #[test]
 fn a_wait_on_a_pane_that_closes_is_refused() {
@@ -390,6 +430,13 @@ impl Open {
     /// Has the pane's agent paint `state`, and waits until the daemon has read it.
     fn report(&self, state: AgentState) {
         self.daemon.set_agent_state(&self.pane, state);
+    }
+
+    /// Has the pane's agent say something about itself, as its hooks and statusline do.
+    fn say(&self, mut report: muster_daemon_proto::pane_request::Report) {
+        report.pane.clone_from(&self.pane);
+        let request = pane(muster_daemon_proto::pane_request::Request::Report(report));
+        expect(&mut self.daemon.connect(), request, muster_daemon_proto::Outcome::Done);
     }
 }
 

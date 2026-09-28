@@ -8,7 +8,7 @@
 
 use muster_core::composition::{View, ViewNode};
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
-use muster_core::mirror::backend::SplitAxis;
+use muster_core::mirror::backend::{AgentFacts, SplitAxis};
 use muster_core::roster::{Numbering, Roster};
 
 use crate::proto;
@@ -21,6 +21,20 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
         pane_id: agent.pane.pane.to_string(),
         state: agent.state.as_str().to_string(),
         since_ms: agent.since_ms,
+        reported: agent.reported,
+        unreadable: agent.unreadable,
+        facts: (agent.facts != AgentFacts::default()).then(|| facts(&agent.facts)),
+    }
+}
+
+fn facts(facts: &AgentFacts) -> proto::AgentFacts {
+    proto::AgentFacts {
+        context_used: facts.context_used,
+        subagents: facts.subagents,
+        model: facts.model.clone().unwrap_or_default(),
+        cost_usd: facts.cost_usd,
+        waiting: facts.waiting.clone().unwrap_or_default(),
+        other: facts.other.clone().into_iter().collect(),
     }
 }
 

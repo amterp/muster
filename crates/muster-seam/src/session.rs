@@ -29,7 +29,7 @@ use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::input::{Bindings, InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal};
-use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::mirror::backend::{AgentFacts, PaneId, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restored};
 use muster_core::names::Minter;
 use muster_core::pane_focus::PaneFocus;
@@ -1222,11 +1222,10 @@ impl Session {
         mirror.agent_state(&pane.pane)
     }
 
-    /// The state this window paints for a pane before `done` is laid over it: `waiting` for an
-    /// idle agent waiting on its own work.
-    fn presented_state(&self, pane: &PaneKey) -> Option<AgentState> {
-        let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
-        mirror.pane(&pane.pane).map(muster_core::mirror::Pane::presented_state)
+    /// One pane's agent as this window paints it, if its daemon holds the pane.
+    fn agent(&self, key: &PaneKey) -> Option<PaneAgent> {
+        let mirror = poison::lock(&self.backends.get(&key.daemon)?.mirror, "mirror");
+        mirror.pane(&key.pane).map(|pane| self.presented(key, pane))
     }
 
     /// Whether a pane's daemon says its agent finished and nobody has seen it since.
@@ -1286,12 +1285,16 @@ impl Session {
         }
     }
 
-    /// One pane's agent as this window paints it, from what its daemon said, `waiting` included.
-    fn presented(&self, pane: &PaneKey, state: AgentState) -> PaneAgent {
+    /// One pane's agent as this window paints it, from what its daemon said: `waiting` for an
+    /// idle agent waiting on its own work, and `done` laid over a finish nobody has seen.
+    fn presented(&self, key: &PaneKey, pane: &muster_core::mirror::Pane) -> PaneAgent {
         PaneAgent {
-            pane: pane.clone(),
-            state: self.attention.presented(pane, state),
-            since_ms: self.state_since.get(pane).copied().unwrap_or_default(),
+            pane: key.clone(),
+            state: self.attention.presented(key, pane.presented_state()),
+            since_ms: self.state_since.get(key).copied().unwrap_or_default(),
+            reported: pane.reported,
+            unreadable: pane.unreadable,
+            facts: pane.facts.clone(),
         }
     }
 
@@ -1301,7 +1304,7 @@ impl Session {
         for (id, backend) in &self.backends {
             let mirror = poison::lock(&backend.mirror, "mirror");
             for pane in mirror.panes() {
-                agents.push(self.presented(&PaneKey::new(id, &pane.id), pane.presented_state()));
+                agents.push(self.presented(&PaneKey::new(id, &pane.id), pane));
             }
         }
         agents
@@ -2745,7 +2748,7 @@ pub(crate) struct OtherWindow {
 }
 
 /// One pane's agent, as this window paints it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PaneAgent {
     pub pane: PaneKey,
     pub state: AgentState,
@@ -2753,6 +2756,11 @@ pub(crate) struct PaneAgent {
     /// nothing has stamped, which a window only holds between a daemon describing a pane and
     /// that change reaching `report`.
     pub since_ms: i64,
+    /// Whether the state is the agent's own report.
+    pub reported: bool,
+    /// Whether the daemon's rules have stopped reading this agent's screen.
+    pub unreadable: bool,
+    pub facts: AgentFacts,
 }
 
 /// How much of one daemon's truth the window has, as the shell and a watch are told it.
@@ -4255,8 +4263,7 @@ fn announce_state(pane: &PaneKey) {
 /// reported seen (`attention`).
 fn presented(pane: &PaneKey) -> Option<PaneAgent> {
     let session = poison::lock(&SESSION, "session");
-    let state = session.presented_state(pane)?;
-    Some(session.presented(pane, state))
+    session.agent(pane)
 }
 
 /// Shows the roster or puts it away, and says what it settled on.

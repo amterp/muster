@@ -190,6 +190,7 @@ fn a_watch_whose_window_hangs_up_exits_as_no_window() {
                     pane_id: "p1w3r07bsd".to_string(),
                     state: "working".to_string(),
                     since_ms: 1_757_700_000_000,
+                    ..PaneStateChanged::default()
                 })),
             };
             let _ = write_frame(&mut stream, &said.encode_to_vec());
