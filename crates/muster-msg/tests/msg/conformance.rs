@@ -565,3 +565,50 @@ fn messaging_conformance() {
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
 }
+
+/// MIP-4 section 15 holds that each failure of council v1 that policy or delivery answers is a
+/// named case, so the file's `v1` rows are checked against the MIP's own table: a row added
+/// there, or a case renamed here, fails until somebody says what answers it.
+#[test]
+fn every_failure_of_council_v1_is_answered_by_a_case_or_says_where_it_is() {
+    let root = conformance::repo_root();
+    let corpus: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("corpus/conformance/messaging.json")).unwrap(),
+    )
+    .unwrap();
+    let mip = std::fs::read_to_string(root.join("docs/mip/0004-agent-messaging.md")).unwrap();
+    let table: Vec<&str> = mip
+        .lines()
+        .skip_while(|line| !line.starts_with("| Observed in v1 |"))
+        .skip(2)
+        .take_while(|line| line.starts_with('|'))
+        .filter_map(|line| line.split(" | ").next())
+        .map(|cell| cell.trim_start_matches("| "))
+        .collect();
+    assert!(table.len() > 10, "found no table of what council v1 got wrong in MIP-4");
+
+    let cases: BTreeSet<&str> = corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|case| case["name"].as_str())
+        .collect();
+    let rows = corpus["v1"]["rows"].as_array().expect("messaging.json has no v1 rows");
+    let mut listed = Vec::new();
+    for row in rows {
+        let failure = row["failure"].as_str().unwrap();
+        listed.push(failure);
+        match (row["case"].as_str(), row["elsewhere"].as_str()) {
+            (Some(case), None) => assert!(
+                cases.contains(case),
+                "v1 row {failure:?} names the case {case:?}, which messaging.json does not have"
+            ),
+            (None, Some(_)) => {}
+            _ => panic!("v1 row {failure:?} must name one `case` or say `elsewhere`, not both"),
+        }
+    }
+    assert_eq!(
+        listed, table,
+        "messaging.json's v1 rows and MIP-4's table of what council v1 got wrong disagree"
+    );
+}

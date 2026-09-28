@@ -3,6 +3,24 @@
   "source": "authored",
   "citation": "docs/mip/0004-agent-messaging.md, sections 2 to 5 and 13, and its table of what council v1 got wrong",
   "why": "What the message service does is a function of its participants, their groups, the logs and cursors, and whose inbox still answers, so it is data: each case is a script of steps by named callers, and each step is answered with one line. A caller is a Claude session (`session`, whose inbox socket is /tmp/cc-socks/<session>.sock), a name given with --as (`as`), or neither, which is the human. `dies` makes a session's inbox stop answering. Groups number their entries from 1, and creating one logs `created` and the creator's join before anything else.",
+  "v1": {
+    "why": "MIP-4 section 15 holds that each failure of council v1 that policy or delivery answers is a named case here. Each row of its table is listed by the table's first column, with the case that answers it, or with where it is answered instead; the driver reads the table and fails when the two disagree.",
+    "rows": [
+      {"failure": "Agents stuck waiting when others left", "case": "a wait returns when its member is addressed, whoever else has left"},
+      {"failure": "The last agent waiting forever on \"Moderator\"", "case": "the human's wait is answered by a post for the human"},
+      {"failure": "A post to a departed agent released every waiter at once", "case": "an addressed post wakes only its addressees, and every member can still read it"},
+      {"failure": "Agents unreachable once they started working", "case": "an agent at work is reached: its inbox is woken at once, and its hooks read at its next tool call"},
+      {"failure": "Leave cascades within 60 s of the first \"signing off\", in almost every session; one agent left on the turn it was told not to", "case": "a member of a directed council may not leave, and is told who may dismiss it"},
+      {"failure": "Joined agents asleep, with no way to tell (\"Hello\", \"Test\", no reply)", "case": "a participant whose inbox is gone is not woken"},
+      {"failure": "The human could not keep up and typed \"wait\"", "case": "a paused group's posts wake nobody, and resuming wakes each member once"},
+      {"failure": "The human spoke through agents' terminals", "elsewhere": "the transcript, a pane in the human's window (MIP-4, section 10), which is not the message service's to decide: muster-seam's a_message_for_the_human_notifies_once_and_lands_on_its_transcript"},
+      {"failure": "Multi-page pasted reviews", "elsewhere": "a body never travels through a PTY (MIP-4, section 4): muster-cli's a_body_comes_whole_from_a_file_or_stdin, and claude_code_doorbell's brief read whole"},
+      {"failure": "Hand-counted `--after N` on every post", "case": "a newcomer's reading starts when it joins, and the log still holds what came before"},
+      {"failure": "Turns spent only on passing the turn: \"Standing by\", \"Passing to Moderator\"", "case": "in a directed council a member's unaddressed post wakes only the director"},
+      {"failure": "An \"orchestrated mode\" that existed only as a sentence in the skill", "case": "a member of a directed council may address only the director and the human"},
+      {"failure": "482 test sessions in the real `~/.council`", "elsewhere": "every test's store is in its own scratch directory (MIP-4, section 15)"}
+    ]
+  },
   "cases": [
     {
       "name": "an unaddressed post wakes every member but its author",
@@ -334,7 +352,7 @@
     },
     {
       "name": "a newcomer's reading starts when it joins, and the log still holds what came before",
-      "why": "History from before a join is what log is for; counting it as unread would refuse the newcomer's first post (MIP-4, section 4).",
+      "why": "Council v1's CLI kept no cursor, so every post carried a hand-counted `--after N`. Each participant has a read cursor, which starts at its join: history from before is what `log` is for, and counting it as unread would refuse the newcomer's first post (MIP-4, section 4).",
       "given": { "steps": [
         {"session": "a", "do": "join", "name": "a", "group": "g"},
         {"session": "b", "do": "join", "name": "b", "group": "g"},
@@ -466,7 +484,7 @@
     },
     {
       "name": "the human's wait is answered by a post for the human",
-      "why": "A person's script waiting on a message is a wait like any other, and the windows are told as well, since the person may not be the one running it (MIP-4, sections 10 and 13).",
+      "why": "Council v1's last agent waited forever on \"Moderator\", since `await` never released on the human. The human is a participant like any other: a person's script waiting on a message is a wait like any other, and the windows are told as well, since the person may not be the one running it (MIP-4, sections 10 and 13).",
       "given": { "steps": [
         {"do": "join", "group": "g"},
         {"session": "a", "do": "join", "name": "a", "group": "g"},
@@ -1030,6 +1048,26 @@
         "a posted #4 to g; woke b",
         "b read g: #3 a joined | #4 a: one",
         "a posted #5 to g; woke b [g #5-5 x1 to-you:0 from a] rung p1"
+      ] }
+    },
+    {
+      "name": "an agent at work is reached: its inbox is woken at once, and its hooks read at its next tool call",
+      "why": "Council v1 delivered only to an agent blocked in `await`, so one that had started working was unreachable until it looped back. A wake goes to a session's inbox whatever it is doing, and an agent whose hooks fetch its messages reads them at its next tool call, without its pane being rung over its work (MIP-4, sections 5 and 6).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1", "pull": true},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "the lexer drops a token"},
+        {"session": "s1", "do": "read", "pane": "p1"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "b joined g (created)",
+        "c joined g",
+        "a joined g",
+        "a posted #5 to g; woke b, c [g #5-5 x1 to-you:0 from a]",
+        "b read g: #3 c joined | #4 a joined | #5 a: the lexer drops a token"
       ] }
     }
   ]

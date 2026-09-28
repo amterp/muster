@@ -732,7 +732,9 @@ nothing is rung while it is up, then answers it as a person would.
 Policy and delivery are functions of a log, a policy and presence, so they are conformance cases
 in `corpus/conformance/messaging.json`: given members, presence, a policy and a post, the expected
 append, refusal or wakes. Each row of the v1 table that policy or delivery answers is a named case.
-`muster-msg` runs them with in-memory adapters and no daemon.
+`muster-msg` runs them with in-memory adapters and no daemon. The file's `v1` rows name the case
+for each row of that table, or where a row is answered instead, and a test fails when they and
+the table disagree.
 
 The daemon tier runs the real daemon with its store in the test's scratch directory, so no test
 writes to a real `~/.muster`. Claude Code's inbox socket is an outside behavior, so it gets an
