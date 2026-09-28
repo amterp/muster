@@ -15,6 +15,26 @@ use prost::Message;
 #[test]
 fn the_pane_with_the_keyboard_hears_its_window_gain_and_lose_focus() {
     let _turn = muster::testing::fresh_session();
+    let (_daemon, heard) = a_window_focused_on_a_program_that_asked();
+    assert_ok(&dispatch(request::Payload::WindowFocus(WindowFocus { focused: false })));
+    holds(&heard, b"\x1b[I\x1b[O");
+}
+
+/// A report sent while the window has no connection to the daemon is dropped, so when the
+/// daemon comes back each of its panes is told again where it stands. A handoff is the
+/// reconnect a test can cause, and the program in the pane lives through it.
+#[test]
+fn a_daemon_that_comes_back_tells_the_pane_again_that_it_has_focus() {
+    let _turn = muster::testing::fresh_session();
+    let (mut daemon, heard) = a_window_focused_on_a_program_that_asked();
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), muster_daemon_proto::Outcome::Done, "{}", answer.reason);
+    holds(&heard, b"\x1b[I\x1b[I");
+}
+
+/// A program in a pane that asked to hear focus, in a window that has the keyboard on it and
+/// has just been focused. Returns where the program writes what it heard.
+fn a_window_focused_on_a_program_that_asked() -> (Daemon, std::path::PathBuf) {
     let daemon = Daemon::start_built();
     let heard = daemon.root().join("heard");
     let mut control = daemon.connect();
@@ -40,8 +60,7 @@ fn the_pane_with_the_keyboard_hears_its_window_gain_and_lose_focus() {
     // the focus this test gives it.
     assert_ok(&dispatch(request::Payload::WindowFocus(WindowFocus { focused: true })));
     holds(&heard, b"\x1b[I");
-    assert_ok(&dispatch(request::Payload::WindowFocus(WindowFocus { focused: false })));
-    holds(&heard, b"\x1b[I\x1b[O");
+    (daemon, heard)
 }
 
 fn holds(path: &Path, expected: &[u8]) {

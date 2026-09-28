@@ -3895,14 +3895,21 @@ fn tell_focus(focus: Vec<(Arc<AttachedPane>, bool)>) {
 
 /// A daemon came back, so the finishes this window reported seen to it may never have arrived.
 /// Attention takes them back and reports again whatever is on screen now; the rest are `done`
-/// again until somebody looks (`Attention::reconnected`).
+/// again until somebody looks (`Attention::reconnected`). A focus report sent while it was away
+/// was dropped too, so each of its panes is told again whether it has focus
+/// (`PaneFocus::reconnected`).
 fn report_again(daemon: &DaemonId) {
-    let noticed = {
+    let (noticed, focus) = {
         let mut session = poison::lock(&SESSION, "session");
         let noticed = session.attention.reconnected(daemon);
         session.report_seen(&noticed.reported);
-        noticed
+        let panes: Vec<PaneKey> = session.panes.get(daemon).map_or_else(Vec::new, |held| {
+            held.keys().map(|pane| PaneKey::new(daemon, pane)).collect()
+        });
+        let told = session.pane_focus.reconnected(panes);
+        (noticed, session.focus_reports(told))
     };
+    tell_focus(focus);
     for pane in &noticed.settled {
         announce_state(pane);
     }

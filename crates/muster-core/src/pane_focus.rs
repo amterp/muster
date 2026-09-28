@@ -48,6 +48,23 @@ impl PaneFocus {
         }
     }
 
+    /// A daemon came back, and what its panes were told while it was away may never have
+    /// arrived: a report sent with no connection is dropped. Answers each of `panes` with
+    /// whether it has focus now, the ones without it first, so every program hears where it
+    /// stands. One that already knew hears it twice, which a focus report allows.
+    pub fn reconnected(&self, panes: impl IntoIterator<Item = PaneKey>) -> Vec<(PaneKey, bool)> {
+        let focused = if self.window_focused { self.keyboard.as_ref() } else { None };
+        let mut told: Vec<(PaneKey, bool)> = panes
+            .into_iter()
+            .map(|pane| {
+                let has = Some(&pane) == focused;
+                (pane, has)
+            })
+            .collect();
+        told.sort_by_key(|(_, has)| *has);
+        told
+    }
+
     fn settle(&mut self) -> Vec<(PaneKey, bool)> {
         let focused = if self.window_focused { self.keyboard.clone() } else { None };
         if focused == self.told {
@@ -94,5 +111,21 @@ mod tests {
         focus.keyboard(Some(pane("p1")));
         focus.forget(&pane("p1"));
         assert_eq!(focus.keyboard(Some(pane("p2"))), [(pane("p2"), true)]);
+    }
+
+    /// Everything the window told the panes while their daemon was away may be lost, so a
+    /// reconnect tells each of them again, whichever way the keyboard moved meanwhile.
+    #[test]
+    fn a_reconnect_tells_every_pane_of_that_daemon_where_it_stands() {
+        let mut focus = PaneFocus::new();
+        focus.window_focused(true);
+        focus.keyboard(Some(pane("p1")));
+        focus.keyboard(Some(pane("p2")));
+        assert_eq!(
+            focus.reconnected([pane("p2"), pane("p1"), pane("p3")]),
+            [(pane("p1"), false), (pane("p3"), false), (pane("p2"), true)]
+        );
+        focus.window_focused(false);
+        assert_eq!(focus.reconnected([pane("p2")]), [(pane("p2"), false)]);
     }
 }
