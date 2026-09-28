@@ -21,8 +21,7 @@ public func startLogging() -> String? {
 
   guard environment["MUSTER_LOG"] != "0" else { return nil }
 
-  let directory = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent("Library/Logs/muster", isDirectory: true)
+  let directory = logDirectory(environment: environment)
   guard
     (try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true))
       != nil
@@ -39,6 +38,15 @@ public func startLogging() -> String? {
   pointLatestAt(path, in: directory)
   pruneSessions(in: directory)
   return path
+}
+
+/// Where a run's log goes when nothing names a file for it.
+///
+/// Takes its environment as a parameter so a test says what it is testing, as
+/// `musterHome(environment:)` does.
+func logDirectory(environment: [String: String]) -> URL {
+  FileManager.default.homeDirectoryForCurrentUser
+    .appendingPathComponent("Library/Logs/muster", isDirectory: true)
 }
 
 /// A stable name for the newest run.
