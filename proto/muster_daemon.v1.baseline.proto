@@ -1141,6 +1141,9 @@ message Handoff {
     // Whether the rules had read the report's state since it came: one they had lets go once
     // they read something else, where one they never read waits for the screen to move.
     bool report_confirmed = 30;
+    // How long ago the rules began reading every screen as a prompt they can see, which sets a
+    // working report aside.
+    optional uint32 blocker_ms_ago = 31;
   }
 
   message Ready {}

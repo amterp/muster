@@ -810,6 +810,7 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
             unmatched_ago: None,
             working_ago: Some(Duration::from_secs(30)),
             active_ago: vec![Duration::from_secs(2), Duration::from_secs(1)],
+            blocker_ago: Some(Duration::from_secs(3)),
         },
     };
     let now = Instant::now();
@@ -833,6 +834,7 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
                 unmatched_ago: None,
                 working_ago: Some(Duration::from_millis(30_100)),
                 active_ago: vec![Duration::from_millis(2100), Duration::from_millis(1100)],
+                blocker_ago: Some(Duration::from_millis(3100)),
             },
             ..carried
         }

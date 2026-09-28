@@ -62,13 +62,15 @@ pub(crate) struct SelfReport {
 }
 
 /// How far along drift is, for another process to go on from: how long ago each of its spans
-/// began, and the seconds of the last [`DRIFT`] in which the pane produced output.
+/// began, and the seconds of the last [`DRIFT`] in which the pane produced output. And how long
+/// a prompt has been on screen, which a working report is set aside for.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Drift {
     pub rules_idle_ago: Option<Duration>,
     pub unmatched_ago: Option<Duration>,
     pub working_ago: Option<Duration>,
     pub active_ago: Vec<Duration>,
+    pub blocker_ago: Option<Duration>,
 }
 
 #[derive(Debug, Default)]
@@ -155,7 +157,8 @@ impl Reporting {
     /// process has exited, for working after [`QUIET`] without output, and for blocked or idle
     /// after [`DISAGREE`] of the rules reading otherwise once they have read it the same way, or
     /// else after [`RESTLESS_SECONDS`] of output running. A working report is set aside, and
-    /// counts again after, while the rules have read a prompt on screen for [`DISAGREE`].
+    /// counts again after, while the rules have read a prompt on screen for [`DISAGREE`], or
+    /// from the moment it comes if the prompt was on screen already.
     pub(crate) fn in_force(
         &mut self,
         agent: Option<&Agent>,
@@ -179,8 +182,9 @@ impl Reporting {
             self.report = None;
             return None;
         }
-        let prompted =
-            self.blocker_since.is_some_and(|since| now.duration_since(since) >= DISAGREE);
+        let prompted = self
+            .blocker_since
+            .is_some_and(|since| since <= report.at || now.duration_since(since) >= DISAGREE);
         if report.state == State::Working && prompted {
             return None;
         }
@@ -264,6 +268,7 @@ impl Reporting {
             unmatched_ago: self.unmatched_since.map(ago),
             working_ago: self.working_since.map(ago),
             active_ago: self.active_seconds.iter().copied().map(ago).collect(),
+            blocker_ago: self.blocker_since.map(ago),
         }
     }
 
@@ -289,6 +294,7 @@ impl Reporting {
             unmatched_since: drift.unmatched_ago.and_then(at),
             working_since: drift.working_ago.and_then(at),
             active_seconds: drift.active_ago.into_iter().filter_map(at).collect(),
+            blocker_since: drift.blocker_ago.and_then(at),
             ..Reporting::default()
         }
     }

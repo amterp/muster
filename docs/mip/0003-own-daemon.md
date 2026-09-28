@@ -756,8 +756,9 @@ reader, which gives it to detection at once, and it counts until one of these:
 - for working, ten seconds pass with no output from the pane. A working agent animates something,
   and one interrupted mid-turn, which no hook reports, sits still at its prompt. This asks only
   that the screen move, not that a rule match it, so it holds when the rules have broken. While
-  a rule that sees a prompt on screen has read blocked for two seconds, a working report is set
-  aside, and counts again once the prompt goes: one sub-agent can ask permission while another's
+  a rule that sees a prompt on screen has read blocked for two seconds, or from the moment a
+  working report comes if the prompt was already up, the report is set aside, and counts again
+  once the prompt goes: one sub-agent can ask permission while another's
   tool calls go on reporting working, and the prompt is still waiting on you;
 - for blocked or idle that the rules have read the same way, since the report came or as it came,
   the rules read something else for two seconds. No hook says a prompt went: Esc and a denial run
