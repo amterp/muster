@@ -719,7 +719,13 @@ or was left behind. So before it ends such a turn the agent reports what it is w
 `finished_unseen` is not set, and declaring it clears one already set. It lasts until the agent's
 next turn: the first working or waiting on you after the pane reads idle, whether a person
 prompted it or the finished work woke it. The turn that declared it keeps it, which matters because
-declaring it is itself a tool call, and a hook reports working after every tool. The daemon logs
+declaring it is itself a tool call, and a hook reports working after every tool. Two waits outlive
+their work for the same reason. One the agent finishes within the turn that declared it still
+stands when that turn ends, and one on work that never wakes the agent, a CI run elsewhere, stands
+until somebody prompts it; either way the pane is not called done. Telling a declaration the
+agent went on from apart from the working reports that follow any tool call, a background
+sub-agent's included, would need the hooks to say which call each came from, so the limit is
+documented instead: the agent is told to declare it last. The daemon logs
 `daemon.agent.turn_ended` at debug with whether the agent had declared a wait, so how often agents
 do can be counted from the run log.
 

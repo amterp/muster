@@ -45,7 +45,8 @@ count sub-agents, and `SessionStart` forgets the last session's facts when a new
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Claude Code ends
 a turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`.
 Muster then holds off calling the pane done until its next turn. An agent that forgets reads as
-done, as before.
+done, as before. One that declares a wait and then finishes the work in the same turn, or waits
+on something that never wakes it, reads as waiting until it is next prompted.
 
 Muster takes a report for the pane in `$MUSTER_PANE`, whichever process sent it. A `claude -p`
 that Claude Code starts from its Bash tool inherits that, and with the plugin installed at user

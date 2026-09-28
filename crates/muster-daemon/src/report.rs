@@ -31,7 +31,8 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
     reported before, and applies first. --waiting says what the agent ended its turn to wait \
     on, work it started itself; it lasts until the agent's next turn, and an empty one clears \
-    it. --state is the agent's own word on what it is doing, \
+    it. Declare it as the last thing before ending the turn: work that finishes within the \
+    turn, or that never wakes the agent, leaves the pane waiting until the next one. --state is the agent's own word on what it is doing, \
     which outranks what detection reads off its screen while fresh; --agent names the agent, \
     as its detection manifest does (claude), and the state counts only while that agent is \
     the pane's.";
