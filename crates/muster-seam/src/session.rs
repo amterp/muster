@@ -40,7 +40,9 @@ use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_daemon_client::backend::{DaemonBackend, DaemonInput};
 use muster_daemon_client::follow::{Follower, Following, Notice};
-use muster_daemon_client::{environment, install as remote_install, launch, records, remote};
+use muster_daemon_client::{
+    environment, handover, install as remote_install, launch, records, remote,
+};
 use muster_daemon_proto::install;
 use muster_ssh::{Forward, State as TunnelState, Tunnel, remote_environment};
 
@@ -531,6 +533,164 @@ struct Reached {
     tunnel: Option<Tunnel>,
     /// Whether Muster started it, rather than finding it already answering.
     started: bool,
+    /// What to ask of a daemon found running that is older than the one this build carries.
+    handover: Option<Handover>,
+}
+
+/// An older daemon's panes, to be handed to this build's daemon once the window follows it.
+#[derive(Debug)]
+struct Handover {
+    /// The daemon to hand them to, on the machine the older one is on.
+    program: PathBuf,
+    data: Option<PathBuf>,
+    /// The version the older daemon said it is.
+    running: String,
+}
+
+/// What to ask of a daemon Muster found running rather than started, by how its version
+/// compares with the one this build carries (`handover::age`).
+///
+/// Only a daemon Muster manages is asked: one found at the socket this install's daemon uses.
+/// A socket somebody named in the config is somebody's own daemon, and replacing it is not
+/// Muster's decision.
+fn handover_for(
+    daemon: &DaemonId,
+    welcome: &muster_daemon_proto::Welcome,
+    program: PathBuf,
+    data: Option<PathBuf>,
+) -> Option<Handover> {
+    let running = welcome.daemon_version.clone();
+    match handover::age(&running) {
+        handover::Age::Older => Some(Handover { program, data, running }),
+        handover::Age::Same => None,
+        handover::Age::Newer => {
+            log::info(
+                "daemon.newer",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "running" => &running,
+                    "ours" => handover::OURS,
+                },
+            );
+            None
+        }
+        handover::Age::Unreadable => {
+            log::warn(
+                "daemon.version_unreadable",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "running" => &running,
+                    "impact" => "it is adopted as it is and not asked to hand its panes to this \
+                                 build's daemon, so fixes in that daemon do not reach them",
+                    "check" => "which program is serving the socket; a daemon built by Muster \
+                                always says a version of three numbers",
+                },
+            );
+            None
+        }
+    }
+}
+
+/// What to ask of an older daemon found running on another machine: `handover_for`, with this
+/// build's daemon installed there first, since the older daemon is what runs it. A failed
+/// install costs the handoff and nothing else, because the older daemon is serving already.
+fn remote_handover(
+    daemon: &DaemonId,
+    welcome: &muster_daemon_proto::Welcome,
+    tunnel: &Tunnel,
+    installed: &remote::Installed,
+    carried: &remote_install::Carried,
+) -> Option<Handover> {
+    let handover = handover_for(daemon, welcome, installed.binary.clone(), None)?;
+    if let Err(detail) = remote::install(&tunnel.remote(), installed, carried) {
+        log::warn(
+            "daemon.handover.uninstalled",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "detail" => detail,
+                "impact" => "the older daemon there keeps serving, and is not asked to hand its \
+                             panes over this launch",
+                "check" => "that machine's disk space and its home directory",
+            },
+        );
+        return None;
+    }
+    Some(handover)
+}
+
+/// Asks an older daemon, on a thread of its own, to hand its panes to this build's daemon.
+///
+/// Off the window's way, because the new daemon's first launch can take most of a minute. The
+/// follower already connected hears `Replaced` and connects again by itself. A refusal is said
+/// once, as a problem, and not asked again until the next launch: the daemon that refused keeps
+/// every pane exactly as it was, and asking again in a loop would only repeat the refusal.
+fn hand_over_later(daemon: &DaemonId, socket: String, handover: Handover) {
+    let daemon = daemon.clone();
+    let spawned =
+        std::thread::Builder::new().name(format!("muster-handover-{daemon}")).spawn(move || {
+            log::info(
+                "daemon.handover.asking",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "running" => &handover.running,
+                    "ours" => handover::OURS,
+                    "program" => handover.program.display().to_string(),
+                },
+            );
+            match handover::hand_over(
+                Path::new(&socket),
+                &handover.program,
+                handover.data.as_deref(),
+            ) {
+                Ok(serving) => log::info(
+                    "daemon.handed_over",
+                    fields! {
+                        "daemon" => daemon.to_string(),
+                        "from" => &handover.running,
+                        "to" => serving.daemon_version,
+                    },
+                ),
+                Err(refusal) => {
+                    log::warn(
+                        "daemon.handover.refused",
+                        fields! {
+                            "daemon" => daemon.to_string(),
+                            "running" => &handover.running,
+                            "ours" => handover::OURS,
+                            "detail" => &refusal,
+                            "impact" => "the older daemon keeps serving every pane as it was; \
+                                         fixes in the newer daemon do not reach them until it \
+                                         is handed over or restarted",
+                            "check" => "the older daemon's log beside its socket, which says \
+                                        why it refused; Muster asks again at its next launch",
+                        },
+                    );
+                    raise_problem(
+                        &format!("handover:{daemon}"),
+                        Severity::Warning,
+                        &format!(
+                            "The daemon {daemon} is version {} and this Muster carries {}, and \
+                             it would not hand its panes to the newer one: {refusal}. Its panes \
+                             keep running and nothing in them is lost; the newer daemon's fixes \
+                             reach them only once it hands over, which Muster asks for again \
+                             at its next launch.",
+                            handover.running,
+                            handover::OURS,
+                        ),
+                    );
+                }
+            }
+        });
+    if let Err(error) = spawned {
+        log::warn(
+            "daemon.handover.unasked",
+            fields! {
+                "error" => error.to_string(),
+                "impact" => "an older daemon goes on serving without being asked to hand over",
+                "check" => "whether this process has run out of threads",
+            },
+        );
+    }
 }
 
 /// What every pane this window makes is handed beyond what its daemon gives it: the window's own
@@ -547,7 +707,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
         // A socket somebody named is a daemon somebody chose. Taken as asked for, and left
         // alone: this is the deliberate way out of the arrangement below.
         Endpoint::Local { socket_path: Some(path) } => {
-            Ok(Reached { socket_path: path.clone(), tunnel: None, started: false })
+            Ok(Reached { socket_path: path.clone(), tunnel: None, started: false, handover: None })
         }
         Endpoint::Local { socket_path: None } => {
             let inherited: BTreeMap<String, String> = std::env::vars().collect();
@@ -571,12 +731,17 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 commands_path().as_deref(),
             );
             let data = poison::lock(&DAEMON_DATA, "daemon-data").clone();
-            let (reached, _) = launch::ensure_running(&launch::Launch {
+            let (reached, welcome) = launch::ensure_running(&launch::Launch {
                 binary: binary.as_ref(),
                 data: data.as_deref().map(Path::new),
                 socket: &socket,
                 environment: &given,
             })?;
+            let handover = (reached == launch::Reached::Adopted)
+                .then(|| {
+                    handover_for(daemon, &welcome, binary.clone().into(), data.map(Into::into))
+                })
+                .flatten();
             let socket_path = socket.display().to_string();
             // Written down only when Muster started it. An adopted daemon belongs to whoever
             // started it, and offering it in Muster's own census would be offering somebody a
@@ -585,7 +750,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             if started && let Some(directory) = daemon_records_path() {
                 records::started(&directory, &socket_path);
             }
-            Ok(Reached { socket_path, tunnel: None, started })
+            Ok(Reached { socket_path, tunnel: None, started, handover })
         }
         // Somebody's own daemon on another machine: forwarded as asked for, and left alone.
         Endpoint::Ssh { host, options, socket_path: Some(path) } => {
@@ -594,6 +759,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 socket_path: tunnel.local_socket_path().to_string(),
                 tunnel: Some(tunnel),
                 started: false,
+                handover: None,
             })
         }
         // The arrangement the local arm has, one machine further away: whatever is installed
@@ -614,17 +780,22 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             let tunnel =
                 open_tunnel(daemon, host, options, installed.socket.display().to_string())?;
             let local = PathBuf::from(tunnel.local_socket_path());
-            let (reached, _) = remote::ensure_running(
+            let carried = carried();
+            let (reached, welcome) = remote::ensure_running(
                 &tunnel.remote(),
                 &installed,
-                &carried(),
+                &carried,
                 &local,
                 &environment::for_far_daemon(&far),
             )?;
+            let handover = (reached == launch::Reached::Adopted)
+                .then(|| remote_handover(daemon, &welcome, &tunnel, &installed, &carried))
+                .flatten();
             Ok(Reached {
                 socket_path: tunnel.local_socket_path().to_string(),
                 tunnel: Some(tunnel),
                 started: reached == launch::Reached::Started,
+                handover,
             })
         }
     }
@@ -3174,7 +3345,9 @@ fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
 }
 
 fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> {
-    let reached = reach(&daemon.id, &daemon.endpoint).map_err(Unattached::Failed)?;
+    let mut reached = reach(&daemon.id, &daemon.endpoint).map_err(Unattached::Failed)?;
+    let handover = reached.handover.take();
+    let socket = reached.socket_path.clone();
     log::info(
         "daemon.attached",
         fields! {
@@ -3217,6 +3390,9 @@ fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> 
             daemon.id,
             FIRST_SNAPSHOT.as_secs()
         )));
+    }
+    if let Some(handover) = handover {
+        hand_over_later(&daemon.id, socket, handover);
     }
     Ok(())
 }

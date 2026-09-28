@@ -226,6 +226,15 @@ impl Control {
         self.ask(follow_log(after))
     }
 
+    /// Asks the daemon to hand every pane to `program`, started with `data` as its data
+    /// directory, or with whatever it finds for itself when there is none (MIP-3, section 10).
+    pub fn replace(&self, program: &Path, data: Option<&Path>) -> Pending {
+        self.ask(session(session_request::Request::Replace(session_request::Replace {
+            program: Some(program.display().to_string()),
+            data: data.map(|data| data.display().to_string()),
+        })))
+    }
+
     pub fn set_palette(&self, palette: proto::Palette) -> Pending {
         self.ask(session(session_request::Request::SetPalette(proto::SetPalette {
             palette: Some(palette),

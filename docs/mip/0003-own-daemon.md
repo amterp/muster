@@ -896,6 +896,19 @@ the daemon is stopping, while it is still restoring its saved tabs (it holds les
 while another handoff is under way. `muster-daemon replace` asks for it by hand; the app asks when it
 finds an older daemon running.
 
+**When the app asks.** Once, when it adopts a daemon at the socket its own install uses - never one
+somebody named in the config, which is theirs to replace - and only when that daemon's `daemon_version`
+is older than the one the app carries, compared as `major.minor.patch` numbers with anything after a
+`-` or `+` ignored. An equal version is left alone, since two development builds share one and
+handing over between them at every launch would buy no fix; a newer one is left alone and logged; a
+version that does not read is left alone and warned about. The window follows the older daemon at
+once, and the request is made on a thread of its own once it does, so the new daemon's first launch
+never holds the window: the panes are there throughout, and come back through the ordinary reconnect
+when the new daemon serves. On a machine attached over ssh, this build's daemon is installed there
+first, because the older daemon is what runs it. A refusal is said once, as a warning in the
+window's problems with the daemon's reason, and the older daemon goes on serving; the app asks again
+at its next launch, not in a loop.
+
 **A launch first.** Before it touches anything, the old daemon runs the program once with
 `--version` and waits up to a minute for it to exit well, logging how long it took as
 `daemon.handoff.launched`. A program that cannot start - a bad build, a missing library - is refused

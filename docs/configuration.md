@@ -472,7 +472,8 @@ process itself rather than on a system shell that runs it.
 **Both work on a devenv too**, where the daemon reads that machine's own
 `~/.muster/agent-detection/`. A `[[daemon]]` with a `host` starts the daemon of this Muster's
 version over there, `~/.muster/daemon/<version>/muster-daemon` with its data beside it, or reuses
-one still running from last time, agents and all. The first time, or when that directory holds
+one still running from last time, agents and all. One left running by an older Muster is asked to
+hand its panes to the new daemon, which keeps every agent running; the same happens on this machine. The first time, or when that directory holds
 another build, Muster copies its own daemon there over the same ssh connection; nothing is
 downloaded. Linux on x86_64 or aarch64 and macOS on Apple silicon are the machines it carries a
 daemon for, and the run log says so for any other. Naming a `socket` in a `[[daemon]]` block still attaches whatever is

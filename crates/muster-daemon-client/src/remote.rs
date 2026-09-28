@@ -125,11 +125,7 @@ pub fn ensure_running(
         }
     }
 
-    let (platform, stamp, executable) = survey(remote, installed)?;
-    let payload = carried.payload(remote.host(), &platform)?;
-    if !executable || stamp != payload.stamp {
-        put_there(remote, installed, &payload)?;
-    }
+    install(remote, installed, carried)?;
 
     log::info(
         "daemon.remote.starting",
@@ -200,6 +196,19 @@ pub fn ensure_running(
 
 /// What the machine is, which build is installed there, and whether its daemon can run: one
 /// round trip, since every step before a start is a wait somebody sees.
+/// Puts this build's daemon where `installed` says, unless the one there is already it.
+///
+/// Part of starting a daemon, and on its own for handing an older one's panes to it: the older
+/// daemon runs the new one, so it has to be there first.
+pub fn install(remote: &impl Far, installed: &Installed, carried: &Carried) -> Result<(), String> {
+    let (platform, stamp, executable) = survey(remote, installed)?;
+    let payload = carried.payload(remote.host(), &platform)?;
+    if !executable || stamp != payload.stamp {
+        put_there(remote, installed, &payload)?;
+    }
+    Ok(())
+}
+
 fn survey(remote: &impl Far, installed: &Installed) -> Result<(Platform, String, bool), String> {
     let said = remote.shell(&format!(
         "printf '%s\\n' \"$(uname -sm)\" \"$(cat {} 2>/dev/null)\"; \
