@@ -315,8 +315,8 @@ impl Attention {
     /// window still have it, and returns the ones whose presentation that changed. Nothing is
     /// reported again at once, since a daemon still refusing would refuse that too: the next
     /// look reports it, as [`Attention::reconnected`] does for a daemon that comes back.
-    pub fn refused(&mut self, _panes: &[PaneKey]) -> Vec<PaneKey> {
-        Vec::new()
+    pub fn refused(&mut self, panes: &[PaneKey]) -> Vec<PaneKey> {
+        panes.iter().filter(|pane| self.reported.remove(*pane)).cloned().collect()
     }
 
     /// Reports every finished pane now being looked at, and takes back what any on-screen

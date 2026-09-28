@@ -188,11 +188,33 @@ impl Follower {
     /// Tells the daemon a window with the keyboard is showing these panes, and says whether it
     /// was sent. Not held for a later connection: what a window is showing then is reported
     /// again when it comes back (`muster_core::attention`).
-    pub fn seen(&self, panes: &[PaneId]) -> bool {
+    ///
+    /// Calls `refused`, on a thread of its own, if the daemon refuses, as one partway through a
+    /// handoff does. A handoff that fails keeps this connection, so nothing else would say the
+    /// report never landed.
+    pub fn seen(&self, panes: &[PaneId], refused: impl FnOnce() + Send + 'static) -> bool {
         let Some(control) = self.connection.control() else {
             return false;
         };
-        control.seen(panes.iter().map(ToString::to_string).collect());
+        let answer = control.seen(panes.iter().map(ToString::to_string).collect());
+        let waiting =
+            std::thread::Builder::new().name("muster-seen".to_string()).spawn(move || {
+                let answered = answer.wait(PATIENCE);
+                if answered.is_ok_and(|answer| answer.outcome() == proto::Outcome::Refused) {
+                    refused();
+                }
+            });
+        if let Err(error) = waiting {
+            log::warn(
+                "daemon.seen.unwatched",
+                fields! {
+                    "error" => error.to_string(),
+                    "impact" => "the report was sent, but a refusal of it would go unnoticed, \
+                                 leaving these panes idle here while the daemon has them done",
+                    "check" => "whether this process has run out of threads",
+                },
+            );
+        }
         true
     }
 

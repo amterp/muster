@@ -1263,8 +1263,11 @@ impl Session {
             by_daemon.entry(&pane.daemon).or_default().push(pane.pane.clone());
         }
         for (daemon, panes) in by_daemon {
-            let sent =
-                self.backends.get(daemon).is_some_and(|backend| backend.follower.seen(&panes));
+            let keys: Vec<PaneKey> = panes.iter().map(|pane| PaneKey::new(daemon, pane)).collect();
+            let sent = self
+                .backends
+                .get(daemon)
+                .is_some_and(|backend| backend.follower.seen(&panes, move || seen_refused(&keys)));
             log::info(
                 "attention.seen",
                 fields! {
@@ -3994,6 +3997,25 @@ fn report(daemon: &DaemonId, change: &Change) {
     }
     if let Change::PaneRemoved(pane) = change {
         watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
+    }
+}
+
+/// A daemon refused this window's report that it saw these panes, so they are `done` here again,
+/// as they still are on the daemon (`Attention::refused`).
+fn seen_refused(panes: &[PaneKey]) {
+    let settled = poison::lock(&SESSION, "session").attention.refused(panes);
+    log::warn(
+        "attention.seen.refused",
+        fields! {
+            "panes" => panes.iter().map(ToString::to_string).collect::<Vec<String>>().join(","),
+            "impact" => "these panes read done again in this window, as they do on their daemon \
+                         and in every other window, until somebody looks at them again",
+            "check" => "a daemon refuses changes while it hands its panes to another; its log \
+                        says whether that handoff failed, and why",
+        },
+    );
+    for pane in &settled {
+        announce_state(pane);
     }
 }
 

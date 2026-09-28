@@ -218,7 +218,10 @@ A finish on a seen pane is `idle` at once; anywhere else it is `done` until some
 bringing a pane on screen both settle it. The window paints a pane it has just reported as `idle` before the daemon
 answers, so the border never contradicts somebody reading the pane for a round trip. Looking away does not un-see what
 was already seen. A daemon that reconnects may never have heard a report, so the window takes its reports to that
-daemon back: what is on screen is reported again, and the rest read `done` until somebody looks.
+daemon back: what is on screen is reported again, and the rest read `done` until somebody looks. A report the daemon
+refuses, as it refuses every change partway through a handoff, is taken back the same way, and the pane reads `done`
+until the next look reports it again. It is not sent again at once, since a daemon still handing over would refuse
+that too.
 
 **One legend, and the window holds it.** working cyan, blocked orange, done green, idle grey, and unknown a fainter
 grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person

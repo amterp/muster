@@ -302,6 +302,28 @@ fn a_setting_refused_during_a_failed_handoff_goes_with_the_next_change() {
     );
 }
 
+/// A report that the window saw a pane, refused while the daemon was handing its panes over,
+/// is said to have been refused, so the window can show the pane `done` again.
+#[test]
+fn a_refused_seen_is_reported_back() {
+    let mut daemon = Daemon::start_with(
+        muster_harness::built_daemon(),
+        &[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready,exit-before-ready")],
+    );
+    let followed = follow(&daemon);
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+
+    let (tell, told) = std::sync::mpsc::channel();
+    let sent = followed.follower.seen(&[PaneId::new("p1seen0000")], move || {
+        let _ = tell.send(());
+    });
+    assert!(sent, "the report was not sent");
+    told.recv_timeout(Duration::from_secs(10)).expect("the refusal was never reported");
+    daemon.resume();
+    daemon.finish_replacing(replacing);
+}
+
 /// A daemon Muster started is in the census with what it holds, asked of it rather than read
 /// from the record.
 #[test]
