@@ -1,8 +1,9 @@
 //! The flow MIP-4 section 14 moves off `muster pane send`, against the Claude Code installed on
 //! this machine: an integrator makes a pane running Claude, posts it a long brief before the
 //! session has even shown its prompt, and the agent - started bypassing permission prompts, as
-//! workers are, so its inbox would hold the wake - is rung in its pane once it is idle, reads
-//! the brief whole, and answers with a message that wakes the integrator.
+//! workers are, so its inbox would hold the wake - is rung in its pane once its prompt is up and
+//! empty, reads the brief whole, and answers with a message that wakes the integrator. A trust
+//! dialog in between is left unrung, and answered by the test as a person would.
 //!
 //! Ignored by the gate, which may not reach the network; `./dev --claude-code` runs it.
 
@@ -16,6 +17,8 @@ use crate::claude_code_inbox::{log_of, until_turns};
 use crate::claude_code_live::{how_to_run, quoted, until_ready};
 use crate::support::*;
 use muster_harness::Input;
+use proto::input_event::{self, Input as Event};
+use proto::session_request;
 
 /// About the size of a brief the integrator writes: past the length at which Claude Code folds
 /// a paste into a placeholder, and under what its Bash tool shows of a command's output.
@@ -96,10 +99,14 @@ fn a_brief_posted_to_a_new_claude_pane_is_rung_read_whole_and_answered() {
             .output()
             .expect("the muster binary runs")
     };
+    // Everything the daemon logs from before the post on, to see what it typed and when.
+    let mut logging = daemon.connect();
+    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
     let joined = integrator(&["msg", "join", "--name", "integrator"]);
     assert!(joined.status.success(), "{}", String::from_utf8_lossy(&joined.stderr));
     // Posted before the session has shown its prompt, let alone had its folder trusted: the ring
-    // waits for an idle agent, however long that takes.
+    // waits for an empty prompt, however long that takes.
     let posted =
         integrator(&["msg", "post", "--to", "worker", "--file", &brief_file.display().to_string()]);
     let said = String::from_utf8_lossy(&posted.stdout);
@@ -110,7 +117,7 @@ fn a_brief_posted_to_a_new_claude_pane_is_rung_read_whole_and_answered() {
     );
     eprintln!("claude-code: the post said: {said}");
 
-    until_ready(&mut control, &mut input, "worker");
+    answer_trust_unrung(&mut control, &mut logging, &mut input, "worker");
     let group = "integrator+worker";
     let answered = until_turns(Duration::from_mins(5), "the worker answering", || {
         log_of(&mut control, group).iter().any(|line| line == &format!("worker: got {nonce}"))
@@ -128,6 +135,52 @@ fn a_brief_posted_to_a_new_claude_pane_is_rung_read_whole_and_answered() {
         BufReader::new(connection).lines().next()?.ok()
     });
     assert!(told.contains(&format!("[muster] {group}: 1 new")), "the integrator was told {told}");
+}
+
+/// How long a trust dialog is watched for a ring before it is answered: past detection's grace
+/// for a new agent and the doorbell's quiet period, both three seconds.
+const RINGS_WITHIN: Duration = Duration::from_secs(8);
+
+/// Once Claude Code shows its trust dialog or its prompt: a dialog is watched for a ring for
+/// [`RINGS_WITHIN`], and then answered as a person would answer it. `logging` follows the
+/// daemon's log from before the post.
+fn answer_trust_unrung(
+    control: &mut Control,
+    logging: &mut Control,
+    input: &mut Input,
+    pane: &str,
+) {
+    if !until_prompt_or_trust(control, pane) {
+        eprintln!("claude-code: no trust dialog showed, so none was left unrung");
+        return;
+    }
+    let logged = logging.logged_until("msg.rang", RINGS_WITHIN);
+    let rang: Vec<&str> = logged
+        .iter()
+        .map(|line| line.line.as_str())
+        .filter(|line| line.contains("\"msg.rang\"") || line.contains("msg.ring.pressed_again"))
+        .collect();
+    assert!(rang.is_empty(), "the doorbell rang the trust dialog: {rang:?}");
+    eprintln!(
+        "claude-code: nothing was rung for {}s at the trust dialog; answering it",
+        RINGS_WITHIN.as_secs()
+    );
+    input.send(pane, Event::Send(input_event::Send { text: String::new(), enter: true }));
+}
+
+/// Waits until Claude Code shows its trust dialog or its prompt, and says whether it was the
+/// dialog.
+fn until_prompt_or_trust(control: &mut Control, pane: &str) -> bool {
+    until_some(&format!("{pane} to show its trust dialog or its prompt"), || {
+        let screen = read_text(control, pane, 0, 0).text;
+        if screen.contains("trust") && screen.contains("folder") {
+            Some(true)
+        } else if screen.contains("? for shortcuts") || screen.contains('❯') {
+            Some(false)
+        } else {
+            None
+        }
+    })
 }
 
 /// A brief as long as an integrator's, whose last line holds the word the answer must carry.
