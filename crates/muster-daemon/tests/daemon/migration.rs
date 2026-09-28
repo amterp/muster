@@ -131,9 +131,35 @@ fn exists(reference: &str) -> Result<(), String> {
     let text =
         std::fs::read_to_string(Path::new(REPO).join(file)).map_err(|error| format!("{error}"))?;
     let declared = if Path::new(file).extension().is_some_and(|extension| extension == "rs") {
-        text.contains(&format!("fn {name}("))
+        is_a_test(&text, name)
     } else {
         text.contains(&format!("func {name}(")) || text.contains(&format!("@Test(\"{name}\""))
     };
     if declared { Ok(()) } else { Err("no test by that name in it".to_string()) }
+}
+
+/// Whether `text` declares a test called `name`: a `fn` whose attributes, which may be several,
+/// include `#[test]`. A helper of the same name is not a test, and a verdict pinned to one would
+/// be checked by nothing.
+fn is_a_test(text: &str, name: &str) -> bool {
+    let lines: Vec<&str> = text.lines().collect();
+    lines.iter().enumerate().any(|(at, line)| {
+        let line = line.trim_start();
+        let declares = line.strip_prefix("fn ").or_else(|| line.strip_prefix("pub fn "));
+        declares.is_some_and(|rest| rest.starts_with(&format!("{name}(")))
+            && lines[..at]
+                .iter()
+                .rev()
+                .map(|line| line.trim())
+                .take_while(|line| line.starts_with("#["))
+                .any(|line| line == "#[test]")
+    })
+}
+
+#[test]
+fn a_verdict_pinned_to_a_helper_is_pinned_to_nothing() {
+    let text = "#[test]\n#[ignore]\nfn checked() {}\n\n/// A helper.\nfn helped() {}\n";
+    assert!(is_a_test(text, "checked"));
+    assert!(!is_a_test(text, "helped"));
+    assert!(!is_a_test(text, "check"), "a prefix is a different name");
 }
