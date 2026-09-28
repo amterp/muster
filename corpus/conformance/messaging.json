@@ -429,6 +429,40 @@
         "builder read nothing",
         "critic read nothing"
       ] }
+    },
+    {
+      "name": "a session that takes over a name is woken, whatever the old one was told",
+      "why": "A wake went to the old session, which exited before reading; the session that comes back under its name has been woken for nothing yet (MIP-4, section 3, Coming back).",
+      "given": { "steps": [
+        {"session": "s1", "do": "join", "name": "builder", "group": "g"},
+        {"session": "s2", "do": "join", "name": "director", "group": "g"},
+        {"session": "s2", "do": "post", "body": "one"},
+        {"session": "s1", "do": "dies"},
+        {"session": "s3", "do": "join", "name": "builder"},
+        {"session": "s2", "do": "post", "body": "two"}
+      ] },
+      "expect": { "said": [
+        "builder joined g (created)",
+        "director joined g",
+        "director posted #4 to g; woke builder [g #4-4 x1 to-you:0 from director]",
+        "died",
+        "builder registered (took over)",
+        "director posted #5 to g; woke builder [g #4-5 x2 to-you:0 from director]"
+      ] }
+    },
+    {
+      "name": "joining under a default name that a gone session held says it took over",
+      "why": "A resumed session in the same directory comes back under its old name, cursors included, and is told so as it would be with --name (MIP-4, section 3).",
+      "given": { "steps": [
+        {"session": "s1", "do": "read", "directory": "/src/muster-5"},
+        {"session": "s1", "do": "dies"},
+        {"session": "s2", "do": "join", "directory": "/src/muster-5"}
+      ] },
+      "expect": { "said": [
+        "muster-5 read nothing",
+        "died",
+        "muster-5 registered (took over)"
+      ] }
     }
   ]
 }
