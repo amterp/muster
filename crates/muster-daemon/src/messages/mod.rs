@@ -812,6 +812,10 @@ fn words(refusal: &Refusal) -> String {
              machines only while a Muster window is attached to both, and its connection to \
              {machine} may have dropped. Groups kept on this machine still work"
         ),
+        Refusal::KeptElsewhere { group, machine } => format!(
+            "{group} is kept on {machine}, so its members, policy and pause are changed there, \
+             with `muster msg` on {machine}; this machine only holds a copy"
+        ),
         Refusal::NotAParticipant { name } => format!(
             "{} not taking part, so there is nothing to leave",
             name.as_ref().map_or("this session is".to_string(), |name| format!("{name} is"))

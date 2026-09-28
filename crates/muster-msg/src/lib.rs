@@ -18,7 +18,7 @@ mod store;
 
 pub use across::{Answered, Applied, Away, Call, Caught, Peer, Reply, Route, Settled, Tell};
 pub use entry::{Change, Entry, What};
-pub use names::{HUMAN, LONGEST_GROUP, default_name, pair_group, split_machine};
+pub use names::{HUMAN, LONGEST_GROUP, default_name, is_machine, pair_group, split_machine};
 pub use policy::Policy;
 pub use refusal::{Action, Refusal};
 pub use service::{

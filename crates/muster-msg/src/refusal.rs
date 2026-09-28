@@ -42,6 +42,12 @@ pub enum Refusal {
         group: String,
         machine: String,
     },
+    /// The group is kept on another machine, whose daemon changes its policy and members: this
+    /// one holds a replica (MIP-4, section 11).
+    KeptElsewhere {
+        group: String,
+        machine: String,
+    },
     /// The caller is not a participant at all, so there is nothing to leave. `name` is what it
     /// called itself, when it did.
     NotAParticipant {
@@ -109,6 +115,7 @@ impl Refusal {
             Refusal::WhichParticipant { .. } => "which_participant",
             Refusal::NoSharedGroup { .. } => "no_shared_group",
             Refusal::Unreachable { .. } => "unreachable",
+            Refusal::KeptElsewhere { .. } => "kept_elsewhere",
             Refusal::NotAParticipant { .. } => "not_a_participant",
             Refusal::NotAMember { .. } => "not_a_member",
             Refusal::AddresseeNotInGroup { .. } => "addressee_not_in_group",

@@ -130,7 +130,9 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::WhichParticipant { name, candidates } => {
             format!("{name} {}", candidates.join(","))
         }
-        Refusal::Unreachable { group, machine } => format!("{group} {machine}"),
+        Refusal::Unreachable { group, machine } | Refusal::KeptElsewhere { group, machine } => {
+            format!("{group} {machine}")
+        }
         Refusal::NotAParticipant { name } => {
             name.clone().unwrap_or_else(|| "this session".to_string())
         }

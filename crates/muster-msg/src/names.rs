@@ -21,10 +21,33 @@ pub(crate) fn check_participant(name: &str) -> Result<(), Refusal> {
     }
 }
 
+/// Who a post may be addressed to: a participant's name, or one on another machine as
+/// `name@machine` (MIP-4, section 11).
+pub(crate) fn check_addressee(name: &str) -> Result<(), Refusal> {
+    match split_machine(name) {
+        Some((base, machine)) if check_participant(base).is_ok() && is_machine(machine) => Ok(()),
+        Some(_) => Err(Refusal::BadName { name: name.to_string() }),
+        None => check_participant(name),
+    }
+}
+
+/// Whether `name` can name a machine: the characters a participant's name may hold.
+pub fn is_machine(name: &str) -> bool {
+    !name.is_empty() && name.len() <= LONGEST && name.chars().all(allowed)
+}
+
 /// A name another machine's member or group goes by here, split into its own name and the
-/// machine's.
-pub fn split_machine(_name: &str) -> Option<(&str, &str)> {
-    None
+/// machine's: `critic@devenv` is `critic` on `devenv`, and `@human@laptop` the human on
+/// `laptop`. `@human` alone names no machine.
+pub fn split_machine(name: &str) -> Option<(&str, &str)> {
+    let (base, machine) = name.rsplit_once('@')?;
+    (!base.is_empty() && !machine.is_empty()).then_some((base, machine))
+}
+
+/// Whether `name` is the human: this machine's, or another's as `@human@machine`. There is
+/// one person, homed where the app runs, so a policy's `@human` means the human on any machine.
+pub(crate) fn is_human(name: &str) -> bool {
+    name == HUMAN || split_machine(name).is_some_and(|(base, _)| base == HUMAN)
 }
 
 /// A group name is a participant name, or several joined by `+` (see [`pair_group`]).
@@ -74,6 +97,21 @@ mod tests {
         assert_eq!(default_name(Some("/tmp/my project")), "my-project");
         assert_eq!(default_name(Some("/")), "agent");
         assert_eq!(default_name(None), "agent");
+    }
+
+    #[test]
+    fn a_name_from_another_machine_splits_at_its_last_at() {
+        assert_eq!(split_machine("critic@devenv"), Some(("critic", "devenv")));
+        assert_eq!(split_machine("@human@laptop"), Some(("@human", "laptop")));
+        assert_eq!(split_machine("@human"), None);
+        assert_eq!(split_machine("critic"), None);
+        assert_eq!(split_machine("@human+builder"), None);
+        assert!(check_addressee("critic@devenv").is_ok());
+        assert!(check_addressee("@human@laptop").is_ok());
+        assert!(check_addressee("critic@").is_err());
+        assert!(check_addressee("a b@devenv").is_err());
+        assert!(is_human("@human") && is_human("@human@laptop"));
+        assert!(!is_human("critic@devenv"));
     }
 
     #[test]

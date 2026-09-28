@@ -1,25 +1,113 @@
-//! Groups that span machines (MIP-4, section 11). Not built yet: every call answers as though
-//! nothing were kept elsewhere.
+//! Groups that span machines (MIP-4, section 11). A group is kept on one daemon, its home, which
+//! numbers and stores its log; a daemon with a member of a group kept elsewhere holds a replica
+//! of it under `name@machine`, forwards its members' changes to the home, and wakes only its own
+//! members. How the calls travel is the host's: this is what each side does with them.
+//!
+//! Each machine writes its own members bare and another machine's as `name@machine`, in its own
+//! name for that machine. So whatever crosses the link is written as the sender writes it, and
+//! the receiver turns it into its own names on arrival ([`Peer::inward`]).
+
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::names::{check_group, is_human, is_machine, split_machine};
+use crate::service::{Group, check_body};
 use crate::{
-    AnsweredWait, Caller, Entry, Joined, Left, Member, Messaging, Policy, Posted, Presence, Reach,
-    Refusal, Store, Wake,
+    Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, Member, Messaging,
+    Policy, Posted, Presence, Reach, Refusal, Store, Wake, What,
 };
 
+/// Another machine's daemon, as a link to it knows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Peer {
+    /// What this machine calls it.
     pub name: String,
+    /// What it calls this machine.
     pub calls_us: String,
 }
 
 impl Peer {
+    /// A name as the peer wrote it, as this machine writes it: the peer's own members gain its
+    /// name, and this machine's lose theirs.
     pub fn inward(&self, name: &str) -> String {
-        name.to_string()
+        match split_machine(name) {
+            Some((base, machine)) if machine == self.calls_us => base.to_string(),
+            Some(_) => name.to_string(),
+            None => format!("{name}@{}", self.name),
+        }
+    }
+
+    fn entry(&self, entry: Entry) -> Entry {
+        let what = match entry.what {
+            What::Message { author, to, body } => What::Message {
+                author: self.inward(&author),
+                to: to.iter().map(|name| self.inward(name)).collect(),
+                body,
+            },
+            What::Created { by } => What::Created { by: self.inward(&by) },
+            What::Joined { who } => What::Joined { who: self.inward(&who) },
+            What::Left { who } => What::Left { who: self.inward(&who) },
+            What::Changed { by, change } => What::Changed { by: self.inward(&by), change },
+        };
+        Entry { what, ..entry }
+    }
+
+    /// A policy's names turned like any other, but for `*` and `@human`, which name roles
+    /// rather than participants: `@human` is the human wherever it is homed.
+    fn policy(&self, policy: Policy) -> Policy {
+        let name =
+            |name: String| if name == "*" || name == HUMAN { name } else { self.inward(&name) };
+        let names = |names: Vec<String>| names.into_iter().map(name).collect::<Vec<_>>();
+        let table = |table: BTreeMap<String, Vec<String>>| {
+            table.into_iter().map(|(author, set)| (name(author), names(set))).collect()
+        };
+        Policy {
+            ring: table(policy.ring),
+            allow: table(policy.allow),
+            membership: names(policy.membership),
+            paused: policy.paused,
+        }
+    }
+
+    fn refusal(&self, refusal: Refusal) -> Refusal {
+        let group = |group: String| self.inward(&group);
+        let name = |name: String| self.inward(&name);
+        let role =
+            |name: String| if name == "*" || name == HUMAN { name } else { self.inward(&name) };
+        match refusal {
+            Refusal::NoSuchGroup { group: g } => Refusal::NoSuchGroup { group: group(g) },
+            Refusal::NotAMember { name: n, group: g } => {
+                Refusal::NotAMember { name: name(n), group: group(g) }
+            }
+            Refusal::AddresseeNotInGroup { name: n, group: g } => {
+                Refusal::AddresseeNotInGroup { name: name(n), group: group(g) }
+            }
+            Refusal::Unread { group: g, count } => Refusal::Unread { group: group(g), count },
+            Refusal::NoSuchParticipant { name: n } => Refusal::NoSuchParticipant { name: name(n) },
+            Refusal::WhichParticipant { name: n, candidates } => Refusal::WhichParticipant {
+                name: n,
+                candidates: candidates.into_iter().map(name).collect(),
+            },
+            Refusal::NotAllowed { addressee, group: g, allowed } => Refusal::NotAllowed {
+                addressee: name(addressee),
+                group: group(g),
+                allowed: allowed.into_iter().map(role).collect(),
+            },
+            Refusal::NotPermitted { name: n, group: g, action, permitted } => {
+                Refusal::NotPermitted {
+                    name: name(n),
+                    group: group(g),
+                    action,
+                    permitted: permitted.into_iter().map(role).collect(),
+                }
+            }
+            other => other,
+        }
     }
 }
 
+/// A group's new entries, which the host sends `machine`: those after `after`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tell {
     pub machine: String,
@@ -27,29 +115,77 @@ pub struct Tell {
     pub after: u64,
 }
 
+/// What one machine asks of another. Groups are named as their home names them, and every
+/// other name as the asker writes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Call {
-    Find { group: String },
-    Join { name: String, group: String, head: u64 },
-    Leave { name: String, group: String, head: u64 },
-    Post { author: String, group: String, to: Vec<String>, body: String, cursor: u64, head: u64 },
-    Since { group: String, after: u64 },
-    Who { group: String },
+    /// Whether a group by this name is kept there.
+    Find {
+        group: String,
+    },
+    Join {
+        name: String,
+        group: String,
+        head: u64,
+    },
+    Leave {
+        name: String,
+        group: String,
+        head: u64,
+    },
+    /// A post, with how far its author had read, which the home's guard compares against.
+    Post {
+        author: String,
+        group: String,
+        to: Vec<String>,
+        body: String,
+        cursor: u64,
+        head: u64,
+    },
+    Since {
+        group: String,
+        after: u64,
+    },
+    /// The asked machine's own members of the group, and what each is doing.
+    Who {
+        group: String,
+    },
 }
 
+impl Call {
+    fn group(&self) -> &str {
+        match self {
+            Call::Find { group }
+            | Call::Join { group, .. }
+            | Call::Leave { group, .. }
+            | Call::Post { group, .. }
+            | Call::Since { group, .. }
+            | Call::Who { group } => group,
+        }
+    }
+}
+
+/// A call for the host to send to the machine a group is kept on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Away {
     pub machine: String,
     pub call: Call,
 }
 
+/// Where a request is to be answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
     Here,
     Away(Away),
-    Ask { group: String },
+    /// No group by this name is here, and linked machines may keep one: the host asks each
+    /// with [`Call::Find`], and joins `group@machine` if one does, or creates it here if none.
+    Ask {
+        group: String,
+    },
 }
 
+/// A group's entries after some point, with the policy they are read under, as the machine
+/// keeping the group writes them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Caught {
     pub group: String,
@@ -57,6 +193,8 @@ pub struct Caught {
     pub entries: Vec<Entry>,
 }
 
+/// The answer to a [`Call`]. Each that changed a group carries the entries after the asker's
+/// head, so a replica that fell behind catches up in the same reply, a refusal included.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reply {
     Found(bool),
@@ -68,6 +206,8 @@ pub enum Reply {
     Refused { refusal: Refusal, caught: Option<Caught> },
 }
 
+/// A call answered, and what the answering host still has to do: wake its own members, end the
+/// waits the call answered, and send the new entries on to other machines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Answered {
     pub reply: Reply,
@@ -77,6 +217,7 @@ pub struct Answered {
     pub unsaved: Option<String>,
 }
 
+/// What a replica's new entries did on this machine.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Applied {
     pub reached: Vec<(String, Reach)>,
@@ -85,102 +226,646 @@ pub struct Applied {
     pub unsaved: Option<String>,
 }
 
+/// A request answered by another machine, as it ends on this one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settled {
     Found(bool),
     Joined(Joined),
     Left(Left),
+    /// Who was reached, on both machines. The wakes on this one are in [`Settle::applied`].
     Posted(Posted),
     Members(Vec<Member>),
-    Caught(Applied),
+    Caught,
+    /// The entries left a gap after this head, which the host fills with [`Call::Since`].
     Gap(u64),
 }
 
+/// How a request another machine answered ends here, and what the entries its answer carried
+/// did on this machine, which the host delivers whatever the outcome.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Settle {
+    pub result: Result<Settled, Refusal>,
+    pub applied: Applied,
+}
+
+/// Where a group named in a join is.
+enum Place {
+    Here,
+    Elsewhere { key: String, machine: String },
+    Nowhere,
+}
+
 impl<S: Store> Messaging<S> {
-    pub fn linked(&mut self, _machine: &str) {}
-
-    pub fn unlinked(&mut self, _machine: &str) {}
-
-    pub fn behind(&self, _group: &str) -> Option<&str> {
-        None
+    /// A link to `machine` is up.
+    pub fn linked(&mut self, machine: &str) {
+        self.linked.insert(machine.to_string());
     }
 
-    pub fn replicas_of(&self, _machine: &str) -> Vec<(String, u64)> {
-        Vec::new()
+    /// The link to `machine` is down: changes to its groups are refused until it is back.
+    pub fn unlinked(&mut self, machine: &str) {
+        self.linked.remove(machine);
     }
 
+    /// The machine a replica may be behind, because there is no link to it now.
+    pub fn behind(&self, group: &str) -> Option<&str> {
+        let home = self.groups.get(group)?.home.as_deref()?;
+        (!self.linked.contains(home)).then_some(home)
+    }
+
+    /// Groups kept on `machine` that this one replicates, with each replica's head: what to
+    /// refetch when a link to it comes up. A cursor alone counts, with a head of nothing, since
+    /// replicas are not kept and a restart leaves only the cursors (MIP-4, section 12).
+    pub fn replicas_of(&self, machine: &str) -> Vec<(String, u64)> {
+        let mut found: BTreeMap<String, u64> = BTreeMap::new();
+        let keys = self.participants.values().flat_map(|participant| participant.cursors.keys());
+        for key in keys {
+            if let Some((base, at)) = split_machine(key)
+                && at == machine
+            {
+                found.entry(base.to_string()).or_insert(0);
+            }
+        }
+        for (key, group) in &self.groups {
+            if group.home.as_deref() == Some(machine)
+                && let Some((base, _)) = split_machine(key)
+            {
+                found.insert(base.to_string(), group.head());
+            }
+        }
+        found.into_iter().collect()
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // On the asker's machine
+
+    /// Where `join` is answered. A group kept elsewhere is joined through its home, so the
+    /// caller becomes a participant here first.
     pub fn route_join(
         &mut self,
-        _caller: &Caller,
-        _name: Option<&str>,
-        _group: Option<&str>,
-        _presence: &dyn Presence,
+        caller: &Caller,
+        name: Option<&str>,
+        group: Option<&str>,
+        presence: &dyn Presence,
     ) -> Result<Route, Refusal> {
-        Ok(Route::Here)
+        let Some(group) = group else { return Ok(Route::Here) };
+        let (key, machine) = match self.place(group)? {
+            Place::Here => return Ok(Route::Here),
+            Place::Nowhere if self.linked.is_empty() => return Ok(Route::Here),
+            Place::Nowhere => return Ok(Route::Ask { group: group.to_string() }),
+            Place::Elsewhere { key, machine } => (key, machine),
+        };
+        self.reachable(&key, &machine)?;
+        let name = match name {
+            Some(name) => {
+                self.become_named(caller, name, presence)?;
+                name.to_string()
+            }
+            None => self.identify(caller, presence)?,
+        };
+        self.save()?;
+        let call = Call::Join { name, group: base(&key), head: self.head_of(&key) };
+        Ok(Route::Away(Away { machine, call }))
     }
 
+    /// Where `post` is answered. A post to a group kept elsewhere is checked here against the
+    /// replica, then forwarded with its author's cursor, which the home's guard compares with
+    /// the log as it appends (MIP-4, section 4).
     pub fn route_post(
         &mut self,
-        _caller: &Caller,
-        _group: Option<&str>,
-        _to: &[String],
-        _body: &str,
-        _presence: &dyn Presence,
+        caller: &Caller,
+        group: Option<&str>,
+        to: &[String],
+        body: &str,
+        presence: &dyn Presence,
     ) -> Result<Route, Refusal> {
-        Ok(Route::Here)
+        check_body(body)?;
+        let author = self.identify(caller, presence)?;
+        let group = group.map(|group| self.locate(group)).transpose()?;
+        let addressees = self.addressees(&author, to, group.as_deref(), presence)?;
+        let key = match group {
+            Some(key) => key,
+            None => match self.shared_group(&author, &addressees)? {
+                Some(key) => key,
+                None => return Ok(Route::Here),
+            },
+        };
+        let Some(machine) = self.groups[&key].home.clone() else { return Ok(Route::Here) };
+        self.reachable(&key, &machine)?;
+        self.check_members(&key, &author, &addressees)?;
+        let unread = if is_human(&author) { 0 } else { self.unread_from_others(&author, &key) };
+        if unread > 0 {
+            return Err(Refusal::Unread { group: key, count: unread });
+        }
+        self.save()?;
+        let call = Call::Post {
+            cursor: self.cursor(&author, &key),
+            head: self.head_of(&key),
+            group: base(&key),
+            author,
+            to: addressees,
+            body: body.to_string(),
+        };
+        Ok(Route::Away(Away { machine, call }))
     }
 
+    /// What `leave` must ask of other machines before it is answered here: each group kept
+    /// elsewhere that it leaves.
     pub fn route_leave(
         &mut self,
-        _caller: &Caller,
-        _group: Option<&str>,
-        _presence: &dyn Presence,
+        caller: &Caller,
+        group: Option<&str>,
+        presence: &dyn Presence,
     ) -> Result<Vec<Away>, Refusal> {
-        Ok(Vec::new())
+        let caller = &Self::addressed(caller, presence);
+        let Some(name) = self.lookup(caller).filter(|name| self.participants.contains_key(name))
+        else {
+            return Ok(Vec::new());
+        };
+        let keys: Vec<String> = match group {
+            Some(group) => vec![self.locate(group)?],
+            None => self.memberships(&name),
+        };
+        let mut away = Vec::new();
+        for key in keys {
+            let Some(machine) = self.groups[&key].home.clone() else { continue };
+            self.reachable(&key, &machine)?;
+            if !self.groups[&key].members.contains(&name) {
+                return Err(Refusal::NotAMember { name, group: key });
+            }
+            let call =
+                Call::Leave { name: name.clone(), group: base(&key), head: self.head_of(&key) };
+            away.push(Away { machine, call });
+        }
+        Ok(away)
     }
 
-    pub fn route_who(&self, _group: Option<&str>) -> Result<Vec<Away>, Refusal> {
-        Ok(Vec::new())
+    /// Whom to ask about `group`'s members on other machines: its home, for a replica, and for
+    /// a group kept here each machine with a member in it. A machine with no link now is not
+    /// asked, and its members stay [`Liveness::Unreachable`].
+    pub fn route_who(&self, group: Option<&str>) -> Result<Vec<Away>, Refusal> {
+        let Some(group) = group else { return Ok(Vec::new()) };
+        let key = self.locate(group)?;
+        let kept = &self.groups[&key];
+        let machines: BTreeSet<String> = match &kept.home {
+            Some(home) => BTreeSet::from([home.clone()]),
+            None => kept
+                .members
+                .iter()
+                .filter_map(|member| split_machine(member).map(|(_, machine)| machine.to_string()))
+                .collect(),
+        };
+        let call = Call::Who { group: base(&key) };
+        Ok(machines
+            .into_iter()
+            .filter(|machine| self.linked.contains(machine))
+            .map(|machine| Away { machine, call: call.clone() })
+            .collect())
     }
 
+    /// Ends a request another machine answered: catches the replica up with what the answer
+    /// carried, reaches this machine's members for it, and turns the answer into this machine's
+    /// names.
     pub fn settle(
         &mut self,
-        _peer: &Peer,
-        _call: &Call,
-        _reply: Reply,
-        _presence: &dyn Presence,
-    ) -> Result<Settled, Refusal> {
-        Ok(Settled::Found(false))
+        peer: &Peer,
+        call: &Call,
+        reply: Reply,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Settle {
+        let mut applied = Applied::default();
+        let result = self.settled(peer, call, reply, presence, now_ms, &mut applied);
+        Settle { result, applied }
     }
 
+    fn settled(
+        &mut self,
+        peer: &Peer,
+        call: &Call,
+        reply: Reply,
+        presence: &dyn Presence,
+        now_ms: u64,
+        applied: &mut Applied,
+    ) -> Result<Settled, Refusal> {
+        let key = peer.inward(call.group());
+        // A gap here is left for the next refetch: these answers follow the asker's own head.
+        let mut apply = |service: &mut Self, caught| {
+            service.apply_into(peer, caught, presence, now_ms, applied).unwrap_or_default()
+        };
+        match reply {
+            Reply::Found(found) => Ok(Settled::Found(found)),
+            Reply::Members(members) => Ok(Settled::Members(
+                members
+                    .into_iter()
+                    .map(|member| Member { name: peer.inward(&member.name), ..member })
+                    .collect(),
+            )),
+            Reply::Caught(caught) => match self.apply_into(peer, caught, presence, now_ms, applied)
+            {
+                Ok(_) => Ok(Settled::Caught),
+                Err(head) => Ok(Settled::Gap(head)),
+            },
+            Reply::Refused { refusal, caught } => {
+                if let Some(caught) = caught {
+                    apply(self, caught);
+                }
+                Err(peer.refusal(refusal))
+            }
+            Reply::Joined { seq, caught } => {
+                let Call::Join { name, .. } = call else { return Err(mismatched(call)) };
+                // The cursor first, so nothing from before the join counts as unread to it.
+                if let Some(participant) = self.participants.get_mut(name) {
+                    participant.cursors.entry(key.clone()).or_insert(seq);
+                    participant.woken.remove(&key);
+                }
+                apply(self, caught);
+                self.save()?;
+                Ok(Settled::Joined(Joined {
+                    name: name.clone(),
+                    group: Some(key),
+                    created: false,
+                    took_over: false,
+                    tell: Vec::new(),
+                }))
+            }
+            Reply::Left { caught } => {
+                let Call::Leave { name, .. } = call else { return Err(mismatched(call)) };
+                apply(self, caught);
+                if let Some(participant) = self.participants.get_mut(name) {
+                    participant.cursors.remove(&key);
+                    participant.woken.remove(&key);
+                    participant.rewoken.remove(&key);
+                }
+                let kept_to_it = self
+                    .waiters
+                    .get(name)
+                    .is_some_and(|waiter| waiter.group.as_deref() == Some(key.as_str()));
+                let ended = kept_to_it.then(|| self.waiters.remove(name)).flatten();
+                self.save()?;
+                Ok(Settled::Left(Left {
+                    name: name.clone(),
+                    groups: vec![key],
+                    stopped: false,
+                    ended: ended.map(|waiter| waiter.ticket),
+                    tell: Vec::new(),
+                }))
+            }
+            Reply::Posted { seq, reached, caught } => {
+                let Call::Post { author, .. } = call else { return Err(mismatched(call)) };
+                let mut all: Vec<(String, Reach)> =
+                    reached.into_iter().map(|(name, reach)| (peer.inward(&name), reach)).collect();
+                all.extend(apply(self, caught));
+                Ok(Settled::Posted(Posted {
+                    author: author.clone(),
+                    group: key,
+                    seq,
+                    reached: all,
+                    wakes: Vec::new(),
+                    answered: Vec::new(),
+                    tell: Vec::new(),
+                    unsaved: None,
+                }))
+            }
+        }
+    }
+
+    /// [`Self::apply`], adding what it did to `applied`, and returning whom it reached.
+    fn apply_into(
+        &mut self,
+        peer: &Peer,
+        caught: Caught,
+        presence: &dyn Presence,
+        now_ms: u64,
+        applied: &mut Applied,
+    ) -> Result<Vec<(String, Reach)>, u64> {
+        let done = self.apply(peer, caught, presence, now_ms)?;
+        applied.reached.extend(done.reached.iter().cloned());
+        applied.wakes.extend(done.wakes);
+        applied.answered.extend(done.answered);
+        applied.unsaved = applied.unsaved.take().or(done.unsaved);
+        Ok(done.reached)
+    }
+
+    /// Takes a group's entries from its home into the replica, and reaches this machine's own
+    /// members for each new message, as a post here would, under the policy the home sent.
+    /// A pause or a resume there does here what it does to the home's own members. Entries it
+    /// holds already are skipped, so the same entries may arrive twice; entries that would
+    /// leave a gap are not taken, and the head they would follow is returned so the host can
+    /// fetch what is missing.
     pub fn apply(
         &mut self,
-        _peer: &Peer,
-        _caught: Caught,
-        _presence: &dyn Presence,
+        peer: &Peer,
+        caught: Caught,
+        presence: &dyn Presence,
+        now_ms: u64,
     ) -> Result<Applied, u64> {
-        Ok(Applied::default())
+        let key = peer.inward(&caught.group);
+        let group = self.groups.entry(key.clone()).or_insert_with(|| Group {
+            policy: Policy::default(),
+            members: BTreeSet::new(),
+            log: Vec::new(),
+            home: Some(peer.name.clone()),
+        });
+        group.policy = peer.policy(caught.policy);
+        let head = group.head();
+        let fresh: Vec<Entry> =
+            caught.entries.into_iter().filter(|entry| entry.seq > head).collect();
+        if fresh.first().is_some_and(|first| first.seq != head + 1) {
+            return Err(head);
+        }
+        let mut posted = Posted {
+            author: String::new(),
+            group: key.clone(),
+            seq: head,
+            reached: Vec::new(),
+            wakes: Vec::new(),
+            answered: Vec::new(),
+            tell: Vec::new(),
+            unsaved: None,
+        };
+        let mut resumed = None;
+        for entry in fresh {
+            let entry = peer.entry(entry);
+            let group = self.groups.get_mut(&key).expect("made above");
+            match &entry.what {
+                What::Joined { who } => {
+                    group.members.insert(who.clone());
+                }
+                What::Left { who } => {
+                    group.members.remove(who);
+                }
+                What::Changed { change: Change::Paused, .. } => {
+                    resumed = None;
+                    self.forget_wakes(&key);
+                }
+                What::Changed { by, change: Change::Resumed } => resumed = Some(by.clone()),
+                _ => {}
+            }
+            let group = self.groups.get_mut(&key).expect("made above");
+            let message = match &entry.what {
+                What::Message { author, to, .. } => Some((author.clone(), to.clone())),
+                _ => None,
+            };
+            group.log.push(entry);
+            let Some((author, to)) = message else { continue };
+            for target in self.targets(&key, &author, to) {
+                if !self.participants.contains_key(&target) {
+                    continue;
+                }
+                let reach = self.reach_member(&target, &key, &mut posted, presence, now_ms);
+                posted.reached.push((target, reach));
+            }
+        }
+        if let Some(by) = resumed
+            && !self.groups[&key].policy.paused
+        {
+            self.wake_resumed(&key, &by, &mut posted, presence, now_ms);
+        }
+        let unsaved = match self.save() {
+            Err(Refusal::Store { error }) => Some(error),
+            _ => None,
+        };
+        Ok(Applied {
+            reached: posted.reached,
+            wakes: posted.wakes,
+            answered: posted.answered,
+            unsaved,
+        })
     }
 
-    pub fn heard(_members: &mut [Member], _machine: &str, _heard: &[Member]) {}
+    /// Adds what another machine said about its own members of `group` to `members`, which
+    /// holds that machine's as [`Liveness::Unreachable`] until then. A member it did not name
+    /// has gone from it.
+    pub fn heard(members: &mut [Member], machine: &str, heard: &[Member]) {
+        for member in members {
+            if split_machine(&member.name).is_none_or(|(_, at)| at != machine) {
+                continue;
+            }
+            match heard.iter().find(|said| said.name == member.name) {
+                Some(said) => {
+                    member.liveness = said.liveness;
+                    member.activity = said.activity;
+                    member.pane.clone_from(&said.pane);
+                    member.inbox.clone_from(&said.inbox);
+                }
+                None => member.liveness = Liveness::Gone,
+            }
+        }
+    }
 
+    // ------------------------------------------------------------------------------------------
+    // On the machine asked
+
+    /// Answers another machine's call.
     pub fn answer(
         &mut self,
-        _peer: &Peer,
-        _call: Call,
-        _presence: &dyn Presence,
-        _now_ms: u64,
+        peer: &Peer,
+        call: Call,
+        presence: &dyn Presence,
+        now_ms: u64,
     ) -> Answered {
-        Answered {
+        let mut answered = Answered {
             reply: Reply::Found(false),
             wakes: Vec::new(),
             answered: Vec::new(),
             tell: Vec::new(),
             unsaved: None,
+        };
+        let refused = |refusal| Reply::Refused { refusal, caught: None };
+        answered.reply = match call {
+            Call::Find { group } => Reply::Found(self.kept_here(&group)),
+            Call::Since { group, after } => {
+                self.since(&group, after).map_or_else(refused, Reply::Caught)
+            }
+            Call::Who { group } => Reply::Members(self.members_here(peer, &group, presence)),
+            Call::Join { name, group, head } => self
+                .join_from(peer, &name, &group, head, now_ms, &mut answered)
+                .unwrap_or_else(refused),
+            Call::Leave { name, group, head } => self
+                .leave_from(peer, &name, &group, head, now_ms, &mut answered)
+                .unwrap_or_else(refused),
+            Call::Post { author, group, to, body, cursor, head } => {
+                let post = Forwarded { author, group, to, body, cursor, head };
+                self.post_from(peer, post, presence, now_ms, &mut answered)
+            }
+        };
+        answered
+    }
+
+    /// A group's entries after `after`, as this machine keeps them.
+    pub fn since(&self, group: &str, after: u64) -> Result<Caught, Refusal> {
+        if !self.kept_here(group) {
+            return Err(Refusal::NoSuchGroup { group: group.to_string() });
+        }
+        let kept = &self.groups[group];
+        Ok(Caught {
+            group: group.to_string(),
+            policy: kept.policy.clone(),
+            entries: kept.log.iter().filter(|entry| entry.seq > after).cloned().collect(),
+        })
+    }
+
+    fn join_from(
+        &mut self,
+        peer: &Peer,
+        name: &str,
+        group: &str,
+        head: u64,
+        now_ms: u64,
+        answered: &mut Answered,
+    ) -> Result<Reply, Refusal> {
+        if !self.kept_here(group) {
+            return Err(Refusal::NoSuchGroup { group: group.to_string() });
+        }
+        let who = peer.inward(name);
+        if !self.groups[group].members.contains(&who) {
+            self.permitted(group, &who, Action::Join)?;
+        }
+        let after = self.groups[group].head();
+        self.add_member(group, &who, now_ms)?;
+        let seq = self.groups[group].head();
+        answered.tell = self.tell(group, after, Some(&peer.name));
+        self.save()?;
+        Ok(Reply::Joined { seq, caught: self.since(group, head)? })
+    }
+
+    fn leave_from(
+        &mut self,
+        peer: &Peer,
+        name: &str,
+        group: &str,
+        head: u64,
+        now_ms: u64,
+        answered: &mut Answered,
+    ) -> Result<Reply, Refusal> {
+        if !self.kept_here(group) {
+            return Err(Refusal::NoSuchGroup { group: group.to_string() });
+        }
+        let who = peer.inward(name);
+        if !self.groups[group].members.contains(&who) {
+            return Err(Refusal::NotAMember { name: who, group: group.to_string() });
+        }
+        self.permitted(group, &who, Action::Leave)?;
+        let after = self.groups[group].head();
+        self.remove_member(group, &who, now_ms)?;
+        answered.tell = self.tell(group, after, Some(&peer.name));
+        self.save()?;
+        Ok(Reply::Left { caught: self.since(group, head)? })
+    }
+
+    /// A post forwarded from another machine, held to the same rules as one made here: its
+    /// author and addressees are members, and it is refused while its author has unread
+    /// messages, counted from the cursor it brought.
+    fn post_from(
+        &mut self,
+        peer: &Peer,
+        post: Forwarded,
+        presence: &dyn Presence,
+        now_ms: u64,
+        answered: &mut Answered,
+    ) -> Reply {
+        let Forwarded { author, group, to, body, cursor, head } = post;
+        let refused = |refusal| Reply::Refused { refusal, caught: None };
+        if !self.kept_here(&group) {
+            return refused(Refusal::NoSuchGroup { group });
+        }
+        if let Err(refusal) = check_body(&body) {
+            return refused(refusal);
+        }
+        let author = peer.inward(&author);
+        let addressees: Vec<String> = to.iter().map(|name| peer.inward(name)).collect();
+        if let Err(refusal) = self.check_members(&group, &author, &addressees) {
+            return refused(refusal);
+        }
+        let caught = |service: &Self| service.since(&group, head).ok();
+        match self.post_as(&author, &group, addressees, &body, cursor, presence, now_ms) {
+            Ok(posted) => {
+                answered.wakes = posted.wakes;
+                answered.answered = posted.answered;
+                answered.tell = posted.tell;
+                answered.unsaved = posted.unsaved;
+                match caught(self) {
+                    Some(caught) => {
+                        Reply::Posted { seq: posted.seq, reached: posted.reached, caught }
+                    }
+                    None => refused(Refusal::NoSuchGroup { group: group.clone() }),
+                }
+            }
+            Err(refusal @ Refusal::Unread { .. }) => {
+                Reply::Refused { refusal, caught: caught(self) }
+            }
+            Err(refusal) => refused(refusal),
         }
     }
 
-    pub fn since(&self, group: &str, _after: u64) -> Result<Caught, Refusal> {
-        Ok(Caught { group: group.to_string(), policy: Policy::default(), entries: Vec::new() })
+    /// This machine's own members of `group` - kept here, or replicated from `peer` - with
+    /// what each is doing.
+    fn members_here(&self, peer: &Peer, group: &str, presence: &dyn Presence) -> Vec<Member> {
+        let key = if self.kept_here(group) { group.to_string() } else { peer.inward(group) };
+        let Ok(members) = self.who(Some(&key), presence) else { return Vec::new() };
+        members.into_iter().filter(|member| split_machine(&member.name).is_none()).collect()
     }
+
+    // ------------------------------------------------------------------------------------------
+
+    fn kept_here(&self, group: &str) -> bool {
+        self.groups.get(group).is_some_and(|kept| kept.home.is_none())
+    }
+
+    fn head_of(&self, key: &str) -> u64 {
+        self.groups.get(key).map_or(0, Group::head)
+    }
+
+    fn reachable(&self, group: &str, machine: &str) -> Result<(), Refusal> {
+        if self.linked.contains(machine) {
+            Ok(())
+        } else {
+            Err(Refusal::Unreachable { group: group.to_string(), machine: machine.to_string() })
+        }
+    }
+
+    fn place(&self, group: &str) -> Result<Place, Refusal> {
+        if let Some(kept) = self.groups.get(group) {
+            return Ok(match &kept.home {
+                None => Place::Here,
+                Some(machine) => {
+                    Place::Elsewhere { key: group.to_string(), machine: machine.clone() }
+                }
+            });
+        }
+        if let Some((base, machine)) = split_machine(group) {
+            check_group(base)?;
+            if !is_machine(machine) {
+                return Err(Refusal::BadName { name: group.to_string() });
+            }
+            return Ok(Place::Elsewhere { key: group.to_string(), machine: machine.to_string() });
+        }
+        check_group(group)?;
+        match self.locate(group) {
+            Ok(key) => {
+                let machine = self.groups[&key].home.clone().expect("a replica, found by its base");
+                Ok(Place::Elsewhere { key, machine })
+            }
+            Err(Refusal::NoSuchGroup { .. }) => Ok(Place::Nowhere),
+            Err(refusal) => Err(refusal),
+        }
+    }
+}
+
+struct Forwarded {
+    author: String,
+    group: String,
+    to: Vec<String>,
+    body: String,
+    cursor: u64,
+    head: u64,
+}
+
+/// A replica's key without its machine: the name its home keeps it under.
+fn base(key: &str) -> String {
+    split_machine(key).map_or(key, |(base, _)| base).to_string()
+}
+
+fn mismatched(call: &Call) -> Refusal {
+    Refusal::Store { error: format!("the answer to {call:?} was for another kind of call") }
 }

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::Refusal;
-use crate::names::{HUMAN, check_participant};
+use crate::names::{HUMAN, check_participant, is_human};
 
 /// A group's rules (MIP-4, section 8), enforced by the service, since a rule a prompt carries
 /// has faded by turn 40 (section 9). Names are participants' names; `*` is anyone, and `@human`
@@ -36,6 +36,7 @@ impl Default for Policy {
 impl Policy {
     /// Whether an unaddressed post by `author` wakes `member`. Never the author itself.
     pub(crate) fn rings(&self, author: &str, member: &str) -> bool {
+        let (author, member) = (role(author), role(member));
         author != member
             && by_author(&self.ring, author)
                 .iter()
@@ -44,17 +45,17 @@ impl Policy {
 
     /// Whether `author` may address `addressee`.
     pub(crate) fn allows(&self, author: &str, addressee: &str) -> bool {
-        names(by_author(&self.allow, author), addressee)
+        names(by_author(&self.allow, role(author)), role(addressee))
     }
 
     /// Whom `author` may address, as the policy spells it.
     pub(crate) fn allowed(&self, author: &str) -> Vec<String> {
-        by_author(&self.allow, author).to_vec()
+        by_author(&self.allow, role(author)).to_vec()
     }
 
     /// Whether `name` may add or remove members, itself included, and change the policy.
     pub(crate) fn permits(&self, name: &str) -> bool {
-        names(&self.membership, name)
+        names(&self.membership, role(name))
     }
 
     /// Every name the policy holds, which must each be a participant's name, `*`, or `@human`.
@@ -68,6 +69,12 @@ impl Policy {
         }
         Ok(())
     }
+}
+
+/// The name a policy knows a participant by: the human on another machine, `@human@laptop`,
+/// is `@human`, like `*` a role rather than a participant (MIP-4, section 11).
+fn role(name: &str) -> &str {
+    if is_human(name) { HUMAN } else { name }
 }
 
 /// The set a map gives `author`, or failing that the one it gives `*`.
@@ -128,6 +135,16 @@ mod tests {
             membership: set(&["director", "@human"]),
             paused: false,
         }
+    }
+
+    #[test]
+    fn the_human_on_another_machine_is_the_human_to_a_policy() {
+        let policy = directed();
+        assert!(!policy.rings("director", "@human@laptop"));
+        assert!(Policy::default().rings("critic", "@human@laptop"));
+        assert!(policy.allows("builder", "@human@laptop"));
+        assert!(policy.permits("@human@laptop"));
+        assert!(!policy.permits("builder@laptop"));
     }
 
     #[test]

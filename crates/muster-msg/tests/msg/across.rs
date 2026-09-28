@@ -2,22 +2,29 @@
 //! joined by a wire that does what their daemons do with each call - send it, and settle the
 //! answer - and that can be cut.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use muster_msg::{
-    Call, Caller, HUMAN, Inbox, Liveness, Memory, Messaging, Participant, Peer, Posted, Presence,
-    Reach, Refusal, Reply, Route, Settled, Tell, What,
+    Action, Call, Caller, HUMAN, Inbox, Liveness, Memory, Messaging, Participant, Peer, Policy,
+    Posted, Presence, Reach, Refusal, Reply, Route, Settled, Tell, Via, Wake, What,
 };
 
 #[derive(Default)]
 struct Sessions {
     dead: RefCell<BTreeSet<String>>,
+    /// A window attends the laptop's daemon, which is what wakes the human there. The devenv's
+    /// has no human of its own in these cases, so one flag serves both.
+    attended: Cell<bool>,
 }
 
 impl Presence for Sessions {
     fn alive(&self, participant: &Participant) -> bool {
         participant.inbox.as_ref().is_none_or(|inbox| !self.dead.borrow().contains(&inbox.socket))
+    }
+
+    fn attended(&self) -> bool {
+        self.attended.get()
     }
 }
 
@@ -66,6 +73,8 @@ struct Wire {
     /// between an append and the send.
     losing: bool,
     now: u64,
+    /// Every wake either machine made, for its daemon to deliver.
+    wakes: Vec<(Side, Wake)>,
 }
 
 impl Wire {
@@ -77,6 +86,7 @@ impl Wire {
             up: false,
             losing: false,
             now: 0,
+            wakes: Vec::new(),
         };
         wire.mend();
         wire
@@ -123,9 +133,12 @@ impl Wire {
             let (home, sessions) = self.split(side.other());
             home.answer(&from, call.clone(), sessions, now)
         };
+        self.wakes.extend(answered.wakes.into_iter().map(|wake| (side.other(), wake)));
         self.tell(side.other(), &answered.tell);
         let (asker, sessions) = self.split(side);
-        asker.settle(&side.peer(), call, answered.reply, sessions)
+        let settle = asker.settle(&side.peer(), call, answered.reply, sessions, now);
+        self.wakes.extend(settle.applied.wakes.into_iter().map(|wake| (side, wake)));
+        settle.result
     }
 
     /// Sends a home's new entries on to the machines it named.
@@ -136,10 +149,13 @@ impl Wire {
         }
         for tell in tell {
             let caught = self.service(home).since(&tell.group, tell.after).unwrap();
+            let now = self.tick();
             let (replica, sessions) = self.split(home.other());
-            let applied = replica.apply(&home.other().peer(), caught, sessions).expect("no gap");
+            let applied =
+                replica.apply(&home.other().peer(), caught, sessions, now).expect("no gap");
             let peer = home.peer();
             reached.extend(applied.reached.into_iter().map(|(name, r)| (peer.inward(&name), r)));
+            self.wakes.extend(applied.wakes.into_iter().map(|wake| (home.other(), wake)));
         }
         reached
     }
@@ -198,6 +214,7 @@ impl Wire {
             },
             Route::Here => {
                 let mut posted = service.post(caller, group, &to, body, sessions, now)?;
+                self.wakes.extend(posted.wakes.iter().map(|wake| (side, wake.clone())));
                 let reached = self.tell(side, &posted.tell);
                 posted.reached.extend(reached);
                 Ok(posted)
@@ -447,13 +464,13 @@ fn applying_skips_what_it_has_and_reports_a_gap() {
 
     let whole = wire.laptop.since("review", 0).unwrap();
     let (devenv, sessions) = wire.split(Side::Devenv);
-    let again = devenv.apply(&Side::Devenv.peer(), whole.clone(), sessions).unwrap();
+    let again = devenv.apply(&Side::Devenv.peer(), whole.clone(), sessions, 70).unwrap();
     assert!(again.reached.is_empty(), "{again:?}");
 
     let head = whole.entries.last().unwrap().seq;
     let mut ahead = whole;
     ahead.entries.iter_mut().for_each(|entry| entry.seq += head + 1);
-    assert_eq!(devenv.apply(&Side::Devenv.peer(), ahead, sessions), Err(head));
+    assert_eq!(devenv.apply(&Side::Devenv.peer(), ahead, sessions, 71), Err(head));
 }
 
 #[test]
@@ -464,4 +481,168 @@ fn a_name_crossing_the_link_is_turned_into_the_receivers_own() {
     assert_eq!(devenv_sees_laptop.inward("@human"), "@human@lap");
     assert_eq!(devenv_sees_laptop.inward("scout@other"), "scout@other");
     let _ = Reply::Found(true);
+}
+
+/// Whom the human's windows were told of, on each machine.
+fn told_the_human(wire: &Wire) -> Vec<(Side, &str)> {
+    wire.wakes
+        .iter()
+        .filter(|(_, wake)| wake.via == Via::Human)
+        .map(|(side, wake)| (*side, wake.notice.group.as_str()))
+        .collect()
+}
+
+/// A directed council on the laptop: members may address the director and the human only.
+fn directed(membership: &[&str]) -> Policy {
+    let set = |names: &[&str]| names.iter().map(ToString::to_string).collect::<Vec<_>>();
+    Policy {
+        ring: BTreeMap::from([
+            ("director".to_string(), set(&["*"])),
+            ("*".to_string(), set(&["director"])),
+        ]),
+        allow: BTreeMap::from([
+            ("director".to_string(), set(&["*"])),
+            ("*".to_string(), set(&["director", HUMAN])),
+        ]),
+        membership: set(membership),
+        paused: false,
+    }
+}
+
+/// A post forwarded to the group's home runs through the home's policy, as one made there
+/// does, and its refusal comes back in the author's names.
+#[test]
+fn a_forwarded_post_is_held_to_the_homes_policy() {
+    let mut wire = Wire::new();
+    let (director, builder, critic) = (session("director"), session("builder"), session("critic"));
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.join(&director, Some("director"), None, sessions, now).unwrap();
+    laptop.group_new(&director, "council", Some(directed(&["*"])), sessions, now).unwrap();
+    wire.join(Side::Laptop, &builder, Some("builder"), "council");
+    assert_eq!(wire.join(Side::Devenv, &critic, Some("critic"), "council"), "council@lap");
+
+    let refused = wire.post(Side::Devenv, &critic, None, &["builder"], "over the director");
+    assert_eq!(
+        refused.unwrap_err(),
+        Refusal::NotAllowed {
+            addressee: "builder@lap".to_string(),
+            group: "council@lap".to_string(),
+            allowed: vec!["director@lap".to_string(), HUMAN.to_string()],
+        }
+    );
+    let posted = wire.post(Side::Devenv, &critic, None, &[], "done").unwrap();
+    assert_eq!(woke(&posted), [("director@lap", Reach::Woken)], "the ring set binds too");
+}
+
+/// A group's membership rule binds a join forwarded from another machine.
+#[test]
+fn a_forwarded_join_is_held_to_the_homes_membership() {
+    let mut wire = Wire::new();
+    let director = session("director");
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.join(&director, Some("director"), None, sessions, now).unwrap();
+    laptop.group_new(&director, "council", Some(directed(&["director"])), sessions, now).unwrap();
+
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let route =
+        devenv.route_join(&session("critic"), Some("critic"), Some("council@lap"), sessions);
+    let Route::Away(away) = route.unwrap() else { panic!("council is kept on the laptop") };
+    assert_eq!(
+        wire.send(Side::Devenv, &away.call).unwrap_err(),
+        Refusal::NotPermitted {
+            name: "critic".to_string(),
+            group: "council@lap".to_string(),
+            action: Action::Join,
+            permitted: vec!["director@lap".to_string()],
+        }
+    );
+}
+
+/// A paused group wakes nobody on either machine, and resuming it wakes each machine's own
+/// members for what they have unread.
+#[test]
+fn a_pause_at_the_home_holds_on_every_machine_until_it_is_resumed() {
+    let mut wire = Wire::new();
+    let (builder, critic, scout) = (session("builder"), session("critic"), session("scout"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Devenv, &scout, Some("scout"), "review");
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let paused = laptop.pause(&builder, "review", sessions, now).unwrap();
+    wire.tell(Side::Laptop, &paused.tell);
+
+    let posted = wire.post(Side::Devenv, &critic, None, &[], "while paused").unwrap();
+    assert_eq!(woke(&posted), [("builder@lap", Reach::Paused), ("scout", Reach::Paused)]);
+    wire.read(Side::Laptop, &builder, None);
+    let posted = wire.post(Side::Laptop, &builder, None, &["scout"], "and this").unwrap();
+    assert_eq!(woke(&posted), [("scout@devenv", Reach::Paused)]);
+
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let refused = devenv.pause(&critic, "review@lap", sessions, 99);
+    assert_eq!(
+        refused.unwrap_err(),
+        Refusal::KeptElsewhere { group: "review@lap".to_string(), machine: "lap".to_string() }
+    );
+
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let resumed = laptop.resume(&builder, "review", sessions, now).unwrap();
+    assert!(woke(&resumed).is_empty(), "the laptop's only member resumed it: {resumed:?}");
+    let reached = wire.tell(Side::Laptop, &resumed.tell);
+    assert_eq!(reached, [("scout@devenv".to_string(), Reach::Woken)]);
+}
+
+/// The human is homed where the app runs. A post made on the devenv, in a group kept there,
+/// wakes the laptop's human through the laptop's windows, as a post made on the laptop does:
+/// addressed, or rung by the default policy, which rings the human wherever it is homed.
+#[test]
+fn a_devenv_post_tells_the_laptops_windows_of_the_human() {
+    let mut wire = Wire::new();
+    wire.sessions.attended.set(true);
+    let critic = session("critic");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+
+    let posted = wire.post(Side::Devenv, &critic, None, &[HUMAN], "a question for you").unwrap();
+    assert_eq!(woke(&posted), [("@human@lap", Reach::Woken)]);
+    assert_eq!(told_the_human(&wire), [(Side::Laptop, "review@devenv")]);
+
+    wire.read(Side::Laptop, &human(), None);
+    wire.wakes.clear();
+    let posted = wire.post(Side::Devenv, &critic, None, &[], "and to everyone").unwrap();
+    assert_eq!(woke(&posted), [("@human@lap", Reach::Woken)]);
+    assert_eq!(told_the_human(&wire), [(Side::Laptop, "review@devenv")]);
+}
+
+/// A devenv member's post to the human in a group kept on the laptop is appended there, and
+/// the laptop tells its windows; the devenv, which is not the human's home, tells nobody.
+#[test]
+fn a_devenv_post_in_a_laptop_group_tells_the_laptops_windows() {
+    let mut wire = Wire::new();
+    wire.sessions.attended.set(true);
+    let critic = session("critic");
+    wire.join(Side::Laptop, &human(), None, "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+
+    let posted = wire.post(Side::Devenv, &critic, None, &[HUMAN], "a question for you").unwrap();
+    assert_eq!(woke(&posted), [("@human@lap", Reach::Woken)]);
+    assert_eq!(told_the_human(&wire), [(Side::Laptop, "review")]);
+}
+
+/// The guard does not hold the human's post, on the laptop or at a home elsewhere: a person
+/// reads the transcript as it arrives.
+#[test]
+fn the_human_is_exempt_from_the_guard_across_the_link() {
+    let mut wire = Wire::new();
+    let critic = session("critic");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+    wire.post(Side::Devenv, &critic, None, &[], "unread by the human").unwrap();
+
+    let posted = wire.post(Side::Laptop, &human(), None, &["critic"], "go ahead").unwrap();
+    assert_eq!(posted.group, "review@devenv");
+    assert_eq!(woke(&posted), [("critic@devenv", Reach::Woken)]);
 }
