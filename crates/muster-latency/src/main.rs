@@ -13,8 +13,9 @@
 //! The last section times what an agent asks of the daemon while a build runs beside it: a
 //! pane read, of the last rows and of the whole history, and an echo, idle and then beside
 //! burners at nice 10, two to a core. The daemon is spawned, so its threads run at the
-//! priority they ask for. What a nice-10 build does to an app macOS has napped is not in any
-//! number here; the app opts out of App Nap for that reason (`docs/architecture.md`).
+//! priority they ask for; a daemon named by `--socket` is not measured this way. What a nice-10
+//! build does to an app macOS has napped is not in any number here; the app opts out of App Nap
+//! for that reason (`docs/architecture.md`).
 
 mod burners;
 mod daemon;
@@ -61,8 +62,8 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
 /// The rows `muster pane read --rows 20` asks for.
 const TAIL_ROWS: u32 = 20;
-/// More than a pane keeps at the daemon's default scrollback, so the whole read is as large
-/// as a pane's history gets unless somebody raises it.
+/// More than a pane of this grid keeps at the daemon's default scrollback, whose limit is
+/// libghostty's page memory rather than text: about 257 KiB of these short lines at 80 columns.
 const HISTORY_LINES: u32 = 20_000;
 
 struct Options {
@@ -263,9 +264,10 @@ fn main() {
         std::iter::once(flooded.alone.clone()).chain(flooded.beside.clone()).collect(),
     ));
 
-    let (loaded, judged) = under_load(&mut daemon, &options);
-    verdicts.extend(judged);
-    report.push(("beside a build", loaded));
+    if let Some((loaded, judged)) = under_load(&mut daemon, &options) {
+        verdicts.extend(judged);
+        report.push(("beside a build", loaded));
+    }
 
     if options.json {
         let sections: Vec<_> = report
@@ -464,8 +466,16 @@ fn flood(daemon: &mut Daemon, options: &Options, log: &Path) -> Flood {
     Flood { alone, beside, behind, seconds, caught_up }
 }
 
-fn under_load(daemon: &mut Daemon, options: &Options) -> (Vec<Row>, Vec<Verdict>) {
+/// `None` for a daemon named by `--socket`: the burners load this machine, and that daemon is
+/// usually on another, so beside it they would judge the link rather than a daemon under load.
+fn under_load(daemon: &mut Daemon, options: &Options) -> Option<(Vec<Row>, Vec<Verdict>)> {
     const DONE: &str = "history-done";
+    if let Target::Socket(_) = options.daemon {
+        println!(
+            "beside a build: not measured, since --socket names a daemon this load may not reach"
+        );
+        return None;
+    }
     let history = daemon
         .pane(&format!("seq 1 {HISTORY_LINES} | sed 's/^/history line /'; echo {DONE}; exec cat"));
     let echoed = daemon.pane("cat");
@@ -505,7 +515,7 @@ fn under_load(daemon: &mut Daemon, options: &Options) -> (Vec<Row>, Vec<Verdict>
     daemon.close(&history);
     daemon.close(&echoed);
     let verdicts = stats::beside_a_build(&rows[3], &rows[4], &rows[2], &rows[5]);
-    (rows, verdicts)
+    Some((rows, verdicts))
 }
 
 /// Whether a surface fed `bytes` shows `screen`, the daemon's own rows; the first difference if
