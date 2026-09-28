@@ -184,6 +184,26 @@ struct RegionViewTests {
   }
 
   @MainActor
+  @Test("a pane parked after the roster that left it out is let go")
+  func aPaneParkedAfterItsLastRosterIsReleased() {
+    // The order a window meets when it skips a view that has a newer one behind it: the roster
+    // published with the skipped view arrives while the pane is still on screen, and the view
+    // that parks it comes after. No later roster need follow, so this park is the last chance
+    // to let the pane go before it holds its surface and threads for as long as the window is
+    // quiet.
+    let (view, _, store) = regionAndStore()
+    show(
+      view, contents(.split(axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))),
+      in: store)
+    store.release(everythingBut: [PaneKey(daemon: "local", pane: "w1:p1")])
+
+    show(view, contents(leaf("w1:p1")), in: store)
+
+    #expect(store.parked.isEmpty)
+    #expect(store.count == 1)
+  }
+
+  @MainActor
   @Test("a pane a region is showing survives a roster that does not name it")
   func onScreenPanesAreNeverReleased() {
     // A roster arrives empty for reasons that are not "every pane closed" - a daemon
