@@ -13,6 +13,7 @@ libc.workspace = true
 muster-core.workspace = true
 muster-daemon-proto = { workspace = true, features = ["serde"] }
 muster-detect.workspace = true
+muster-msg.workspace = true
 muster-frame.workspace = true
 muster-vt.workspace = true
 prost.workspace = true

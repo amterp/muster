@@ -125,7 +125,7 @@ message HelloRefused {
 // Control: requests
 
 // Everything a client asks on a control connection. Namespaced by service, so a service added
-// later - messages between agents, kan a_2Rtd0Ed0l - takes an arm of its own.
+// later takes an arm of its own, as messages between agents did.
 message Request {
   // Chosen by the client and echoed in the answer. Requests on one connection are answered in
   // the order they were sent.
@@ -134,6 +134,7 @@ message Request {
     SessionRequest session = 10;
     TabRequest tab = 11;
     PaneRequest pane = 12;
+    MsgRequest msg = 13;
   }
 }
 
@@ -458,6 +459,203 @@ message Manifest {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Control: messages between agents (MIP-4)
+//
+// Agents post to groups and are woken when something arrives for them, rather than typing into
+// each other's panes. The daemon keeps each group's log and every participant's read cursor, and
+// refuses a post while its author has unread messages in that group. Nothing here names a pane:
+// a Claude session in a plain terminal takes part the same way as one in a pane. A message's body
+// never enters the daemon's log.
+
+message MsgRequest {
+  // Who is asking, as its environment says. Every request identifies its caller by `as_name`,
+  // else by its inbox, else it is the human (MIP-4, section 3).
+  Caller caller = 1;
+  oneof request {
+    Join join = 10;
+    Leave leave = 11;
+    Who who = 12;
+    Post post = 13;
+    Read read = 14;
+    Log log = 15;
+    Wait wait = 16;
+  }
+
+  message Caller {
+    optional string as_name = 1;
+    // Claude Code's `CLAUDE_CODE_MESSAGING_SOCKET`, which is the same in every command a
+    // session runs, and how the daemon wakes it.
+    optional Inbox inbox = 2;
+    optional string pane = 3;
+    // Where the caller runs, which names a caller that never gave a name.
+    optional string directory = 4;
+  }
+
+  message Inbox {
+    string socket = 1;
+    // The socket file's inode. The path is a process id, which the system reuses; the inode
+    // tells a new session at the same path from the one that has gone.
+    uint64 inode = 2;
+  }
+
+  // Registers the caller, under `name` or the name it already has, and joins `group`, creating
+  // it if it does not exist.
+  message Join {
+    optional string name = 1;
+    optional string group = 2;
+  }
+
+  // Leaves `group`, or with none leaves every group and stops being a participant.
+  message Leave {
+    optional string group = 1;
+  }
+
+  message Who {
+    optional string group = 1;
+  }
+
+  // Appends a message and wakes whom it is for. Without a group, it goes to the one group its
+  // author and addressees share, or to the group of exactly them.
+  message Post {
+    optional string group = 1;
+    repeated string to = 2;
+    string body = 3;
+  }
+
+  // The caller's unread entries, moving its cursor past them.
+  message Read {
+    optional string group = 1;
+  }
+
+  // A group's entries after `since`, moving nothing.
+  message Log {
+    string group = 1;
+    uint64 since = 2;
+  }
+
+  // Answered once the caller has unread messages that would wake it: at once if it already
+  // does. A newer wait for the same participant ends this one, refused as `superseded`.
+  message Wait {
+    optional string group = 1;
+    // Refused as `timed_out` after this long. None waits for as long as the connection lasts.
+    optional uint32 timeout_ms = 2;
+  }
+}
+
+message MsgAnswer {
+  // The participant the daemon took the caller for.
+  string caller = 1;
+  // Why a refused request was refused, as data - `unread`, `name_in_use`, `timed_out` - where
+  // the answer's reason says it in words, naming the command to run next.
+  string refusal = 2;
+  oneof answer {
+    Joined joined = 10;
+    Left left = 11;
+    Posted posted = 12;
+    Entries entries = 13;
+    Members members = 14;
+    Notices notices = 15;
+  }
+
+  message Joined {
+    string name = 1;
+    optional string group = 2;
+    bool created = 3;
+    // The name belonged to a participant that had gone, whose cursors this caller now has.
+    bool took_over = 4;
+  }
+
+  message Left {
+    repeated string groups = 1;
+    bool stopped = 2;
+  }
+
+  message Posted {
+    string group = 1;
+    uint64 seq = 2;
+    repeated Reached reached = 3;
+  }
+
+  message Reached {
+    string name = 1;
+    Reach reach = 2;
+  }
+
+  enum Reach {
+    REACH_UNSPECIFIED = 0;
+    // Its inbox took a wake, or a wait it was in returned. Neither says the wake was read.
+    REACH_WOKEN = 1;
+    // Woken for this group already and not read since, so it will read this too.
+    REACH_ALREADY_WOKEN = 2;
+    // Nothing can wake it; it sees the message when it next reads.
+    REACH_WAITING = 3;
+    REACH_GONE = 4;
+  }
+
+  // What `read` and `log` return, a group at a time.
+  message Entries {
+    repeated GroupEntries groups = 1;
+  }
+
+  message GroupEntries {
+    string group = 1;
+    repeated Entry entries = 2;
+  }
+
+  message Entry {
+    uint64 seq = 1;
+    // Milliseconds since the Unix epoch.
+    uint64 at_ms = 2;
+    oneof what {
+      Message message = 10;
+      // Who created the group, joined it or left it.
+      string created = 11;
+      string joined = 12;
+      string left = 13;
+    }
+  }
+
+  message Message {
+    string author = 1;
+    repeated string to = 2;
+    string body = 3;
+  }
+
+  message Members {
+    repeated Member members = 1;
+  }
+
+  message Member {
+    string name = 1;
+    Liveness liveness = 2;
+    repeated string groups = 3;
+    optional string inbox = 4;
+  }
+
+  enum Liveness {
+    LIVENESS_UNSPECIFIED = 0;
+    LIVENESS_ALIVE = 1;
+    LIVENESS_GONE = 2;
+    // The human counts as alive whether or not anyone is at the window.
+    LIVENESS_HUMAN = 3;
+  }
+
+  // What `wait` returns: per group, the unread messages that would wake the caller.
+  message Notices {
+    repeated Notice notices = 1;
+  }
+
+  message Notice {
+    string group = 1;
+    uint64 first = 2;
+    uint64 last = 3;
+    uint64 count = 4;
+    uint64 to_you = 5;
+    repeated string from = 6;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Control: what the daemon sends
 
 message ControlMessage {
@@ -487,6 +685,7 @@ message Answer {
     Snapshot snapshot = 10;
     PaneText text = 11;
     LogFollowed followed = 12;
+    MsgAnswer msg = 13;
   }
 }
 

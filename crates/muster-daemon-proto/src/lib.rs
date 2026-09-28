@@ -4,12 +4,13 @@
 //! an app adopts whichever daemon is running (MIP-3, section 9). So this crate holds what the
 //! two must agree on and nothing else: the generated messages (`proto/muster_daemon.proto`,
 //! whose header is the protocol's documentation), the version rule, where an install's daemon
-//! listens, how long a daemon just started is given, and the handshake that opens every
-//! connection.
+//! listens, how long a daemon just started is given, the handshake that opens every connection,
+//! and how the messaging commands are spelled.
 
 pub mod connection;
 pub mod install;
 pub mod launch;
+pub mod messaging;
 pub mod version;
 
 include!(concat!(env!("OUT_DIR"), "/muster.daemon.rs"));
@@ -55,6 +56,16 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Report(_)) => "pane.report",
             Some(pane_request::Request::Seen(_)) => "pane.seen",
             None => "pane",
+        },
+        Service::Msg(asked) => match &asked.request {
+            Some(msg_request::Request::Join(_)) => "msg.join",
+            Some(msg_request::Request::Leave(_)) => "msg.leave",
+            Some(msg_request::Request::Who(_)) => "msg.who",
+            Some(msg_request::Request::Post(_)) => "msg.post",
+            Some(msg_request::Request::Read(_)) => "msg.read",
+            Some(msg_request::Request::Log(_)) => "msg.log",
+            Some(msg_request::Request::Wait(_)) => "msg.wait",
+            None => "msg",
         },
     }
 }

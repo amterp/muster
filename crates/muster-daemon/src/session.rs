@@ -43,6 +43,7 @@ use crate::data::Data;
 use crate::detect::{self, Detecting};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
+use crate::messages::Messages;
 use crate::pane::{Ended, Pane, PaneIo, Process, Turns, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
@@ -92,6 +93,8 @@ pub(crate) enum Stop {
 #[derive(Debug)]
 pub(crate) struct Shared {
     pub(crate) session: Mutex<Session>,
+    /// Messages between agents, under a lock of their own (see [`crate::messages`]).
+    pub(crate) messages: Mutex<Messages>,
     /// Told when the daemon should exit, and why.
     pub(crate) stopping: Sender<Stop>,
     pub(crate) instance: u64,
@@ -142,6 +145,7 @@ impl Shared {
                 scroll_multiplier: settings.scroll_multiplier.unwrap_or(1.0),
             });
             Shared {
+                messages: Mutex::new(Messages::load(&socket.path)),
                 session: Mutex::new(Session {
                     instance,
                     seq: 0,
@@ -181,6 +185,10 @@ impl Shared {
 
     pub(crate) fn lock(&self) -> Locked<'_> {
         Locked { session: Some(poison::lock(&self.session, "daemon.session")) }
+    }
+
+    pub(crate) fn messages(&self) -> MutexGuard<'_, Messages> {
+        poison::lock(&self.messages, "daemon.messages")
     }
 
     /// Points the link beside the socket at this daemon, and tells panes started from now the

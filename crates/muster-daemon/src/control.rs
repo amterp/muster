@@ -17,8 +17,8 @@ use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, request::Service, session_request};
 use prost::Message;
 
-use crate::handoff;
-use crate::session::{Handled, Reply, Session, Shared, Stop};
+use crate::session::{Handled, Replacement, Reply, Session, Shared, Stop};
+use crate::{handoff, messages};
 
 /// How many messages a connection may have waiting before the daemon gives up on it.
 ///
@@ -225,6 +225,10 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         // so an answer still means the request has taken effect. A snapshot leaves no such work,
         // and its answer goes under this lock, beside the state it describes.
         let handled = match request.service {
+            // Outside the session's lock: messages have their own (crate::messages).
+            Some(Service::Msg(request)) => {
+                Handled::Reply(messages::handle(shared, request, &|| hung_up(&stream)))
+            }
             Some(service) => {
                 let mut session = locked();
                 match session.handle(service, &outbox) {
@@ -254,10 +258,8 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             }
             // Outside the lock: it waits on another daemon, step by step.
             Handled::Replace(replacement) => {
-                let reply = handoff::hand_over(shared, &replacement);
-                if reply.outcome == proto::Outcome::Done {
-                    stop = Some(Stop::HandedOff);
-                }
+                let (reply, handed_off) = hand_over(shared, &replacement);
+                stop = handed_off.or(stop);
                 reply
             }
         };
@@ -274,6 +276,37 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
     shared.lock().unsubscribe(outbox.id);
     let _ = stream.shutdown(Shutdown::Both);
     log::info("daemon.connection.closed", fields! { "connection" => outbox.id });
+}
+
+/// Hands this daemon's panes to a replacement, with messages refusing changes until it is
+/// decided, and says whether this daemon stops because of it.
+fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> (Reply, Option<Stop>) {
+    shared.messages().handing_over(true);
+    let reply = handoff::hand_over(shared, replacement);
+    if reply.outcome == proto::Outcome::Done {
+        return (reply, Some(Stop::HandedOff));
+    }
+    shared.messages().handing_over(false);
+    (reply, None)
+}
+
+/// Whether the client has closed its end: a read that would not wait finds the end of the
+/// stream. Peeked, so a request it sent meanwhile stays to be read, and without changing the
+/// socket's blocking mode, which its writer thread shares.
+fn hung_up(stream: &UnixStream) -> bool {
+    use std::os::fd::AsRawFd;
+    let mut byte = 0u8;
+    // SAFETY: `byte` is a valid, writable one-byte buffer for the length given, and the
+    // descriptor is the stream's, open for as long as `stream` is borrowed.
+    let read = unsafe {
+        libc::recv(
+            stream.as_raw_fd(),
+            (&raw mut byte).cast(),
+            1,
+            libc::MSG_PEEK | libc::MSG_DONTWAIT,
+        )
+    };
+    read == 0
 }
 
 /// Queues the answer to a request. Called with the session locked, after the request's events

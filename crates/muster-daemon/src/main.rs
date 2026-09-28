@@ -15,6 +15,7 @@ mod facts;
 mod handoff;
 mod hold;
 mod input;
+mod messages;
 mod pane;
 mod persist;
 mod priority;

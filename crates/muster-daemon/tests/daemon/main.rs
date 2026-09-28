@@ -13,6 +13,7 @@ mod handoff;
 mod handshake;
 mod lifecycle;
 mod log;
+mod messaging;
 mod migration;
 mod panes;
 mod persistence;

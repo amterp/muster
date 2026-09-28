@@ -644,6 +644,7 @@ dependencies = [
  "muster-detect",
  "muster-frame",
  "muster-harness",
+ "muster-msg",
  "muster-vt",
  "prost",
  "serde",

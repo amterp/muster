@@ -54,7 +54,11 @@ impl Case {
             "{} mode, {}{}",
             if self.bypass { "bypassPermissions" } else { "default" },
             if self.token { "auth line with the session's token" } else { "no auth line" },
-            if self.accept { ", crossSessionInbound \"accept\" passed with --settings" } else { "" },
+            if self.accept {
+                ", crossSessionInbound \"accept\" passed with --settings"
+            } else {
+                ""
+            },
         )
     }
 
@@ -137,8 +141,8 @@ fn inbox_of(project: &Path) -> (PathBuf, String) {
 }
 
 fn send(socket: &Path, lines: &[String]) -> Vec<u8> {
-    let mut connection = UnixStream::connect(socket)
-        .unwrap_or_else(|error| panic!("{}: {error}", socket.display()));
+    let mut connection =
+        UnixStream::connect(socket).unwrap_or_else(|error| panic!("{}: {error}", socket.display()));
     let mut text = lines.join("\n");
     text.push('\n');
     connection.write_all(text.as_bytes()).expect("the inbox takes the lines");
