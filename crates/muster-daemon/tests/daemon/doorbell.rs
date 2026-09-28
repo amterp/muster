@@ -324,6 +324,21 @@ fn a_ring_left_in_a_prompt_somebody_then_typed_into_is_not_sent() {
     assert_eq!(agent.rings_heard(), Vec::<String>::new(), "Return pressed over typed words");
 }
 
+/// The same, with the agent slow to paint what was typed after the ring: its prompt shows the
+/// ring alone when Return is due again, and the words typed after it would go with a Return.
+/// The daemon has seen them typed, which is enough to stop.
+#[test]
+fn a_ring_is_not_pressed_again_over_words_the_agent_has_not_painted_yet() {
+    let mut agent = Agent::to_come();
+    agent.daemon.run_starting_agent_unechoed("p1");
+    agent.post("p1", "a brief");
+    agent.until_shows("PROBE-PROMPT> [muster]");
+    agent.type_in(" and more", false);
+
+    std::thread::sleep(ANSWER + QUIET + Duration::from_secs(2));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "Return pressed over typed words");
+}
+
 /// A suggestion drawn faint in an empty prompt is not something anybody typed.
 #[test]
 fn a_prompt_showing_a_faint_suggestion_is_empty() {

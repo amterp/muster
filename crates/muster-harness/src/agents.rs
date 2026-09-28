@@ -58,6 +58,13 @@ impl Daemon {
         self.run_agent_with(pane, " starting", proto::AgentState::Idle);
     }
 
+    /// [`Daemon::run_starting_agent`], with nothing typed into the agent shown until it has read
+    /// a line: the screen of an agent slow to paint what somebody typed, held for as long as a
+    /// test needs.
+    pub fn run_starting_agent_unechoed(&self, pane: &str) {
+        self.run_agent_with(pane, " starting unechoed", proto::AgentState::Idle);
+    }
+
     /// [`Daemon::run_agent`], with the agent blocked at a question from its first frame, and
     /// waiting until detection has read it so.
     pub fn run_agent_at_a_dialog(&self, pane: &str) {
