@@ -91,6 +91,12 @@ pub struct Pane {
     pub command: Option<String>,
     /// What the agent in the pane has said about itself.
     pub facts: AgentFacts,
+    /// Whether `agent_state` is the agent's own report rather than what the daemon read off its
+    /// screen.
+    pub reported: bool,
+    /// Whether the daemon's rules have stopped reading this agent's screen, so that its state
+    /// comes only from what the agent reports.
+    pub unreadable: bool,
 }
 
 /// What an agent reports about itself, in its own words (MIP-3, section 2). Never read off its
@@ -106,6 +112,8 @@ pub struct AgentFacts {
     pub cost_usd: Option<f64>,
     /// Anything else it chose to say, by name.
     pub other: BTreeMap<String, String>,
+    /// What it ended its turn to wait on, work it started itself: it has not finished.
+    pub waiting: Option<String>,
 }
 
 /// A tab: its tree over this machine's panes, what it is called, and which pane is zoomed.

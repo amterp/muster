@@ -311,6 +311,116 @@
       }
     },
     {
+      "name": "what an agent says about itself, and how its state was read, is a change of its own",
+      "why": "An agent reports how full its context is, how many sub-agents it runs and what it is waiting on without its state moving, and the daemon says when its state is the agent's own word or when it cannot read the screen. Each arrives on the pane's record and is reported as one change, apart from the state, so a reader that paints them need not compare records. A record that moves none of them reports nothing.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src",
+              "agent": "claude"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "agent": "claude",
+            "facts": {
+              "contextUsed": 42,
+              "subagents": 2
+            }
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "agent": "claude",
+            "facts": {
+              "contextUsed": 42,
+              "subagents": 2
+            }
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "agent": "claude",
+            "facts": {
+              "contextUsed": 42,
+              "subagents": 2,
+              "waiting": "the full gate"
+            }
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "agent": "claude",
+            "facts": {
+              "contextUsed": 42,
+              "subagents": 2,
+              "waiting": "the full gate"
+            },
+            "reported": true
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "agent": "claude",
+            "facts": {
+              "contextUsed": 42,
+              "subagents": 2,
+              "waiting": "the full gate"
+            },
+            "reported": true,
+            "unreadable": true
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "p1"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1"
+        },
+        "agentStates": {
+          "p1": "idle"
+        },
+        "layouts": {
+          "t1": "p1"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "agentDescribed:p1",
+          "agentDescribed:p1",
+          "agentDescribed:p1",
+          "agentDescribed:p1"
+        ]
+      }
+    },
+    {
       "name": "a record that changed nothing reports nothing",
       "why": "Applying an event twice is applying it once, and an event that changed nothing must not repaint anything.",
       "given": {

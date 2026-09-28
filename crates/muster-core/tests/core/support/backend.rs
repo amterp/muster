@@ -86,7 +86,31 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         name: optional(given, "name"),
         title: optional(given, "title"),
         command: optional(given, "command"),
-        facts: AgentFacts::default(),
+        facts: given.get("facts").map(read_facts).unwrap_or_default(),
+        reported: given.get("reported").and_then(Value::as_bool).unwrap_or_default(),
+        unreadable: given.get("unreadable").and_then(Value::as_bool).unwrap_or_default(),
+    }
+}
+
+fn read_facts(given: &Value) -> AgentFacts {
+    AgentFacts {
+        #[expect(clippy::cast_possible_truncation, reason = "a percentage, which an f32 holds")]
+        context_used: given.get("contextUsed").and_then(Value::as_f64).map(|used| used as f32),
+        subagents: given
+            .get("subagents")
+            .and_then(Value::as_u64)
+            .and_then(|count| u32::try_from(count).ok())
+            .unwrap_or_default(),
+        model: optional(given, "model"),
+        cost_usd: given.get("costUsd").and_then(Value::as_f64),
+        other: given
+            .get("other")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .map(|(key, value)| (key.clone(), value.as_str().unwrap_or_default().to_string()))
+            .collect(),
+        waiting: optional(given, "waiting"),
     }
 }
 

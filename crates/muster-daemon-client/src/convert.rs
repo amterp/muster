@@ -90,16 +90,16 @@ pub fn pane(record: proto::Pane) -> Pane {
         name: record.label,
         title: Some(record.title).filter(|title| !title.is_empty()),
         command: record.command,
-        // `waiting`, `state_reported` and `screen_unreadable` are not carried yet: nothing
-        // in the window shows them, and the daemon already withholds a finish while an agent
-        // waits, which is the part attention needs.
         facts: AgentFacts {
             context_used: facts.context_used,
             subagents: facts.subagents,
             model: facts.model,
             cost_usd: facts.cost_usd,
             other: facts.other.into_iter().collect(),
+            waiting: facts.waiting,
         },
+        reported: record.state_reported,
+        unreadable: record.screen_unreadable,
     }
 }
 

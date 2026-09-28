@@ -79,6 +79,12 @@ pub enum Change {
     /// because a list of panes names them by exactly these things, and a name that never
     /// updates is a pane the user cannot find twice.
     PaneRelabelled(PaneId),
+    /// What is known of this pane's agent beyond its state has moved: what the agent says about
+    /// itself, whether its state is its own report, or whether its screen can be read.
+    ///
+    /// Announced with the state, and for the same reason the state is kept out of the roster:
+    /// an agent reports how full its context is as often as its statusline redraws.
+    AgentDescribed(PaneId),
     TabAdded(TabId),
     /// What this tab is called has moved. The same shape as [`Change::PaneRelabelled`] and
     /// for the same reason: a caption that never updates is a tab somebody named and cannot
@@ -115,6 +121,7 @@ impl Change {
             Change::AgentStateChanged { .. } => "agent_state",
             Change::FinishedUnseen { .. } => "finished_unseen",
             Change::PaneRelabelled(_) => "pane_relabelled",
+            Change::AgentDescribed(_) => "agent_described",
             Change::TabAdded(_) => "tab_added",
             Change::TabRelabelled(_) => "tab_relabelled",
             Change::TabRemoved(_) => "tab_removed",
@@ -138,6 +145,7 @@ impl Change {
             self,
             Change::AgentStateChanged { .. }
                 | Change::FinishedUnseen { .. }
+                | Change::AgentDescribed(_)
                 | Change::PaneRelabelled(_)
                 | Change::TabRelabelled(_)
                 | Change::PasteHeld { .. }
@@ -175,6 +183,7 @@ impl Change {
         match self {
             Change::AgentStateChanged { pane, .. }
             | Change::FinishedUnseen { pane, .. }
+            | Change::AgentDescribed(pane)
             | Change::PaneAdded(pane) => Some(pane),
             _ => None,
         }

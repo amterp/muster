@@ -534,7 +534,10 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
             model: Some("opus".to_string()),
             cost_usd: Some(0.42),
             other: std::collections::BTreeMap::new(),
+            waiting: None,
         },
+        reported: true,
+        unreadable: false,
     }
 }
 

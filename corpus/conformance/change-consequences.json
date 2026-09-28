@@ -163,6 +163,19 @@
         "republishes": false,
         "announcesAgentState": null
       }
+    },
+    {
+      "name": "what an agent says about itself is announced with its state, and moves nothing else",
+      "why": "Its facts, whether its state is its own report, and whether its screen can be read travel with the state, because an agent reports how full its context is as often as its statusline redraws. Republishing the roster for each would be the per-event cost the state's own message exists to avoid.",
+      "given": {
+        "change": "agentDescribed",
+        "pane": "w1:p3"
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": "w1:p3"
+      }
     }
   ]
 }

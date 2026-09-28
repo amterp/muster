@@ -185,6 +185,9 @@ impl Mirror {
         if relabelled(before, &pane) {
             changes.push(Change::PaneRelabelled(id.clone()));
         }
+        if described(before, &pane) {
+            changes.push(Change::AgentDescribed(id.clone()));
+        }
         self.panes.insert(id, pane);
         changes
     }
@@ -295,6 +298,13 @@ fn relabelled(before: &Pane, now: &Pane) -> bool {
         || before.agent != now.agent
         || before.name != now.name
         || before.title != now.title
+}
+
+/// Whether what is known of a pane's agent beyond its state has moved.
+fn described(before: &Pane, now: &Pane) -> bool {
+    before.facts != now.facts
+        || before.reported != now.reported
+        || before.unreadable != now.unreadable
 }
 
 /// Whether a tab's tree or its zoom has moved.
