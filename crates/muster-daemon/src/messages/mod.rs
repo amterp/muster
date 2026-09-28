@@ -340,6 +340,14 @@ fn waiting(
                 let timed_out = deadline.is_some_and(|deadline| Instant::now() >= deadline);
                 if timed_out || hung_up() {
                     let mut messages = shared.messages();
+                    // A post may have answered this wait between the timeout and the lock, and
+                    // counted it as woken: that answer is the one to give.
+                    if let Ok(WaitEnded::Ready(notices)) = ended.try_recv() {
+                        return answered(
+                            String::new(),
+                            Answer::Notices(msg_answer::Notices { notices }),
+                        );
+                    }
                     messages.service.cancel_wait(ticket);
                     messages.waits.remove(&ticket);
                     return refused_as("", "timed_out", "nothing arrived before the timeout");

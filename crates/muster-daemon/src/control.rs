@@ -306,7 +306,14 @@ fn hung_up(stream: &UnixStream) -> bool {
             libc::MSG_PEEK | libc::MSG_DONTWAIT,
         )
     };
+    // A reset connection reads as an error rather than as the end; only "nothing yet" is not
+    // a caller gone.
     read == 0
+        || (read < 0
+            && !matches!(
+                std::io::Error::last_os_error().raw_os_error(),
+                Some(libc::EAGAIN | libc::EINTR)
+            ))
 }
 
 /// Queues the answer to a request. Called with the session locked, after the request's events
