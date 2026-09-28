@@ -26,7 +26,7 @@ struct Kept {
     saved: Saved,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Files {
     directory: PathBuf,
 }

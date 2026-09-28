@@ -65,7 +65,16 @@ impl Messages {
     pub(crate) fn handing_over(&mut self, underway: bool) {
         self.handing_over = underway;
         if underway {
+            for ticket in self.waits.keys() {
+                self.service.cancel_wait(*ticket);
+            }
             self.waits.clear();
+        } else {
+            // The handover failed. A new daemon that took over and died before this one
+            // resumed may have written to the store, so read back what it holds.
+            let files = self.service.store().clone();
+            let found = files.load();
+            self.service = Messaging::restore(files, found.saved, found.logs);
         }
     }
 
