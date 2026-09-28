@@ -553,12 +553,14 @@ message MsgRequest {
   // A group's rules (MIP-4, section 8). Names are participants' names, `*` for anyone, and
   // `@human` for the human.
   message Policy {
-    // Whom an unaddressed post wakes, by author; `*` is any author, or every member.
+    // Whom an unaddressed post wakes, by author; `*` is any author, or every member but the
+    // human, whom a set wakes only by naming `@human`.
     map<string, Names> ring = 1;
     // Whom an author may address, by author.
     map<string, Names> allow = 2;
     // Who may add or remove members, themselves included, and change the policy.
     repeated string membership = 3;
+    // Read when a group is made; `group set` leaves it as it is, and pause and resume change it.
     bool paused = 4;
   }
 
