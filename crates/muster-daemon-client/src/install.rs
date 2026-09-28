@@ -11,6 +11,7 @@
 //! would send, and a machine that has it is not sent it again.
 
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use muster_ssh::Platform;
@@ -99,7 +100,8 @@ fn build_for(platform: &Platform) -> Option<&'static str> {
 /// `libghostty-vt.dylib` beside it, and `muster-daemon-data/`.
 ///
 /// The same bytes for the same files: entries in name order, and no owner, group or time of
-/// this machine's in any header, so the digest changes only when something sent does.
+/// this machine's in any header, so the digest changes only when something sent does. A mode
+/// is one of two, executable or not, rather than whatever this checkout's umask left.
 fn archive(daemon: &Path, library: Option<&Path>, data: &Path) -> io::Result<Vec<u8>> {
     let mut builder = tar::Builder::new(Vec::new());
     add_file(&mut builder, daemon, "muster-daemon", 0o755)?;
@@ -122,7 +124,9 @@ fn add_directory(builder: &mut tar::Builder<Vec<u8>>, from: &Path, name: &Path) 
         if entry.file_type()?.is_dir() {
             add_directory(builder, &entry.path(), &within)?;
         } else {
-            add_file(builder, &entry.path(), &within.to_string_lossy(), 0o644)?;
+            let mode =
+                if entry.metadata()?.permissions().mode() & 0o111 == 0 { 0o644 } else { 0o755 };
+            add_file(builder, &entry.path(), &within.to_string_lossy(), mode)?;
         }
     }
     Ok(())
@@ -224,8 +228,6 @@ mod tests {
     /// there is refused.
     #[test]
     fn an_executable_in_the_data_stays_executable() {
-        use std::os::unix::fs::PermissionsExt;
-
         let root = scratch("modes");
         std::fs::create_dir_all(root.join("data/bin")).unwrap();
         std::fs::write(root.join("data/bin/ghostty"), b"#!/bin/sh\n").unwrap();
