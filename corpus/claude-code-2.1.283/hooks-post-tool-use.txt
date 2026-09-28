@@ -1,0 +1,26 @@
+Which of a PostToolUse hook's two ways of speaking reaches the model: JSON additionalContext on stdout (by-json-hook), or stderr with exit 2 (by-stderr-hook). Both did.
+
+Recorded 2026-09-28 on macOS 26.4.1 / arm64, Claude Code 2.1.283 running Haiku 4.5 in
+bypassPermissions mode, by crates/muster-daemon/tests/daemon/claude_code_hooks.rs. Times are UTC.
+
+The session's transcript, condensed from its Claude Code log:
+    2026-09-28 12:06:16  the session is given:
+        Run the shell command `true`. Then follow any instruction a hook gives you, and end your turn.
+    2026-09-28 12:06:17  the model runs: true
+    2026-09-28 12:06:18  the command's result, with what hooks added:
+        (Bash completed with no output)
+    2026-09-28 12:06:18  a hook hands the model:
+        <system-reminder>
+        PostToolUse:Bash hook blocking error from command: "<daemon>/marks/by-stderr-hook": [<daemon>/marks/by-stderr-hook]: Also run this shell command: touch <daemon>/marks/by-stderr
+
+        </system-reminder>
+    2026-09-28 12:06:18  a hook hands the model:
+        <system-reminder>
+        PostToolUse:Bash hook additional context: Also run this shell command: touch <daemon>/marks/by-json
+        </system-reminder>
+    2026-09-28 12:06:20  the model runs: touch <daemon>/marks/by-stderr
+    2026-09-28 12:06:20  the command's result, with what hooks added:
+        (Bash completed with no output)
+    2026-09-28 12:06:20  the model runs: touch <daemon>/marks/by-json
+    2026-09-28 12:06:20  the command's result, with what hooks added:
+        (Bash completed with no output)

@@ -95,7 +95,7 @@ then take part in messaging.
 - `Stop` runs `muster msg wait --due` in the background (`asyncRewake`) once a turn ends. When a
   message arrives for the session, the wait prints the wake and the hook exits 2, which starts a
   turn with that wake. Its `timeout` of a day is what keeps it waiting: without one, Claude Code
-  ends the hook after its default. `--due` answers only a wake the session is due, so a session
+  ends the hook after its default (`docs/observations/claude-code-2.1.283.md`, section 4). `--due` answers only a wake the session is due, so a session
   that ends its turn without reading is woken once more and then not again until it reads.
 
 While a session's hooks run - a wait of its own is connected, or it ran a `muster msg` command
@@ -107,4 +107,5 @@ Claude Code 2.1.283, in a pane of a daemon, with both pieces installed: the mode
 with the first statusline, the context used with the first message, and the sub-agent count rose
 to one when a sub-agent started and fell back to none when it stopped. With the hooks loaded as a
 plugin, a turn read working and then idle from the hooks alone. `./dev --claude-code` checks that
-last part against whatever Claude Code is installed.
+last part against whatever Claude Code is installed, and that a `Stop` hook marked `asyncRewake`
+still wakes an idle session and a `PostToolUse` hook's stderr still reaches the model.

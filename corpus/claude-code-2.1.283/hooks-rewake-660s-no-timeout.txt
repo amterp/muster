@@ -1,0 +1,15 @@
+An asyncRewake Stop hook with no timeout, told to exit 2 after the session had been idle 660 s. Claude Code had ended it by then: the hook's process was gone when it was told to exit, and nothing woke the session.
+
+Recorded 2026-09-28 on macOS 26.4.1 / arm64, Claude Code 2.1.283 running Haiku 4.5 in
+bypassPermissions mode, by crates/muster-daemon/tests/daemon/claude_code_hooks.rs. Times are UTC.
+
+What the test said:
+    claude-code: the Stop hook: {"asyncRewake":true,"command":"<daemon>/marks/stop-hook","type":"command"}; waking after 660s
+    claude-code: wake 1 did not happen within 180s
+    the hook's exit 2 after 660s idle did not wake the session (run 1)
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 212 filtered out; finished in 843.85s
+
+The session's transcript, condensed from its Claude Code log:
+    2026-09-28 12:26:23  the session is given:
+        Reply with the single word ready, and nothing else.
+    2026-09-28 12:26:25  turn ends; Stop hook started: <daemon>/marks/stop-hook

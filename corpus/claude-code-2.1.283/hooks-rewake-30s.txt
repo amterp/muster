@@ -1,0 +1,35 @@
+An asyncRewake Stop hook, timeout 86400, exiting 2 after the session had been idle 30 s, twice; then exiting 1.
+
+Recorded 2026-09-28 on macOS 26.4.1 / arm64, Claude Code 2.1.283 running Haiku 4.5 in
+bypassPermissions mode, by crates/muster-daemon/tests/daemon/claude_code_hooks.rs. Times are UTC.
+
+The session's transcript, condensed from its Claude Code log:
+    2026-09-28 12:06:16  the session is given:
+        Reply with the single word ready, and nothing else.
+    2026-09-28 12:06:17  turn ends; Stop hook started: <daemon>/marks/stop-hook
+    2026-09-28 12:06:48  the session is given:
+        <task-notification>
+        <summary>Stop hook feedback</summary>
+        </task-notification>
+        <system-reminder>
+        Stop hook blocking error from command "Stop": Run this shell command now, then end your turn: touch <daemon>/marks/woke-1
+
+        </system-reminder>
+    2026-09-28 12:06:50  the model runs: touch <daemon>/marks/woke-1
+    2026-09-28 12:06:50  the command's result, with what hooks added:
+        (Bash completed with no output)
+    2026-09-28 12:06:52  the session is given:
+        [Your previous response had no visible output. Please continue and produce a user-visible response.]
+    2026-09-28 12:06:54  turn ends; Stop hook started: <daemon>/marks/stop-hook
+    2026-09-28 12:07:26  the session is given:
+        <task-notification>
+        <summary>Stop hook feedback</summary>
+        </task-notification>
+        <system-reminder>
+        Stop hook blocking error from command "Stop": Run this shell command now, then end your turn: touch <daemon>/marks/woke-2
+
+        </system-reminder>
+    2026-09-28 12:07:28  the model runs: touch <daemon>/marks/woke-2
+    2026-09-28 12:07:28  the command's result, with what hooks added:
+        (Bash completed with no output)
+    2026-09-28 12:07:29  turn ends; Stop hook started: <daemon>/marks/stop-hook
