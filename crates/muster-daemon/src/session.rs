@@ -1318,6 +1318,11 @@ impl Session {
                 if state == muster_detect::State::Idle
                     && settle_wait(&mut pane.record, &mut pane.wait_declared, "reported turn end")
                 {
+                    // The turn that ended the wait has finished. Detection marks a finish when it
+                    // sees the agent stop, and a pane it already reads idle shows it no stop.
+                    if pane.record.agent_state() == proto::AgentState::Idle {
+                        pane.record.finished_unseen = true;
+                    }
                     let record = pane.record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
                 }
