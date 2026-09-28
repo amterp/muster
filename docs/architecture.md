@@ -308,7 +308,9 @@ between "bytes" and "control":
   and runs every thread at the background priority, below a niced build. So the app holds a user-initiated
   activity for as long as it runs, which still lets the Mac sleep when idle. Napped beside three gates, a pane
   read once took 13 s, nearly all of it a whole-history answer waiting in the socket for the app to read it. A
-  read now asks the daemon for only the rows wanted, which fit in a socket's buffer.
+  read that names a count now asks the daemon for only those rows, and twenty rows fit in a socket's buffer where
+  a whole history does not. Unnapped, a hidden window would draw its panes at full rate for nobody, so each
+  window tells its surfaces when it cannot be seen, as Ghostty's does, and libghostty stops drawing them.
 - **The wheel goes to both.** The surface scrolls its own scrollback, by `scroll_multiplier`. The same event goes
   to the daemon for the pane under the pointer, which scales it by the same multiplier after rounding a notch up to
   one, as Ghostty does, and gives it to the program only where a terminal would: as a

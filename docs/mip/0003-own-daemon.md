@@ -1127,7 +1127,7 @@ herdr's. The targets, at one pane and at fifteen:
 | keystroke echo on one remote pane while another remote pane floods | within 1 ms of the same echo with no flood, plus network time |
 | attach to a painted replay, full screen and 10,000 rows of history at 200 columns | within 20 ms; composing and parsing measure 10 ms together headless |
 | a read of a pane's last 20 rows, beside a nice-10 build two to a core | p95 within 10 ms |
-| a read of a pane's whole history at the default scrollback, beside the same build | p95 within 50 ms |
+| a read of a pane's whole history at the default scrollback, 80 columns of short lines, beside the same build | p95 within 50 ms |
 | keystroke echo beside the same build | within 1 ms of the same echo idle |
 
 The tier also gains a flood case: a pane running `cat` on a large file, attached to a bridge that
