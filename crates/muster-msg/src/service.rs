@@ -766,13 +766,46 @@ impl<S: Store> Messaging<S> {
     }
 
     /// Whether `name`'s hooks will fetch what it is sent: it fetches with hooks, and a wait of
-    /// its own is connected or it ran a verb lately (MIP-4, section 7). While they will, the
-    /// host rings nothing for it.
-    pub fn hooked(&self, name: &str, now_ms: u64) -> bool {
-        let pull = self.participants.get(name).is_some_and(|participant| participant.pull);
+    /// its own is connected, or it ran a verb lately and is not idle (MIP-4, section 7). While
+    /// they will, the host rings nothing for it.
+    ///
+    /// Between turns only a `Stop` hook's wait fetches. An agent idle with none connected ended
+    /// its turn without one - an API error, or a person pressing Esc - and is rung as any other.
+    /// An agent whose activity is unknown, with no pane to show it, is taken at its last verb.
+    pub fn hooked(&self, name: &str, now_ms: u64, presence: &dyn Presence) -> bool {
+        let Some(participant) = self.participants.get(name).filter(|found| found.pull) else {
+            return false;
+        };
+        if self.waiters.contains_key(name) {
+            return true;
+        }
         let lately =
             self.seen_ms.get(name).is_some_and(|seen| now_ms.saturating_sub(*seen) < HOOKS_LIVE_MS);
-        pull && (self.waiters.contains_key(name) || lately)
+        let idle =
+            matches!(presence.activity(participant), Some(Activity::Idle | Activity::Waiting));
+        lately && !idle
+    }
+
+    /// Whether `name` has said its hooks fetch its messages: `join --pull`, or a `wait --due`.
+    pub fn fetches_with_hooks(&self, name: &str) -> bool {
+        self.participants.get(name).is_some_and(|participant| participant.pull)
+    }
+
+    /// Answers `name`'s wait with a wake the host was holding for its pane, when the wait fits
+    /// it: a `Stop` hook that connected after its agent was seen idle is told there, and
+    /// nothing is typed. `None` when no such wait is connected, or nothing is unread any more.
+    pub fn hand_to_wait(&mut self, name: &str, wake: &Notice) -> Option<AnsweredWait> {
+        let fits = self
+            .waiters
+            .get(name)
+            .is_some_and(|waiter| waiter.group.as_deref().is_none_or(|group| group == wake.group));
+        if !fits {
+            return None;
+        }
+        let mut notice = self.notice(name, &wake.group)?;
+        notice.again = wake.again;
+        let waiter = self.waiters.remove(name).expect("looked up above");
+        Some(AnsweredWait { ticket: waiter.ticket, name: name.to_string(), notice })
     }
 
     /// Forgets a wait its caller stopped waiting for.
@@ -1699,7 +1732,7 @@ impl<S: Store> Messaging<S> {
             waiter.group.as_deref().is_none_or(|filter| filter == group)
                 && !(waiter.due && woken_before)
         });
-        let hooked = self.hooked(name, now_ms);
+        let hooked = self.hooked(name, now_ms, presence);
         if name == HUMAN {
             posted.wakes.push(Wake {
                 name: name.to_string(),
@@ -1851,8 +1884,8 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
         now_ms: u64,
     ) -> (Vec<Wake>, Option<String>) {
-        // Its Stop hook asks for the "still unread" wake itself (`wait --due`).
-        if self.hooked(name, now_ms) {
+        // Its Stop hook's wait, connected, asks for the "still unread" wake itself (`wait --due`).
+        if self.hooked(name, now_ms, presence) {
             return (Vec::new(), None);
         }
         let Some(participant) = self.participants.get(name) else { return (Vec::new(), None) };

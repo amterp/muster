@@ -835,9 +835,10 @@ seconds while a prompt holds a draft (MIP-4, section 6).
 
 **An agent whose own hooks fetch its messages is never rung while they run.** A Claude Code session given
 `extras/claude-code/messaging-hooks.json` reads what arrived after each tool call and, when its turn ends, waits in
-the background with `muster msg wait --due`, whose answer starts its next turn. While that wait is connected, or one
-of its verbs ran in the last five minutes, a post marks it woken and types nothing; otherwise it is rung as any
-agent in a pane is.
+the background with `muster msg wait --due`, whose answer starts its next turn. While that wait is connected, or it is
+working and one of its verbs ran in the last five minutes, a post marks it woken and types nothing; otherwise it is
+rung as any agent in a pane is. An agent seen idle with no wait connected is rung for what its hooks were counted
+on to fetch, after two seconds in which a `Stop` hook starting late can connect and be told instead.
 
 **A group is kept on the daemon it was made on, and other machines hold replicas of it** (MIP-4, section 11). A
 window attached to this machine's daemon and an SSH one holds a `msg.peer` request open on the local daemon for each

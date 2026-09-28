@@ -378,13 +378,17 @@ the design above in three places:
   when it has none, and an `asyncRewake` hook is no exception.
 
 `--due`, like `join --pull`, marks the participant as fetching with hooks. Its hooks count as
-live while a `wait` of its own is connected, or while any verb of its own ran in the last five
-minutes. A post to a participant whose hooks are live answers its waiting `wait`, or, when none
+live while a `wait` of its own is connected, or while it is working and any verb of its own ran
+in the last five minutes; a participant with no pane, whose activity nobody sees, is taken at its
+last verb. A post to a participant whose hooks are live answers its waiting `wait`, or, when none
 waits because a turn is running, marks it woken and sends nothing: the turn's next `PostToolUse`
 delivers the message, or its `Stop` hook's `wait --due` returns "still unread". Such a
-participant is never rung, and a ring already queued for it is dropped when its hooks come alive.
-A participant whose hooks are not live, because the hook was ended or never installed, falls back
-to the doorbell and the inbox as before. When a verb last ran is kept in memory only, so after a
+participant is never rung. A ring queued for it when its hooks come alive goes to its `wait`
+instead, or is dropped when none is connected. A participant whose hooks are not live falls back
+to the doorbell and the inbox: the hook was ended or never installed, or its turn ended without a
+`Stop` hook, in an API error or at Esc, which leaves it idle with no `wait`. Seen idle so, it is
+rung "still unread" for what its hooks were counted on to fetch, after two seconds in which a
+`Stop` hook that starts late can connect and be told instead. When a verb last ran is kept in memory only, so after a
 daemon restart a participant's hooks count as live again once its `wait` reconnects, which the
 CLI does by itself, or once one of its verbs runs.
 

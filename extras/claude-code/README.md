@@ -98,8 +98,10 @@ then take part in messaging.
   ends the hook after its default (`docs/observations/claude-code-2.1.283.md`, section 4). `--due` answers only a wake the session is due, so a session
   that ends its turn without reading is woken once more and then not again until it reads.
 
-While a session's hooks run - a wait of its own is connected, or it ran a `muster msg` command
-in the last five minutes - the daemon types nothing into its pane.
+While a session's hooks run - a wait of its own is connected, or it is working and ran a `muster
+msg` command in the last five minutes - the daemon types nothing into its pane. A turn that ends
+without its `Stop` hook, in an API error or at Esc, leaves the session idle with no wait, and the
+daemon rings it for what it has unread.
 
 ## What was checked
 

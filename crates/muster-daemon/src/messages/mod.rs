@@ -55,6 +55,9 @@ pub(crate) struct Messages {
     pending: Vec<Wake>,
     /// Rings their agents have not yet taken, which the doorbell presses Return for again.
     rung: Vec<doorbell::Rung>,
+    /// Agents whose hooks fetch their messages, seen idle with none fetching, and when the
+    /// doorbell may ring them: a `Stop` hook's wait may connect just after its turn ends.
+    hook_grace: HashMap<String, Instant>,
     /// What waits for the human, changed by the request being handled, for the windows to be
     /// told once this lock is let go.
     told: Vec<msg_answer::Notice>,
@@ -87,6 +90,7 @@ impl Messages {
             // allows: at worst a wake too many.
             pending: service.outstanding(),
             rung: Vec::new(),
+            hook_grace: HashMap::new(),
             service,
             handing_over: false,
             waits: HashMap::new(),
@@ -388,6 +392,15 @@ struct Rang {
 }
 
 impl Messages {
+    /// Ends each answered wait with what it was told.
+    pub(crate) fn end_waits(&mut self, answered: &[AnsweredWait]) {
+        for answered in answered {
+            if let Some(wait) = self.waits.remove(&answered.ticket) {
+                let _ = wait.send(WaitEnded::Ready(vec![notice_of(&answered.notice)]));
+            }
+        }
+    }
+
     /// Ends the waits a change answered and sorts its wakes: sent now, rung now, or left for the
     /// doorbell. Under the lock, so a wait's answer and the service's record of it cannot part.
     pub(crate) fn hold(
@@ -396,11 +409,7 @@ impl Messages {
         answered: &[AnsweredWait],
         panes: &Panes,
     ) -> Holding {
-        for answered in answered {
-            if let Some(wait) = self.waits.remove(&answered.ticket) {
-                let _ = wait.send(WaitEnded::Ready(vec![notice_of(&answered.notice)]));
-            }
-        }
+        self.end_waits(answered);
         let now = Instant::now();
         let mut holding = Holding::default();
         for wake in wakes {

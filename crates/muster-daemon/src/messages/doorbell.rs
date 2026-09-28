@@ -50,6 +50,11 @@ const IDLE: Duration = Duration::from_mins(1);
 /// before Return is pressed again.
 const ANSWER: Duration = Duration::from_secs(5);
 
+/// How long an agent whose hooks fetch its messages is left once it is seen idle with nothing
+/// fetching, before it is rung: its `Stop` hook starts as the turn ends, and its wait may connect
+/// just after, which is then told instead.
+const HOOK_GRACE: Duration = Duration::from_secs(2);
+
 /// How many times Return is pressed again for one ring: enough to outlast Claude Code's start,
 /// which reads what is typed only once its prompt is up.
 const PRESSES: u8 = 6;
@@ -220,30 +225,28 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Dura
         if messages.handing_over {
             return LOOK_AGAIN;
         }
-        let watched = messages.service.watched();
-        before.retain(|pane, _| watched.iter().any(|(_, watched)| watched == pane));
-        for (name, pane) in watched {
-            let activity = panes.get(&pane).and_then(|seen| seen.activity);
-            let was = before.insert(pane, activity).flatten();
-            let went_idle = matches!(was, Some(Activity::Working | Activity::Blocked))
-                && activity == Some(Activity::Idle);
-            // Idle after the wake, not before it: one still waiting to be rung is not late.
-            let unrung = messages.pending.iter().any(|wake| wake.name == name);
-            if went_idle && !unrung {
-                let (wakes, unsaved) = messages.service.went_idle(&name, &panes, super::now_ms());
-                if let Some(error) = unsaved {
-                    super::kept_nothing(&muster_msg::Refusal::Store { error });
-                }
-                messages.pending.extend(wakes);
-            }
-        }
+        went_idle(&mut messages, before, &panes, now, &mut next);
         for wake in std::mem::take(&mut messages.pending) {
             let Via::Pane(pane) = &wake.via else { continue };
             // Forgotten since: its group was paused, or it read. Resuming wakes it afresh.
             let why = if !messages.service.woken_for(&wake.name, &wake.notice.group) {
                 Some("no longer woken")
-            } else if messages.service.hooked(&wake.name, super::now_ms()) {
+            } else if messages.service.hooked(&wake.name, super::now_ms(), &panes) {
+                if let Some(answered) = messages.service.hand_to_wait(&wake.name, &wake.notice) {
+                    log::info(
+                        "msg.ring.handed_to_wait",
+                        fields! { "name" => wake.name, "group" => wake.notice.group },
+                    );
+                    messages.end_waits(&[answered]);
+                    continue;
+                }
                 Some("its hooks fetch it")
+            } else if let Some(until) =
+                messages.hook_grace.get(&wake.name).copied().filter(|until| *until > now)
+            {
+                sooner(&mut next, until);
+                messages.pending.push(wake);
+                continue;
             } else {
                 None
             };
@@ -300,6 +303,40 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Dura
         Some(next) => next.saturating_duration_since(Instant::now()).min(LOOK_AGAIN),
         None if unfound => LOOK_AGAIN,
         None => IDLE,
+    }
+}
+
+/// Wakes once more each agent that went idle since the last look with what it was woken for
+/// still unread, holding back one whose hooks fetch its messages for [`HOOK_GRACE`].
+fn went_idle(
+    messages: &mut Messages,
+    before: &mut HashMap<String, Option<Activity>>,
+    panes: &Panes,
+    now: Instant,
+    next: &mut Option<Instant>,
+) {
+    messages.hook_grace.retain(|_, until| *until > now);
+    let watched = messages.service.watched();
+    before.retain(|pane, _| watched.iter().any(|(_, watched)| watched == pane));
+    for (name, pane) in watched {
+        let activity = panes.get(&pane).and_then(|seen| seen.activity);
+        let was = before.insert(pane, activity).flatten();
+        let went_idle = matches!(was, Some(Activity::Working | Activity::Blocked))
+            && activity == Some(Activity::Idle);
+        // Idle after the wake, not before it: one still waiting to be rung is not late.
+        let unrung = messages.pending.iter().any(|wake| wake.name == name);
+        if !went_idle || unrung {
+            continue;
+        }
+        let (wakes, unsaved) = messages.service.went_idle(&name, panes, super::now_ms());
+        if let Some(error) = unsaved {
+            super::kept_nothing(&muster_msg::Refusal::Store { error });
+        }
+        if !wakes.is_empty() && messages.service.fetches_with_hooks(&name) {
+            messages.hook_grace.insert(name.clone(), now + HOOK_GRACE);
+            sooner(next, now + HOOK_GRACE);
+        }
+        messages.pending.extend(wakes);
     }
 }
 

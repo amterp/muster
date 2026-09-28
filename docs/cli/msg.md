@@ -129,8 +129,10 @@ unread` on the end, and then not again until it reads.
 hands the model any message that arrived, and when a turn ends, `wait --due` waits in the
 background and starts the next turn when a wake is due. Merge them into the session's settings or
 pass the file with `--settings`. While a session's hooks are running, nothing is typed into its
-pane. A session whose hooks have not run for five minutes, and has no `wait` waiting, is rung as
-before.
+pane: while it works, if one of its `muster msg` commands ran in the last five minutes, and
+between turns while its `wait` is waiting. A session idle with no `wait` waiting ended its turn
+without its `Stop` hook - an API error, or Esc - and is rung for what it has unread, as any agent
+in a pane is.
 
 A Claude Code session outside any pane is woken through its inbox socket, and a wake reaches it
 between tool calls or starts a turn if it was idle. **A session started with
