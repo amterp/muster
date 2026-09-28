@@ -1675,9 +1675,10 @@ const CONFIRM_WITHIN: std::time::Duration = std::time::Duration::from_secs(1);
 /// How often the pane is re-read while waiting, matching the seam's other bounded waits.
 const CONFIRM_POLL: std::time::Duration = std::time::Duration::from_millis(25);
 
-/// How far up the pane a confirmation reads. A sent message ends at the bottom of the screen,
-/// and a screen is shorter than this at any size somebody works at; the history above is what
-/// every re-read would otherwise move, forty times a second while it waits.
+/// How far up the pane a confirmation reads while it waits. A sent message ends at the bottom of
+/// the screen, and a screen is shorter than this at any size somebody works at; the history above
+/// is what every re-read would otherwise move, forty times a second. A miss reads the whole pane
+/// once before refusing, for a message its own output has already scrolled away.
 const CONFIRM_ROWS: u32 = 300;
 
 /// Reads the pane back and refuses if the message that was just sent does not appear on it.
@@ -1725,6 +1726,15 @@ fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
         }
         std::thread::sleep(CONFIRM_POLL);
     };
+    // A command whose output scrolled the message past the last rows ran, and refusing it
+    // invites running it twice. So the whole pane is read once before saying so, which costs
+    // the history only on the path that has already waited out the second.
+    if unreadable.is_none()
+        && session::read_pane(&daemon, &pane, 0)
+            .is_ok_and(|read| arrived_in(&read.text, &send.text))
+    {
+        return Response::ok();
+    }
     match unreadable {
         None => Response::failure(format!(
             "the text was sent to pane {pane} and is not on it, so whatever is running there \
