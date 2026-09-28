@@ -184,6 +184,7 @@ public final class MusterWindow: NSObject {
     surfaces = PaneSurfaces(parkedIn: split) { [weak self] region, chrome, pane in
       self?.start(chrome, in: region, pane: pane)
     }
+    surfaces.window(key: window.isKeyWindow)
     // Named rather than left to the default, because `show` toggles into full-screen for a
     // window that quit from it and a default is a thing that can move.
     window.collectionBehavior.insert(.fullScreenPrimary)
@@ -683,10 +684,18 @@ public final class MusterWindow: NSObject {
 extension MusterWindow: NSWindowDelegate {
   public func windowDidBecomeKey(_ notification: Notification) {
     Core.windowFocused(true)
+    surfaces.window(key: true)
   }
 
   public func windowDidResignKey(_ notification: Notification) {
     Core.windowFocused(false)
+    surfaces.window(key: false)
+  }
+
+  /// Hidden, minimized, covered, or on a locked screen. What Ghostty's own window does, so that a
+  /// window nobody can see stops drawing.
+  public func windowDidChangeOcclusionState(_ notification: Notification) {
+    surfaces.window(visible: window.occlusionState.contains(.visible))
   }
 
   public func windowDidMove(_ notification: Notification) {

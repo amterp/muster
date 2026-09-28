@@ -67,6 +67,8 @@ public final class PaneSurfaces {
   private let parking = NSView(frame: .zero)
 
   private var held: [PaneKey: Held] = [:]
+  private var windowIsVisible = true
+  private var windowIsKey = false
 
   public init(parkedIn container: NSView, startPane: @escaping StartPane) {
     self.startPane = startPane
@@ -76,9 +78,19 @@ public final class PaneSurfaces {
 
   public func chrome(for key: PaneKey) -> PaneChrome? { held[key]?.chrome }
 
-  public func window(visible: Bool) {}
+  /// Tells every surface whether the window can be seen, and every one made later too. A hidden
+  /// window's panes would otherwise draw at full rate for nobody: the app holds App Nap off, so
+  /// nothing else slows them.
+  public func window(visible: Bool) {
+    windowIsVisible = visible
+    for chrome in chromes { chrome.surface.apply(windowIsVisible: visible) }
+  }
 
-  public func window(key: Bool) {}
+  /// Tells every surface whether the window is key, so that only a key window's pane is focused.
+  public func window(key: Bool) {
+    windowIsKey = key
+    for chrome in chromes { chrome.surface.apply(windowIsKey: key) }
+  }
 
   /// Every pane this window is holding, on screen or parked. For a repaint that is about the
   /// colours rather than about any one pane - a config file saved changes no state, so nothing
@@ -121,6 +133,8 @@ public final class PaneSurfaces {
     }
 
     let chrome = PaneChrome(frame: .zero, surface: SurfaceView(frame: .zero))
+    chrome.surface.apply(windowIsVisible: windowIsVisible)
+    chrome.surface.apply(windowIsKey: windowIsKey)
     chrome.attach(paneID: leaf.paneID)
     chrome.onFocusRequested = focus
     chrome.onPointerRequested = pointer

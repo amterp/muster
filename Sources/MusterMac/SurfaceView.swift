@@ -19,6 +19,12 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// a pasteboard of its own rather than reaching into whatever the developer last copied.
   public var pasteboard: NSPasteboard = .general
 
+  /// Whether the window holding this pane is key, and whether it can be seen, as the window last
+  /// said. Kept here so that a surface attached later starts from the window's answer rather
+  /// than from libghostty's, which is focused and visible.
+  private var windowIsKey = false
+  private var windowIsVisible = true
+
   /// Whether this view has a pane to type into. A bare `muster` does not - it is the
   /// renderer check - and a view that sent keystrokes anyway would fill the log with
   /// refusals for a state that is expected.
@@ -84,6 +90,9 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public func attach(_ surface: any PaneSurface, typeable: Bool) {
     self.surface = surface
+    if !windowIsVisible {
+      surface.setOcclusion(visible: false)
+    }
     surface.onProcessExited = { [weak self] processAlive in
       self?.paneEnded(processAlive: processAlive)
     }
@@ -456,8 +465,22 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
       ])
   }
 
+  /// A surface is focused only while it has the keyboard in a key window, as in Ghostty. The
+  /// focused one's display link fires every frame, which is a cost for a window nobody is using.
+  public func apply(windowIsKey key: Bool) {
+    windowIsKey = key
+    surface?.setFocus(key && window?.firstResponder === self)
+  }
+
+  /// libghostty stops drawing a surface only when told it cannot be seen.
+  public func apply(windowIsVisible visible: Bool) {
+    guard visible != windowIsVisible else { return }
+    windowIsVisible = visible
+    surface?.setOcclusion(visible: visible)
+  }
+
   public override func becomeFirstResponder() -> Bool {
-    surface?.setFocus(true)
+    surface?.setFocus(windowIsKey)
     return true
   }
 
