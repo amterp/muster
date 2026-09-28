@@ -744,3 +744,30 @@ fn a_batch_refused_for_a_gap_leaves_the_replicas_policy_alone() {
     let replica = devenv.groups().into_iter().find(|group| group.name == "review@lap").unwrap();
     assert!(!replica.policy.paused, "took the policy of a batch it refused");
 }
+
+/// What a link carries in one frame, which the reader refuses past this size and ends the link.
+const FRAME: usize = 16 << 20;
+
+/// A log bigger than a frame is fetched a page at a time: sent whole, the frame is refused, the
+/// link ends, and the refetch when it comes back asks for the same again.
+#[test]
+fn a_log_bigger_than_a_frame_is_fetched_in_pages() {
+    let mut wire = Wire::new();
+    let builder = session("builder");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    let page = "x".repeat(muster_msg::LARGEST_BODY - 1024);
+    for _ in 0..18 {
+        wire.post(Side::Laptop, &builder, None, &[], &page).unwrap();
+    }
+
+    let caught = wire.laptop.since("review", 0).unwrap();
+    let bytes: usize = caught
+        .entries
+        .iter()
+        .map(|entry| match &entry.what {
+            What::Message { body, .. } => body.len(),
+            _ => 0,
+        })
+        .sum();
+    assert!(bytes < FRAME, "one answer holds {bytes} bytes of bodies");
+}
