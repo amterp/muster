@@ -557,4 +557,22 @@ mod tests {
         crate::launch::stop(&installed.socket, Duration::from_secs(10)).unwrap();
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// An archive that does not unpack - a dropped connection, a full disk - fails the install
+    /// and takes its staging directory with it, rather than leaving a daemon's worth of files
+    /// beside the version's directory for every failure.
+    #[test]
+    fn an_install_that_does_not_unpack_leaves_nothing_behind() {
+        let root = scratch("unpack");
+        let installed = installed_in(&root);
+        let failed = Here.shell_on(&install_script(&installed, "stamp"), b"not an archive");
+        assert!(failed.is_err(), "the install said it worked: {failed:?}");
+        let left: Vec<_> = std::fs::read_dir(&root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(left.is_empty(), "a failed install left {left:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
