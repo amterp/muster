@@ -44,7 +44,11 @@ fn main() {
             "name": mark["name"],
             "why": mark["note"],
             "given": { "agent": "claude", "screen": screen, "title": title, "progress": progress },
-            "expect": { "state": mark["expect"] },
+            "expect": if mark["skip"] == true {
+                json!({ "state": mark["expect"], "skipStateUpdate": true })
+            } else {
+                json!({ "state": mark["expect"] })
+            },
         }));
     }
     println!("{}", serde_json::to_string_pretty(&cases).expect("cases serialize"));

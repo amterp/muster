@@ -2,7 +2,7 @@
   "concept": "detection.recordedScreens",
   "source": "recorded",
   "regenerate": "python3 tools/detection-capture.py <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
-  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal, rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture; no rule reads it. Claude Code showed no folder-trust prompt, so that state is not here.",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal, rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, and in the menus the MCP servers' names, a home directory and an imported memory file's path are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
   "cases": [
     {
       "expect": {
@@ -16,6 +16,48 @@
       },
       "name": "claude 2.1.283: idle at the prompt",
       "why": "Claude Code waiting at its prompt box for a request."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  Hooks\n  6 hooks configured\n\n  This menu is read-only. To add or change a hook, edit settings.json or ask Claude. Learn more\n\n  ❯ PreToolUse   1 hook\n    Before tool execution\n    PostToolUse\n    After tool execution\n    PostToolUseFailure\n    After tool execution fails\n    PostToolBatch\n    After a batch of tool calls resolves\n    PermissionDenied\n    After auto mode classifier denies a tool call\n    Notification\n    When notifications are sent\n    UserPromptSubmit   1 hook\n    When the user submits a prompt\n    ↓ 26 more below\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "name": "claude 2.1.283: the /hooks menu",
+      "why": "/hooks opened from the prompt: nobody is waiting on anybody, and the state stays what it was."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": " ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n  ⎿  Hooks dialog dismissed\n\n❯ /mcp\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  Manage MCP servers\n  7 servers\n\n    User MCPs (~/.claude.json)\n  ❯ ⚠ tracker   needs authentication\n\n    claude.ai\n    ✔ claude.ai Docs   8 tools\n    ⚠ claude.ai Mail   needs authentication\n    ⚠ claude.ai Calendar   needs authentication\n    ✔ claude.ai Drive   11 tools\n\n    Built-in MCPs (always available)\n    ✔ claude-in-chrome   22 tools\n    ◯ computer-use\n\n  https://code.claude.com/docs/en/mcp for help\n ↑/↓ to navigate · Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "name": "claude 2.1.283: the /mcp menu",
+      "why": "/mcp opened from the prompt: nobody is waiting on anybody, and the state stays what it was."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": " ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n  ⎿  Hooks dialog dismissed\n\n❯ /mcp\n  ⎿  MCP dialog dismissed\n\n❯ /memory\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  Memory\n\n  ❯ Auto-memory  false\n\n  ❯ User instructions   Saved in ~/.claude/CLAUDE.md\n    L ~/.claude/imported.md   Saved in ~/.claude/CLAUDE.md\n    Project instructions   Saved in ./CLAUDE.md\n\n  Learn more: https://code.claude.com/docs/en/memory\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "name": "claude 2.1.283: the /memory menu",
+      "why": "/memory opened from the prompt: nobody is waiting on anybody, and the state stays what it was."
     },
     {
       "expect": {

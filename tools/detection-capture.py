@@ -2,8 +2,9 @@
 """Record Claude Code's screens for corpus/conformance/agent-detection-recorded.json.
 
 Runs `claude` in a pseudo-terminal of a fixed size, walks it through the states detection has
-to tell apart - the folder trust prompt, idle at its prompt, working on a request, blocked on
-a Bash permission prompt, and idle again after the prompt is refused - and writes everything
+to tell apart - the folder trust prompt, idle at its prompt, menus opened from the prompt,
+working on a request, blocked on a Bash permission prompt, and idle again after the prompt is
+refused - and writes everything
 it printed to <out>/raw, with the byte offset each state was reached at in <out>/marks.json.
 
 The bytes are then rendered by the terminal the daemon runs, which is what makes the fixtures
@@ -73,8 +74,8 @@ def main() -> int:
                     return True
         return until is None
 
-    def mark(name: str, expect: str, note: str) -> None:
-        marks.append({"name": name, "offset": len(raw), "expect": expect, "note": note})
+    def mark(name: str, expect: str, note: str, skip: bool = False) -> None:
+        marks.append({"name": name, "offset": len(raw), "expect": expect, "note": note, "skip": skip})
         print(f"marked {name} at {len(raw)} bytes", file=sys.stderr)
 
     def send(text: str) -> None:
@@ -88,6 +89,24 @@ def main() -> int:
         pump(10, b"shortcuts")
         pump(3)
         mark("idle at the prompt", "idle", "Claude Code waiting at its prompt box for a request.")
+
+        # Menus someone opens from the prompt, whose footers read like a dialog waiting on
+        # them. Neither agent nor person is waiting on the other: detection leaves the state
+        # as it was.
+        # Their titles are drawn in pieces, so there is no text to wait for.
+        for command in ["hooks", "mcp", "memory"]:
+            send(f"/{command}")
+            pump(1)
+            send("\r")
+            pump(4)
+            mark(
+                f"the /{command} menu",
+                "unknown",
+                f"/{command} opened from the prompt: nobody is waiting on anybody, and the state stays what it was.",
+                skip=True,
+            )
+            send("\x1b")
+            pump(2)
 
         # A command that asks permission on any account, and harms nothing if it is allowed:
         # the directory does not exist, and would be inside the capture's own folder anyway.

@@ -36,10 +36,14 @@ fn bundled_manifest_conformance() {
 fn recorded_screen_conformance() {
     let manifests = Manifests::built_in();
     let corpus = Conformance::load("agent-detection-recorded.json");
-    // A recorded case knows the state the agent was in, and nothing about which rule saw it.
+    // A recorded case knows the state the agent was in, or that its screen is one to wait out,
+    // and nothing about which rule saw it.
     let ran = corpus.run(|given| {
         let detected = detect(&manifests, given)?;
-        Ok(fields([("state", detected.get("state").cloned())]))
+        Ok(fields([
+            ("state", detected.get("state").cloned()),
+            ("skipStateUpdate", detected.get("skipStateUpdate").cloned()),
+        ]))
     });
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
