@@ -9,8 +9,8 @@
 # claude session.
 
 id = "claude"
-version = "2026.08.11.1"
-min_engine_version = 2
+version = "2026.09.28.1"
+min_engine_version = 5
 
 [[rules]]
 id = "probe_working"
@@ -32,3 +32,22 @@ state = "idle"
 priority = 980
 region = "whole_recent"
 contains = ["probe-state:idle"]
+
+# The agent at its prompt, which the doorbell reads before typing: idle like probe_idle and
+# above it, so the recorded scenario's states do not move.
+[[rules]]
+id = "probe_prompt"
+state = "idle"
+priority = 985
+region = "bottom_non_empty_lines(1)"
+line_regex = ['^PROBE-PROMPT>']
+prompt = '^PROBE-PROMPT>\s?'
+
+# A menu opened from the prompt: a screen to wait out, as Claude Code's /mcp is.
+[[rules]]
+id = "probe_menu"
+state = "unknown"
+priority = 1100
+region = "whole_recent"
+skip_state_update = true
+contains = ["probe-menu"]

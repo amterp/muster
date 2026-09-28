@@ -68,6 +68,26 @@ impl Agent {
         self.heard().iter().filter(|line| line.is_empty()).count()
     }
 
+    /// The lines the agent has read with a ring in them, whatever was typed around it.
+    fn rings_heard(&self) -> Vec<String> {
+        self.heard().into_iter().filter(|line| line.contains("[muster] ")).collect()
+    }
+
+    /// Types into the agent's pane as a person would, with a Return or without.
+    fn type_in(&self, text: &str, enter: bool) {
+        Input::connect(self.daemon.socket_path()).send(
+            "p1",
+            proto::input_event::Input::Send(proto::input_event::Send {
+                text: text.to_string(),
+                enter,
+            }),
+        );
+    }
+
+    fn until_shows(&mut self, text: &str) {
+        until_text(&mut self.control, "p1", text);
+    }
+
     fn until_rung(&self, times: usize) -> Vec<String> {
         until_some(&format!("the agent to be rung {times} time(s)"), || {
             let rung = self.rung();
@@ -245,4 +265,91 @@ fn a_return_is_pressed_again_only_once_the_pane_has_been_quiet() {
     let person = heard.iter().position(|line| line == "a person typing");
     let pressed = heard.iter().position(String::is_empty);
     assert!(person < pressed, "Return pressed before the person typed: {heard:?}");
+}
+
+/// Detection reads a new agent as idle before it has read its screen at all, for the few
+/// seconds it gives an agent to draw. An agent that opens on a question - whether to trust a
+/// folder, whether to update - is at a dialog through all of them, and a Return answers it. It
+/// is rung only once its screen reads as its prompt.
+#[test]
+fn an_agent_that_opens_on_a_dialog_is_not_rung_until_its_prompt_shows() {
+    let mut agent = Agent::to_come();
+    agent.post("p1", "a brief");
+    agent.daemon.run_agent_at_a_dialog("p1");
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung at its opening dialog");
+
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    agent.until_rung(1);
+}
+
+/// A menu opened from the prompt keeps the state it opened over, idle, and a Return there
+/// picks an entry.
+#[test]
+fn an_agent_with_a_menu_open_is_not_rung() {
+    let mut agent = Agent::in_a_pane();
+    agent.type_in("menu", true);
+    agent.until_shows("PROBE-MENU");
+    std::thread::sleep(QUIET);
+    agent.post("p1", "a brief");
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung over its menu");
+
+    agent.type_in("nomenu", true);
+    agent.until_rung(1);
+}
+
+/// Something half typed into the prompt is a person's draft, however long ago they paused, and
+/// a ring would be sent inside it. It waits until the prompt is empty.
+#[test]
+fn a_prompt_with_something_half_typed_in_it_is_not_rung() {
+    let mut agent = Agent::in_a_pane();
+    agent.type_in("half typed", false);
+    agent.until_shows("PROBE-PROMPT> half typed");
+    std::thread::sleep(QUIET);
+    agent.post("p1", "a brief");
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung into a draft");
+
+    agent.type_in("", true);
+    let rung = agent.until_rung(1);
+    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+    assert!(agent.heard().contains(&"half typed".to_string()), "{:?}", agent.heard());
+}
+
+/// Return is pressed again only over the ring's own text, unsent. Once somebody has typed after
+/// it, the prompt holds their words too, and a Return would send them.
+#[test]
+fn a_ring_left_in_a_prompt_somebody_then_typed_into_is_not_sent() {
+    let mut agent = Agent::to_come();
+    agent.daemon.run_starting_agent("p1");
+    agent.post("p1", "a brief");
+    agent.until_shows("PROBE-PROMPT> [muster]");
+    agent.type_in(" and more", false);
+
+    std::thread::sleep(ANSWER + QUIET + Duration::from_secs(2));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "Return pressed over typed words");
+}
+
+/// A suggestion drawn faint in an empty prompt is not something anybody typed.
+#[test]
+fn a_prompt_showing_a_faint_suggestion_is_empty() {
+    let mut agent = Agent::to_come();
+    agent.daemon.run_agent_with_a_suggestion("p1");
+    agent.post("p1", "a brief");
+    let rung = agent.until_rung(1);
+    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+}
+
+/// An agent that exits leaves its shell's prompt in the pane, and a ring waiting for it is not
+/// typed there.
+#[test]
+fn a_ring_waiting_for_an_agent_that_exits_is_not_typed_into_its_shell() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+    agent.post("p1", "a brief");
+    agent.type_in("quit", true);
+    std::thread::sleep(QUIET + Duration::from_secs(2));
+    let shown = read_text(&mut agent.control, "p1", 0, 0).text;
+    assert!(!shown.contains("[muster]"), "typed into the shell: {shown}");
 }

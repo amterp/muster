@@ -49,23 +49,36 @@ impl Daemon {
     ///
     /// The daemon must be one [`Daemon::start_detecting`] started.
     pub fn run_agent(&self, pane: &str) {
-        self.run_agent_with(pane, "");
+        self.run_agent_with(pane, "", proto::AgentState::Idle);
     }
 
     /// [`Daemon::run_agent`], with the agent still starting as Claude Code starts: the first
     /// line typed into it fills its prompt and is not sent until a later Return.
     pub fn run_starting_agent(&self, pane: &str) {
-        self.run_agent_with(pane, " starting");
+        self.run_agent_with(pane, " starting", proto::AgentState::Idle);
     }
 
-    fn run_agent_with(&self, pane: &str, arguments: &str) {
+    /// [`Daemon::run_agent`], with the agent blocked at a question from its first frame, and
+    /// waiting until detection has read it so.
+    pub fn run_agent_at_a_dialog(&self, pane: &str) {
+        self.run_agent_with(pane, " dialog", proto::AgentState::Blocked);
+    }
+
+    /// [`Daemon::run_agent`], with the agent's prompt showing a faint suggestion nobody typed.
+    pub fn run_agent_with_a_suggestion(&self, pane: &str) {
+        self.run_agent_with(pane, " placeholder", proto::AgentState::Idle);
+    }
+
+    fn run_agent_with(&self, pane: &str, arguments: &str, state: proto::AgentState) {
         let agent = self.root().join("home/.muster/bin").join(AGENT_NAME);
         assert!(agent.exists(), "run_agent needs a daemon from Daemon::start_detecting");
         let mut control = self.connect();
         until_text(&mut control, pane, "$");
         type_line(self, pane, &format!("{}{arguments}", agent.display()));
-        until_text(&mut control, pane, "PROBE-STATE:IDLE");
-        self.until_agent(pane, proto::AgentState::Idle);
+        let painted =
+            format!("PROBE-STATE:{}", state.as_str_name().trim_start_matches("AGENT_STATE_"));
+        until_text(&mut control, pane, &painted);
+        self.until_agent(pane, state);
     }
 
     /// Tells the fake agent in `pane` to be `working`, `blocked` or `idle`, and waits until
