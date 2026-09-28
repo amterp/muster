@@ -2477,7 +2477,8 @@ mod tests {
     }
 
     /// Until every saved tab is back, the session holds less than it will, and a handoff would
-    /// hand over less. And one handoff at a time.
+    /// hand over less. And one handoff at a time: two asked at once both get as far as the
+    /// program's launch, and the second is refused when it would mark the session.
     #[test]
     fn a_daemon_restoring_or_already_being_replaced_is_not_replaced() {
         let dir = scratch("replace");
@@ -2486,6 +2487,9 @@ mod tests {
         assert_eq!(outcome(shared.lock().handle(replace_request(), &asker)), Outcome::Refused);
         shared.lock().restoring = false;
         assert!(matches!(shared.lock().handle(replace_request(), &asker), Handled::Replace(_)));
+        assert!(matches!(shared.lock().handle(replace_request(), &asker), Handled::Replace(_)));
+        assert_eq!(shared.lock().begin_replacing(), Ok(()));
+        assert!(shared.lock().begin_replacing().is_err(), "the second is refused once marked");
         assert_eq!(outcome(shared.lock().handle(replace_request(), &asker)), Outcome::Refused);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -2499,6 +2503,7 @@ mod tests {
         let asker = Outbox::open(&events).unwrap();
         shared.lock().restoring = false;
         assert!(matches!(shared.lock().handle(replace_request(), &asker), Handled::Replace(_)));
+        assert_eq!(shared.lock().begin_replacing(), Ok(()));
         let close = Service::Tab(proto::TabRequest {
             request: Some(tab_request::Request::Close(tab_request::Close {
                 tab: "t1".to_string(),
