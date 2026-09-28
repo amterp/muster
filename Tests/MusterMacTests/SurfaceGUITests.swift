@@ -1,5 +1,6 @@
 import AppKit
 import MusterRenderer
+import os
 import Testing
 
 @testable import MusterMac
@@ -21,6 +22,9 @@ import Testing
 //
 // Then Ghostty's own actions Muster hands a surface - scrolling, prompt jumps, select all - by
 // the action strings libghostty parses, which only a real surface can say it still knows.
+//
+// Then freeing a surface while its threads wait on the main thread, which froze a window for
+// three hours: only a real surface has those threads.
 //
 // Real surfaces: a real runtime, a real command behind a pty, and a Metal layer on a view. Two
 // runtimes in one process hang, so the tests share one and take turns.
@@ -107,6 +111,45 @@ extension SurfaceGUITests {
     for action in SurfaceAction.allCases {
       #expect(surface.perform(action).isEmpty, "the surface did not perform \(action)")
     }
+  }
+
+  /// A surface's threads hand the main thread messages through one queue of 64 that only the
+  /// main thread drains, and wait there when it is full. Freeing a surface joins those threads,
+  /// so a main thread that let the queue fill and then freed one waited on itself for good -
+  /// which is what a window under memory pressure did (docs/observations/libghostty-9f9b8d1d.md,
+  /// section 15).
+  ///
+  /// The queue is filled the way seven agents filled it: titles, from a program that sets one
+  /// as fast as it can, while the main actor is kept from ticking.
+  @MainActor
+  @Test("frees a surface whose threads are waiting on the main thread, without waiting on them")
+  func aSurfaceWaitingOnTheMainThreadIsFreed() async throws {
+    let renderer = try sharedRenderer()
+    let view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    var surface: Surface? = try renderer.makeSurface(
+      in: view,
+      command:
+        "/bin/sh -c 'i=0; while [ $i -lt 1000000 ]; do printf \"\\033]2;t%d\\007\" $i; "
+        + "i=$((i+1)); done; sleep 10'")
+    surface?.setSize(width: 800, height: 600)
+    // Blocking rather than sleeping: a suspended test would give the main actor to the ticks
+    // that drain the queue, which is the one thing this must not do.
+    usleep(1_500_000)
+
+    // A free that never returns cannot fail an assertion, so something else has to end the run.
+    let returned = OSAllocatedUnfairLock(initialState: false)
+    DispatchQueue.global().asyncAfter(deadline: .now() + 10) {
+      if !returned.withLock({ $0 }) {
+        fatalError(
+          "freeing a surface has not returned in 10s: the main thread is joining a surface "
+            + "thread that is waiting for the main thread to drain libghostty's app mailbox. "
+            + "This is the deadlock that froze a window; see ghostty_surface_free_detached.")
+      }
+    }
+    surface = nil
+    returned.withLock { $0 = true }
+
+    try await answered("the freed surface's threads to stop") { renderer.freesInFlight == 0 }
   }
 }
 

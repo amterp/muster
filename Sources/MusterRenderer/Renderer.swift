@@ -192,6 +192,9 @@ public final class Renderer {
     ghostty_app_tick(app)
   }
 
+  /// How many freed surfaces are still stopping their threads.
+  public var freesInFlight: Int { 0 }
+
   public func setFocus(_ focused: Bool) {
     ghostty_app_set_focus(app, focused)
   }
