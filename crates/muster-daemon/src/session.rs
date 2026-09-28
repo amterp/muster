@@ -19,7 +19,7 @@
 //! manifests and reads the override directory without it, and `pane.read` formats its page
 //! without it.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::os::fd::OwnedFd;
@@ -149,8 +149,10 @@ impl Shared {
                 scroll_multiplier: settings.scroll_multiplier.unwrap_or(1.0),
             });
             let detecting = Detecting::start(overrides);
+            let messages = Messages::load(&socket.path);
+            let human = messages.human();
             Shared {
-                messages: Mutex::new(Messages::load(&socket.path)),
+                messages: Mutex::new(messages),
                 doorbell: Doorbell::default(),
                 detecting: Arc::clone(&detecting),
                 session: Mutex::new(Session {
@@ -166,6 +168,11 @@ impl Shared {
                     manifest_loads: 0,
                     manifests_adopted: 0,
                     subscribers: Vec::new(),
+                    attending: HashSet::new(),
+                    human: human
+                        .into_iter()
+                        .map(|notice| (notice.group.clone(), (0, notice)))
+                        .collect(),
                     inherited,
                     home,
                     data,
@@ -311,6 +318,12 @@ pub(crate) struct Session {
     manifest_loads: u64,
     manifests_adopted: u64,
     subscribers: Vec<Outbox>,
+    /// The subscribers that are windows telling the human what waits for them, by connection.
+    attending: HashSet<u64>,
+    /// What waits for the human, per group, as last told to the windows, with the order the
+    /// message service decided it in: two posts decided one after the other can reach here the
+    /// other way round, and the older must not overwrite the newer.
+    human: BTreeMap<String, (u64, proto::msg_answer::Notice)>,
     /// The daemon's own environment, which every pane's starts from.
     inherited: Vec<(OsString, OsString)>,
     /// Where a pane starts when nothing says where.
@@ -900,7 +913,9 @@ impl Session {
                         ..Reply::done()
                     });
                 }
-                S::Subscribe(_) => return Handled::Snapshot(self.subscribe(asker)),
+                S::Subscribe(subscribe) => {
+                    return Handled::Snapshot(self.subscribe(asker, subscribe.attends));
+                }
                 S::SetShell(set) => self.set_shell(set),
                 S::SetScrollback(set) => self.set_scrollback(set),
                 S::SetPalette(set) => self.set_palette(set),
@@ -950,6 +965,7 @@ impl Session {
     /// Stops listening to a connection that has gone.
     pub(crate) fn unsubscribe(&mut self, connection: u64) {
         self.subscribers.retain(|subscriber| subscriber.id != connection);
+        self.attending.remove(&connection);
         if let Some(log) = &self.log {
             log.unfollow(connection);
         }
@@ -989,20 +1005,56 @@ impl Session {
             panes: self.panes.iter().map(|pane| pane.record.clone()).collect(),
             settings: Some(self.settings.clone()),
             restoring: self.restoring,
+            human: self
+                .human
+                .values()
+                .filter(|(_, notice)| notice.count > 0)
+                .map(|(_, notice)| notice.clone())
+                .collect(),
         }
     }
 
-    fn subscribe(&mut self, asker: &Outbox) -> Reply {
+    fn subscribe(&mut self, asker: &Outbox, attends: bool) -> Reply {
         if !self.subscribers.iter().any(|subscriber| subscriber.id == asker.id) {
             self.subscribers.push(asker.clone());
         }
+        if attends {
+            self.attending.insert(asker.id);
+        }
         Reply { detail: Some(Box::new(Detail::Snapshot(self.snapshot()))), ..Reply::done() }
+    }
+
+    /// Whether a window is attending, which is what wakes the human (MIP-4, section 10).
+    pub(crate) fn attended(&self) -> bool {
+        self.subscribers.iter().any(|subscriber| self.attending.contains(&subscriber.id))
+    }
+
+    /// Tells the windows what now waits for the human, as the message service decided it at
+    /// `order`. A group whose count is 0 has nothing waiting any more.
+    pub(crate) fn tell_human(&mut self, order: u64, notices: Vec<proto::msg_answer::Notice>) {
+        for notice in notices {
+            let told = self.human.get(&notice.group);
+            let unchanged = match told {
+                Some((at, told)) => *at > order || *told == notice,
+                None => notice.count == 0,
+            };
+            if unchanged {
+                continue;
+            }
+            // A group with nothing waiting stays, with its order, so that an older notice
+            // arriving late is still known to be older.
+            self.human.insert(notice.group.clone(), (order, notice.clone()));
+            self.emit(Payload::HumanNotice(notice));
+        }
     }
 
     /// Numbers an event and queues it for every subscriber. One that cannot take it has fallen
     /// too far behind to catch up from here, so it is dropped and resubscribes.
     fn emit(&mut self, payload: Payload) {
-        if !matches!(payload, Payload::PaneEffect(_) | Payload::PasteHeld(_)) {
+        if !matches!(
+            payload,
+            Payload::PaneEffect(_) | Payload::PasteHeld(_) | Payload::HumanNotice(_)
+        ) {
             self.persister.changed();
         }
         self.seq += 1;

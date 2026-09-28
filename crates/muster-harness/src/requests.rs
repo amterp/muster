@@ -24,7 +24,13 @@ pub fn snapshot_request() -> Service {
 }
 
 pub fn subscribe_request() -> Service {
-    session(session_request::Request::Subscribe(session_request::Subscribe {}))
+    session(session_request::Request::Subscribe(session_request::Subscribe::default()))
+}
+
+/// A subscription as a window on the daemon's own machine asks for it, attending: what wakes
+/// the human.
+pub fn attending_request() -> Service {
+    session(session_request::Request::Subscribe(session_request::Subscribe { attends: true }))
 }
 
 pub fn in_new_tab(tab: &str) -> proto::Placement {
@@ -128,6 +134,7 @@ pub fn named(event: &proto::Event) -> String {
         E::PasteHeld(held) => format!("paste_held:{}", held.pane),
         E::Restored(restored) => format!("restored:{}", restored.lost_tabs.join(",")),
         E::Replaced(replaced) => format!("replaced:{}", replaced.daemon_version),
+        E::HumanNotice(notice) => format!("human_notice:{}", notice.group),
     }
 }
 

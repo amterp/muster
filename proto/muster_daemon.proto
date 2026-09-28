@@ -157,7 +157,13 @@ message SessionRequest {
   }
 
   message Snapshot {}
-  message Subscribe {}
+  message Subscribe {
+    // Sent by a window on the machine this daemon runs on, which tells the human what waits
+    // for them (MIP-4, section 10): while one attends, a message for the human wakes them, and
+    // `human_notice` events say what waits. A window never attends a daemon over ssh, since
+    // the human is homed on the machine the app runs on.
+    bool attends = 1;
+  }
   message Stop {}
 
   message Replace {
@@ -525,6 +531,10 @@ message MsgRequest {
   message Log {
     string group = 1;
     uint64 since = 2;
+    // Answered only once there is an entry after `since`, at once if there already is: what
+    // `muster msg log --follow` asks again and again. Refused as `ended` by a handover, like
+    // a wait, so the caller asks whichever daemon serves next.
+    bool follow = 3;
   }
 
   // Answered once the caller has unread messages that would wake it: at once if it already
@@ -753,6 +763,9 @@ message Snapshot {
   // events, and `restored` says when it is done. A client that decides a tab is gone, or makes
   // a pane under a saved name, waits for that first.
   bool restoring = 6;
+  // What waits for the human, per group with anything waiting: how a window that opens after
+  // a message to the human is told of it.
+  repeated MsgAnswer.Notice human = 7;
 }
 
 message PaneText {
@@ -781,6 +794,10 @@ message Event {
     PasteHeld paste_held = 18;
     Restored restored = 19;
     Replaced replaced = 20;
+    // What waits for the human in one group, sent whenever it changes: a message that wakes
+    // the human, or the human reading. A count of 0 means nothing waits there any more. Only
+    // the human's home daemon sends it (MIP-4, sections 10 and 11).
+    MsgAnswer.Notice human_notice = 21;
   }
 }
 

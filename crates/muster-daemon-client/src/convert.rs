@@ -72,7 +72,8 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
         }
         event::Event::SettingsChanged(_)
         | event::Event::PaneEffect(_)
-        | event::Event::Replaced(_) => return None,
+        | event::Event::Replaced(_)
+        | event::Event::HumanNotice(_) => return None,
     })
 }
 

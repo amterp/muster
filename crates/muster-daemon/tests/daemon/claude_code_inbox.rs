@@ -385,7 +385,7 @@ fn claude_code_inbox_delivers_holds_or_refuses_as_recorded() {
 /// What a group's log holds, as `author: body` per message.
 pub(super) fn log_of(control: &mut Control, group: &str) -> Vec<String> {
     use proto::msg_answer::{Answer, entry::What};
-    let log = proto::msg_request::Log { group: group.to_string(), since: 0 };
+    let log = proto::msg_request::Log { group: group.to_string(), since: 0, follow: false };
     let caller = proto::msg_request::Caller {
         as_name: Some("observer".to_string()),
         ..proto::msg_request::Caller::default()

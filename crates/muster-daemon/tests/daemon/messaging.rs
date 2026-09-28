@@ -105,7 +105,10 @@ fn read(caller: &msg_request::Caller) -> Service {
 }
 
 fn log_of(group: &str) -> Service {
-    msg(&named("reader"), Asked::Log(msg_request::Log { group: group.to_string(), since: 0 }))
+    msg(
+        &named("reader"),
+        Asked::Log(msg_request::Log { group: group.to_string(), since: 0, follow: false }),
+    )
 }
 
 #[test]
@@ -301,4 +304,112 @@ fn messages_are_kept_for_this_user_only_and_never_written_to_the_daemon_log() {
     let logged = logging.logged_until("msg.posted", std::time::Duration::from_secs(20));
     assert!(logged.iter().any(|line| line.line.contains("msg.posted")), "{logged:?}");
     assert!(logged.iter().all(|line| !line.line.contains(secret)), "a body reached the log");
+}
+
+const DONE: proto::Outcome = proto::Outcome::Done;
+
+/// A caller carrying no agent identity, which is the human (MIP-4, section 3).
+fn the_human() -> msg_request::Caller {
+    msg_request::Caller::default()
+}
+
+fn post_to(caller: &msg_request::Caller, to: &str, body: &str) -> Service {
+    let to = vec![to.to_string()];
+    msg(caller, Asked::Post(msg_request::Post { to, body: body.to_string(), group: None }))
+}
+
+/// What the next event says waits for the human.
+fn human_notice(window: &mut Control) -> msg_answer::Notice {
+    match window.next_event().event {
+        Some(proto::event::Event::HumanNotice(notice)) => notice,
+        other => panic!("expected what waits for the human, got {other:?}"),
+    }
+}
+
+fn attend(window: &mut Control) -> proto::Snapshot {
+    let asked = expect(window, attending_request(), proto::Outcome::Done);
+    let Some(proto::answer::Detail::Snapshot(snapshot)) = asked.answer.detail else {
+        panic!("a subscription answered without a snapshot");
+    };
+    snapshot
+}
+
+/// A window attending the daemon hears of each message that wakes the human, once, and of
+/// nothing said between agents; the human reading clears it (MIP-4, section 10).
+#[test]
+fn a_window_hears_each_message_for_the_human_once_and_no_chatter() {
+    let daemon = daemon();
+    let mut window = daemon.connect();
+    assert_eq!(attend(&mut window).human, []);
+    let mut control = daemon.connect();
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &named("a"), "a", "g");
+    join(&mut control, &named("b"), "b", "g");
+
+    let posted = expect(&mut control, post_to(&named("a"), "@human", "need input"), DONE);
+    assert_eq!(reached(&posted), [("@human".to_string(), msg_answer::Reach::Woken)]);
+    let told = human_notice(&mut window);
+    assert_eq!((told.group.as_str(), told.first, told.last, told.count), ("g", 5, 5, 1));
+    assert_eq!(told.from, ["a"]);
+
+    expect(&mut control, post_to(&named("a"), "b", "the lexer is yours"), DONE);
+    expect(&mut control, post_to(&named("a"), "@human", "and this"), DONE);
+    // The next word is about the third message: the second, to b, said nothing to the window.
+    let told = human_notice(&mut window);
+    assert_eq!((told.first, told.last, told.count, told.to_you), (5, 7, 2, 2));
+
+    expect(&mut control, read(&the_human()), DONE);
+    let told = human_notice(&mut window);
+    assert_eq!((told.group.as_str(), told.count), ("g", 0));
+}
+
+/// With no window attending, the human is not woken, and what waits is in the snapshot of the
+/// window that attends next, a daemon that took over from this one included: messages to the
+/// human wait unread and notify at the next launch (MIP-4, section 10).
+#[test]
+fn what_waits_for_the_human_reaches_the_next_window_to_attend() {
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &named("a"), "a", "g");
+    // A subscriber that is not a window, `muster window --watch` say, is no one to tell.
+    let mut watching = daemon.connect();
+    expect(&mut watching, subscribe_request(), DONE);
+
+    let posted = expect(&mut control, post_to(&named("a"), "@human", "need input"), DONE);
+    assert_eq!(reached(&posted), [("@human".to_string(), msg_answer::Reach::Waiting)]);
+    drop((control, watching));
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), DONE, "{}", answer.reason);
+    let mut window = daemon.connect();
+    let waiting = attend(&mut window).human;
+    assert_eq!(waiting.len(), 1, "{waiting:?}");
+    assert_eq!((waiting[0].group.as_str(), waiting[0].count, waiting[0].to_you), ("g", 1, 1));
+}
+
+/// A follow of a log is answered once an entry lands after where it follows from, which is
+/// what `muster msg log --follow` asks again and again.
+#[test]
+fn a_follow_of_a_log_is_answered_by_the_next_entry() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &named("a"), "a", "g");
+    let head = 2;
+    let follow = Asked::Log(msg_request::Log { group: "g".to_string(), since: head, follow: true });
+
+    let mut logging = daemon.connect();
+    let log = session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(log), DONE);
+    let mut following = daemon.connect();
+    following.send(msg(&named("reader"), follow));
+    logging.logged_until("msg.following", std::time::Duration::from_secs(20));
+    join(&mut control, &named("b"), "b", "g");
+    expect(&mut control, post(&named("a"), "go"), DONE);
+
+    let answered = until_answer(&mut following);
+    let Some(Answer::Entries(entries)) = &answered.answer else { panic!("{answered:?}") };
+    let seqs: Vec<u64> = entries.groups[0].entries.iter().map(|entry| entry.seq).collect();
+    // Woken by b's join, and answered with whatever had landed by the time it looked.
+    assert_eq!(seqs.first(), Some(&3), "{entries:?}");
 }

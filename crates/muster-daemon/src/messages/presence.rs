@@ -46,6 +46,8 @@ const AGENT_TO_COME: Duration = Duration::from_secs(30);
 pub(crate) struct Panes {
     agents: HashMap<String, Seen>,
     open: HashMap<String, bool>,
+    /// Whether a window is attending, which wakes the human.
+    attended: bool,
 }
 
 impl Panes {
@@ -66,7 +68,7 @@ impl Panes {
             });
             (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME)
         });
-        let mut panes = Panes::default();
+        let mut panes = Panes { attended: shared.lock().attended(), ..Panes::default() };
         for (pane, seen, young) in read {
             if let Some(seen) = seen {
                 panes.agents.insert(pane.clone(), seen);
@@ -98,6 +100,10 @@ fn activity(record: &proto::Pane) -> Option<Activity> {
 }
 
 impl Presence for Panes {
+    fn attended(&self) -> bool {
+        self.attended
+    }
+
     /// An agent in a pane is there while its pane has an agent in it, whatever its inbox says:
     /// the session in it exits with it. Anyone else is there while its inbox answers.
     fn alive(&self, participant: &Participant) -> bool {

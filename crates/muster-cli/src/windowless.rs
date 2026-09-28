@@ -416,7 +416,7 @@ pub fn follow(
         id: 1,
         service: Some(daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
             request: Some(daemon_proto::session_request::Request::Subscribe(
-                daemon_proto::session_request::Subscribe {},
+                daemon_proto::session_request::Subscribe { attends: false },
             )),
         })),
     };

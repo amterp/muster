@@ -194,7 +194,7 @@ pub fn parse(
             Asked::Read(msg_request::Read { group: group.clone() })
         }
         Verb::Log { group, since } => {
-            Asked::Log(msg_request::Log { group: group.clone(), since: *since })
+            Asked::Log(msg_request::Log { group: group.clone(), since: *since, follow: false })
         }
         Verb::Wait { group, timeout } => Asked::Wait(msg_request::Wait {
             group: group.clone(),

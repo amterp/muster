@@ -350,7 +350,7 @@ fn session(request: session_request::Request) -> Service {
 }
 
 fn subscribe() -> Service {
-    session(session_request::Request::Subscribe(session_request::Subscribe {}))
+    session(session_request::Request::Subscribe(session_request::Subscribe { attends: false }))
 }
 
 fn follow_log(after: Option<u64>) -> Service {

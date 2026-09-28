@@ -50,6 +50,13 @@ pub(crate) struct Messages {
     pending: Vec<Wake>,
     /// Rings their agents have not yet taken, which the doorbell presses Return for again.
     rung: Vec<doorbell::Rung>,
+    /// What waits for the human, changed by the request being handled, for the windows to be
+    /// told once this lock is let go.
+    told: Vec<msg_answer::Notice>,
+    /// How many times the human's notices have been handed out, which orders them.
+    tellings: u64,
+    /// Follows of a log waiting for its next entry, woken by anything that may have appended.
+    follows: Vec<Sender<()>>,
 }
 
 #[derive(Debug)]
@@ -75,6 +82,28 @@ impl Messages {
             service,
             handing_over: false,
             waits: HashMap::new(),
+            told: Vec::new(),
+            tellings: 0,
+            follows: Vec::new(),
+        }
+    }
+
+    /// What waits for the human, in each group with anything waiting.
+    pub(crate) fn human(&self) -> Vec<msg_answer::Notice> {
+        self.service.human_notices().iter().map(notice_of).collect()
+    }
+
+    /// What the request just handled changed for the human, in the order the service decided
+    /// it, for [`tell_human`] once this lock is let go.
+    fn take_told(&mut self) -> Told {
+        self.tellings += 1;
+        Told { order: self.tellings, notices: std::mem::take(&mut self.told) }
+    }
+
+    /// Wakes every follow of a log, each to look for entries of its own group.
+    fn appended(&mut self) {
+        for follow in self.follows.drain(..) {
+            let _ = follow.send(());
         }
     }
 
@@ -83,6 +112,8 @@ impl Messages {
     /// waits end, and their callers ask again of whichever daemon serves next.
     pub(crate) fn handing_over(&mut self, underway: bool) {
         self.handing_over = underway;
+        // Dropped, so each follow ends and asks whichever daemon serves next.
+        self.follows.clear();
         if underway {
             for ticket in self.waits.keys() {
                 self.service.cancel_wait(*ticket);
@@ -129,9 +160,13 @@ impl Messages {
                 }),
             Asked::Leave(leave) => {
                 let waits = &mut self.waits;
+                let told = &mut self.told;
                 self.service.leave(caller, leave.group.as_deref(), panes, now_ms()).map(|left| {
                     if let Some(wait) = left.ended.and_then(|ticket| waits.remove(&ticket)) {
                         let _ = wait.send(WaitEnded::Left);
+                    }
+                    if left.name == muster_msg::HUMAN {
+                        told.extend(left.groups.iter().map(|group| nothing_waits(group)));
                     }
                     log::info(
                         "msg.left",
@@ -153,7 +188,11 @@ impl Messages {
                 (String::new(), Answer::Members(msg_answer::Members { members }))
             }),
             Asked::Read(read) => {
+                let told = &mut self.told;
                 self.service.read(caller, read.group.as_deref(), panes).map(|read| {
+                    if read.name == muster_msg::HUMAN {
+                        told.extend(read.groups.iter().map(|(group, _)| nothing_waits(group)));
+                    }
                     let groups = read
                         .groups
                         .into_iter()
@@ -172,7 +211,9 @@ impl Messages {
                 };
                 (String::new(), Answer::Entries(msg_answer::Entries { groups: vec![group] }))
             }),
-            Asked::Post(_) | Asked::Wait(_) => unreachable!("posts and waits are handled apart"),
+            Asked::Post(_) | Asked::Wait(_) => {
+                unreachable!("posts, waits and follows are handled apart")
+            }
         };
         match result {
             Ok((caller, answer)) => answered(caller, answer),
@@ -194,8 +235,84 @@ pub(crate) fn handle(
     match asked {
         Asked::Post(post) => posting(shared, &caller, &post, &panes),
         Asked::Wait(wait) => waiting(shared, &caller, &wait, hung_up, &panes),
-        asked => shared.messages().answer(&caller, asked, &panes),
+        Asked::Log(log) if log.follow => following(shared, log, hung_up),
+        asked => {
+            let (reply, told) = {
+                let mut messages = shared.messages();
+                let reply = messages.answer(&caller, asked, &panes);
+                messages.appended();
+                (reply, messages.take_told())
+            };
+            tell_human(shared, told);
+            reply
+        }
     }
+}
+
+/// What waits for the human, as the service decided it, for the windows to be told.
+struct Told {
+    order: u64,
+    notices: Vec<msg_answer::Notice>,
+}
+
+/// Tells the windows attending this daemon what waits for the human now. The session is
+/// locked here and never with the messages lock held, so [`Told::order`] is what keeps two
+/// requests that raced to this point from leaving the older word standing.
+fn tell_human(shared: &Shared, told: Told) {
+    if !told.notices.is_empty() {
+        shared.lock().tell_human(told.order, told.notices);
+    }
+}
+
+fn nothing_waits(group: &str) -> msg_answer::Notice {
+    msg_answer::Notice { group: group.to_string(), ..msg_answer::Notice::default() }
+}
+
+/// Answers a follow of a log once its group has an entry after `since`, at once if it already
+/// does. It is woken by whatever may have appended, and looks up every [`LOOK_UP`] to see
+/// whether its caller has gone.
+fn following(shared: &Shared, log: proto::msg_request::Log, hung_up: &dyn Fn() -> bool) -> Reply {
+    loop {
+        let woken = {
+            let mut messages = shared.messages();
+            if messages.handing_over {
+                return ended_by_handover();
+            }
+            match messages.service.log(&log.group, log.since) {
+                Err(refusal) => return refused("", &refusal),
+                Ok(entries) if !entries.is_empty() => {
+                    let group = msg_answer::GroupEntries {
+                        group: log.group,
+                        entries: entries.iter().map(entry_of).collect(),
+                    };
+                    let groups = vec![group];
+                    return answered(
+                        String::new(),
+                        Answer::Entries(msg_answer::Entries { groups }),
+                    );
+                }
+                Ok(_) => {}
+            }
+            let (wake, woken) = mpsc::channel();
+            messages.follows.push(wake);
+            log::debug("msg.following", fields! { "since" => log.since });
+            woken
+        };
+        loop {
+            match woken.recv_timeout(LOOK_UP) {
+                Ok(()) => break,
+                Err(RecvTimeoutError::Disconnected) => return ended_by_handover(),
+                Err(RecvTimeoutError::Timeout) if hung_up() => {
+                    return refused_as("", "timed_out", "the caller hung up");
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+            }
+        }
+    }
+}
+
+fn ended_by_handover() -> Reply {
+    refused_as("", "ended", "the daemon is handing over; ask again")
 }
 
 fn posting(
@@ -208,7 +325,7 @@ fn posting(
     let mut sending: Vec<Wake> = Vec::new();
     let mut ringing: Vec<(Wake, presence::Seen)> = Vec::new();
     let mut deferred: Vec<(String, msg_answer::Until)> = Vec::new();
-    let (posted, activities) = {
+    let (posted, activities, for_the_human) = {
         let mut messages = shared.messages();
         if messages.handing_over {
             return refused_as("", "handing_over", HANDING_OVER);
@@ -232,9 +349,16 @@ fn posting(
         }
         let now = Instant::now();
         for wake in &posted.wakes {
-            let Via::Pane(pane) = &wake.via else {
-                sending.push(wake.clone());
-                continue;
+            let pane = match &wake.via {
+                Via::Pane(pane) => pane,
+                Via::Human => {
+                    messages.told.push(notice_of(&wake.notice));
+                    continue;
+                }
+                Via::Inbox(_) => {
+                    sending.push(wake.clone());
+                    continue;
+                }
             };
             // A pane whose agent has not been found yet waits for it like a busy one.
             let until = match panes.get(pane).map(|seen| (doorbell::may_ring(seen, now), seen)) {
@@ -257,8 +381,10 @@ fn posting(
                 Some((name.clone(), panes.activity(participant)?))
             })
             .collect();
-        (posted, activities)
+        messages.appended();
+        (posted, activities, messages.take_told())
     };
+    tell_human(shared, for_the_human);
     let names: Vec<(String, String)> =
         ringing.iter().map(|(wake, _)| (wake.name.clone(), wake.notice.group.clone())).collect();
     let came = doorbell::ring_all(shared, ringing);
