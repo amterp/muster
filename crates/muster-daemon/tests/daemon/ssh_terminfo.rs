@@ -132,7 +132,7 @@ fn either_feature_off_leaves_its_part_out() {
 #[test]
 fn ssh_that_opens_no_terminal_is_run_as_given() {
     let scratch = Scratch::new("as-given");
-    let cases: [&[&str]; 10] = [
+    let cases: [&[&str]; 12] = [
         &["-N", "-L", "8080:localhost:80", "-p", "2222", "devbox"],
         &["-f", "-N", "-L", "8080:localhost:80", "devbox"],
         &["-fNL", "8080:localhost:80", "devbox"],
@@ -143,6 +143,8 @@ fn ssh_that_opens_no_terminal_is_run_as_given() {
         &["-Q", "cipher"],
         &["-s", "devbox", "sftp"],
         &["-p", "2222", "-N", "devbox"],
+        &["devbox", "-N", "-L", "8080:localhost:80"],
+        &["devbox", "-G"],
     ];
     for arguments in cases {
         let runs = scratch.ssh_with(&[], arguments, false);
@@ -168,6 +170,18 @@ fn the_install_gets_the_destination_without_the_remote_command() {
     );
     assert!(!runs[1].contains("ls -la"), "the command went with the install: {runs:?}");
     assert!(runs[2].ends_with("-o ControlMaster=no -p 2222 devbox ls -la "), "{runs:?}");
+}
+
+/// ssh reads options after the destination too, so the install has to be given them: without
+/// `-p 2222` it would reach whatever answers on port 22.
+#[test]
+fn the_install_gets_the_options_after_the_destination() {
+    let scratch = Scratch::new("after");
+    let runs = scratch.ssh_with(&[], &["devbox", "-p", "2222", "-J", "jump", "ls"], false);
+    assert_eq!(runs.len(), 3, "{runs:?}");
+    assert!(runs[0].starts_with("-G devbox -p 2222 -J jump"), "{runs:?}");
+    assert!(runs[1].contains("devbox -p 2222 -J jump infocmp xterm-ghostty"), "{runs:?}");
+    assert!(runs[2].ends_with("devbox -p 2222 -J jump ls "), "{runs:?}");
 }
 
 /// A pane outlives the daemon executable it was told about, which a reinstall or a moved bundle

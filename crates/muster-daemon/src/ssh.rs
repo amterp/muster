@@ -310,6 +310,28 @@ mod tests {
         assert_eq!(read(&["-V"]), at(None, false));
     }
 
+    /// ssh goes back to reading options after the destination, until a word that is not one,
+    /// so `ssh host -p 2222` reaches port 2222. The rest is the remote command.
+    #[test]
+    fn options_after_the_destination_are_read_too() {
+        let owned = |words: &[&str]| words.iter().map(|word| (*word).to_string()).collect();
+        let host = |arguments: &[&str]| {
+            let arguments: Vec<String> = owned(arguments);
+            let read = Arguments::read(&arguments);
+            (read.to_host(&arguments).to_vec(), read.opens_terminal)
+        };
+        assert_eq!(host(&["host", "-p", "2222"]), (owned(&["host", "-p", "2222"]), true));
+        assert_eq!(
+            host(&["host", "-J", "jump", "-i", "key", "ls", "-la"]),
+            (owned(&["host", "-J", "jump", "-i", "key"]), true)
+        );
+        assert_eq!(host(&["host", "-lroot"]), (owned(&["host", "-lroot"]), true));
+        assert!(!host(&["host", "-N", "-L", "80:x:80"]).1);
+        assert!(!host(&["host", "-G"]).1);
+        assert_eq!(host(&["host", "--", "-p", "2"]), (owned(&["host"]), true));
+        assert_eq!(host(&["--", "host", "-p", "2"]), (owned(&["--", "host"]), true));
+    }
+
     #[test]
     fn the_wrappers_flags_and_sshs_own_arguments_are_told_apart() {
         let options =
