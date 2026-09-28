@@ -346,6 +346,42 @@ fn a_program_that_does_not_answer_its_version_is_refused_before_anything_is_touc
     let _ = std::fs::remove_dir_all(&scripts);
 }
 
+/// The first run of a new binary can take seconds on macOS, and the daemon goes on serving
+/// while it waits for the program's `--version`: changes are refused only once the panes are
+/// being handed over.
+#[test]
+fn the_daemon_goes_on_taking_changes_while_it_waits_for_the_version() {
+    let scripts = std::env::temp_dir().join(format!("muster-waiting-{}", std::process::id()));
+    std::fs::create_dir_all(&scripts).unwrap();
+    let (started, go) = (scripts.join("started"), scripts.join("go"));
+    let program = scripts.join("muster-daemon");
+    let script = format!(
+        // Bounded, so a test that fails before it says go leaves nothing running.
+        "#!/bin/sh\ntouch '{}'\nn=0\nwhile [ ! -e '{}' ] && [ $n -lt 600 ]; do\n\
+         sleep 0.05; n=$((n + 1))\ndone\nexit 1\n",
+        started.display(),
+        go.display()
+    );
+    std::fs::write(&program, script).unwrap();
+    std::fs::set_permissions(&program, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .unwrap();
+    let mut daemon = daemon();
+    let (mut control, _input) = two_panes(&daemon);
+
+    let replacing = daemon.start_replacing(Some(&program));
+    until_some("the program to be asked its --version", || started.exists().then_some(()));
+    let label = pane_request::Rename { pane: "p1".to_string(), label: Some("A".to_string()) };
+    expect(&mut control, pane(pane_request::Request::Rename(label)), proto::Outcome::Done);
+    make(&mut control, create("p4", in_new_tab("t4")));
+    std::fs::write(&go, "").unwrap();
+    let answer = daemon.finish_replacing(replacing);
+
+    assert_eq!(answer.outcome(), proto::Outcome::Refused, "{}", answer.reason);
+    assert!(answer.reason.contains("exit status: 1"), "{}", answer.reason);
+    still_serving(&daemon, control.welcome().instance);
+    let _ = std::fs::remove_dir_all(&scripts);
+}
+
 /// A new daemon that fails at each step of a handoff costs nothing.
 #[test]
 fn a_new_daemon_that_refuses_or_dies_at_any_step_leaves_the_old_one_serving() {
