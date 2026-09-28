@@ -379,16 +379,18 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// Asks, and says why not.
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal>;
 
-    /// Reads a pane's history back, and changes nothing.
+    /// Reads a pane's history back, and changes nothing: its last `rows` rows, or as far back as
+    /// the daemon holds for zero.
     ///
-    /// As far back as the daemon holds, always. How much of that a caller wanted is
-    /// [`PaneText::tail`] and happens after. A pane's output never enters the core, so this is
-    /// the only way anything above the seam sees what a pane has printed.
+    /// A backend may hand back more than was asked for, as a daemon that cannot read from the
+    /// end does, so how much of it a caller wanted is still [`PaneText::tail`], after. A pane's
+    /// output never enters the core, so this is the only way anything above the seam sees what a
+    /// pane has printed.
     ///
     /// A read rather than an intent because nothing changes: `BackendIntent` is what Muster
     /// asks a daemon to *do*, and putting a question in it would make `Outcome` - a statement
     /// about a change just made - carry answers to things that changed nothing.
-    fn read(&self, pane: &PaneId) -> Result<PaneText, Refusal>;
+    fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal>;
 
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;

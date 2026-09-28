@@ -5027,9 +5027,9 @@ pub(crate) fn send_to_pane(
 pub(crate) fn read_pane(daemon: &DaemonId, pane: &PaneId, rows: u32) -> Result<PaneText, String> {
     let channel = channel(daemon)?;
     channel
-        .read(pane)
-        // Asked for whole and cut here, so `rows` is the count `docs/cli/agents.md` promises
-        // rather than a ceiling on grid rows that a quiet pane spends on blanks.
+        .read(pane, rows)
+        // Counted here as well, so `rows` is the count `docs/cli/agents.md` promises whatever a
+        // backend handed back: one that cannot read from the end sends everything.
         .map(|read| read.tail(rows))
         .map_err(|refusal| format!("the daemon {daemon} would not read pane {pane}: {refusal}"))
 }

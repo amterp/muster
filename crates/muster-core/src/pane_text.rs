@@ -29,13 +29,11 @@ impl PaneText {
     /// byte-identical to a pane that has printed nothing, and it cost this card's author a
     /// near-miss on closing a shell with twenty-four lines on it.
     ///
-    /// So Muster asks for as far back as the backend will go and counts here, where a row is
-    /// a row of text rather than a cell in a grid, split by [`rows_of`].
-    ///
-    /// The cost is stated rather than hidden: every read is the pane's whole history on the
-    /// wire, up to the 4 MiB a daemon puts in one page. That is a bounded, human-frequency
-    /// request - a person or an agent asking what a pane has printed - rather than anything on
-    /// the render path.
+    /// So Muster counts here, where a row is a row of text rather than a cell in a grid, split
+    /// by [`rows_of`]. A daemon is asked for only the rows wanted, and ends them at the last row
+    /// with text as this does; one that predates that sends the whole history, which this cuts.
+    /// The whole history was once every read, and beside a busy build it was the 240 KB a
+    /// starved window had to drain before a twenty-row read could answer.
     ///
     /// And it counts from the last row with anything on it, for the same reason: the rows
     /// beneath a prompt are the blank rest of the screen, which a backend hands back as rows.

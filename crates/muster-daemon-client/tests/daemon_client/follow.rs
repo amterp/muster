@@ -158,7 +158,7 @@ fn a_read_longer_than_one_answer_ends_at_the_newest_row() {
     let pane = made.unwrap().created.unwrap();
 
     let read = until_some("the pane's last row to be read back", || {
-        let read = followed.backend.read(&pane).unwrap();
+        let read = followed.backend.read(&pane, 0).unwrap();
         read.text.contains("THE-END").then_some(read)
     });
     assert!(read.truncated, "a read that left out the oldest rows has to say so");
@@ -166,6 +166,14 @@ fn a_read_longer_than_one_answer_ends_at_the_newest_row() {
         !read.text.contains(&format!("{:070}\n", 0)),
         "the read began at the oldest row, so it holds more than one answer can"
     );
+
+    // Asked for its last rows, the daemon sends those and nothing older: the end of the
+    // output, and the shell's prompt after it.
+    let newest = followed.backend.read(&pane, 3).unwrap();
+    assert_eq!(newest.text.lines().count(), 3, "{:?}", newest.text);
+    assert!(newest.text.contains("THE-END"), "{:?}", newest.text);
+    assert!(newest.text.len() < 1024, "{} bytes for three rows", newest.text.len());
+    assert!(newest.truncated, "the rows above were left out");
 }
 
 /// A daemon that died and came back is followed again from a fresh snapshot, and the window

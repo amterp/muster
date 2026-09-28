@@ -85,13 +85,19 @@ impl DaemonBackend {
         self.ask(Service::Pane(proto::PaneRequest { request: Some(request) }))
     }
 
-    /// One page of a pane's history, from `first_row` to the last row or the daemon's 4 MiB.
-    fn read_page(&self, pane: &PaneId, first_row: u64) -> Result<proto::PaneText, Refusal> {
+    /// One page of a pane's history, up to the daemon's 4 MiB: from `first_row` to the last row,
+    /// or its `last` rows when that is not zero.
+    fn read_page(
+        &self,
+        pane: &PaneId,
+        first_row: u64,
+        last: u32,
+    ) -> Result<proto::PaneText, Refusal> {
         let answer = self.pane_request(pane_request::Request::Read(pane_request::Read {
             pane: pane.to_string(),
             first_row,
             rows: 0,
-            last: 0,
+            last,
         }))?;
         let Some(answer::Detail::Text(read)) = answer.detail else {
             return Err(Refusal::Declined(format!(
@@ -273,8 +279,17 @@ impl BackendChannel for DaemonBackend {
         }
     }
 
-    fn read(&self, pane: &PaneId) -> Result<PaneText, Refusal> {
-        let whole = self.read_page(pane, 0)?;
+    fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal> {
+        // Only the rows wanted, when some are: a pane's whole history is what a starved reader
+        // would otherwise have to drain before it could answer, and twenty rows fit a socket's
+        // buffer where 12000 do not.
+        let first = self.read_page(pane, 0, rows)?;
+        // A daemon that predates reading from the end reads from the first row instead, which
+        // it gives away by sending more rows than were asked for.
+        if rows > 0 && first.rows <= rows {
+            return Ok(PaneText { truncated: first.first_row > 0, text: first.text });
+        }
+        let whole = first;
         if reaches_the_end(&whole) {
             return Ok(PaneText { text: whole.text, truncated: false });
         }
@@ -286,7 +301,7 @@ impl BackendChannel for DaemonBackend {
         let mut newest = whole;
         for _ in 0..8 {
             let first_row = newest.total_rows.saturating_sub(u64::from(newest.rows));
-            newest = self.read_page(pane, first_row)?;
+            newest = self.read_page(pane, first_row, 0)?;
             if reaches_the_end(&newest) || newest.rows == 0 {
                 break;
             }

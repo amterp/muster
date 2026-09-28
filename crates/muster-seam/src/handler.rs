@@ -1673,6 +1673,11 @@ const CONFIRM_WITHIN: std::time::Duration = std::time::Duration::from_secs(1);
 /// How often the pane is re-read while waiting, matching the seam's other bounded waits.
 const CONFIRM_POLL: std::time::Duration = std::time::Duration::from_millis(25);
 
+/// How far up the pane a confirmation reads. A sent message ends at the bottom of the screen,
+/// and a screen is shorter than this at any size somebody works at; the history above is what
+/// every re-read would otherwise move, forty times a second while it waits.
+const CONFIRM_ROWS: u32 = 300;
+
 /// Reads the pane back and refuses if the message that was just sent does not appear on it.
 ///
 /// Here rather than in the CLI, for the reason the CLI holds no logic at all: a second caller
@@ -1708,7 +1713,7 @@ fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
     // Whatever the last read said, so a pane that could not be read at all is reported as that
     // rather than as one that drew nothing - two different things to be told.
     let unreadable = loop {
-        let outcome = match session::read_pane(&daemon, &pane, 0) {
+        let outcome = match session::read_pane(&daemon, &pane, CONFIRM_ROWS) {
             Ok(read) if arrived_in(&read.text, &send.text) => return Response::ok(),
             Ok(_) => None,
             Err(refusal) => Some(refusal),
