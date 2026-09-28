@@ -42,6 +42,11 @@ impl Files {
         Files { directory: socket.with_extension("msg") }
     }
 
+    /// Where the store keeps its files.
+    pub(crate) fn directory(&self) -> &Path {
+        &self.directory
+    }
+
     fn state(&self) -> PathBuf {
         self.directory.join("state.json")
     }

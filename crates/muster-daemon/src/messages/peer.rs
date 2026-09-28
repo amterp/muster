@@ -117,12 +117,20 @@ impl std::fmt::Display for Failed {
 }
 
 /// Every link this daemon holds, by the machine at the other end.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Peers {
     links: Mutex<Vec<Arc<Link>>>,
+    /// What this daemon calls itself to another machine.
+    us: String,
 }
 
 impl Peers {
+    /// No links yet, for a daemon whose messages are kept at `socket`.
+    pub(crate) fn beside(socket: &Path) -> Peers {
+        let us = this_machine(super::store::Files::beside(socket).directory());
+        Peers { links: Mutex::new(Vec::new()), us }
+    }
+
     fn links(&self) -> std::sync::MutexGuard<'_, Vec<Arc<Link>>> {
         poison::lock(&self.links, "daemon.peers")
     }
@@ -149,10 +157,18 @@ impl Peers {
     }
 }
 
-/// What this daemon calls itself to another: its host name, up to the first dot, with anything
-/// a machine's name cannot hold replaced.
-fn this_machine() -> String {
-    let host = crate::effects::host_name();
+/// What this daemon calls itself to another machine, kept in `directory`. Not kept yet: chosen
+/// afresh each time.
+fn this_machine(directory: &Path) -> String {
+    kept_name(directory, crate::effects::host_name)
+}
+
+fn kept_name(_directory: &Path, choose: impl FnOnce() -> String) -> String {
+    machine_name(&choose())
+}
+
+/// `host` up to its first dot, with anything a machine's name cannot hold replaced.
+fn machine_name(host: &str) -> String {
     let short = host.split('.').next().unwrap_or_default();
     let name: String = short
         .chars()
@@ -194,7 +210,7 @@ pub(crate) fn hold(
             std::thread::sleep(LOOK_UP);
             continue;
         }
-        match dial(name, socket) {
+        match dial(&shared.peers.us, name, socket) {
             Ok((stream, peer)) => {
                 said = false;
                 let since = std::time::Instant::now();
@@ -254,17 +270,16 @@ fn pause(wait: Duration, hung_up: &dyn Fn() -> bool) {
 }
 
 /// Dials the daemon at `socket` and introduces this one to it.
-fn dial(name: &str, socket: &str) -> Result<(UnixStream, Peer), String> {
+fn dial(us: &str, name: &str, socket: &str) -> Result<(UnixStream, Peer), String> {
     let client = format!("muster-daemon {} peer", env!("CARGO_PKG_VERSION"));
     let (mut stream, _) = connection::connect(Path::new(socket), ConnectionKind::Peer, &client)
         .map_err(|error| error.to_string())?;
-    let us = this_machine();
-    let introduce = proto::Introduce { name: us.clone(), you: name.to_string() };
+    let introduce = proto::Introduce { name: us.to_string(), you: name.to_string() };
     connection::send(&mut stream, &PeerFrame { frame: Some(Frame::Introduce(introduce)) })
         .map_err(|error| format!("the introduction could not be sent: {error}"))?;
     let theirs = introduction(&mut stream)?;
     log::debug("msg.peer.introduced", fields! { "machine" => name, "calls_itself" => theirs.name });
-    Ok((stream, Peer { name: name.to_string(), calls_us: us }))
+    Ok((stream, Peer { name: name.to_string(), calls_us: us.to_string() }))
 }
 
 fn introduction(stream: &mut UnixStream) -> Result<proto::Introduce, String> {
@@ -303,7 +318,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
             return;
         }
     };
-    let us = proto::Introduce { name: this_machine(), you: theirs.name.clone() };
+    let us = proto::Introduce { name: shared.peers.us.clone(), you: theirs.name.clone() };
     if connection::send(&mut stream, &PeerFrame { frame: Some(Frame::Introduce(us)) }).is_err() {
         return;
     }
@@ -672,4 +687,28 @@ fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> 
     super::ring(shared, holding);
     let reached = wire::reached_to(&reached);
     Replied::Applied(proto::peer_reply::Reached { reached })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The far machine writes this one's members as `name@<this name>` into logs it keeps for
+    /// good, so the name is chosen once: a host name the network changes must not change it.
+    #[test]
+    fn the_name_a_machine_goes_by_is_chosen_once_and_kept() {
+        let directory =
+            std::env::temp_dir().join(format!("muster-machine-name-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        assert_eq!(kept_name(&directory, || "office-mbp.corp.example".to_string()), "office-mbp");
+        assert_eq!(kept_name(&directory, || "dhcp-10-1-2-3.hotel".to_string()), "office-mbp");
+        std::fs::write(directory.join("machine"), "not a name!\n").unwrap();
+        assert_eq!(
+            kept_name(&directory, || "home".to_string()),
+            "home",
+            "a bad file is chosen again"
+        );
+        assert_eq!(kept_name(&directory, || "later".to_string()), "home");
+        let _ = std::fs::remove_dir_all(&directory);
+    }
 }

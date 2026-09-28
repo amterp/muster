@@ -156,7 +156,7 @@ impl Shared {
             Shared {
                 messages: Mutex::new(messages),
                 doorbell: Doorbell::default(),
-                peers: Peers::default(),
+                peers: Peers::beside(&socket.path),
                 detecting: Arc::clone(&detecting),
                 session: Mutex::new(Session {
                     instance,
