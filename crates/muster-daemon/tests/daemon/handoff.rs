@@ -222,6 +222,19 @@ fn a_bridge_behind_on_output_hears_replaced_within_the_handoff() {
     );
 }
 
+/// A daemon told to say an older version hands over to one that says its own. The override
+/// stages an update from that older daemon, and a successor that inherited it would claim to be
+/// the daemon it replaced.
+#[test]
+fn a_successor_says_its_own_version() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_VERSION_SAID", "0.0.1")]);
+    assert_eq!(daemon.connect().welcome().daemon_version, "0.0.1");
+
+    replaced(&mut daemon);
+
+    assert_eq!(daemon.connect().welcome().daemon_version, env!("CARGO_PKG_VERSION"));
+}
+
 /// A subscriber hears that the daemon was replaced, then its connection ends: it connects again
 /// and starts from a snapshot of the new daemon.
 #[test]
