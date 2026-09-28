@@ -497,3 +497,75 @@ fn a_followed_daemon_is_sent_the_apps_manifests() {
         "every manifest the app sent was taken: {loaded}"
     );
 }
+
+/// A first subscribe answered without the daemon's state fails the connect, which is then made
+/// again: a follower with no snapshot has nothing to apply the daemon's events to, and would sit
+/// on an empty picture of a daemon that answers everything else.
+#[test]
+fn a_first_subscribe_answered_without_state_fails_the_connect() {
+    use muster_daemon_proto::connection;
+
+    let root = std::path::PathBuf::from(format!("/tmp/muster-test/nostate-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let socket = root.join("daemon.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    // A thread per connection, as the daemon has: the input connection opens before the
+    // control connection's subscribe is sent, and one thread for both would wait on itself.
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            std::thread::spawn(move || {
+                let Ok(Some(hello)) = connection::receive::<proto::Hello>(&mut stream) else {
+                    return;
+                };
+                let welcome =
+                    proto::Welcome { protocol: hello.protocol, ..proto::Welcome::default() };
+                let answer = proto::HelloAnswer {
+                    answer: Some(proto::hello_answer::Answer::Welcome(welcome)),
+                };
+                if connection::send(&mut stream, &answer).is_err() {
+                    return;
+                }
+                if hello.kind() == proto::ConnectionKind::Control
+                    && let Ok(Some(request)) = connection::receive::<proto::Request>(&mut stream)
+                {
+                    let answer = proto::Answer {
+                        id: request.id,
+                        outcome: proto::Outcome::Done.into(),
+                        ..proto::Answer::default()
+                    };
+                    let message = proto::ControlMessage {
+                        message: Some(proto::control_message::Message::Answer(answer)),
+                    };
+                    let _ = connection::send(&mut stream, &message);
+                }
+                // Held open until the client hangs up, as a daemon would.
+                let _ = connection::receive::<proto::Request>(&mut stream);
+            });
+        }
+    });
+
+    let notices = Arc::new(Mutex::new(Vec::new()));
+    let heard = Arc::clone(&notices);
+    let _follower = Follower::start(
+        Following {
+            socket: socket.clone(),
+            client: "test".to_string(),
+            daemon: "local".to_string(),
+            remote: false,
+        },
+        Arc::new(Mutex::new(Mirror::new())),
+        Arc::new(move |notice| heard.lock().unwrap().push(notice)),
+    )
+    .unwrap();
+
+    let detail = until_some("the connect to fail", || {
+        notices.lock().unwrap().iter().find_map(|notice| match notice {
+            Notice::Stale { detail } => Some(detail.clone()),
+            _ => None,
+        })
+    });
+    assert!(detail.contains("without its state"), "the connect failed saying {detail:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
