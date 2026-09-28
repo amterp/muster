@@ -350,12 +350,24 @@ fn handed(
 /// outlasting a step - is refused here rather than partway through.
 fn launch(program: &Path, patience: Duration) -> Result<(), String> {
     let started = Instant::now();
-    let mut child = Command::new(program)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .map_err(|error| format!("could not start it: {error}"))?;
+    let mut command = Command::new(program);
+    command.arg("--version").stdin(Stdio::null()).stdout(Stdio::null());
+    // As for the successor itself: the signals this daemon blocks for its own handling would
+    // otherwise stay blocked in the program, which a stop could then not end.
+    // SAFETY: the closure runs in the child between fork and exec, and makes only
+    // async-signal-safe calls: sigemptyset and sigprocmask.
+    unsafe {
+        command.pre_exec(|| {
+            let mut unblocked = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
+            libc::sigemptyset(unblocked.as_mut_ptr());
+            if libc::sigprocmask(libc::SIG_SETMASK, unblocked.as_ptr(), std::ptr::null_mut()) == -1
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().map_err(|error| format!("could not start it: {error}"))?;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -372,7 +384,11 @@ fn launch(program: &Path, patience: Duration) -> Result<(), String> {
                     patience.as_secs()
                 ));
             }
-            Err(error) => return Err(format!("could not wait for its --version: {error}")),
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("could not wait for its --version: {error}"));
+            }
         }
     };
     if !status.success() {

@@ -324,7 +324,7 @@ fn a_program_that_does_not_answer_its_version_is_refused_before_anything_is_touc
     let scripts = std::env::temp_dir().join(format!("muster-launch-{}", std::process::id()));
     std::fs::create_dir_all(&scripts).unwrap();
     for (name, body, said) in [
-        ("slow", "sleep 10", "did not answer --version within 1 s"),
+        ("slow", "exec sleep 10", "did not answer --version within 1 s"),
         ("failing", "exit 3", "answered --version with exit status: 3"),
     ] {
         let program = scripts.join(name);
