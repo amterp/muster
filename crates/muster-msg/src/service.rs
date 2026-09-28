@@ -373,7 +373,11 @@ impl<S: Store> Messaging<S> {
                 let took_over = self.participants.get(name).is_some_and(|existing| {
                     existing.inbox.is_some() && existing.inbox != caller.inbox
                 });
+                let addressed = self.made_by_address(caller).filter(|made| made != name);
                 self.adopt(name, caller);
+                if let Some(made) = addressed {
+                    self.absorb(name, &made);
+                }
                 (name.to_string(), took_over)
             }
         };
@@ -762,10 +766,11 @@ impl<S: Store> Messaging<S> {
     fn adopt(&mut self, name: &str, caller: &Caller) {
         let participant =
             self.participants.entry(name.to_string()).or_insert_with(|| Participant::named(name));
-        let moved = (caller.inbox.is_some() && participant.inbox != caller.inbox)
-            || (caller.pane.is_some() && participant.pane != caller.pane);
+        let moved = replaced(participant.inbox.as_ref(), caller.inbox.as_ref())
+            || replaced(participant.pane.as_ref(), caller.pane.as_ref());
         // A session that takes over a name has been woken for nothing yet, whatever the session
-        // before it was told.
+        // before it was told. One that only adds an address - the agent in a pane that was
+        // addressed by the pane's name, running its first command - is the one that was woken.
         if moved {
             participant.woken.clear();
             participant.rewoken.clear();
@@ -801,6 +806,33 @@ impl<S: Store> Messaging<S> {
                 other.pane = None;
             }
         }
+    }
+
+    /// The participant a post made by addressing the caller's pane (MIP-4, section 3): named
+    /// after the pane, holding it, and with no inbox of its own yet.
+    fn made_by_address(&self, caller: &Caller) -> Option<String> {
+        let pane = caller.pane.as_ref()?;
+        let made = self.participants.get(pane)?;
+        (made.pane.as_ref() == Some(pane) && made.inbox.is_none()).then(|| pane.clone())
+    }
+
+    /// Folds `from` into `into`: its groups, where it had read to, and what it was woken for.
+    /// An agent addressed by its pane that then joins under a name of its own is one agent, and
+    /// the brief it was rung for must be readable under that name.
+    fn absorb(&mut self, into: &str, from: &str) {
+        let Some(from) = self.participants.remove(from) else { return };
+        for group in self.groups.values_mut() {
+            if group.members.remove(&from.name) {
+                group.members.insert(into.to_string());
+            }
+        }
+        self.waiters.remove(&from.name);
+        let Some(into) = self.participants.get_mut(into) else { return };
+        for (group, cursor) in from.cursors {
+            into.cursors.entry(group).or_insert(cursor);
+        }
+        into.woken.extend(from.woken);
+        into.rewoken.extend(from.rewoken);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1201,4 +1233,10 @@ impl<S: Store> Messaging<S> {
                 .collect(),
         }
     }
+}
+
+/// Whether an address a participant holds is being replaced by another, rather than given for
+/// the first time or given again.
+fn replaced<T: PartialEq>(held: Option<&T>, given: Option<&T>) -> bool {
+    held.is_some() && given.is_some() && held != given
 }
