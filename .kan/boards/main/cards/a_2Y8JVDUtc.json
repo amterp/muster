@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "the-go-to-the-pane",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790592026856,
+  "creator": "Alexander Terp",
+  "description": "focus_asking (cmd+shift+A) beeps when no pane is asking for attention. A native menu item would instead be disabled while nothing asks, so the menu itself says there is nothing to go to. It needs the shell to know whether anything asks, which the view does not carry today.",
+  "id": "a_2Y8JVDUtc",
+  "position": "al",
+  "title": "The Go to the Pane That Asked menu item is disabled while nothing asks",
+  "type": "feature",
+  "updated_at_millis": 1790592026856,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790592026856}
+  ]
+}

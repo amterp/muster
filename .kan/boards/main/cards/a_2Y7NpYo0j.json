@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "a-handoff-test",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790589809953,
   "creator": "Alexander Terp",
   "description": "handoff::a_bridge_is_detached_as_replaced_and_attaches_again_to_the_same_screen failed once natively on aarch64 Linux under load, in the Linux suite ./dev --ssh runs afterwards, with 'the detach: the daemon hung up'. It passed 5 of 5 alone and in --linux minutes earlier. A bridge that sees the daemon hang up instead of a REPLACED detach would exit rather than reattach, so under load this may be a real race in the handoff rather than a slow test. Worth reading the detach order in the daemon's handoff before calling it a flake.",
   "id": "a_2Y7NpYo0j",
-  "position": "b0D",
+  "position": "Yzs",
   "title": "A handoff test sometimes sees the daemon hang up during the detach",
   "type": "bug",
-  "updated_at_millis": 1790589809953,
+  "updated_at_millis": 1790592026589,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790589809953}
+    {"field":"column","value":"backlog-hi","at":1790589809953},
+    {"field":"column","value":"done","at":1790592026589}
   ]
 }

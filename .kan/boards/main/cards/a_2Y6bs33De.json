@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "a-chord-to-the-pane",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790587966378,
   "creator": "Alexander Terp",
   "description": "The attention desideratum says one keystroke lands you on the pane that asked. Today it is a banner click or a numbered chord to one of the first nine rows. A focus_asking action (Ghostty has no equivalent) would jump to the most urgent pane that asks: blocked first, then a program's notification, then done.",
   "id": "a_2Y6bs33De",
-  "position": "b0B",
+  "position": "Yzr",
   "title": "A chord to the pane that asked",
   "type": "feature",
-  "updated_at_millis": 1790587966378,
+  "updated_at_millis": 1790592026664,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790587966378}
+    {"field":"column","value":"backlog-hi","at":1790587966378},
+    {"field":"column","value":"done","at":1790592026664}
   ]
 }
