@@ -846,7 +846,7 @@ fn a_log_bigger_than_a_frame_is_fetched_in_pages() {
     assert_eq!(messages.count(), 18);
 }
 
-fn bad_name(result: Result<(), Refusal>) -> bool {
+fn bad_name(result: &Result<(), Refusal>) -> bool {
     matches!(result, Err(Refusal::BadName { .. }))
 }
 
@@ -876,7 +876,7 @@ fn a_call_acting_as_this_machines_own_or_naming_no_name_is_refused() {
     ];
     let before = wire.laptop.log("review", 0).unwrap();
     for call in forged {
-        assert!(bad_name(call.check()), "{call:?}");
+        assert!(bad_name(&call.check()), "{call:?}");
         let (laptop, sessions) = wire.split(Side::Laptop);
         let answered = laptop.answer(&Side::Laptop.peer(), call.clone(), sessions, 50);
         let refused = matches!(
@@ -908,12 +908,12 @@ fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
     };
     assert_eq!(caught("review", "critic").check(), Ok(()));
     assert_eq!(caught("review", "@human@lap").check(), Ok(()), "a human who posted from there");
-    assert!(bad_name(caught("review@lap", "critic").check()));
-    assert!(bad_name(caught("x'; sh; '", "critic").check()));
-    assert!(bad_name(caught("review", "critic\u{1b}[2J").check()));
+    assert!(bad_name(&caught("review@lap", "critic").check()));
+    assert!(bad_name(&caught("x'; sh; '", "critic").check()));
+    assert!(bad_name(&caught("review", "critic\u{1b}[2J").check()));
     let mut ruled = caught("review", "critic");
     ruled.policy.membership = vec!["a b".to_string()];
-    assert!(bad_name(ruled.check()));
+    assert!(bad_name(&ruled.check()));
 
     let member = |name: &str| Member {
         name: name.to_string(),
@@ -924,19 +924,19 @@ fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
         pane: None,
     };
     assert_eq!(Reply::Members(vec![member("critic")]).check(), Ok(()));
-    assert!(bad_name(Reply::Members(vec![member("critic\n")]).check()));
+    assert!(bad_name(&Reply::Members(vec![member("critic\n")]).check()));
     let posted = |name: &str| Reply::Posted {
         seq: 1,
         reached: vec![(name.to_string(), Reach::Woken)],
         caught: caught("review", "critic"),
     };
     assert_eq!(posted("builder@lap").check(), Ok(()));
-    assert!(bad_name(posted("a;b").check()));
+    assert!(bad_name(&posted("a;b").check()));
     let refused = Reply::Refused {
         refusal: Refusal::AddressedSelf,
         caught: Some(caught("review@lap", "critic")),
     };
-    assert!(bad_name(refused.check()));
+    assert!(bad_name(&refused.check()));
 }
 
 /// A change whose reply never came may have been made at the home all the same, so the replica

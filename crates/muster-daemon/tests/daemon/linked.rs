@@ -296,7 +296,7 @@ fn a_replica_is_held_across(start_again: fn(&mut Daemon)) {
     );
     let (messages, behind) = read(&mut far_control, &named("critic"));
     assert!(messages.is_empty(), "nothing is there before the relink: {messages:?}");
-    assert_eq!(behind, [host.clone()], "the group is held, and may be behind");
+    assert_eq!(behind, [host.as_str()], "the group is held, and may be behind");
 
     let _holding = link(&near, &far, &mut near_log, 2);
     let deadline = Instant::now() + LINKING;

@@ -135,15 +135,15 @@ fn member_from(member: msg_answer::Member) -> Member {
         name: member.name,
         liveness,
         activity,
-        groups: member.groups.into_iter().map(plain).collect(),
-        inbox: member.inbox.map(plain),
-        pane: member.pane.map(plain),
+        groups: member.groups.iter().map(|group| plain(group)).collect(),
+        inbox: member.inbox.as_deref().map(plain),
+        pane: member.pane.as_deref().map(plain),
     }
 }
 
 /// Text another machine sent that is printed here but names nothing, without anything a
 /// terminal would take as a command.
-fn plain(text: String) -> String {
+fn plain(text: &str) -> String {
     text.chars().filter(|character| !character.is_control()).collect()
 }
 
@@ -274,8 +274,10 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         action,
         ..
     } = refused;
-    let (words, name, group, machine) = (plain(words), plain(name), plain(group), plain(machine));
-    let (existing, candidates) = (plain(existing), candidates.into_iter().map(plain).collect());
+    let (words, name, group, machine) =
+        (plain(&words), plain(&name), plain(&group), plain(&machine));
+    let (existing, candidates) =
+        (plain(&existing), candidates.iter().map(|name| plain(name)).collect());
     let optional = |text: String| (!text.is_empty()).then_some(text);
     match code.as_str() {
         "bad_name" => Refusal::BadName { name },
