@@ -1,5 +1,5 @@
 id = "claude"
-version = "2026.09.27.3"
+version = "2026.09.27.4"
 min_engine_version = 2
 updated_at = "2026-09-27T00:00:00Z"
 aliases = ["claude-code"]
@@ -86,7 +86,9 @@ priority = 1160
 region = "after_last_horizontal_rule"
 skip_state_update = true
 contains = ["esc to cancel"]
-regex = ['(?im)\A\s*(hooks|manage mcp servers|memory)[ \t]*$']
+# /hooks' own submenus too: an event's matchers ("PreToolUse - Matchers"), and a matcher's
+# hooks ("PreToolUse - Matcher: Bash").
+regex = ['(?im)\A\s*(hooks|manage mcp servers|memory|\w+ - matchers|\w+ - matcher: .*)[ \t]*$']
 
 [[rules]]
 id = "live_blocked_form"
