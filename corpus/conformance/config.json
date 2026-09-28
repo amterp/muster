@@ -494,6 +494,38 @@
       }
     },
     {
+      "name": "a default gives its chord up to a [text] line on it",
+      "why": "The file chose the bytes and nobody chose the default, so the file wins. This is the case an update makes: cmd+k sending a form feed was a common line before clear_screen shipped on it, and refusing the file would throw away everything else in it for a collision its author never made. The action keeps its menu item without a shortcut, and a [keymap] line gives it a chord back.",
+      "given": {
+        "file": [
+          "[text]",
+          "\"cmd+k\" = \"\\f\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": ["clear_screen=(unbound)"],
+        "option_as_alt": "never",
+        "text": ["super+KeyK=0c"]
+      }
+    },
+    {
+      "name": "a default gives its chord up to another action the file puts on it",
+      "why": "The same rule for a [keymap] line: find on cmd+k is a choice, and clear_screen being there is not. Refusing would name a collision the file cannot see, since clear_screen appears nowhere in it.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "find = \"cmd+k\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": ["clear_screen=(unbound)", "find=super+KeyK"],
+        "option_as_alt": "never",
+        "text": []
+      }
+    },
+    {
       "name": "an action cannot take a chord every pane uses for editing",
       "why": "The one collision Muster owns both sides of. opt+left is word-left in every pane and `focus_left` is a reasonable thing to want there, since the default is cmd+opt+left. Take it and word motion stops working in every shell in the window, with nothing on screen connecting the two - and unlike the other two collisions there is no second line in the file to compare against, so the refusal has to say what the chord already does. The five are Ghostty's own natural-text-editing set, so this is a closed list rather than a general reservation.",
       "given": {
