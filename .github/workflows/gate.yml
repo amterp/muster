@@ -10,10 +10,6 @@
 # measurements that would be flaky as assertions. A functional green is never a
 # performance claim.
 #
-# The Linux half - replaying the recorded corpus against the devenv container's daemon - is
-# its own workflow, `corpus-linux`. It shares no toolchain with this one and runs on a Linux
-# runner, so folding it in here would mean a job that waits for a build it does not use.
-#
 # The daemon's and detection's own suites on Linux - `./dev --linux` - are the `linux` job below.
 # They are built here, on the runner that has the toolchain `./dev` sets up, and run on Linux
 # runners of both architectures, natively, from the executables this job hands over.

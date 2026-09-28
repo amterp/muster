@@ -460,7 +460,6 @@ public enum Core {
     send(request)
   }
 
-  /// Makes the focused pane fill its tab, or puts it back.
   /// One of Ghostty's binding actions the pane's daemon carries out, on the pane with the
   /// keyboard.
   public enum PaneAction: Sendable {
@@ -485,6 +484,7 @@ public enum Core {
     send(request)
   }
 
+  /// Makes the focused pane fill its tab, or puts it back.
   public static func zoom(daemonID: String = "", paneID: String = "") {
     var zoom = Muster_ZoomPane()
     zoom.daemonID = daemonID

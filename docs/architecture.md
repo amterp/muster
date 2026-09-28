@@ -641,8 +641,9 @@ says, because every script and skill written against it is what a replacement wo
 one thing "we never let one own our contract" rules out.
 
 So Muster's CLI is the agent surface, and the daemon offers no other: `muster-daemon` has no verbs for panes or tabs,
-only `report`, for a harness in a pane to say what its agent is doing, and `replace`, which hands a running daemon's
-panes to a successor.
+only `report`, for a harness in a pane to say what its agent is doing, `replace`, which hands a running daemon's
+panes to a successor, and `ssh`, Muster's port of `ghostty +ssh`, which Ghostty's shell integration calls when a
+pane runs `ssh`.
 
 What that CLI is *not* is a verb-per-backend-verb translation. It is shaped to intents, one call each, because that is
 where the knowledge lives: `muster pane new --run` puts the command in the request that makes the pane, so the daemon
@@ -738,14 +739,14 @@ one thing an intent may settle locally is where Muster's own keyboard lands, bec
 the daemon's: a split hands back the pane it made, and that pane takes the keyboard, because that is what pressing
 the key meant.
 
-**A request may also be waited for off the main thread, and a divider drag is the one that has to be.** Every other
-gesture is one request; a drag is one per mouse-moved event, about a hundred a second, and the seam is entered
-synchronously - so the window spent whole gestures inside a round trip and had no time left to draw the line being
-dragged. The position is handed over instead: one request in flight, the latest position remembered, and what
-arrived while a request was out goes next. A gesture then runs at whatever the round trip allows rather than
-queueing behind itself, and the position it ends on is always sent, because the remembered one is always the last
-asked for. This is contained to that request rather than made general - the other drag in the window moves a region
-boundary, which is Muster's own composition and never reaches a daemon.
+**A request may also be waited for off the main thread, and two gestures have to be: a divider drag, and the
+window being moved or resized.** Every other gesture is one request; these are one per event, about a hundred a
+second, and the seam is entered synchronously - so the window spent whole gestures inside a round trip and had no
+time left to draw what was being dragged. The request is handed over instead (`LatestRequestSender`): one in flight,
+the latest remembered, and what arrived while a request was out goes next. A gesture then runs at whatever the round
+trip allows rather than queueing behind itself, and the position it ends on is always sent, because the remembered
+one is always the last asked for. This is contained to those two rather than made general - the other drag in the
+window moves a region boundary, which is Muster's own composition and never reaches a daemon.
 
 **Input never waits at all.** Every keystroke, click and paste goes to the daemon on the input connection, which is
 never answered: events queue for a writer thread, and a queue full enough to mean the daemon has stopped reading drops
@@ -958,9 +959,9 @@ Two things stand on that. The file has a single writer, where before every windo
 last decided what came back. And a window that closes leaves something to come back to, which is what `muster window
 reopen` reads.
 
-**Every tab belongs to exactly one window, and that is written down beside the names** (kan a_2Mhi0EZlv).
-`~/.muster/state/holding/tabs.toml` says which window holds each tab, and every window reads, changes and writes it
-inside the same lock the names use. A pane is drawn by one bridge at a time, so a tab two windows both listed was a
+**Every tab belongs to exactly one window, and that is written down where every window reads it** (kan
+a_2Mhi0EZlv). `~/.muster/state/holding/tabs.toml` says which window holds each tab, and every window reads, changes
+and writes it inside a lock of its own, so two windows cannot write over each other's change. A pane is drawn by one bridge at a time, so a tab two windows both listed was a
 tab whose panes the second took from the first at a click - and before this every window listed every tab, so a
 window holding nothing drew the next tab anybody made. Now a window lists the tabs the record gives it and no others,
 and its arrangement names only those.

@@ -221,7 +221,7 @@ container (`tools/linux-run/ci`), with no Rust, Zig or Rad on it.
 copied unchanged from the pin, which the daemon gives every shell it starts. It is a directory that ships beside the
 daemon rather than inside it, because the bash and zsh scripts are GPLv3 (`packaging/muster-daemon-data/README.md`).
 
-`./dev --claude-code` reaches a model, where `--notarize` and `--ssh` reach only Apple and herdr's releases: it
+`./dev --claude-code` reaches a model, where `--notarize` reaches only Apple and `--ssh` only what Docker fetches: it
 drives the Claude Code installed here for one turn, in a pane with `extras/claude-code`'s hooks and one without, and
 checks that both the hooks and the screen rules read it working and then idle - which is what says a Claude Code
 update has broken neither. It needs `ANTHROPIC_API_KEY` or `claude`'s own login, and fails saying which is missing

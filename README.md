@@ -115,8 +115,6 @@ after:
 - Two windows cannot show the same tab. The session daemon allows one client per terminal, so a
   tab is in exactly one window and moves between them rather than being shown in both.
 - A pane on its own cannot be dragged to another window; it goes with its tab.
-- A name you give a pane reaches another window the next time that window asks the daemon what it
-  holds, rather than at the moment you type it. Muster's own names are the same in every window.
 
 Muster is not a multiplexer, an agent framework, or a workflow: it gives you panes, states, sessions
 and a scriptable surface, and has no opinion about how you run your agents. `AGENTS.md` is the

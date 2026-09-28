@@ -100,10 +100,10 @@ making one starts an app rather than asking a running one for it - the case `win
 for includes there being no window to ask.
 
 Names are not a window's: two windows on one machine call the same pane the same thing, because
-the names are written down where both can read them. Tabs are a window's, and that follows from
-the daemon's rule rather than the window's - one bridge may draw a pane, so a pane one window is
-drawing is a pane another cannot draw at the same time. Which window holds each tab is written
-down beside the names, in `~/.muster/state/holding/tabs.toml`, where every window reads it.
+a name is the daemon's and both windows ask the same daemon. Tabs are a window's, and that
+follows from the daemon's rule rather than the window's - one bridge may draw a pane, so a pane
+one window is drawing is a pane another cannot draw at the same time. Which window holds each
+tab is written down in `~/.muster/state/holding/tabs.toml`, where every window reads it.
 
 A pane moves to another window with its tab, `muster tab move --tab <TAB> --window <WINDOW>`, and
 never to another machine: a pane is a process and it lives where it lives.

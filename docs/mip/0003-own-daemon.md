@@ -1097,7 +1097,9 @@ herdr's own client measured 1.4 ms and 22.6 ms. The remote row is in section 4.
 ### 14. What Muster deletes
 
 - `crates/muster-herdr`, `deps/herdr.pin`, `tools/herdr-probe` once the migration diff is done,
-  herdr's license and NOTICE lines, and every herdr step in `./dev` and CI.
+  and every herdr step in `./dev` and CI. herdr's license and its NOTICE lines stay:
+  `muster-detect` is an Apache-2.0 port of herdr's detection, and the license goes with the
+  port. (This line first said they went too, which the port rules out.)
 - In the core: the blind mode profile (`input/mode_profile.rs`), arrows and paste routed through a
   second API, the server-encoded input queue, the name registry's backend binding, rect-to-tree
   reconstruction, replay rejection, the answer-before-broadcast settling, inferred tab closes, the

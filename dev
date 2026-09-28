@@ -854,10 +854,11 @@ fn write_info_plist(contents):
 
 // Why macOS is asking, in the one place a person ever sees it.
 //
-// macOS charges a protected request to the responsible process, which for anything inside a
-// pane is Muster - measured, and the whole table is in docs/observations/macos-26.4.1.md. So the
-// prompt says Muster and the request came from an agent, and the only place that can be
-// explained is here. Left unset, the prompt says nothing at all about why, and a prompt
+// macOS charges a protected request to the responsible process. For anything inside a pane
+// that is Muster Sessions, the helper app running the daemon, in a bundle, and Muster itself
+// for a daemon a SwiftPM build spawns - measured, and the whole table is in
+// docs/observations/macos-26.4.1.md. So the prompt names one of the two while the request
+// came from an agent, and the only place that can be explained is here. Left unset, the prompt says nothing at all about why, and a prompt
 // somebody cannot judge is a prompt they refuse.
 //
 // One voice for all of them, and it names the pane rather than the app: Muster is what macOS
@@ -1568,8 +1569,8 @@ if bundle:
     // app people ran was the one binary nothing had measured: the perf and latency tiers
     // build release. libghostty is ReleaseFast either way (build_deps).
     $`cargo build --release -p muster-seam -p muster-bridge -p muster-cli -p muster-daemon`
-    // Stripped, since the app carries both to machines that will only ever run them: 2.8 MB
-    // and 2.4 MB rather than several times that with the release profile's debug info.
+    // Stripped, since the app carries both to machines that will only ever run them: 5.0 MB
+    // and 6.0 MB rather than several times that with the release profile's debug info.
     for target in LINUX_DAEMONS.keys():
         $`CARGO_PROFILE_RELEASE_STRIP=symbols cargo build --release -p muster-daemon --target {target}`
     $`swift build -c release`

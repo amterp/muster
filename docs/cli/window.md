@@ -165,7 +165,8 @@ not be read: an agent Muster failed to read is not an agent that finished.
 
 `done` is an agent that finished while nobody was looking. The daemon keeps the finish, so a
 window opened later still says `done`, and it lasts until a window that has the keyboard shows
-the pane - which clears it for every window.
+the pane - which clears it for every window - or until the agent works or waits on somebody
+again. A daemon that restarts forgets it, so a script should not expect a `done` to outlive one.
 
 The state column is coloured: `working` cyan, `blocked` yellow, `done` green. `idle` and
 `unknown` are left plain, because they are the resting answer and the row already prints the

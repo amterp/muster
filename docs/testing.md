@@ -63,7 +63,7 @@ Muster's principles, adapted to that evidence:
   which is how a devenv's is measured through a forwarded socket, and
   `--flood-surface fast` floods a surface that keeps up, so the flood's time is what the link and the daemon's flow
   control allow. Agent detection is checked against what herdr did: the first test in
-  `crates/muster-daemon/tests/detection.rs` reruns the `detection` scenario recorded in
+  `crates/muster-daemon/tests/daemon/detection.rs` reruns the `detection` scenario recorded in
   `corpus/herdr-0.8.0/detection/` with the same fake agent and override manifest, and prints each state's settle
   time beside herdr's. Everything else herdr was recorded doing is kept as a
   reference: `corpus/herdr-0.8.0/MIGRATION.json` gives each recorded fact a verdict - pinned to the test that holds
