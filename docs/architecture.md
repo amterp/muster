@@ -898,6 +898,15 @@ pane has one bridge at a time, and the stream from before the drop stays open ov
 replacement re-attaches with `--takeover`, which a first bridge never does, because the pane it would take could be
 one another window is showing.
 
+**A bridge whose stream the daemon dropped attaches again on its own, once, before any of that.** The daemon hangs up
+on a bridge whose stream write makes no progress for 30 seconds, and a bridge stops reading its stream whenever its
+surface stops reading the pty - which every surface in a window does while the window's main thread is paging, because
+libghostty's readers wait on a mailbox only that thread drains. Nothing is wrong with that bridge or its surface, and
+exiting would cost a new surface for each, so the bridge attaches again and the replay redraws what was missed
+(`crates/muster-bridge/src/daemon.rs`). A stream lost again within ten seconds, or an attach that fails, ends the
+bridge as before, saying the loss rather than the refusal, so the replacement policy above still judges a bridge that
+keeps losing its stream.
+
 **A pane can also stop painting while every layer below reports health: a pane that was asked for something and
 painted nothing.** A wedged bridge, a transport that dropped without closing, a daemon still answering requests while
 one of its terminals went quiet - each leaves the same picture and nothing to read it by (kan a_2LMRCug0P). The

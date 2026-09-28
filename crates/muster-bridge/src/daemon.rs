@@ -94,6 +94,8 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
     let mut surface = CountedSurface { surface: std::io::stdout().lock(), counting: &counting };
 
     let mut attached = attach(arguments, arguments.takeover);
+    // When this bridge last attached again after losing its stream.
+    let mut reattached: Option<Instant> = None;
     loop {
         let attachment = match attached {
             Ok(attachment) => attachment,
@@ -133,6 +135,10 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
                 log::info("bridge.caught_up", fields! { "bytes" => bytes });
             }
         });
+        if let Some(attachment) = attach_after_losing(arguments, &ended, &mut reattached) {
+            attached = Ok(attachment);
+            continue;
+        }
         match &ended {
             Ended::Detached(DetachReason::Replaced) => {
                 // The pane went to the daemon replacing this one, on the same socket, whose
@@ -161,6 +167,12 @@ pub(crate) fn run(arguments: &Arguments) -> ! {
 
 /// How long a replaced daemon's successor has to start taking attaches.
 const REPLACED_WITHIN: Duration = Duration::from_secs(10);
+
+/// How soon after attaching again a lost stream ends the bridge rather than being attached
+/// again. A window that has fallen behind loses a stream once per stalled write, which the
+/// daemon allows 30s; one lost again sooner is a daemon or a link that cannot hold it, which is
+/// the window's replacement policy to judge.
+const LOST_AGAIN_WITHIN: Duration = Duration::from_secs(10);
 
 fn attach(arguments: &Arguments, takeover: bool) -> Result<Attachment, AttachError> {
     let grid = surface_grid();
@@ -193,6 +205,39 @@ fn attach_again(arguments: &Arguments) -> Result<Attachment, AttachError> {
                 pause = (pause * 2).min(Duration::from_millis(500));
             }
             attached => return attached,
+        }
+    }
+}
+
+/// Attaches again to a pane whose stream the daemon dropped, or says to exit as before.
+///
+/// Most often the daemon dropped it because this bridge stopped reading while its surface
+/// stopped reading the pty - which every surface in a window does while its main thread is
+/// paging. The bridge and its surface are fine then, and exiting would cost the window a new
+/// surface, so it attaches again and the replay redraws what was missed. Not twice within
+/// [`LOST_AGAIN_WITHIN`], and not when the attach fails: the bridge then exits saying the loss
+/// it followed rather than the refusal, so the window hears what it would have without the
+/// attempt.
+fn attach_after_losing(
+    arguments: &Arguments,
+    ended: &Ended,
+    reattached: &mut Option<Instant>,
+) -> Option<Attachment> {
+    if !matches!(ended, Ended::Failed(_) | Ended::HungUp)
+        || reattached.is_some_and(|at| at.elapsed() < LOST_AGAIN_WITHIN)
+    {
+        return None;
+    }
+    let lost = exit(ended, false).reason.unwrap_or_default();
+    log::info("bridge.stream.lost", fields! { "reason" => lost });
+    match attach(arguments, false) {
+        Ok(attachment) => {
+            *reattached = Some(Instant::now());
+            Some(attachment)
+        }
+        Err(error) => {
+            log::info("bridge.stream.reattach_failed", fields! { "error" => error });
+            None
         }
     }
 }
