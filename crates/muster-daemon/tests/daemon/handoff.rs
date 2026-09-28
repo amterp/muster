@@ -162,6 +162,23 @@ fn a_bridge_is_detached_as_replaced_and_attaches_again_to_the_same_screen() {
     assert_eq!(redrawn.screen(), drawn);
 }
 
+/// The old daemon exits only once each bridge's detach is written. A bridge that reads a hang-up
+/// instead ends rather than attaching again, so a pane's view would end with the handoff; a
+/// loaded machine can leave the writer that far behind, which the fault stages every time.
+#[test]
+fn a_bridge_hears_replaced_even_when_its_detach_is_written_late() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "slow-detach")]);
+    let (_control, _input) = two_panes(&daemon);
+    let mut stream = attached(&daemon, "p1", false);
+    let mut surface = Surface::new(80, 24);
+    surface.follow(&mut stream, "the replay", true, |surface| surface.replays > 0);
+
+    replaced(&mut daemon);
+
+    surface.follow(&mut stream, "the detach", true, |surface| surface.detached.is_some());
+    assert_eq!(surface.detached, Some(proto::DetachReason::Replaced));
+}
+
 /// A subscriber hears that the daemon was replaced, then its connection ends: it connects again
 /// and starts from a snapshot of the new daemon.
 #[test]

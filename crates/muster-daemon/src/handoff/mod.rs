@@ -57,18 +57,19 @@ const FLUSH: Duration = Duration::from_secs(1);
 /// daemon taking over `refuse`, `exit-before-ready`, `exit-after-commit`, `pause-after-accept`,
 /// `pause-before-ready` and `pause-before-serving`, and the daemon handing over
 /// `pause-before-hold`, `pause-after-serving`, `report-before-settle`, which queues a report just before it waits
-/// for the reports, as a reader does that reports as it parks, and `short-launch`, which gives
-/// the successor one second rather than [`LAUNCH`] to answer `--version`.
+/// for the reports, as a reader does that reports as it parks, `short-launch`, which gives
+/// the successor one second rather than [`LAUNCH`] to answer `--version`, and `slow-detach`,
+/// which makes a stream's writer wait before writing a bridge's detach, as a loaded machine can.
 const FAULT: &str = "MUSTER_DAEMON_HANDOFF_FAULT";
 
 /// The faults this daemon was started with. Read only by a debug build, which is what every test
 /// runs: a shipped daemon never reads the variable, so nothing in a user's environment can make
 /// one fail a handoff.
 #[derive(Debug, Default)]
-struct Faults(Vec<String>);
+pub(crate) struct Faults(Vec<String>);
 
 impl Faults {
-    fn read() -> Faults {
+    pub(crate) fn read() -> Faults {
         if cfg!(debug_assertions) {
             let faults = std::env::var(FAULT).unwrap_or_default();
             Faults(faults.split(',').filter(|f| !f.is_empty()).map(str::to_string).collect())
@@ -77,7 +78,7 @@ impl Faults {
         }
     }
 
-    fn has(&self, fault: &str) -> bool {
+    pub(crate) fn has(&self, fault: &str) -> bool {
         self.0.iter().any(|named| named == fault)
     }
 

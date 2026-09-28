@@ -323,9 +323,13 @@ fn writer(stream: &UnixStream) -> std::io::Result<Sender<Vec<u8>>> {
     let (frames, queued) = mpsc::channel::<Vec<u8>>();
     let mut writing = stream.try_clone()?;
     writing.set_write_timeout(Some(STALLED_WRITE))?;
+    let slow_detach = crate::handoff::Faults::read().has("slow-detach");
     std::thread::Builder::new().name("stream write".to_string()).spawn(move || {
         crate::priority::interactive();
         for frame in queued {
+            if slow_detach && is_detach(&frame) {
+                std::thread::sleep(SLOW_DETACH);
+            }
             if muster_frame::write_frame(&mut writing, &frame).is_err() {
                 break;
             }
@@ -333,6 +337,15 @@ fn writer(stream: &UnixStream) -> std::io::Result<Sender<Vec<u8>>> {
         let _ = writing.shutdown(Shutdown::Both);
     })?;
     Ok(frames)
+}
+
+/// How long the `slow-detach` fault holds a detach back: longer than a handed-off daemon takes
+/// to exit when nothing waits for it, and well inside what the handoff waits to flush.
+const SLOW_DETACH: Duration = Duration::from_millis(500);
+
+fn is_detach(frame: &[u8]) -> bool {
+    proto::StreamMessage::decode(frame)
+        .is_ok_and(|message| matches!(message.message, Some(stream_message::Message::Detached(_))))
 }
 
 #[cfg(test)]
