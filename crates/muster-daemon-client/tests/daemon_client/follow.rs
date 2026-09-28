@@ -462,3 +462,36 @@ fn input_can_be_sent_as_soon_as_the_snapshot_arrives() {
     let sent = until_some("the snapshot to arrive", || *sent.lock().unwrap());
     assert_eq!(sent, Ok(()), "input sent on the snapshot's arrival was refused");
 }
+
+/// The app hands a daemon the detection manifests it was built with, at every connect, which is
+/// how a fix to one reaches a daemon that is already running: the daemon keeps its panes across
+/// an update, and with them the rules it started with. The daemon reads its override directory
+/// again at the same moment.
+#[test]
+fn a_followed_daemon_is_sent_the_apps_manifests() {
+    let daemon = Daemon::start_built();
+    let _followed = follow(&daemon);
+
+    let built_in =
+        std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../muster-detect/manifests"))
+            .unwrap()
+            .filter(|entry| {
+                entry.as_ref().unwrap().path().extension().is_some_and(|ext| ext == "toml")
+            })
+            .count();
+    let log = daemon.root().join("daemon.log");
+    let loaded = until_some("the daemon to load the app's manifests", || {
+        std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .lines()
+            .find(|line| {
+                line.contains("\"daemon.detect.loaded\"") && !line.contains("\"from_app\":\"0\"")
+            })
+            .map(str::to_string)
+    });
+    assert!(loaded.contains(&format!("\"from_app\":\"{built_in}\"")), "{loaded}");
+    assert!(
+        loaded.contains("\"ignored\":\"0\""),
+        "every manifest the app sent was taken: {loaded}"
+    );
+}
