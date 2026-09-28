@@ -28,10 +28,23 @@ public enum PaneNotification {
     switch state {
     case "blocked": return "is waiting on you"
     case "done": return "has finished"
-    // Never sent by the core, which raises only those two. A banner is the wrong place to
+    case "notified": return "has something for you"
+    // Never sent by the core, which raises only those three. A banner is the wrong place to
     // report a seam disagreement, so this says the honest minimum rather than nothing.
     default: return "needs you"
     }
+  }
+
+  /// The banner's body: what a program said, when a program asked, and otherwise the reason.
+  /// A program that notifies somebody has already said why, better than Muster could.
+  public static func body(state: String, noteBody: String) -> String {
+    state == "notified" && !noteBody.isEmpty ? noteBody : reason(state: state)
+  }
+
+  /// The banner's second line: a program's own title when it gave one, since that names what
+  /// its message is about, and otherwise the roster's.
+  public static func subtitle(state: String, subtitle: String, noteTitle: String) -> String {
+    state == "notified" && !noteTitle.isEmpty ? noteTitle : subtitle
   }
 
   /// One banner per pane, so a pane that asks again replaces its own rather than stacking,
@@ -130,7 +143,8 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
   /// in most apps: activating one focuses the pane that raised it, so a stale banner is a
   /// keystroke that lands somebody on an agent which stopped needing them.
   public func apply(
-    daemon: String, pane: String, state: String, label: String, subtitle: String
+    daemon: String, pane: String, state: String, label: String, subtitle: String,
+    noteTitle: String = "", noteBody: String = ""
   ) {
     guard let center else { return }
     let id = PaneNotification.identifier(daemon: daemon, pane: pane)
@@ -142,8 +156,9 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
 
     let content = UNMutableNotificationContent()
     content.title = PaneNotification.title(label: label, paneID: pane)
-    content.subtitle = subtitle
-    content.body = PaneNotification.reason(state: state)
+    content.subtitle = PaneNotification.subtitle(
+      state: state, subtitle: subtitle, noteTitle: noteTitle)
+    content.body = PaneNotification.body(state: state, noteBody: noteBody)
     content.sound = .default
     // Read back when somebody activates it. The pane's name alone would do on one machine
     // and would reach the wrong pane on two.

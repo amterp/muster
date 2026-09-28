@@ -1180,7 +1180,8 @@ public enum Core {
       // from two halves the shell does not have.
       PaneNotifier.shared.apply(
         daemon: changed.daemonID, pane: changed.paneID, state: changed.state,
-        label: changed.label, subtitle: changed.subtitle)
+        label: changed.label, subtitle: changed.subtitle, noteTitle: changed.noteTitle,
+        noteBody: changed.noteBody)
     case .presentationChanged(let changed):
       let presentation = Presentation(sidebar: changed.sidebar)
       info("presentation.received", ["sidebar": String(presentation.sidebar)])

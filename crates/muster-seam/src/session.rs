@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
-use muster_core::attention::{Attend, Attention, Notifications};
+use muster_core::attention::{Attend, Attention, Note, Notifications};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
@@ -29,7 +29,7 @@ use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::input::{Bindings, InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal};
-use muster_core::mirror::backend::{AgentFacts, PaneId, TabId};
+use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restored};
 use muster_core::names::Minter;
 use muster_core::pane_focus::PaneFocus;
@@ -1225,7 +1225,7 @@ impl Session {
     /// One pane's agent as this window paints it, if its daemon holds the pane.
     fn agent(&self, key: &PaneKey) -> Option<PaneAgent> {
         let mirror = poison::lock(&self.backends.get(&key.daemon)?.mirror, "mirror");
-        mirror.pane(&key.pane).map(|pane| self.presented(key, pane))
+        mirror.pane(&key.pane).map(|pane| self.presented(key, pane, mirror.progress(&pane.id)))
     }
 
     /// Whether a pane's daemon says its agent finished and nobody has seen it since.
@@ -1287,7 +1287,12 @@ impl Session {
 
     /// One pane's agent as this window paints it, from what its daemon said: `waiting` for an
     /// idle agent waiting on its own work, and `done` laid over a finish nobody has seen.
-    fn presented(&self, key: &PaneKey, pane: &muster_core::mirror::Pane) -> PaneAgent {
+    fn presented(
+        &self,
+        key: &PaneKey,
+        pane: &muster_core::mirror::Pane,
+        progress: Option<Progress>,
+    ) -> PaneAgent {
         PaneAgent {
             pane: key.clone(),
             state: self.attention.presented(key, pane.presented_state()),
@@ -1295,6 +1300,8 @@ impl Session {
             reported: pane.reported,
             unreadable: pane.unreadable,
             facts: pane.facts.clone(),
+            progress,
+            rang: self.attention.has_rung(key),
         }
     }
 
@@ -1304,7 +1311,11 @@ impl Session {
         for (id, backend) in &self.backends {
             let mirror = poison::lock(&backend.mirror, "mirror");
             for pane in mirror.panes() {
-                agents.push(self.presented(&PaneKey::new(id, &pane.id), pane));
+                agents.push(self.presented(
+                    &PaneKey::new(id, &pane.id),
+                    pane,
+                    mirror.progress(&pane.id),
+                ));
             }
         }
         agents
@@ -2761,6 +2772,10 @@ pub(crate) struct PaneAgent {
     /// Whether the daemon's rules have stopped reading this agent's screen.
     pub unreadable: bool,
     pub facts: AgentFacts,
+    /// What a program in the pane says of its progress.
+    pub progress: Option<Progress>,
+    /// A bell in the pane has gone unseen.
+    pub rang: bool,
 }
 
 /// How much of one daemon's truth the window has, as the shell and a watch are told it.
@@ -4078,6 +4093,18 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
             let attended = session.attention.forget(&key);
             attended.map(|attend| (key, attend))
         }
+        // Marks the pane, which the pane's agent announces; a bell never asks for anybody.
+        Change::Rang(pane) => {
+            let key = PaneKey::new(daemon, pane);
+            poison::lock(&SESSION, "session").attention.bell(&key);
+            None
+        }
+        Change::Notified { pane, title, body } => {
+            let key = PaneKey::new(daemon, pane);
+            let note = Note { title: title.clone(), body: body.clone() };
+            let attended = poison::lock(&SESSION, "session").attention.notified(&key, note);
+            attended.map(|attend| (key, attend))
+        }
         _ => None,
     }
 }
@@ -4178,6 +4205,8 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
         // the commonest one is a pane that closed.
         Attend::Withdrawn => (String::new(), String::new(), String::new()),
     };
+    let note = poison::lock(&SESSION, "session").attention.note(pane).cloned();
+    let (note_title, note_body) = note.map(|note| (note.title, note.body)).unwrap_or_default();
     log::info(
         "attention.changed",
         fields! {
@@ -4193,6 +4222,8 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
             state,
             label,
             subtitle,
+            note_title,
+            note_body,
         })),
     });
 }

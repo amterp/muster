@@ -1740,7 +1740,8 @@ message AttentionChanged {
   string daemon_id = 1;
   string pane_id = 2;
 
-  // `blocked` or `done` - what this pane is asking, which is what a banner has to say. Empty
+  // `blocked`, `notified` or `done` - what this pane is asking, which is what a banner has to
+  // say. `notified` is a program in the pane asking to notify somebody, in its own words. Empty
   // means it has stopped asking: the agent moved on, somebody looked at it, the pane closed,
   // or the file stopped asking for that state. Anything already delivered for this pane is
   // then stale and should be taken down, because activating it would land a person on a pane
@@ -1755,6 +1756,11 @@ message AttentionChanged {
   // What the agent says it is working on, empty when there is nothing worth adding. The same
   // second line the roster draws, on the same rule.
   string subtitle = 5;
+
+  // For `notified`, what the program said: its title, empty when it gave none (OSC 9 has
+  // none), and its message. The why a banner exists to carry.
+  string note_title = 6;
+  string note_body = 7;
 }
 
 // What is wrong with this window, whole.
@@ -2223,6 +2229,23 @@ message PaneStateChanged {
 
   // What the agent says about itself. Absent while it has said nothing.
   AgentFacts facts = 7;
+
+  // What a program in the pane says of its progress (OSC 9;4), until it takes it back. Absent
+  // while it says nothing. Not kept across a window losing its daemon, since no snapshot
+  // repeats it.
+  PaneProgress progress = 8;
+
+  // A program in the pane rang the bell and nobody has looked at the pane since. A mark, never
+  // a banner: shells ring for a completion that found nothing.
+  bool rang = 9;
+}
+
+message PaneProgress {
+  // running, error, indeterminate or paused. Indeterminate is some agents' way of saying they
+  // are working, which the state already says.
+  string state = 1;
+  // How far along, from 0 to 100, when the program said.
+  optional uint32 percent = 2;
 }
 
 // What an agent reports about itself, in its own words: never read off its screen, and

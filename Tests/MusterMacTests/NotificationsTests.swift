@@ -37,9 +37,26 @@ struct NotificationsTests {
 
   @Test("a state the core never raises still says something true")
   func anUnknownStateIsNotBlank() {
-    // The core raises `blocked` and `done` and nothing else, so this is a seam disagreement.
+    // The core raises `blocked`, `notified` and `done` and nothing else, so this is a seam
+    // disagreement.
     // A banner is the wrong place to report one, and an empty body is worse than a vague one.
     #expect(!PaneNotification.reason(state: "compacting").isEmpty)
+  }
+
+  @Test("a program's notification says what the program said")
+  func aProgramsNotificationCarriesItsWords() {
+    // The program already said why it wants somebody, which is the banner's whole job.
+    #expect(PaneNotification.body(state: "notified", noteBody: "tests passed") == "tests passed")
+    #expect(
+      PaneNotification.subtitle(state: "notified", subtitle: "fixing auth", noteTitle: "build")
+        == "build")
+    // OSC 9 carries no title, so the roster's second line stays.
+    #expect(
+      PaneNotification.subtitle(state: "notified", subtitle: "fixing auth", noteTitle: "")
+        == "fixing auth")
+    // An agent's own states keep Muster's words, whatever a note once said.
+    #expect(PaneNotification.body(state: "done", noteBody: "stale") == "has finished")
+    #expect(!PaneNotification.body(state: "notified", noteBody: "").isEmpty)
   }
 
   @Test("a banner is identified by machine and pane, not pane alone")

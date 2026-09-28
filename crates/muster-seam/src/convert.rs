@@ -24,6 +24,11 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
         reported: agent.reported,
         unreadable: agent.unreadable,
         facts: (agent.facts != AgentFacts::default()).then(|| facts(&agent.facts)),
+        progress: agent.progress.map(|progress| proto::PaneProgress {
+            state: progress.state.as_str().to_string(),
+            percent: progress.percent.map(u32::from),
+        }),
+        rang: agent.rang,
     }
 }
 
