@@ -91,6 +91,7 @@ impl DaemonBackend {
             pane: pane.to_string(),
             first_row,
             rows: 0,
+            last: 0,
         }))?;
         let Some(answer::Detail::Text(read)) = answer.detail else {
             return Err(Refusal::Declined(format!(

@@ -125,6 +125,7 @@ impl Daemon {
                     pane: pane.to_string(),
                     first_row,
                     rows,
+                    last: 0,
                 })),
             }));
             match asked.answer.detail {

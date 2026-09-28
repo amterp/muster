@@ -140,6 +140,7 @@ pub fn read_request(name: &str, first_row: u64, rows: u32) -> Service {
         pane: name.to_string(),
         first_row,
         rows,
+        last: 0,
     }))
 }
 

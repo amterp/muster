@@ -59,6 +59,42 @@ fn a_pane_is_read_in_pages_counted_from_its_oldest_row() {
     expect(&mut control, read_request("missing", 0, 1), proto::Outcome::NotThere);
 }
 
+/// The newest rows are read without the history before them or the blank rest of the screen
+/// beneath: a reader asking for the last few rows of a pane at a prompt is sent those.
+#[test]
+fn the_last_rows_end_at_the_last_row_with_anything_on_it() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let command = format!("{HUNDRED_ROWS}; clear; echo marker; echo prompt; exec cat");
+    let mut asked = running("p1", "t1", command);
+    asked.grid = Some(grid(40, 10, 0, 0));
+    make(&mut control, asked);
+    until_text(&mut control, "p1", "prompt");
+
+    let last = |control: &mut Control, count: u32| {
+        let read = pane(proto::pane_request::Request::Read(proto::pane_request::Read {
+            pane: "p1".to_string(),
+            last: count,
+            ..Default::default()
+        }));
+        match expect(control, read, proto::Outcome::Done).answer.detail {
+            Some(proto::answer::Detail::Text(text)) => text,
+            other => panic!("a read answered with {other:?}"),
+        }
+    };
+    let newest = last(&mut control, 2);
+    assert_eq!(newest.text, "marker\nprompt", "{newest:?}");
+    assert_eq!(newest.rows, 2);
+    assert!(
+        newest.first_row + 2 < newest.total_rows,
+        "the blank rest of the screen is still held, just not read: {newest:?}"
+    );
+
+    let more = last(&mut control, 1000);
+    assert!(more.text.ends_with("marker\nprompt"), "as many as there are: {more:?}");
+    assert_eq!(more.first_row, 0);
+}
+
 /// Rows `row0` to `row99`, printed by a pane's program.
 const HUNDRED_ROWS: &str = "i=0; while [ $i -lt 100 ]; do echo row$i; i=$((i+1)); done";
 

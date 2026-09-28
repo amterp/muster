@@ -295,6 +295,11 @@ message PaneRequest {
     // Zero reads to the last row. Either way a page stops at 4 MiB of text, well under the
     // largest message, and the answer says how many rows it holds.
     uint32 rows = 3;
+    // When set, the page is the last `last` rows ending at the last row with anything on it, and
+    // `first_row` and `rows` are not read: a reader after the newest rows is sent those rather
+    // than the history before them, and not the blank rest of the screen beneath a prompt. A
+    // daemon that predates it reads from `first_row` as asked.
+    uint32 last = 4;
   }
 
   // Facts the agent in a pane states about itself, sent from inside the pane
