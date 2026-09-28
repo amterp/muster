@@ -504,3 +504,60 @@ fn now_ms() -> u64 {
     let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> Messages {
+        let directory =
+            std::env::temp_dir().join(format!("muster-messages-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        Messages::load(&directory.join("daemon.sock"))
+    }
+
+    fn session(name: &str) -> Caller {
+        Caller {
+            inbox: Some(Inbox { socket: format!("/nonexistent/{name}.sock"), inode: 1 }),
+            ..Caller::default()
+        }
+    }
+
+    #[test]
+    fn a_handover_refuses_changes_and_still_answers_questions() {
+        let mut messages = scratch("handing-over");
+        messages.handing_over(true);
+        let join = Asked::Join(proto::msg_request::Join {
+            name: Some("a".to_string()),
+            group: Some("g".to_string()),
+        });
+        let refused = messages.answer(&session("a"), join);
+        assert_eq!(refused.outcome, proto::Outcome::Refused);
+        let who = messages.answer(&session("a"), Asked::Who(proto::msg_request::Who::default()));
+        assert_eq!(who.outcome, proto::Outcome::Done);
+    }
+
+    /// A handover that fails leaves the daemon serving, and a wait it ended must not take the
+    /// next wake: its caller has gone, so the wake would be delivered nowhere.
+    #[test]
+    fn a_wait_a_failed_handover_ended_does_not_take_the_next_wake() {
+        let mut messages = scratch("failed-handover");
+        let (a, b) = (session("a"), session("b"));
+        messages.service.join(&a, Some("a"), Some("g"), &Sockets, 1).unwrap();
+        messages.service.join(&b, Some("b"), Some("g"), &Sockets, 2).unwrap();
+        let Ok(muster_msg::Waited::Waiting { ticket, .. }) =
+            messages.service.wait(&b, None, &Sockets)
+        else {
+            panic!("b has nothing unread, so it waits");
+        };
+        let (end, _ended) = mpsc::channel();
+        messages.waits.insert(ticket, end);
+
+        messages.handing_over(true);
+        messages.handing_over(false);
+        let posted = messages.service.post(&a, None, &[], "after", &Sockets, 3).unwrap();
+        assert!(posted.answered.is_empty(), "{posted:?}");
+        assert_eq!(posted.wakes.iter().map(|wake| wake.name.as_str()).collect::<Vec<_>>(), ["b"]);
+    }
+}
