@@ -618,6 +618,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A Mac attached over SSH may run a Muster of its own, whose app points `muster` at the CLI
+    /// inside its bundle at every launch. That link is the app's, and an install leaves it.
+    #[test]
+    fn an_install_leaves_a_link_an_app_owns() {
+        let root = scratch("app-link");
+        let linux = root.join("linux/linux-x86_64");
+        std::fs::create_dir_all(&linux).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::write(linux.join("muster-daemon"), b"daemon").unwrap();
+        std::fs::write(linux.join("muster"), b"cli").unwrap();
+        let carried = Carried {
+            linux: Some(root.join("linux")),
+            data: Some(root.join("data")),
+            ..Carried::default()
+        };
+        let payload = carried.payload("here", &Platform::from_uname("Linux x86_64").unwrap());
+        let payload = payload.unwrap();
+        let installed = installed_in(&root);
+        std::fs::create_dir_all(&installed.commands).unwrap();
+        let apps = Path::new("/Applications/Muster.app/Contents/MacOS/muster");
+        std::os::unix::fs::symlink(apps, installed.commands.join("muster")).unwrap();
+
+        Here.shell_on(&install_script(&installed, &payload.stamp), &payload.archive).unwrap();
+
+        assert_eq!(std::fs::read_link(installed.commands.join("muster")).unwrap(), apps);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// An archive that does not unpack - a dropped connection, a full disk - fails the install
     /// and takes its staging directory with it, rather than leaving a daemon's worth of files
     /// beside the version's directory for every failure.
