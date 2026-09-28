@@ -28,6 +28,8 @@ pub struct GroupRecord {
 pub struct Memory {
     pub appended: Vec<(String, Entry)>,
     pub saved: Option<Saved>,
+    /// How many times the state was saved.
+    pub saves: usize,
     /// Set to make every call fail, as a full disk would.
     pub failing: bool,
 }
@@ -46,6 +48,7 @@ impl Store for Memory {
             return Err("the store is failing on purpose".to_string());
         }
         self.saved = Some(state.clone());
+        self.saves += 1;
         Ok(())
     }
 }

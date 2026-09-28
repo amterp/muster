@@ -99,3 +99,20 @@ fn a_cursor_past_the_head_of_its_log_is_brought_back_to_it() {
     let read = second.read(&session("b"), None, &Everyone).unwrap();
     assert_eq!(read.groups[0].1.len(), 1, "{read:?}");
 }
+
+/// Every save is a sync to the disk, under the lock every messaging request takes, and a hook
+/// may run `read --if-unread` after every tool call of every agent (MIP-4, section 12).
+#[test]
+fn a_request_that_changes_nothing_saves_nothing() {
+    let mut service = Messaging::new(Memory::default());
+    service.join(&session("a"), Some("a"), Some("g"), &Everyone, 1).unwrap();
+    service.join(&session("b"), Some("b"), Some("g"), &Everyone, 2).unwrap();
+    service.read(&session("b"), None, &Everyone).unwrap();
+    let saves = service.store().saves;
+
+    service.read(&session("b"), None, &Everyone).unwrap();
+    service.join(&session("b"), Some("b"), Some("g"), &Everyone, 3).unwrap();
+    let waited = service.wait(&session("b"), None, &Everyone).unwrap();
+    assert!(matches!(waited, muster_msg::Waited::Waiting { .. }), "{waited:?}");
+    assert_eq!(service.store().saves, saves);
+}
