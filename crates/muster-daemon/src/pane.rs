@@ -32,7 +32,7 @@ use crate::process;
 use crate::pty;
 use crate::pty::Grid;
 use crate::screen::{Cleared, Screen, Settled};
-use crate::stream::{self, Bridge, Refusal};
+use crate::stream::{self, Bridge, Refusal, Written};
 use crate::writer::{self, Encoding, Input, OwnedKey, Writer};
 
 /// Told when a pane's process has ended, with the pane's serial and, when this daemon saw the
@@ -372,10 +372,12 @@ impl PaneIo {
         self.flow.change();
     }
 
-    /// Tells the pane's bridge why the pane is going, and lets go of it.
-    pub(crate) fn close(&self, reason: proto::DetachReason) {
-        self.screen().close(reason);
+    /// Tells the pane's bridge why the pane is going, and lets go of it. What is returned says
+    /// when the bridge has been told, for a daemon about to exit.
+    pub(crate) fn close(&self, reason: proto::DetachReason) -> Option<Written> {
+        let written = self.screen().close(reason);
         self.flow.change();
+        written
     }
 
     /// Stops the pane's reader once its terminal has everything the reader took from the PTY,
@@ -1217,6 +1219,10 @@ mod tests {
     #[test]
     fn the_pane_closing_ends_the_wait() {
         let (io, _, _frames) = full();
-        assert!(waited(&io, || io.close(proto::DetachReason::Closed)) < PROMPT);
+        assert!(
+            waited(&io, || {
+                io.close(proto::DetachReason::Closed);
+            }) < PROMPT
+        );
     }
 }

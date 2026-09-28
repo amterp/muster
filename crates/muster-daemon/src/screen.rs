@@ -16,7 +16,7 @@ use muster_vt::{Answers, ColorScheme, Palette, Rgb, Terminal, TerminalError, Ter
 use crate::effects::Happened;
 use crate::pty::Grid;
 use crate::spawn;
-use crate::stream::{Bridge, Refusal};
+use crate::stream::{Bridge, Refusal, Written};
 
 /// History a pane keeps when the app has not said: Ghostty's own `scrollback-limit`, so the
 /// daemon's copy holds what the surface beside it holds.
@@ -328,11 +328,9 @@ impl Screen {
         }
     }
 
-    /// Tells the attached bridge why the pane is going.
-    pub(crate) fn close(&mut self, reason: proto::DetachReason) {
-        if let Some(bridge) = self.bridge.take() {
-            bridge.detach(reason);
-        }
+    /// Tells the attached bridge why the pane is going, and says when that has been written.
+    pub(crate) fn close(&mut self, reason: proto::DetachReason) -> Option<Written> {
+        self.bridge.take().map(|bridge| bridge.detach(reason))
     }
 
     /// Whether the attached bridge's window is full: output waits for its credit.

@@ -128,10 +128,22 @@ impl Credit {
 pub(crate) struct Bridge {
     id: u64,
     frames: Sender<Vec<u8>>,
+    written: Written,
     credit: Credit,
     /// The connection, to end the thread reading it once the pane lets the bridge go. That
     /// thread holds the pane, and a bridge that has stopped sending would keep it forever.
     socket: UnixStream,
+}
+
+/// Ends once a stream's writer has written everything queued for it, or given the connection up.
+#[derive(Debug)]
+pub(crate) struct Written(mpsc::Receiver<()>);
+
+impl Written {
+    /// Waits at most `within` for the writer to finish.
+    pub(crate) fn wait(&self, within: Duration) {
+        let _ = self.0.recv_timeout(within);
+    }
 }
 
 impl Bridge {
@@ -175,12 +187,14 @@ impl Bridge {
     }
 
     /// Tells the bridge why it is let go. Its reading half is shut, which lets go of the pane
-    /// at once; the frames already queued, this one last, are still written.
-    pub(crate) fn detach(self, reason: proto::DetachReason) {
+    /// at once; the frames already queued, this one last, are still written, and what is
+    /// returned says when they have been.
+    pub(crate) fn detach(self, reason: proto::DetachReason) -> Written {
         self.send(stream_message::Message::Detached(stream_message::Detached {
             reason: reason.into(),
         }));
         let _ = self.socket.shutdown(Shutdown::Read);
+        self.written
     }
 
     fn send(&self, message: stream_message::Message) {
@@ -190,8 +204,8 @@ impl Bridge {
 
 /// Serves a welcomed stream connection until its bridge or its pane goes.
 pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
-    let frames = match writer(&stream) {
-        Ok(frames) => frames,
+    let (frames, written) = match writer(&stream) {
+        Ok(writer) => writer,
         Err(error) => {
             log::error(
                 "daemon.stream.not_served",
@@ -259,7 +273,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
         }
     };
     let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
-    let bridge = Bridge { id, frames, credit: Credit::new(window(attach.window)), socket };
+    let bridge = Bridge { id, frames, written, credit: Credit::new(window(attach.window)), socket };
     if let Err(refusal) = io.attach(bridge, grid, attach.takeover) {
         refuse(refusal.frames, refusal.kind, refusal.reason);
         return;
@@ -319,12 +333,15 @@ const STALLED_WRITE: Duration = Duration::from_secs(30);
 /// Starts the thread that writes a stream's frames, and returns where to queue them. When every
 /// sender has gone, it writes what is left and hangs the connection up, which ends the thread
 /// reading it.
-fn writer(stream: &UnixStream) -> std::io::Result<Sender<Vec<u8>>> {
+fn writer(stream: &UnixStream) -> std::io::Result<(Sender<Vec<u8>>, Written)> {
     let (frames, queued) = mpsc::channel::<Vec<u8>>();
+    // Never sent on: dropped as the thread ends, which is what the receiver waits for.
+    let (finished, written) = mpsc::channel::<()>();
     let mut writing = stream.try_clone()?;
     writing.set_write_timeout(Some(STALLED_WRITE))?;
     let slow_detach = crate::handoff::Faults::read().has("slow-detach");
     std::thread::Builder::new().name("stream write".to_string()).spawn(move || {
+        let _finished = finished;
         crate::priority::interactive();
         for frame in queued {
             if slow_detach && is_detach(&frame) {
@@ -336,7 +353,7 @@ fn writer(stream: &UnixStream) -> std::io::Result<Sender<Vec<u8>>> {
         }
         let _ = writing.shutdown(Shutdown::Both);
     })?;
-    Ok(frames)
+    Ok((frames, Written(written)))
 }
 
 /// How long the `slow-detach` fault holds a detach back: longer than a handed-off daemon takes
@@ -353,9 +370,11 @@ impl Bridge {
     /// A bridge whose frames arrive on the receiver returned, over a socket nobody reads.
     pub(crate) fn for_test() -> (Bridge, mpsc::Receiver<Vec<u8>>) {
         let (frames, received) = mpsc::channel();
+        let (_, written) = mpsc::channel();
         let (socket, _) = UnixStream::pair().expect("a socket pair");
         let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
-        (Bridge { id, frames, credit: Credit::new(WINDOW), socket }, received)
+        let written = Written(written);
+        (Bridge { id, frames, written, credit: Credit::new(WINDOW), socket }, received)
     }
 }
 

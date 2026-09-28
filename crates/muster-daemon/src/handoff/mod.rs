@@ -50,7 +50,8 @@ const PIECE: usize = 1 << 20;
 /// The descriptor the successor finds its end of the socket pair on.
 const LINK: RawFd = 3;
 
-/// How long the old daemon waits for what it told its subscribers to be written before exiting.
+/// How long the old daemon waits for what it told its subscribers and bridges to be written
+/// before exiting.
 const FLUSH: Duration = Duration::from_secs(1);
 
 /// Test-only faults, a comma-separated list read by both daemons, each acting on its own: the
@@ -175,8 +176,9 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
             let pid = successor.as_ref().map_or(0, Child::id);
             let subscribers = shared.lock().replaced(pid, accepted.daemon_version.clone());
             faults.pause("after-serving", &shared.socket.path);
+            let mut detaches = Vec::new();
             for pane in &handing.panes {
-                pane.io.close(proto::DetachReason::Replaced);
+                detaches.extend(pane.io.close(proto::DetachReason::Replaced));
                 let dropped = pane.io.dropped_at_handoff();
                 if !dropped.is_empty() {
                     log::warn(
@@ -192,9 +194,14 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
                     );
                 }
             }
+            // This daemon exits once it has answered, and a bridge whose detach was still
+            // queued would read a hang-up rather than REPLACED, and end rather than attach again.
             let deadline = Instant::now() + FLUSH;
             for subscriber in subscribers {
                 subscriber.flush(deadline.saturating_duration_since(Instant::now()));
+            }
+            for detach in detaches {
+                detach.wait(deadline.saturating_duration_since(Instant::now()));
             }
             log::info(
                 "daemon.handoff.done",
