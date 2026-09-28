@@ -683,3 +683,20 @@ fn a_replayed_replica_reaches_nobody_who_left() {
         wire.wakes.iter().filter(|(side, wake)| *side == Side::Laptop && wake.name == "builder");
     assert!(builder_woken.count() <= 1, "builder woken per message: {:?}", wire.wakes);
 }
+
+/// A join by a bare name that nothing here holds, while a machine this one has linked to cannot
+/// be reached: that machine may keep a group by the name, so a new one here would shadow it.
+/// A machine never linked to says nothing, and a join names a group elsewhere in full to go
+/// there, or `group new` makes one here.
+#[test]
+fn a_bare_name_join_is_not_made_a_group_here_while_a_known_machine_is_down() {
+    let mut wire = Wire::new();
+    let critic = session("critic");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.cut();
+
+    let builder = session("builder");
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let route = laptop.route_join(&builder, Some("builder"), Some("review"), sessions);
+    assert!(!matches!(route, Ok(Route::Here)), "would shadow review@devenv: {route:?}");
+}
