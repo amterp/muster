@@ -176,6 +176,20 @@
       }
     },
     {
+      "name": "claude: a prompt whose command has a line reading Memory is still a prompt",
+      "why": "own_menu, Muster's own rule, skips /hooks, /mcp and /memory by the title each shows first below the last horizontal rule. A permission prompt can show those words on a line of their own anywhere in its body, here a heredoc in the command, and is still waiting on you. No herdr test: the rule is Muster's.",
+      "given": {
+        "agent": "claude",
+        "screen": "────────────────────────────────────────────────────────────\n Bash command\n\n   cat <<'EOF' > notes.md\n   Memory\n   EOF\n   Write the notes file\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel · Tab to amend\n",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "state": "blocked",
+        "rule": "generic_permission_prompt",
+        "visible": true
+      }
+    },
+    {
       "name": "claude: nothing at all is the idle fallback",
       "why": "With no title, no progress and an empty screen, a known agent is idle and not visibly so. (claude_empty_osc_empty_screen_is_idle_fallback)",
       "given": {
