@@ -14,7 +14,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::AgentState;
-use muster_core::attention::{Attend, Attention, Note, Noticed, Notifications};
+use muster_core::attention::{
+    Attend, Attention, GroupKey, HumanNotice, Note, Noticed, Notifications,
+};
 use muster_core::composition::{DaemonId, PaneKey};
 use muster_core::mirror::backend::PaneId;
 use serde_json::{Map, Value, json};
@@ -71,7 +73,7 @@ fn notifying_conformance() {
                     run.attention
                         .asking()
                         .iter()
-                        .map(|(pane, alert)| format!("{pane} {}", alert.as_str()))
+                        .map(|(asker, alert)| format!("{asker} {}", alert.as_str()))
                         .collect::<Vec<_>>()
                 )),
             ),
@@ -117,7 +119,7 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
         // come back.
         if let Some(notifications) = read_notifications(event) {
             let stale = run.attention.notifying(notifications);
-            run.notified.extend(stale.iter().map(withdrawn));
+            run.notified.extend(stale.iter().map(|asker| format!("{asker} withdrawn")));
             continue;
         }
         if let Some(focused) = event.get("focused").and_then(Value::as_bool) {
@@ -165,6 +167,12 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
             run.backend.insert(pane, state);
             continue;
         }
+        // What a group's daemon says now waits for the human there (MIP-4, section 10), with
+        // `looking` when the group's transcript is on screen in a focused window.
+        if let Some(message) = event.get("message") {
+            messaged(&mut run, event, message)?;
+            continue;
+        }
         // A program in the pane rang the bell.
         if event.get("rang").is_some() {
             let pane = read_pane(event, "rang")?;
@@ -207,6 +215,34 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
     Ok(run)
 }
 
+/// Tells the window what a group's daemon says now waits for the human there.
+fn messaged(run: &mut Run, event: &Value, message: &Value) -> Result<(), CaseError> {
+    let group = read_group(event)?;
+    let number = |key: &str| message.get(key).and_then(Value::as_u64).unwrap_or_default();
+    let notice = HumanNotice {
+        last: number("last"),
+        count: number("count"),
+        to_you: number("to_you"),
+        from: message
+            .get("from")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|from| from.as_str().map(str::to_string))
+            .collect(),
+    };
+    let looking = event.get("looking").and_then(Value::as_bool).unwrap_or_default();
+    match run.attention.messaged(&group, Some(notice), looking) {
+        Some(Attend::Raised(alert)) => {
+            let from = run.attention.human_notice(&group).map(|notice| notice.from.join(", "));
+            run.notified.push(format!("{group} {}: {}", alert.as_str(), from.unwrap_or_default()));
+        }
+        Some(Attend::Withdrawn) => run.notified.push(format!("{group} withdrawn")),
+        None => {}
+    }
+    Ok(())
+}
+
 fn record(run: &mut Run, noticed: &Noticed) {
     run.notified.extend(noticed.withdrawn.iter().map(withdrawn));
     run.reported.extend(noticed.reported.iter().map(ToString::to_string));
@@ -231,6 +267,7 @@ fn read_notifications(given: &Value) -> Option<Notifications> {
     for (key, held) in [
         ("blocked", &mut notifications.blocked),
         ("programs", &mut notifications.programs),
+        ("messages", &mut notifications.messages),
         ("done", &mut notifications.done),
         ("muted", &mut notifications.muted),
     ] {
@@ -250,6 +287,18 @@ fn read_key(text: &str) -> Result<PaneKey, CaseError> {
         CaseError::new(format!("`{text}` names no daemon - a pane is written `local/w1:p1`"))
     })?;
     Ok(PaneKey { daemon: DaemonId::new(daemon), pane: PaneId::new(pane) })
+}
+
+/// `local/review` - a daemon and one of its groups, in one token, from the event's `group`.
+fn read_group(event: &Value) -> Result<GroupKey, CaseError> {
+    let text = event
+        .get("group")
+        .and_then(Value::as_str)
+        .ok_or_else(|| CaseError::new("a message event has no `group`"))?;
+    let (daemon, group) = text.split_once('/').ok_or_else(|| {
+        CaseError::new(format!("`{text}` names no daemon - a group is written `local/review`"))
+    })?;
+    Ok(GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() })
 }
 
 fn read_pane(given: &Value, key: &str) -> Result<PaneKey, CaseError> {

@@ -1220,6 +1220,193 @@
           "local/w1:p2 notified"
         ]
       }
+    },
+    {
+      "name": "a message for the human asks with each message, and reading it takes it back",
+      "why": "Every message that waits for the human is an agent that chose to address the person, so each one announces, where a program's notifications ask once until somebody looks (MIP-4, Decision 1a). The same word again, from a daemon the window reconnected to, is not news. The human reading the group is what takes it back, and the daemon says so with nothing waiting.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "group": "local/review",
+            "message": {
+              "last": 5,
+              "count": 1,
+              "to_you": 1,
+              "from": [
+                "director"
+              ]
+            }
+          },
+          {
+            "group": "local/review",
+            "message": {
+              "last": 5,
+              "count": 1,
+              "to_you": 1,
+              "from": [
+                "director"
+              ]
+            }
+          },
+          {
+            "group": "local/review",
+            "message": {
+              "last": 7,
+              "count": 2,
+              "to_you": 2,
+              "from": [
+                "director",
+                "critic"
+              ]
+            }
+          },
+          {
+            "group": "local/review",
+            "message": {
+              "last": 7,
+              "count": 0
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/review message: director",
+          "local/review message: director, critic",
+          "local/review withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "a message waiting when the window opens announces, and asks after a blocked agent",
+      "why": "Messages to the human wait while no window is open and notify at the next launch, so a group met on the way up announces where a pane met on the way up does not: nobody was there to hear either arrive, and only the message was addressed to somebody. It asks after a blocked agent, which is somebody held up right now, and ahead of a program's notification, which a program makes by habit.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "group": "local/review",
+            "message": {
+              "last": 4,
+              "count": 1,
+              "to_you": 1,
+              "from": [
+                "a"
+              ]
+            }
+          },
+          {
+            "appeared": "local/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p3",
+            "notification": {
+              "title": "build",
+              "body": "tests passed"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/review message: a",
+          "local/w1:p3 notified: tests passed"
+        ],
+        "asking": [
+          "local/w1:p2 blocked",
+          "local/review message",
+          "local/w1:p3 notified"
+        ]
+      }
+    },
+    {
+      "name": "a message for the human while its transcript is being read asks nothing",
+      "why": "The person reading the group's transcript in a focused window is the human reading it, so a banner about it would be the fastest way to teach them to turn banners off. The window reads it for them instead, and the daemon then says nothing waits.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "group": "local/review",
+            "message": {
+              "last": 4,
+              "count": 1,
+              "to_you": 1,
+              "from": [
+                "a"
+              ]
+            },
+            "looking": true
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "messages for the human can be silenced apart from the rest",
+      "why": "`messages` is a key of its own under `[notifications]`, like `programs`. Silenced, a message still asks, so going to what asks still reaches it; only the banner goes, and it does not come back when the key is switched on again.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "group": "local/review",
+            "message": {
+              "last": 4,
+              "count": 1,
+              "to_you": 1,
+              "from": [
+                "a"
+              ]
+            }
+          },
+          {
+            "notifications": {
+              "messages": false
+            }
+          },
+          {
+            "group": "local/review",
+            "message": {
+              "last": 5,
+              "count": 2,
+              "to_you": 2,
+              "from": [
+                "a"
+              ]
+            }
+          },
+          {
+            "notifications": {
+              "messages": true
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/review message: a",
+          "local/review withdrawn"
+        ],
+        "asking": [
+          "local/review message"
+        ]
+      }
     }
   ]
 }

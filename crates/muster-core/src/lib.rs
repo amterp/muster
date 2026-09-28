@@ -30,7 +30,7 @@ pub mod shared;
 pub mod typeable;
 
 pub use agent_state::AgentState;
-pub use attention::{Alert, Attend, Attention, Noticed, Notifications};
+pub use attention::{Alert, Asker, Attend, Attention, GroupKey, Noticed, Notifications};
 pub use composition::{Composition, PaneKey};
 pub use config::Config;
 pub use daemons::Started;

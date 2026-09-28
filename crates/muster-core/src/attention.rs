@@ -20,6 +20,11 @@
 //! shell only delivers: what a banner says and how it is posted is an OS question, and is
 //! not here.
 //!
+//! **And messages for the human** (MIP-4, section 10). A message addressed to the person, or
+//! rung to them by its group, asks for them the way a blocked agent does, but no pane asks it:
+//! its daemon says what waits for the human in a group, and it asks by that group until the
+//! human reads it there, which the daemon then says too.
+//!
 //! Pure - no clock, no window, no socket. It is a fold over what each pane's daemon says and
 //! what the window was showing at the time, which is exactly what a recorded case can drive.
 
@@ -39,6 +44,9 @@ use crate::composition::{DaemonId, PaneKey};
 pub enum Alert {
     /// An agent waiting on somebody. First, because it is the one somebody is holding up.
     Blocked,
+    /// A message for the human. Next, because addressing the human is the one interruption an
+    /// agent chooses to make, where a program's notification is one it makes by habit.
+    Message,
     /// A program asked to tell somebody something, and said what ([`Note`]).
     Notified,
     /// An agent that finished while nobody was looking.
@@ -49,10 +57,52 @@ impl Alert {
     pub fn as_str(self) -> &'static str {
         match self {
             Alert::Blocked => "blocked",
+            Alert::Message => "message",
             Alert::Notified => "notified",
             Alert::Done => "done",
         }
     }
+}
+
+/// What asks for somebody: a pane, or a group where a message waits for the human.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Asker {
+    Pane(PaneKey),
+    Group(GroupKey),
+}
+
+impl std::fmt::Display for Asker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Asker::Pane(pane) => pane.fmt(f),
+            Asker::Group(group) => group.fmt(f),
+        }
+    }
+}
+
+/// A group of messages, on the daemon that told the window about it. The name is the one that
+/// daemon gives the group, `review@devenv` for one it holds a copy of.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GroupKey {
+    pub daemon: DaemonId,
+    pub group: String,
+}
+
+impl std::fmt::Display for GroupKey {
+    /// `local/review`, as a pane is `local/p1w3r07bsd`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.daemon, self.group)
+    }
+}
+
+/// What waits for the human in one group, as its daemon says it: the unread messages that
+/// would wake the human, the last of them, how many were addressed to them, and who wrote them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HumanNotice {
+    pub last: u64,
+    pub count: u64,
+    pub to_you: u64,
+    pub from: Vec<String>,
 }
 
 /// What a program's notification said (OSC 9 or OSC 777).
@@ -76,13 +126,16 @@ pub struct Note {
 pub struct Notifications {
     pub blocked: bool,
     pub programs: bool,
+    /// Messages for the human. On, because a message only notifies when an agent chose to
+    /// address the person, or a group was convened to ring them.
+    pub messages: bool,
     pub done: bool,
     pub muted: bool,
 }
 
 impl Default for Notifications {
     fn default() -> Notifications {
-        Notifications { blocked: true, programs: true, done: true, muted: false }
+        Notifications { blocked: true, programs: true, messages: true, done: true, muted: false }
     }
 }
 
@@ -91,6 +144,7 @@ impl Notifications {
         !self.muted
             && match alert {
                 Alert::Blocked => self.blocked,
+                Alert::Message => self.messages,
                 Alert::Notified => self.programs,
                 Alert::Done => self.done,
             }
@@ -184,6 +238,10 @@ pub struct Attention {
     /// What each pane raised as [`Alert::Notified`] said.
     notes: BTreeMap<PaneKey, Note>,
 
+    /// Groups where a message waits for the human, each asking as [`Alert::Message`], numbered
+    /// among the panes' raises so that going to what asked walks both in one order.
+    messages: BTreeMap<GroupKey, (Raised, HumanNotice)>,
+
     /// Panes whose program rang the bell since somebody last looked at them. A mark on the
     /// pane and never a banner: shells ring for a completion that found nothing, and a banner
     /// for each would teach somebody to mute everything.
@@ -206,14 +264,20 @@ impl Attention {
     /// something already on screen would be the config file shouting about itself.
     ///
     /// A silenced pane goes on asking: only its banner goes.
-    pub fn notifying(&mut self, notifications: Notifications) -> Vec<PaneKey> {
+    pub fn notifying(&mut self, notifications: Notifications) -> Vec<Asker> {
         self.notifications = notifications;
-        self.raised
+        let panes =
+            self.raised.iter_mut().map(|(pane, raised)| (Asker::Pane(pane.clone()), raised));
+        let groups = self
+            .messages
             .iter_mut()
+            .map(|(group, (raised, _))| (Asker::Group(group.clone()), raised));
+        panes
+            .chain(groups)
             .filter(|(_, raised)| raised.announced && !notifications.allows(raised.alert))
-            .map(|(pane, raised)| {
+            .map(|(asker, raised)| {
                 raised.announced = false;
-                pane.clone()
+                asker
             })
             .collect()
     }
@@ -224,10 +288,66 @@ impl Attention {
     /// somebody held up right now and `done` is somebody who was held up at some point, so a
     /// reader working down this list works down it in the order that costs least. Within one
     /// alert, the pane that started asking first comes first, having waited longest.
-    pub fn asking(&self) -> Vec<(&PaneKey, Alert)> {
-        let mut asking: Vec<(&PaneKey, &Raised)> = self.raised.iter().collect();
+    pub fn asking(&self) -> Vec<(Asker, Alert)> {
+        let panes = self.raised.iter().map(|(pane, raised)| (Asker::Pane(pane.clone()), raised));
+        let groups =
+            self.messages.iter().map(|(group, (raised, _))| (Asker::Group(group.clone()), raised));
+        let mut asking: Vec<(Asker, &Raised)> = panes.chain(groups).collect();
         asking.sort_by_key(|(_, raised)| (raised.alert, raised.order));
-        asking.into_iter().map(|(pane, raised)| (pane, raised.alert)).collect()
+        asking.into_iter().map(|(asker, raised)| (asker, raised.alert)).collect()
+    }
+
+    /// What a group's daemon now says waits for the human there: nothing, once the human has
+    /// read it. `looking` is somebody reading the group's transcript in a focused window, which
+    /// is the human reading it, so it asks nothing and the caller reads it for them.
+    ///
+    /// Each message that waits announces again, as a program's notification does not, because
+    /// every one of them is an agent that chose to address the person (MIP-4, Decision 1a). A
+    /// word that is not news - the same last message, from a daemon the window reconnected to -
+    /// announces nothing, and the group keeps its place in the list, having waited since the
+    /// first.
+    ///
+    /// Unlike a pane met on the way up, a group met on the way up announces: messages to the
+    /// human wait unread while no window is open and notify at the next launch, since nobody
+    /// was there to hear them arrive.
+    pub fn messaged(
+        &mut self,
+        group: &GroupKey,
+        notice: Option<HumanNotice>,
+        looking: bool,
+    ) -> Option<Attend> {
+        let Some(notice) = notice.filter(|notice| notice.count > 0 && !looking) else {
+            let (raised, _) = self.messages.remove(group)?;
+            return raised.announced.then_some(Attend::Withdrawn);
+        };
+        let announced = self.notifications.allows(Alert::Message);
+        match self.messages.get_mut(group) {
+            Some((_, held)) if held.last == notice.last => {
+                *held = notice;
+                None
+            }
+            Some((raised, held)) => {
+                *held = notice;
+                let had_banner = raised.announced;
+                raised.announced = announced;
+                if announced {
+                    Some(Attend::Raised(Alert::Message))
+                } else {
+                    had_banner.then_some(Attend::Withdrawn)
+                }
+            }
+            None => {
+                self.raises += 1;
+                let raised = Raised { alert: Alert::Message, order: self.raises, announced };
+                self.messages.insert(group.clone(), (raised, notice));
+                announced.then_some(Attend::Raised(Alert::Message))
+            }
+        }
+    }
+
+    /// What waits for the human in a group, while it asks.
+    pub fn human_notice(&self, group: &GroupKey) -> Option<&HumanNotice> {
+        self.messages.get(group).map(|(_, notice)| notice)
     }
 
     /// A pane this window is meeting for the first time, as its daemon already had it.

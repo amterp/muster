@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
-use muster_core::attention::{Attend, Attention, Note, Notifications};
+use muster_core::attention::{Asker, Attend, Attention, Note, Notifications};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
@@ -329,8 +329,10 @@ pub(crate) fn set_notifications(notifications: Notifications) {
         let mut session = poison::lock(&SESSION, "session");
         session.attention.notifying(notifications)
     };
-    for pane in &stale {
-        announce_attention(pane, Attend::Withdrawn);
+    for asker in &stale {
+        if let Asker::Pane(pane) = asker {
+            announce_attention(pane, Attend::Withdrawn);
+        }
     }
 }
 
@@ -2901,7 +2903,15 @@ pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
 pub(crate) fn most_urgent_asking() -> Option<PaneKey> {
     let asking: Vec<PaneKey> = {
         let session = poison::lock(&SESSION, "session");
-        session.attention.asking().into_iter().map(|(pane, _)| pane.clone()).collect()
+        session
+            .attention
+            .asking()
+            .into_iter()
+            .filter_map(|(asker, _)| match asker {
+                Asker::Pane(pane) => Some(pane),
+                Asker::Group(_) => None,
+            })
+            .collect()
     };
     asking.into_iter().find(speaks_for)
 }

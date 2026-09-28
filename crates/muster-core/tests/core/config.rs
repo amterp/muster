@@ -99,6 +99,7 @@ fn notifications(notifications: Notifications) -> Vec<String> {
     for (name, said, default) in [
         ("blocked", notifications.blocked, shipped.blocked),
         ("programs", notifications.programs, shipped.programs),
+        ("messages", notifications.messages, shipped.messages),
         ("done", notifications.done, shipped.done),
         ("muted", notifications.muted, shipped.muted),
     ] {

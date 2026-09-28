@@ -1401,7 +1401,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file's [notifications] has a key called \"mute\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: blocked, programs, done, muted."
+        "refused": "the config file's [notifications] has a key called \"mute\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: blocked, programs, messages, done, muted."
       }
     },
     {
