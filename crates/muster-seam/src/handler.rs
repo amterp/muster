@@ -195,6 +195,9 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::FocusRelative(step) => focus_relative(&step.direction),
         request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
         request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
+        request::Payload::FocusAsking(_) => {
+            Response { payload: Some(response::Payload::Asking(proto::Asking::default())) }
+        }
         request::Payload::FocusTab(tab) => focus_tab(&tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(&arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),

@@ -122,6 +122,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Unanswered(_) => "a request nobody answered",
         response::Payload::BackendHealth(_) => "a daemon's health",
         response::Payload::KeyHandled(_) => "a keystroke's outcome",
+        response::Payload::Asking(_) => "the pane that asked",
     }
 }
 

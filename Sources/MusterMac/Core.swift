@@ -1028,6 +1028,7 @@ public enum Core {
     case .closePane: return "close_pane"
     case .reattachPane: return "reattach_pane"
     case .focusPane: return "focus_pane"
+    case .focusAsking: return "focus_asking"
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"
     case .windowFocus: return "window_focus"

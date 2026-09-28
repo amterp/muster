@@ -3,6 +3,7 @@
 mod across_machines;
 mod agent_states;
 mod arranging;
+mod asking;
 mod attach;
 mod background_tab;
 mod carrying;

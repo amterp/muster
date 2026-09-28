@@ -74,6 +74,7 @@ message Request {
     Wheel wheel = 52;
     Mouse mouse = 53;
     PerformOnPane perform_on_pane = 54;
+    FocusAsking focus_asking = 55;
   }
 
   // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
@@ -955,6 +956,21 @@ message FocusTab {
   string tab_id = 2;
 }
 
+// Puts the keyboard on the pane asking for somebody that is most urgent: blocked before a
+// program's notification before done, and within each, the one that has asked longest.
+//
+// Like a banner click, it surfaces the pane's tab. Landing there is looking at the pane, which
+// takes back what it asked, so pressing again goes to the next one.
+message FocusAsking {}
+
+// Where a FocusAsking went: both empty when nothing was asking, which is no failure. A window
+// with nothing waiting is already where the request wanted it, and the shell says so its own
+// way rather than logging a refusal.
+message Asking {
+  string daemon_id = 1;
+  string pane_id = 2;
+}
+
 // Puts the keyboard on the pane at a given place in the window's pane order.
 //
 // What ⌘1 to ⌘9 mean. The place is the roster's numbering, counting from one across every
@@ -1056,6 +1072,7 @@ message Response {
     Unanswered unanswered = 15;
     BackendHealth backend_health = 16;
     KeyHandled key_handled = 17;
+    Asking asking = 18;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.
