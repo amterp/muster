@@ -629,6 +629,69 @@
           "devenv/w1:p1"
         ]
       }
+    },
+    {
+      "name": "a report the daemon refused is done again",
+      "why": "A daemon handing its panes to another refuses every change, `Seen` included, and a handoff that then fails keeps the connection, so nothing reports the pane again. The daemon and every other window still say `done`; painting it `idle` here would be this window alone claiming the finish was seen.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "refused": "local/w1:p1"
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a pane whose report was refused is reported at the next look",
+      "why": "Not at once: a daemon still refusing would refuse again, as fast as it could answer. The next time somebody looks is the next report, and a daemon that is serving again takes it.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "refused": "local/w1:p1"
+          },
+          {
+            "focused": false
+          },
+          {
+            "focused": true
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        },
+        "reported": [
+          "local/w1:p1",
+          "local/w1:p1"
+        ]
+      }
     }
   ]
 }

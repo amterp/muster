@@ -125,6 +125,13 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
             record(&mut run, &noticed);
             continue;
         }
+        // A daemon refused the window's report that it saw these panes, as one handing its
+        // panes to another does.
+        if event.get("refused").is_some() {
+            let pane = read_pane(event, "refused")?;
+            run.attention.refused(std::slice::from_ref(&pane));
+            continue;
+        }
         // A pane the backend no longer holds. Its own step because what it proves is
         // about the id rather than about a state: ids are reused, so what is remembered
         // about a closed pane is inherited by the next one to be given its name.

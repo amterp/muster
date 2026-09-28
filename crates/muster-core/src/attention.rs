@@ -308,6 +308,17 @@ impl Attention {
         noticed
     }
 
+    /// A daemon refused this window's report that it saw these panes, as one partway through
+    /// handing its panes to another refuses every change.
+    ///
+    /// The reports are taken back, so each pane is `done` again, as the daemon and every other
+    /// window still have it, and returns the ones whose presentation that changed. Nothing is
+    /// reported again at once, since a daemon still refusing would refuse that too: the next
+    /// look reports it, as [`Attention::reconnected`] does for a daemon that comes back.
+    pub fn refused(&mut self, _panes: &[PaneKey]) -> Vec<PaneKey> {
+        Vec::new()
+    }
+
     /// Reports every finished pane now being looked at, and takes back what any on-screen
     /// pane was asking.
     fn noticed(&mut self) -> Noticed {
