@@ -40,11 +40,11 @@ newest 4 MiB, and `truncated` in the `--json` answer is the only thing that says
 were left out. A caller that reads the text and not that flag will conclude it has seen the whole
 pane.
 
-`--rows N` is a count of rows the pane printed, and it is answered by Muster rather than by the
-daemon: every read asks for the whole history and the last N are taken here. That costs the
-pane's history on the wire per read, which is the price of the flag meaning what it says - a
-daemon counts rows of the *grid*, so the blank space under a quiet pane is rows to it, and asking
-it for a small number would buy those and answer with nothing at all.
+`--rows N` is a count of rows the pane printed, counted back from the last row with anything on
+it, so the blank space under a quiet pane is not rows to it. The daemon counts them and sends only
+those, so a small count costs a small answer however much the pane holds. A daemon older than the
+window sends the whole history instead, and the window takes the last N itself: the same answer,
+at the cost of the history on the wire.
 
 ## A send that exits 0 was queued, not necessarily received
 

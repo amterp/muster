@@ -303,6 +303,12 @@ between "bytes" and "control":
   daemon is the only writer to a pane.
 - **The control plane is not one connection.** A window holds two per daemon: one for requests, their answers
   and the daemon's events, in order, and one for input alone, so typing never queues behind a request.
+- **The app is never napped.** It hosts the command socket agents drive the window through and the reader of
+  every daemon's answers, and agents drive it hardest while nobody is looking - which is when macOS naps an app
+  and runs every thread at the background priority, below a niced build. So the app holds a user-initiated
+  activity for as long as it runs, which still lets the Mac sleep when idle. Napped beside three gates, a pane
+  read once took 13 s, nearly all of it a whole-history answer waiting in the socket for the app to read it. A
+  read now asks the daemon for only the rows wanted, which fit in a socket's buffer.
 - **The wheel goes to both.** The surface scrolls its own scrollback, by `scroll_multiplier`. The same event goes
   to the daemon for the pane under the pointer, which scales it by the same multiplier after rounding a notch up to
   one, as Ghostty does, and gives it to the program only where a terminal would: as a
