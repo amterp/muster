@@ -404,6 +404,7 @@ pub(crate) fn rang(wake: &Wake, took: bool) {
     let pane = match &wake.via {
         Via::Pane(pane) => pane.as_str(),
         Via::Inbox(inbox) => inbox.socket.as_str(),
+        Via::Human => muster_msg::HUMAN,
     };
     if took {
         log::info(

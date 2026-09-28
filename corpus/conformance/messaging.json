@@ -243,8 +243,8 @@
       ] }
     },
     {
-      "name": "a caller with no agent identity is the human, who waits for messages rather than being woken",
-      "why": "A person's own shell has no agent identity, and messages to the human wait for them; nothing wakes the human until attention routing does (MIP-4, sections 3 and 10).",
+      "name": "a caller with no agent identity is the human, whose messages wait for a window while none attends",
+      "why": "A person's own shell has no agent identity, and messages to the human wait for them. What waits is kept for the windows, and with none attending the human is not woken (MIP-4, sections 3 and 10).",
       "given": { "steps": [
         {"do": "join", "group": "g"},
         {"session": "a", "do": "join", "name": "a", "group": "g"},
@@ -255,7 +255,7 @@
       "expect": { "said": [
         "@human joined g (created)",
         "a joined g",
-        "a posted #4 to g; waiting @human",
+        "a posted #4 to g; waiting @human [g #4-4 x1 to-you:1 from a] for the windows",
         "@human read g: #3 a joined | #4 a->@human: need input",
         "@human human, a alive"
       ] }
@@ -466,7 +466,7 @@
     },
     {
       "name": "the human's wait is answered by a post for the human",
-      "why": "Nothing wakes the human's window until attention routing does, but a person's script waiting on a message is a wait like any other (MIP-4, sections 10 and 13).",
+      "why": "A person's script waiting on a message is a wait like any other, and the windows are told as well, since the person may not be the one running it (MIP-4, sections 10 and 13).",
       "given": { "steps": [
         {"do": "join", "group": "g"},
         {"session": "a", "do": "join", "name": "a", "group": "g"},
@@ -477,7 +477,75 @@
         "@human joined g (created)",
         "a joined g",
         "waiting 1",
-        "a posted #4 to g; woke @human [g #4-4 x1 to-you:1 from a]"
+        "a posted #4 to g; woke @human [g #4-4 x1 to-you:1 from a] for the windows"
+      ] }
+    },
+    {
+      "name": "every message that wakes the human is told to the windows, and chatter is not",
+      "why": "Attention routing is the human's wake: a message addressed to the human, or rung to it, raises a notification, and a message between two agents raises none. With a window attending, the human counts as woken (MIP-4, section 10).",
+      "given": { "steps": [
+        {"do": "attend"},
+        {"do": "join", "group": "g"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "to": ["@human"], "body": "need input"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "lexer is yours"},
+        {"session": "a", "do": "post", "to": ["@human"], "body": "and this"},
+        {"do": "human"},
+        {"do": "read", "group": "g"},
+        {"do": "human"}
+      ] },
+      "expect": { "said": [
+        "attended",
+        "@human joined g (created)",
+        "a joined g",
+        "b joined g",
+        "a posted #5 to g; woke @human [g #5-5 x1 to-you:1 from a] for the windows",
+        "a posted #6 to g; woke b [g #6-6 x1 to-you:1 from a]",
+        "a posted #7 to g; woke @human [g #5-7 x2 to-you:2 from a] for the windows",
+        "@human: g #5-7 x2 to-you:2 from a",
+        "@human read g: #3 a joined | #4 b joined | #5 a->@human: need input | #6 a->b: lexer is yours | #7 a->@human: and this",
+        "nothing waits for @human"
+      ] }
+    },
+    {
+      "name": "what waits for the human while no window attends is kept for the next",
+      "why": "With the app closed, messages to the human wait unread and notify at the next launch: the host keeps what it was told, and a window that attends later finds it (MIP-4, section 10).",
+      "given": { "steps": [
+        {"do": "join", "group": "g"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "anyone?"},
+        {"do": "human"},
+        {"do": "attend"},
+        {"session": "a", "do": "post", "to": ["@human"], "body": "still there?"}
+      ] },
+      "expect": { "said": [
+        "@human joined g (created)",
+        "a joined g",
+        "a posted #4 to g; waiting @human [g #4-4 x1 to-you:0 from a] for the windows",
+        "@human: g #4-4 x1 to-you:0 from a",
+        "attended",
+        "a posted #5 to g; woke @human [g #4-5 x2 to-you:1 from a] for the windows"
+      ] }
+    },
+    {
+      "name": "the human may post with messages unread, and an agent may not",
+      "why": "The guard keeps a model from acting on context that has gone stale. A person reads the transcript as it arrives, and the daemon cannot see a person's screen, so the human's post is not held to a cursor (MIP-4, section 4).",
+      "given": { "steps": [
+        {"do": "join", "group": "g"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "lexer is yours"},
+        {"do": "post", "to": ["a"], "body": "and the parser"},
+        {"session": "b", "do": "post", "to": ["a"], "body": "on it"}
+      ] },
+      "expect": { "said": [
+        "@human joined g (created)",
+        "a joined g",
+        "b joined g",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:1 from a]",
+        "@human posted #6 to g; woke a [g #6-6 x1 to-you:1 from @human]",
+        "refused unread g 2"
       ] }
     },
     {

@@ -102,6 +102,11 @@ pub trait Presence {
         self.agent_in(pane)
     }
 
+    /// Whether a window is attending, which is what wakes the human (MIP-4, section 10).
+    fn attended(&self) -> bool {
+        false
+    }
+
     /// Whether the doorbell can reach whoever is in `pane` (MIP-4, section 6).
     fn doorbell(&self, pane: &str) -> Ringable {
         if self.agent_in(pane) {
@@ -174,6 +179,9 @@ pub enum Via {
     Inbox(Inbox),
     /// A line typed into the pane the agent runs in, once its host's guards allow.
     Pane(String),
+    /// Attention routing, for the human: the host tells the windows attending it what waits
+    /// for the human, which raise a notification (MIP-4, section 10).
+    Human,
 }
 
 /// A wake for the host to deliver, outside whatever lock it holds this under, and to report
@@ -462,7 +470,10 @@ impl<S: Store> Messaging<S> {
         }
         let group = self.resolve_group(&author, &addressees, group, now_ms)?;
 
-        let unread = self.unread_from_others(&author, &group);
+        // The guard keeps a model from acting on context that has gone stale. The human reads
+        // the transcript as it arrives, and the daemon cannot see a person's screen, so it has
+        // no cursor worth holding a person's post to (MIP-4, section 4).
+        let unread = if author == HUMAN { 0 } else { self.unread_from_others(&author, &group) };
         if unread > 0 {
             return Err(Refusal::Unread { group, count: unread });
         }
@@ -516,6 +527,7 @@ impl<S: Store> Messaging<S> {
         let still_there = match &wake.via {
             Via::Inbox(inbox) => participant.inbox.as_ref() == Some(inbox),
             Via::Pane(pane) => participant.pane.as_ref() == Some(pane),
+            Via::Human => false,
         };
         if !still_there {
             return Ok(());
@@ -1063,6 +1075,13 @@ impl<S: Store> Messaging<S> {
             .waiters
             .get(name)
             .is_some_and(|waiter| waiter.group.as_deref().is_none_or(|filter| filter == group));
+        if name == HUMAN {
+            posted.wakes.push(Wake {
+                name: name.to_string(),
+                via: Via::Human,
+                notice: notice.clone(),
+            });
+        }
         let participant = self.participants.get_mut(name).expect("looked up above");
         if waiting {
             let waiter = self.waiters.remove(name).expect("looked up above");
@@ -1074,10 +1093,12 @@ impl<S: Store> Messaging<S> {
             });
             return Reach::Woken;
         }
-        // Nothing wakes the human's window until attention routing does (MIP-4, section 10);
-        // a wait of the human's is answered above like anyone's.
+        // Every message that wakes the human is told to the windows, above, rather than once
+        // per batch: a person reading the transcript moves no cursor, so a batch would never
+        // end (MIP-4, section 10). It is told with no window attending too, so that the next
+        // window to attend finds it.
         if name == HUMAN {
-            return Reach::Waiting;
+            return if presence.attended() { Reach::Woken } else { Reach::Waiting };
         }
         let via = Self::via(participant, presence);
         // Woken already only while something is there to take this too: an agent whose pane
@@ -1125,6 +1146,16 @@ impl<S: Store> Messaging<S> {
             Some(_) => Reach::NoAgent,
             None => Reach::Waiting,
         })
+    }
+
+    /// What waits for the human in each group it is in, for a host that is starting to tell
+    /// the windows (MIP-4, section 10).
+    pub fn human_notices(&self) -> Vec<Notice> {
+        self.groups
+            .iter()
+            .filter(|(_, group)| group.members.contains(HUMAN))
+            .filter_map(|(name, _)| self.notice(HUMAN, name))
+            .collect()
     }
 
     /// A wake for every group an agent in a pane was woken for and has not read: what a host

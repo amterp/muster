@@ -2,7 +2,7 @@
 //! steps by named callers, and each step's result is rendered as one line, so a case reads as a
 //! transcript of what the service said.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{Conformance, fields};
@@ -22,6 +22,8 @@ struct Sessions {
     unreadable: RefCell<BTreeSet<String>>,
     /// Open panes with no agent, and whether each is new.
     open: RefCell<BTreeMap<String, bool>>,
+    /// Whether a window is attending, which wakes the human.
+    attended: Cell<bool>,
 }
 
 impl Sessions {
@@ -51,6 +53,10 @@ impl Presence for Sessions {
 
     fn has_pane(&self, pane: &str) -> bool {
         self.agent_in(pane) || self.open.borrow().contains_key(pane)
+    }
+
+    fn attended(&self) -> bool {
+        self.attended.get()
     }
 
     fn doorbell(&self, pane: &str) -> Ringable {
@@ -105,11 +111,12 @@ fn activity(activity: Activity) -> &'static str {
     }
 }
 
-/// Where a wake went, when it went to a pane rather than an inbox.
+/// Where a wake went, when it went to a pane or the windows rather than an inbox.
 fn rung(via: &Via) -> String {
     match via {
         Via::Inbox(_) => String::new(),
         Via::Pane(pane) => format!(" rung {pane}"),
+        Via::Human => " for the windows".to_string(),
     }
 }
 
@@ -177,6 +184,8 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
                 continue;
             }
             Via::Pane(pane) => sessions.agent_in(pane),
+            // Told to whichever windows attend, now or later: nothing to fail.
+            Via::Human => continue,
         };
         service.delivered(wake, reached).unwrap();
         if !reached {
@@ -279,6 +288,21 @@ fn idle(service: &mut Messaging<Memory>, sessions: &Sessions, name: &str) -> Str
     }
 }
 
+/// A window starts attending, or with `off` stops.
+fn attend(sessions: &Sessions, attending: bool) -> String {
+    sessions.attended.set(attending);
+    if attending { "attended" } else { "unattended" }.to_string()
+}
+
+/// What the windows would be told waits for the human.
+fn waits_for_the_human(service: &Messaging<Memory>) -> String {
+    let notices = service.human_notices();
+    if notices.is_empty() {
+        return "nothing waits for @human".to_string();
+    }
+    format!("@human: {}", notices.iter().map(notice).collect::<Vec<_>>().join("; "))
+}
+
 /// Runs one step and says what came of it in one line.
 fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now: u64) -> String {
     let text = |key: &str| step.get(key).and_then(Value::as_str);
@@ -367,6 +391,8 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
         "agent" => Ok(agent(sessions, step)),
         "pane" => Ok(pane(sessions, step)),
         "idle" => Ok(idle(service, sessions, text("name").unwrap_or_default())),
+        "attend" => Ok(attend(sessions, text("state") != Some("off"))),
+        "human" => Ok(waits_for_the_human(service)),
         "dies" => {
             sessions.dead.borrow_mut().insert(socket(text("session").unwrap_or_default()));
             Ok("died".to_string())
