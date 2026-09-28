@@ -254,6 +254,9 @@ public enum SidebarModel {
     /// has said nothing about it yet. Empty on the rows that are not panes.
     public let state: String
 
+    /// Everything the core said about this pane's agent, on a pane row and nowhere else.
+    public let agent: PaneAgent?
+
     /// Whether a region is showing this row's subject. Rows for panes nobody is showing are
     /// the reason the list exists, and they are drawn as reachable rather than as absent.
     public let onScreen: Bool
@@ -363,7 +366,7 @@ public enum SidebarModel {
   /// `keyboard` is the pane the core's view says has the keyboard, or nil when no region
   /// does. Passed in rather than derived here: which pane that is arrives on the view, and
   /// the roster is a separate message - the same join the window already makes for states.
-  public static func rows(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil)
+  public static func rows(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil)
     -> [Row]
   {
     let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.press > 0 }
@@ -378,7 +381,7 @@ public enum SidebarModel {
         rows.append(
           Row(
             kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
-            label: tab.label, subtitle: "", givenName: tab.givenName, state: "",
+            label: tab.label, subtitle: "", givenName: tab.givenName, state: "", agent: nil,
             onScreen: tab.onScreen, hasKeyboard: false, reservedPresses: twoPress ? 1 : 0,
             showsMachine: false,
             // A caption carries the one press that reaches its tab, which is a first press or
@@ -386,15 +389,15 @@ public enum SidebarModel {
             isSecondPress: false))
       }
       for pane in tab.panes {
+        // A pane the core has said nothing about is unknown, not idle. An agent we have not
+        // heard from is not an agent that finished (`corpus/conformance/agent-state.json`).
+        let agent = agents[pane.key] ?? "unknown"
         rows.append(
           Row(
             kind: .pane(tabPress: pane.tabPress, press: pane.press), daemon: pane.key.daemon,
             tab: tab.id, pane: pane.key, label: pane.label,
-            subtitle: pane.subtitle, givenName: pane.givenName,
-            // A pane the core has said nothing about is unknown, not idle. An agent we have
-            // not heard from is not an agent that finished
-            // (`corpus/conformance/agent-state.json`).
-            state: states[pane.key] ?? "unknown",
+            subtitle: subtitle(pane.subtitle, agent: agent), givenName: pane.givenName,
+            state: agent.state, agent: agent,
             onScreen: pane.onScreen,
             hasKeyboard: pane.key == keyboard,
             reservedPresses: twoPress ? 2 : 0,
@@ -406,10 +409,83 @@ public enum SidebarModel {
       rows.append(
         Row(
           kind: .machine, daemon: machine.id, tab: "", pane: nil, label: machine.id,
-          subtitle: "", givenName: "", state: machine.state, onScreen: false,
+          subtitle: "", givenName: "", state: machine.state, agent: nil, onScreen: false,
           hasKeyboard: false, reservedPresses: 0, showsMachine: false, isSecondPress: false))
     }
     return rows
+  }
+
+  /// A pane row's second line: what a waiting agent waits on, which says more than its title
+  /// while it waits, and otherwise the core's.
+  public static func subtitle(_ subtitle: String, agent: PaneAgent) -> String {
+    agent.state == "waiting" && !agent.waiting.isEmpty ? "waiting on \(agent.waiting)" : subtitle
+  }
+
+  /// A small mark at a pane row's trailing edge. Each is there only when it says something, so
+  /// a row with nothing to add stays the row it always was.
+  public enum Accessory: Equatable {
+    /// Muster cannot read the agent's screen, so its state is only its own word.
+    case unreadable
+    /// A bell nobody has heard.
+    case bell
+    /// Sub-agents running, as a count like Mail's unread one.
+    case subagents(Int)
+    /// How full the agent's context is, from 0 to 100, as a ring.
+    case context(Float)
+  }
+
+  /// The marks a row carries, left to right. The ones that ask somebody to look come first,
+  /// nearest the name; the gauges, which are read rather than noticed, sit at the edge where a
+  /// column of them lines up down the list.
+  public static func accessories(of row: Row) -> [Accessory] {
+    guard let agent = row.agent else { return [] }
+    var marks: [Accessory] = []
+    if agent.unreadable { marks.append(.unreadable) }
+    if agent.rang { marks.append(.bell) }
+    if agent.subagents > 0 { marks.append(.subagents(agent.subagents)) }
+    if let used = agent.contextUsed { marks.append(.context(min(max(used, 0), 100))) }
+    return marks
+  }
+
+  /// A context this full is drawn in the warning colour: past it an agent is near compacting,
+  /// which is worth knowing before handing it more work.
+  public static let contextWarning: Float = 80
+
+  /// The progress a row draws, if any. A percentage or a failure is worth a bar; indeterminate
+  /// progress is some agents' way of saying they are working, which the dot already says.
+  public static func progress(of row: Row) -> PaneAgent.Progress? {
+    guard let progress = row.agent?.progress else { return nil }
+    switch progress.state {
+    case "error": return progress
+    case "running", "paused": return progress.percent == nil ? nil : progress
+    default: return nil
+    }
+  }
+
+  /// What hovering a pane row says, and what VoiceOver reads for it: the label, what its agent
+  /// is doing, and everything it said about itself, one line each. The row itself is a glance;
+  /// this is the look.
+  public static func details(of row: Row) -> String {
+    var lines = [row.label]
+    guard let agent = row.agent else { return row.label }
+    var state = agent.state
+    if agent.reported { state += ", as the agent reports" }
+    lines.append(state)
+    if agent.unreadable { lines.append("Muster cannot read this agent's screen") }
+    if !agent.waiting.isEmpty { lines.append("waiting on \(agent.waiting)") }
+    if !row.subtitle.isEmpty && row.subtitle != subtitle("", agent: agent) {
+      lines.append(row.subtitle)
+    }
+    if let used = agent.contextUsed { lines.append("\(Int(used.rounded()))% of its context used") }
+    switch agent.subagents {
+    case 0: break
+    case 1: lines.append("1 sub-agent running")
+    default: lines.append("\(agent.subagents) sub-agents running")
+    }
+    if !agent.model.isEmpty { lines.append(agent.model) }
+    if let cost = agent.costUSD { lines.append(String(format: "$%.2f so far", cost)) }
+    if agent.rang { lines.append("the bell rang") }
+    return lines.joined(separator: "\n")
   }
 
   /// Whether dragging one pane onto a row is a gesture Muster can carry out.
@@ -724,8 +800,8 @@ public final class SidebarView: NSView {
     table.reloadData()
   }
 
-  public func apply(roster: Roster, states: [PaneKey: String], keyboard: PaneKey? = nil) {
-    let fresh = SidebarModel.rows(roster: roster, states: states, keyboard: keyboard)
+  public func apply(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil) {
+    let fresh = SidebarModel.rows(roster: roster, agents: agents, keyboard: keyboard)
     let previous = rows
     rows = fresh
     guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
@@ -886,6 +962,12 @@ final class SidebarRowView: NSView {
   private let tabPress = NSTextField(labelWithString: "")
   private let press = NSTextField(labelWithString: "")
   private let highlight = CALayer()
+  /// The marks at the trailing edge, left to right (`SidebarModel.accessories(of:)`).
+  private var marks: [NSView] = []
+  private let progressTrack = CALayer()
+  private let progressBar = CALayer()
+  /// How much of the bar is filled, from 0 to 1.
+  private var progressFilled: CGFloat = 0
   private let indented: Bool
   private let isTab: Bool
 
@@ -959,11 +1041,61 @@ final class SidebarRowView: NSView {
         subtitle.toolTip = row.subtitle
         addSubview(subtitle)
       }
+      for accessory in SidebarModel.accessories(of: row) {
+        let mark = SidebarRowView.mark(for: accessory)
+        marks.append(mark)
+        addSubview(mark)
+      }
+      if let progress = SidebarModel.progress(of: row) {
+        let failed = progress.state == "error"
+        progressFilled = failed ? 1 : CGFloat(min(max(progress.percent ?? 0, 0), 100)) / 100
+        progressTrack.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+        progressBar.backgroundColor =
+          (failed ? NSColor.systemRed : NSColor.controlAccentColor).cgColor
+        for bar in [progressTrack, progressBar] {
+          bar.cornerRadius = SidebarRowView.progressHeight / 2
+          layer?.addSublayer(bar)
+        }
+      }
     }
     // Long directory names truncate rather than spilling past the row, for the same reason.
     name.lineBreakMode = .byTruncatingTail
     name.toolTip = row.label
     addSubview(name)
+    if row.isPane {
+      // The whole of what is known, on hover and to VoiceOver, which otherwise hears a name and
+      // nothing of the dot beside it.
+      let details = SidebarModel.details(of: row)
+      toolTip = details
+      name.toolTip = details
+      subtitle.toolTip = details
+      setAccessibilityElement(true)
+      setAccessibilityRole(.staticText)
+      setAccessibilityLabel(details)
+    }
+  }
+
+  /// One trailing mark, drawn small and quiet: the dot says what the agent is doing, and these
+  /// only add to it.
+  private static func mark(for accessory: SidebarModel.Accessory) -> NSView {
+    switch accessory {
+    case .unreadable:
+      return symbol("eye.slash", tint: .tertiaryLabelColor, saying: "cannot read the screen")
+    case .bell:
+      return symbol("bell.fill", tint: .secondaryLabelColor, saying: "the bell rang")
+    case .subagents(let count):
+      return CountBadge(count: count)
+    case .context(let used):
+      return ContextRing(used: CGFloat(used) / 100, warn: used >= SidebarModel.contextWarning)
+    }
+  }
+
+  private static func symbol(_ name: String, tint: NSColor, saying: String) -> NSView {
+    let image = NSImage(systemSymbolName: name, accessibilityDescription: saying)?
+      .withSymbolConfiguration(.init(pointSize: 9, weight: .regular))
+    let view = NSImageView(image: image ?? NSImage())
+    view.contentTintColor = tint
+    return view
   }
 
   /// The chord that reaches this row, drawn beside the dot rather than instead of it.
@@ -1034,6 +1166,9 @@ final class SidebarRowView: NSView {
   }
 
   static let dotSize: CGFloat = 7
+  /// Between two trailing marks, and between the last of them and the text.
+  static let markGap: CGFloat = 4
+  static let progressHeight: CGFloat = 2
   /// Smaller than a state dot, and in the same column. A mark the size of a pane's dot would
   /// read as a state on a row that has no agent to have one.
   static let showingSize: CGFloat = 4
@@ -1084,10 +1219,27 @@ final class SidebarRowView: NSView {
         width: size, height: size)
       textLeft += SidebarRowView.inset + SidebarRowView.dotSize
     }
+    // The marks from the trailing edge in, each centred on the row as the dot is, so a column of
+    // them reads straight down the list whatever each row's second line does.
+    var right = bounds.width - SidebarRowView.inset
+    for mark in marks.reversed() {
+      let size = mark.fittingSize
+      mark.frame = CGRect(
+        x: right - size.width, y: (bounds.height - size.height) / 2, width: size.width,
+        height: size.height)
+      right -= size.width + SidebarRowView.markGap
+    }
+    if progressBar.superlayer != nil {
+      // Along the bottom edge under the text, the way a download's bar sits under its name.
+      let span = max(0, bounds.width - SidebarRowView.inset - textLeft)
+      let height = SidebarRowView.progressHeight
+      progressTrack.frame = CGRect(x: textLeft, y: 1, width: span, height: height)
+      progressBar.frame = CGRect(x: textLeft, y: 1, width: span * progressFilled, height: height)
+    }
     // Sized to the text and then centred, rather than given the whole row. A label draws its
     // text at the top of whatever frame it is handed, so a full-height frame puts the words
     // above the dot beside them - which reads as the dot being wrong rather than the text.
-    let width = max(0, bounds.width - textLeft - SidebarRowView.inset)
+    let width = max(0, (marks.isEmpty ? bounds.width - SidebarRowView.inset : right) - textLeft)
     let textHeight = min(bounds.height, name.fittingSize.height)
     guard subtitle.superview != nil else {
       name.frame = CGRect(
@@ -1102,5 +1254,89 @@ final class SidebarRowView: NSView {
     name.frame = CGRect(
       x: textLeft, y: top + secondHeight, width: width, height: textHeight)
     subtitle.frame = CGRect(x: textLeft, y: top, width: width, height: secondHeight)
+  }
+}
+
+/// How many sub-agents a row's agent has running, drawn the way Mail draws an unread count: a
+/// number in a capsule, quiet enough to skip and plain enough to read at a glance.
+@MainActor
+final class CountBadge: NSView {
+  private let label = NSTextField(labelWithString: "")
+
+  init(count: Int) {
+    super.init(frame: .zero)
+    wantsLayer = true
+    layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+    label.stringValue = String(count)
+    label.font = .monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
+    label.textColor = .secondaryLabelColor
+    label.alignment = .center
+    addSubview(label)
+    setAccessibilityLabel(count == 1 ? "1 sub-agent" : "\(count) sub-agents")
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
+  }
+
+  override var fittingSize: NSSize {
+    let text = label.fittingSize
+    return NSSize(width: max(text.width + 8, 14), height: 13)
+  }
+
+  override func layout() {
+    super.layout()
+    layer?.cornerRadius = bounds.height / 2
+    let text = label.fittingSize
+    label.frame = CGRect(
+      x: 0, y: (bounds.height - text.height) / 2, width: bounds.width, height: text.height)
+  }
+
+  // Resolved again when the appearance changes, since a layer holds a colour, not a name.
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+    }
+  }
+}
+
+/// How full a row's agent's context is, as a ring filled clockwise from the top: read at a
+/// glance down a column of them, where a percentage would have to be read.
+@MainActor
+final class ContextRing: NSView {
+  private let used: CGFloat
+  private let warn: Bool
+
+  init(used: CGFloat, warn: Bool) {
+    self.used = used
+    self.warn = warn
+    super.init(frame: .zero)
+    setAccessibilityLabel("\(Int((used * 100).rounded()))% of its context used")
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
+  }
+
+  override var fittingSize: NSSize { NSSize(width: 11, height: 11) }
+
+  override func draw(_ dirtyRect: NSRect) {
+    let width: CGFloat = 1.75
+    let ring = bounds.insetBy(dx: width / 2, dy: width / 2)
+    let center = CGPoint(x: ring.midX, y: ring.midY)
+    let track = NSBezierPath(ovalIn: ring)
+    track.lineWidth = width
+    NSColor.quaternaryLabelColor.setStroke()
+    track.stroke()
+    guard used > 0 else { return }
+    let arc = NSBezierPath()
+    arc.appendArc(
+      withCenter: center, radius: ring.width / 2, startAngle: 90,
+      endAngle: 90 - 360 * min(used, 1), clockwise: true)
+    arc.lineWidth = width
+    arc.lineCapStyle = .round
+    (warn ? NSColor.systemOrange : NSColor.secondaryLabelColor).setStroke()
+    arc.stroke()
   }
 }

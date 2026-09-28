@@ -186,6 +186,7 @@ pub struct Colors {
 pub struct AgentColors {
     pub working: Option<Rgb>,
     pub blocked: Option<Rgb>,
+    pub waiting: Option<Rgb>,
     pub done: Option<Rgb>,
     pub idle: Option<Rgb>,
     /// A pane whose harness could not be read. Not a sixth thing an agent can be doing, which
@@ -546,7 +547,7 @@ const ROOT_KEYS: [&str; 15] = [
 const FONT_KEYS: [&str; 2] = ["family", "size"];
 
 /// The keys `[colors]` may carry.
-const COLOR_KEYS: [&str; 15] = [
+const COLOR_KEYS: [&str; 16] = [
     "background",
     "foreground",
     "cursor",
@@ -558,6 +559,7 @@ const COLOR_KEYS: [&str; 15] = [
     "focus_ring",
     "agent_working",
     "agent_blocked",
+    "agent_waiting",
     "agent_done",
     "agent_idle",
     "agent_unknown",
@@ -898,6 +900,7 @@ fn read_colors(block: Option<&toml::Table>) -> Result<Colors, String> {
         agents: AgentColors {
             working: color(block, "agent_working")?,
             blocked: color(block, "agent_blocked")?,
+            waiting: color(block, "agent_waiting")?,
             done: color(block, "agent_done")?,
             idle: color(block, "agent_idle")?,
             unknown: color(block, "agent_unknown")?,

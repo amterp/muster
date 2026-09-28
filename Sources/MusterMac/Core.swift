@@ -527,6 +527,7 @@ public enum Core {
   public struct AgentColors: Sendable {
     public var working: String?
     public var blocked: String?
+    public var waiting: String?
     public var done: String?
     public var idle: String?
     public var unknown: String?
@@ -537,8 +538,8 @@ public enum Core {
     /// words do.
     var described: String {
       let named = [
-        ("working", working), ("blocked", blocked), ("done", done), ("idle", idle),
-        ("unknown", unknown),
+        ("working", working), ("blocked", blocked), ("waiting", waiting), ("done", done),
+        ("idle", idle), ("unknown", unknown),
       ].filter { $0.1 != nil }.map(\.0)
       return named.isEmpty ? "(default)" : named.joined(separator: " ")
     }
@@ -588,6 +589,7 @@ public enum Core {
         agents: AgentColors(
           working: named(answer.agentColors.working),
           blocked: named(answer.agentColors.blocked),
+          waiting: named(answer.agentColors.waiting),
           done: named(answer.agentColors.done),
           idle: named(answer.agentColors.idle),
           unknown: named(answer.agentColors.unknown))))
@@ -1106,7 +1108,7 @@ public enum Core {
     case .paneStateChanged(let changed):
       let cost = ApplyCost()
       window?.apply(
-        pane: PaneKey(daemon: changed.daemonID, pane: changed.paneID), state: changed.state)
+        pane: PaneKey(daemon: changed.daemonID, pane: changed.paneID), agent: PaneAgent(changed))
       // Debug rather than info: one per agent transition, which is the busiest thing here.
       debug("pane_state.received", cost.fields.merging(["state": changed.state]) { $1 })
     case .backendHealth(let backend):

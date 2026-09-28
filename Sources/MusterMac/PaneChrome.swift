@@ -51,6 +51,7 @@ public enum PaneAppearance {
     switch state {
     case "working": return NSColor.systemCyan
     case "blocked": return NSColor.systemOrange
+    case "waiting": return NSColor.systemIndigo
     case "done": return NSColor.systemGreen
     case "idle": return NSColor.systemGray
     default: return NSColor.tertiaryLabelColor
@@ -91,6 +92,7 @@ public enum PaneAppearance {
     switch state {
     case "working": named = configured.agents.working
     case "blocked": named = configured.agents.blocked
+    case "waiting": named = configured.agents.waiting
     case "done": named = configured.agents.done
     case "idle": named = configured.agents.idle
     case "unknown": named = configured.agents.unknown

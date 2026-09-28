@@ -61,7 +61,7 @@ public final class MusterWindow: NSObject {
   /// Keyed by daemon as well as pane, because this map spans regions and two daemons hand out
   /// the same pane ids - one keyed by pane alone would let a devenv agent paint a border on
   /// the laptop.
-  private var states: [PaneKey: String] = [:]
+  private var agents: [PaneKey: PaneAgent] = [:]
 
   /// What each daemon last said about itself.
   ///
@@ -313,19 +313,25 @@ public final class MusterWindow: NSObject {
     keyboardKey = focused.flatMap { region in
       region.keyboardPane.map { PaneKey(daemon: region.daemon, pane: $0) }
     }
-    sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
+    sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
     zoomed = focused?.zoomed ?? false
     empty.apply(showing: !contents.regions.isEmpty)
     applyTitle()
   }
 
-  public func apply(pane: PaneKey, state: String) {
-    states[pane] = state
+  public func apply(pane: PaneKey, agent: PaneAgent) {
+    let rangBefore = agents[pane]?.rang ?? false
+    agents[pane] = agent
     // Whether or not a region is showing it. A pane parked off screen keeps its border
     // painted, so the tab somebody switches back to is right on its first frame rather than
     // on the agent's next transition.
-    surfaces.chrome(for: pane)?.apply(paneID: pane.pane, state: state)
-    sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
+    surfaces.chrome(for: pane)?.apply(paneID: pane.pane, state: agent.state)
+    // One Dock bounce per bell nobody heard, as Terminal and Ghostty do for a bell in the
+    // background: informational, so it stops by itself rather than until Muster is clicked.
+    if agent.rang && !rangBefore && !NSApp.isActive {
+      NSApp.requestUserAttention(.informationalRequest)
+    }
+    sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
   }
 
   /// Everything the daemons hold, whether or not this window is showing it.
@@ -339,7 +345,7 @@ public final class MusterWindow: NSObject {
     // thing that can say a parked pane has closed. Without this a window that visited fifteen
     // tabs would hold fifteen tabs' worth of bridges until it quit.
     surfaces.release(everythingBut: Set(roster.panes.map(\.key)))
-    sidebar.apply(roster: roster, states: states, keyboard: keyboardKey)
+    sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
     applyBadges()
   }
 
@@ -529,8 +535,8 @@ public final class MusterWindow: NSObject {
   ) {
     guard let paneID = chrome.paneID else { return }
     let daemonID = region.daemon
-    if let state = states[PaneKey(daemon: daemonID, pane: paneID)] {
-      chrome.apply(paneID: paneID, state: state)
+    if let agent = agents[PaneKey(daemon: daemonID, pane: paneID)] {
+      chrome.apply(paneID: paneID, state: agent.state)
     }
     guard let linkSocketPath = pane.linkSocketPath else {
       // No link is bound for this pane yet, and a bridge the window cannot hear from is one

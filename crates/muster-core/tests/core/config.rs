@@ -61,6 +61,7 @@ fn appearance(appearance: &config::Appearance) -> Vec<String> {
         ("focus_ring", colors.focus_ring),
         ("agent_working", colors.agents.working),
         ("agent_blocked", colors.agents.blocked),
+        ("agent_waiting", colors.agents.waiting),
         ("agent_done", colors.agents.done),
         ("agent_idle", colors.agents.idle),
         ("agent_unknown", colors.agents.unknown),

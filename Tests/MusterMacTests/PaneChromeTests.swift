@@ -46,6 +46,7 @@ struct PaneChromeTests {
     // pins: the CLI is fixed at the sixteen and honours no configuration, so what the two
     // surfaces have to agree on is exactly this table.
     #expect(PaneAppearance.defaultBorderColor(state: "working") == NSColor.systemCyan)
+    #expect(PaneAppearance.defaultBorderColor(state: "waiting") == NSColor.systemIndigo)
     #expect(PaneAppearance.defaultBorderColor(state: "blocked") == NSColor.systemOrange)
     #expect(PaneAppearance.defaultBorderColor(state: "done") == NSColor.systemGreen)
     #expect(PaneAppearance.defaultBorderColor(state: "idle") == NSColor.systemGray)

@@ -964,7 +964,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, palette."
+        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_waiting, agent_done, agent_idle, agent_unknown, palette."
       }
     },
     {
@@ -1059,7 +1059,7 @@
         ]
       },
       "expect": {
-        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, palette."
+        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_waiting, agent_done, agent_idle, agent_unknown, palette."
       }
     },
     {

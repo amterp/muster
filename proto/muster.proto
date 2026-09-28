@@ -416,6 +416,7 @@ message AgentColors {
   string done = 3;
   string idle = 4;
   string unknown = 5;
+  string waiting = 6;
 }
 
 // Grows a pane against its neighbour, by a step.

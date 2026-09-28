@@ -69,7 +69,7 @@ struct SidebarTests {
       tab("local", panes: [pane("local", "w1:p1")]),
       tab("devenv", place: 2, panes: [pane("devenv", "w1:p1")]),
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
 
     // No heading per machine: a tab may hold panes on two, so grouping by machine would be a
     // list that no longer describes the window beside it (MIP-2).
@@ -101,9 +101,9 @@ struct SidebarTests {
           pane("local", "w1:p3", place: 3),
         ])
     ])
-    let before = SidebarModel.rows(roster: roster, states: [:])
+    let before = SidebarModel.rows(roster: roster, agents: [:])
     let after = SidebarModel.rows(
-      roster: roster, states: [PaneKey(daemon: "local", pane: "w1:p2"): "working"])
+      roster: roster, agents: [PaneKey(daemon: "local", pane: "w1:p2"): "working"])
 
     #expect(before.count == after.count)
     let moved = before.indices.filter { before[$0] != after[$0] }
@@ -121,7 +121,7 @@ struct SidebarTests {
     ])
     let rows = SidebarModel.rows(
       roster: roster,
-      states: [
+      agents: [
         PaneKey(daemon: "local", pane: "w1:p1"): "working",
         PaneKey(daemon: "devenv", pane: "w1:p1"): "blocked",
       ])
@@ -139,7 +139,7 @@ struct SidebarTests {
     let roster = roster([
       tab("local", panes: [pane("local", "w1:p1")])
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
 
     #expect(rows.last?.state == "unknown")
     #expect(
@@ -175,7 +175,7 @@ struct SidebarTests {
           pane("local", "w1:p1", onScreen: true), pane("local", "w1:p9", onScreen: false),
         ])
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:]).filter { $0.isPane }
+    let rows = SidebarModel.rows(roster: roster, agents: [:]).filter { $0.isPane }
 
     #expect(rows.map(\.onScreen) == [true, false])
   }
@@ -184,9 +184,9 @@ struct SidebarTests {
   func nothingIsNothing() {
     // A window on the way up has an attached daemon and no panes yet. A heading over no rows
     // reads as a machine that lost its session.
-    #expect(SidebarModel.rows(roster: roster([]), states: [:]).isEmpty)
+    #expect(SidebarModel.rows(roster: roster([]), agents: [:]).isEmpty)
     let bare = roster([])
-    #expect(SidebarModel.rows(roster: bare, states: [:]).isEmpty)
+    #expect(SidebarModel.rows(roster: bare, agents: [:]).isEmpty)
   }
 
   @Test("a window with one tab draws no caption for it")
@@ -197,7 +197,7 @@ struct SidebarTests {
     let roster = roster([
       tab("local", onScreen: true, panes: [pane("local", "w1:p1")])
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
 
     #expect(rows.map(\.kind) == [.pane(tabPress: 0, press: 1)])
   }
@@ -217,7 +217,7 @@ struct SidebarTests {
         "devenv", "w1:t1", place: 3, label: "three",
         panes: [pane("devenv", "w1:p1", place: 3)]),
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
 
     let kinds: [SidebarModel.Kind] = [
       .tab(press: 0), .pane(tabPress: 0, press: 1), .tab(press: 0), .pane(tabPress: 0, press: 2),
@@ -262,7 +262,7 @@ struct SidebarTests {
     // pane says its own address, including the ones in the tab nothing is showing - which is
     // the case the change was for: knowing what to press to reach an agent used to cost a
     // press and a second look (kan a_2LSUoy7dd).
-    let rows = SidebarModel.rows(roster: aWindowUnderThePrototype(armed: false), states: [:])
+    let rows = SidebarModel.rows(roster: aWindowUnderThePrototype(armed: false), agents: [:])
 
     #expect(rows.map(\.kind) == prototypeChords)
     // Two columns on a pane row and one on a caption, whether or not the row fills them. The
@@ -281,7 +281,7 @@ struct SidebarTests {
     // tab's panes and off everything else - which is what left a pane in an unfocused tab with
     // no readable address and made a digit mean different things depending on what you had
     // already pressed. What ⌘2 changes now is which presses are live.
-    let rows = SidebarModel.rows(roster: aWindowUnderThePrototype(armed: true), states: [:])
+    let rows = SidebarModel.rows(roster: aWindowUnderThePrototype(armed: true), agents: [:])
 
     #expect(rows.map(\.kind) == prototypeChords)
     #expect(rows.filter { $0.isPane }.allSatisfy { $0.reservedPresses == 2 })
@@ -310,7 +310,7 @@ struct SidebarTests {
         panes: [pane("local", "w1:p1", place: 1, press: 0)])
     ])
 
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
 
     #expect(rows.map(\.kind) == [.tab(press: 1), .pane(tabPress: 0, press: 0)])
   }
@@ -328,7 +328,7 @@ struct SidebarTests {
         "devenv", "w1:t1", place: 2, label: "there",
         panes: [pane("devenv", "w1:p1", place: 3)]),
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
     let dragged = PaneKey(daemon: "local", pane: "w1:p1")
 
     let sameDaemon = try #require(rows.first { $0.pane == PaneKey(daemon: "local", pane: "w1:p2") })
@@ -352,7 +352,7 @@ struct SidebarTests {
     let roster = roster([
       tab("local", panes: [pane("local", "w1:p1", place: 1)])
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
     let itself = PaneKey(daemon: "local", pane: "w1:p1")
 
     let row = try #require(rows.first { $0.isPane })
@@ -373,7 +373,7 @@ struct SidebarTests {
       tab("devenv", "w1:t1", place: 2, panes: [pane("devenv", "w1:p1", place: 3)]),
     ])
 
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
 
     #expect(
       rows.filter { $0.isPane }.map(\.kind)
@@ -391,7 +391,7 @@ struct SidebarTests {
       tab("local", "w1:t1", place: 1, onScreen: true, panes: [pane("local", "w1:p1")]),
       tab("local", "w1:t2", place: 2, onScreen: false, panes: [pane("local", "w1:p2")]),
     ])
-    let rows = SidebarModel.rows(roster: roster, states: [:]).filter {
+    let rows = SidebarModel.rows(roster: roster, agents: [:]).filter {
       if case .tab = $0.kind { return true }
       return false
     }
@@ -417,7 +417,7 @@ struct SidebarTests {
         Roster.Machine(id: "local", state: "connected", panes: 1),
         Roster.Machine(id: "devenv", state: "connected", panes: 0),
       ])
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
     let onDevenv = PaneKey(daemon: "devenv", pane: "w2:p1")
 
     let laptopCaption = try #require(rows.first { $0.isTab && $0.tab == "w1:t1" })
@@ -442,7 +442,7 @@ struct SidebarTests {
         Roster.Machine(id: "local", state: "connected", panes: 2),
         Roster.Machine(id: "devenv", state: "connected", panes: 0),
       ])
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
 
     #expect(rows.allSatisfy { $0.isDestination })
     // Only the machine holding nothing gets a row: the one holding panes says so through them.
@@ -473,7 +473,7 @@ struct SidebarTests {
       tab("devenv", place: 2, panes: [Roster.Pane(key: devenv, label: "rad", onScreen: true)]),
     ])
 
-    let rows = SidebarModel.rows(roster: roster, states: [:], keyboard: devenv)
+    let rows = SidebarModel.rows(roster: roster, agents: [:], keyboard: devenv)
     let marked = rows.filter(\.hasKeyboard)
 
     #expect(marked.count == 1, "more than one row claims the keyboard")
@@ -493,7 +493,7 @@ struct SidebarTests {
         ])
     ])
     #expect(
-      SidebarModel.rows(roster: roster, states: [:], keyboard: nil).allSatisfy { !$0.hasKeyboard })
+      SidebarModel.rows(roster: roster, agents: [:], keyboard: nil).allSatisfy { !$0.hasKeyboard })
   }
 
   @Test("a list put away gives its width to the panes, at any window size")
@@ -520,8 +520,89 @@ struct SidebarTests {
         ])
     ])
 
-    let panes = SidebarModel.rows(roster: roster, states: [:]).filter { $0.isPane }
+    let panes = SidebarModel.rows(roster: roster, agents: [:]).filter { $0.isPane }
     #expect(panes.map(\.subtitle) == ["first working build", ""])
+  }
+
+  @Test("a waiting agent's second line is what it waits on")
+  func aWaitingAgentSaysOnWhat() {
+    let key = PaneKey(daemon: "local", pane: "w1:p1")
+    let roster = roster([
+      tab(
+        "local",
+        panes: [pane("local", "w1:p1", label: "muster · claude", subtitle: "first working build")])
+    ])
+    var waiting = PaneAgent(state: "waiting")
+    waiting.waiting = "the full gate"
+    let row = SidebarModel.rows(roster: roster, agents: [key: waiting]).first { $0.isPane }
+    #expect(row?.state == "waiting")
+    #expect(row?.subtitle == "waiting on the full gate")
+    // Only while it waits: at work again, its title is its second line once more.
+    var working = waiting
+    working.state = "working"
+    let back = SidebarModel.rows(roster: roster, agents: [key: working]).first { $0.isPane }
+    #expect(back?.subtitle == "first working build")
+  }
+
+  @Test("a row's marks say only what there is to say, the ones asking to be looked at first")
+  func marksAreThereOnlyWhenTheyAddSomething() {
+    let key = PaneKey(daemon: "local", pane: "w1:p1")
+    let roster = roster([tab("local", panes: [pane("local", "w1:p1")])])
+    let plain = SidebarModel.rows(roster: roster, agents: [key: "working"]).first { $0.isPane }
+    #expect(plain.map(SidebarModel.accessories(of:)) == [])
+
+    var agent = PaneAgent(state: "working")
+    agent.unreadable = true
+    agent.rang = true
+    agent.subagents = 2
+    agent.contextUsed = 64
+    let row = SidebarModel.rows(roster: roster, agents: [key: agent]).first { $0.isPane }
+    #expect(
+      row.map(SidebarModel.accessories(of:))
+        == [.unreadable, .bell, .subagents(2), .context(64)])
+    // A tab caption has no agent to have marks.
+    let caption = SidebarModel.rows(
+      roster: self.roster([
+        tab("local", panes: [pane("local", "w1:p1")]), tab("local", "w1:t2", panes: []),
+      ]),
+      agents: [key: agent]
+    ).first { $0.isTab }
+    #expect(caption.map(SidebarModel.accessories(of:)) == [])
+  }
+
+  @Test("progress is drawn when it says how far, or that it failed, and not while it only spins")
+  func progressIsDrawnWhenItSaysSomething() {
+    let key = PaneKey(daemon: "local", pane: "w1:p1")
+    let roster = roster([tab("local", panes: [pane("local", "w1:p1")])])
+    func drawn(_ progress: PaneAgent.Progress) -> PaneAgent.Progress? {
+      var agent = PaneAgent(state: "working")
+      agent.progress = progress
+      let row = SidebarModel.rows(roster: roster, agents: [key: agent]).first { $0.isPane }
+      return row.flatMap(SidebarModel.progress(of:))
+    }
+    #expect(drawn(.init(state: "running", percent: 40))?.percent == 40)
+    #expect(drawn(.init(state: "error", percent: nil))?.state == "error")
+    // Some agents say this for as long as they work, which the dot already says.
+    #expect(drawn(.init(state: "indeterminate", percent: nil)) == nil)
+  }
+
+  @Test("hovering a row says everything its agent said about itself")
+  func detailsSayEverything() {
+    let key = PaneKey(daemon: "local", pane: "w1:p1")
+    let roster = roster([tab("local", panes: [pane("local", "w1:p1", label: "muster · claude")])])
+    var agent = PaneAgent(state: "blocked")
+    agent.reported = true
+    agent.contextUsed = 64.4
+    agent.subagents = 1
+    agent.model = "Opus"
+    agent.costUSD = 1.5
+    let row = SidebarModel.rows(roster: roster, agents: [key: agent]).first { $0.isPane }
+    #expect(
+      row.map(SidebarModel.details(of:))
+        == [
+          "muster · claude", "blocked, as the agent reports", "64% of its context used",
+          "1 sub-agent running", "Opus", "$1.50 so far",
+        ].joined(separator: "\n"))
   }
 
   @Test("a row with a second line is taller, and only that row")
@@ -540,7 +621,7 @@ struct SidebarTests {
         ])
     ])
 
-    let panes = SidebarModel.rows(roster: roster, states: [:]).filter { $0.isPane }
+    let panes = SidebarModel.rows(roster: roster, agents: [:]).filter { $0.isPane }
     let heights = panes.map(SidebarModel.height(of:))
     #expect(heights == [SidebarModel.twoLines, SidebarModel.twoLines, SidebarModel.oneLine])
   }
@@ -562,7 +643,7 @@ struct SidebarTests {
       tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p3")]),
     ])
 
-    let rows = SidebarModel.rows(roster: roster, states: [:])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
     #expect(rows.first { $0.isTab }?.givenName == "release")
     #expect(rows.first { $0.pane?.pane == "w1:p1" }?.givenName == "🔥 payments spike")
     #expect(rows.first { $0.pane?.pane == "w1:p2" }?.givenName == "")
@@ -581,12 +662,12 @@ struct SidebarTests {
     // something unrelated reloaded the whole list. Both answers matter - the row has to be
     // drawn again because its words changed, and measured again because its height did.
     let before = SidebarModel.rows(
-      roster: roster([pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]), states: [:])
+      roster: roster([pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]), agents: [:])
     let after = SidebarModel.rows(
       roster: roster([
         pane("local", "w1:p1", subtitle: "align-agent-state colours"),
         pane("local", "w1:p2", place: 2),
-      ]), states: [:])
+      ]), agents: [:])
 
     let changed = SidebarModel.changes(from: before, to: after)
     // One tab, so no caption: the first pane is row 0.
@@ -600,8 +681,8 @@ struct SidebarTests {
     // leaves a row that would otherwise keep a two-line frame with one line in it.
     let before = SidebarModel.rows(
       roster: roster([pane("local", "w1:p1", subtitle: "align-agent-state colours")]),
-      states: [:])
-    let after = SidebarModel.rows(roster: roster([pane("local", "w1:p1")]), states: [:])
+      agents: [:])
+    let after = SidebarModel.rows(roster: roster([pane("local", "w1:p1")]), agents: [:])
 
     let changed = SidebarModel.changes(from: before, to: after)
     #expect(changed?.redraw == IndexSet(integer: 0))
@@ -616,8 +697,8 @@ struct SidebarTests {
     // the cost back in a different place.
     let panes = [pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]
     let key = PaneKey(daemon: "local", pane: "w1:p1")
-    let before = SidebarModel.rows(roster: roster(panes), states: [key: "idle"])
-    let after = SidebarModel.rows(roster: roster(panes), states: [key: "working"])
+    let before = SidebarModel.rows(roster: roster(panes), agents: [key: "idle"])
+    let after = SidebarModel.rows(roster: roster(panes), agents: [key: "working"])
 
     let changed = SidebarModel.changes(from: before, to: after)
     #expect(changed?.redraw == IndexSet(integer: 0))
@@ -626,9 +707,9 @@ struct SidebarTests {
 
   @Test("a pane opening asks for the whole list, because the rows are not the same rows")
   func aPaneOpeningReloadsEverything() {
-    let before = SidebarModel.rows(roster: roster([pane("local", "w1:p1")]), states: [:])
+    let before = SidebarModel.rows(roster: roster([pane("local", "w1:p1")]), agents: [:])
     let after = SidebarModel.rows(
-      roster: roster([pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]), states: [:])
+      roster: roster([pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]), agents: [:])
 
     #expect(SidebarModel.changes(from: before, to: after) == nil)
   }
@@ -640,13 +721,13 @@ struct SidebarTests {
     // something asks again, and only the frames it settles on say whether it was asked.
     let sidebar = SidebarView(
       frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
-    sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), states: [:])
+    sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), agents: [:])
     #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.oneLine])
 
     sidebar.apply(
       roster: roster([
         pane("local", "w1:p1", label: "muster · claude", subtitle: "align-agent-state colours")
-      ]), states: [:])
+      ]), agents: [:])
     #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.twoLines])
   }
 
@@ -663,7 +744,7 @@ struct SidebarTests {
     let sidebar = SidebarView(frame: .zero)
     sidebar.frame = NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400)
     sidebar.layoutSubtreeIfNeeded()
-    sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), states: [:])
+    sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), agents: [:])
 
     #expect(sidebar.drawnRows.allSatisfy { $0.width == SidebarModel.width })
   }
