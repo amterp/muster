@@ -92,6 +92,28 @@ impl Row {
             .map(|cell| if cell.text.is_empty() { " " } else { &cell.text })
             .collect()
     }
+
+    /// [`Row::text`] as far as someone typed it: a cell drawn faint - a suggestion, a hint,
+    /// which programs draw faint because nobody typed them - reads as blank, and so does an
+    /// inverse cell just before a faint one, the caret a program draws over a suggestion's
+    /// first letter. Blanked a character for a character, so a column found in `text` is the
+    /// same column here.
+    pub fn typed_text(&self) -> String {
+        let cells: Vec<&Cell> =
+            self.cells.iter().filter(|cell| cell.width != Width::SpacerTail).collect();
+        let mut typed = String::new();
+        for (at, cell) in cells.iter().enumerate() {
+            let caret_over_faint =
+                cell.style.inverse && cells.get(at + 1).is_some_and(|next| next.style.faint);
+            let text = if cell.text.is_empty() { " " } else { cell.text.as_str() };
+            if cell.style.faint || caret_over_faint {
+                typed.extend(std::iter::repeat_n(' ', text.chars().count()));
+            } else {
+                typed.push_str(text);
+            }
+        }
+        typed
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,5 +164,63 @@ impl Grid {
         }
 
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(cells: &[(&str, Style)]) -> Row {
+        let cells = cells
+            .iter()
+            .map(|(text, style)| Cell {
+                text: (*text).to_string(),
+                width: Width::Narrow,
+                style: style.clone(),
+                protected: false,
+                hyperlink: None,
+            })
+            .collect();
+        Row { cells, wraps: false }
+    }
+
+    fn plain() -> Style {
+        Style::default()
+    }
+
+    fn faint() -> Style {
+        Style { faint: true, ..Style::default() }
+    }
+
+    fn inverse() -> Style {
+        Style { inverse: true, ..Style::default() }
+    }
+
+    #[test]
+    fn a_suggestion_drawn_faint_is_not_typed() {
+        let row = row(&[("❯", plain()), (" ", plain()), ("T", faint()), ("r", faint())]);
+        assert_eq!(row.text(), "❯ Tr");
+        assert_eq!(row.typed_text(), "❯   ");
+    }
+
+    #[test]
+    fn a_caret_over_a_suggestion_is_part_of_it() {
+        let row = row(&[("❯", plain()), (" ", plain()), ("T", inverse()), ("r", faint())]);
+        assert_eq!(row.typed_text(), "❯   ");
+    }
+
+    #[test]
+    fn typed_text_keeps_its_caret_and_leaves_out_what_follows_faint() {
+        let row = row(&[
+            ("h", plain()),
+            ("i", plain()),
+            (" ", inverse()),
+            ("m", faint()),
+            ("x", plain()),
+            ("y", inverse()),
+        ]);
+        // A caret before faint text blanks, so "hi" stays typed; "x" and a caret on "y" do too.
+        assert_eq!(row.typed_text(), "hi  xy");
     }
 }

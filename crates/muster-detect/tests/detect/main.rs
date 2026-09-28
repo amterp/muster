@@ -2,4 +2,5 @@
 
 mod detection;
 mod identification;
+mod prompt;
 mod screen_text;

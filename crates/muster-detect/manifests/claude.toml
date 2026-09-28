@@ -1,6 +1,6 @@
 id = "claude"
-version = "2026.09.28.1"
-min_engine_version = 2
+version = "2026.09.28.2"
+min_engine_version = 5
 updated_at = "2026-09-28T00:00:00Z"
 aliases = ["claude-code"]
 
@@ -148,6 +148,8 @@ priority = 950
 region = "prompt_box_body"
 visible_idle = true
 line_regex = ['^\s*❯']
+# What follows the caret is the prompt's text; 2.1.283 puts a no-break space after it.
+prompt = '^\s*❯\s?'
 not = [
   { contains = ["enter to select"] },
   { contains = ["esc to cancel"] },

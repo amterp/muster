@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::manifest::{ENGINE_VERSION, Manifest};
-use crate::{Agent, Detection, Input, State};
+use crate::{Agent, Detection, Input, Prompt, State};
 
 const BUILT_IN: &[(&str, &str)] = &[
     ("amp.toml", include_str!("../manifests/amp.toml")),
@@ -250,6 +250,17 @@ impl Manifests {
             Some(entry) => entry.manifest.evaluate(input),
             None => Detection::fallback(State::Idle),
         }
+    }
+
+    /// What the agent's prompt holds, when its screen is the agent at its prompt
+    /// ([`Manifest::prompt`]); none when it is anything else, or the agent has no manifest.
+    pub fn prompt(&self, agent: &Agent, input: Input<'_>, typed: &str) -> Option<Prompt> {
+        self.entry(agent)?.manifest.prompt(input, typed)
+    }
+
+    /// Whether the agent's manifest can say its screen is it at its prompt.
+    pub fn reads_prompt(&self, agent: &Agent) -> bool {
+        self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt())
     }
 
     fn entry(&self, agent: &Agent) -> Option<&Entry> {

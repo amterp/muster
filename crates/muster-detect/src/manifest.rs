@@ -22,8 +22,12 @@ use crate::State;
 use region::Region;
 
 /// The manifest engine this crate implements. 1 to 3 are herdr's, so herdr's manifests keep
-/// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`.
-pub const ENGINE_VERSION: u32 = 4;
+/// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`, and 5 adds a
+/// rule's `prompt`.
+pub const ENGINE_VERSION: u32 = 5;
+
+/// The engine version that introduced a rule's `prompt`.
+const PROMPT_ENGINE_VERSION: u32 = 5;
 
 /// The engine version that introduced the `top_non_empty_lines` region, in herdr.
 const TOP_NON_EMPTY_LINES_ENGINE_VERSION: u32 = 3;
@@ -63,6 +67,15 @@ pub struct Detection {
     pub rule: Option<String>,
 }
 
+/// What an agent's prompt holds, read off its screen ([`Manifest::prompt`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Prompt {
+    Empty,
+    /// Text someone or something typed, its runs of whitespace one space each, a prompt
+    /// wrapped over several lines read as one.
+    Holds(String),
+}
+
 impl Detection {
     /// What a pane with no identified agent is.
     pub fn unknown() -> Self {
@@ -93,6 +106,9 @@ struct Rule {
     visible: bool,
     skip_state_update: bool,
     gate: Gate,
+    /// Where the prompt's text starts on its line, for a rule that decides the screen is the
+    /// agent at its prompt.
+    prompt: Option<Regex>,
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +160,60 @@ impl Manifest {
     /// Every rule is evaluated; the highest priority that matches wins, the earlier of two
     /// equal ones; and a known agent that matches nothing is idle.
     pub fn evaluate(&self, input: Input<'_>) -> Detection {
+        let Some(rule) = self.decide(input) else {
+            return Detection::fallback(State::Idle);
+        };
+        Detection {
+            state: rule.state,
+            visible: rule.visible,
+            skip_state_update: rule.skip_state_update,
+            rule: Some(rule.id.clone()),
+        }
+    }
+
+    /// Whether any rule can say the screen is the agent at its prompt: an agent whose manifest
+    /// has none is never read as at an empty prompt.
+    pub fn reads_prompt(&self) -> bool {
+        self.rules.iter().any(|rule| rule.prompt.is_some())
+    }
+
+    /// What the agent's prompt holds, when the rule that decides the screen is one that says
+    /// it is at its prompt; none when it is anything else - a dialog, a menu, at work, or
+    /// nothing a rule recognizes.
+    ///
+    /// `typed` is the same screen with every cell nobody typed blanked - a suggestion drawn
+    /// faint, say - and has a line for each of `input.screen`'s, with as many characters. The
+    /// rule is decided and its region found on the screen as drawn, since what frames a prompt
+    /// may be drawn faint too; only the prompt's own text is read from `typed`.
+    pub fn prompt(&self, input: Input<'_>, typed: &str) -> Option<Prompt> {
+        let rule = self.decide(input)?;
+        let marker = rule.prompt.as_ref()?;
+        let region = rule.region.slice(input);
+        let screen = input.screen;
+        let start = (region.as_ptr() as usize).checked_sub(screen.as_ptr() as usize)?;
+        if start + region.len() > screen.len() {
+            return None;
+        }
+        let first = screen[..start].matches('\n').count();
+        let count = region.lines().count();
+        let drawn: Vec<&str> = screen.lines().skip(first).take(count).collect();
+        let typed: Vec<&str> = typed.lines().skip(first).take(count).collect();
+        let (at, found) = drawn.iter().enumerate().find_map(|(at, line)| {
+            marker.find(line).map(|found| (at, line[..found.end()].chars().count()))
+        })?;
+        let rest: String =
+            typed.get(at).map_or(String::new(), |line| line.chars().skip(found).collect());
+        let held: Vec<&str> = std::iter::once(rest.as_str())
+            .chain(typed.iter().skip(at + 1).copied())
+            .flat_map(str::split_whitespace)
+            .collect();
+        let joined = held.join(" ");
+        Some(if joined.is_empty() { Prompt::Empty } else { Prompt::Holds(joined) })
+    }
+
+    /// The rule that decides: every rule is evaluated, and the highest priority that matches
+    /// wins, the earlier of two equal ones.
+    fn decide(&self, input: Input<'_>) -> Option<&Rule> {
         let mut matched: Option<&Rule> = None;
         for rule in &self.rules {
             if !rule.gate.matches_text(rule.region.slice(input)) {
@@ -154,15 +224,7 @@ impl Manifest {
                 _ => matched = Some(rule),
             }
         }
-        let Some(rule) = matched else {
-            return Detection::fallback(State::Idle);
-        };
-        Detection {
-            state: rule.state,
-            visible: rule.visible,
-            skip_state_update: rule.skip_state_update,
-            rule: Some(rule.id.clone()),
-        }
+        matched
     }
 }
 
@@ -302,6 +364,7 @@ struct RawRule {
     regex: Vec<String>,
     #[serde(default)]
     line_regex: Vec<String>,
+    prompt: Option<String>,
 }
 
 impl RawRule {
@@ -402,8 +465,29 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
                 rule.id
             ));
         }
+        if rule.prompt.is_some() {
+            validate_prompt(manifest, rule, region)?;
+        }
         validate_gate(&rule.gate(), "rule", 0, &mut complexity)
             .map_err(|error| format!("rule {} has invalid matcher gates: {error}", rule.id))?;
+    }
+    Ok(())
+}
+
+/// A prompt is read off the screen, and only a rule that says the agent is idle can say it is
+/// at its prompt.
+fn validate_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Result<(), String> {
+    if manifest.min_engine_version.is_none_or(|version| version < PROMPT_ENGINE_VERSION) {
+        return Err(format!(
+            "rule {} uses prompt but min_engine_version is below {PROMPT_ENGINE_VERSION}",
+            rule.id
+        ));
+    }
+    if rule.state != Some(RawState::Idle) || rule.skip_state_update {
+        return Err(format!("rule {} uses prompt without state = \"idle\"", rule.id));
+    }
+    if matches!(region, Region::OscTitle | Region::OscProgress) {
+        return Err(format!("rule {} uses prompt on a region that is not the screen", rule.id));
     }
     Ok(())
 }
@@ -532,31 +616,37 @@ impl RawGate {
 }
 
 fn compile(raw: RawManifest) -> Result<Manifest, String> {
-    let rules = raw
-        .rules
-        .into_iter()
-        .map(|rule| {
-            let gate = compile_gate(&rule.gate())
-                .map_err(|error| format!("rule {} could not be compiled: {error}", rule.id))?;
-            let region = Region::parse(&rule.region)
-                .ok_or_else(|| format!("rule {} uses invalid region: {}", rule.id, rule.region))?;
-            let state = rule.state.map_or(State::Unknown, State::from);
-            Ok(Rule {
-                state,
-                priority: rule.priority,
-                region,
-                visible: match state {
-                    State::Idle => rule.visible_idle,
-                    State::Blocked => rule.visible_blocker,
-                    State::Working => rule.visible_working,
-                    State::Unknown => false,
-                },
-                skip_state_update: rule.skip_state_update,
-                gate,
-                id: rule.id,
+    let rules =
+        raw.rules
+            .into_iter()
+            .map(|rule| {
+                let gate = compile_gate(&rule.gate())
+                    .map_err(|error| format!("rule {} could not be compiled: {error}", rule.id))?;
+                let region = Region::parse(&rule.region).ok_or_else(|| {
+                    format!("rule {} uses invalid region: {}", rule.id, rule.region)
+                })?;
+                let state = rule.state.map_or(State::Unknown, State::from);
+                let prompt =
+                    rule.prompt.as_deref().map(Regex::new).transpose().map_err(|error| {
+                        format!("rule {} has an invalid prompt: {error}", rule.id)
+                    })?;
+                Ok(Rule {
+                    prompt,
+                    state,
+                    priority: rule.priority,
+                    region,
+                    visible: match state {
+                        State::Idle => rule.visible_idle,
+                        State::Blocked => rule.visible_blocker,
+                        State::Working => rule.visible_working,
+                        State::Unknown => false,
+                    },
+                    skip_state_update: rule.skip_state_update,
+                    gate,
+                    id: rule.id,
+                })
             })
-        })
-        .collect::<Result<_, String>>()?;
+            .collect::<Result<_, String>>()?;
     Ok(Manifest {
         id: raw.id,
         version: raw.version,

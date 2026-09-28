@@ -1,0 +1,167 @@
+{
+  "concept": "detection.prompt",
+  "source": "authored",
+  "why": "The doorbell types into a pane only when its agent's screen reads as that agent at an empty prompt (MIP-4, section 6). Each case is a screen as drawn, its title and progress, and the same screen as typed - every faint cell blank - and says whether the rule deciding the screen shows the prompt, and what the prompt holds. The Claude screens are corpus/conformance/agent-detection-recorded.json's; the typed view is authored from how Claude Code 2.1.283 draws a suggestion (faint, held to the installed version by claude_code_doorbell's live check). A case with no `typed` reads the screen as typed whole.",
+  "cases": [
+    {
+      "name": "claude 2.1.283: a new prompt showing a suggestion is empty",
+      "why": "The suggestion is drawn faint, so in the typed view it is blank: nobody typed it, and a ring typed here would be sent alone.",
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Try \"how do I log an error?\"\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:13] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "✳ Claude Code",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯                             \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:13] /tmp/capture\n  ⏸ manual mode on · ← for agents\n"
+      },
+      "expect": {
+        "atPrompt": true
+      }
+    },
+    {
+      "name": "claude 2.1.283: the same prompt with the words typed holds them",
+      "why": "The same text, typed rather than suggested, is a person's draft: a ring would be sent inside it, so the prompt holds it and the doorbell waits.",
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Try \"how do I log an error?\"\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:13] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": true,
+        "holds": "Try \"how do I log an error?\""
+      }
+    },
+    {
+      "name": "claude 2.1.283: the /hooks menu is not the prompt",
+      "why": "A menu opened from the prompt decides the screen, and a Return there picks an entry; that it keeps the idle state it opened over is no reason to ring.",
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  Hooks\n  6 hooks configured\n\n  This menu is read-only. To add or change a hook, edit settings.json or ask Claude. Learn more\n\n  ❯ PreToolUse   1 hook\n    Before tool execution\n    PostToolUse\n    After tool execution\n    PostToolUseFailure\n    After tool execution fails\n    PostToolBatch\n    After a batch of tool calls resolves\n    PermissionDenied\n    After auto mode classifier denies a tool call\n    Notification\n    When notifications are sent\n    UserPromptSubmit   1 hook\n    When the user submits a prompt\n    ↓ 26 more below\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "claude 2.1.283: the /hooks menu, an event's matchers is not the prompt",
+      "why": "A menu opened from the prompt decides the screen, and a Return there picks an entry; that it keeps the idle state it opened over is no reason to ring.",
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": " ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  PreToolUse - Matchers\n  Input to command is JSON of tool call arguments.\n  Exit code 0 - stdout/stderr not shown\n  Exit code 2 - show stderr to model and block tool call\n  Other exit codes - show stderr to user only but continue with tool call\n\n  ❯ [User] Bash   1 hook\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "claude 2.1.283: the /hooks menu, a matcher's hooks is not the prompt",
+      "why": "A menu opened from the prompt decides the screen, and a Return there picks an entry; that it keeps the idle state it opened over is no reason to ring.",
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": " ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  PreToolUse - Matcher: Bash\n  Input to command is JSON of tool call arguments.\n  Exit code 0 - stdout/stderr not shown\n  Exit code 2 - show stderr to model and block tool call\n  Other exit codes - show stderr to user only but continue with tool call\n\n  ❯ ./check-command.sh   command\n    User Settings\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "claude 2.1.283: the /mcp menu is not the prompt",
+      "why": "A menu opened from the prompt decides the screen, and a Return there picks an entry; that it keeps the idle state it opened over is no reason to ring.",
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": " ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n  ⎿  Hooks dialog dismissed\n\n❯ /mcp\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  Manage MCP servers\n  7 servers\n\n    User MCPs (~/.claude.json)\n  ❯ ⚠ tracker   needs authentication\n\n    claude.ai\n    ✔ claude.ai Docs   8 tools\n    ⚠ claude.ai Mail   needs authentication\n    ⚠ claude.ai Calendar   needs authentication\n    ✔ claude.ai Drive   11 tools\n\n    Built-in MCPs (always available)\n    ✔ claude-in-chrome   22 tools\n    ◯ computer-use\n\n  https://code.claude.com/docs/en/mcp for help\n ↑/↓ to navigate · Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "claude 2.1.283: the /memory menu is not the prompt",
+      "why": "A menu opened from the prompt decides the screen, and a Return there picks an entry; that it keeps the idle state it opened over is no reason to ring.",
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": " ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n  ⎿  Hooks dialog dismissed\n\n❯ /mcp\n  ⎿  MCP dialog dismissed\n\n❯ /memory\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  Memory\n\n  ❯ Auto-memory  false\n\n  ❯ User instructions   Saved in ~/.claude/CLAUDE.md\n    L ~/.claude/imported.md   Saved in ~/.claude/CLAUDE.md\n    Project instructions   Saved in ./CLAUDE.md\n\n  Learn more: https://code.claude.com/docs/en/memory\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "claude 2.1.283: working is not the prompt",
+      "why": "The prompt box stays on screen while Claude Code works, but the working rules decide it.",
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n· Billowing… (2s · thinking with high effort)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:13] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "◐ Remove no-such-dir"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "claude 2.1.283: a permission prompt is not the prompt",
+      "why": "A Return here answers the dialog.",
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Removing the no-such-dir directory if present\n  ⎿  $ rm -rf ./no-such-dir\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below\n\n   rm -rf ./no-such-dir\n   Remove the no-such-dir directory if present\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to /tmp/capture from this project\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n\n Esc to cancel · Tab to amend\n",
+        "title": "✳ Remove no-such-dir"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "claude 2.1.283: the prompt after a refusal is empty",
+      "why": "Back at an empty prompt once the dialog is answered.",
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Cogitated for 3s · done 11:10 pm\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                  ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:10:01] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "✳ Remove no-such-dir",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Cogitated for 3s · done 11:10 pm\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                  ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:10:01] /tmp/capture\n  ⏸ manual mode on · ← for agents\n"
+      },
+      "expect": {
+        "atPrompt": true
+      }
+    },
+    {
+      "name": "claude 2.1.283: a prompt wrapped over two lines is read as one",
+      "why": "What a ring left unsent reads as the ring's own text, across the line it wrapped at, so a repeated Return can be held to it; the caret is followed by a no-break space.",
+      "given": {
+        "agent": "claude",
+        "screen": "\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ [muster] integrator+worker: 1 new (#4), 1 to you, from integrator. Read: muster msg read --group\n  integrator+worker\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n",
+        "title": "✳ Claude Code",
+        "progress": ""
+      },
+      "expect": {
+        "atPrompt": true,
+        "holds": "[muster] integrator+worker: 1 new (#4), 1 to you, from integrator. Read: muster msg read --group integrator+worker"
+      }
+    },
+    {
+      "name": "codex: a harness whose manifest reads no prompt is never at one",
+      "why": "Only a manifest rule with a `prompt` can say a screen is an agent at its prompt, so an agent without one is never rung.",
+      "given": {
+        "agent": "codex",
+        "screen": "› \n",
+        "title": "",
+        "progress": ""
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    }
+  ]
+}

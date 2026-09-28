@@ -335,3 +335,40 @@ fn required_engine_is_read_without_the_strict_schema() {
     assert!(Manifest::parse(newer).is_err());
     assert_eq!(Manifest::required_engine("id = \"x\"\n"), None);
 }
+
+fn with_prompt(engine: u32, state: &str, region: &str) -> String {
+    format!(
+        r#"
+id = "agent"
+min_engine_version = {engine}
+
+[[rules]]
+id = "at_prompt"
+state = "{state}"
+region = "{region}"
+contains = ["> "]
+prompt = '^> ?'
+"#
+    )
+}
+
+#[test]
+fn a_prompt_is_read_only_by_an_idle_rule_on_the_screen_at_engine_five() {
+    assert!(Manifest::parse(&with_prompt(5, "idle", "whole_recent")).is_ok());
+    assert!(Manifest::parse(&with_prompt(4, "idle", "whole_recent")).is_err(), "engine 4");
+    assert!(Manifest::parse(&with_prompt(5, "working", "whole_recent")).is_err(), "working");
+    assert!(Manifest::parse(&with_prompt(5, "idle", "osc_title")).is_err(), "the title");
+}
+
+#[test]
+fn a_prompt_holds_what_follows_its_marker_as_typed() {
+    let manifest = Manifest::parse(&with_prompt(5, "idle", "whole_recent")).unwrap();
+    let input = |screen| Input { screen, title: "", progress: "" };
+    assert_eq!(manifest.prompt(input("> \n"), "> \n"), Some(Prompt::Empty));
+    assert_eq!(
+        manifest.prompt(input("> half  typed\n"), "> half  typed\n"),
+        Some(Prompt::Holds("half typed".to_string()))
+    );
+    assert_eq!(manifest.prompt(input("> hint\n"), ">     \n"), Some(Prompt::Empty));
+    assert_eq!(manifest.prompt(input("nothing\n"), "nothing\n"), None);
+}
