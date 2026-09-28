@@ -398,19 +398,11 @@ impl PaneIo {
         for performed in deferred.performed {
             match performed {
                 Performed::Reset => self.reset(),
-                Performed::ClearScreen { key } => match self.clear_screen(key.as_ref()) {
-                    Cleared::AtPrompt => {
-                        self.queue(Input::Reply(vec![0x0c]));
+                Performed::ClearScreen { key } => {
+                    if let Some(sent) = Input::after_clear(self.clear_screen(key.as_ref()), key) {
+                        self.queue(sent);
                     }
-                    // Queued as the key itself, so the writer encodes it against the modes the
-                    // program has after the clear, as it does for a clear that was not held.
-                    Cleared::Alternate => {
-                        if let Some(key) = key {
-                            self.queue(Input::Key(key));
-                        }
-                    }
-                    Cleared::Elsewhere | Cleared::Deferred => {}
-                },
+                }
             }
         }
     }

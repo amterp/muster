@@ -70,6 +70,17 @@ pub(crate) enum Input {
 }
 
 impl Input {
+    /// What a clear sends the program after it: a form feed, for a shell cleared at its prompt
+    /// to draw the prompt again, and on the alternate screen the key that asked. That key is
+    /// typed like any other, so its echo is not read as the program at work.
+    pub(crate) fn after_clear(cleared: Cleared, key: Option<OwnedKey>) -> Option<Input> {
+        match cleared {
+            Cleared::AtPrompt => Some(Input::Reply(vec![0x0c])),
+            Cleared::Alternate => key.map(Input::Key),
+            Cleared::Elsewhere | Cleared::Deferred => None,
+        }
+    }
+
     /// Whether this is someone's input, which a program echoes. A reply answers the program
     /// itself, and a focus report, a reset and a clear are not typed.
     fn is_typed(&self) -> bool {
@@ -251,6 +262,15 @@ impl Writer {
     /// Writes everything queued for a pane until the pane lets go of its queue, or of its PTY.
     pub(crate) fn write(mut self, queued: &Receiver<Input>, master: &OwnedFd, wake: &OwnedFd) {
         for input in queued {
+            // Encoded after it is performed rather than before, since the program may have
+            // changed its keyboard modes along with its screen.
+            let input = match input {
+                Input::Reset | Input::ClearScreen { .. } => match self.perform(input) {
+                    Some(sent) => sent,
+                    None => continue,
+                },
+                input => input,
+            };
             let typed = input.is_typed();
             // The encoding is released before the write, which can wait on a program that is
             // not reading, so the reader's refresh never waits on it.
@@ -361,35 +381,23 @@ impl Writer {
                 if focused { b"\x1b[I".to_vec() } else { b"\x1b[O".to_vec() }
             }
             Input::Reset | Input::ClearScreen { .. } => {
-                drop(encoding);
-                self.perform(&input)
+                unreachable!("a reset or a clear is performed before anything is encoded")
             }
         }
     }
 
     /// What is done to the pane itself rather than encoded for its program, with whatever the
-    /// program is to be sent after it: a form feed, for a shell whose screen was cleared at its
-    /// prompt, to draw the prompt again.
-    fn perform(&self, input: &Input) -> Vec<u8> {
-        let Some(io) = self.io.upgrade() else { return Vec::new() };
+    /// program is to be sent after it ([`Input::after_clear`]).
+    fn perform(&self, input: Input) -> Option<Input> {
+        let io = self.io.upgrade()?;
         match input {
-            Input::Reset => io.reset(),
-            Input::ClearScreen { key } => {
-                return match io.clear_screen(key.as_ref()) {
-                    Cleared::AtPrompt => vec![0x0c],
-                    // Encoded after the clear rather than before, since the program may have
-                    // changed its keyboard modes along with its screen.
-                    Cleared::Alternate => key.as_ref().map_or_else(Vec::new, |key| {
-                        let shared = Arc::clone(&self.encoding);
-                        let mut encoding = poison::lock(&shared, "daemon.pane.encoding");
-                        self.key(&mut encoding, key)
-                    }),
-                    Cleared::Elsewhere | Cleared::Deferred => Vec::new(),
-                };
+            Input::Reset => {
+                io.reset();
+                None
             }
-            _ => {}
+            Input::ClearScreen { key } => Input::after_clear(io.clear_screen(key.as_ref()), key),
+            _ => None,
         }
-        Vec::new()
     }
 
     /// A keystroke, encoded against the pane's modes.
