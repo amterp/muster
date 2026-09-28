@@ -400,6 +400,10 @@ impl<S: Store> Messaging<S> {
         let Some(participant) = self.participants.get_mut(&wake.name) else {
             return Ok(());
         };
+        // It may have come back from a new session while the wake was out.
+        if participant.inbox.as_ref() != Some(&wake.inbox) {
+            return Ok(());
+        }
         participant.gone = true;
         participant.woken.clear();
         self.save()
