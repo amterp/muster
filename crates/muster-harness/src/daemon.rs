@@ -66,8 +66,9 @@ pub fn built_daemon() -> PathBuf {
 
 /// The Linux daemons this checkout cross-built, laid out as an app carries them: a directory
 /// holding `linux-x86_64/muster-daemon` and `linux-aarch64/muster-daemon`, each a link to
-/// `target/<triple>/<profile>/muster-daemon`. The gate builds both, so a remote install in a
-/// test sends the daemon from the same commit as the test.
+/// `target/<triple>/<profile>/muster-daemon`, with the `muster` CLI built for the same machine
+/// linked beside it. The gate builds all four, so a remote install in a test sends the daemon
+/// and CLI from the same commit as the test.
 pub fn built_linux_daemons() -> PathBuf {
     let native = built_daemon();
     let profile = native.parent().expect("a daemon is in a profile directory");
@@ -87,9 +88,13 @@ pub fn built_linux_daemons() -> PathBuf {
         );
         let directory = carried.join(build);
         std::fs::create_dir_all(&directory).expect("the test root is writable");
-        let link = directory.join("muster-daemon");
-        let _ = std::fs::remove_file(&link);
-        std::os::unix::fs::symlink(&daemon, &link).expect("the test root is writable");
+        for (built, name) in
+            [(daemon, "muster-daemon"), (target.join(triple).join(name).join("muster"), "muster")]
+        {
+            let link = directory.join(name);
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(&built, &link).expect("the test root is writable");
+        }
     }
     carried
 }

@@ -565,16 +565,16 @@ fn run_linux_tier():
     native = stdout.trim() == "x86_64" ? "x86_64-unknown-linux-musl" : "aarch64-unknown-linux-musl"
     emulated = LINUX_DAEMONS.keys().filter(fn(target) target != native)
     for target in [native] + emulated:
-        listed = $`cargo test -p muster-daemon -p muster-detect --target {target} -- --list`
+        listed = $`cargo test -p muster-daemon -p muster-detect -p muster-msg --target {target} -- --list`
         names = listed.split("\n").filter(fn(line) line.ends_with(": test"))
         if len(names) == 0:
             fail_empty_suite("Linux ({target})", "Check that crates/muster-daemon/tests/ and crates/muster-detect/tests/ still exist.")
         if target == native:
             print(dim("{len(names)} test(s) on {target}, natively"))
-            $`cargo test -p muster-daemon -p muster-detect --target {target} --no-fail-fast`
+            $`cargo test -p muster-daemon -p muster-detect -p muster-msg --target {target} --no-fail-fast`
         else:
             print(dim("{len(names)} test(s) on {target}, emulated, {EMULATED_THREADS} at a time, less {EMULATED_TIMING}, {EMULATED_WRITE_BUDGET} and {EMULATED_ARGV}"))
-            $`cargo test -p muster-daemon -p muster-detect --target {target} --no-fail-fast -- --test-threads {EMULATED_THREADS} --skip {EMULATED_TIMING} --skip {EMULATED_WRITE_BUDGET} --skip {EMULATED_ARGV}`
+            $`cargo test -p muster-daemon -p muster-detect -p muster-msg --target {target} --no-fail-fast -- --test-threads {EMULATED_THREADS} --skip {EMULATED_TIMING} --skip {EMULATED_WRITE_BUDGET} --skip {EMULATED_ARGV}`
 
 // The app finds its helpers beside its own executable - right for a shipped bundle, and
 // wrong for two build systems with two output directories and a downloaded daemon. Rather
@@ -601,6 +601,7 @@ fn stage_helpers(profile):
         carried = "{swift_bin}/daemons/{carried_name(target)}"
         $`mkdir -p {carried}`
         stage(target = "target/{target}/{profile}/muster-daemon", into = "{carried}/muster-daemon")
+        stage(target = "target/{target}/{profile}/muster", into = "{carried}/muster")
 
 // What the app calls a Linux build it carries: `linux-x86_64` for x86_64-unknown-linux-musl.
 fn carried_name(target):
@@ -743,6 +744,10 @@ fn check_bundle_is_whole(contents):
         // on it shows no panes, and says the app carries none.
         "{contents}/Resources/daemons/linux-x86_64/muster-daemon",
         "{contents}/Resources/daemons/linux-aarch64/muster-daemon",
+        // And the CLI the same install puts on that machine, without which an agent there has
+        // no `muster msg` to message anyone with.
+        "{contents}/Resources/daemons/linux-x86_64/muster",
+        "{contents}/Resources/daemons/linux-aarch64/muster",
         "{contents}/Frameworks/libmuster.dylib",
         "{contents}/Frameworks/libghostty-vt.dylib",
         "{contents}/Info.plist",
@@ -1556,9 +1561,11 @@ if build:
     // ones a contributor can act on without a window.
     $`cargo build --workspace --all-targets`
     // The daemon for each Linux machine a remote pane can be on (MIP-3, section 12), built by
-    // the gate so a change that breaks it fails here rather than on the next remote install.
+    // the gate so a change that breaks it fails here rather than on the next remote install -
+    // and the CLI the same install places beside it, which is how an agent there messages
+    // another (MIP-4, section 13).
     for target in LINUX_DAEMONS.keys():
-        $`cargo build -p muster-daemon --target {target}`
+        $`cargo build -p muster-daemon -p muster-cli --target {target}`
     $`swift build`
     stage_helpers("debug")
 
@@ -1572,7 +1579,7 @@ if bundle:
     // Stripped, since the app carries both to machines that will only ever run them: 5.0 MB
     // and 6.0 MB rather than several times that with the release profile's debug info.
     for target in LINUX_DAEMONS.keys():
-        $`CARGO_PROFILE_RELEASE_STRIP=symbols cargo build --release -p muster-daemon --target {target}`
+        $`CARGO_PROFILE_RELEASE_STRIP=symbols cargo build --release -p muster-daemon -p muster-cli --target {target}`
     $`swift build -c release`
     stage_helpers("release")
     build_bundle()
@@ -1590,7 +1597,9 @@ if lint:
     $`cargo clippy --workspace --all-targets -- -D warnings`
     // The Linux halves of the daemon and of detection are code a Mac never compiles otherwise.
     // One target is enough: the two differ only in libc's per-architecture constants.
-    $`cargo clippy -p muster-daemon -p muster-detect --all-targets --target aarch64-unknown-linux-musl -- -D warnings`
+    $`cargo clippy -p muster-daemon -p muster-detect -p muster-msg --all-targets --target aarch64-unknown-linux-musl -- -D warnings`
+    // The CLI's own code only: its tests drive a window, whose seam is macOS's.
+    $`cargo clippy -p muster-cli --target aarch64-unknown-linux-musl -- -D warnings`
 
 if test:
     announce("test")

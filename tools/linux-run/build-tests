@@ -20,7 +20,7 @@ import tarfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-PACKAGES = ("muster-daemon", "muster-detect")
+PACKAGES = ("muster-daemon", "muster-detect", "muster-msg")
 DATA = Path("deps/ghostty/zig-out/muster-daemon-data")
 
 

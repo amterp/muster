@@ -6,7 +6,8 @@
 //! internet access can still be installed to.
 //!
 //! One install is one archive on one ssh round trip: the daemon, the data directory its shells
-//! are given, and on a Mac the libghostty-vt it links. The archive is built the same way every
+//! are given, the `muster` CLI an agent over there messages others with (MIP-4, section 13),
+//! and on a Mac the libghostty-vt the daemon links. The archive is built the same way every
 //! time from the same files, so its digest says whether what a machine has is what this app
 //! would send, and a machine that has it is not sent it again.
 
@@ -20,10 +21,13 @@ use sha2::{Digest, Sha256};
 /// Where the daemons this app can install are, as the shell found them.
 #[derive(Debug, Clone, Default)]
 pub struct Carried {
-    /// A directory holding `linux-x86_64/muster-daemon` and `linux-aarch64/muster-daemon`.
+    /// A directory holding `linux-x86_64/muster-daemon` and `linux-aarch64/muster-daemon`, each
+    /// with the `muster` CLI built for the same machine beside it.
     pub linux: Option<PathBuf>,
     /// This machine's own daemon, which is what a remote Mac runs.
     pub mac: Option<PathBuf>,
+    /// This machine's own `muster` CLI, which a remote Mac gets beside the daemon.
+    pub mac_cli: Option<PathBuf>,
     /// The libghostty-vt `mac` links, which has to travel with it.
     pub mac_library: Option<PathBuf>,
     /// The data directory every daemon gives its shells, the same on every platform.
@@ -60,27 +64,36 @@ impl Carried {
             )
         };
         let data = self.data.as_deref().ok_or_else(|| missing("data directory"))?;
-        let (daemon, library) = match build {
+        let (daemon, library, cli) = match build {
             "macos-aarch64" => (
                 self.mac.clone().ok_or_else(|| missing("daemon for macOS"))?,
                 Some(self.mac_library.clone().ok_or_else(|| missing("libghostty-vt"))?),
+                self.mac_cli.clone(),
             ),
-            linux => (
-                self.linux
-                    .as_deref()
-                    .map(|directory| directory.join(linux).join("muster-daemon"))
-                    .filter(|daemon| daemon.is_file())
-                    .ok_or_else(|| missing(&format!("daemon for {linux}")))?,
-                None,
-            ),
+            linux => {
+                let carried = self.linux.as_deref().map(|directory| directory.join(linux));
+                (
+                    carried
+                        .as_deref()
+                        .map(|directory| directory.join("muster-daemon"))
+                        .filter(|daemon| daemon.is_file())
+                        .ok_or_else(|| missing(&format!("daemon for {linux}")))?,
+                    None,
+                    carried.map(|directory| directory.join("muster")),
+                )
+            }
         };
-        let archive = archive(&daemon, library.as_deref(), data).map_err(|error| {
-            format!(
-                "could not pack the daemon for {host} from {} ({error}), so that machine's \
+        // A build that carries no CLI still installs the daemon: the panes over there work,
+        // and only messaging from them waits for an app that carries one.
+        let cli = cli.filter(|cli| cli.is_file());
+        let archive =
+            archive(&daemon, library.as_deref(), cli.as_deref(), data).map_err(|error| {
+                format!(
+                    "could not pack the daemon for {host} from {} ({error}), so that machine's \
                  panes are absent from the window. Check that the app's files are readable.",
-                daemon.display()
-            )
-        })?;
+                    daemon.display()
+                )
+            })?;
         let stamp = format!("{:x}", Sha256::digest(&archive));
         Ok(Payload { build, archive, stamp })
     }
@@ -96,14 +109,22 @@ fn build_for(platform: &Platform) -> Option<&'static str> {
     }
 }
 
-/// The install as a ustar archive, laid out as the machine keeps it: `muster-daemon`, on a Mac
-/// `libghostty-vt.dylib` beside it, and `muster-daemon-data/`.
+/// The install as a ustar archive, laid out as the machine keeps it: `muster`, `muster-daemon`,
+/// on a Mac `libghostty-vt.dylib` beside them, and `muster-daemon-data/`.
 ///
 /// The same bytes for the same files: entries in name order, and no owner, group or time of
 /// this machine's in any header, so the digest changes only when something sent does. A mode
 /// is one of two, executable or not, rather than whatever this checkout's umask left.
-fn archive(daemon: &Path, library: Option<&Path>, data: &Path) -> io::Result<Vec<u8>> {
+fn archive(
+    daemon: &Path,
+    library: Option<&Path>,
+    cli: Option<&Path>,
+    data: &Path,
+) -> io::Result<Vec<u8>> {
     let mut builder = tar::Builder::new(Vec::new());
+    if let Some(cli) = cli {
+        add_file(&mut builder, cli, "muster", 0o755)?;
+    }
     add_file(&mut builder, daemon, "muster-daemon", 0o755)?;
     if let Some(library) = library {
         add_file(&mut builder, library, "libghostty-vt.dylib", 0o644)?;
@@ -179,6 +200,7 @@ mod tests {
         std::fs::create_dir_all(root.join("linux/linux-x86_64")).unwrap();
         std::fs::create_dir_all(root.join("data/terminfo/x")).unwrap();
         std::fs::write(root.join("linux/linux-x86_64/muster-daemon"), b"\x7fELF").unwrap();
+        std::fs::write(root.join("linux/linux-x86_64/muster"), b"\x7fELF cli").unwrap();
         std::fs::write(root.join("data/terminfo/x/xterm-ghostty"), b"entry").unwrap();
         std::fs::write(root.join("data/README.md"), b"readme").unwrap();
         root
@@ -208,6 +230,7 @@ mod tests {
         assert_eq!(
             names,
             [
+                "muster",
                 "muster-daemon",
                 "muster-daemon-data",
                 "muster-daemon-data/README.md",

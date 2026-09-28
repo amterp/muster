@@ -64,6 +64,9 @@ pub struct Installed {
     pub directory: PathBuf,
     pub binary: PathBuf,
     pub socket: PathBuf,
+    /// Where the installed CLI is linked from as `muster`: `~/.muster/bin`, the directory a
+    /// local pane finds `muster` in too.
+    pub commands: PathBuf,
 }
 
 impl Installed {
@@ -75,6 +78,7 @@ impl Installed {
             binary: directory.join("muster-daemon"),
             directory,
             socket: install::socket_path(&home),
+            commands: home.join("bin"),
         })
     }
 
@@ -271,15 +275,24 @@ fn put_there(remote: &impl Far, installed: &Installed, payload: &Payload) -> Res
 /// one directory. If another install's directory lands in place between the check and the
 /// move, `mv` puts this one inside it, and it is removed from there. An archive that does not
 /// unpack takes its staging directory with it.
+///
+/// Then it points `muster` in the commands directory at the CLI the install carried, through a
+/// temporary link renamed into place, so a shell there never finds it half made. A link that
+/// cannot be made fails nothing: the daemon still serves every pane, and only messaging from
+/// that machine's shells waits for it.
 fn install_script(installed: &Installed, stamp: &str) -> String {
     let directory = path(&installed.directory);
+    let commands = path(&installed.commands);
     format!(
-        "d={directory}; s=\"$d.placing.$$\"; o=\"$d.old.$$\"; \
+        "d={directory}; b={commands}; s=\"$d.placing.$$\"; o=\"$d.old.$$\"; \
          rm -rf \"$s\" && mkdir -p \"$s\" && \
          {{ tar -xf - -C \"$s\" && printf %s {stamp} > \"$s/installed\" || \
          {{ rm -rf \"$s\"; false; }}; }} && \
          {{ if [ -d \"$d\" ]; then mv \"$d\" \"$o\"; fi; mv \"$s\" \"$d\"; }} && \
-         rm -rf \"$o\" \"$d/${{s##*/}}\"",
+         rm -rf \"$o\" \"$d/${{s##*/}}\" && \
+         {{ [ ! -f \"$d/muster\" ] || {{ mkdir -p \"$b\" && \
+         ln -sfn \"$d/muster\" \"$b/.muster.$$\" && mv -f \"$b/.muster.$$\" \"$b/muster\"; }} \
+         || true; }}",
         stamp = quoted(stamp),
     )
 }
@@ -363,6 +376,7 @@ mod tests {
             directory: PathBuf::from("/home/o'neil/.muster/daemon/0.9.0"),
             binary: PathBuf::from("/home/o'neil/.muster/daemon/0.9.0/muster-daemon"),
             socket: PathBuf::from("/home/o'neil/.muster/daemon/dev-1.sock"),
+            commands: PathBuf::from("/home/o'neil/.muster/bin"),
         };
         let script = start_script(&installed, "--- a marker ---", &BTreeMap::new());
         assert!(script.contains(&quoted("/home/o'neil/.muster/daemon/0.9.0/muster-daemon")));
@@ -402,7 +416,13 @@ mod tests {
     /// What `Here` installs from: `daemon` as this Mac's own, with a library and a data
     /// directory beside it.
     fn carrying(daemon: PathBuf, library: PathBuf, data: PathBuf) -> Carried {
-        Carried { linux: None, mac: Some(daemon), mac_library: Some(library), data: Some(data) }
+        Carried {
+            linux: None,
+            mac: Some(daemon),
+            mac_cli: None,
+            mac_library: Some(library),
+            data: Some(data),
+        }
     }
 
     fn installed_in(root: &Path) -> Installed {
@@ -411,6 +431,7 @@ mod tests {
             binary: directory.join("muster-daemon"),
             directory,
             socket: root.join("daemon").join("d.sock"),
+            commands: root.join("bin"),
         }
     }
 
@@ -470,6 +491,7 @@ mod tests {
             directory: root.clone(),
             binary,
             socket: root.join("daemon").join("d.sock"),
+            commands: root.join("bin"),
         };
 
         for shell in ["/bin/dash", "/bin/bash"] {
@@ -566,6 +588,33 @@ mod tests {
         assert!(leftovers.is_empty(), "a staged install was left behind: {leftovers:?}");
 
         crate::launch::stop(&installed.socket, Duration::from_secs(10)).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The CLI an install carries is what `muster` in the commands directory runs from then on,
+    /// so a shell over there with that directory on its PATH messages through this build.
+    #[test]
+    fn an_install_links_the_cli_it_carried_where_a_shell_finds_it() {
+        let root = scratch("cli");
+        let linux = root.join("linux/linux-x86_64");
+        std::fs::create_dir_all(&linux).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::write(linux.join("muster-daemon"), b"daemon").unwrap();
+        std::fs::write(linux.join("muster"), b"cli").unwrap();
+        let carried = Carried {
+            linux: Some(root.join("linux")),
+            data: Some(root.join("data")),
+            ..Carried::default()
+        };
+        let payload = carried.payload("here", &Platform::from_uname("Linux x86_64").unwrap());
+        let payload = payload.unwrap();
+        let installed = installed_in(&root);
+
+        Here.shell_on(&install_script(&installed, &payload.stamp), &payload.archive).unwrap();
+
+        let link = installed.commands.join("muster");
+        assert_eq!(std::fs::read_link(&link).unwrap(), installed.directory.join("muster"));
+        assert_eq!(std::fs::read(&link).unwrap(), b"cli");
         let _ = std::fs::remove_dir_all(&root);
     }
 

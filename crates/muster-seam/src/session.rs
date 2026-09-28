@@ -110,9 +110,15 @@ fn carried() -> remote_install::Carried {
     let data = poison::lock(&DAEMON_DATA, "daemon-data").clone().map(PathBuf::from).or_else(|| {
         mac.as_deref().and_then(Path::parent).map(|beside| beside.join("muster-daemon-data"))
     });
+    // The CLI the app pointed `muster` in the commands directory at when it started, which is
+    // the one that belongs to this build.
+    let mac_cli = commands_path()
+        .and_then(|commands| Path::new(&commands).join("muster").canonicalize().ok());
+    let mac_here = cfg!(all(target_os = "macos", target_arch = "aarch64"));
     remote_install::Carried {
         linux: poison::lock(&REMOTE_DAEMONS, "remote-daemons").clone().map(PathBuf::from),
-        mac: mac.filter(|_| cfg!(all(target_os = "macos", target_arch = "aarch64"))),
+        mac: mac.filter(|_| mac_here),
+        mac_cli: mac_cli.filter(|_| mac_here),
         mac_library: muster_vt::library_path(),
         data,
     }
