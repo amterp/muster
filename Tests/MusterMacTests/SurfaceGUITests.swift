@@ -19,6 +19,9 @@ import Testing
 // which the bridge writes to it unchanged and a replay restates on attach, so no test that
 // replaces the surface can say whether it does.
 //
+// Then Ghostty's own actions Muster hands a surface - scrolling, prompt jumps, select all - by
+// the action strings libghostty parses, which only a real surface can say it still knows.
+//
 // Real surfaces: a real runtime, a real command behind a pty, and a Metal layer on a view. Two
 // runtimes in one process hang, so the tests share one and take turns.
 //
@@ -87,6 +90,23 @@ extension SurfaceGUITests {
   func aShiftDragIsTheProgramsWhenItAsked() async throws {
     #expect(try await shiftDragSelects(programAsked: false))
     #expect(try !(await shiftDragSelects(programAsked: true)))
+  }
+
+  /// Muster names these by Ghostty's action strings, which libghostty parses when they are
+  /// asked for. A string renamed at a pin bump would only leave a debug record behind, and the
+  /// menu item would do nothing, so each is asked of a real surface here.
+  @MainActor
+  @Test("performs every one of Ghostty's actions Muster hands a surface")
+  func everySurfaceActionIsOneTheSurfacePerforms() throws {
+    let renderer = try sharedRenderer()
+    let view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    // A screen with nothing on it, so select_all selects nothing and puts nothing on the
+    // clipboard of the machine running the test.
+    let surface = try renderer.makeSurface(in: view, command: "/bin/sh -c \"sleep 10\"")
+    surface.setSize(width: 800, height: 600)
+    for action in SurfaceAction.allCases {
+      #expect(surface.perform(action).isEmpty, "the surface did not perform \(action)")
+    }
   }
 }
 

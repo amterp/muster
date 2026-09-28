@@ -437,6 +437,39 @@ struct AppMenuTests {
   }
 
   @MainActor
+  @Test("clear_screen carries the keystroke that asked for it, and a menu pick carries none")
+  func clearScreenCarriesItsKey() throws {
+    // On the alternate screen the daemon hands that key to the program, as Ghostty does, and it
+    // can only if the key arrived with the request. A click on the menu item has no key to hand.
+    let recorder = recorder()
+    let before = recorder.requests.count
+    let press = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0,
+        context: nil, characters: "k", charactersIgnoringModifiers: "k", isARepeat: false,
+        keyCode: 0x28))
+    let click = try #require(
+      NSEvent.mouseEvent(
+        with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+
+    Core.perform(.clearScreen, key: press)
+    Core.perform(.clearScreen, key: click)
+    Core.perform(.resetTerminal, key: nil)
+
+    let sent = recorder.sent(since: before) {
+      if case .performOnPane = $0.payload { true } else { false }
+    }.map(\.performOnPane)
+    try #require(sent.count == 3)
+    #expect(sent[0].action == .clear(Muster_PerformOnPane.ClearScreen()))
+    #expect(sent[0].key.key == "KeyK")
+    #expect(sent[0].key.modifiers.contains("super"))
+    #expect(!sent[1].hasKey, "a click is not a keystroke")
+    #expect(sent[2].action == .resetTerminal(Muster_PerformOnPane.ResetTerminal()))
+    #expect(!sent[2].hasKey)
+  }
+
+  @MainActor
   @Test("a rename sends the name, and an empty one asks for the name to be taken away")
   func renamingSendsWhatWasTyped() {
     let recorder = recorder()
