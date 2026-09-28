@@ -243,19 +243,19 @@ fn answer(mut stream: UnixStream) {
         }
     };
 
+    let received = Instant::now();
     // Decoded here only to tell a watch from everything else. Which transport shape a request
     // needs is this file's business; what the request means is still the handler's.
-    if let Ok(Request { payload: Some(request::Payload::WatchPanes(watching)) }) =
-        Request::decode(request.as_slice())
-    {
-        follow(stream, &watching);
+    let decoded = Request::decode(request.as_slice()).ok();
+    if let Some(Request { payload: Some(request::Payload::WatchPanes(watching)) }) = &decoded {
+        follow(stream, watching);
         return;
     }
+    let asked = decoded.as_ref().map_or_else(String::new, kind);
 
     // A request about another window's tab is that window's to answer (`forward`).
-    let carried = Request::decode(request.as_slice())
-        .ok()
-        .and_then(|decoded| Some((forward::elsewhere(&decoded)?, decoded)));
+    let carried = decoded.and_then(|decoded| Some((forward::elsewhere(&decoded)?, decoded)));
+    let forwarded = carried.is_some();
 
     // The same bytes-in, bytes-out call the C ABI makes, including its panic guard: a request
     // arriving here is no more trustworthy than one arriving from the shell.
@@ -264,6 +264,14 @@ fn answer(mut stream: UnixStream) {
         None => dispatch(&request),
     };
     after_the_window_holds_it(&response);
+    log::debug(
+        "command.answered",
+        fields! {
+            "request" => asked,
+            "forwarded" => forwarded,
+            "ms" => format!("{:.1}", received.elapsed().as_secs_f64() * 1000.0),
+        },
+    );
     if let Err(error) = write_frame(&mut stream, &response) {
         log::debug(
             "command.answer.unsent",
@@ -274,6 +282,26 @@ fn answer(mut stream: UnixStream) {
             },
         );
     }
+}
+
+/// What a request asks, as `ReadPane`: its payload's name, read off its debug form and cut at
+/// the first bracket, so nothing it carries is formatted. It can be somebody's typing.
+fn kind(request: &Request) -> String {
+    struct Name(String);
+    impl std::fmt::Write for Name {
+        fn write_str(&mut self, text: &str) -> std::fmt::Result {
+            if let Some(end) = text.find(['(', ' ', '{']) {
+                self.0.push_str(&text[..end]);
+                return Err(std::fmt::Error);
+            }
+            self.0.push_str(text);
+            Ok(())
+        }
+    }
+    let Some(payload) = &request.payload else { return String::new() };
+    let mut name = Name(String::new());
+    let _ = std::fmt::Write::write_fmt(&mut name, format_args!("{payload:?}"));
+    name.0
 }
 
 /// Holds back an answer naming a pane the request made until this window holds that pane.
@@ -383,4 +411,30 @@ fn hung_up(stream: &UnixStream) -> bool {
         std::io::Error::last_os_error().kind(),
         std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use muster_proto::{ReadPane, SendToPane};
+
+    use super::*;
+
+    #[test]
+    fn a_request_is_named_by_its_kind_and_nothing_it_carries() {
+        let read = Request {
+            payload: Some(request::Payload::ReadPane(ReadPane {
+                pane_id: "p1".to_string(),
+                ..ReadPane::default()
+            })),
+        };
+        assert_eq!(kind(&read), "ReadPane");
+        let send = Request {
+            payload: Some(request::Payload::SendToPane(SendToPane {
+                text: "hunter2".to_string(),
+                ..SendToPane::default()
+            })),
+        };
+        assert_eq!(kind(&send), "SendToPane");
+        assert_eq!(kind(&Request { payload: None }), "");
+    }
 }

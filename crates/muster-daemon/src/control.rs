@@ -9,7 +9,7 @@ use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{self, SyncSender, TrySendError};
 use std::sync::{Arc, atomic::AtomicU64, atomic::Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
@@ -43,6 +43,8 @@ pub(crate) struct Outbox {
 #[derive(Debug)]
 enum Outbound {
     Frame(Arc<[u8]>),
+    /// A request's answer, and how it came about, logged once it is written.
+    Answer(Arc<[u8]>, Answered),
     /// Answered once everything queued before it has been written.
     Flushed(mpsc::Sender<()>),
 }
@@ -61,6 +63,13 @@ impl Outbox {
                             return;
                         }
                     }
+                    Outbound::Answer(frame, answered) => {
+                        if muster_frame::write_frame(&mut writing, &frame).is_err() {
+                            let _ = writing.shutdown(Shutdown::Both);
+                            return;
+                        }
+                        answered.log(id);
+                    }
                     Outbound::Flushed(done) => {
                         let _ = done.send(());
                     }
@@ -73,7 +82,11 @@ impl Outbox {
     /// Queues a frame. False when the connection is gone or has fallen too far behind, in which
     /// case it is hung up.
     pub(crate) fn push(&self, frame: Arc<[u8]>) -> bool {
-        match self.sender.try_send(Outbound::Frame(frame)) {
+        self.queue(Outbound::Frame(frame))
+    }
+
+    fn queue(&self, outbound: Outbound) -> bool {
+        match self.sender.try_send(outbound) {
             Ok(()) => true,
             Err(TrySendError::Full(_)) => {
                 log::warn(
@@ -117,6 +130,41 @@ impl Outbox {
     }
 }
 
+/// Where one request's time went, from reading it to writing its answer.
+///
+/// Logged by the writer, once the answer is on the socket, because that is the moment its client
+/// can have it: an answer queued behind a slow client's backlog has not been given yet.
+#[derive(Debug, Clone, Copy)]
+struct Answered {
+    id: u64,
+    request: &'static str,
+    received: Instant,
+    /// Waiting for the session lock, which every request takes and anything holding it delays.
+    lock: Duration,
+    queued: Instant,
+}
+
+impl Answered {
+    fn after(id: u64, request: &'static str, received: Instant, lock: Duration) -> Answered {
+        Answered { id, request, received, lock, queued: received }
+    }
+
+    fn log(&self, connection: u64) {
+        let ms = |elapsed: Duration| format!("{:.1}", elapsed.as_secs_f64() * 1000.0);
+        log::debug(
+            "daemon.request.answered",
+            fields! {
+                "connection" => connection,
+                "id" => self.id,
+                "request" => self.request,
+                "ms" => ms(self.received.elapsed()),
+                "lock_ms" => ms(self.lock),
+                "queued_ms" => ms(self.queued.elapsed()),
+            },
+        );
+    }
+}
+
 /// Serves requests on a connection that has already been welcomed, until it hangs up.
 pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) {
     let outbox = match Outbox::open(&stream) {
@@ -156,6 +204,15 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 break;
             }
         };
+        let received = Instant::now();
+        let name = request.service.as_ref().map_or("none", muster_daemon_proto::service_name);
+        let mut lock = Duration::ZERO;
+        let mut locked = || {
+            let asked = Instant::now();
+            let session = shared.lock();
+            lock += asked.elapsed();
+            session
+        };
         let mut stop = matches!(
             &request.service,
             Some(Service::Session(proto::SessionRequest {
@@ -169,10 +226,11 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         // and its answer goes under this lock, beside the state it describes.
         let handled = match request.service {
             Some(service) => {
-                let mut session = shared.lock();
+                let mut session = locked();
                 match session.handle(service, &outbox) {
                     Handled::Snapshot(reply) => {
-                        answer(&session, &outbox, request.id, reply);
+                        let timing = Answered::after(request.id, name, received, lock);
+                        answer(&session, &outbox, reply, timing);
                         continue;
                     }
                     handled => handled,
@@ -186,13 +244,13 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             // and a directory on a hung mount would otherwise stall every connection with it.
             Handled::Start(starting) => {
                 let started = starting.start();
-                shared.lock().started(*starting, started)
+                locked().started(*starting, started)
             }
             Handled::Read(reading) => reading.read(),
             // Outside the lock too: compiling reads the override directory, which can hang.
             Handled::Manifests(loading) => {
                 let loaded = loading.load();
-                shared.lock().manifests_loaded(*loading, loaded)
+                locked().manifests_loaded(*loading, loaded)
             }
             // Outside the lock: it waits on another daemon, step by step.
             Handled::Replace(replacement) => {
@@ -203,7 +261,9 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 reply
             }
         };
-        answer(&shared.lock(), &outbox, request.id, reply);
+        let session = locked();
+        answer(&session, &outbox, reply, Answered::after(request.id, name, received, lock));
+        drop(session);
         if let Some(stop) = stop {
             outbox.flush(STOP_FLUSH);
             let _ = shared.stopping.send(stop);
@@ -216,9 +276,10 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
     log::info("daemon.connection.closed", fields! { "connection" => outbox.id });
 }
 
-/// Queues the answer to request `id`. Called with the session locked, after the request's
-/// events were queued, so they reach a subscriber first.
-fn answer(session: &Session, outbox: &Outbox, id: u64, reply: Reply) {
+/// Queues the answer to a request. Called with the session locked, after the request's events
+/// were queued, so they reach a subscriber first.
+fn answer(session: &Session, outbox: &Outbox, reply: Reply, answered: Answered) {
+    let id = answered.id;
     let answer = proto::Answer {
         id,
         outcome: reply.outcome.into(),
@@ -255,5 +316,5 @@ fn answer(session: &Session, outbox: &Outbox, id: u64, reply: Reply) {
         })
         .encode_to_vec();
     }
-    outbox.push(frame.into());
+    outbox.queue(Outbound::Answer(frame.into(), Answered { queued: Instant::now(), ..answered }));
 }

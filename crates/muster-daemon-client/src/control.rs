@@ -14,7 +14,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
@@ -65,16 +65,60 @@ impl std::fmt::Display for Unanswered {
 /// A request sent, and the answer on its way.
 #[derive(Debug)]
 pub struct Pending {
-    answer: Receiver<proto::Answer>,
+    answer: Receiver<Arrived>,
+    id: u64,
+    request: &'static str,
+    sent: Instant,
 }
+
+/// An answer, and when the reader took it off the socket.
+type Arrived = (proto::Answer, Instant);
+
+/// An answer later than this is logged at info, since it is somebody waiting.
+const SLOW: Duration = Duration::from_secs(1);
 
 impl Pending {
     /// Waits up to `patience` for the answer.
+    ///
+    /// Says how long it took, in two parts: until the reader took the answer off the socket,
+    /// which is the daemon and everything queued ahead of the answer, and until this thread ran
+    /// again to take it. On a loaded machine the second is the one a thread's priority decides.
     pub fn wait(&self, patience: Duration) -> Result<proto::Answer, Unanswered> {
-        self.answer.recv_timeout(patience).map_err(|error| match error {
-            RecvTimeoutError::Timeout => Unanswered::TimedOut,
-            RecvTimeoutError::Disconnected => Unanswered::Ended,
-        })
+        let ms = |elapsed: Duration| format!("{:.1}", elapsed.as_secs_f64() * 1000.0);
+        match self.answer.recv_timeout(patience) {
+            Ok((answer, read)) => {
+                let took = self.sent.elapsed();
+                let fields = fields! {
+                    "id" => self.id,
+                    "request" => self.request,
+                    "ms" => ms(took),
+                    "read_ms" => ms(read.duration_since(self.sent)),
+                };
+                if took > SLOW {
+                    log::info("daemon.answer.slow", fields);
+                } else {
+                    log::debug("daemon.answered", fields);
+                }
+                Ok(answer)
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                log::warn(
+                    "daemon.answer.late",
+                    fields! {
+                        "id" => self.id,
+                        "request" => self.request,
+                        "waited_ms" => ms(patience),
+                        "impact" => "the caller is told the daemon did not answer; the request \
+                                     may still take effect",
+                        "check" => "the daemon's daemon.request.answered line for this id, \
+                                    which says whether it answered late or the answer waited \
+                                    here, and the machine's load",
+                    },
+                );
+                Err(Unanswered::TimedOut)
+            }
+            Err(RecvTimeoutError::Disconnected) => Err(Unanswered::Ended),
+        }
     }
 }
 
@@ -112,6 +156,7 @@ impl Requests {
     fn send(&self, service: Service, subscribes: bool) -> Pending {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
         let (answer, answered) = mpsc::channel();
+        let request = muster_daemon_proto::service_name(&service);
         {
             let mut waiting = self.waiting.lock().unwrap_or_else(PoisonError::into_inner);
             // Left out once the connection has ended: dropping the sender answers `Ended`.
@@ -121,7 +166,7 @@ impl Requests {
         }
         // Registered before it is sent, so the answer cannot arrive before its waiter.
         let _ = self.to_send.send(proto::Request { id, service: Some(service) });
-        Pending { answer: answered }
+        Pending { answer: answered, id, request, sent: Instant::now() }
     }
 }
 
@@ -136,7 +181,7 @@ struct Waiting {
 
 #[derive(Debug)]
 struct Waiter {
-    answer: Sender<proto::Answer>,
+    answer: Sender<Arrived>,
     /// A subscribe, whose snapshot says which event comes next.
     subscribes: bool,
 }
@@ -340,13 +385,14 @@ fn read_messages(
     let mut order = Order::Unsubscribed;
     // Answers that arrived while events were being dropped, handed over once a new snapshot
     // has been delivered: the events that carried their effects are in it, and not before.
-    let mut held_back: Vec<(Waiter, proto::Answer)> = Vec::new();
+    let mut held_back: Vec<(Waiter, Arrived)> = Vec::new();
     let why = loop {
         let message = match connection::receive::<proto::ControlMessage>(&mut stream) {
-            Ok(Some(message)) => message.message,
+            Ok(Some(message)) => (message.message, Instant::now()),
             Ok(None) => break "the daemon hung up".to_string(),
             Err(error) => break format!("reading from the daemon failed: {error}"),
         };
+        let (message, read) = message;
         match message {
             Some(control_message::Message::Event(event)) => match order {
                 Order::Next(expected) if event.seq == expected => {
@@ -405,17 +451,17 @@ fn read_messages(
                     // every held answer kept waiting until the socket happened to end. Ending it
                     // now has the follower reconnect in full.
                     let reason = answer.reason.clone();
-                    let _ = waiter.answer.send(answer);
+                    let _ = waiter.answer.send((answer, read));
                     break format!(
                         "the daemon answered a subscribe after missed events without its state \
                          ({reason})"
                     );
                 } else if matches!(order, Order::Lost) {
-                    held_back.push((waiter, answer));
+                    held_back.push((waiter, (answer, read)));
                     continue;
                 }
                 // A caller that stopped waiting has dropped its receiver.
-                let _ = waiter.answer.send(answer);
+                let _ = waiter.answer.send((answer, read));
             }
             Some(control_message::Message::LogLine(line)) => {
                 deliver(Delivered::Log(line), requests);
