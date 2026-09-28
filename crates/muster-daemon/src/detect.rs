@@ -13,7 +13,8 @@ use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_detect::{
-    Agent, Carried, Detector, Drift, Manifests, Pane, Progress, Publication, State, System,
+    Agent, Carried, CarriedReport, Detector, Drift, Manifests, Pane, Progress, Publication, State,
+    System,
 };
 
 use crate::pane::PaneIo;
@@ -125,11 +126,7 @@ impl Detection {
             carried.emitted.as_ref().map_or((None, proto::AgentState::Unknown), recorded);
         let (concluded_agent, concluded_state) =
             carried.concluded.as_ref().map_or((None, proto::AgentState::Unknown), recorded);
-        let (report_agent, report_state, report_ago) =
-            carried.report.as_ref().map_or(
-                (None, proto::AgentState::Unknown, Duration::ZERO),
-                |(agent, state, ago)| (Some(agent.id().to_string()), agent_state(*state), *ago),
-            );
+        let report = carried.report.as_ref();
         proto::handoff::Detection {
             agent: carried.agent.as_ref().map(|agent| agent.id().to_string()),
             misses: carried.misses.into(),
@@ -150,9 +147,12 @@ impl Detection {
             concluded: carried.concluded.is_some(),
             concluded_agent,
             concluded_state: concluded_state.into(),
-            report_agent,
-            report_state: report_state.into(),
-            report_ms_ago: millis(report_ago),
+            report_agent: report.map(|report| report.agent.id().to_string()),
+            report_state: report
+                .map_or(proto::AgentState::Unknown, |report| agent_state(report.state))
+                .into(),
+            report_ms_ago: report.map_or(0, |report| millis(report.ago)),
+            report_confirmed: report.is_some_and(|report| report.confirmed),
             output_ms_ago: carried.output_ago.map(millis),
             emitted_reported: carried.emitted.as_ref().is_some_and(|emitted| emitted.reported),
             emitted_unreadable: carried.emitted.as_ref().is_some_and(|emitted| emitted.unreadable),
@@ -185,8 +185,11 @@ impl Detection {
             reported: false,
             unreadable: false,
         });
-        let report = carried.report_agent.as_deref().map(|agent| {
-            (Agent::new(agent), state_of(carried.report_state()), millis(carried.report_ms_ago))
+        let report = carried.report_agent.as_deref().map(|agent| CarriedReport {
+            agent: Agent::new(agent),
+            state: state_of(carried.report_state()),
+            ago: millis(carried.report_ms_ago),
+            confirmed: carried.report_confirmed,
         });
         let carried_here = Carried {
             agent: carried.agent.as_deref().map(Agent::new),

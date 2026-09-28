@@ -540,12 +540,23 @@ pub struct Carried {
     pub title_pending: bool,
     /// What the screen rules last concluded.
     pub concluded: Option<Publication>,
-    /// The agent's own report, and how long ago it came.
-    pub report: Option<(Agent, State, Duration)>,
+    /// The agent's own report.
+    pub report: Option<CarriedReport>,
     /// How long ago the pane last produced output, which a working report goes stale from.
     pub output_ago: Option<Duration>,
     /// Where telling that the rules cannot read the screen stands.
     pub drift: Drift,
+}
+
+/// An agent's own report, as another process needs it to go on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CarriedReport {
+    pub agent: Agent,
+    pub state: State,
+    /// How long ago it came.
+    pub ago: Duration,
+    /// Whether the rules had read the same state since it came.
+    pub confirmed: bool,
 }
 
 /// What checking the foreground came to.

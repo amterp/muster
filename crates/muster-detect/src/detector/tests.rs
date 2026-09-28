@@ -798,7 +798,12 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
         shell_exit_reported: false,
         title_pending: true,
         concluded: Some(published(Some(claude()), State::Idle)),
-        report: Some((claude(), State::Working, Duration::from_millis(500))),
+        report: Some(CarriedReport {
+            agent: claude(),
+            state: State::Working,
+            ago: Duration::from_millis(500),
+            confirmed: true,
+        }),
         output_ago: Some(Duration::from_millis(50)),
         drift: Drift {
             rules_idle_ago: Some(Duration::from_secs(40)),
@@ -818,7 +823,10 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
         Carried {
             grace_left: Some(Duration::from_millis(1400)),
             idle_seen_ago: Some(Duration::from_millis(300)),
-            report: Some((claude(), State::Working, Duration::from_millis(600))),
+            report: Some(CarriedReport {
+                ago: Duration::from_millis(600),
+                ..carried.report.clone().expect("a report")
+            }),
             output_ago: Some(Duration::from_millis(150)),
             drift: Drift {
                 rules_idle_ago: Some(Duration::from_millis(40_100)),
@@ -1098,7 +1106,12 @@ fn a_resumed_report_counts_without_a_recorded_conclusion() {
     run.start_agent();
     let mut carried = run.detector.carried(run.now);
     carried.concluded = None;
-    carried.report = Some((claude(), State::Blocked, Duration::ZERO));
+    carried.report = Some(CarriedReport {
+        agent: claude(),
+        state: State::Blocked,
+        ago: Duration::ZERO,
+        confirmed: false,
+    });
     run.detector = Detector::resumed(SHELL, carried, run.now, 0);
     // What the next tick lays the report over, before the rules conclude anything.
     let effective = run.detector.effective(run.now).expect("a report with nothing concluded");

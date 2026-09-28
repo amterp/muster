@@ -1133,6 +1133,9 @@ message Handoff {
     optional uint32 unmatched_ms_ago = 27;
     optional uint32 working_ms_ago = 28;
     repeated uint32 active_ms_ago = 29;
+    // Whether the rules had read the report's state since it came: one they had lets go once
+    // they read something else, where one they never read waits for the screen to move.
+    bool report_confirmed = 30;
   }
 
   message Ready {}

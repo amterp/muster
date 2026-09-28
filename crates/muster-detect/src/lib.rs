@@ -20,7 +20,7 @@ mod process;
 use std::fmt;
 use std::sync::Arc;
 
-pub use detector::{Carried, Detector, Drift, Pane, Publication, Tick};
+pub use detector::{Carried, CarriedReport, Detector, Drift, Pane, Publication, Tick};
 pub use identify::{Probe, identify_in_job, probe};
 pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Version};
 pub use manifests::{Manifests, Source, Warning};

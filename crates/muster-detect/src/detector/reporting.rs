@@ -9,6 +9,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+use crate::detector::CarriedReport;
 use crate::{Agent, State};
 
 /// A working report stops counting after this long without a byte of output. A working agent
@@ -237,17 +238,17 @@ impl Reporting {
         self.unreadable
     }
 
-    /// What another process needs to go on: the report and how long ago it came, and how long
-    /// ago the pane last produced output. Whether the screen reads is learned again, from the
-    /// screens the new process sees.
-    pub(crate) fn carried(
-        &self,
-        now: Instant,
-    ) -> (Option<(Agent, State, Duration)>, Option<Duration>) {
-        let report = self
-            .report
-            .as_ref()
-            .map(|report| (report.agent.clone(), report.state, now.duration_since(report.at)));
+    /// What another process needs to go on: the report, and how long ago the pane last produced
+    /// output. What the rules read is learned again, from the screens the new process sees; that
+    /// they had read the report's state is carried, since a report they confirmed lets go on a
+    /// still screen where one they never read would not.
+    pub(crate) fn carried(&self, now: Instant) -> (Option<CarriedReport>, Option<Duration>) {
+        let report = self.report.as_ref().map(|report| CarriedReport {
+            agent: report.agent.clone(),
+            state: report.state,
+            ago: now.duration_since(report.at),
+            confirmed: report.confirmed,
+        });
         (report, self.last_output_at.map(|at| now.duration_since(at)))
     }
 
@@ -264,16 +265,19 @@ impl Reporting {
     }
 
     pub(crate) fn resumed(
-        report: Option<(Agent, State, Duration)>,
+        report: Option<CarriedReport>,
         output_ago: Option<Duration>,
         drift: Drift,
         now: Instant,
     ) -> Reporting {
         let at = |ago: Duration| now.checked_sub(ago);
-        // Whether the rules confirmed the report is not carried: they read the screen afresh
-        // at the first tick here, and confirm it then if they still agree.
-        let report = report.and_then(|(agent, state, ago)| {
-            Some(SelfReport { agent, state, at: at(ago)?, confirmed: false })
+        let report = report.and_then(|report| {
+            Some(SelfReport {
+                agent: report.agent,
+                state: report.state,
+                at: at(report.ago)?,
+                confirmed: report.confirmed,
+            })
         });
         Reporting {
             report,
