@@ -151,6 +151,9 @@ pub(crate) struct PaneIo {
     /// When the writer last wrote input to the program, for detection to tell its echo from the
     /// program's own output.
     input_at: Mutex<Option<Instant>>,
+    /// The process the pane runs, usually a shell: an agent in its place in the foreground is
+    /// still there, and the shell there instead means it has left.
+    shell: Option<i32>,
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -232,6 +235,10 @@ impl PaneIo {
     /// The process group holding the pane's terminal, when it says.
     pub(crate) fn foreground_group(&self) -> Option<i32> {
         pty::foreground_group(self.master.as_fd())
+    }
+
+    pub(crate) fn shell(&self) -> Option<i32> {
+        self.shell
     }
 
     pub(crate) fn grid(&self) -> Grid {
@@ -665,6 +672,7 @@ impl Pane {
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
             input_at: Mutex::new(None),
+            shell: process,
         });
         let pane = record.pane.clone();
 
@@ -1065,6 +1073,7 @@ impl PaneIo {
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
             input_at: Mutex::new(None),
+            shell: None,
         })
     }
 

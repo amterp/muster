@@ -8,6 +8,7 @@
 mod doorbell;
 mod inbox;
 mod presence;
+mod prompt;
 mod store;
 
 pub(crate) use doorbell::Doorbell;
@@ -252,13 +253,21 @@ fn posting(
             .collect();
         (posted, activities)
     };
-    if !deferred.is_empty() {
-        shared.doorbell.nudge();
+    let names: Vec<(String, String)> =
+        ringing.iter().map(|(wake, _)| (wake.name.clone(), wake.notice.group.clone())).collect();
+    let came = doorbell::ring_all(shared, ringing);
+    let mut refused_rings: Vec<(String, String)> = Vec::new();
+    for ((name, group), came) in names.into_iter().zip(came) {
+        match came {
+            doorbell::Came::Rang => {}
+            doorbell::Came::Waits => deferred.push(name),
+            doorbell::Came::Refused => refused_rings.push((name, group)),
+        }
     }
-
-    doorbell::ring_all(shared, ringing);
+    // Rung, or left for the doorbell: either way it has something to look at.
+    shared.doorbell.nudge();
     let failed = wake(&sending);
-    if !failed.is_empty() {
+    if !failed.is_empty() || !refused_rings.is_empty() {
         let mut messages = shared.messages();
         if !messages.handing_over {
             for wake in &failed {
@@ -266,9 +275,20 @@ fn posting(
                     kept_nothing(&refusal);
                 }
             }
+            // A pane that would not take the ring is no reason to think its agent gone, but
+            // the agent was not woken, and the next post should try again.
+            for (name, group) in &refused_rings {
+                if let Some(error) = messages.service.unwake(name, group) {
+                    kept_nothing(&Refusal::Store { error });
+                }
+            }
         }
     }
-    let failed: Vec<&str> = failed.iter().map(|wake| wake.name.as_str()).collect();
+    let failed: Vec<&str> = failed
+        .iter()
+        .map(|wake| wake.name.as_str())
+        .chain(refused_rings.iter().map(|(name, _)| name.as_str()))
+        .collect();
     if let Some(error) = &posted.unsaved {
         kept_nothing(&Refusal::Store { error: error.clone() });
     }

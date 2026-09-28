@@ -97,6 +97,8 @@ pub(crate) struct Shared {
     pub(crate) messages: Mutex<Messages>,
     /// Rings agents in panes once they can be rung.
     pub(crate) doorbell: Doorbell,
+    /// The manifests panes are detected by, which the doorbell reads a prompt with too.
+    pub(crate) detecting: Arc<Detecting>,
     /// Told when the daemon should exit, and why.
     pub(crate) stopping: Sender<Stop>,
     pub(crate) instance: u64,
@@ -146,9 +148,11 @@ impl Shared {
                 scrollback: scrollback(&settings),
                 scroll_multiplier: settings.scroll_multiplier.unwrap_or(1.0),
             });
+            let detecting = Detecting::start(overrides);
             Shared {
                 messages: Mutex::new(Messages::load(&socket.path)),
                 doorbell: Doorbell::default(),
+                detecting: Arc::clone(&detecting),
                 session: Mutex::new(Session {
                     instance,
                     seq: 0,
@@ -157,7 +161,7 @@ impl Shared {
                     settings,
                     settled,
                     deferred: Vec::new(),
-                    detecting: Detecting::start(overrides),
+                    detecting,
                     app_manifests: Vec::new(),
                     manifest_loads: 0,
                     manifests_adopted: 0,

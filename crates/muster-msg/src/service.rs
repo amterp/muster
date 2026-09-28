@@ -1049,6 +1049,19 @@ impl<S: Store> Messaging<S> {
         wakes
     }
 
+    /// Forgets that `name` was woken for `group`: the wake never reached it, so the next post
+    /// there wakes it afresh rather than finding it already woken. Returns why the state could
+    /// not be saved, when it could not.
+    pub fn unwake(&mut self, name: &str, group: &str) -> Option<String> {
+        let participant = self.participants.get_mut(name)?;
+        participant.woken.remove(group);
+        participant.rewoken.remove(group);
+        match self.save() {
+            Err(Refusal::Store { error }) => Some(error),
+            _ => None,
+        }
+    }
+
     /// Whether `name` was woken for `group` and has not read it since.
     pub fn woken_for(&self, name: &str, group: &str) -> bool {
         self.participants.get(name).is_some_and(|participant| participant.woken.contains(group))

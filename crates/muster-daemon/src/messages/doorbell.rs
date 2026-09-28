@@ -2,17 +2,18 @@
 //! and a Return, for an agent nothing else can wake - which, since a session that bypasses
 //! permission prompts holds what its inbox is sent, is every agent in a pane.
 //!
-//! A Return typed at the wrong moment is an answer, so a pane is rung only while its agent is
-//! idle or waiting and nothing has been typed into it for a few seconds. Blocked is a dialog the
-//! Return would answer. Working is ruled out too, because a dialog can open between the check
-//! and the write. What cannot be rung at once waits here, and this thread rings it when the pane
-//! allows. The same thread wakes an agent once more when it goes idle with what it was woken
-//! for still unread (section 5).
+//! What it types is read as an answer by whatever the screen shows, so it types only into what
+//! it has seen: the agent at its own prompt, and the prompt empty ([`super::prompt`]). A screen
+//! detection does not recognize, a menu, a dialog opened while the agent was idle, a draft half
+//! typed - none of these is an empty prompt, so none is rung. Before it looks it waits for the
+//! agent to be idle or waiting and for nothing to have been typed into the pane for a few
+//! seconds, since a keystroke may not have reached the screen yet. What cannot be rung at once
+//! waits here, and this thread rings it when the pane allows. The same thread wakes an agent
+//! once more when it goes idle with what it was woken for still unread (section 5).
 //!
-//! Idle is not always ready. Detection reads an agent idle the moment it is found, and Claude
-//! Code, still starting, keeps what is typed then as its prompt and drops the Return. So a ring
-//! the agent neither acts on nor reads for is followed by another Return, a few times, under the
-//! same guards as the ring.
+//! Claude Code keeps what is typed while it starts as its prompt and drops the Return, so a
+//! ring can sit unsent. Return is pressed again for it, a few times, but only while the prompt
+//! holds the ring's own text and nothing else: that Return can send nothing but the ring.
 
 use std::collections::HashMap;
 use std::sync::{OnceLock, Weak};
@@ -25,6 +26,7 @@ use muster_daemon_proto::messaging;
 use muster_msg::{Activity, Via, Wake};
 
 use super::presence::{Panes, Seen};
+use super::prompt::{self, AtPrompt};
 use super::{Messages, notice_of};
 use crate::session::Shared;
 use crate::writer::Input;
@@ -34,7 +36,7 @@ use crate::writer::Input;
 pub(crate) const QUIET: Duration = Duration::from_secs(3);
 
 /// How long the thread sleeps while something is pending that no change will announce - a
-/// pane whose agent is not yet found, say.
+/// pane whose agent is not yet found, or whose prompt holds a draft.
 const LOOK_AGAIN: Duration = Duration::from_secs(5);
 
 /// How long a rung agent has to take the ring - go to work, or read what it was rung for -
@@ -74,25 +76,51 @@ pub(crate) fn may_ring(seen: &Seen, now: Instant) -> Now {
     }
 }
 
-/// Types the wake into the pane: one line, then Return. False when the pane would not take it.
-fn ring(seen: &Seen, wake: &Wake) -> bool {
-    let text = messaging::wake_text(&notice_of(&wake.notice));
-    seen.io.queue(Input::Send { text, enter: true })
+/// What came of ringing one pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Came {
+    Rang,
+    /// Its agent is not at an empty prompt; the wake waits with the others.
+    Waits,
+    /// The pane would not take what was typed.
+    Refused,
 }
 
-/// Rings each pane, and keeps what it rang to press Return for again if the ring is not taken.
-/// Called with no lock held.
-pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) {
+/// Looks at each pane and rings those whose agent is at an empty prompt, one line and then
+/// Return; keeps what it rang, to press Return for again if the ring is not taken, and puts
+/// back what it could not ring yet. Called with no lock held. Says what came of each wake, in
+/// the order given; the caller sees that the doorbell looks again when it should.
+pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came> {
     let mut rung = Vec::new();
+    let mut waiting = Vec::new();
+    let mut came = Vec::new();
     for (wake, seen) in ringing {
-        let took = ring(&seen, &wake);
-        rang(&wake, took);
-        if took {
-            rung.push(Rung { wake, at: Instant::now(), presses: 0 });
+        match prompt::look(&seen.io, &seen.agent, &shared.detecting) {
+            AtPrompt::Empty => {
+                let text = messaging::wake_text(&notice_of(&wake.notice));
+                let took = seen.io.queue(Input::Send { text, enter: true });
+                rang(&wake, took);
+                if took {
+                    rung.push(Rung { wake, at: Instant::now(), presses: 0 });
+                    came.push(Came::Rang);
+                } else {
+                    came.push(Came::Refused);
+                }
+            }
+            AtPrompt::Holds(_) => {
+                waits(&wake, "its prompt is not empty");
+                waiting.push(wake);
+                came.push(Came::Waits);
+            }
+            AtPrompt::Not(why) => {
+                waits(&wake, why);
+                waiting.push(wake);
+                came.push(Came::Waits);
+            }
         }
     }
-    if rung.is_empty() {
-        return;
+    if rung.is_empty() && waiting.is_empty() {
+        return came;
     }
     {
         let mut messages = shared.messages();
@@ -104,8 +132,14 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) {
             })
         });
         messages.rung.extend(rung);
+        messages.pending.extend(waiting);
     }
-    shared.doorbell.nudge();
+    came
+}
+
+fn waits(wake: &Wake, why: &str) {
+    // Debug: a draft left in a prompt is looked at again every few seconds.
+    log::debug("msg.ring.waits", fields! { "name" => wake.name, "why" => why });
 }
 
 /// The thread's handle, so a post or a change in a pane's agent can wake it.
@@ -222,7 +256,15 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Opti
         }
         pressing = unanswered_rings(&mut messages, &panes, now, &mut next);
     }
-    ring_all(shared, ringing);
+    let came = ring_all(shared, ringing);
+    // A ring is looked at again once it is due a Return pressed again; nothing announces a draft
+    // being cleared, so a prompt that held one is looked at again too.
+    if came.contains(&Came::Rang) {
+        sooner(&mut next, Instant::now() + ANSWER);
+    }
+    if came.contains(&Came::Waits) {
+        sooner(&mut next, Instant::now() + LOOK_AGAIN);
+    }
     if press_again(shared, pressing) {
         sooner(&mut next, Instant::now() + ANSWER);
     }
@@ -234,7 +276,8 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Opti
     }
 }
 
-/// Keeps the rings not yet taken, and takes out those due a Return pressed again.
+/// Keeps the rings not yet taken, and takes out those due a Return pressed again. A ring whose
+/// agent went to work, or read, was taken; one pressed as often as it may be ends.
 fn unanswered_rings(
     messages: &mut Messages,
     panes: &Panes,
@@ -251,20 +294,17 @@ fn unanswered_rings(
             continue;
         }
         let due = rung.at + ANSWER;
+        if rung.presses >= PRESSES && due <= now {
+            ended(messages, &rung, "Return was pressed for it as often as it may be");
+            continue;
+        }
         let at = if due > now {
             due
-        } else if rung.presses >= PRESSES {
-            unanswered(&rung, pane);
-            continue;
+        } else if let Now::At(quiet) = may_ring(seen, now) {
+            quiet
         } else {
-            match may_ring(seen, now) {
-                Now::Ring => {
-                    pressing.push((rung, seen.clone()));
-                    continue;
-                }
-                Now::At(at) => at,
-                Now::AtIdle => now + ANSWER,
-            }
+            pressing.push((rung, seen.clone()));
+            continue;
         };
         sooner(next, at);
         messages.rung.push(rung);
@@ -272,53 +312,73 @@ fn unanswered_rings(
     pressing
 }
 
-/// Presses Return in each pane, and keeps each ring to look at again. Called with no lock held;
-/// true when any was pressed.
+/// Presses Return again for each ring whose text sits unsent in its agent's prompt, and nothing
+/// else there, which is all such a Return can send. A prompt holding anything more, or not
+/// showing at all, ends the ring; an empty one means the ring was sent, or cleared. Called with
+/// no lock held; true when any was pressed.
 fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
     let mut pressed = Vec::new();
+    let mut ending: Vec<(Rung, &'static str)> = Vec::new();
     for (mut rung, seen) in pressing {
-        if seen.io.queue(Input::Send { text: String::new(), enter: true }) {
-            rung.presses += 1;
-            rung.at = Instant::now();
-            log::info(
-                "msg.ring.pressed_again",
-                fields! {
-                    "name" => rung.wake.name,
-                    "group" => rung.wake.notice.group,
-                    "presses" => rung.presses,
-                },
-            );
-            pressed.push(rung);
-        } else {
-            rang(&rung.wake, false);
+        let text = messaging::wake_text(&notice_of(&rung.wake.notice));
+        match prompt::look(&seen.io, &seen.agent, &shared.detecting) {
+            AtPrompt::Holds(held) if prompt::is_only(&held, &text) => {
+                if !seen.io.queue(Input::Send { text: String::new(), enter: true }) {
+                    ending.push((rung, "its pane would not take the Return"));
+                    continue;
+                }
+                rung.presses += 1;
+                rung.at = Instant::now();
+                log::info(
+                    "msg.ring.pressed_again",
+                    fields! {
+                        "name" => rung.wake.name,
+                        "group" => rung.wake.notice.group,
+                        "presses" => rung.presses,
+                    },
+                );
+                pressed.push(rung);
+            }
+            AtPrompt::Empty => {}
+            AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring")),
+            AtPrompt::Not(why) => ending.push((rung, why)),
         }
     }
-    if pressed.is_empty() {
+    if pressed.is_empty() && ending.is_empty() {
         return false;
     }
-    shared.messages().rung.extend(pressed);
-    true
+    let any = !pressed.is_empty();
+    let mut messages = shared.messages();
+    messages.rung.extend(pressed);
+    for (rung, why) in &ending {
+        ended(&mut messages, rung, why);
+    }
+    any
+}
+
+/// Gives up a ring its agent never took, and forgets that the agent was woken for it, so the
+/// next post there rings again rather than counting it woken.
+fn ended(messages: &mut Messages, rung: &Rung, why: &str) {
+    log::warn(
+        "msg.ring.ended",
+        fields! {
+            "name" => rung.wake.name,
+            "group" => rung.wake.notice.group,
+            "presses" => rung.presses,
+            "why" => why,
+            "impact" => "the agent was rung and has neither gone to work nor read; it is not \
+                         rung again until another post comes for it",
+            "check" => "what the pane shows: the wake may sit unsent in the agent's prompt \
+                        beside something typed after it",
+        },
+    );
+    if let Some(error) = messages.service.unwake(&rung.wake.name, &rung.wake.notice.group) {
+        super::kept_nothing(&muster_msg::Refusal::Store { error });
+    }
 }
 
 fn sooner(next: &mut Option<Instant>, at: Instant) {
     *next = Some(next.map_or(at, |next| next.min(at)));
-}
-
-fn unanswered(rung: &Rung, pane: &str) {
-    log::warn(
-        "msg.ring.unanswered",
-        fields! {
-            "name" => rung.wake.name,
-            "pane" => pane,
-            "group" => rung.wake.notice.group,
-            "presses" => rung.presses,
-            "impact" => "the agent was rung and Return pressed again, and it has neither gone \
-                         to work nor read; it is not woken for these messages again until it \
-                         goes idle from working",
-            "check" => "what the pane shows: the wake may sit unsent in the agent's prompt, or \
-                        the agent may not read its terminal as its prompt at all",
-        },
-    );
 }
 
 /// Says what came of a ring.

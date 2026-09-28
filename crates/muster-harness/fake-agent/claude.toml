@@ -39,7 +39,8 @@ contains = ["probe-state:idle"]
 id = "probe_prompt"
 state = "idle"
 priority = 985
-region = "bottom_non_empty_lines(1)"
+# Three lines, so a ring's text wrapped past the pane's width is read whole.
+region = "bottom_non_empty_lines(3)"
 line_regex = ['^PROBE-PROMPT>']
 prompt = '^PROBE-PROMPT>\s?'
 

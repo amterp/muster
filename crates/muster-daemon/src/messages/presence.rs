@@ -20,6 +20,8 @@ use crate::session::Shared;
 pub(crate) struct Seen {
     /// Its agent's state, or nothing when detection has not settled on one.
     pub(crate) activity: Option<Activity>,
+    /// Its agent, as detection names it.
+    pub(crate) agent: String,
     pub(crate) io: Arc<PaneIo>,
 }
 
@@ -40,8 +42,11 @@ pub(crate) struct Panes {
 impl Panes {
     pub(crate) fn of(shared: &Shared) -> Panes {
         let read = shared.lock().each_pane(|record, io| {
-            let seen = (record.agent.is_some() && !io.is_closed())
-                .then(|| Seen { activity: activity(record), io: io.clone() });
+            let seen = record.agent.clone().filter(|_| !io.is_closed()).map(|agent| Seen {
+                activity: activity(record),
+                agent,
+                io: io.clone(),
+            });
             (record.pane.clone(), seen)
         });
         let mut panes = Panes::default();

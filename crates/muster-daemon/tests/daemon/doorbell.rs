@@ -237,34 +237,27 @@ fn a_return_is_never_pressed_again_at_an_agent_that_turned_blocked() {
     assert!(rung[1].contains("still unread"), "{rung:?}");
 }
 
-/// Nor is Return pressed again within the quiet period of something typed into the pane, where
-/// it would send a person's half-written prompt.
+/// Nor is Return pressed again within the quiet period of something typed into the pane, even
+/// when what was typed has been taken back and the prompt holds the ring alone again: a person
+/// is at the pane.
 #[test]
 fn a_return_is_pressed_again_only_once_the_pane_has_been_quiet() {
-    let mut agent = Agent::in_a_pane();
+    let mut agent = Agent::to_come();
+    agent.daemon.run_starting_agent("p1");
     agent.post("p1", "a brief");
-    agent.until_rung(1);
+    agent.until_shows("PROBE-PROMPT> [muster]");
 
-    // Just before the Return is due, a person types.
+    // Just before the Return is due, a person types a letter and takes it back.
     std::thread::sleep(ANSWER.saturating_sub(Duration::from_secs(1)));
     let typed = Instant::now();
-    Input::connect(agent.daemon.socket_path()).send(
-        "p1",
-        proto::input_event::Input::Send(proto::input_event::Send {
-            text: "a person typing".to_string(),
-            enter: true,
-        }),
-    );
-    until_some("a Return pressed again", || (agent.pressed() > 0).then_some(()));
+    agent.type_in("x", false);
+    agent.type_in("\u{7f}", false);
+    agent.until_rung(1);
     assert!(
         typed.elapsed() >= QUIET,
         "Return pressed {:?} after something was typed, inside the quiet period",
         typed.elapsed()
     );
-    let heard = agent.heard();
-    let person = heard.iter().position(|line| line == "a person typing");
-    let pressed = heard.iter().position(String::is_empty);
-    assert!(person < pressed, "Return pressed before the person typed: {heard:?}");
 }
 
 /// Detection reads a new agent as idle before it has read its screen at all, for the few
