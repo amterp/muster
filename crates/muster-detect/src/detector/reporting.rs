@@ -197,7 +197,10 @@ impl Reporting {
     fn restless_since(&self, since: Instant, now: Instant) -> bool {
         // A second is recorded at the first tick with output a second or more after the last,
         // so output that never stops records them 1.0 to 1.3 s apart at the 300 ms tick. Wider
-        // than that, some second in between had none.
+        // than that, some second in between had none. This takes ticks to come under 500 ms
+        // apart. Each is scheduled from when the last ran, so on a machine loaded enough to run
+        // them 200 ms late a run can break under output that never stopped, and a report the
+        // rules never read holds longer: the error is on the side of the report.
         let gap = Duration::from_millis(1500);
         let mut next = now;
         let mut running = 0;
