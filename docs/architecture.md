@@ -639,8 +639,18 @@ since every window follows the same daemons.
 and a single fixed path would mean the second window to open silently took the first one's callers. Which window a
 pane belongs to is settled when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that request,
 beside the `MUSTER_PANE` that says which pane it is, and between them a program inside a pane can drive the window it
-is drawn in without being configured. Only for a daemon on this machine - a unix socket path means nothing across an
-ssh tunnel, so a devenv pane is told nothing and correctly concludes it is not in a window it can drive.
+is drawn in without being configured.
+
+**A devenv pane is told a path on the devenv, which the window's ssh master carries back.** A unix socket path means
+nothing on another machine, so the window asks the master it already holds for that daemon to forward its socket to
+`window-<name>.sock` beside the daemon's own socket over there, and that is what the pane is told. Beside the daemon's
+socket because that directory is Muster's however the daemon was configured, and named with a name minted the way a
+pane's is, because two laptops can attach one devenv and a pid is unique only on its own machine. Asked of the master
+through its control path rather than given at its start: the master exits on any forward it cannot make, and a far
+sshd that refuses this one should cost a program over there its window, not every pane on that machine. Made again
+at the same path whenever the master reconnects, so a pane told it before a dropped VPN reaches the window after, and
+taken off the devenv when the window closes. Full trust in both directions is the default, and the socket sshd makes
+is readable only by the devenv's own user.
 
 **The command has to be findable, or the surface is taught rather than discovered.** Muster keeps `~/.muster/bin`,
 points a link in it at the CLI the running app shipped, and gives the directory to every daemon it starts as the

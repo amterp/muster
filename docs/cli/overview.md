@@ -79,7 +79,9 @@ how a script says it outright, and how you ask again if a daemon refused.
 ## Which window
 
 `$MUSTER_SOCKET` names the window a pane is drawn in, and Muster sets it in every pane it
-creates on this machine. Without it, `muster` looks for listening windows under `~/.muster/state`.
+creates, on an SSH machine as well as this one. Over there it is a path on that machine, which
+the window's ssh connection carries back to the window, so every verb works from a devenv pane
+exactly as it does here. Without it, `muster` looks for listening windows under `~/.muster/state`.
 If more than one answers, a change that names its tab or pane goes to any of them, since that
 window carries it to the one holding it; a change that names nothing refuses rather than guessing;
 `muster window` answers for all of them, headed by which window each answer is about. Other

@@ -143,9 +143,9 @@ Examples:
   muster pane new --daemon devenv --run claude
   muster focus --next
 
-Which window: $MUSTER_SOCKET names it, and Muster sets that in every pane it makes on this
-machine. Otherwise muster looks for a listening window under ~/.muster/state, and refuses
-rather than guessing if more than one answers.
+Which window: $MUSTER_SOCKET names it, and Muster sets that in every pane it makes, on an SSH
+machine as well as this one. Otherwise muster looks for a listening window under
+~/.muster/state, and refuses rather than guessing if more than one answers.
 
 Exit codes: 0 it happened, 1 the window refused, 2 the command line was wrong, 3 there was
 no window to ask, 4 a window took it and never answered, 5 a wait ran out first. Send it again

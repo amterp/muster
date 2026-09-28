@@ -12,14 +12,13 @@ if your harness wants one.
 that ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each
 of the first nine and one to whichever is asking for you, states an agent reports itself where the screen cannot
 say them - `waiting` on its own build among them - renaming, trading two agents' places by dragging a row,
-configuration that reloads when you save it, a CLI that drives the window from inside a pane, a notification when
-an agent needs you that takes you to the pane that asked, a second daemon on an SSH machine in the same window -
-where one tab can hold a laptop pane beside a devenv pane - several windows that each hold their own tabs and hand
-them to each other, a newer Muster taking over an older daemon's panes with their agents still running, and agents
-on one machine posting messages to each other and being woken by them rather than polling. Not built, and worth
-knowing before you install rather than after: a split keeps the direction it was made in - its size changes, its
-orientation does not - a pane on a devenv cannot drive the window it is drawn in, since nothing carries the window's
-address over the connection, and an agent on the devenv cannot message one on the laptop.
+configuration that reloads when you save it, a CLI that drives the window from inside a pane on either machine, a
+notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH machine in the
+same window - where one tab can hold a laptop pane beside a devenv pane - several windows that each hold their own
+tabs and hand them to each other, a newer Muster taking over an older daemon's panes with their agents still
+running, and agents on one machine posting messages to each other and being woken by them rather than polling. Not
+built, and worth knowing before you install rather than after: a split keeps the direction it was made in - its size
+changes, its orientation does not - and an agent on the devenv cannot message one on the laptop.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.

@@ -1,16 +1,12 @@
 # What this cannot do
 
-## A pane on another machine cannot reach the window
+## A pane outlives the window that made it
 
-`$MUSTER_SOCKET` is a unix socket path on the machine the window is running on, so Muster sets
-it only in panes held by a daemon on that machine. A program in an SSH devenv pane correctly
-concludes it is not in a window it can drive. That pane can still be addressed by name from a
-local pane, and `muster window` still describes it.
-
-`$MUSTER_PANE` *is* set over there, so such a pane knows which pane it is and has no way to say
-so. The machine has a `muster` of its own, installed beside its daemon at `~/.muster/bin/muster`
-and on every pane's `PATH` there, for `muster msg`, but nothing on it reaches the window. Closing
-this means forwarding the endpoint over the ssh master Muster already opens.
+`$MUSTER_SOCKET` names the window that made a pane, and the pane outlives that window: quitting
+Muster leaves it running, and the window that opens next listens somewhere else. So `muster` run
+in a pane made before the window you are looking at says that window has quit, on this machine
+and on an SSH machine alike. A pane the open window made reaches it from either machine; on this
+one, `--socket` with a path from `muster window list` does too.
 
 ## A pane restored after a daemon restart cannot say which window it is in
 

@@ -111,8 +111,6 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- A pane on an SSH machine cannot drive the window it is drawn in: nothing carries the window's
-  address over the connection.
 - A split keeps the direction it was made in. Its size can be dragged and evened out, but a side by
   side pair cannot be turned into one above the other, and a pane moved into a tab lands where Muster
   puts it.
