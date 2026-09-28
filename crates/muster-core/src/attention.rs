@@ -138,6 +138,10 @@ struct Raised {
     alert: Alert,
     /// When, as a count of raises: a pane's wait restarts when what it asks for changes.
     order: u64,
+    /// Whether a banner stands for it. A pane asks whether or not one does: the file decides
+    /// what is worth interrupting for, and a pane already asking when the window met it was
+    /// never news to announce.
+    announced: bool,
 }
 
 /// What this window has seen, and what is still waiting for somebody.
@@ -161,12 +165,17 @@ pub struct Attention {
     reported: BTreeSet<PaneKey>,
 
     /// The panes asking for somebody right now, and what each is asking - the unread set
-    /// `architecture.md` says the core owns.
+    /// `architecture.md` says the core owns, and what going to the pane that asked walks.
     ///
-    /// Deliberately not the same thing as `finished`, which decides what a pane *is*. A muted
-    /// window still paints `done` on its borders and still lists it in the roster; what mute
-    /// takes away is the interruption. Folding the two together would make a preference about
-    /// banners silently change the state vocabulary this product is built on.
+    /// Every pane blocked, or finished and unseen, or with a program's request standing, that
+    /// nobody is looking at: what the sidebar shows as asking. Whether each has a banner is
+    /// [`Raised::announced`], and not whether it is here. A muted window still paints `done`
+    /// on its borders and still lists it in the roster; what mute takes away is the
+    /// interruption, and a chord somebody presses is not one.
+    ///
+    /// Deliberately not the same thing as `finished`, which decides what a pane *is*. Folding
+    /// the two together would make a preference about banners silently change the state
+    /// vocabulary this product is built on.
     raised: BTreeMap<PaneKey, Raised>,
 
     /// How many times a pane has started asking, which numbers each [`Raised`].
@@ -195,19 +204,18 @@ impl Attention {
     /// moment a pane started asking, and an agent that has been waiting ten minutes is
     /// already on its own border and in the roster. Answering a save with a banner for
     /// something already on screen would be the config file shouting about itself.
+    ///
+    /// A silenced pane goes on asking: only its banner goes.
     pub fn notifying(&mut self, notifications: Notifications) -> Vec<PaneKey> {
         self.notifications = notifications;
-        let stale: Vec<PaneKey> = self
-            .raised
-            .iter()
-            .filter(|(_, raised)| !notifications.allows(raised.alert))
-            .map(|(pane, _)| pane.clone())
-            .collect();
-        for pane in &stale {
-            self.raised.remove(pane);
-            self.notes.remove(pane);
-        }
-        stale
+        self.raised
+            .iter_mut()
+            .filter(|(_, raised)| raised.announced && !notifications.allows(raised.alert))
+            .map(|(pane, raised)| {
+                raised.announced = false;
+                pane.clone()
+            })
+            .collect()
     }
 
     /// Every pane asking for somebody, the one being waited on first.
@@ -224,19 +232,27 @@ impl Attention {
 
     /// A pane this window is meeting for the first time, as its daemon already had it.
     ///
-    /// Raises nothing, whatever it says. Muster witnessed no transition here, and quitting and
-    /// coming back is the ordinary case, so a banner would be Muster announcing history at
-    /// launch. A finish it carries is still `done` on the border and in the roster until a look
-    /// finds it.
+    /// Announces nothing, whatever it says. Muster witnessed no transition here, and quitting
+    /// and coming back is the ordinary case, so a banner would be Muster announcing history at
+    /// launch. A pane blocked, or carrying a finish, is still asking, though - `blocked` or
+    /// `done` on the border and in the roster until a look finds it - and asking ahead of every
+    /// pane that starts later, having waited since before this window was open.
     ///
     /// Returns whether the window is already showing it to somebody, in which case it is
     /// reported seen: a daemon's panes are published before they are met.
-    pub fn met(&mut self, pane: &PaneKey, _state: AgentState, finished: bool) -> bool {
-        if !finished {
-            return false;
+    pub fn met(&mut self, pane: &PaneKey, state: AgentState, finished: bool) -> bool {
+        if finished {
+            self.finished.insert(pane.clone());
         }
-        self.finished.insert(pane.clone());
-        self.seen(pane) && self.reported.insert(pane.clone())
+        if self.seen(pane) {
+            return finished && self.reported.insert(pane.clone());
+        }
+        if state == AgentState::Blocked {
+            self.ask_silently(pane, Alert::Blocked);
+        } else if finished {
+            self.ask_silently(pane, Alert::Done);
+        }
+        false
     }
 
     /// Takes a pane's record after its agent moved or its finish was set or cleared: whether
@@ -304,13 +320,21 @@ impl Attention {
     pub fn notified(&mut self, pane: &PaneKey, note: Note, agent: Option<&str>) -> Option<Attend> {
         if agent.is_some()
             || self.seen(pane)
-            || !self.notifications.allows(Alert::Notified)
             || matches!(self.alert(pane), Some(Alert::Blocked | Alert::Notified))
         {
             return None;
         }
+        if !self.notifications.allows(Alert::Notified) {
+            // Silenced, so it asks without a banner - unless the pane already asks, whose own
+            // banner, if it has one, is the one to leave standing.
+            if self.alert(pane).is_none() {
+                self.notes.insert(pane.clone(), note);
+                self.ask_silently(pane, Alert::Notified);
+            }
+            return None;
+        }
         self.notes.insert(pane.clone(), note);
-        self.stamp(pane, Alert::Notified);
+        self.stamp(pane, Alert::Notified, true);
         Some(Attend::Raised(Alert::Notified))
     }
 
@@ -389,6 +413,7 @@ impl Attention {
         let mut noticed = if self.focused { self.noticed() } else { Noticed::default() };
         noticed.settled =
             taken_back.into_iter().filter(|pane| !noticed.reported.contains(pane)).collect();
+        self.done_again(&noticed.settled);
         noticed
     }
 
@@ -400,7 +425,10 @@ impl Attention {
     /// reported again at once, since a daemon still refusing would refuse that too: the next
     /// look reports it, as [`Attention::reconnected`] does for a daemon that comes back.
     pub fn refused(&mut self, panes: &[PaneKey]) -> Vec<PaneKey> {
-        panes.iter().filter(|pane| self.reported.remove(*pane)).cloned().collect()
+        let taken_back: Vec<PaneKey> =
+            panes.iter().filter(|pane| self.reported.remove(*pane)).cloned().collect();
+        self.done_again(&taken_back);
+        taken_back
     }
 
     /// Reports every finished pane now being looked at, and takes back what any on-screen
@@ -413,12 +441,10 @@ impl Attention {
             .cloned()
             .collect();
         self.reported.extend(reported.iter().cloned());
-        let withdrawn: Vec<PaneKey> =
+        let looked_at: Vec<PaneKey> =
             self.raised.keys().filter(|pane| self.visible.contains(*pane)).cloned().collect();
-        for pane in &withdrawn {
-            self.raised.remove(pane);
-            self.notes.remove(pane);
-        }
+        let withdrawn: Vec<PaneKey> =
+            looked_at.into_iter().filter(|pane| self.withdraw(pane).is_some()).collect();
         let heard: Vec<PaneKey> = self.rang.intersection(&self.visible).cloned().collect();
         for pane in &heard {
             self.rang.remove(pane);
@@ -429,22 +455,43 @@ impl Attention {
         Noticed { settled, reported, withdrawn }
     }
 
-    /// Starts this pane asking, unless the file says that state is not worth interrupting for.
+    /// Starts this pane asking, with a banner unless the file says that state is not worth
+    /// interrupting for.
     ///
-    /// A state that is muted withdraws rather than merely declining to raise: a pane that
-    /// asked under the old setting is still on somebody's screen, and leaving it there would
-    /// make a mute mean "no new ones" rather than "quiet".
+    /// A state that is muted takes down the banner the pane had for what it asked before,
+    /// rather than leaving it: a pane that asked under the old setting is still on somebody's
+    /// screen, and leaving it there would make a mute mean "no new ones" rather than "quiet".
     fn raise(&mut self, pane: &PaneKey, alert: Alert) -> Option<Attend> {
-        if !self.notifications.allows(alert) {
-            return self.withdraw(pane);
-        }
         // An unchanged answer is not news. A pane that blocks, is re-reported as blocked, and
         // blocks again should interrupt somebody once, and keeps its place in the list.
         if self.alert(pane) == Some(alert) {
             return None;
         }
-        self.stamp(pane, alert);
-        Some(Attend::Raised(alert))
+        let had_banner = self.raised.get(pane).is_some_and(|raised| raised.announced);
+        let announced = self.notifications.allows(alert);
+        self.stamp(pane, alert, announced);
+        if announced {
+            Some(Attend::Raised(alert))
+        } else {
+            had_banner.then_some(Attend::Withdrawn)
+        }
+    }
+
+    /// Starts this pane asking with no banner, unless it already asks for the same.
+    fn ask_silently(&mut self, pane: &PaneKey, alert: Alert) {
+        if self.alert(pane) != Some(alert) {
+            self.stamp(pane, alert, false);
+        }
+    }
+
+    /// Panes a daemon has `done` again after this window reported them seen, which ask again
+    /// unless somebody is looking at them now. Nothing new finished, so nothing is announced.
+    fn done_again(&mut self, panes: &[PaneKey]) {
+        for pane in panes {
+            if self.finished.contains(pane) && !self.seen(pane) {
+                self.ask_silently(pane, Alert::Done);
+            }
+        }
     }
 
     /// What the pane is asking for, if anything.
@@ -454,14 +501,16 @@ impl Attention {
 
     /// Records that the pane has started asking for `alert`, after every pane that asked
     /// before it.
-    fn stamp(&mut self, pane: &PaneKey, alert: Alert) {
+    fn stamp(&mut self, pane: &PaneKey, alert: Alert, announced: bool) {
         self.raises += 1;
-        self.raised.insert(pane.clone(), Raised { alert, order: self.raises });
+        self.raised.insert(pane.clone(), Raised { alert, order: self.raises, announced });
     }
 
+    /// Stops the pane asking. Says so only when a banner stood for it, since that is what
+    /// there is to take down.
     fn withdraw(&mut self, pane: &PaneKey) -> Option<Attend> {
         self.notes.remove(pane);
-        self.raised.remove(pane).map(|_| Attend::Withdrawn)
+        self.raised.remove(pane).filter(|raised| raised.announced).map(|_| Attend::Withdrawn)
     }
 
     fn seen(&self, pane: &PaneKey) -> bool {
