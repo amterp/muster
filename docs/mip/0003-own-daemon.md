@@ -283,7 +283,12 @@ in, plus:
   tic writes into `TERMINFO` when it can, and the daemon's data can be a signed bundle. It is
   unset, replacing one inherited or requested, unless the `sudo` feature is on; then it is the
   pane's `~/.terminfo`, which the daemon gives the entry where it has none, and which Ghostty's
-  wrapper carries through sudo's reset environment, so `sudo vim` finds the terminal;
+  wrapper carries through sudo's reset environment, so `sudo vim` finds the terminal. With
+  `TERMINFO` unset, ncurses reads `~/.terminfo` before `TERMINFO_DIRS`, so an entry there wins
+  over the daemon's: on a devenv, the one an `ssh-terminfo` install from an older Muster or
+  Ghostty left. The entry changes rarely, and Ghostty users see the same. With `sudo` off, sudo
+  drops `TERMINFO_DIRS`, so a root program finds `xterm-ghostty` only where the system database
+  or root's own `~/.terminfo` has it; macOS's has not, as in Ghostty with the feature off;
 - `COLORTERM=truecolor`;
 - `TERM_PROGRAM=ghostty`, because a pane is a Ghostty terminal and programs key features on the
   name; Muster's identity is already in `MUSTER_PANE` and `MUSTER_SOCKET`. `TERM_PROGRAM_VERSION`

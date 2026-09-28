@@ -396,7 +396,14 @@ ssh that opens no terminal on the host, such as `ssh -N` for a tunnel or `ssh -G
 `sudo` to keep `TERMINFO`, pointed at your `~/.terminfo`, where Muster then puts the entry, so a
 root shell finds it. It is off because keeping `TERMINFO` needs a sudoers rule that allows it -
 `SETENV`, or `ALL` - and under a rule that names its commands without that, sudo refuses the
-command outright. Turn it on where your sudoers rules allow it.
+command outright. Turn it on where your sudoers rules allow it. With it off, `sudo vim` in a local
+pane cannot find `xterm-ghostty` and draws as a terminal it does not know, as in Ghostty with the
+feature off: sudo drops the variable that points at Muster's copy of the entry, and macOS's own
+database has none.
+
+Your own `~/.terminfo` wins over the entry Muster carries, because the terminal database is read
+from there first. On a machine where an older Ghostty or Muster installed `xterm-ghostty`, a pane
+uses that one.
 
 `scrollback_bytes` is bytes because that is what the buffer is measured in; a line has no
 fixed size, so a count of them would be a number that did not mean what it said. Zero is a
