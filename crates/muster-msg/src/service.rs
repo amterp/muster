@@ -383,6 +383,8 @@ pub struct Messaging<S: Store> {
     /// Every machine a link has come up to since this daemon started, whether or not it is up
     /// now: those that may keep a group by a name nothing here holds.
     pub(crate) met: BTreeSet<String>,
+    /// Replicas a change to went unanswered, until their home is next heard from.
+    pub(crate) unanswered: BTreeSet<String>,
 }
 
 impl<S: Store> Messaging<S> {
@@ -449,6 +451,7 @@ impl<S: Store> Messaging<S> {
             kept: Saved::default(),
             linked: BTreeSet::new(),
             met: BTreeSet::new(),
+            unanswered: BTreeSet::new(),
         };
         messaging.kept = messaging.snapshot();
         messaging

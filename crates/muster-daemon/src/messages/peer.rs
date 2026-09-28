@@ -70,28 +70,49 @@ impl Link {
         connection::send(&mut *writer, &PeerFrame { frame: Some(frame) })
     }
 
-    fn call(&self, call: Called, patience: Duration) -> Result<Replied, String> {
+    fn call(&self, call: Called, patience: Duration) -> Result<Replied, Failed> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (reply, replied) = mpsc::channel();
         poison::lock(&self.pending, "daemon.peer.pending").insert(id, reply);
         let sent = self.send(Frame::Call(proto::PeerCall { id, call: Some(call) }));
         if let Err(error) = sent {
             poison::lock(&self.pending, "daemon.peer.pending").remove(&id);
-            return Err(format!("the call could not be sent: {error}"));
+            return Err(Failed::Unsent(format!("the call could not be sent: {error}")));
         }
         match replied.recv_timeout(patience) {
-            Ok(reply) => reply.reply.ok_or_else(|| "the reply was empty".to_string()),
+            Ok(reply) => {
+                reply.reply.ok_or_else(|| Failed::Unanswered("the reply was empty".to_string()))
+            }
             Err(RecvTimeoutError::Timeout) => {
                 poison::lock(&self.pending, "daemon.peer.pending").remove(&id);
-                Err(format!("no reply within {patience:?}"))
+                Err(Failed::Unanswered(format!("no reply within {patience:?}")))
             }
-            Err(RecvTimeoutError::Disconnected) => Err("the link closed".to_string()),
+            Err(RecvTimeoutError::Disconnected) => {
+                Err(Failed::Unanswered("the link closed after the call was sent".to_string()))
+            }
         }
     }
 
     fn close(&self) {
         let writer = poison::lock(&self.writer, "daemon.peer.writer");
         let _ = writer.shutdown(std::net::Shutdown::Both);
+    }
+}
+
+/// Why a call has no reply.
+#[derive(Debug)]
+enum Failed {
+    /// It never reached the other machine, which did nothing.
+    Unsent(String),
+    /// It was sent, so the other machine may have acted on it and only the reply is lost.
+    Unanswered(String),
+}
+
+impl std::fmt::Display for Failed {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Failed::Unsent(why) | Failed::Unanswered(why) => formatter.write_str(why),
+        }
     }
 }
 
@@ -422,8 +443,25 @@ pub(crate) fn call_away(shared: &Shared, away: &Away) -> (Settle, Holding) {
 
 fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
     let patience = if matches!(away.call, Call::Post { .. }) { POSTING } else { CALLING };
+    let changes = matches!(away.call, Call::Join { .. } | Call::Leave { .. } | Call::Post { .. });
     let replied = match link.call(wire::call_to(&away.call), patience) {
         Ok(replied) => wire::reply_from(replied).and_then(|reply| named(reply, &away.machine)),
+        Err(Failed::Unanswered(error)) if changes => {
+            log::warn(
+                "msg.peer.call_failed",
+                fields! {
+                    "machine" => away.machine,
+                    "group" => away.call.group(),
+                    "error" => error,
+                    "impact" => "the request was refused as unanswered: that machine may have \
+                                 made the change, and this one's copy of the group may lack it \
+                                 until it is fetched",
+                    "check" => "whether the link to that machine dropped (msg.peer.unlinked \
+                                follows) or its daemon is stalled",
+                },
+            );
+            return (unanswered(shared, link, away), Holding::default());
+        }
         Err(error) => {
             log::warn(
                 "msg.peer.call_failed",
@@ -431,8 +469,7 @@ fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
                     "machine" => away.machine,
                     "group" => away.call.group(),
                     "error" => error,
-                    "impact" => "the request was refused as unreachable, and changed nothing \
-                                 there unless the reply alone was lost",
+                    "impact" => "the request was refused as unreachable, and changed nothing there",
                     "check" => "whether the link to that machine dropped (msg.peer.unlinked \
                                 follows) or its daemon is stalled",
                 },
@@ -481,6 +518,21 @@ fn misnamed(machine: &str, refusal: &Refusal) {
                         an honest one never sends such a name",
         },
     );
+}
+
+/// A change sent to `away`'s machine that was never answered: the replica may lack it, so it
+/// says so until it is fetched, which is tried at once in case only the one reply was lost.
+fn unanswered(shared: &Shared, link: &Link, away: &Away) -> Settle {
+    let group = format!("{}@{}", away.call.group(), away.machine);
+    shared.messages().service.unanswered(&group);
+    let head = shared.messages().service.replicas_of(&away.machine);
+    let head = head.iter().find(|(base, _)| base == away.call.group()).map_or(0, |(_, at)| *at);
+    fetch(shared, link, away.call.group(), head);
+    let machine = away.machine.clone();
+    Settle {
+        result: Err(Refusal::Unanswered { group, machine }),
+        applied: muster_msg::Applied::default(),
+    }
 }
 
 fn unreachable(away: &Away) -> Settle {

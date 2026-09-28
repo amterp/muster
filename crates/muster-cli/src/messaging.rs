@@ -648,6 +648,8 @@ fn render(
     if answer.outcome() == proto::Outcome::Refused {
         return Err(if msg.refusal == "timed_out" {
             Trouble::TimedOut(answer.reason.clone())
+        } else if msg.refusal == "unanswered" {
+            Trouble::Unanswered(answer.reason.clone())
         } else {
             Trouble::Refused(answer.reason.clone())
         });

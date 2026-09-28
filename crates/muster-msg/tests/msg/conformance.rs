@@ -130,7 +130,9 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::WhichParticipant { name, candidates } => {
             format!("{name} {}", candidates.join(","))
         }
-        Refusal::Unreachable { group, machine } | Refusal::KeptElsewhere { group, machine } => {
+        Refusal::Unreachable { group, machine }
+        | Refusal::Unanswered { group, machine }
+        | Refusal::KeptElsewhere { group, machine } => {
             format!("{group} {machine}")
         }
         Refusal::Unchecked { group, machines } => format!("{group} {}", machines.join(",")),

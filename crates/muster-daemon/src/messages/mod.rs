@@ -25,7 +25,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto as proto;
-use muster_daemon_proto::messaging::{self, GROUP, JOIN, READ, WHO};
+use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
 use muster_msg::{
     Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Entry, Inbox, LARGEST_BODY,
     LONGEST_GROUP, Liveness, Messaging, Policy, Presence, Reach, Refusal, Route, Settled, Tell,
@@ -1038,6 +1038,9 @@ pub(super) fn refused_as(caller: &str, code: &str, reason: &str) -> Reply {
 }
 
 /// A refusal in words, naming the command that gets the caller past it.
+// A table with one arm per refusal: split into helpers it would be the same length with the
+// correspondence broken up.
+#[allow(clippy::too_many_lines)]
 pub(super) fn words(refusal: &Refusal) -> String {
     let join = |group: &str| messaging::command(JOIN, &format!("--group {group}"));
     match refusal {
@@ -1086,6 +1089,11 @@ pub(super) fn words(refusal: &Refusal) -> String {
              back, or make a group here with `{}`",
             machines.join(" and "),
             messaging::command(GROUP, &format!("new {group}"))
+        ),
+        Refusal::Unanswered { group, machine } => format!(
+            "{machine} took this and did not answer in time, so it may or may not have been done \
+             there; `{}` says whether before you try again",
+            messaging::command(LOG, &format!("--group {group}"))
         ),
         Refusal::KeptElsewhere { group, machine } => format!(
             "{group} is kept on {machine}, so its members, policy and pause are changed there, \

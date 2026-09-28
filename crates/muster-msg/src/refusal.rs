@@ -48,6 +48,12 @@ pub enum Refusal {
         group: String,
         machines: Vec<String>,
     },
+    /// A change to a group kept on `machine` was sent there and never answered: it may have been
+    /// made there all the same, and only the answer lost.
+    Unanswered {
+        group: String,
+        machine: String,
+    },
     /// The group is kept on another machine, whose daemon changes its policy and members: this
     /// one holds a replica (MIP-4, section 11).
     KeptElsewhere {
@@ -122,6 +128,7 @@ impl Refusal {
             Refusal::NoSharedGroup { .. } => "no_shared_group",
             Refusal::Unreachable { .. } => "unreachable",
             Refusal::Unchecked { .. } => "unchecked",
+            Refusal::Unanswered { .. } => "unanswered",
             Refusal::KeptElsewhere { .. } => "kept_elsewhere",
             Refusal::NotAParticipant { .. } => "not_a_participant",
             Refusal::NotAMember { .. } => "not_a_member",

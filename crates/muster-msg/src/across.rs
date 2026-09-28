@@ -349,14 +349,18 @@ impl<S: Store> Messaging<S> {
         self.linked.remove(machine);
     }
 
-    /// A call that changes `group`, kept elsewhere, went unanswered: it may have been made
-    /// there all the same. Not marked yet.
-    pub fn unanswered(&mut self, _group: &str) {}
+    /// A call that changes `group`, a replica, went unanswered: it may have been made at the home
+    /// all the same, so the replica may lack the entry until the home is next heard from.
+    pub fn unanswered(&mut self, group: &str) {
+        self.unanswered.insert(group.to_string());
+    }
 
-    /// The machine a replica may be behind, because there is no link to it now.
+    /// The machine a replica may be behind: there is no link to it now, or a change sent there
+    /// went unanswered.
     pub fn behind(&self, group: &str) -> Option<&str> {
-        let home = self.groups.get(&self.locate(group).ok()?)?.home.as_deref()?;
-        (!self.linked.contains(home)).then_some(home)
+        let key = self.locate(group).ok()?;
+        let home = self.groups.get(&key)?.home.as_deref()?;
+        (!self.linked.contains(home) || self.unanswered.contains(&key)).then_some(home)
     }
 
     /// Groups kept on `machine` that this one replicates, with each replica's head: what to
@@ -736,6 +740,7 @@ impl<S: Store> Messaging<S> {
         {
             self.wake_resumed(&key, &by, &mut posted, presence, now_ms);
         }
+        self.unanswered.remove(&key);
         let unsaved = match self.save() {
             Err(Refusal::Store { error }) => Some(error),
             _ => None,

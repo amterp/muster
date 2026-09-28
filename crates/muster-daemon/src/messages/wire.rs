@@ -220,7 +220,9 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.name = name;
             refused.candidates = candidates;
         }
-        Refusal::Unreachable { group, machine } | Refusal::KeptElsewhere { group, machine } => {
+        Refusal::Unreachable { group, machine }
+        | Refusal::Unanswered { group, machine }
+        | Refusal::KeptElsewhere { group, machine } => {
             refused.group = group;
             refused.machine = machine;
         }
@@ -285,6 +287,7 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "which_participant" => Refusal::WhichParticipant { name, candidates },
         "no_shared_group" => Refusal::NoSharedGroup { name },
         "unreachable" => Refusal::Unreachable { group, machine },
+        "unanswered" => Refusal::Unanswered { group, machine },
         "kept_elsewhere" => Refusal::KeptElsewhere { group, machine },
         "not_allowed" => Refusal::NotAllowed { addressee: name, group, allowed: candidates },
         "not_permitted" if let Some(action) = action_from(&action) => {
@@ -351,6 +354,7 @@ mod tests {
             Refusal::WhichParticipant { name: "a".into(), candidates: vec!["a@x".into()] },
             Refusal::NoSharedGroup { name: "a@x".into() },
             Refusal::Unreachable { group: "g@x".into(), machine: "x".into() },
+            Refusal::Unanswered { group: "g@x".into(), machine: "x".into() },
             Refusal::KeptElsewhere { group: "g@x".into(), machine: "x".into() },
             Refusal::NotAllowed {
                 addressee: "b".into(),
