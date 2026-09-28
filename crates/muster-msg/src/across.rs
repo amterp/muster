@@ -583,13 +583,13 @@ impl<S: Store> Messaging<S> {
             log: Vec::new(),
             home: Some(peer.name.clone()),
         });
-        group.policy = peer.policy(caught.policy);
         let head = group.head();
         let fresh: Vec<Entry> =
             caught.entries.into_iter().filter(|entry| entry.seq > head).collect();
         if fresh.first().is_some_and(|first| first.seq != head + 1) {
             return Err(head);
         }
+        group.policy = peer.policy(caught.policy);
         let mut posted = Posted {
             author: String::new(),
             group: key.clone(),

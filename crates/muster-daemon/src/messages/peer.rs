@@ -381,22 +381,26 @@ fn read(shared: &Arc<Shared>, link: &Arc<Link>, mut stream: UnixStream) -> Strin
 fn refetch(shared: &Shared, link: &Link) {
     let replicas = shared.messages().service.replicas_of(&link.peer.name);
     for (group, head) in replicas {
-        fetch(shared, link, &group, head);
+        let _ = fetch(shared, link, &group, head);
     }
 }
 
-/// Takes what `group`'s home holds after `head` into the replica, and wakes whoever it is for.
-fn fetch(shared: &Shared, link: &Link, group: &str, mut head: u64) {
+/// Takes what `group`'s home holds after `head` into the replica, and wakes whoever it is for,
+/// saying whom it reached.
+fn fetch(shared: &Shared, link: &Link, group: &str, mut head: u64) -> Vec<(String, Reach)> {
+    let mut reached = Vec::new();
     for _ in 0..3 {
         let call = Call::Since { group: group.to_string(), after: head };
         let away = Away { machine: link.peer.name.clone(), call };
         let (settle, holding) = settle_with(shared, link, &away);
         super::ring(shared, holding);
+        reached.extend(settle.applied.reached);
         match settle.result {
             Ok(Settled::Gap(from)) => head = from,
-            _ => return,
+            _ => break,
         }
     }
+    reached
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -554,21 +558,22 @@ fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> 
     let caught = wire::caught_from(caught);
     let group = caught.group.clone();
     let panes = Panes::of(shared);
-    let (applied, holding) = {
+    // A gap is fetched, and the post that was sent on is answered with whom the fetch reached:
+    // its author's machine counts those as heard.
+    let (reached, holding) = {
         let mut messages = shared.messages();
         match messages.service.apply(&link.peer, caught, &panes, now_ms()) {
             Ok(applied) => {
                 let holding = messages.hold(&applied.wakes, &applied.answered, &panes);
-                (Some(applied), holding)
+                (applied.reached, holding)
             }
             Err(head) => {
                 drop(messages);
-                fetch(shared, link, &group, head);
-                (None, Holding::default())
+                (fetch(shared, link, &group, head), Holding::default())
             }
         }
     };
     super::ring(shared, holding);
-    let reached = applied.map(|applied| wire::reached_to(&applied.reached)).unwrap_or_default();
+    let reached = wire::reached_to(&reached);
     Replied::Applied(proto::peer_reply::Reached { reached })
 }
