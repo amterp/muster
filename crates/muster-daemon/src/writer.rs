@@ -281,6 +281,14 @@ impl Writer {
             if bytes.is_empty() {
                 continue;
             }
+            // Before as well as after: a write the program is slow to take is echoed piece by
+            // piece while it goes on.
+            let wrote_input = || {
+                if let Some(io) = self.io.upgrade().filter(|_| typed) {
+                    io.wrote_input(Instant::now());
+                }
+            };
+            wrote_input();
             if let Err(error) = write_all(master, wake, &bytes) {
                 if error.kind() != io::ErrorKind::BrokenPipe {
                     log::warn(
@@ -295,9 +303,7 @@ impl Writer {
                 }
                 return;
             }
-            if typed && let Some(io) = self.io.upgrade() {
-                io.wrote_input(Instant::now());
-            }
+            wrote_input();
         }
     }
 
