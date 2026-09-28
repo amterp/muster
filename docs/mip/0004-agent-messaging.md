@@ -362,6 +362,32 @@ moves because the text did reach the model. A hook is the session's own child, s
 not hold its output for approval, as it may hold an inbox message ("What is not yet verified").
 It costs setup the other two do not.
 
+As built in stage 4, the snippet is `extras/claude-code/messaging-hooks.json`, left out of the
+plugin's own hooks so that only a session given it fetches its messages this way. It differs from
+the design above in three places:
+
+- **`PostToolUse` writes to stderr and exits 2** rather than returning `additionalContext`. Claude
+  Code 2.1.283 hands the model either (`crates/muster-daemon/tests/daemon/claude_code_hooks.rs`),
+  and JSON would mean escaping a message body from a shell one-liner, which has no JSON encoder.
+- **`Stop` runs `muster msg wait --due`**, not plain `wait`. Plain `wait` answers whenever a waking
+  message is unread, so an agent that ended a turn with one unread would be woken at the end of
+  every turn after. `--due` answers only a wake section 5 would deliver: once per batch, once more
+  "still unread", then nothing until the agent reads. Answering marks the agent woken, as a ring
+  would.
+- **The hook sets `timeout`** to a day. Claude Code ends a hook at its `timeout`, or at a default
+  when it has none, and an `asyncRewake` hook is no exception.
+
+`--due`, like `join --pull`, marks the participant as fetching with hooks. Its hooks count as
+live while a `wait` of its own is connected, or while any verb of its own ran in the last five
+minutes. A post to a participant whose hooks are live answers its waiting `wait`, or, when none
+waits because a turn is running, marks it woken and sends nothing: the turn's next `PostToolUse`
+delivers the message, or its `Stop` hook's `wait --due` returns "still unread". Such a
+participant is never rung, and a ring already queued for it is dropped when its hooks come alive.
+A participant whose hooks are not live, because the hook was ended or never installed, falls back
+to the doorbell and the inbox as before. When a verb last ran is kept in memory only, so after a
+daemon restart a participant's hooks count as live again once its `wait` reconnects, which the
+CLI does by itself, or once one of its verbs runs.
+
 **Claude Code's inbox socket.** When a wake is due the daemon connects to the participant's
 `CLAUDE_CODE_MESSAGING_SOCKET`, sends one `{"type":"user","message":...}` line carrying the
 notice, and closes. It connects only once the text is ready, because Claude Code closes a
@@ -459,7 +485,8 @@ A participant is working, blocked, idle, done, alive, or gone:
   or one that has closed (`no agent in its pane`).
 - **Elsewhere, with Claude's socket**: alive while the socket accepts a connection, with no finer
   state.
-- **With hooks only**: alive while a `wait` is connected or a hook has run in the last few minutes.
+- **With hooks only**: alive while a `wait` is connected or a hook has run in the last few minutes
+  (five, as built).
 
 Each daemon computes presence for its own participants and sends changes over its peer links with
 the replicas (section 11), so `muster msg who` and a post's answer show every member of a group,
@@ -496,6 +523,30 @@ for whoever runs it.
 `muster msg group new review --policy directed.toml` convenes a group, `muster msg group set`
 changes a field, and `muster msg pause review` and `resume` set `paused`. The `membership` list
 also decides who may change the policy, and every change is a notice in the log.
+
+As built in stage 4:
+
+- **`allow` is checked against a post's addressees**, once `--to` has resolved pane names to
+  the participants in them. An addressee outside the author's list is refused with
+  `not_allowed`, naming whom the author may address. An unaddressed post is `ring`'s business,
+  which enforces nothing, only narrows who is woken.
+- **`membership` decides every change to the group but its creation.** It governs joining a
+  group that exists, leaving one (a `leave` with no group is refused whole if any of the
+  caller's groups refuses it), `group add` and `group remove`, `group set`, `pause` and `resume`. A refusal
+  is `not_permitted`, naming who may. Creating a group is open to anyone, and its creator is its
+  first member.
+- **`group set` replaces the whole policy** from a file, the same TOML `group new` reads. One
+  path for every field is simpler to get right than a grammar per field, and a file of four keys
+  is short. A key the file holds that no field reads is refused, so a typo is not silently a
+  default.
+- **Changes are entries in the log.** `group add` and `group remove` log a join and a leave
+  under the member's name; `group set`, `pause` and `resume` log who changed what.
+- **A paused group still reaches the human.** A post to a paused group is appended, the human is
+  woken as ever, and the post's answer says each agent is held while the group is paused. It
+  counts as heard, since a wake is coming. Pausing forgets which members were woken, so `resume`
+  wakes each member with waking messages unread once, including one woken before the pause, and
+  its answer lists them as a post's does.
+- **There is no `group delete` yet.** Whether groups ever close is an open question, below.
 
 `allow` binds within its group. Two members who share no other group can still reach each other
 by posting to a new group of their own; the policy exists to keep a convened group's rules in
@@ -613,7 +664,8 @@ Loading cuts it off, so the next append starts on a line of its own, and a curso
 head is brought back to it.
 
 Logs are kept until the group is deleted (`muster msg group delete`). `muster msg groups` lists
-the groups this machine is home to or replicates, with size and last activity.
+the groups this machine is home to or replicates, with size and last activity. As built in stage
+4 there is no `group delete`, and `groups` lists each group's members and whether it is paused.
 
 **Message bodies never enter the daemon's log**, and so never the run's log that follows it (MIP-3
 section 1). It records that message 42 of `review` was posted, its size and whom it woke, under the
@@ -631,10 +683,15 @@ All under `muster msg` (Decision 3), each with `--json`:
 | `post [--group G] [--to A,B] [TEXT \| --file F \| -]` | appends and wakes |
 | `read [--group G] [--if-unread]` | prints unread messages and moves the cursor |
 | `log --group G [--since N] [--follow]` | the transcript; moves nothing |
-| `wait [--group G] [--timeout S]` | blocks until the caller has waking messages unread |
-| `groups`, `group new/set/delete`, `pause`, `resume` | groups and their policy |
+| `wait [--group G] [--timeout S] [--due]` | blocks until the caller has waking messages unread |
+| `groups` | every group, its members, and whether it is paused |
+| `group new G [--policy F]`, `group set G --policy F` | makes a group with a policy, or replaces its policy |
+| `group add G NAME...`, `group remove G NAME...` | adds or removes members, by participant or pane name |
+| `pause G`, `resume G` | holds a group's wakes, then wakes each member once |
 
-`wait` is for a hook running in the background and for scripts. A new `wait` for a participant
+`wait` is for a hook running in the background and for scripts. With `--due` it answers only a
+wake section 5 would deliver, as the `Stop` hook needs (section 6); without it, it answers
+whenever a waking message is unread, which a script expects. A new `wait` for a participant
 ends the older one, so at most one runs. An agent that runs `wait` in the foreground has rebuilt
 v1's `await`, and the skill says so.
 
@@ -724,6 +781,11 @@ green on its own.
    directed council of three agents and the human running past forty messages with no agent
    leaving or stranded.
 
+   As built, the forty-message proof is `claude_code_council.rs` in `./dev --claude-code`: three
+   Haiku sessions reached 56 messages in six minutes for about $1.59. Its first four runs failed
+   on the skill, not on delivery, and the skill was fixed from them. Left for later: `group
+   delete`, a session idle for more than eleven minutes, and the hooks on Linux.
+
 5. **Across machines.** `msg.peer`, peer links over the forwarded socket, replicas, presence over
    the link, forwarding to the home, and loud failure when the link is down, in the `--ssh` tier.
    Proves: a laptop agent and a devenv agent in a plain terminal share one group, the guard holds
@@ -793,8 +855,8 @@ skill's instruction.
 ## Consequences & Trade-offs
 
 **`muster-daemon` holds agents' words.** Logs can contain anything an agent wrote, including
-secrets pasted into a brief. They are readable only by the user, as the daemon's socket is, stay
-out of the run log, and go when their group is deleted.
+secrets pasted into a brief. They are readable only by the user, as the daemon's socket is, and stay
+out of the run log. No verb deletes a group yet, so a log stays until its file is removed.
 
 **Every wake costs the receiver a turn.** The default ring set wakes every member, which suits two
 agents and is expensive for six. The council presets narrow it. The default stays permissive
@@ -806,6 +868,12 @@ groups do not.
 **A daemon from before messaging** answers `msg.*` requests refused, as MIP-3 section 9 requires,
 and its protocol minor version lets the CLI tell before sending. The CLI says to update that
 machine's daemon, which handoff makes free.
+
+**A log written since stage 4 can hold a kind of entry older daemons cannot read**: who set a
+group's policy, paused it or resumed it. A daemon from before then skips such a line with a
+warning, as it skips any line it cannot parse, and loses nothing else. If the skipped line was the
+log's last, that daemon's next post reuses its number, so going back to an older daemon after
+changing a group's policy can leave two entries with one number.
 
 **The build gains two musl `muster` binaries**, pure clients, and the gate gains a conformance file
 and a Claude observation that needs re-recording when a Claude release changes the inbox socket.
@@ -819,9 +887,11 @@ sent, and `crossSessionInbound: "accept"` passed with `--settings` makes a bypas
 The four Linux cases were not run, because no Linux machine this repository reaches has a Claude
 Code with credentials. Until they are, the inbox adapter is assumed to behave the same there.
 
-**Whether `asyncRewake` behaves as the hooks adapter needs.** The hooks documentation says exit 2
-wakes the session with stderr as a system reminder. Untested: whether a hook started on `Stop`
-keeps running across turns, and whether its wake starts a turn in a session idle for hours.
+**Whether `asyncRewake` wakes a session idle for hours.** Settled up to eleven minutes in
+`docs/observations/claude-code-2.1.283.md`, sections 4 and 5, for a session bypassing
+permission prompts on macOS: a `Stop` hook keeps running after its turn, its exit 2 starts a turn
+in the idle session, every turn's end starts it again, and without a `timeout` Claude Code ends it
+before eleven minutes. Longer than that was not measured; nor was Linux.
 
 **Which screens Claude Code's prompt rule reads as its prompt.** The rule is checked against
 the screens recorded in `corpus/claude-code-2.1.283/`, and a live check holds that a new
@@ -888,3 +958,5 @@ bind.
   human is state in events and the snapshot, one banner per group lands on the transcript, and
   the human is exempt from the guard (sections 4 and 10).
 - 2026-09-28 Decision 3 decided: `muster msg <verb>` on both platforms.
+- 2026-09-28 Stage 4 built: policy enforced, `pause` and `resume`, the hooks adapter with `wait
+  --due`, and the council skill (sections 6, 8, 12 and 13); `asyncRewake` checked live.

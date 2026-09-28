@@ -810,7 +810,8 @@ an event rather than freezing the window (`muster-daemon-client`'s `input`).
 ## Messages between agents
 
 Agents post to each other through the daemon on their own machine, not through a window (MIP-4). The rules -
-participants, groups, each group's log, every participant's place in it, the guard, and who is due a wake - are
+participants, groups, each group's log and policy, every participant's place in it, the guard, and who is due a
+wake - are
 `muster-msg`, a crate that knows a pane only as a name and knows nothing of protobuf or files, so they are tested as
 conformance cases (`corpus/conformance/messaging.json`) with no daemon running. `muster-daemon` hosts it behind the
 `msg` requests, under a lock of its own so that a post never waits behind the pane tree, keeps each group's log in
@@ -825,6 +826,12 @@ pattern, and only text drawn faint follows it. So only a harness whose manifest 
 today is Claude Code alone. A wake that cannot be rung yet waits in the daemon for a thread of its own, woken by posts
 and agent state changes and otherwise by the next deadline - a quiet period ending, a Return due again, or five
 seconds while a prompt holds a draft (MIP-4, section 6).
+
+**An agent whose own hooks fetch its messages is never rung while they run.** A Claude Code session given
+`extras/claude-code/messaging-hooks.json` reads what arrived after each tool call and, when its turn ends, waits in
+the background with `muster msg wait --due`, whose answer starts its next turn. While that wait is connected, or one
+of its verbs ran in the last five minutes, a post marks it woken and types nothing; otherwise it is rung as any
+agent in a pane is.
 
 **Messaging is one of two request paths that do not run through the core.** Messaging has to work with no window
 open, and the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,

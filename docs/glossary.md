@@ -44,6 +44,9 @@ One name per concept; docs and code use these terms. Alphabetical.
   A pane reads its own from `MUSTER_PANE`.
 - **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
 - **pane tree** - the split layout inside one tab; daemon truth.
+- **policy** - a group's four rules, enforced by the daemon: whom an unaddressed post wakes (`ring`), whom each
+  author may address (`allow`), who may change the group (`membership`), and whether it is `paused`, holding every
+  wake but the human's (MIP-4, section 8).
 - **region** - the part of a Muster tab that one machine holds, as it sits on screen: that machine's pane tree,
   and how wide it is. One for every tab until somebody groups two.
 - **roster** - every tab the window holds with its panes under it, ordered and labelled by the core, each row saying
@@ -66,7 +69,7 @@ One name per concept; docs and code use these terms. Alphabetical.
   form.
 - **wake** - the one-line notice that messages are waiting, sent to a participant once per group until it reads;
   never the message itself. For an agent in a pane it is rung by the doorbell; for a Claude Code session outside
-  one, it is a line on its inbox socket.
+  one, it is a line on its inbox socket; a session given the messaging hooks fetches its own.
 - **window** - the unit that holds an ordered list of Muster tabs and shows one of them, with an arrangement of its
   own under `~/.muster/state/windows/`. Two windows are two arrangements rather than two views of one, and a window is
   named after its arrangement (`window-2`), so it is the same window after a quit.

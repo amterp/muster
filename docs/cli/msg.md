@@ -53,11 +53,43 @@ and joined by `+` (`builder+critic`), created on first use. A post that fits sev
 an unaddressed post from someone in several, is refused until it says which.
 
 `--to A,B` decides who is woken, never who may read: every member of the group can read every
-message in it. An unaddressed post wakes every member but its author.
+message in it. An unaddressed post wakes every member but its author, unless the group's policy
+says otherwise.
 
 **`--to` takes a pane's name too**, such as the one `muster pane new` prints. An agent in that
 pane need not have joined anything, or even have started yet: it becomes a participant named
 after the pane, and whatever runs `muster msg` in that pane from then on is it.
+
+## A group's policy
+
+A group made with `group new G --policy F` has the policy in file F, TOML with four keys:
+
+    # a director and members who answer to it
+    ring = { director = ["*"], "*" = ["director"] }
+    allow = { director = ["*"], "*" = ["director", "@human"] }
+    membership = ["director", "@human"]
+    paused = false
+
+- **`ring`** says, per author, whom an unaddressed post wakes; `*` as the author is everyone
+  not listed, and as a name is every member. Here the director's post wakes every member and a
+  member's wakes only the director.
+- **`allow`** says, per author, whom a post may name in `--to`. Anyone else is refused, and the
+  refusal says whom you may address.
+- **`membership`** says who may change the group: join it, leave it, `group add` and `group
+  remove`, `group set`, `pause` and `resume`. Here a member cannot leave on its own, and the
+  refusal names who may dismiss it.
+- **`paused`** holds the group's wakes, as `pause` does.
+
+A key left out keeps its default, which lets anyone do anything: `ring` and `allow` of
+`{ "*" = ["*"] }`, `membership` of `["*"]`. A key no field reads is refused, so a misspelled key
+is not quietly the default. Names are participants' names, `*`, or `@human`. A group made by
+`join` or by a post has the default. `group set` replaces the whole policy with a file's, and
+every change of policy, and every pause and resume, is a line in the group's log.
+
+`pause G` keeps every post and wakes nobody but the human, and a post says who it held.
+`resume G` wakes each member once for what it has unread, including a member woken before the
+pause, and says whom it woke as a post does. Pausing is how a person reading along asks a busy
+group to stop for a moment.
 
 ## Being woken
 
@@ -88,6 +120,14 @@ show it yet - the ring ends, and the next post rings afresh.
 
 An agent that goes idle with what it was woken for still unread is woken once more, with `still
 unread` on the end, and then not again until it reads.
+
+**A Claude Code session can fetch its own messages with hooks** instead of being rung.
+`extras/claude-code/messaging-hooks.json` holds two: after every tool call, `read --if-unread`
+hands the model any message that arrived, and when a turn ends, `wait --due` waits in the
+background and starts the next turn when a wake is due. Merge them into the session's settings or
+pass the file with `--settings`. While a session's hooks are running, nothing is typed into its
+pane. A session whose hooks have not run for five minutes, and has no `wait` waiting, is rung as
+before.
 
 A Claude Code session outside any pane is woken through its inbox socket, and a wake reaches it
 between tool calls or starts a turn if it was idle. **A session started with
@@ -149,6 +189,12 @@ newer `wait` by the same participant ends the older, which exits 1, as does one 
 leaves. With `--timeout` it exits 5 when nothing arrived. A wait survives Muster updating its
 daemon: it asks the new one and goes on waiting.
 
+With `--due` it returns only for a wake you are due: once for each batch of messages, and once
+more `still unread` if you have not read them, as the doorbell would. That is what a `Stop` hook
+needs, since plain `wait` would return at the end of every turn that left a message unread.
+`--due`, like `join --pull`, also says your hooks fetch your messages, so you are not rung while
+they are running.
+
 **Do not run it in the foreground of an agent's turn**: that is the blocking loop this exists to
 remove. It is for hooks and scripts.
 
@@ -168,13 +214,13 @@ once Ctrl-C has stopped the follow and left its shell.
 
 | verb | does |
 |---|---|
-| `join [--name N] [--group G]` | registers you, and joins a group, creating it if absent |
+| `join [--name N] [--group G] [--pull]` | registers you, and joins a group, creating it if absent |
 | `leave [--group G]` | leaves a group; with none, leaves every group and stops taking part |
 | `who [--group G]` | who takes part: alive, gone, or the human, what each in a pane is doing, and their groups |
 | `post [--group G] [--to A,B] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for |
 | `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
 | `log --group G [--since N] [--follow]` | the transcript, moving nothing; `--follow` keeps printing |
-| `wait [--group G] [--timeout S]` | blocks until a message would wake you |
+| `wait [--group G] [--timeout S] [--due]` | blocks until a message would wake you |
 | `groups` | every group, its members, and whether it is paused; `--json` has each policy |
 | `group new G [--policy F]` | makes a group with that policy, and joins it as its first member |
 | `group set G --policy F` | replaces a group's policy |
@@ -182,7 +228,8 @@ once Ctrl-C has stopped the follow and left its shell.
 | `pause G` | holds a group's wakes: its posts wake nobody but the human |
 | `resume G` | wakes each member once for what it has unread, and lets posts wake again |
 
-Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, 3 no daemon
+Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, including
+by a group's policy, 3 no daemon
 to ask, 4 the daemon hung up before answering, 5 a wait that timed out, 6 a post that woke
 nobody live.
 
@@ -197,5 +244,5 @@ where.
 ## Not yet
 
 Messages stay on the machine they were posted on: an agent on a devenv and one on your laptop
-cannot share a group yet, and groups have no policy but the permissive default.
-`docs/mip/0004-agent-messaging.md` is the design and its order.
+cannot share a group yet, and no verb deletes a group. `docs/mip/0004-agent-messaging.md` is the
+design and its order.
