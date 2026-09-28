@@ -263,7 +263,7 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Joined, Refusal> {
         let (name, took_over) = match name {
-            None => (self.identify(caller, presence)?, false),
+            None => self.identify_reporting(caller, presence)?,
             Some(name) => {
                 check_participant(name)?;
                 self.may_become(name, caller, presence)?;
@@ -551,24 +551,34 @@ impl<S: Store> Messaging<S> {
     /// The participant the caller is, registering it under a default name if it is new
     /// (MIP-4, section 3). Refreshes the addresses it carries.
     fn identify(&mut self, caller: &Caller, presence: &dyn Presence) -> Result<String, Refusal> {
+        self.identify_reporting(caller, presence).map(|(name, _)| name)
+    }
+
+    /// [`Self::identify`], also saying whether the caller took over a name a gone session held.
+    fn identify_reporting(
+        &mut self,
+        caller: &Caller,
+        presence: &dyn Presence,
+    ) -> Result<(String, bool), Refusal> {
         if let Some(name) = &caller.as_name {
             check_participant(name)?;
             self.may_become(name, caller, presence)?;
             self.adopt(name, caller);
-            return Ok(name.clone());
+            return Ok((name.clone(), false));
         }
         if let Some(inbox) = &caller.inbox {
             if let Some(name) = self.by_inbox(inbox) {
                 self.adopt(&name, caller);
-                return Ok(name);
+                return Ok((name, false));
             }
             let base = default_name(caller.directory.as_deref());
             let name = self.free_name(&base, presence);
+            let took_over = self.participants.contains_key(&name);
             self.adopt(&name, caller);
-            return Ok(name);
+            return Ok((name, took_over));
         }
         self.participants.entry(HUMAN.to_string()).or_insert_with(|| Participant::named(HUMAN));
-        Ok(HUMAN.to_string())
+        Ok((HUMAN.to_string(), false))
     }
 
     /// `base`, or `base-2`, `base-3` and on: the first that nobody alive holds. A default name
@@ -591,6 +601,11 @@ impl<S: Store> Messaging<S> {
         let participant =
             self.participants.entry(name.to_string()).or_insert_with(|| Participant::named(name));
         if caller.inbox.is_some() {
+            // A session that takes over a name has been woken for nothing yet, whatever the
+            // session before it was told.
+            if participant.inbox != caller.inbox {
+                participant.woken.clear();
+            }
             participant.inbox.clone_from(&caller.inbox);
             participant.gone = false;
         }
