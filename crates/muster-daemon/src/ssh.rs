@@ -107,14 +107,27 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     ExitCode::from(exit_code(status))
 }
 
-/// ssh's arguments as ssh(1) reads them: options, then the destination, then a remote command.
+/// ssh's arguments as ssh(1) reads them: options, the destination, more options unless a `--`
+/// came first, then a remote command.
 #[derive(Debug, PartialEq, Eq)]
 struct Arguments {
     /// Where the destination is, if there is one.
     destination: Option<usize>,
+    /// Where the words for reaching the host end: at the remote command, or at the `--` that
+    /// ended the options after the destination.
+    end: usize,
     /// False for the forms that open no terminal on a host, or ask ssh rather than a host:
     /// `-N`, `-f`, `-W`, `-O`, `-G`, `-V`, `-Q` and `-s`.
     opens_terminal: bool,
+}
+
+/// Where a run of option words stopped.
+struct Run {
+    /// The first word after them.
+    next: usize,
+    /// Where they end, which is before a `--` that ended them.
+    end: usize,
+    terminated: bool,
 }
 
 impl Arguments {
@@ -122,20 +135,32 @@ impl Arguments {
     const WITH_VALUE: &str = "BbcDEeFIiJLlmOoPpQRSWw";
     const NO_TERMINAL: &str = "NfWOGVQs";
 
+    /// As `ssh.c` does: options, the destination, and then options again (its `goto again`),
+    /// unless a `--` ended the first run.
     fn read(ssh: &[String]) -> Arguments {
         let mut opens_terminal = true;
-        let mut index = 0;
+        let before = Self::options(ssh, 0, &mut opens_terminal);
+        let destination = (before.next < ssh.len()).then_some(before.next);
+        let end = match destination {
+            None => ssh.len(),
+            Some(at) if before.terminated => at + 1,
+            Some(at) => Self::options(ssh, at + 1, &mut opens_terminal).end,
+        };
+        Arguments { destination, end, opens_terminal }
+    }
+
+    fn options(ssh: &[String], from: usize, opens_terminal: &mut bool) -> Run {
+        let mut index = from;
         while let Some(word) = ssh.get(index) {
             if word == "--" {
-                index += 1;
-                break;
+                return Run { next: index + 1, end: index, terminated: true };
             }
             let Some(letters) = word.strip_prefix('-').filter(|letters| !letters.is_empty()) else {
                 break;
             };
             for (at, letter) in letters.char_indices() {
                 if Self::NO_TERMINAL.contains(letter) {
-                    opens_terminal = false;
+                    *opens_terminal = false;
                 }
                 if Self::WITH_VALUE.contains(letter) {
                     if at + letter.len_utf8() == letters.len() {
@@ -146,12 +171,13 @@ impl Arguments {
             }
             index += 1;
         }
-        Arguments { destination: (index < ssh.len()).then_some(index), opens_terminal }
+        let index = index.min(ssh.len());
+        Run { next: index, end: index, terminated: false }
     }
 
-    /// The options and the destination, without a remote command.
+    /// Every word for reaching the host, without a remote command.
     fn to_host<'a>(&self, ssh: &'a [String]) -> &'a [String] {
-        self.destination.map_or(ssh, |at| &ssh[..=at])
+        &ssh[..self.end]
     }
 }
 
@@ -300,14 +326,15 @@ mod tests {
 
     #[test]
     fn sshs_arguments_are_read_as_ssh_reads_them() {
-        let at = |destination, opens_terminal| Arguments { destination, opens_terminal };
-        assert_eq!(read(&["-p", "2222", "host", "ls"]), at(Some(2), true));
-        assert_eq!(read(&["-p2222", "-v", "host"]), at(Some(2), true));
-        assert_eq!(read(&["-tt", "-o", "A=b", "host"]), at(Some(3), true));
-        assert_eq!(read(&["-fNL", "80:x:80", "host"]), at(Some(2), false));
-        assert_eq!(read(&["-L80:x:80", "-N", "host"]), at(Some(2), false));
-        assert_eq!(read(&["--", "-host"]), at(Some(1), true));
-        assert_eq!(read(&["-V"]), at(None, false));
+        let at = |destination, end, opens_terminal| Arguments { destination, end, opens_terminal };
+        assert_eq!(read(&["-p", "2222", "host", "ls"]), at(Some(2), 3, true));
+        assert_eq!(read(&["-p2222", "-v", "host"]), at(Some(2), 3, true));
+        assert_eq!(read(&["-tt", "-o", "A=b", "host"]), at(Some(3), 4, true));
+        assert_eq!(read(&["-fNL", "80:x:80", "host"]), at(Some(2), 3, false));
+        assert_eq!(read(&["-L80:x:80", "-N", "host"]), at(Some(2), 3, false));
+        assert_eq!(read(&["--", "-host", "-p", "2"]), at(Some(1), 2, true));
+        assert_eq!(read(&["-V"]), at(None, 1, false));
+        assert_eq!(read(&["-p"]), at(None, 1, true), "an option missing its argument");
     }
 
     /// ssh goes back to reading options after the destination, until a word that is not one,
