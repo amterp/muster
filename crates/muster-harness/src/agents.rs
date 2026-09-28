@@ -49,11 +49,21 @@ impl Daemon {
     ///
     /// The daemon must be one [`Daemon::start_detecting`] started.
     pub fn run_agent(&self, pane: &str) {
+        self.run_agent_with(pane, "");
+    }
+
+    /// [`Daemon::run_agent`], with the agent still starting as Claude Code starts: the first
+    /// line typed into it fills its prompt and is not sent until a later Return.
+    pub fn run_starting_agent(&self, pane: &str) {
+        self.run_agent_with(pane, " starting");
+    }
+
+    fn run_agent_with(&self, pane: &str, arguments: &str) {
         let agent = self.root().join("home/.muster/bin").join(AGENT_NAME);
         assert!(agent.exists(), "run_agent needs a daemon from Daemon::start_detecting");
         let mut control = self.connect();
         until_text(&mut control, pane, "$");
-        type_line(self, pane, &agent.display().to_string());
+        type_line(self, pane, &format!("{}{arguments}", agent.display()));
         until_text(&mut control, pane, "PROBE-STATE:IDLE");
         self.until_agent(pane, proto::AgentState::Idle);
     }

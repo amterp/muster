@@ -168,3 +168,16 @@ fn a_pane_addressed_before_its_agent_is_found_is_rung_once_it_is() {
     let rung = agent.until_rung(1);
     assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
 }
+
+/// Claude Code is found, and read as idle, before it reads its terminal as its prompt does: what
+/// is typed while it starts fills the prompt, and the Return typed with it is dropped. A ring
+/// that the agent neither acts on nor reads for is followed by another Return, which sends it.
+#[test]
+fn a_ring_typed_while_the_agent_starts_is_sent_by_a_later_return() {
+    let mut agent = Agent::to_come();
+    agent.daemon.run_starting_agent("p1");
+    agent.post("p1", "a brief");
+
+    let rung = agent.until_rung(1);
+    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+}
