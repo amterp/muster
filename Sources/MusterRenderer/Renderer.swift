@@ -199,7 +199,8 @@ public final class Renderer {
   // Not while a freed surface is still stopping its threads: that runs on a thread of its own
   // and reaches the app until it ends, so the app is ticked until every one has. Past the bound
   // the app is left rather than freed under one, which is a leak in a process that is going
-  // away rather than a crash in it.
+  // away rather than a crash in it. Unreachable today, because `current` holds the one
+  // renderer for the life of the process, so this is here for whatever frees one first.
   isolated deinit {
     let deadline = ContinuousClock.now + .seconds(5)
     while frees.value > 0, ContinuousClock.now < deadline {

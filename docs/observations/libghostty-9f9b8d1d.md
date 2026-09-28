@@ -580,3 +580,16 @@ stops and joins the threads on a thread of its own, calling back once the memory
 The main thread goes back to ticking, the mailbox drains, and the join completes.
 `ghostty_surface_free` is unchanged. `SurfaceGUITests` stages the deadlock with a real surface:
 titles set as fast as a shell can, a main actor kept from ticking, then a free.
+
+**What the patch does not remove.** The main thread still has other waits with no timeout on a
+surface's threads, and those threads can themselves be waiting on the full app mailbox:
+
+- `queueIo` falls back to a `.forever` push once that surface's IO mailbox holds 64 messages
+  (`termio/mailbox.zig:95`), and resizes, keystrokes and font-size changes all go through it;
+- a config or font-size change pushes to the renderer's mailbox `.forever` (`Surface.zig:1814`,
+  `:2475`), whose thread pushes `renderer_health` to the app mailbox `.forever`
+  (`renderer/generic.zig:1753`).
+
+Each needs 64 main-thread pushes into one blocked surface between two ticks, which is far less
+likely than a free, but it is the same deadlock. A frozen window whose main thread is in one of
+those pushes is this section again.
