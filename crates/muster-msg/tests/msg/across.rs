@@ -1131,6 +1131,28 @@ fn a_person_on_the_far_machine_is_the_laptops_human() {
     assert!(devenv.participant(HUMAN).is_none(), "the devenv made a human of its own");
 }
 
+/// The person's join on the far machine is refused as theirs before anything asks where the
+/// group is kept: with the link up, down, or to a group kept on the laptop, it names the laptop
+/// rather than the link or a group to make.
+#[test]
+fn the_persons_join_on_the_far_machine_names_the_laptop_whatever_the_link() {
+    let mut wire = dialed();
+    wire.join(Side::Laptop, &session("builder"), Some("builder"), "review");
+    wire.join(Side::Devenv, &session("critic"), Some("critic"), "review");
+    for up in [true, false] {
+        if !up {
+            wire.cut();
+        }
+        let (devenv, sessions) = wire.split(Side::Devenv);
+        for group in ["council", "review"] {
+            for name in [None, Some(HUMAN)] {
+                let routed = devenv.route_join(&human(), name, Some(group), sessions);
+                assert_eq!(routed.unwrap_err(), human_elsewhere(), "{group}, link up: {up}");
+            }
+        }
+    }
+}
+
 /// An agent on the far machine that asks for the human means the laptop's: in a group the
 /// human joined, the laptop is told and wakes it; in none, there is no group to post in.
 #[test]
