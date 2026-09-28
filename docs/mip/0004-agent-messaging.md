@@ -545,10 +545,13 @@ As built in stage 4:
   caller's groups refuses it), `group add` and `group remove`, `group set`, `pause` and `resume`. A refusal
   is `not_permitted`, naming who may. Creating a group is open to anyone, and its creator is its
   first member.
-- **`group set` replaces the whole policy** from a file, the same TOML `group new` reads. One
+- **`group set` replaces the policy** from a file, the same TOML `group new` reads. One
   path for every field is simpler to get right than a grammar per field, and a file of four keys
   is short. A key the file holds that no field reads is refused, so a typo is not silently a
-  default.
+  default. Whether the group is paused is left as it is, and a file saying `paused = true` is
+  refused: a pause forgets the wakes it holds and a resume makes them, so `pause` and `resume`
+  are the only way to change it, where a file leaving the key out would unpause the group with
+  nobody woken for what it held.
 - **Changes are entries in the log.** `group add` and `group remove` log a join and a leave
   under the member's name; `group set`, `pause` and `resume` log who changed what.
 - **A paused group still reaches the human.** A post to a paused group is appended, the human is

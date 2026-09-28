@@ -190,7 +190,8 @@ pub enum GroupVerb {
         #[arg(long, value_name = "PATH")]
         policy: Option<String>,
     },
-    /// Replace a group's policy with a file's
+    /// Replace a group's ring, allow and membership with a file's; `pause` and `resume` change
+    /// whether it is paused
     Set {
         #[arg(value_name = "GROUP")]
         group: String,
@@ -329,9 +330,17 @@ pub fn run(
         }
     }
     if let Some(path) = &messaging.policy_from {
-        let policy = read_policy(path)?;
+        let (policy, pauses) = read_policy(path)?;
         match messaging.request.request.as_mut() {
             Some(Asked::GroupNew(new)) => new.policy = Some(policy),
+            Some(Asked::GroupSet(set)) if pauses => {
+                return Err(Trouble::Refused(format!(
+                    "{path} says `paused = true`, and `group set` leaves whether {} is paused as \
+                     it is: pause it with `muster msg pause {}`, which holds its wakes until \
+                     `resume` wakes each member for what it missed.",
+                    set.group, set.group
+                )));
+            }
             Some(Asked::GroupSet(set)) => set.policy = Some(policy),
             _ => {}
         }
@@ -460,7 +469,8 @@ fn everyone_and_the_human_by_author() -> BTreeMap<String, Vec<String>> {
     BTreeMap::from([("*".to_string(), vec!["*".to_string(), "@human".to_string()])])
 }
 
-fn read_policy(path: &str) -> Result<msg_request::Policy, Trouble> {
+/// The policy a file holds, and whether it says to be paused.
+fn read_policy(path: &str) -> Result<(msg_request::Policy, bool), Trouble> {
     let text = std::fs::read_to_string(path).map_err(|error| {
         Trouble::Refused(format!("could not read the policy file {path} ({error})."))
     })?;
@@ -473,12 +483,13 @@ fn read_policy(path: &str) -> Result<msg_request::Policy, Trouble> {
     let names = |map: BTreeMap<String, Vec<String>>| {
         map.into_iter().map(|(author, names)| (author, msg_request::Names { names })).collect()
     };
-    Ok(msg_request::Policy {
+    let policy = msg_request::Policy {
         ring: names(file.ring),
         allow: names(file.allow),
         membership: file.membership,
         paused: file.paused,
-    })
+    };
+    Ok((policy, file.paused))
 }
 
 /// How long to keep asking a daemon that is handing over to a new one, which is refusing

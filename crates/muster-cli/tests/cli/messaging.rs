@@ -411,6 +411,13 @@ fn a_directed_council_holds_its_members_to_its_policy() {
         complained(&aside)
     );
 
+    let pausing = daemon.root().join("paused.toml");
+    std::fs::write(&pausing, "paused = true\n").unwrap();
+    let pausing = pausing.display().to_string();
+    let set = muster(&daemon, &["msg", "group", "set", "council", "--policy", pausing.as_str()]);
+    assert_eq!(set.status.code(), Some(1), "{}", said(&set));
+    assert!(complained(&set).contains("muster msg pause council"), "{}", complained(&set));
+
     assert_eq!(ok(&muster(&daemon, &["msg", "pause", "council"])), "paused council");
     assert_eq!(ok(&muster(&daemon, &["msg", "pause", "council"])), "council was already paused");
     let plan = ["msg", "--as", "director", "post", "--group", "council", "the", "plan"];

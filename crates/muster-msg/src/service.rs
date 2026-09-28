@@ -895,7 +895,9 @@ impl<S: Store> Messaging<S> {
         Ok(Changed::by(&by, group, seq))
     }
 
-    /// Replaces a group's policy whole.
+    /// Replaces a group's policy but for whether it is paused, which only `pause` and `resume`
+    /// change: they forget and make the wakes a pause holds, and a file that leaves `paused` out
+    /// would otherwise unpause the group with nobody woken for what it held.
     pub fn group_set(
         &mut self,
         caller: &Caller,
@@ -909,6 +911,7 @@ impl<S: Store> Messaging<S> {
         let by = self.identify(caller, presence)?;
         self.permitted(group, &by, Action::SetPolicy)?;
         let after = self.groups[group].head();
+        let policy = Policy { paused: self.groups[group].policy.paused, ..policy };
         let seq = self.set_policy(group, &by, policy, now_ms)?;
         self.save()?;
         let mut changed = Changed::by(&by, group, Some(seq));
