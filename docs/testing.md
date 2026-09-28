@@ -168,6 +168,15 @@ Muster's principles, adapted to that evidence:
   two runs were measured under conditions that resemble each other at all. `./dev --doctor` is the other half:
   load says the machine is busy, and the doctor says what is on it - the daemons and containers this repo's own
   tooling leaves behind, and what is currently eating the CPU.
+- **One test binary per crate.** A crate's integration tests are modules of `tests/<name>/main.rs`, beside the
+  `support` module they share, rather than a binary per file. Every binary links the crate and its dependencies
+  again, and macOS scans each new one before its first run, so 154 of them spent much of a gate linking and listing
+  rather than testing. What it costs is a shared process: whatever one test sets for the process, every test in its
+  binary sees. So no test sets the environment. The settings the seam reads from it for the suite's sake are set
+  through `muster::testing` and put back by `fresh_session`, and a test that uses the seam's one session takes that
+  turn first; a bridge test's `Typing` takes it for you. A test that needs a process of its own stays a top-level
+  file, which cargo builds as its own binary, and says why at the top: `muster-seam/tests/named_daemon.rs` is the
+  one. `muster-herdr` keeps a binary per file, since it goes with herdr.
 - **A Swift test that points the seam somewhere holds it while it does.** `Core.dispatcher` is one mutable global
   for the process, so a test that swaps it is writing where every other test reads. These tests all run on the main
   actor and so are never truly concurrent - but a test that awaits gives the actor up, and another test's recorder

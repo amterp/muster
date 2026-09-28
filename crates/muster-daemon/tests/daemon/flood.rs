@@ -102,7 +102,7 @@ fn a_pane_behind_its_flood_does_not_hold_up_another_panes_echo() {
 }
 
 /// Prints echo latency on the quiet pane, alone and beside the flood. Run with
-/// `cargo test -p muster-daemon --test flood -- --ignored --nocapture`.
+/// `cargo test -p muster-daemon --test daemon -- flood::echo_latency --ignored --nocapture`.
 #[test]
 #[ignore = "a measurement, not a property: see the module comment"]
 fn echo_latency() {

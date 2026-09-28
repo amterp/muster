@@ -2,7 +2,7 @@
 //!
 //! The real binary, spawned as a process, against a real endpoint and a real daemon. Everything in
 //! between has no other test: `argv.rs` proves a command line becomes the right request and
-//! `muster-seam/tests/command.rs` proves the endpoint answers one, and neither of them would notice
+//! `muster-seam/tests/seam/command.rs` proves the endpoint answers one, and neither of them would notice
 //! that the binary cannot find the socket, renders nothing, or exits zero on a refusal. Each of
 //! those failures looks the same from a pane: the CLI does nothing.
 //!

@@ -988,7 +988,7 @@ recording would be an oracle the code rewrites for itself. What stays external:
   new daemon for every behavior Muster keeps, and every difference is recorded in the corpus with
   its reason, never removed by editing the recording to match.
 
-**The replay has its own oracle**, `crates/muster-vt/tests/replay.rs` over
+**The replay has its own oracle**, `crates/muster-vt/tests/vt/replay.rs` over
 `corpus/conformance/replay.json`. Feed a case's bytes to terminal A, replay A into terminal B,
 and compare everything either can be asked - every row with its styles, links, protection and
 wraps, the cursor, every mode, the colors - then feed both the same bytes and compare again. The
@@ -1000,7 +1000,7 @@ exact difference.
 
 **The headless terminal is fuzzed** with recorded pane output. It parses every pane's untrusted
 output in one process, so a crash in it ends every agent on the machine. `muster-vt`'s
-`tests/fuzz.rs` mutates herdr's recorded frames and every string the replay and catch-up cases
+`tests/vt/fuzz.rs` mutates herdr's recorded frames and every string the replay and catch-up cases
 feed, splices in the sequences where a parser keeps state across bytes or allocates on the
 sender's say-so, and feeds the result in random chunks between the resizes, replays, catch-ups,
 clears and formats the daemon interleaves with output. It passes when nothing crashes. It runs in
@@ -1040,7 +1040,7 @@ herdr's. The targets, at one pane and at fifteen:
 
 The tier also gains a flood case: a pane running `cat` on a large file, attached to a bridge that
 reads slowly. The gate holds the structure beneath these numbers without timing anything
-(`crates/muster-daemon/tests/flood.rs`): a pane behind its flood is told once and sent nothing
+(`crates/muster-daemon/tests/daemon/flood.rs`): a pane behind its flood is told once and sent nothing
 more, and another pane's echo still comes back through a writer, reader and stream of its own. An
 ignored test there prints the echo's latency, alone and beside the flood.
 

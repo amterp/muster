@@ -60,7 +60,7 @@ RUN printf '%s\n' \
     && visudo -cf /etc/sudoers.d/devenv-sh
 
 # And for infocmp as root keeping the caller's TERMINFO, which is what Ghostty's sudo wrapper
-# asks for: crates/muster-daemon/tests/devenv_terminfo.rs runs it through the wrapper. sshd's
+# asks for: crates/muster-daemon/tests/daemon/devenv_terminfo.rs runs it through the wrapper. sshd's
 # second AcceptEnv line is for the names Ghostty's ssh wrapper forwards.
 RUN printf '%s\n' \
         'dev ALL=(root) NOPASSWD:SETENV: /usr/bin/infocmp' \

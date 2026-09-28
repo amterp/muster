@@ -478,7 +478,7 @@ codegen - a surface that cannot express an action is a missing message, visible 
   will draw it at. Its rectangle in the daemon's own layout is what the next client renders, which is what makes it
   the size worth handing back. That rectangle is in cells of a terminal area herdr keeps for itself, fixed whether
   a client is attached or not, and the pane's grid is one column narrower than it
-  (`observations/herdr-0.8.0.md` section 4, and `crates/muster-seam/tests/geometry.rs` for the measurement).
+  (`observations/herdr-0.8.0.md` section 4, and `crates/muster-seam/tests/seam/geometry.rs` for the measurement).
 - **The shell owns nothing.** Surfaces are disposable renders of a pane channel. A surface attaching to a live pane
   starts with a full repaint and never assumes it saw the start of the stream. Closing a window destroys surfaces
   and touches no session.

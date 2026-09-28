@@ -1,7 +1,7 @@
 //! A real bridge dies, and the window gets another one.
 //!
 //! The gap kan a_2IRcMjFs0 is about. `corpus/conformance/respawn.json` drives the replacement
-//! policy directly and `crates/muster-seam/tests/respawn.rs` drives the seam request that
+//! policy directly and `crates/muster-seam/tests/seam/respawn.rs` drives the seam request that
 //! reaches it, so both halves were covered and the wiring between them was covered nowhere -
 //! and the wiring was the part that did not exist. Two field runs on 0.4.1 killed nine bridges
 //! between them and produced not one replacement.

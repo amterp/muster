@@ -467,7 +467,7 @@ word again after the interval expires. The rest is source, at the lines named ab
 
 Probed 2026-09-26 for MIP-3's replay (`docs/mip/0003-own-daemon.md`, section 5): feed bytes
 to one libghostty-vt terminal, replay it into a fresh one, and compare everything either can
-be asked. The comparison is now a permanent test, `crates/muster-vt/tests/replay.rs` over
+be asked. The comparison is now a permanent test, `crates/muster-vt/tests/vt/replay.rs` over
 `corpus/conformance/replay.json`, so each finding below is also a named case.
 
 **The C formatter reaches only the active screen, and never emits state without content.**

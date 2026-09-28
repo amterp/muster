@@ -1,6 +1,6 @@
 //! Whether a caller can wait on an agent through the command it types, instead of polling.
 //!
-//! The real binary against a real window and daemon, for what `muster-seam/tests/agent_states.rs`
+//! The real binary against a real window and daemon, for what `muster-seam/tests/seam/agent_states.rs`
 //! cannot see from inside the process: that a watch's lines reach a pipe as they happen rather
 //! than when the command exits, and that a wait's exit code is the one a script branches on
 //! (kan a_2M9T8O6dL).

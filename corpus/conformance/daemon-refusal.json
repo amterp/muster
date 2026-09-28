@@ -45,7 +45,7 @@
     },
     {
       "name": "a daemon that answered something unreadable",
-      "why": "The same unknown by another route. The daemon read the request and wrote back something that is not a herdr response, so it may have acted on it, and this build cannot tell. The CLI already reads an unreadable answer from a window this way (`crates/muster-cli/tests/exit_codes.rs`).",
+      "why": "The same unknown by another route. The daemon read the request and wrote back something that is not a herdr response, so it may have acted on it, and this build cannot tell. The CLI already reads an unreadable answer from a window this way (`crates/muster-cli/tests/cli/exit_codes.rs`).",
       "given": { "kind": "malformed" },
       "expect": { "kind": "unanswered", "detail": "malformed response" }
     }

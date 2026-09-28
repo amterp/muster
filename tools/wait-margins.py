@@ -5,7 +5,7 @@ Reads the lines `herdr_harness::until` writes when `MUSTER_WAIT_LOG` is set, and
 per wait site. Anything else on the stream is ignored, so a whole `cargo test` transcript can be
 piped in without filtering it first:
 
-    MUSTER_WAIT_LOG=1 cargo test -p muster-seam --test respawn -- --nocapture 2>&1 \
+    MUSTER_WAIT_LOG=1 cargo test -p muster-seam --test seam -- respawn:: --nocapture 2>&1 \
       | python3 tools/wait-margins.py
 
 The column that answers the question is `margin`, the gap between the slowest observed wait and

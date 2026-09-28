@@ -8,10 +8,6 @@
 //! The seam holds the attached pane in a process global and a `Startup` points the whole
 //! process at one config, so tests sharing a process take turns: a [`Typing`] holds the seam's
 //! turn (`muster::testing::fresh_session`) for as long as it lives.
-//!
-//! Each binary uses one slice of this, so whatever it does not touch is dead to it. That is
-//! how Rust builds integration tests, not a sign that something here has no readers.
-#![allow(dead_code)]
 
 use std::collections::BTreeMap;
 use std::io::Read;

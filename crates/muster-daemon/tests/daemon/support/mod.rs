@@ -1,7 +1,7 @@
 //! What the daemon's tests share: the daemon, and requests spelled so a test reads as what it
 //! asks for.
 
-#![allow(dead_code, unreachable_pub, unused_imports)]
+#![allow(unreachable_pub)]
 
 use std::path::Path;
 

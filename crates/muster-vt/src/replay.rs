@@ -8,7 +8,7 @@
 //! tabstops put it, and reaches only the active screen
 //! (`docs/observations/libghostty-9f9b8d1d.md`, section 11).
 //!
-//! The judge is `tests/replay.rs`: a terminal fed a replay must be indistinguishable from the
+//! The judge is `tests/vt/replay.rs`: a terminal fed a replay must be indistinguishable from the
 //! one it came from, before and after both receive the same further bytes.
 
 use crate::formatter::{

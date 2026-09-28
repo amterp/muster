@@ -706,7 +706,7 @@
     },
     {
       "name": "a pane put into a tab this machine already holds part of joins that part",
-      "why": "The destination that names a tab and no pane. Nothing is ordered - the request says which tab and leaves where in its tree to the daemon - which is what separates it from a drag onto a row. It is also the one destination that may cross machines: a tab this one holds no part of gets a new one instead, which needs a registry that has not seen the name and so lives in `crates/muster-seam/tests/across_machines.rs` against two real daemons.",
+      "why": "The destination that names a tab and no pane. Nothing is ordered - the request says which tab and leaves where in its tree to the daemon - which is what separates it from a drag onto a row. It is also the one destination that may cross machines: a tab this one holds no part of gets a new one instead, which needs a registry that has not seen the name and so lives in `crates/muster-seam/tests/seam/across_machines.rs` against two real daemons.",
       "given": {
         "intent": "move",
         "pane": "p1",

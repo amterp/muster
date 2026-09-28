@@ -246,7 +246,7 @@ fn shell_says(shell: &str, sudo: Option<bool>, line: &str, wanted: &str) -> (Dae
     (daemon, text)
 }
 
-/// Ghostty's `ssh-*` features wrap ssh to give the host the entry (`tests/ssh_terminfo.rs`), and
+/// Ghostty's `ssh-*` features wrap ssh to give the host the entry (`tests/daemon/ssh_terminfo.rs`), and
 /// are on unless the settings turn them off. Its `sudo` feature, which wraps sudo to keep
 /// `$TERMINFO`, is off unless turned on: preserving `TERMINFO` needs a sudoers rule that allows
 /// SETENV, and sudo refuses outright under one that does not. So by default sudo is the

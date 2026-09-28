@@ -4,10 +4,6 @@
 //! build system's resource copying: reading a case and running it should be the same file,
 //! and a copy is a thing that can go stale.
 
-// Each integration test is its own binary and compiles this module separately, so a helper
-// only one of them needs reads as dead code in the others.
-#![allow(dead_code)]
-
 pub(crate) mod keys;
 
 use std::path::{Path, PathBuf};

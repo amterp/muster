@@ -7,7 +7,7 @@
 //! Spelled out here rather than imported. The app sets them from `muster-herdr`, and that crate
 //! must not depend on the wire schema - a protobuf in the adapter's dependency graph is an
 //! invitation to translate messages where translation does not belong. So the two spellings are
-//! separate on purpose, and `tests/pane_variables.rs` fails if they ever stop matching.
+//! separate on purpose, and `tests/cli/pane_variables.rs` fails if they ever stop matching.
 
 /// What a pane reads to find out which pane it is.
 pub const PANE_NAME: &str = "MUSTER_PANE";
