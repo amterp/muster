@@ -991,6 +991,36 @@ fn a_blocked_report_that_comes_before_its_prompt_is_drawn_holds() {
     assert_eq!(run.detector.effective(run.now), Some(reported(State::Blocked)));
 }
 
+/// A report the rules never read the same way stops counting after output in each of three
+/// seconds running, and output every 1.8 s, which leaves some seconds out, is not that.
+#[test]
+fn an_unconfirmed_report_lapses_on_output_in_every_second_and_not_less() {
+    let lapses = |every: Duration| {
+        let mut run = Run::new();
+        run.tick();
+        run.start_agent();
+        run.paint("nothing a rule knows");
+        run.until_published(Duration::from_secs(2));
+        run.report(State::Blocked);
+        assert_eq!(run.tick(), Some(reported(State::Blocked)));
+        let start = run.now;
+        let mut painted = start;
+        let mut frame = 0;
+        let mut published = Vec::new();
+        while run.now - start < Duration::from_secs(8) {
+            if run.now - painted >= every {
+                painted = run.now;
+                frame += 1;
+                run.paint(&format!("still nothing {frame}"));
+            }
+            published.extend(run.tick());
+        }
+        published.iter().any(|publication| !publication.reported)
+    };
+    assert!(lapses(Duration::from_millis(1200)), "output every 1.2 s is output every second");
+    assert!(!lapses(Duration::from_millis(1800)), "output every 1.8 s leaves seconds out");
+}
+
 /// An idle report while a background task keeps the screen moving is the rules' to read.
 #[test]
 fn an_idle_report_yields_to_a_screen_that_keeps_moving() {
