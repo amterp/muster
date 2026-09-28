@@ -346,40 +346,123 @@ fn a_program_that_does_not_answer_its_version_is_refused_before_anything_is_touc
     let _ = std::fs::remove_dir_all(&scripts);
 }
 
+/// A stand-in for a new daemon that, asked its `--version`, says so and waits to be let go, then
+/// exits with `status`: a first run of a new binary that takes as long as a test needs.
+struct HeldAtVersion {
+    scripts: std::path::PathBuf,
+    program: std::path::PathBuf,
+}
+
+impl HeldAtVersion {
+    fn new(name: &str, status: u8) -> HeldAtVersion {
+        let scripts = std::env::temp_dir().join(format!("muster-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&scripts).unwrap();
+        let program = scripts.join("muster-daemon");
+        let script = format!(
+            // Bounded, so a test that fails before it lets go leaves nothing running.
+            "#!/bin/sh\ntouch '{}'\nn=0\nwhile [ ! -e '{}' ] && [ $n -lt 600 ]; do\n\
+             sleep 0.05; n=$((n + 1))\ndone\nexit {status}\n",
+            scripts.join("asked").display(),
+            scripts.join("go").display()
+        );
+        std::fs::write(&program, script).unwrap();
+        std::fs::set_permissions(&program, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        HeldAtVersion { scripts, program }
+    }
+
+    fn until_asked(&self) {
+        let asked = self.scripts.join("asked");
+        until_some("the program to be asked its --version", || asked.exists().then_some(()));
+    }
+
+    fn let_go(&self) {
+        std::fs::write(self.scripts.join("go"), "").unwrap();
+    }
+}
+
+impl Drop for HeldAtVersion {
+    fn drop(&mut self) {
+        self.let_go();
+        let _ = std::fs::remove_dir_all(&self.scripts);
+    }
+}
+
 /// The first run of a new binary can take seconds on macOS, and the daemon goes on serving
 /// while it waits for the program's `--version`: changes are refused only once the panes are
 /// being handed over.
 #[test]
 fn the_daemon_goes_on_taking_changes_while_it_waits_for_the_version() {
-    let scripts = std::env::temp_dir().join(format!("muster-waiting-{}", std::process::id()));
-    std::fs::create_dir_all(&scripts).unwrap();
-    let (started, go) = (scripts.join("started"), scripts.join("go"));
-    let program = scripts.join("muster-daemon");
-    let script = format!(
-        // Bounded, so a test that fails before it says go leaves nothing running.
-        "#!/bin/sh\ntouch '{}'\nn=0\nwhile [ ! -e '{}' ] && [ $n -lt 600 ]; do\n\
-         sleep 0.05; n=$((n + 1))\ndone\nexit 1\n",
-        started.display(),
-        go.display()
-    );
-    std::fs::write(&program, script).unwrap();
-    std::fs::set_permissions(&program, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-        .unwrap();
+    let held = HeldAtVersion::new("waiting", 1);
     let mut daemon = daemon();
     let (mut control, _input) = two_panes(&daemon);
 
-    let replacing = daemon.start_replacing(Some(&program));
-    until_some("the program to be asked its --version", || started.exists().then_some(()));
+    let replacing = daemon.start_replacing(Some(&held.program));
+    held.until_asked();
     let label = pane_request::Rename { pane: "p1".to_string(), label: Some("A".to_string()) };
     expect(&mut control, pane(pane_request::Request::Rename(label)), proto::Outcome::Done);
     make(&mut control, create("p4", in_new_tab("t4")));
-    std::fs::write(&go, "").unwrap();
+    held.let_go();
     let answer = daemon.finish_replacing(replacing);
 
     assert_eq!(answer.outcome(), proto::Outcome::Refused, "{}", answer.reason);
     assert!(answer.reason.contains("exit status: 1"), "{}", answer.reason);
     still_serving(&daemon, control.welcome().instance);
-    let _ = std::fs::remove_dir_all(&scripts);
+}
+
+/// Nothing has been handed over while the program is asked its version, so a stop signal then
+/// stops the daemon as at any other time. The request is never answered: the daemon has gone.
+#[test]
+fn a_stop_signal_while_the_version_is_asked_stops_the_daemon_at_once() {
+    let held = HeldAtVersion::new("stopping", 1);
+    let mut daemon = daemon();
+    let (mut control, _input) = two_panes(&daemon);
+    let pids = pids_of_both(&mut control);
+
+    let replacing = daemon.start_replacing(Some(&held.program));
+    held.until_asked();
+    stop_signal(daemon.pid());
+    until_some("the panes' shells to end", || {
+        pids.iter()
+            .all(|pid| {
+                let state = process_state(pid);
+                state.is_empty() || state.starts_with('Z')
+            })
+            .then_some(())
+    });
+    held.let_go();
+    let answer = daemon.finish_replacing(replacing);
+
+    assert_eq!(answer.reason, "the daemon hung up without answering");
+    daemon.wait_for_exit();
+    assert!(!daemon.socket_path().exists(), "a daemon that stopped removes its socket");
+}
+
+/// A replace asked while another is under way is refused, and says so: nothing failed, and the
+/// handoff under way goes on.
+#[test]
+fn a_replace_asked_during_another_is_refused_as_such_and_the_first_goes_on() {
+    let held = HeldAtVersion::new("second", 0);
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-hold")]);
+    let (mut control, _input) = two_panes(&daemon);
+    let pids = pids_of_both(&mut control);
+
+    let second = daemon.start_replacing(Some(&held.program));
+    held.until_asked();
+    let first = daemon.start_replacing(None);
+    daemon.paused();
+    held.let_go();
+    let refused = daemon.finish_replacing(second);
+    assert_eq!(refused.outcome(), proto::Outcome::Refused, "{}", refused.reason);
+    assert!(refused.reason.contains("already being replaced"), "{}", refused.reason);
+    daemon.resume();
+    let answer = daemon.finish_replacing(first);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    the_same_shells_answer(&daemon, &pids, "after the first handoff");
+
+    let log = written(&daemon.root().join("daemon.log"));
+    let line = log.lines().find(|line| line.contains("already being replaced")).expect("logged");
+    assert!(!line.contains("daemon.handoff.failed"), "logged as a failure: {line}");
 }
 
 /// A new daemon that fails at each step of a handoff costs nothing.
