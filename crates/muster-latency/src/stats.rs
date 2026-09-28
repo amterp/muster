@@ -109,6 +109,37 @@ pub(crate) fn beside_flood(alone: &Row, flooded: &Row) -> Vec<Verdict> {
     }]
 }
 
+/// What a nice-10 build beside the daemon may cost the requests an agent makes: reads within
+/// a budget of their own, and an echo within 1 ms of the same echo idle. A daemon whose threads
+/// run below the build's priority misses all three by tens of milliseconds or more.
+pub(crate) fn beside_a_build(tail: &Row, whole: &Row, echo_idle: &Row, echo: &Row) -> Vec<Verdict> {
+    let echo_p95 = echo.p95 - echo_idle.p95;
+    vec![
+        Verdict {
+            target: format!(
+                "a read of the last rows beside a build: p95 within {TAIL_BUDGET_MS} ms"
+            ),
+            measured: format!("{:.2} ms", tail.p95),
+            met: tail.p95 <= TAIL_BUDGET_MS,
+        },
+        Verdict {
+            target: format!(
+                "a read of the whole history beside a build: p95 within {WHOLE_BUDGET_MS} ms"
+            ),
+            measured: format!("{:.2} ms", whole.p95),
+            met: whole.p95 <= WHOLE_BUDGET_MS,
+        },
+        Verdict {
+            target: "echo beside a build: p95 within 1 ms of the same echo idle".to_string(),
+            measured: format!("{echo_p95:+.2} ms"),
+            met: echo_p95 <= 1.0,
+        },
+    ]
+}
+
+const TAIL_BUDGET_MS: f64 = 10.0;
+const WHOLE_BUDGET_MS: f64 = 50.0;
+
 #[cfg(test)]
 #[allow(clippy::float_cmp)] // exact halves and whole numbers
 mod tests {
@@ -141,5 +172,19 @@ mod tests {
         let held = summarize("held", &[0.3, 0.4, 100.0]).unwrap();
         assert!(beside_flood(&alone, &fine)[0].met);
         assert!(!beside_flood(&alone, &held)[0].met);
+    }
+
+    #[test]
+    fn a_build_beside_the_daemon_is_judged_by_its_own_budgets() {
+        let echo = summarize("echo", &[0.2, 0.3, 0.9]).unwrap();
+        let (tail, whole) =
+            (summarize("tail", &[1.0]).unwrap(), summarize("whole", &[9.0]).unwrap());
+        assert!(beside_a_build(&tail, &whole, &echo, &echo).iter().all(|verdict| verdict.met));
+        let slow = summarize("slow", &[0.2, 5.0, 60.0]).unwrap();
+        let judged = beside_a_build(&slow, &slow, &echo, &slow);
+        assert_eq!(
+            judged.iter().map(|verdict| verdict.met).collect::<Vec<_>>(),
+            [false, false, false]
+        );
     }
 }

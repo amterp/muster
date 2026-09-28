@@ -1126,6 +1126,9 @@ herdr's. The targets, at one pane and at fifteen:
 | bytes on the stream per echoed byte | 1, plus framing |
 | keystroke echo on one remote pane while another remote pane floods | within 1 ms of the same echo with no flood, plus network time |
 | attach to a painted replay, full screen and 10,000 rows of history at 200 columns | within 20 ms; composing and parsing measure 10 ms together headless |
+| a read of a pane's last 20 rows, beside a nice-10 build two to a core | p95 within 10 ms |
+| a read of a pane's whole history at the default scrollback, beside the same build | p95 within 50 ms |
+| keystroke echo beside the same build | within 1 ms of the same echo idle |
 
 The tier also gains a flood case: a pane running `cat` on a large file, attached to a bridge that
 reads slowly. The gate holds the structure beneath these numbers without timing anything
@@ -1139,6 +1142,14 @@ at the median and 0.16 ms at p95, with no second mode; 0.15 ms at p95 in a windo
 the hidden panes attached, and 0.24 ms detached; one byte on the surface per echoed byte, and seven
 on the stream, the byte and its framing. An echo beside a local flood was no slower than alone.
 herdr's own client measured 1.4 ms and 22.6 ms. The remote row is in section 4.
+
+The three rows beside a build came after the daemon was found clamped to the utility class
+(priority 20) on a machine running three gates, where a pane read took 13 s. On an Apple silicon
+laptop at a load average of 23, a read of the last 20 rows was 1.2 ms at p95 beside twenty
+burners, the whole history of 257 KiB 8.6 ms, and the echo no slower than idle. The same run with
+the daemon started under `taskpolicy -c utility` missed all three: 51 ms, 345 ms, and 62 ms over
+idle. The tier spawns its daemon, so it measures the daemon's share; the 13 s was mostly the app,
+which macOS had napped, and the app now opts out of App Nap (`docs/architecture.md`).
 
 ### 14. What Muster deletes
 

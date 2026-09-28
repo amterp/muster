@@ -9,7 +9,14 @@
 //!
 //! Every pane runs `cat` in canonical mode, so the echo is the terminal's own, as in the
 //! herdr measurements it replaced.
+//!
+//! The last section times what an agent asks of the daemon while a build runs beside it: a
+//! pane read, of the last rows and of the whole history, and an echo, idle and then beside
+//! burners at nice 10, two to a core. The daemon is spawned, so its threads run at the
+//! priority they ask for. What a nice-10 build does to an app macOS has napped is not in any
+//! number here; the app opts out of App Nap for that reason (`docs/architecture.md`).
 
+mod burners;
 mod daemon;
 mod glyph;
 mod stats;
@@ -19,6 +26,7 @@ mod throughput;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use burners::Burners;
 use daemon::{Daemon, Stream};
 use stats::{Row, Verdict};
 use surface::{Pace, Surface};
@@ -37,6 +45,9 @@ pane flooding --flood-lines lines (3000000) into a bridge whose surface reads sl
 comes instead, so the flood's time is the program's, held only by the link and the daemon's
 flow control: how a remote window is judged.
 
+Then pane reads and an echo, idle and beside nice-10 burners, two to a core, the load of a
+build running beside Muster.
+
 --daemon starts that muster-daemon for the run. --socket measures one already running,
 such as a devenv's through a forwarded socket; the bare PTY is still this machine's.
 
@@ -48,6 +59,11 @@ such as a devenv's through a forwarded socket; the bare PTY is still this machin
 const TYPING_GAP: Duration = Duration::from_millis(150);
 const TIMEOUT: Duration = Duration::from_secs(5);
 const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+/// The rows `muster pane read --rows 20` asks for.
+const TAIL_ROWS: u32 = 20;
+/// More than a pane keeps at the daemon's default scrollback, so the whole read is as large
+/// as a pane's history gets unless somebody raises it.
+const HISTORY_LINES: u32 = 20_000;
 
 struct Options {
     daemon: Target,
@@ -121,11 +137,15 @@ fn throughput_options(arguments: &[String]) -> Option<(PathBuf, u64, usize)> {
     Some((daemon?, bytes, runs))
 }
 
-/// One route from a keystroke to its glyph.
+/// One route from a keystroke to its glyph, or from a question to its answer.
 enum Route<'a> {
     Plain(&'a mut Surface),
     Stream(&'a mut Stream, &'a str),
     Bridge(&'a mut Surface, &'a str),
+    /// A read of a pane's last [`TAIL_ROWS`] rows.
+    Tail(&'a str),
+    /// A read of every row a pane keeps.
+    Whole(&'a str),
 }
 
 impl Route<'_> {
@@ -143,6 +163,14 @@ impl Route<'_> {
             Route::Bridge(surface, pane) => {
                 daemon.key(pane, letter);
                 surface.wait_for(letter, typed, TIMEOUT)
+            }
+            Route::Tail(pane) => {
+                assert!(!daemon.read_last(pane, TAIL_ROWS).text.is_empty(), "{pane} read empty");
+                Some(typed.elapsed().as_secs_f64() * 1000.0)
+            }
+            Route::Whole(pane) => {
+                assert!(daemon.read_whole(pane) > 0, "{pane} read empty");
+                Some(typed.elapsed().as_secs_f64() * 1000.0)
             }
         };
         shown.unwrap_or_else(|| {
@@ -234,6 +262,10 @@ fn main() {
         "beside a flood",
         std::iter::once(flooded.alone.clone()).chain(flooded.beside.clone()).collect(),
     ));
+
+    let (loaded, judged) = under_load(&mut daemon, &options);
+    verdicts.extend(judged);
+    report.push(("beside a build", loaded));
 
     if options.json {
         let sections: Vec<_> = report
@@ -430,6 +462,50 @@ fn flood(daemon: &mut Daemon, options: &Options, log: &Path) -> Flood {
         &beside,
     );
     Flood { alone, beside, behind, seconds, caught_up }
+}
+
+fn under_load(daemon: &mut Daemon, options: &Options) -> (Vec<Row>, Vec<Verdict>) {
+    const DONE: &str = "history-done";
+    let history = daemon
+        .pane(&format!("seq 1 {HISTORY_LINES} | sed 's/^/history line /'; echo {DONE}; exec cat"));
+    let echoed = daemon.pane("cat");
+    let mut stream = Stream::attach(daemon.socket(), &echoed);
+    let deadline = Instant::now() + Duration::from_mins(1);
+    while !daemon.read_last(&history, 1).text.contains(DONE) {
+        assert!(Instant::now() < deadline, "the history never finished printing");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let kib = daemon.read_whole(&history) / 1024;
+    let mut rows = Vec::new();
+    for loaded in [false, true] {
+        let burners = loaded.then(Burners::start);
+        let which = match &burners {
+            Some(burners) => {
+                // Long enough for the scheduler to spread them across every core.
+                std::thread::sleep(Duration::from_secs(2));
+                format!("beside {} burners", burners.count())
+            }
+            None => "idle".to_string(),
+        };
+        println!("pane reads and an echo, {which} ({})", load());
+        stream.settle();
+        let timings = round(
+            daemon,
+            &mut [
+                Route::Tail(&history),
+                Route::Whole(&history),
+                Route::Stream(&mut stream, &echoed),
+            ],
+            options.samples,
+        );
+        rows.push(row(&format!("read last {TAIL_ROWS} rows, {which}"), &timings[0]));
+        rows.push(row(&format!("read {kib} KiB of history, {which}"), &timings[1]));
+        rows.push(row(&format!("stream responded, {which}"), &timings[2]));
+    }
+    daemon.close(&history);
+    daemon.close(&echoed);
+    let verdicts = stats::beside_a_build(&rows[3], &rows[4], &rows[2], &rows[5]);
+    (rows, verdicts)
 }
 
 /// Whether a surface fed `bytes` shows `screen`, the daemon's own rows; the first difference if

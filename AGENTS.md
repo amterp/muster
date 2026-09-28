@@ -231,7 +231,8 @@ when it has neither, since a tier that checked nothing has not passed.
 against a checked-in baseline and fails on regression, the second times input-to-glyph with `crates/muster-latency`:
 a keystroke through muster-daemon, read off the pane's stream directly and through the real bridge drawing from it,
 beside the bare PTY measured in the same run - idle, in a full window of fifteen and beside a flood - and prints
-each against MIP-3's targets. A functional green is never a performance claim, so neither tier runs by default.
+each against MIP-3's targets. It also times pane reads and an echo beside a build it starts itself, nice-10 burners
+two to a core, because an agent reads its panes hardest while a gate runs. A functional green is never a performance claim, so neither tier runs by default.
 
 `--perf` also refuses to run at all on a machine whose fast cores are already committed. Everywhere else a busy
 machine only makes a run slow; here it makes the run lie against a file in the repository, and a tier that fails for

@@ -119,23 +119,42 @@ impl Daemon {
 
     /// The rows of `pane`'s screen, as the daemon's own terminal has them.
     pub(crate) fn screen(&mut self, pane: &str) -> Vec<String> {
-        let read = |control: &mut Control, first_row, rows| {
-            let asked = control.ask(Service::Pane(proto::PaneRequest {
-                request: Some(pane_request::Request::Read(pane_request::Read {
-                    pane: pane.to_string(),
-                    first_row,
-                    rows,
-                    last: 0,
-                })),
-            }));
-            match asked.answer.detail {
-                Some(answer::Detail::Text(text)) => text,
-                other => panic!("reading {pane} answered {other:?}: {}", asked.answer.reason),
-            }
-        };
-        let total = read(&mut self.control, 0, 1).total_rows;
+        let total = self.read(pane, 0, 1, 0).total_rows;
         let first = total.saturating_sub(u64::from(GRID.rows));
-        read(&mut self.control, first, GRID.rows).text.lines().map(str::to_string).collect()
+        self.read(pane, first, GRID.rows, 0).text.lines().map(str::to_string).collect()
+    }
+
+    /// `pane`'s last `rows` rows that hold anything, as `muster pane read --rows` asks for them.
+    pub(crate) fn read_last(&mut self, pane: &str, rows: u32) -> proto::PaneText {
+        self.read(pane, 0, 0, rows)
+    }
+
+    /// Every row `pane` keeps, a page at a time, and how many bytes they came to.
+    pub(crate) fn read_whole(&mut self, pane: &str) -> usize {
+        let (mut first_row, mut bytes) = (0, 0);
+        loop {
+            let read = self.read(pane, first_row, 0, 0);
+            bytes += read.text.len();
+            first_row = read.first_row + u64::from(read.rows);
+            if read.rows == 0 || first_row >= read.total_rows {
+                return bytes;
+            }
+        }
+    }
+
+    fn read(&mut self, pane: &str, first_row: u64, rows: u32, last: u32) -> proto::PaneText {
+        let asked = self.control.ask(Service::Pane(proto::PaneRequest {
+            request: Some(pane_request::Request::Read(pane_request::Read {
+                pane: pane.to_string(),
+                first_row,
+                rows,
+                last,
+            })),
+        }));
+        match asked.answer.detail {
+            Some(answer::Detail::Text(text)) => text,
+            other => panic!("reading {pane} answered {other:?}: {}", asked.answer.reason),
+        }
     }
 }
 

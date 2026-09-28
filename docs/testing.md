@@ -58,7 +58,8 @@ Muster's principles, adapted to that evidence:
   latency. `./dev --latency` times the same keystroke through the daemon with `crates/muster-latency`: the pane's
   stream read directly, and the real bridge (`muster-bridge --daemon-socket`) onto a PTY where a surface would be,
   beside the bare PTY measured in the same run, idle, in a window of fifteen panes and beside a pane flooding into
-  a surface that reads slowly. It starts its own daemon from `target/release` by spawning it, as a SwiftPM build
+  a surface that reads slowly. Last it times a pane read, of the last rows and of the whole history, and an echo,
+  idle and then beside nice-10 burners two to a core, which is what a build beside Muster looks like. It starts its own daemon from `target/release` by spawning it, as a SwiftPM build
   does, rather than through Launch Services as a bundle does. `--socket` measures a daemon already running instead,
   which is how a devenv's is measured through a forwarded socket, and
   `--flood-surface fast` floods a surface that keeps up, so the flood's time is what the link and the daemon's flow
