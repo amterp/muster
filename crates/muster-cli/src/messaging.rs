@@ -557,17 +557,36 @@ fn blocks(request: &proto::MsgRequest) -> bool {
     }
 }
 
-/// The first protocol whose daemon answers a follow of a log only once it has something new.
-/// One before it ignores the field and answers at once, which would ask again as fast as it
-/// could.
-const FOLLOWS: u32 = 1;
+/// What a request asks that a daemon of an older minor does not know, and the first minor that
+/// does. An older one ignores a field it does not know and answers as if it were not set: a
+/// follow answered at once asks again as fast as it can, and a `Stop` hook's `wait --due`
+/// answered as a plain wait rewakes the session at the end of every turn. And it refuses a
+/// request it does not know as though messaging were missing altogether.
+fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
+    match &request.request {
+        Some(Asked::Log(log)) if log.follow => Some(("follow a log", 1)),
+        Some(Asked::Wait(wait)) if wait.due => Some(("answer a wait only when a wake is due", 1)),
+        Some(Asked::Join(join)) if join.pull => Some(("take a participant's hooks fetching", 1)),
+        Some(
+            Asked::Groups(_)
+            | Asked::GroupNew(_)
+            | Asked::GroupSet(_)
+            | Asked::GroupMembers(_)
+            | Asked::Pause(_)
+            | Asked::Resume(_),
+        ) => Some(("keep groups with a policy", 1)),
+        _ => None,
+    }
+}
 
 fn ask_once(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trouble> {
     let (mut stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Control)?;
     let speaks = welcome.protocol.unwrap_or_default();
-    if matches!(&request.request, Some(Asked::Log(log)) if log.follow) && speaks.minor < FOLLOWS {
+    if let Some((cannot, minor)) = needs_minor(request)
+        && speaks.minor < minor
+    {
         return Err(Trouble::Refused(format!(
-            "this machine's muster-daemon speaks protocol {speaks}, which cannot follow a log. \
+            "this machine's muster-daemon speaks protocol {speaks}, which cannot {cannot}. \
              Update Muster; a new daemon takes over from an old one when the app starts."
         )));
     }
@@ -1093,6 +1112,19 @@ fn notice_json(notice: &msg_answer::Notice) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_protocol_1_0_does_not_know_is_asked_of_1_1_or_later_only() {
+        let asked = |request| proto::MsgRequest { caller: None, request: Some(request) };
+        let wait = |due| asked(Asked::Wait(msg_request::Wait { due, ..Default::default() }));
+        let join = |pull| asked(Asked::Join(msg_request::Join { pull, ..Default::default() }));
+        let pause = asked(Asked::Pause(msg_request::Pause { group: "g".to_string() }));
+        assert_eq!(needs_minor(&wait(false)), None);
+        assert_eq!(needs_minor(&join(false)), None);
+        assert_eq!(needs_minor(&wait(true)).map(|(_, minor)| minor), Some(1));
+        assert_eq!(needs_minor(&join(true)).map(|(_, minor)| minor), Some(1));
+        assert_eq!(needs_minor(&pause).map(|(_, minor)| minor), Some(1));
+    }
 
     #[test]
     fn a_handover_is_waited_out_for_a_while_and_no_longer() {
