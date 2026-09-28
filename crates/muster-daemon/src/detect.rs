@@ -334,3 +334,54 @@ impl Pane for Observed<'_> {
         self.progress.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every field of a pane's detection, none at its default, so a field this daemon drops or
+    /// mixes up on its way through reads differently coming back.
+    fn handed_over() -> proto::handoff::Detection {
+        proto::handoff::Detection {
+            agent: Some("claude".to_string()),
+            misses: 1,
+            state: proto::AgentState::Blocked.into(),
+            visible: true,
+            emitted: true,
+            emitted_agent: Some("claude".to_string()),
+            emitted_state: proto::AgentState::Blocked.into(),
+            grace_left_ms: Some(1200),
+            idle_seen_ms_ago: Some(300),
+            idle_confirmations: 2,
+            foreground_group: Some(4242),
+            probed: true,
+            shell_clear_pending: true,
+            shell_exit_reported: true,
+            title_pending: true,
+            progress: "4;1;40".to_string(),
+            concluded: true,
+            concluded_agent: Some("claude".to_string()),
+            concluded_state: proto::AgentState::Idle.into(),
+            report_agent: Some("claude".to_string()),
+            report_state: proto::AgentState::Working.into(),
+            report_ms_ago: 500,
+            output_ms_ago: Some(50),
+            emitted_reported: true,
+            emitted_unreadable: true,
+            rules_idle_ms_ago: Some(40_000),
+            unmatched_ms_ago: Some(20_000),
+            working_ms_ago: Some(30_000),
+            active_ms_ago: vec![2000, 1000],
+            report_confirmed: true,
+            blocker_ms_ago: Some(3000),
+        }
+    }
+
+    #[test]
+    fn a_pane_handed_over_is_handed_on_as_it_came() {
+        let now = Instant::now();
+        let carried = handed_over();
+        let resumed = Detection::resumed(Some(100), &carried, now, 7);
+        assert_eq!(resumed.carried(now), carried);
+    }
+}
