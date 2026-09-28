@@ -113,7 +113,9 @@ never to another machine: a pane is a process and it lives where it lives.
 Muster puts `~/.muster/bin` at the front of the `PATH` of every pane it makes, which is why
 `muster` is there to run at all. That directory holds a link to the command belonging to the
 running app, refreshed at every launch. A login shell rebuilds `PATH` from your profile
-afterwards and can move it, so front is what Muster asks for rather than a guarantee.
+afterwards and can move it, so front is what Muster asks for rather than a guarantee. A profile
+that drops it altogether, as Debian's does, still leaves `muster` at the end of the `PATH`,
+which Muster appends once the profile has run; that is how a pane on an SSH machine finds it.
 
 Little rides on which copy wins. Every one of them finds the window through `$MUSTER_SOCKET`,
 so a Homebrew `muster` inside a pane drives that pane's window exactly as the app's own does;

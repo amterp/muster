@@ -655,6 +655,13 @@ not by which binary answers - either CLI drives the window it is sitting in, and
 build does the driving, which is a question only across versions. Wanting the prepend to hold would mean Muster
 rewriting a person's `PATH` after their own profile had, which is not a thing a terminal should do.
 
+A profile can also drop the directory altogether: Debian's `/etc/profile` sets `PATH` outright for every login shell,
+which is what every devenv pane is. What Muster does after the profile is what Ghostty does, append and never reorder:
+the daemon turns on the shell integration's `path` feature, which appends the `bin/` of its data directory when it is
+missing, and writes the same line into the script a pane's command runs in, which has no integration. That directory
+holds a `muster` which runs the one in `~/.muster/bin`, so the CLI that answers is the one the prepend would have
+found.
+
 The one thing an install does owe the link is cleanup: uninstall deletes the bundle the link points into, and the
 app that would have repaired it is the one that just left.
 

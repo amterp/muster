@@ -154,9 +154,13 @@ which build of the CLI answers, and that is a question only while they are diffe
 
 Front of the `PATH` is what Muster asks for rather than what you necessarily get. A login shell
 rebuilds `PATH` from your profile after the daemon has handed one over, and on the machine this
-was measured on that leaves `~/.muster/bin` in 49th place and `/opt/homebrew/bin` in 20th. If you
-install no Homebrew copy, add `~/.muster/bin` to your own `PATH` and terminals outside Muster
-reach the running app's CLI the same way.
+was measured on that leaves `~/.muster/bin` in 49th place and `/opt/homebrew/bin` in 20th. A
+profile that sets `PATH` outright, as Debian's `/etc/profile` does, drops it altogether, so the
+daemon also has Ghostty's shell integration append the `bin/` of its data directory once the
+profile has run, and a command a pane was made to run gets the same line. That directory holds a
+`muster` that runs `~/.muster/bin/muster`, so a pane finds one either way, on an SSH machine too.
+If you install no Homebrew copy, add `~/.muster/bin` to your own `PATH` and terminals outside
+Muster reach the running app's CLI the same way.
 
 Muster imposes no workflow. These are primitives, and `extras/skill/SKILL.md` is a Claude Code
 skill that points an agent at them and nothing more.
