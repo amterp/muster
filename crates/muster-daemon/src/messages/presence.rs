@@ -4,12 +4,13 @@
 //! The panes are read once per request, with the session held and then let go, before the
 //! message service's own lock is taken: the two locks are never held together.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use muster_daemon_proto as proto;
-use muster_msg::{Activity, Participant, Presence};
+use muster_detect::Agent;
+use muster_msg::{Activity, Participant, Presence, Ringable};
 
 use super::inbox;
 use crate::pane::PaneIo;
@@ -22,6 +23,8 @@ pub(crate) struct Seen {
     pub(crate) activity: Option<Activity>,
     /// Its agent, as detection names it.
     pub(crate) agent: String,
+    /// Whether its agent's manifest can read its prompt, without which it is never rung.
+    pub(crate) rings: bool,
     pub(crate) io: Arc<PaneIo>,
 }
 
@@ -32,29 +35,39 @@ impl Seen {
     }
 }
 
-/// Every pane with an agent in it, by name, and the names of the rest.
+/// How long after a pane is made an agent is still expected in it: `muster pane new --run
+/// claude` and then a post to it come before detection has found the agent (MIP-4, section 14).
+/// A pane that has had no agent for longer has none coming.
+const AGENT_TO_COME: Duration = Duration::from_secs(30);
+
+/// Every pane with an agent in it, by name, and the names of the rest, each with whether an
+/// agent may still be coming to it.
 #[derive(Debug, Default)]
 pub(crate) struct Panes {
     agents: HashMap<String, Seen>,
-    open: HashSet<String>,
+    open: HashMap<String, bool>,
 }
 
 impl Panes {
     pub(crate) fn of(shared: &Shared) -> Panes {
+        let manifests = shared.detecting.manifests();
         let read = shared.lock().each_pane(|record, io| {
             let seen = record.agent.clone().filter(|_| !io.is_closed()).map(|agent| Seen {
                 activity: activity(record),
+                rings: manifests
+                    .as_ref()
+                    .is_some_and(|manifests| manifests.reads_prompt(&Agent::new(&agent))),
                 agent,
                 io: io.clone(),
             });
-            (record.pane.clone(), seen)
+            (record.pane.clone(), seen, io.age() < AGENT_TO_COME)
         });
         let mut panes = Panes::default();
-        for (pane, seen) in read {
+        for (pane, seen, young) in read {
             if let Some(seen) = seen {
                 panes.agents.insert(pane.clone(), seen);
             }
-            panes.open.insert(pane);
+            panes.open.insert(pane, young);
         }
         panes
     }
@@ -63,10 +76,9 @@ impl Panes {
         self.agents.get(pane)
     }
 
-    /// Whether the pane is open, agent or not: one whose agent has not been found yet, after a
-    /// restart say, is worth waiting for.
+    /// Whether the pane is open, agent or not.
     pub(crate) fn exists(&self, pane: &str) -> bool {
-        self.open.contains(pane)
+        self.open.contains_key(pane)
     }
 }
 
@@ -100,6 +112,15 @@ impl Presence for Panes {
     }
 
     fn has_pane(&self, pane: &str) -> bool {
-        self.open.contains(pane)
+        self.open.contains_key(pane)
+    }
+
+    fn doorbell(&self, pane: &str) -> Ringable {
+        match (self.agents.get(pane), self.open.get(pane)) {
+            (Some(seen), _) if seen.rings => Ringable::Rings,
+            (Some(_), _) => Ringable::NoPrompt,
+            (None, Some(true)) => Ringable::AgentToCome,
+            (None, _) => Ringable::NoAgent,
+        }
     }
 }

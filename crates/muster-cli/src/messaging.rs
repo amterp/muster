@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use clap::{Args, Subcommand};
 use muster_daemon_proto::connection::{self, HandshakeError};
 use muster_daemon_proto::messaging::{self as spelling, JOIN, LEAVE, LOG, POST, READ, WAIT, WHO};
-use muster_daemon_proto::msg_answer::{self, Answer, entry::What};
+use muster_daemon_proto::msg_answer::{self, Answer, Until, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_daemon_proto::{self as proto, ConnectionKind, install, request::Service};
 
@@ -480,6 +480,7 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
     let (woke, deferred) = (named(Reach::Woken), named(Reach::Deferred));
     let (already, waiting, gone) =
         (named(Reach::AlreadyWoken), named(Reach::Waiting), named(Reach::Gone));
+    let (no_agent, no_doorbell) = (named(Reach::NoAgent), named(Reach::NoDoorbell));
     let heard = !woke.is_empty()
         || !deferred.is_empty()
         || !already.is_empty()
@@ -495,6 +496,10 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
                 Some((reached.name.clone(), activity(reached.activity())?.into()))
             })
             .collect();
+        let until: serde_json::Map<String, serde_json::Value> = deferred
+            .iter()
+            .map(|reached| (reached.name.clone(), until_key(reached.until()).into()))
+            .collect();
         serde_json::json!({
             "group": posted.group,
             "seq": posted.seq,
@@ -503,7 +508,10 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
             "already_woken": listed(&already),
             "waiting": listed(&waiting),
             "gone": listed(&gone),
+            "no_agent": listed(&no_agent),
+            "no_doorbell": listed(&no_doorbell),
             "doing": doing,
+            "until": until,
         })
         .to_string()
     } else {
@@ -521,11 +529,21 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         if !woken.is_empty() {
             lines.push(format!("woke: {}", woken.join(", ")));
         }
-        if !deferred.is_empty() {
-            let later: Vec<String> = deferred.iter().map(|reached| with(reached, None)).collect();
-            lines.push(format!("rung once idle: {}", later.join(", ")));
+        for until in [Until::Idle, Until::Prompt, Until::Agent] {
+            let later: Vec<String> = deferred
+                .iter()
+                .filter(|reached| reached.until() == until)
+                .map(|reached| with(reached, None))
+                .collect();
+            if !later.is_empty() {
+                lines.push(format!("rung once {}: {}", until_text(until), later.join(", ")));
+            }
         }
         let mut not: Vec<String> = gone.iter().map(|reached| with(reached, Some("gone"))).collect();
+        not.extend(no_agent.iter().map(|reached| with(reached, Some("no agent in its pane"))));
+        not.extend(
+            no_doorbell.iter().map(|reached| with(reached, Some("its prompt cannot be read"))),
+        );
         not.extend(waiting.iter().map(|reached| with(reached, Some("sees it when it reads"))));
         if !not.is_empty() {
             lines.push(format!("not woken: {}", not.join(", ")));
@@ -533,6 +551,24 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         lines.join("\n")
     };
     if heard { Ok(text) } else { Err(Trouble::Unheard(text)) }
+}
+
+/// What a deferred ring waits for, as the post's answer says it. A daemon from before the
+/// reason was sent deferred only until its agent was idle.
+fn until_text(until: Until) -> &'static str {
+    match until {
+        Until::Idle | Until::Unspecified => "idle",
+        Until::Prompt => "its prompt is empty",
+        Until::Agent => "an agent is found",
+    }
+}
+
+fn until_key(until: Until) -> &'static str {
+    match until {
+        Until::Idle | Until::Unspecified => "idle",
+        Until::Prompt => "prompt",
+        Until::Agent => "agent",
+    }
 }
 
 /// What an agent in a pane is doing, as its daemon's detection reads it.

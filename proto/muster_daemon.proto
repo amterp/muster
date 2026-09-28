@@ -575,6 +575,20 @@ message MsgAnswer {
     Reach reach = 2;
     // What its agent is doing, for an agent in a pane.
     Activity activity = 3;
+    // For a deferred wake, what the doorbell waits for.
+    Until until = 4;
+  }
+
+  // What a deferred wake waits for before its pane is rung.
+  enum Until {
+    UNTIL_UNSPECIFIED = 0;
+    // Its agent to be idle: it is working, or blocked at a dialog.
+    UNTIL_IDLE = 1;
+    // Its prompt to be empty: something is typed there, or being typed, or the screen is not
+    // its prompt, a menu say.
+    UNTIL_PROMPT = 2;
+    // An agent to be found in the pane, which was made moments ago.
+    UNTIL_AGENT = 3;
   }
 
   enum Reach {

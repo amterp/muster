@@ -103,20 +103,20 @@ pub trait Presence {
     }
 
     /// Whether the doorbell can reach whoever is in `pane` (MIP-4, section 6).
-    fn doorbell(&self, pane: &str) -> Doorbell {
+    fn doorbell(&self, pane: &str) -> Ringable {
         if self.agent_in(pane) {
-            Doorbell::Rings
+            Ringable::Rings
         } else if self.has_pane(pane) {
-            Doorbell::AgentToCome
+            Ringable::AgentToCome
         } else {
-            Doorbell::NoAgent
+            Ringable::NoAgent
         }
     }
 }
 
 /// Whether the doorbell can reach whoever is in a pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Doorbell {
+pub enum Ringable {
     /// An agent is there, and the host can read its prompt.
     Rings,
     /// An agent is there whose prompt the host cannot read, so it is never rung.
@@ -127,10 +127,10 @@ pub enum Doorbell {
     NoAgent,
 }
 
-impl Doorbell {
+impl Ringable {
     /// Whether a wake for the pane is worth keeping to ring.
     fn rings(self) -> bool {
-        matches!(self, Doorbell::Rings | Doorbell::AgentToCome)
+        matches!(self, Ringable::Rings | Ringable::AgentToCome)
     }
 }
 
@@ -1053,9 +1053,11 @@ impl<S: Store> Messaging<S> {
         let to_come = participant
             .pane
             .as_ref()
-            .is_some_and(|pane| presence.doorbell(pane) == Doorbell::AgentToCome);
-        let _ = to_come;
-        if participant.woken.contains(group) {
+            .is_some_and(|pane| presence.doorbell(pane) == Ringable::AgentToCome);
+        if participant.woken.contains(group)
+            && via.is_ok()
+            && (to_come || presence.alive(participant))
+        {
             return Reach::AlreadyWoken;
         }
         let via = match via {
@@ -1077,10 +1079,20 @@ impl<S: Store> Messaging<S> {
     /// agent the doorbell cannot read, or nothing at all, so it reads the message when it next
     /// reads.
     fn via(participant: &Participant, presence: &dyn Presence) -> Result<Via, Reach> {
-        if let Some(pane) = participant.pane.as_ref().filter(|pane| presence.has_pane(pane)) {
+        let doorbell = participant.pane.as_ref().map(|pane| (pane, presence.doorbell(pane)));
+        if let Some((pane, doorbell)) = doorbell
+            && doorbell.rings()
+        {
             return Ok(Via::Pane(pane.clone()));
         }
-        participant.inbox.clone().map(Via::Inbox).ok_or(Reach::Waiting)
+        if let Some(inbox) = &participant.inbox {
+            return Ok(Via::Inbox(inbox.clone()));
+        }
+        Err(match doorbell {
+            Some((_, Ringable::NoPrompt)) => Reach::NoDoorbell,
+            Some(_) => Reach::NoAgent,
+            None => Reach::Waiting,
+        })
     }
 
     /// A wake for every group an agent in a pane was woken for and has not read: what a host

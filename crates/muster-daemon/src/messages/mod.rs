@@ -205,7 +205,7 @@ fn posting(
     // Rung or sent once the lock is let go, and deferred: left for the doorbell.
     let mut sending: Vec<Wake> = Vec::new();
     let mut ringing: Vec<(Wake, presence::Seen)> = Vec::new();
-    let mut deferred: Vec<String> = Vec::new();
+    let mut deferred: Vec<(String, msg_answer::Until)> = Vec::new();
     let (posted, activities) = {
         let mut messages = shared.messages();
         if messages.handing_over {
@@ -235,13 +235,17 @@ fn posting(
                 continue;
             };
             // A pane whose agent has not been found yet waits for it like a busy one.
-            match panes.get(pane).map(|seen| (doorbell::may_ring(seen, now), seen)) {
-                Some((Now::Ring, seen)) => ringing.push((wake.clone(), seen.clone())),
-                Some((Now::At(_) | Now::AtIdle, _)) | None => {
-                    deferred.push(wake.name.clone());
-                    messages.pending.push(wake.clone());
+            let until = match panes.get(pane).map(|seen| (doorbell::may_ring(seen, now), seen)) {
+                Some((Now::Ring, seen)) => {
+                    ringing.push((wake.clone(), seen.clone()));
+                    continue;
                 }
-            }
+                Some((Now::AtIdle, _)) => msg_answer::Until::Idle,
+                Some((Now::At(_), _)) => msg_answer::Until::Prompt,
+                None => msg_answer::Until::Agent,
+            };
+            deferred.push((wake.name.clone(), until));
+            messages.pending.push(wake.clone());
         }
         let activities: HashMap<String, Activity> = posted
             .reached
@@ -260,7 +264,7 @@ fn posting(
     for ((name, group), came) in names.into_iter().zip(came) {
         match came {
             doorbell::Came::Rang => {}
-            doorbell::Came::Waits => deferred.push(name),
+            doorbell::Came::Waits => deferred.push((name, msg_answer::Until::Prompt)),
             doorbell::Came::Refused => refused_rings.push((name, group)),
         }
     }
@@ -301,13 +305,16 @@ fn told(
     post: &proto::msg_request::Post,
     posted: &muster_msg::Posted,
     failed: &[&str],
-    deferred: &[String],
+    deferred: &[(String, msg_answer::Until)],
     activities: &HashMap<String, Activity>,
 ) -> Reply {
+    let until = |name: &String| {
+        deferred.iter().find(|(deferred, _)| deferred == name).map(|(_, until)| *until)
+    };
     let told = |name: &String, reach: Reach| {
         if failed.contains(&name.as_str()) {
             Reach::Gone
-        } else if deferred.contains(name) {
+        } else if until(name).is_some() {
             Reach::Deferred
         } else {
             reach
@@ -320,6 +327,7 @@ fn told(
             name: name.clone(),
             reach: reach_of(told(name, *reach)).into(),
             activity: activity_of(activities.get(name).copied()).into(),
+            until: until(name).unwrap_or(msg_answer::Until::Unspecified).into(),
         })
         .collect();
     let named = |wanted: Reach| {
@@ -343,6 +351,8 @@ fn told(
             "deferred" => named(Reach::Deferred),
             "already_woken" => named(Reach::AlreadyWoken),
             "waiting" => named(Reach::Waiting),
+            "no_agent" => named(Reach::NoAgent),
+            "no_doorbell" => named(Reach::NoDoorbell),
             "gone" => named(Reach::Gone),
         },
     );

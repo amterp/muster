@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto::messaging;
-use muster_msg::{Activity, Via, Wake};
+use muster_msg::{Activity, Presence, Ringable, Via, Wake};
 
 use super::presence::{Panes, Seen};
 use super::prompt::{self, AtPrompt};
@@ -235,24 +235,33 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Opti
         }
         for wake in std::mem::take(&mut messages.pending) {
             let Via::Pane(pane) = &wake.via else { continue };
-            match panes.get(pane) {
-                Some(seen) => match may_ring(seen, now) {
-                    Now::Ring => ringing.push((wake, seen.clone())),
-                    Now::At(at) => {
-                        sooner(&mut next, at);
-                        messages.pending.push(wake);
+            let dropped = match (panes.get(pane), panes.doorbell(pane)) {
+                (Some(seen), Ringable::Rings) => {
+                    match may_ring(seen, now) {
+                        Now::Ring => ringing.push((wake, seen.clone())),
+                        Now::At(at) => {
+                            sooner(&mut next, at);
+                            messages.pending.push(wake);
+                        }
+                        Now::AtIdle => messages.pending.push(wake),
                     }
-                    Now::AtIdle => messages.pending.push(wake),
-                },
-                None if panes.exists(pane) => {
+                    continue;
+                }
+                (_, Ringable::AgentToCome) => {
                     unfound = true;
                     messages.pending.push(wake);
+                    continue;
                 }
-                None => log::info(
-                    "msg.ring.dropped",
-                    fields! { "name" => wake.name, "pane" => pane, "why" => "the pane closed" },
-                ),
-            }
+                (_, Ringable::NoPrompt) => "its agent's prompt cannot be read",
+                (_, Ringable::Rings | Ringable::NoAgent) if panes.exists(pane) => {
+                    "no agent is in its pane, and none is coming"
+                }
+                _ => "the pane closed",
+            };
+            log::info(
+                "msg.ring.dropped",
+                fields! { "name" => wake.name, "pane" => pane, "why" => dropped },
+            );
         }
         pressing = unanswered_rings(&mut messages, &panes, now, &mut next);
     }

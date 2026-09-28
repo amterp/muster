@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{Conformance, fields};
 use muster_msg::{
-    Activity, Caller, Doorbell, Inbox, Liveness, Memory, Messaging, Notice, Participant, Posted,
-    Presence, Reach, Refusal, Via, What,
+    Activity, Caller, Inbox, Liveness, Memory, Messaging, Notice, Participant, Posted, Presence,
+    Reach, Refusal, Ringable, Via, What,
 };
 use serde_json::{Value, json};
 
@@ -53,15 +53,15 @@ impl Presence for Sessions {
         self.agent_in(pane) || self.open.borrow().contains_key(pane)
     }
 
-    fn doorbell(&self, pane: &str) -> Doorbell {
+    fn doorbell(&self, pane: &str) -> Ringable {
         if self.agent_in(pane) && self.unreadable.borrow().contains(pane) {
-            Doorbell::NoPrompt
+            Ringable::NoPrompt
         } else if self.agent_in(pane) {
-            Doorbell::Rings
+            Ringable::Rings
         } else if self.open.borrow().get(pane) == Some(&true) {
-            Doorbell::AgentToCome
+            Ringable::AgentToCome
         } else {
-            Doorbell::NoAgent
+            Ringable::NoAgent
         }
     }
 }
@@ -172,7 +172,7 @@ fn delivered(service: &mut Messaging<Memory>, sessions: &Sessions, posted: &Post
     for wake in &posted.wakes {
         let reached = match &wake.via {
             Via::Inbox(inbox) => sessions.answers(inbox),
-            Via::Pane(pane) if sessions.doorbell(pane) == Doorbell::AgentToCome => {
+            Via::Pane(pane) if sessions.doorbell(pane) == Ringable::AgentToCome => {
                 deferred.insert(wake.name.clone());
                 continue;
             }

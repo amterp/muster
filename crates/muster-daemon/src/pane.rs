@@ -151,9 +151,15 @@ pub(crate) struct PaneIo {
     /// When the writer last wrote input to the program, for detection to tell its echo from the
     /// program's own output.
     input_at: Mutex<Option<Instant>>,
-    /// The process the pane runs, usually a shell: an agent in its place in the foreground is
-    /// still there, and the shell there instead means it has left.
+    begun: Begun,
+}
+
+/// The process a pane runs, usually a shell - an agent in its place in the foreground is still
+/// there, and the shell there instead means it has left - and when this daemon took it on.
+#[derive(Debug)]
+struct Begun {
     shell: Option<i32>,
+    at: Instant,
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -238,7 +244,12 @@ impl PaneIo {
     }
 
     pub(crate) fn shell(&self) -> Option<i32> {
-        self.shell
+        self.begun.shell
+    }
+
+    /// How long ago this daemon took the pane on.
+    pub(crate) fn age(&self) -> Duration {
+        self.begun.at.elapsed()
     }
 
     pub(crate) fn grid(&self) -> Grid {
@@ -672,7 +683,7 @@ impl Pane {
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
             input_at: Mutex::new(None),
-            shell: process,
+            begun: Begun { shell: process, at: Instant::now() },
         });
         let pane = record.pane.clone();
 
@@ -1073,7 +1084,7 @@ impl PaneIo {
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
             input_at: Mutex::new(None),
-            shell: None,
+            begun: Begun { shell: None, at: Instant::now() },
         })
     }
 
