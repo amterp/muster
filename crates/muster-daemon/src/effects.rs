@@ -135,6 +135,26 @@ pub(crate) fn host_name() -> String {
     String::from_utf8_lossy(&buffer[..end]).into_owned()
 }
 
+/// What this machine is called by the others it links to. On macOS that is the name the Sharing
+/// settings give it, since the host name there follows DHCP and reverse DNS, and so changes with
+/// the network; elsewhere the host name, which a machine's owner sets.
+pub(crate) fn machine_name() -> String {
+    #[cfg(target_os = "macos")]
+    if let Ok(said) = std::process::Command::new("/usr/sbin/scutil")
+        .args(["--get", "LocalHostName"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        && said.status.success()
+    {
+        let name = String::from_utf8_lossy(&said.stdout).trim().to_string();
+        if !name.is_empty() {
+            return name;
+        }
+    }
+    host_name()
+}
+
 /// What a pane tells the session, by the serial that tells its process apart from a later
 /// pane given the same name.
 #[derive(Debug, Clone, PartialEq)]

@@ -10,6 +10,7 @@
 //! entry sent on to other machines - whose replies the reader has to be free to take.
 
 use std::collections::HashMap;
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -157,14 +158,39 @@ impl Peers {
     }
 }
 
-/// What this daemon calls itself to another machine, kept in `directory`. Not kept yet: chosen
-/// afresh each time.
+/// What this daemon calls itself to another machine, which writes this machine's members into
+/// its logs by it for good: chosen once, and kept in `directory` from then on.
 fn this_machine(directory: &Path) -> String {
-    kept_name(directory, crate::effects::host_name)
+    kept_name(directory, crate::effects::machine_name)
 }
 
-fn kept_name(_directory: &Path, choose: impl FnOnce() -> String) -> String {
-    machine_name(&choose())
+fn kept_name(directory: &Path, choose: impl FnOnce() -> String) -> String {
+    let file = directory.join("machine");
+    if let Ok(kept) = std::fs::read_to_string(&file)
+        && is_machine(kept.trim())
+    {
+        return kept.trim().to_string();
+    }
+    let name = machine_name(&choose());
+    let kept = std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(directory)
+        .and_then(|()| std::fs::write(&file, format!("{name}\n")));
+    if let Err(error) = kept {
+        log::warn(
+            "msg.peer.name_not_kept",
+            fields! {
+                "name" => name,
+                "file" => file.display().to_string(),
+                "error" => error,
+                "impact" => "this machine is named afresh at the next start, and another machine \
+                             that knew it by an older name no longer wakes its members",
+                "check" => "whether the daemon can write its message store's directory",
+            },
+        );
+    }
+    name
 }
 
 /// `host` up to its first dot, with anything a machine's name cannot hold replaced.
