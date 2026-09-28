@@ -311,8 +311,15 @@ struct Patience {
 impl Patience {
     /// Whether to ask again after an attempt that began at `began` and ended, at `now`, in a
     /// handover.
+    ///
+    /// Patience runs from the first handover seen, not from the first request: an attempt that
+    /// itself lasted that long was a wait that ran until a handover ended it, and the handover
+    /// starts now.
     fn allows_another(&mut self, began: Instant, now: Instant) -> bool {
-        let since = *self.since.get_or_insert(began);
+        if now.duration_since(began) >= HANDOVER_PATIENCE {
+            self.since = None;
+        }
+        let since = *self.since.get_or_insert(now);
         now.duration_since(since) < HANDOVER_PATIENCE
     }
 }

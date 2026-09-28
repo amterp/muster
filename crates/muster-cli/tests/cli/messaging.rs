@@ -9,8 +9,11 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
-use muster_daemon_proto::messaging;
+use std::time::Duration;
+
+use muster_daemon_proto::{self as proto, messaging, session_request};
 use muster_harness::Daemon;
+use muster_harness::requests::{expect, session};
 use serde_json::Value;
 
 fn muster(daemon: &Daemon, arguments: &[&str]) -> Output {
@@ -129,6 +132,29 @@ fn a_wait_prints_the_wake_and_a_timeout_exits_5() {
         ok(&muster(&daemon, &["msg", "--as", "b", "wait"])),
         "[muster] g: 1 new (#4), from a. Read: muster msg read --group g"
     );
+}
+
+/// A handover ends every wait in progress; the CLI asks the new daemon again, and the wait is
+/// answered by a post made to it, however long the wait had run.
+#[test]
+fn a_wait_in_progress_when_the_daemon_hands_over_is_answered_by_the_new_one() {
+    let mut daemon = Daemon::start_built();
+    ok(&muster(&daemon, &["msg", "--as", "a", "join", "--group", "g"]));
+    ok(&muster(&daemon, &["msg", "--as", "b", "join", "--group", "g"]));
+    let mut logging = daemon.connect();
+    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+
+    let socket = daemon.socket_path().to_path_buf();
+    let waiting = std::thread::spawn(move || {
+        muster_with(&socket, &["msg", "--as", "b", "wait", "--timeout", "60"], None)
+    });
+    logging.logged_until("msg.waiting", Duration::from_secs(20));
+    assert_eq!(daemon.replace(None).outcome(), proto::Outcome::Done);
+    ok(&muster(&daemon, &["msg", "--as", "a", "post", "after", "the", "handover"]));
+
+    let waited = waiting.join().unwrap();
+    assert_eq!(ok(&waited), "[muster] g: 1 new (#4), from a. Read: muster msg read --group g");
 }
 
 #[test]
