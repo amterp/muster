@@ -218,6 +218,18 @@ fn a_shell_whose_path_has_an_equals_sign_runs_a_command_and_becomes_itself() {
 /// integration defines its functions only once the shell has drawn a prompt.
 fn shell_says(shell: &str, sudo: Option<bool>, line: &str, wanted: &str) -> (Daemon, String) {
     let daemon = daemon();
+    let text = shell_says_on(&daemon, shell, sudo, line, wanted);
+    (daemon, text)
+}
+
+/// [`shell_says`] on `daemon`, whose home a test has already prepared.
+fn shell_says_on(
+    daemon: &Daemon,
+    shell: &str,
+    sudo: Option<bool>,
+    line: &str,
+    wanted: &str,
+) -> String {
     std::fs::write(daemon.root().join("home/.zshrc"), "").unwrap();
     let mut control = daemon.connect();
     let set = proto::SetShell {
@@ -235,15 +247,13 @@ fn shell_says(shell: &str, sudo: Option<bool>, line: &str, wanted: &str) -> (Dae
     );
     make(&mut control, create("p1", in_new_tab("t1")));
     let mut input = muster_harness::Input::connect(daemon.socket_path());
-    let text = until_some(&format!("{shell} to say {wanted:?}"), || {
+    until_some(&format!("{shell} to say {wanted:?}"), || {
         let send = proto::input_event::Send { text: line.to_string(), enter: true };
         input.send("p1", proto::input_event::Input::Send(send));
         std::thread::sleep(std::time::Duration::from_millis(300));
         let text = read_text(&mut control, "p1", 0, 0).text;
         text.contains(wanted).then_some(text)
-    });
-    drop(control);
-    (daemon, text)
+    })
 }
 
 /// Ghostty's `ssh-*` features wrap ssh to give the host the entry (`tests/daemon/ssh_terminfo.rs`), and
@@ -284,4 +294,54 @@ fn with_sudo_on_sudo_carries_the_home_terminfo_that_holds_the_entry() {
         let entries = [home.join("78/xterm-ghostty"), home.join("x/xterm-ghostty")];
         assert!(entries.iter().any(|entry| entry.exists()), "{shell}: no entry in {home:?}");
     }
+}
+
+/// A home whose login profiles set PATH outright, as Debian's /etc/profile does for every login
+/// shell, with a `muster` in its `~/.muster/bin` that says it was reached. Nothing else on the
+/// PATH they set can answer to `muster`.
+fn home_that_resets_path(daemon: &Daemon) -> &'static str {
+    use std::os::unix::fs::PermissionsExt;
+    let home = daemon.root().join("home");
+    for profile in [".profile", ".zprofile"] {
+        std::fs::write(home.join(profile), "PATH=/usr/bin:/bin\nexport PATH\n").unwrap();
+    }
+    let fish = home.join(".config/fish");
+    std::fs::create_dir_all(&fish).unwrap();
+    std::fs::write(fish.join("config.fish"), "set -gx PATH /usr/bin /bin\n").unwrap();
+    let commands = home.join(".muster/bin");
+    std::fs::create_dir_all(&commands).unwrap();
+    std::fs::write(commands.join("muster"), "#!/bin/sh\necho \"muster-reached-$1\"\n").unwrap();
+    std::fs::set_permissions(commands.join("muster"), std::fs::Permissions::from_mode(0o755))
+        .unwrap();
+    "muster-reached-"
+}
+
+/// A shell's login profile runs after the daemon hands it a PATH, and can drop anything the daemon
+/// put there. Ghostty's integration adds the daemon's commands back once the profile has run.
+#[test]
+fn a_shell_whose_profile_resets_path_still_finds_muster() {
+    for shell in ["zsh", "bash", "fish"] {
+        let Some(path) = installed(shell) else {
+            eprintln!("skipped: {shell} with integration is not installed here");
+            continue;
+        };
+        let daemon = daemon();
+        let reached = home_that_resets_path(&daemon);
+        let text = shell_says_on(&daemon, &path, None, "muster typed", &format!("{reached}typed"));
+        assert!(!text.contains("not found"), "{shell}: {text}");
+    }
+}
+
+/// A command runs in a shell with no integration, after the same profile, and finds `muster` too:
+/// an agent a pane was made to run is the one most likely to call it.
+#[test]
+fn a_command_after_a_profile_that_resets_path_still_finds_muster() {
+    let daemon = daemon();
+    let reached = home_that_resets_path(&daemon);
+    let said = daemon.root().join("said");
+    let mut control = daemon.connect();
+    let mut asked = create("p1", in_new_tab("t1"));
+    asked.command = Some(format!("muster run > {}", said.display()));
+    make(&mut control, asked);
+    assert_eq!(written(&said), format!("{reached}run\n"));
 }

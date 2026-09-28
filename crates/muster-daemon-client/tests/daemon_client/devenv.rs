@@ -14,7 +14,7 @@ use muster_daemon_client::launch::{Reached, stop};
 use muster_daemon_client::remote::{Installed, ensure_running};
 use muster_daemon_proto as proto;
 use muster_harness::requests::*;
-use muster_harness::{Control, DAEMON_DATA, built_linux_daemons};
+use muster_harness::{Control, DAEMON_DATA, Input, built_linux_daemons, until_some};
 use muster_ssh::{Forward, Tunnel, remote_environment};
 
 /// Where the container is and how to reach it, from `./dev --ssh`.
@@ -72,15 +72,16 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
         .remote()
         .shell(&format!(
             "cd {} && test -f installed && test -d muster-daemon-data \
-             && test -x muster-daemon-data/bin/ghostty && echo placed",
+             && test -x muster-daemon-data/bin/ghostty \
+             && test -x muster-daemon-data/bin/muster && echo placed",
             muster_ssh::quoted(&installed.directory.to_string_lossy()),
         ))
         .unwrap();
     assert_eq!(
         placed.trim(),
         "placed",
-        "the daemon was installed with its data and its stamp, and the script a pane's `ssh` \
-         runs is executable"
+        "the daemon was installed with its data and its stamp, and the scripts a pane runs for \
+         `ssh` and `muster` are executable"
     );
 
     let mut control = Control::connect(local);
@@ -92,6 +93,7 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
         },
     );
     until_text(&mut control, "p1", "over-there");
+    muster_is_on_the_path_over_there(&mut control, local);
     agents_message_each_other_over_there(&tunnel, &installed);
 
     let (reached, adopted) =
@@ -100,6 +102,33 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
     assert_eq!(adopted.instance, started.instance);
 
     stop(local, Duration::from_secs(10)).unwrap();
+}
+
+/// Debian's `/etc/profile` sets `PATH` outright for every login shell, which is what a pane's
+/// shell is, so the `~/.muster/bin` the install links `muster` into is not on it. A command a
+/// pane was made to run finds `muster` anyway, and so does a person typing at its prompt.
+fn muster_is_on_the_path_over_there(control: &mut Control, local: &Path) {
+    let version = format!("muster {}", env!("CARGO_PKG_VERSION"));
+    make(
+        control,
+        proto::pane_request::Create {
+            command: Some("muster --version".into()),
+            ..create("p2", in_new_tab("t2"))
+        },
+    );
+    until_text(control, "p2", &version);
+
+    make(control, create("p3", in_new_tab("t3")));
+    let mut input = Input::connect(local);
+    // The integration adds the directory once the shell has drawn its first prompt, so a line
+    // typed before that finds no `muster`; the loop types again until one does.
+    until_some("muster typed at a prompt over there to answer", || {
+        let send = proto::input_event::Send { text: "muster --version".into(), enter: true };
+        input.send("p3", proto::input_event::Input::Send(send));
+        std::thread::sleep(Duration::from_millis(500));
+        let text = read_text(control, "p3", 0, 0).text;
+        text.contains(&version).then_some(())
+    });
 }
 
 /// The CLI the install linked into `~/.muster/bin` messages through the daemon over there: a

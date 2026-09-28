@@ -434,7 +434,7 @@ mod tests {
                 ("TERMINFO_DIRS", "/data/terminfo:"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
-                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,ssh-env,ssh-terminfo,title"),
+                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,ssh-env,ssh-terminfo,title"),
             ]))
         );
     }
@@ -473,12 +473,15 @@ mod tests {
         let sudo = with(&shell(true, true, true));
         assert_eq!(
             find(&sudo, "GHOSTTY_SHELL_FEATURES").as_deref(),
-            Some("cursor:blink,ssh-env,ssh-terminfo,sudo,title")
+            Some("cursor:blink,path,ssh-env,ssh-terminfo,sudo,title")
         );
         assert_eq!(find(&sudo, "TERMINFO").as_deref(), Some("/home/me/.terminfo"));
 
         let none = with(&shell(false, false, false));
-        assert_eq!(find(&none, "GHOSTTY_SHELL_FEATURES").as_deref(), Some("cursor:blink,title"));
+        assert_eq!(
+            find(&none, "GHOSTTY_SHELL_FEATURES").as_deref(),
+            Some("cursor:blink,path,title")
+        );
         assert_eq!(find(&none, "TERMINFO"), None, "an inherited TERMINFO would pick the entry");
     }
 
@@ -519,7 +522,7 @@ mod tests {
                 ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo:"),
                 ("TERM_PROGRAM", "ghostty"),
                 ("TERM_PROGRAM_VERSION", GHOSTTY_VERSION),
-                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,ssh-env,ssh-terminfo,title"),
+                ("GHOSTTY_SHELL_FEATURES", "cursor:blink,path,ssh-env,ssh-terminfo,title"),
             ]))
         );
     }
@@ -607,6 +610,45 @@ mod tests {
                  exec '/bin/bash' --posix -i"
             );
         }
+    }
+
+    /// A login profile can set PATH outright, as Debian's /etc/profile does, and a command's
+    /// shell carries no integration to add the daemon's commands back, so the script does.
+    #[test]
+    fn a_command_finds_the_daemons_commands_whatever_its_profile_did() {
+        let bin = pairs(&[("GHOSTTY_BIN_DIR", "/d/bin")]);
+        let (argv, _) = start("/bin/zsh", true, true, bin.clone(), Path::new("/s"));
+        assert_eq!(
+            argv[4].lines().next(),
+            Some(
+                "case \":$PATH:\" in *\":$GHOSTTY_BIN_DIR:\"*) ;; \
+                 *) export PATH=\"$PATH:$GHOSTTY_BIN_DIR\" ;; esac"
+            )
+        );
+        let (argv, _) = start("/usr/bin/fish", true, true, bin, Path::new("/s"));
+        assert_eq!(
+            argv[4].lines().next(),
+            Some(
+                "contains -- \"$GHOSTTY_BIN_DIR\" $PATH; or set -gx PATH $PATH \"$GHOSTTY_BIN_DIR\""
+            )
+        );
+    }
+
+    /// The same line, read by the shell it is written for: appended once, however often it runs.
+    #[test]
+    fn the_commands_line_appends_the_directory_once() {
+        let bin = pairs(&[("GHOSTTY_BIN_DIR", "/d/bin")]);
+        let (argv, _) = start("/bin/sh", true, true, bin, Path::new("/s"));
+        let line = argv[4].lines().next().unwrap();
+        let output = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!("{line}\n{line}\nprintf %s \"$PATH\""))
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("GHOSTTY_BIN_DIR", "/d/bin")
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "/usr/bin:/bin:/d/bin");
     }
 
     /// `env` read any argument containing `=` as a variable, a shell's path included, so the
