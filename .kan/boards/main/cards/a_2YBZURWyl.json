@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "an-alternate-screen",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790599791261,
+  "creator": "Alexander Terp",
+  "description": "terminal::a_program_on_the_alternate_screen_is_read_without_the_history_beneath_it (crates/muster-daemon/tests/daemon/terminal.rs:124) failed 1 of 3 alone under x86_64 emulation: the read after the program left the alternate screen still held its two lines, with history only from row24. It passed 6 of 6 on native aarch64 Linux and on macOS. Likely an existing race emulation exposes.",
+  "id": "a_2YBZURWyl",
+  "position": "b00",
+  "title": "An alternate-screen read test fails under x86_64 emulation",
+  "type": "bug",
+  "updated_at_millis": 1790599791261,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790599791261}
+  ]
+}
