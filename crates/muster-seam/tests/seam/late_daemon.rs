@@ -16,8 +16,10 @@ use muster::proto::{
     CreateTab, Event, OpenWindow, ProblemsChanged, Quitting, ReadWindow, Request, Response,
     Startup, event, request, response,
 };
-use muster_core::composition::saved;
+use muster_core::composition::{DaemonId, saved};
+use muster_core::mirror::{PaneId, TabId};
 use muster_daemon_proto::{self as daemon_proto, session_request};
+use muster_harness::requests::{create, in_new_tab, make};
 use muster_harness::{Daemon, until};
 use prost::Message;
 
@@ -152,6 +154,83 @@ fn a_daemon_on_its_way_keeps_its_place_in_the_arrangement() {
         || format!("the window lists {:?} and was left with {before:?}", listed_tabs()),
     );
     drop(relay);
+}
+
+#[test]
+fn a_daemon_on_its_way_takes_neither_the_screen_nor_the_keyboard() {
+    // Somebody typing into the tab on screen when a devenv answers goes on typing there. Its
+    // tabs coming back used to bring the last of them on screen with the keyboard in the
+    // devenv's half, so the next keystrokes reached an agent on another machine.
+    let _turn = muster::testing::fresh_session();
+    let local = Daemon::start_built();
+    make(&mut local.connect(), create("a1", in_new_tab("t1")));
+    make(&mut local.connect(), create("a3", in_new_tab("t3")));
+    let devenv = Daemon::start_built();
+    make(&mut devenv.connect(), create("b2", in_new_tab("t2")));
+    make(&mut devenv.connect(), create("b3", in_new_tab("t3")));
+    let relay = devenv.delaying_answers_where(subscribes, SLOW);
+
+    let region = |daemon: &str, pane: &str, keyboard: bool| saved::SavedRegion {
+        daemon: DaemonId::new(daemon),
+        weight: 1.0,
+        pane: Some(PaneId::new(pane)),
+        keyboard,
+    };
+    let tab = |id: &str, regions| saved::SavedTab { id: TabId::new(id), regions };
+    let arrangement = local.root().join("window-1.toml");
+    let left = saved::Saved {
+        tabs: vec![
+            tab("t1", vec![region("local", "a1", true)]),
+            tab("t2", vec![region("devenv", "b2", true)]),
+            tab("t3", vec![region("local", "a3", true), region("devenv", "b3", false)]),
+        ],
+        showing: Some(TabId::new("t1")),
+        ..saved::Saved::default()
+    };
+    std::fs::write(&arrangement, saved::to_toml(&left)).expect("the harness root is writable");
+    let config = local.root().join("muster-late.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "[[daemon]]\nid = \"local\"\nsocket = {:?}\n\n[[daemon]]\nid = \"devenv\"\nsocket = \
+             {:?}\n",
+            local.socket_path().to_string_lossy(),
+            relay.socket_path().to_string_lossy()
+        ),
+    )
+    .expect("the harness root is writable");
+
+    start(&config, &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_eq!(keyboard(), ("t1".to_string(), "a1".to_string()), "the window opened elsewhere");
+    until(
+        "the devenv's tabs to come back in their place",
+        || listed_tabs() == ["t1", "t2", "t3"],
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    assert_eq!(
+        keyboard(),
+        ("t1".to_string(), "a1".to_string()),
+        "the devenv answering moved the screen or the keyboard"
+    );
+    drop(relay);
+}
+
+/// The tab on screen and the pane the keyboard is in.
+fn keyboard() -> (String, String) {
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow {})).payload
+    else {
+        return (String::new(), String::new());
+    };
+    let view = window.view.unwrap_or_default();
+    let pane = view
+        .regions
+        .iter()
+        .find(|region| region.region_id == view.focused_region)
+        .map(|region| region.pane_id.clone())
+        .unwrap_or_default();
+    (view.tab_id, pane)
 }
 
 fn start(config: &Path, arrangement: &Path) {
