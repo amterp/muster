@@ -1342,7 +1342,7 @@ impl<S: Store> Messaging<S> {
     }
 
     /// Refuses to act as this machine's human where it has none.
-    fn human_here(&self, presence: &dyn Presence) -> Result<(), Refusal> {
+    pub(crate) fn human_here(&self, presence: &dyn Presence) -> Result<(), Refusal> {
         self.human_elsewhere(presence).map_or(Ok(()), |home| Err(home.refusal()))
     }
 

@@ -422,6 +422,13 @@ impl<S: Store> Messaging<S> {
         group: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<Route, Refusal> {
+        // The human's cursors are kept at its home whatever the group, so a person's shell
+        // where that is elsewhere hears so before anything asks where the group is.
+        let joining =
+            name.map(str::to_string).or_else(|| self.lookup(&Self::addressed(caller, presence)));
+        if joining.as_deref() == Some(HUMAN) {
+            self.human_here(presence)?;
+        }
         let Some(group) = group else { return Ok(Route::Here) };
         let (key, machine) = match self.place(group)? {
             Place::Here => return Ok(Route::Here),
