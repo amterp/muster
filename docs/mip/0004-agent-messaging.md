@@ -410,14 +410,18 @@ the ring sits unsent. Once its prompt is up, a Return in the same write as the t
 it: a Return that arrives while a paste is being taken is held until the paste is in, then
 pressed. So a ring counts as taken once the agent goes to work, reads what it was rung for, or
 shows an empty prompt again. Until then the doorbell presses Return again every five seconds, at
-most six times, and only while every check above holds except the last, which becomes: the
-prompt holds the ring's own text and nothing else. A prompt holding anything else, or a screen
-that is no longer the prompt, ends the ring, and the wake is forgotten so that the next post
-rings afresh.
+most six times, and only while every check above holds except the last, which becomes: nobody
+has typed into the pane since the ring, and the prompt holds the ring's own text and nothing
+else. Typing ends the ring even when it was taken back, because the daemon knows what it wrote
+into the pane but the screen can lag it: an agent slow to paint, or the daemon's copy of the
+screen behind under load, shows the ring alone over words a Return would send. A prompt holding
+anything else, or a screen that is no longer the prompt, also ends the ring, and the wake is
+forgotten so that the next post rings afresh.
 
 **What the doorbell guarantees.** It types one line, its own wake, and only into a prompt it
 read as empty just before the write. It repeats nothing but Return, and only while the prompt
-shows that line unsent, so a repeated Return can send nothing but the wake. It never rings a
+shows that line unsent and nothing has been typed into the pane since, so a repeated Return can
+send nothing but the wake. It never rings a
 blocked or working agent, a menu or dialog detection recognizes, a prompt holding a draft, a
 pane typed into in the last three seconds, the shell an agent exited to, or an agent whose
 manifest has no prompt rule.

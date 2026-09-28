@@ -80,9 +80,11 @@ manifest, and so far only Claude Code's has one. An agent of any other harness i
 woken, and the post says `its prompt cannot be read`.
 
 An agent that neither starts work nor reads within five seconds of a ring has Return pressed
-again, a few times, but only while its prompt holds the ring's own text and nothing else. Claude
-Code keeps what is typed while it is starting as its prompt, unsent, and the later Return sends
-it. If the prompt then holds anything else, the ring ends, and the next post rings afresh.
+again, a few times, but only while its prompt holds the ring's own text and nothing else, and
+nobody has typed into the pane since the ring. Claude Code keeps what is typed while it is
+starting as its prompt, unsent, and the later Return sends it. If the prompt then holds anything
+else, or somebody types into the pane - even something they take back, since the screen may not
+show it yet - the ring ends, and the next post rings afresh.
 
 An agent that goes idle with what it was woken for still unread is woken once more, with `still
 unread` on the end, and then not again until it reads.

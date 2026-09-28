@@ -237,11 +237,11 @@ fn a_return_is_never_pressed_again_at_an_agent_that_turned_blocked() {
     assert!(rung[1].contains("still unread"), "{rung:?}");
 }
 
-/// Nor is Return pressed again within the quiet period of something typed into the pane, even
-/// when what was typed has been taken back and the prompt holds the ring alone again: a person
-/// is at the pane.
+/// Nor is Return pressed again once a person has typed into the pane, even when what they typed
+/// has been taken back and the prompt holds the ring alone again. A letter taken back and words
+/// the agent has yet to paint look the same from here, and a Return over the second sends them.
 #[test]
-fn a_return_is_pressed_again_only_once_the_pane_has_been_quiet() {
+fn a_ring_somebody_typed_at_is_not_pressed_again_even_once_it_is_taken_back() {
     let mut agent = Agent::to_come();
     agent.daemon.run_starting_agent("p1");
     agent.post("p1", "a brief");
@@ -249,15 +249,10 @@ fn a_return_is_pressed_again_only_once_the_pane_has_been_quiet() {
 
     // Just before the Return is due, a person types a letter and takes it back.
     std::thread::sleep(ANSWER.saturating_sub(Duration::from_secs(1)));
-    let typed = Instant::now();
     agent.type_in("x", false);
     agent.type_in("\u{7f}", false);
-    agent.until_rung(1);
-    assert!(
-        typed.elapsed() >= QUIET,
-        "Return pressed {:?} after something was typed, inside the quiet period",
-        typed.elapsed()
-    );
+    std::thread::sleep(ANSWER + QUIET + Duration::from_secs(2));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "Return pressed after typing");
 }
 
 /// Detection reads a new agent as idle before it has read its screen at all, for the few

@@ -148,10 +148,19 @@ pub(crate) struct PaneIo {
     carried: Mutex<Option<proto::handoff::Detection>>,
     /// What the pane's agent last said about its own state, for the reader to hand detection.
     self_report: Mutex<Option<(String, muster_detect::State)>>,
-    /// When the writer last wrote input to the program, for detection to tell its echo from the
-    /// program's own output.
-    input_at: Mutex<Option<Instant>>,
+    /// When the writer last wrote input to the program.
+    typed: Mutex<Typed>,
     begun: Begun,
+}
+
+/// When input was last written to a pane's program.
+#[derive(Debug, Default)]
+struct Typed {
+    /// Any typed input, for detection to tell its echo from the program's own output.
+    input: Option<Instant>,
+    /// Text somebody other than the doorbell typed. The doorbell presses Return again over its
+    /// ring only while nobody has, since the screen may not show it yet.
+    someones_text: Option<Instant>,
 }
 
 /// The process a pane runs, usually a shell - an agent in its place in the foreground is still
@@ -226,12 +235,20 @@ impl PaneIo {
         poison::lock(&self.self_report, "daemon.pane.self_report").take()
     }
 
-    pub(crate) fn wrote_input(&self, at: Instant) {
-        *poison::lock(&self.input_at, "daemon.pane.input_at") = Some(at);
+    pub(crate) fn wrote_input(&self, at: Instant, someones_text: bool) {
+        let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
+        typed.input = Some(at);
+        if someones_text {
+            typed.someones_text = Some(at);
+        }
     }
 
     pub(crate) fn input_at(&self) -> Option<Instant> {
-        *poison::lock(&self.input_at, "daemon.pane.input_at")
+        poison::lock(&self.typed, "daemon.pane.typed").input
+    }
+
+    pub(crate) fn someone_typed_at(&self) -> Option<Instant> {
+        poison::lock(&self.typed, "daemon.pane.typed").someones_text
     }
 
     pub(crate) fn take_detection_reset(&self) -> bool {
@@ -682,7 +699,7 @@ impl Pane {
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
-            input_at: Mutex::new(None),
+            typed: Mutex::default(),
             begun: Begun { shell: process, at: Instant::now() },
         });
         let pane = record.pane.clone();
@@ -1083,7 +1100,7 @@ impl PaneIo {
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
-            input_at: Mutex::new(None),
+            typed: Mutex::default(),
             begun: Begun { shell: None, at: Instant::now() },
         })
     }

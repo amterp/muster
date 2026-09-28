@@ -58,6 +58,12 @@ pub(crate) enum Input {
         text: String,
         enter: bool,
     },
+    /// The doorbell's own wake, or its Return pressed again: written as a send is, and told
+    /// apart from it only so a pane knows whether anyone else has typed since.
+    Ring {
+        text: String,
+        enter: bool,
+    },
     Focus(bool),
     /// A full reset of the terminal, as Ghostty's `reset` does: the surface and the daemon's
     /// copy are reset, and the program is not told.
@@ -94,7 +100,14 @@ impl Input {
                 | Input::Wheel(_)
                 | Input::Paste { .. }
                 | Input::Send { .. }
+                | Input::Ring { .. }
         )
+    }
+
+    /// Whether this is text somebody other than the doorbell typed: what can sit in an agent's
+    /// prompt beside a ring, where a Return would send it. The pointer puts no text there.
+    fn is_someones_text(&self) -> bool {
+        matches!(self, Input::Bound(_) | Input::Key(_) | Input::Paste { .. } | Input::Send { .. })
     }
 }
 
@@ -275,6 +288,7 @@ impl Writer {
                 input => input,
             };
             let typed = input.is_typed();
+            let someones = input.is_someones_text();
             // The encoding is released before the write, which can wait on a program that is
             // not reading, so the reader's refresh never waits on it.
             let bytes = self.encode(input);
@@ -285,7 +299,7 @@ impl Writer {
             // is slow to take is echoed piece by piece while it goes on.
             let wrote_input = || {
                 if typed && let Some(io) = self.io.upgrade() {
-                    io.wrote_input(Instant::now());
+                    io.wrote_input(Instant::now(), someones);
                 }
             };
             wrote_input();
@@ -371,7 +385,7 @@ impl Writer {
                 }
                 encode_paste(&text, false)
             }
-            Input::Send { text, enter } => {
+            Input::Send { text, enter } | Input::Ring { text, enter } => {
                 let mut bytes = sent_text(text, modes.bracketed_paste);
                 if enter {
                     for action in [KeyAction::Press, KeyAction::Release] {

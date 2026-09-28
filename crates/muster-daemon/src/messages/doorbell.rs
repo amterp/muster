@@ -12,8 +12,10 @@
 //! once more when it goes idle with what it was woken for still unread (section 5).
 //!
 //! Claude Code keeps what is typed while it starts as its prompt and drops the Return, so a
-//! ring can sit unsent. Return is pressed again for it, a few times, but only while the prompt
-//! holds the ring's own text and nothing else: that Return can send nothing but the ring.
+//! ring can sit unsent. Return is pressed again for it, a few times, but only while nobody has
+//! typed into the pane since and the prompt holds the ring's own text and nothing else: that
+//! Return can send nothing but the ring. The first is what the daemon saw written, since the
+//! screen can lag it.
 
 use std::collections::HashMap;
 use std::sync::{OnceLock, Weak};
@@ -103,7 +105,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
         match prompt::look(&seen.io, &seen.agent, &shared.detecting) {
             AtPrompt::Empty => {
                 let text = messaging::wake_text(&notice_of(&wake.notice));
-                let took = seen.io.queue(Input::Send { text, enter: true });
+                let took = seen.io.queue(Input::Ring { text, enter: true });
                 rang(&wake, took);
                 if took {
                     rung.push(Rung { wake, at: Instant::now(), presses: 0 });
@@ -330,10 +332,16 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
     let mut pressed = Vec::new();
     let mut ending: Vec<(Rung, &'static str)> = Vec::new();
     for (mut rung, seen) in pressing {
+        // Before the screen, which can lag what was typed: an agent slow to paint, or this
+        // daemon's copy behind, shows the ring alone over words that a Return would send.
+        if seen.io.someone_typed_at().is_some_and(|typed| typed > rung.at) {
+            ending.push((rung, "something was typed into its pane after it was rung"));
+            continue;
+        }
         let text = messaging::wake_text(&notice_of(&rung.wake.notice));
         match prompt::look(&seen.io, &seen.agent, &shared.detecting) {
             AtPrompt::Holds(held) if prompt::is_only(&held, &text) => {
-                if !seen.io.queue(Input::Send { text: String::new(), enter: true }) {
+                if !seen.io.queue(Input::Ring { text: String::new(), enter: true }) {
                     ending.push((rung, "its pane would not take the Return"));
                     continue;
                 }
