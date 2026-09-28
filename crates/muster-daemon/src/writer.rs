@@ -14,6 +14,7 @@ use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, Weak};
+use std::time::Instant;
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -65,6 +66,21 @@ pub(crate) enum Input {
     ClearScreen {
         unconsumed: Vec<u8>,
     },
+}
+
+impl Input {
+    /// Whether this is someone's input, which a program echoes. A reply answers the program
+    /// itself, and a focus report, a reset and a clear are not typed.
+    fn is_typed(&self) -> bool {
+        matches!(
+            self,
+            Input::Key(_)
+                | Input::Mouse(_)
+                | Input::Wheel(_)
+                | Input::Paste { .. }
+                | Input::Send { .. }
+        )
+    }
 }
 
 /// A key as it arrives: libghostty's numbering, and the app's option-as-alt setting.
@@ -214,6 +230,7 @@ impl Writer {
     /// Writes everything queued for a pane until the pane lets go of its queue, or of its PTY.
     pub(crate) fn write(mut self, queued: &Receiver<Input>, master: &OwnedFd, wake: &OwnedFd) {
         for input in queued {
+            let typed = input.is_typed();
             // The encoding is released before the write, which can wait on a program that is
             // not reading, so the reader's refresh never waits on it.
             let bytes = self.encode(input);
@@ -233,6 +250,9 @@ impl Writer {
                     );
                 }
                 return;
+            }
+            if typed && let Some(io) = self.io.upgrade() {
+                io.wrote_input(Instant::now());
             }
         }
     }

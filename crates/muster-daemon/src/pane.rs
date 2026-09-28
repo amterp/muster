@@ -148,6 +148,9 @@ pub(crate) struct PaneIo {
     carried: Mutex<Option<proto::handoff::Detection>>,
     /// What the pane's agent last said about its own state, for the reader to hand detection.
     self_report: Mutex<Option<(String, muster_detect::State)>>,
+    /// When the writer last wrote input to the program, for detection to tell its echo from the
+    /// program's own output.
+    input_at: Mutex<Option<Instant>>,
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -212,6 +215,14 @@ impl PaneIo {
 
     fn take_self_report(&self) -> Option<(String, muster_detect::State)> {
         poison::lock(&self.self_report, "daemon.pane.self_report").take()
+    }
+
+    pub(crate) fn wrote_input(&self, at: Instant) {
+        *poison::lock(&self.input_at, "daemon.pane.input_at") = Some(at);
+    }
+
+    pub(crate) fn input_at(&self) -> Option<Instant> {
+        *poison::lock(&self.input_at, "daemon.pane.input_at")
     }
 
     pub(crate) fn take_detection_reset(&self) -> bool {
@@ -627,6 +638,7 @@ impl Pane {
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
+            input_at: Mutex::new(None),
         });
         let pane = record.pane.clone();
 
@@ -1011,6 +1023,7 @@ impl PaneIo {
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
+            input_at: Mutex::new(None),
         })
     }
 }

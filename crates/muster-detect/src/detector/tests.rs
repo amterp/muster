@@ -387,6 +387,7 @@ const AGENT_GROUP: u32 = 200;
 struct FakePane {
     group: Option<u32>,
     content_seq: u64,
+    input_at: Option<Instant>,
     screen: String,
     title: String,
     title_writes: u64,
@@ -407,6 +408,9 @@ impl Pane for FakePane {
     }
     fn content_seq(&self) -> u64 {
         self.content_seq
+    }
+    fn input_at(&self) -> Option<Instant> {
+        self.input_at
     }
     fn screen_text(&mut self) -> String {
         self.screen_reads += 1;
@@ -1111,7 +1115,15 @@ fn typing_into_an_agent_whose_manifest_has_no_idle_rule_is_not_unreadable() {
     let mut run = Run::with_manifest(NO_IDLE_RULE);
     run.tick();
     run.start_agent();
-    let typed = run.run_for(reporting::DRIFT + Duration::from_secs(2), Some("> a long prompt"));
+    let start = run.now;
+    let mut typed = Vec::new();
+    let mut prompt = String::from("> ");
+    while run.now - start < reporting::DRIFT + Duration::from_secs(2) {
+        prompt.push('a');
+        run.pane.input_at = Some(run.now);
+        run.paint(&prompt);
+        typed.extend(run.tick());
+    }
     assert!(typed.iter().all(|publication| !publication.unreadable), "{typed:?}");
 }
 

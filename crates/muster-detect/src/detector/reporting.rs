@@ -37,6 +37,11 @@ pub(crate) const UNCONFIRMED: Duration = Duration::from_secs(2);
 /// How long the rules must fail to read a screen that keeps changing before the pane says so.
 pub(crate) const DRIFT: Duration = Duration::from_mins(1);
 
+/// A change to the screen this soon after input was written is taken for its echo: someone
+/// typing into an agent moves its screen, and that is neither the agent working nor its screen
+/// going unread.
+pub(crate) const ECHO: Duration = Duration::from_millis(500);
+
 /// How many of those seconds the screen must have changed in: a screen that sits still is idle
 /// by any reading, and never counts as unread.
 const DRIFT_ACTIVE_SECONDS: usize = 30;
@@ -65,6 +70,8 @@ pub struct Drift {
 pub(crate) struct Reporting {
     report: Option<SelfReport>,
     last_content_seq: Option<u64>,
+    /// When the content count was last taken.
+    last_tick: Option<Instant>,
     last_output_at: Option<Instant>,
     /// The start of each second, of the last [`DRIFT`], in which the pane produced output.
     active_seconds: VecDeque<Instant>,
@@ -84,9 +91,13 @@ impl Reporting {
         self.report = Some(SelfReport { agent, state, at: now, confirmed });
     }
 
-    /// Takes the pane's content count, each tick while an agent is identified.
-    pub(crate) fn output(&mut self, content_seq: u64, now: Instant) {
-        if self.last_content_seq.is_some_and(|seen| seen != content_seq) {
+    /// Takes the pane's content count, each tick while an agent is identified, and when input
+    /// was last written to it. A change that input could have echoed since the last tick is not
+    /// the agent's output.
+    pub(crate) fn output(&mut self, content_seq: u64, input_at: Option<Instant>, now: Instant) {
+        let since = self.last_tick.replace(now).unwrap_or(now);
+        let echoed = input_at.is_some_and(|at| at + ECHO >= since);
+        if !echoed && self.last_content_seq.is_some_and(|seen| seen != content_seq) {
             self.last_output_at = Some(now);
             let second = Duration::from_secs(1);
             if self.active_seconds.back().is_none_or(|&start| now.duration_since(start) >= second) {

@@ -774,11 +774,16 @@ check is not built. Starting the nested agent with `MUSTER_DAEMON` unset keeps i
 **Drift is shown, not guessed.** The rules also say when they have stopped reading an agent: for a
 minute, the screen changed in at least half the seconds while either no rule matched at all, or
 the agent reported working and the rules read every screen as idle. A still screen never counts,
-since idle is its right reading. Nor does idle by the fallback for a manifest that has no idle
-rule of its own, such as codex's or gemini's: that fallback is how it reads idle, and someone
-typing a long prompt keeps its screen moving. The pane's record then says `screen_unreadable`, and the daemon
+since idle is its right reading. The pane's record then says `screen_unreadable`, and the daemon
 logs `daemon.detection.unreadable` once as it starts, naming the agent and what to check. It
 clears when a rule reads the screen again, or the agent changes.
+
+Movement is what the agent does, not its echo: a change to the screen within half a second of the
+daemon writing input to the pane does not count. So someone typing a long prompt into an agent
+whose manifest has no idle rule of its own, such as codex's or gemini's, is not flagged, while a
+reworded spinner is: for those manifests idle is whatever no rule matches, and that still counts
+as unmatched. Typing into a working agent hides those seconds from drift too, and from a working
+report's ten quiet seconds.
 
 **Where it runs.** Each pane's reader thread ticks its pane's detection on its poll's timeout
 (section 4), so detection has no thread of its own. A tick reads the terminal under the pane's

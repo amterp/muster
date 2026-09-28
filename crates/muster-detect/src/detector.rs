@@ -55,6 +55,10 @@ pub trait Pane {
     /// read.
     fn content_seq(&self) -> u64;
 
+    /// When input was last written to the pane - keys, a paste, text a program sent - whose
+    /// echo moves the screen without the agent doing anything.
+    fn input_at(&self) -> Option<Instant>;
+
     /// The active screen's rows, as `muster_vt::Terminal::text(0, rows - 1)` reads them.
     fn screen_text(&mut self) -> String;
 
@@ -277,7 +281,7 @@ impl Detector {
             self.conclude(self.presence.current.clone(), self.published.state);
         }
         if self.presence.current.is_some() {
-            self.reporting.output(pane.content_seq(), now);
+            self.reporting.output(pane.content_seq(), pane.input_at(), now);
         }
         let publication = self.effective(now).and_then(|effective| self.emit(effective));
         let next = if self.pending_idle.active() {
@@ -370,11 +374,7 @@ impl Detector {
         };
 
         if !process_exited {
-            // Idle by the fallback is a reading, not a miss, for a manifest that has no idle rule
-            // of its own: that fallback is how it reads idle.
-            let by_fallback = detection.state == State::Idle
-                && !agent.as_ref().is_some_and(|agent| manifests.has_rule_for(agent, State::Idle));
-            self.reporting.rules(detection.state, detection.rule.is_some() || by_fallback, now);
+            self.reporting.rules(detection.state, detection.rule.is_some(), now);
         }
         let next = PublishState { state: detection.state, visible: detection.visible };
         if decide_transition(

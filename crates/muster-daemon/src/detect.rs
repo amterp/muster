@@ -303,6 +303,10 @@ impl Pane for Observed<'_> {
         self.io.screen().content_seq()
     }
 
+    fn input_at(&self) -> Option<Instant> {
+        self.io.input_at()
+    }
+
     fn screen_text(&mut self) -> String {
         let screen = self.io.screen();
         let terminal = screen.terminal();
