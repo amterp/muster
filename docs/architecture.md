@@ -832,6 +832,12 @@ Health is per-connection *and* per-channel, and it is state, not an error path:
   recovery is a fresh snapshot. The two recover independently.
 - **disconnected**: render the labeled last mirror; reconnect resyncs everything.
 
+A daemon that has not answered by the time the window opens is the same case from the other end. The window waits
+one second for the daemons its config names, each attached on a thread of its own, and opens without the rest; a
+daemon that arrives later is reconciled into the open window like any first snapshot, and one that cannot be reached
+is tried again on the reconnect backoff until it answers. Waiting on every daemon before showing anything made one
+slow devenv a window that did not appear for a minute and a half.
+
 Liveness needs an active probe - the control plane is legitimately silent when nothing happens - and how it probes
 is an implementation choice. Version skew between Muster and a daemon is detected at attach and surfaced plainly.
 Sessions survive anything Muster does: a broken Muster must never strand a session (see also geometry, above).

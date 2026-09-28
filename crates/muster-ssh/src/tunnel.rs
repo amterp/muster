@@ -578,12 +578,17 @@ fn spawn(forward: &Forward) -> Result<Child, String> {
 /// what the user's rc file exports - not a full login environment. `HOME` is always there,
 /// which is what the default path needs; anything more exotic is what naming the socket in
 /// the config file is for.
+///
+/// Bounded by a connect timeout, placed after the config's own options so that one named there
+/// wins: the first reach of a machine that is not answering would otherwise wait out the
+/// operating system's TCP timeout, a minute or more, for each attempt.
 pub fn remote_environment(
     host: &str,
     options: &[String],
 ) -> Result<BTreeMap<String, String>, String> {
     let mut arguments: Vec<String> = vec!["-o".to_string(), "BatchMode=yes".to_string()];
     arguments.extend(options.iter().cloned());
+    arguments.extend(["-o".to_string(), "ConnectTimeout=15".to_string()]);
     arguments.push(host.to_string());
     arguments.push("env".to_string());
 

@@ -478,6 +478,12 @@ downloaded. Linux on x86_64 or aarch64 and macOS on Apple silicon are the machin
 daemon for, and the run log says so for any other. Naming a `socket` in a `[[daemon]]` block still attaches whatever is
 listening at it, on either machine - that is how you ask for somebody else's daemon on purpose.
 
+**A machine that is slow or away does not hold the window closed.** Muster waits a second for the
+daemons the file names, opens the window without any that have not answered by then, and their
+panes arrive when they do. A daemon that cannot be reached is tried again, on the same backoff as a
+dropped connection, for as long as Muster runs; the window says which one is missing and why from
+the first failed attempt, and takes that back when it answers, so there is no need to relaunch.
+
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,

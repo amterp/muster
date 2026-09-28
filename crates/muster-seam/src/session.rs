@@ -865,6 +865,14 @@ static PUBLISHING: Mutex<()> = Mutex::new(());
 /// master and its panes' sockets, and dropping one ends the threads behind all three. So this
 /// is the shutdown path that already existed, called deliberately rather than at exit.
 pub(crate) fn reset() {
+    // Before the session is replaced, so an attach still under way sees it belongs to the old one
+    // by the time it could land in the new one.
+    {
+        let mut attaches = poison::lock(&ATTACHES, "attaches");
+        attaches.generation += 1;
+        attaches.under_way.clear();
+    }
+    ATTACH_ENDED.notify_all();
     *poison::lock(&SESSION, "session") = Session::default();
 
     *poison::lock(&DAEMON_BINARY, "daemon-binary") = None;
@@ -2895,37 +2903,192 @@ pub(crate) fn window() -> WindowNow {
     WindowNow { view, roster, numbering, agents, daemons, name, others }
 }
 
-/// Starts following every daemon a config file named.
+/// Starts following every daemon a config file named, each on a thread of its own, and waits
+/// at most [`GRACE`] for them.
 ///
 /// No regions yet. Which tab a region shows depends on where the pane in `argv` turned out to
 /// live, and that is not known until [`attach`] has asked - so opening one here would mean
 /// opening a second one a moment later and closing the first.
 ///
-/// A daemon that will not attach is logged and skipped rather than fatal. One unreachable
-/// devenv should cost its own panes and nothing else, and a window that refused to open
-/// because a container was down would be worse than no window at all.
+/// This runs before the shell has made a window, so whatever it waits for, the person waits for
+/// with nothing on screen. A running daemon on this machine answers in milliseconds and a quick
+/// devenv inside the grace, so an ordinary launch still opens with every pane in it; a slower
+/// one arrives in the open window, which already takes a daemon whose state comes late. The
+/// threads run side by side, so two slow devenvs cost one wait rather than two.
+///
+/// A daemon that will not attach is tried again rather than given up on (`keep_attaching`). One
+/// unreachable devenv should cost its own panes and nothing else, and a window that refused to
+/// open because a container was down would be worse than no window at all.
 pub(crate) fn follow_configured(config: &Config) {
+    let generation = {
+        let mut attaches = poison::lock(&ATTACHES, "attaches");
+        attaches.under_way.extend(config.daemons.iter().map(|daemon| daemon.id.clone()));
+        attaches.generation
+    };
     for daemon in &config.daemons {
-        if let Err(refusal) = attach_daemon(daemon) {
+        let attaching = daemon.clone();
+        let spawned = std::thread::Builder::new()
+            .name(format!("muster-attach-{}", daemon.id))
+            .spawn(move || keep_attaching(&attaching, generation));
+        if let Err(error) = spawned {
             log::error(
                 "daemon.unavailable",
                 fields! {
                     "daemon" => daemon.id.to_string(),
-                    "detail" => refusal,
-                    "impact" => "this daemon's panes are absent from the window; every other \
-                                 daemon in the config is unaffected",
+                    "detail" => format!("no thread could be started to attach it ({error})"),
+                    "impact" => "this daemon's panes are absent from the window until it is \
+                                 relaunched; every other daemon in the config is unaffected",
+                    "check" => "whether this process has run out of threads",
                 },
             );
+            attach_ended(&daemon.id, generation);
         }
     }
+    let attaches = poison::lock(&ATTACHES, "attaches");
+    let _waited = ATTACH_ENDED
+        .wait_timeout_while(attaches, GRACE, |attaches| {
+            attaches.generation == generation && !attaches.under_way.is_empty()
+        })
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+}
+
+/// How long starting waits for the daemons a config names before the window opens without the
+/// ones still on their way. Past it, a window that has not appeared reads as a Muster that did
+/// not start.
+const GRACE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The configured daemons still being attached, and which launch they belong to.
+///
+/// Outside the session, because `reset` replaces the session wholesale and an attach from the
+/// session it replaced must be told so: its generation no longer matches, and it throws its
+/// daemon away rather than landing it in a session that never asked for it.
+#[derive(Debug)]
+struct Attaches {
+    generation: u64,
+    under_way: BTreeSet<DaemonId>,
+}
+
+static ATTACHES: Mutex<Attaches> =
+    Mutex::new(Attaches { generation: 0, under_way: BTreeSet::new() });
+
+/// Told whenever an attach ends, for a caller waiting on the ones under way.
+static ATTACH_ENDED: std::sync::Condvar = std::sync::Condvar::new();
+
+/// Whether an attach begun in `generation` still belongs to the session there is now.
+fn attach_current(generation: u64) -> bool {
+    poison::lock(&ATTACHES, "attaches").generation == generation
+}
+
+fn attach_ended(daemon: &DaemonId, generation: u64) {
+    let mut attaches = poison::lock(&ATTACHES, "attaches");
+    if attaches.generation == generation {
+        attaches.under_way.remove(daemon);
+    }
+    ATTACH_ENDED.notify_all();
+}
+
+/// Waits up to `patience` for every configured daemon still attaching to be attached.
+fn wait_for_attaches(patience: std::time::Duration) {
+    let attaches = poison::lock(&ATTACHES, "attaches");
+    let _waited = ATTACH_ENDED
+        .wait_timeout_while(attaches, patience, |attaches| !attaches.under_way.is_empty())
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+}
+
+/// Whether a configured daemon is still being attached.
+fn attaching_anything() -> bool {
+    !poison::lock(&ATTACHES, "attaches").under_way.is_empty()
+}
+
+/// Attaches one configured daemon, trying again on the reconnect backoff for as long as the
+/// session lasts.
+///
+/// A daemon that could not be reached at launch used to be dropped for the life of the process,
+/// so a devenv whose VPN came up a minute after Muster did needed a relaunch - which costs the
+/// panes on every other machine. Each failed attempt is a `daemon.unavailable` record, and the
+/// first raises a problem that the attach clears. The first rather than the fifth, as for a
+/// dropped connection: each attempt has already waited out its own patience, ten seconds for a
+/// daemon's state and more for an ssh host, so one failure is already a machine missing from the
+/// window for longer than anybody would wait without being told why.
+fn keep_attaching(daemon: &Daemon, generation: u64) {
+    let key = reconnect::key(daemon.id.as_str());
+    let mut attempts = reconnect::Attempts::new();
+    loop {
+        match attach_daemon_in(daemon, generation) {
+            Ok(()) => {
+                if attempts.failures() > 0 {
+                    clear_problem(&key, "attached");
+                }
+                attach_ended(&daemon.id, generation);
+                return;
+            }
+            Err(Unattached::Abandoned) => return,
+            Err(Unattached::Failed(refusal)) => {
+                let retry = attempts.failed();
+                log::warn(
+                    "daemon.unavailable",
+                    fields! {
+                        "daemon" => daemon.id.to_string(),
+                        "detail" => &refusal,
+                        "attempt" => attempts.failures(),
+                        "impact" => "this daemon's panes are absent from the window until an \
+                                     attempt succeeds; every other daemon in the config is \
+                                     unaffected",
+                        "check" => "whether the daemon is running, whether its socket path \
+                                    has moved, and whether an ssh host is reachable",
+                    },
+                );
+                // Once: a condition that stays true has nothing new to say, and the run log has
+                // every attempt after it.
+                if attempts.failures() == 1 {
+                    raise_problem(&key, Severity::Warning, &never_attached(daemon, &refusal));
+                }
+                std::thread::sleep(std::time::Duration::from_nanos(retry.after));
+                if !attach_current(generation) {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/// What to tell somebody whose configured daemon has not attached since launch.
+fn never_attached(daemon: &Daemon, refusal: &str) -> String {
+    format!(
+        "Muster could not reach the daemon {}: {refusal}. Its panes are absent from this \
+         window, and every other daemon's are unaffected. Muster keeps trying about every {} \
+         seconds and its panes arrive on their own once it answers, so relaunching is not \
+         necessary. Check that the daemon is running and that the machine it is on is \
+         reachable.",
+        described(daemon),
+        reconnect::BACKOFF_NS[reconnect::BACKOFF_NS.len() - 1] / 1_000_000_000,
+    )
+}
+
+/// Why an attach did not end with the daemon followed.
+enum Unattached {
+    /// The attempt failed, for the reason given, and another can be made.
+    Failed(String),
+    /// The session it was for has been replaced, so nobody wants the daemon any more.
+    Abandoned,
 }
 
 /// How long a window opening onto a daemon waits for its first snapshot before carrying on
 /// without it. The daemon's panes arrive on their own when it answers.
 const FIRST_SNAPSHOT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// Attaches a daemon for the session there is now, waiting for it: the daemon Muster finds for
+/// itself when the config names none, which a window cannot open without.
 fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
-    let reached = reach(&daemon.id, &daemon.endpoint)?;
+    let generation = poison::lock(&ATTACHES, "attaches").generation;
+    attach_daemon_in(daemon, generation).map_err(|unattached| match unattached {
+        Unattached::Failed(refusal) => refusal,
+        Unattached::Abandoned => "the window was reset while its daemon attached".to_string(),
+    })
+}
+
+fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> {
+    let reached = reach(&daemon.id, &daemon.endpoint).map_err(Unattached::Failed)?;
     log::info(
         "daemon.attached",
         fields! {
@@ -2935,7 +3098,15 @@ fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
             "started" => reached.started,
         },
     );
-    let connection = poison::lock(&SESSION, "session").follow(daemon, reached)?;
+    let connection = {
+        let mut session = poison::lock(&SESSION, "session");
+        // Asked under the session's lock, which `reset` takes after it moves the generation on,
+        // so a daemon either lands in the session that asked for it or not at all.
+        if !attach_current(generation) {
+            return Err(Unattached::Abandoned);
+        }
+        session.follow(daemon, reached).map_err(Unattached::Failed)?
+    };
     // Not under the session's lock: announcing the snapshot takes it.
     if let Some(connection) = connection
         && !connection.wait_for_snapshot(FIRST_SNAPSHOT)
@@ -2943,20 +3114,23 @@ fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
         // Let go of it rather than keep following it. A daemon that never answered is not
         // one this window is showing, and kept, it would count as something followed - so a
         // window whose every configured daemon is silent would open onto nothing instead of
-        // saying which of them did not answer.
+        // saying which of them did not answer. The next attempt reaches it afresh.
         let removed = {
             let mut session = poison::lock(&SESSION, "session");
+            if !attach_current(generation) {
+                return Err(Unattached::Abandoned);
+            }
             session.composition.detach_daemon(&daemon.id);
             session.backends.remove(&daemon.id)
         };
         // Dropped with the lock released: dropping a follower joins its thread, which can be
         // part way through connecting, and every other daemon's events need the lock meanwhile.
         drop(removed);
-        return Err(format!(
+        return Err(Unattached::Failed(format!(
             "the daemon {} did not send its state within {}s",
             daemon.id,
             FIRST_SNAPSHOT.as_secs()
-        ));
+        )));
     }
     Ok(())
 }
@@ -3265,18 +3439,17 @@ fn follow_implicitly_if_nothing_else() -> Result<(), String> {
 /// the part they can check.
 fn named_daemons() -> Vec<String> {
     let configured = poison::lock(&CONFIGURED_DAEMONS, "settings");
-    configured
-        .as_deref()
-        .unwrap_or_default()
-        .iter()
-        .map(|daemon| match &daemon.endpoint {
-            Endpoint::Local { socket_path: None } => {
-                format!("{} on this machine", daemon.id)
-            }
-            Endpoint::Local { socket_path: Some(path) } => format!("{} at {path}", daemon.id),
-            Endpoint::Ssh { host, .. } => format!("{} on {host}", daemon.id),
-        })
-        .collect()
+    configured.as_deref().unwrap_or_default().iter().map(described).collect()
+}
+
+/// A daemon said the way the config named it, with the endpoint as well as the id: the id is
+/// the reader's own word, and the endpoint is the part they can check.
+fn described(daemon: &Daemon) -> String {
+    match &daemon.endpoint {
+        Endpoint::Local { socket_path: None } => format!("{} on this machine", daemon.id),
+        Endpoint::Local { socket_path: Some(path) } => format!("{} at {path}", daemon.id),
+        Endpoint::Ssh { host, .. } => format!("{} on {host}", daemon.id),
+    }
 }
 
 /// Asks for one tab when this window has no tab it may open onto.
@@ -3433,6 +3606,11 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     // screen, and every other tab the daemon had was listed by no window at all.
     say_this_window_is_open();
 
+    // The pane may be on a daemon still attaching, and a window asked for one pane has nothing
+    // else to show, so it waits for that daemon as long as a first snapshot is waited for.
+    if locate(&pane).is_none() {
+        wait_for_attaches(FIRST_SNAPSHOT);
+    }
     let (daemon, tab) = locate(&pane).ok_or_else(|| AttachError::NoSuchPane {
         pane: pane_id.to_string(),
         held: panes_followed(),
@@ -3473,9 +3651,12 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     Ok(attached)
 }
 
+/// Whether this window is following a daemon, or has one on its way. A configured daemon still
+/// attaching counts: it is the one the window was pointed at, and following another in its place
+/// would show a session nobody asked for.
 fn following_anything() -> bool {
-    let session = poison::lock(&SESSION, "session");
-    !session.backends.is_empty()
+    let followed = !poison::lock(&SESSION, "session").backends.is_empty();
+    followed || attaching_anything()
 }
 
 fn panes_followed() -> usize {

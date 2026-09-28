@@ -7,9 +7,13 @@
 //! to be slow on cue. Local rather than over ssh, because the rule is the same for every daemon
 //! and the transport adds nothing to it.
 
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use muster::proto::{OpenWindow, ReadWindow, Request, Response, Startup, request, response};
+use muster::proto::{
+    Event, OpenWindow, ProblemsChanged, ReadWindow, Request, Response, Startup, event, request,
+    response,
+};
 use muster_daemon_proto::{self as daemon_proto, session_request};
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -43,6 +47,78 @@ fn a_slow_daemon_does_not_hold_the_window_closed() {
         || format!("the window lists {} panes", listed_panes()),
     );
     drop(relay);
+}
+
+/// A daemon that was not there when the window opened is attached once it is, without a relaunch,
+/// and the window says meanwhile that it is missing.
+///
+/// A relaunch is what a daemon given up on at launch used to need, and it costs the panes on
+/// every machine that was fine. Nothing listens at the socket the config names until a real
+/// daemon's socket is linked there, which is a daemon coming up from the window's point of view.
+#[test]
+fn a_daemon_missing_at_launch_is_attached_once_it_answers() {
+    let _turn = muster::testing::fresh_session();
+    watch_problems();
+    let daemon = Daemon::start_built();
+    let named = daemon.root().join("named.sock");
+    let config = daemon.root().join("muster.toml");
+    std::fs::write(
+        &config,
+        format!("[[daemon]]\nid = \"local\"\nsocket = {:?}\n", named.to_string_lossy()),
+    )
+    .expect("the harness root is writable");
+
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    let named_path = named.to_string_lossy().to_string();
+    until(
+        "the window to say the daemon is missing",
+        || problems().iter().any(|problem| problem.contains(&named_path)),
+        || format!("the problems raised are {:?}", problems()),
+    );
+
+    std::os::unix::fs::symlink(daemon.socket_path(), &named).expect("the socket can be linked");
+    until(
+        "the daemon's pane to arrive once it answers",
+        || listed_panes() == 1,
+        || format!("the window lists {} panes", listed_panes()),
+    );
+    until(
+        "the window to take back what it said",
+        || problems().is_empty(),
+        || format!("the problems still raised are {:?}", problems()),
+    );
+}
+
+static PROBLEMS: Mutex<Option<ProblemsChanged>> = Mutex::new(None);
+
+/// Throws away what the last test heard and listens again.
+fn watch_problems() {
+    *PROBLEMS.lock().expect("a panicking test poisoned the problems") = None;
+    muster::ffi::muster_set_event_callback(Some(note));
+}
+
+extern "C" fn note(bytes: *const u8, len: usize) {
+    // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which is
+    // the contract in include/muster.h.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let event = Event::decode(bytes).expect("the core emits events this build can decode");
+    if let Some(event::Payload::ProblemsChanged(problems)) = event.payload {
+        *PROBLEMS.lock().expect("a panicking test poisoned the problems") = Some(problems);
+    }
+}
+
+/// What each problem the window has raised says.
+fn problems() -> Vec<String> {
+    PROBLEMS
+        .lock()
+        .expect("a panicking test poisoned the problems")
+        .clone()
+        .map(|changed| changed.problems.into_iter().map(|problem| problem.detail).collect())
+        .unwrap_or_default()
 }
 
 /// The window's subscribe, whose answer carries the daemon's state.

@@ -15,10 +15,19 @@
 //!
 //! Its own binary because the seam holds one session per process, and this needs a launch that
 //! has never reached a daemon at all.
+//!
+//! The window used to refuse to open instead. It opens now, because a daemon it cannot reach is
+//! tried again rather than given up on, and says which daemon as a problem once it has tried
+//! enough times.
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 
-use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
+use muster::proto::{
+    Event, OpenWindow, ProblemsChanged, ReadWindow, Request, Response, Startup, event, request,
+    response,
+};
+use muster_harness::until;
 use prost::Message;
 
 #[test]
@@ -36,6 +45,7 @@ fn a_named_daemon_that_does_not_answer_is_not_replaced_by_another() {
     }
 
     let _turn = muster::testing::fresh_session();
+    muster::ffi::muster_set_event_callback(Some(note));
 
     // A socket path with nothing behind it, which is what a daemon that has stopped answering
     // looks like from here. Named in the config, so the window has been told which daemon it
@@ -54,19 +64,56 @@ fn a_named_daemon_that_does_not_answer_is_not_replaced_by_another() {
         ..Startup::default()
     })));
 
-    let refusal = reason(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
 
     // The socket the config named, and no other. A window that cannot reach the daemon it was
     // pointed at has to say so about *that* daemon: substituting another one renders panes
     // from a session nobody asked about, under the name of the session they did, and the
     // person reading the roster has no way to tell.
-    assert!(
-        refusal.contains(&silent.to_string_lossy().to_string()),
-        "opening onto a daemon that does not answer should name the socket the config gave \
-         it, and named none of it.\n  Impact: the window attached some other daemon under the \
-         configured daemon's id, so what it shows belongs to a session nobody asked \
-         for.\n  What it said instead: {refusal}"
+    let silent = silent.to_string_lossy().to_string();
+    until(
+        "a problem naming the socket the config gave",
+        || problems().iter().any(|problem| problem.contains(&silent)),
+        || format!("the problems raised are {:?}", problems()),
     );
+    let attached = attached_sockets();
+    assert!(
+        attached.iter().all(|socket| *socket == silent),
+        "the window attached {attached:?} in place of the daemon the config named.\n  Impact: \
+         what it shows belongs to a session nobody asked for, under the configured daemon's id."
+    );
+}
+
+static PROBLEMS: Mutex<Option<ProblemsChanged>> = Mutex::new(None);
+
+extern "C" fn note(bytes: *const u8, len: usize) {
+    // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which is
+    // the contract in include/muster.h.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let event = Event::decode(bytes).expect("the core emits events this build can decode");
+    if let Some(event::Payload::ProblemsChanged(problems)) = event.payload {
+        *PROBLEMS.lock().expect("a panicking test poisoned the problems") = Some(problems);
+    }
+}
+
+/// What each problem the window has raised says.
+fn problems() -> Vec<String> {
+    PROBLEMS
+        .lock()
+        .expect("a panicking test poisoned the problems")
+        .clone()
+        .map(|changed| changed.problems.into_iter().map(|problem| problem.detail).collect())
+        .unwrap_or_default()
+}
+
+/// The socket of every daemon the window has attached.
+fn attached_sockets() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => {
+            window.daemons.into_iter().map(|machine| machine.socket).collect()
+        }
+        other => panic!("reading the window answered {other:?}"),
+    }
 }
 
 /// A config directory this test owns, so nothing here can resolve to a real one.
@@ -87,16 +134,5 @@ fn assert_ok(response: &Response) {
     match &response.payload {
         Some(response::Payload::Ok(_) | response::Payload::Made(_)) => {}
         other => panic!("expected the core to accept this, and it answered {other:?}"),
-    }
-}
-
-/// Why the core refused, or a panic naming what it did instead.
-fn reason(response: &Response) -> String {
-    match &response.payload {
-        Some(response::Payload::Failure(failure)) => failure.reason.clone(),
-        other => panic!(
-            "opening onto a daemon with nothing behind its socket should be refused, and the \
-             core answered {other:?}"
-        ),
     }
 }
