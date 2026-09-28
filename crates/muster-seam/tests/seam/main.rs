@@ -15,6 +15,7 @@ mod effects;
 mod holding;
 mod inherited;
 mod just_made;
+mod late_daemon;
 mod numbering;
 mod pane_focus;
 mod pane_gone;
