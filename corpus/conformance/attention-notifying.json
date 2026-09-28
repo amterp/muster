@@ -889,6 +889,60 @@
         "notified": [],
         "asking": []
       }
+    },
+    {
+      "name": "a program asks once until somebody looks, however often it notifies",
+      "why": "A test runner that notifies per failure, or a script notifying in a loop, would otherwise post a banner and a sound per notification, the flood a bell is kept from causing. The first banner has already said the pane wants somebody, so the ones after it until somebody looks raise nothing. The banner keeps the first notification's words; the pane has the rest.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "notification": {
+              "title": "tests",
+              "body": "1 failed"
+            }
+          },
+          {
+            "pane": "local/w1:p2",
+            "notification": {
+              "title": "tests",
+              "body": "2 failed"
+            }
+          },
+          {
+            "visible": [
+              "local/w1:p1",
+              "local/w1:p2"
+            ]
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          },
+          {
+            "pane": "local/w1:p2",
+            "notification": {
+              "title": "tests",
+              "body": "all passed"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 notified: 1 failed",
+          "local/w1:p2 withdrawn",
+          "local/w1:p2 notified: all passed"
+        ],
+        "asking": [
+          "local/w1:p2 notified"
+        ]
+      }
     }
   ]
 }
