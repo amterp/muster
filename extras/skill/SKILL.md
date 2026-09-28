@@ -26,10 +26,11 @@ only what goes wrong when you skip them.
 ## Before you reach for it
 
 Every pane Muster makes has `muster` on its `PATH` and `$MUSTER_SOCKET` naming the window it is
-drawn in, on this machine and on an SSH devenv alike, so every verb works from either. `muster
-window` exits 3 when there is no window to talk to: a terminal outside Muster with no window open,
-or a pane whose window has since quit (`muster docs limits`). `muster msg` still works then,
-because it asks the pane's own daemon rather than a window.
+drawn in, on this machine and on an SSH devenv alike, so every verb works from either. With no
+window to talk to - a terminal outside Muster, or a pane whose window has since quit - `muster
+window`, `pane read`, `pane send`, `pane wait` and `muster msg` still answer, from the machine's own
+daemon, and every other verb says it needs a window. `muster docs overview`, under "With no
+window", has the rest.
 
 **Do not retry on exit 4.** A window or daemon took the request and never answered, so what you
 asked for may already have happened, and sending it again is how an agent gets your instruction
