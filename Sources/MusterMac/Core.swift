@@ -50,7 +50,28 @@ public enum Core {
     request.startup = startup
     send(request)
     watchForTermination()
+    stayResponsive()
   }
+
+  /// Keeps macOS from napping this process for as long as it runs.
+  ///
+  /// A window nobody can see, which includes every window while the screen is locked, is
+  /// napped: every thread of the process drops to the background priority, 4, below a build
+  /// running at nice 10. This process answers the command socket that agents drive the window
+  /// through, and reads every daemon's answers and events, and agents do that most while
+  /// nobody is watching. Napped under a build, a `muster pane read` took thirteen seconds and
+  /// then timed out, because the daemon's answer sat waiting for this process to read it.
+  ///
+  /// Idle system sleep stays allowed: this asks only that the work be run, not that the Mac
+  /// stay awake for it.
+  private static func stayResponsive() {
+    responsive = ProcessInfo.processInfo.beginActivity(
+      options: .userInitiatedAllowingIdleSystemSleep,
+      reason: "Muster answers the agents in its panes, which drive it while nobody is looking")
+  }
+
+  /// Held for the process's lifetime: ending the activity is what lets the nap back in.
+  nonisolated(unsafe) private static var responsive: NSObjectProtocol?
 
   /// Tells the core when this process is going away.
   ///
