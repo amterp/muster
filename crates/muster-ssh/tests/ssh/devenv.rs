@@ -56,6 +56,7 @@ fn forward(name: &str, host: &str, options: &[String]) -> Forward {
         control_path: temporary.join(format!("muster-devenv-{name}.ctl")).to_string_lossy().into(),
         local_socket: temporary.join(format!("muster-devenv-{name}.sock")).to_string_lossy().into(),
         remote_socket: format!("/tmp/muster-devenv-{name}-nothing.sock"),
+        reverse: None,
     }
 }
 

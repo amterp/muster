@@ -56,6 +56,7 @@ fn an_older_daemon_on_a_devenv_is_handed_over_with_its_shells() {
             control_path: temporary.join("muster-handover-test.ctl").to_string_lossy().into(),
             local_socket: temporary.join("muster-handover-test.sock").to_string_lossy().into(),
             remote_socket: installed.socket.to_string_lossy().into(),
+            reverse: None,
         },
         Arc::new(|_| {}),
     )

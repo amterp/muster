@@ -100,10 +100,11 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
     until_shows(&socket, &log, "the pane the devenv pane asked for", |window| {
         on_devenv(window).len() == before + 1
     });
-    assert!(
-        read_pane(&socket, &first).contains("made=0."),
-        "the pane appeared and `muster` in the devenv pane did not say it succeeded:\n{}",
-        read_pane(&socket, &first)
+    until_within(
+        "`muster` in the devenv pane to say it succeeded",
+        LAUNCH_PATIENCE,
+        || read_pane(&socket, &first).contains("made=0."),
+        || format!("It shows:\n{}", read_pane(&socket, &first)),
     );
 
     // The connection drops and comes back, and the same pane can still reach the window. What it
@@ -124,6 +125,14 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
         || forwards_so_far(&log) > forwarded,
         || format!("The window's log is {}", log.display()),
     );
+    // The daemon's own connection rides the same master and comes back on its own schedule,
+    // and typing into the pane needs it.
+    until_shows(&socket, &log, "the devenv connected again", |window| {
+        window
+            .daemons
+            .iter()
+            .any(|machine| machine.daemon_id == "devenv" && machine.state == "connected")
+    });
     let before = on_devenv(&read_window(&socket)).len();
     type_into(&socket, &first, "~/.muster/bin/muster pane new; echo again=$?.");
     until_shows(&socket, &log, "the pane asked for after the reconnect", |window| {

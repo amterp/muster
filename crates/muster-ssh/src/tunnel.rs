@@ -9,7 +9,7 @@ use muster_core::diagnostics::{clock, log, poison};
 use muster_core::fields;
 use muster_core::reconnect::{self, Attempts};
 
-use crate::remote::Remote;
+use crate::remote::{Remote, quoted};
 
 /// What a tunnel says about itself, to whoever is holding it.
 ///
@@ -49,6 +49,20 @@ pub struct Forward {
     pub local_socket: String,
     /// The daemon's socket, over there.
     pub remote_socket: String,
+    /// A socket on this machine to answer on the far one as well, for as long as this master
+    /// lives. Absent when nothing here is to be reachable from over there.
+    pub reverse: Option<Reverse>,
+}
+
+/// A socket here, made to answer at a path over there: the other direction from [`Forward`]'s
+/// own.
+#[derive(Debug, Clone)]
+pub struct Reverse {
+    /// Where it answers on the far machine. Absolute, and in a directory that is made if it is
+    /// missing.
+    pub remote_path: String,
+    /// The socket on this machine a connection over there reaches.
+    pub local_path: String,
 }
 
 /// The longest a unix socket path can be, near enough.
@@ -109,6 +123,24 @@ pub fn master_arguments(forward: &Forward) -> Vec<String> {
     arguments
 }
 
+/// What ssh is told to add a [`Reverse`] to a master that is already running.
+///
+/// Asked of the master through its control path rather than given to it at the start, because
+/// the master runs with `ExitOnForwardFailure`. A far path it could not bind - a file left there,
+/// an sshd that allows no socket forwarding - would otherwise take the whole connection down, and
+/// every pane on that machine with it, over something the panes do not need to be drawn.
+pub fn reverse_arguments(forward: &Forward, reverse: &Reverse) -> Vec<String> {
+    vec![
+        "-O".to_string(),
+        "forward".to_string(),
+        "-R".to_string(),
+        format!("{}:{}", reverse.remote_path, reverse.local_path),
+        "-S".to_string(),
+        forward.control_path.clone(),
+        forward.host.clone(),
+    ]
+}
+
 /// A live ssh master, and the local path it forwards.
 ///
 /// Dropping it takes the connection down, which takes every pane channel riding it down too -
@@ -162,6 +194,7 @@ impl Tunnel {
             stopping: Arc::new(AtomicBool::new(false)),
         };
         tunnel.wait_for_socket()?;
+        forward_back(&tunnel.forward);
         tunnel.supervise(report);
         Ok(tunnel)
     }
@@ -339,14 +372,19 @@ impl Tunnel {
                             return;
                         }
                         match confirm(&forward, &child, &stopping) {
-                            Ok(()) => log::info(
-                                "tunnel.reopened",
-                                fields! {
-                                    "host" => forward.host.clone(),
-                                    "confirmed" => "the forwarded socket is bound and a \
-                                                    command came back over the master",
-                                },
-                            ),
+                            Ok(()) => {
+                                log::info(
+                                    "tunnel.reopened",
+                                    fields! {
+                                        "host" => forward.host.clone(),
+                                        "confirmed" => "the forwarded socket is bound and a \
+                                                        command came back over the master",
+                                    },
+                                );
+                                // At the path it had before, so whatever was told that path
+                                // while the old master carried it reaches this one.
+                                forward_back(&forward);
+                            }
                             Err(detail) => log::warn(
                                 "tunnel.reopen_failed",
                                 fields! {
@@ -436,13 +474,26 @@ fn sleep_unless_stopping(wait: Duration, stopping: &Arc<AtomicBool>) -> bool {
 /// that is away would otherwise print "Control socket connect: No such file or directory" to
 /// this process's stderr every second for as long as the outage lasts.
 fn control(forward: &Forward, request: &str) -> Result<(), String> {
+    bounded(
+        forward,
+        &format!("-O {request}"),
+        ["-O", request, "-S", &forward.control_path, &forward.host],
+    )
+}
+
+/// Runs one ssh through the master's control path, and gives up on it after [`CONTROL_WITHIN`].
+fn bounded<I, S>(forward: &Forward, what: &str, arguments: I) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
     let mut asked = Command::new("ssh")
-        .args(["-O", request, "-S", &forward.control_path, &forward.host])
+        .args(arguments)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("could not run ssh to ask for `-O {request}` ({error})"))?;
+        .map_err(|error| format!("could not run ssh to ask for `{what}` ({error})"))?;
 
     let deadline = Instant::now() + CONTROL_WITHIN;
     loop {
@@ -450,23 +501,106 @@ fn control(forward: &Forward, request: &str) -> Result<(), String> {
             Ok(Some(status)) if status.success() => return Ok(()),
             Ok(Some(status)) => {
                 return Err(format!(
-                    "the master refused `-O {request}` ({status}): {}",
+                    "the master refused `{what}` ({status}): {}",
                     stderr_of(asked)
                 ));
             }
-            Err(error) => return Err(format!("ssh would not finish `-O {request}` ({error})")),
+            Err(error) => return Err(format!("ssh would not finish `{what}` ({error})")),
             Ok(None) => {}
         }
         if Instant::now() >= deadline {
             let _ = asked.kill();
             let _ = asked.wait();
             return Err(format!(
-                "the master on {} did not answer `-O {request}` within {}s",
+                "the master on {} did not answer `{what}` within {}s",
                 forward.control_path,
                 CONTROL_WITHIN.as_secs(),
             ));
         }
         std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+/// Makes this master's [`Reverse`] answer over there, if it has one.
+///
+/// The far path is cleared first. sshd binds a socket path only where nothing is, unless its own
+/// `StreamLocalBindUnlink` says otherwise, and a master that went away without saying so leaves
+/// its file behind. The path is this master's alone, so nothing else is using it.
+///
+/// A failure is a warning and nothing more: the panes on that machine are still drawn and typed
+/// into, and only a program there asking for this socket finds nothing.
+fn forward_back(forward: &Forward) {
+    let Some(reverse) = &forward.reverse else { return };
+    let outcome = if reverse.remote_path.len() > SUN_PATH_LIMIT {
+        Err(format!(
+            "{} is {} bytes of path, and a unix socket has about {SUN_PATH_LIMIT} to spend",
+            reverse.remote_path,
+            reverse.remote_path.len()
+        ))
+    } else {
+        let directory = reverse.remote_path.rsplit_once('/').map_or(".", |(parent, _)| parent);
+        Remote::over(&forward.host, &forward.control_path)
+            .shell(&format!(
+                "mkdir -p {} && rm -f {}",
+                quoted(directory),
+                quoted(&reverse.remote_path)
+            ))
+            .and_then(|_| bounded(forward, "-O forward -R", reverse_arguments(forward, reverse)))
+    };
+    match outcome {
+        Ok(()) => log::info(
+            "tunnel.reverse",
+            fields! {
+                "host" => forward.host.clone(),
+                "remote" => reverse.remote_path.clone(),
+                "local" => reverse.local_path.clone(),
+            },
+        ),
+        Err(detail) => log::warn(
+            "tunnel.reverse_failed",
+            fields! {
+                "host" => forward.host.clone(),
+                "remote" => reverse.remote_path.clone(),
+                "detail" => detail,
+                "impact" => "a program on that machine cannot reach this side through that path; \
+                             its panes are drawn and typed into as before",
+                "check" => "whether that machine's sshd allows socket forwarding \
+                            (AllowStreamLocalForwarding) and whether the path can be made",
+            },
+        ),
+    }
+}
+
+/// Takes this master's [`Reverse`] off the far machine, so the file left there does not look
+/// like something that might answer.
+///
+/// Bounded, because it runs on the way to closing a window, and a link that has gone quiet would
+/// otherwise hold that up for as long as ssh takes to notice.
+fn take_back(forward: &Forward) {
+    let Some(reverse) = &forward.reverse else { return };
+    let removed = bounded(
+        forward,
+        "rm -f",
+        [
+            "-S",
+            &forward.control_path,
+            "-o",
+            "BatchMode=yes",
+            &forward.host,
+            "rm",
+            "-f",
+            &quoted(&reverse.remote_path),
+        ],
+    );
+    if let Err(detail) = removed {
+        log::debug(
+            "tunnel.reverse_left",
+            fields! {
+                "host" => forward.host.clone(),
+                "remote" => reverse.remote_path.clone(),
+                "detail" => detail,
+            },
+        );
     }
 }
 
@@ -548,6 +682,7 @@ fn confirm(
 impl Drop for Tunnel {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::Relaxed);
+        take_back(&self.forward);
         end_master(&self.forward, &self.child);
     }
 }
@@ -628,6 +763,34 @@ fn parse_environment(text: &str) -> BTreeMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reverse_forward_is_asked_of_the_master_by_its_control_path() {
+        let forward = Forward {
+            host: "dev@devenv".to_string(),
+            options: vec!["-p".to_string(), "2222".to_string()],
+            control_path: "/tmp/m.ctl".to_string(),
+            local_socket: "/tmp/m.sock".to_string(),
+            remote_socket: "/home/dev/.muster/daemon/d.sock".to_string(),
+            reverse: None,
+        };
+        let reverse = Reverse {
+            remote_path: "/home/dev/.muster/daemon/window-w1.sock".to_string(),
+            local_path: "/Users/me/.muster/state/command-1.sock".to_string(),
+        };
+        assert_eq!(
+            reverse_arguments(&forward, &reverse),
+            [
+                "-O",
+                "forward",
+                "-R",
+                "/home/dev/.muster/daemon/window-w1.sock:/Users/me/.muster/state/command-1.sock",
+                "-S",
+                "/tmp/m.ctl",
+                "dev@devenv",
+            ]
+        );
+    }
 
     #[test]
     fn an_environment_reads_names_and_values() {

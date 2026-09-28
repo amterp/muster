@@ -46,6 +46,7 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
             control_path: temporary.join("muster-devenv-client.ctl").to_string_lossy().into(),
             local_socket: temporary.join("muster-devenv-client.sock").to_string_lossy().into(),
             remote_socket: installed.socket.to_string_lossy().into(),
+            reverse: None,
         },
         Arc::new(|_| {}),
     )

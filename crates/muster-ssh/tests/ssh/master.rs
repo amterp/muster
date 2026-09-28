@@ -20,6 +20,7 @@ fn ssh_master_conformance() {
             control_path: text(given, "controlPath"),
             local_socket: text(given, "localSocket"),
             remote_socket: text(given, "remoteSocket"),
+            reverse: None,
         };
         Ok(json!({ "arguments": master_arguments(&forward) }))
     });

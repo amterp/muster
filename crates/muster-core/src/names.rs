@@ -93,6 +93,12 @@ impl Minter {
         TabId::new(self.draw('t'))
     }
 
+    /// A name for a window, where it has to be told apart from other windows on a machine it
+    /// is not running on. Unique across machines like every other name here, which a pid is not.
+    pub fn window(&mut self) -> String {
+        self.draw('w')
+    }
+
     /// A name this has never handed out. Re-drawn on a collision rather than accepted, which is
     /// what "never reused" costs.
     fn draw(&mut self, prefix: char) -> String {

@@ -45,7 +45,7 @@ use muster_daemon_client::{
 };
 use muster_daemon_proto::install;
 use muster_daemon_proto::launch::LAUNCH_PATIENCE;
-use muster_ssh::{Forward, State as TunnelState, Tunnel, remote_environment};
+use muster_ssh::{Forward, Reverse, State as TunnelState, Tunnel, remote_environment};
 
 use crate::bridge_link::{PaneLink, Reports};
 use crate::holding::Holding;
@@ -839,17 +839,44 @@ fn said_how_it_went(
 /// socket, so a program in the pane can drive the window it is drawn in. The daemon gives the
 /// pane its name (`MUSTER_PANE`) itself, from the request that makes it.
 ///
-/// Only on this machine. The socket is a path here, and on a devenv that path names nothing or
-/// some unrelated socket, so a pane there is told nothing and its programs correctly conclude
-/// they are not in a window they can drive.
+/// A path on the pane's own machine, which is the only kind a program there can dial. For a pane
+/// on this machine that is where the window listens (`window`); for one on another machine it is
+/// where the ssh master forwards the window to over there (`far_window`, [`window_over_there`]).
 fn pane_environment(
     window: Option<String>,
     far_window: Option<String>,
 ) -> BTreeMap<String, String> {
-    drop(far_window);
     window
+        .or(far_window)
         .map(|socket| BTreeMap::from([(environment::WINDOW_SOCKET.to_string(), socket)]))
         .unwrap_or_default()
+}
+
+/// This window's name on other machines, drawn once for the life of the process.
+///
+/// Not the pid its socket here is named after: two laptops can attach one devenv, and a pid is
+/// unique only on its own machine. Drawn from the mint panes and tabs are named from, which is
+/// unique across machines by construction.
+static WINDOW_NAME: LazyLock<String> = LazyLock::new(|| Minter::default().window());
+
+/// Where this window answers on the machine a daemon's `remote_socket` is on, and the socket here
+/// that path reaches. `None` when this window is not listening, or the daemon's path is not one a
+/// sibling can be put beside.
+///
+/// Beside the daemon's own socket, because that directory is Muster's on that machine and is
+/// known however the daemon was named: the config can give its socket outright, and then there
+/// is no home over there to work from.
+fn window_over_there(remote_socket: &str) -> Option<Reverse> {
+    let local_path = command::listening_at()?;
+    let remote = Path::new(remote_socket);
+    let directory = remote.parent().filter(|_| remote.is_absolute())?;
+    Some(Reverse {
+        remote_path: directory
+            .join(format!("window-{}.sock", *WINDOW_NAME))
+            .to_string_lossy()
+            .into_owned(),
+        local_path,
+    })
 }
 
 fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
@@ -908,13 +935,15 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
         }
         // Somebody's own daemon on another machine: forwarded as asked for, and left alone.
         Endpoint::Ssh { host, options, socket_path: Some(path) } => {
-            let tunnel = open_tunnel(daemon, host, options, path.clone())?;
+            let back = window_over_there(path);
+            let far_window = back.as_ref().map(|back| back.remote_path.clone());
+            let tunnel = open_tunnel(daemon, host, options, path.clone(), back)?;
             Ok(Reached {
                 socket_path: tunnel.local_socket_path().to_string(),
                 tunnel: Some(tunnel),
                 started: false,
                 handover: None,
-                far_window: None,
+                far_window,
             })
         }
         // The arrangement the local arm has, one machine further away: whatever is installed
@@ -932,8 +961,10 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             // Opened before the daemon exists, so everything after this asks "does it answer"
             // through the forwarded path: ssh reaches the far socket per connection, so one that
             // is not there yet costs nothing until something dials it.
-            let tunnel =
-                open_tunnel(daemon, host, options, installed.socket.display().to_string())?;
+            let remote_socket = installed.socket.display().to_string();
+            let back = window_over_there(&remote_socket);
+            let far_window = back.as_ref().map(|back| back.remote_path.clone());
+            let tunnel = open_tunnel(daemon, host, options, remote_socket, back)?;
             let local = PathBuf::from(tunnel.local_socket_path());
             let carried = carried();
             let (reached, welcome) = remote::ensure_running(
@@ -951,7 +982,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
                 tunnel: Some(tunnel),
                 started: reached == launch::Reached::Started,
                 handover,
-                far_window: None,
+                far_window,
             })
         }
     }
@@ -968,6 +999,7 @@ fn open_tunnel(
     host: &str,
     options: &[String],
     remote_socket: String,
+    reverse: Option<Reverse>,
 ) -> Result<Tunnel, String> {
     let reported = daemon.clone();
     Tunnel::open(
@@ -977,6 +1009,7 @@ fn open_tunnel(
             control_path: tunnel_path(daemon, "ctl"),
             local_socket: tunnel_path(daemon, "sock"),
             remote_socket,
+            reverse,
         },
         // The transport says a host is away and for how long; naming which machine that is in
         // this window, and putting the sentence where somebody sees it, is this side's.

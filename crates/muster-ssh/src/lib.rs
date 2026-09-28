@@ -17,9 +17,15 @@
 //! attaching whatever somebody installed. What it copies and what it runs are the caller's
 //! business - this crate stays a child process, a path, and the promise that the path keeps
 //! working.
+//!
+//! [`Reverse`] is the connection's other direction: a socket on this machine made to answer at a
+//! path over there, which is how a program on the far machine reaches the window that drew it.
 
 mod remote;
 mod tunnel;
 
 pub use remote::{Platform, Remote, quoted};
-pub use tunnel::{Forward, Report, State, Tunnel, master_arguments, remote_environment};
+pub use tunnel::{
+    Forward, Report, Reverse, State, Tunnel, master_arguments, remote_environment,
+    reverse_arguments,
+};
