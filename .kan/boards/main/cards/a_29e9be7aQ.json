@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "a-devenv-pane-cannot",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -15,21 +15,28 @@
       "body": "Another instance, 2026-09-04: a parallel-work round with the integrator on the devenv, where its nine worktrees were, and the window on the laptop. All 98 `muster` calls went through `laptop run '~/.muster/bin/muster ...'`, the path spelled out because a login shell on the laptop does not have `~/.muster/bin` on `PATH`. One ssh round trip each, including some forty `window --json` polls standing in for a wait (a_2M9T8O6dL). It worked: zero errors from `muster` itself across the round.\n\nTwo things for the design. The premise that the integrator is local did not hold: the integrator wants to sit where the worktrees and the repo's tools are, and here that was the far machine. And on 2026-09-07 the laptop's reverse tunnel to the devenv went stale - the devenv still accepted on port 2222 and ssh got no banner - which would have severed a far-side `muster` riding that tunnel. Carrying the endpoint over Muster's own ssh master, which Muster already supervises and reopens, avoids that for the same reason.",
       "created_at_millis": 1788821630490,
       "id": "c_2M9TPFgQU"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Decided (amterp, 2026-09-28): full trust between his machines, both ways. A devenv pane's muster drives the window it is drawn in (the app forwards its command socket over the ssh master it already holds, and devenv panes get that path as MUSTER_SOCKET), with no restriction on acting on laptop panes; and verbs about that machine's own panes work against its daemon with no window. A per-daemon setting to restrict a machine is optional, not the default. For 0.10.0.",
+      "created_at_millis": 1790599270626,
+      "id": "c_2YBLwk50U"
     }
   ],
   "created_at_millis": 1786973827397,
   "creator": "Alexander Terp",
   "description": "`MUSTER_SOCKET` is a unix socket path on the machine the window runs on, so Muster sets it only in panes held by a local daemon. A pane on an SSH devenv is told nothing and a program in it correctly concludes it cannot drive anything - it can still be addressed by name from a local pane, and `muster window` still describes it.\n\nStated rather than chased, because the scenario the CLI was built for is unaffected: the integrator is local and the agents it starts need not drive anything. Closing it means forwarding the endpoint over the same ssh master the control plane already opens, and deciding what a remote caller may ask for.\n\nDocumented in `docs/cli/limits.md`.",
   "id": "a_29e9be7aQ",
-  "position": "aC",
+  "position": "Zz",
   "tags": [
     "backend",
     "devenv"
   ],
   "title": "🛰️ A devenv pane cannot drive the window it is drawn in",
   "type": "feature",
-  "updated_at_millis": 1788821630490,
+  "updated_at_millis": 1790599270735,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1786973827397}
+    {"field":"column","value":"backlog-hi","at":1786973827397},
+    {"field":"column","value":"next","at":1790599270735}
   ]
 }
