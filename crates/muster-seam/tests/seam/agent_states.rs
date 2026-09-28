@@ -392,6 +392,21 @@ fn a_watch_on_nothing_real_is_refused() {
         }
     }
 
+    // The refusal for a typo lists the states there are, so it has to list every one of them.
+    let typo = WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["idel".to_string()] };
+    let Some(response::Payload::Failure(failure)) =
+        frame(&mut watching(&open.socket, typo)).payload
+    else {
+        panic!("a watch until `idel` was not refused");
+    };
+    for state in ["working", "blocked", "waiting", "idle", "done", "unknown"] {
+        assert!(
+            failure.reason.contains(state),
+            "the refusal of a mistyped state leaves out `{state}`: {}",
+            failure.reason
+        );
+    }
+
     // Through the C ABI there is one answer to give, so a watch is refused there too.
     let through_the_shell = dispatch(request::Payload::WatchPanes(WatchPanes::default()));
     assert!(
