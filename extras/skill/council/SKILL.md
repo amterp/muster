@@ -73,6 +73,10 @@ Presets sit beside this file. `directed.toml` is a director with members who ans
 and either the director or the human may add members. `roundtable.toml` lets everyone address
 and wake everyone, and only the human changes who is in it, so only the human can convene one.
 
+Whoever makes the group is its first member, and under `directed.toml` only `director` and
+`@human` may add the rest. So convene from the human's own shell, where you are `@human`, and
+brief a director:
+
 ```sh
 muster msg group new review --policy <this skill's directory>/directed.toml
 muster msg group add review p2w3r07bsd p3w3r07bsd   # members: panes or participants' names
@@ -81,6 +85,10 @@ muster msg post --to p1w3r07bsd --file brief.md     # the director's brief
 
 The director's brief tells it to run `muster msg join --name director --group review` first:
 the director has to join from its own session, so that it is the one woken.
+
+An agent convening a council it will direct itself names itself first, then makes and fills
+the group, and needs no brief: `muster msg join --name director`, then the first two lines
+above.
 
 `muster msg pause review` holds every wake while you catch up; `muster msg resume review` wakes
 each member once for what it missed.
