@@ -5,7 +5,7 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -24,11 +24,12 @@
   "creator": "Alexander Terp",
   "description": "perf/baseline.json dates from 2026-08-13 and has no roster.build entry, so ./dev --perf judges today's code against a machine and a codebase that no longer exist. Round 1 (2026-09-24) could not re-record it: the machine sat at load 27-185 and --perf refuses at that load, correctly. Re-record when the machine is quiet, and add the entries the harness now records.",
   "id": "a_2WDF3Lsbm",
-  "position": "aK",
+  "position": "Yzk",
   "title": "📉 Re-record perf/baseline.json on a quiet machine",
   "type": "chore",
-  "updated_at_millis": 1790580185780,
+  "updated_at_millis": 1790598600928,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790308245557}
+    {"field":"column","value":"backlog-lo","at":1790308245557},
+    {"field":"column","value":"done","at":1790598600928}
   ]
 }
