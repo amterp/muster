@@ -467,6 +467,16 @@ A bell only marks the pane until somebody looks, because shells ring for trivia.
 is shown with the pane's agent. None of the three is in a daemon's snapshot, so a window that reconnects holds a
 program's progress no longer: it cannot know the work is still running.
 
+**A message for the human asks too, and no pane asks it** (MIP-4, section 10). The daemon on the machine the app runs
+on, the human's home, tells each window that attends it what waits for the human in each group, as state in its
+snapshot and events, and the core asks by that group. It comes after a blocked agent and before a program's
+notification, because addressing the human is the one interruption an agent chooses to make. Every message that
+waits announces again, one banner per group replaced each time, and a group met at launch announces where a pane
+does not: a message to the human waits for the next window rather than being history. Going to it opens the group's
+transcript, a pane running `muster msg log --follow`, found by the command it runs or made in a new tab. Going
+there is the human reading the group, so the daemon is told, and the banner comes down when it says nothing waits.
+A transcript somebody is reading in a focused window reads what arrives there, as a pane on screen raises nothing.
+
 **A pane the window is focused on and showing raises nothing.** That is what the border is for, and it costs no new
 rule: seen-ness is already computed for exactly that pane, and a finish there is reported seen rather than announced.
 So the notification set is the same fold the state is, with the file's answer laid over it.

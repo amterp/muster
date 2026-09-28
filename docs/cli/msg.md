@@ -152,6 +152,18 @@ daemon: it asks the new one and goes on waiting.
 **Do not run it in the foreground of an agent's turn**: that is the blocking loop this exists to
 remove. It is for hooks and scripts.
 
+## The human
+
+`@human` is the person at Muster's window, on the machine the app runs on. A message that
+wakes them - addressed to `@human`, or unaddressed in a group whose policy rings them - raises a
+notification naming the group and who wrote, and chatter between agents raises nothing. Choosing
+it, or ⌘⇧A, opens the group's transcript: a tab running `muster msg log --group G --follow`, or
+the pane already running it. Going there counts as reading the group. With no window open, the
+post says `@human (notified when a window opens)`, and the next window to open notifies.
+
+The human posts with `muster msg post` from any shell of their own, the transcript's included
+once Ctrl-C has stopped the follow and left its shell.
+
 ## Every verb
 
 | verb | does |
@@ -179,6 +191,5 @@ where.
 ## Not yet
 
 Messages stay on the machine they were posted on: an agent on a devenv and one on your laptop
-cannot share a group yet. The human is not notified, and groups have no policy but the
-permissive default. `docs/mip/0004-agent-messaging.md` is the
-design and its order.
+cannot share a group yet, and groups have no policy but the permissive default.
+`docs/mip/0004-agent-messaging.md` is the design and its order.

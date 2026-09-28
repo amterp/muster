@@ -75,8 +75,9 @@ blink = true                   # omit to let the program in the pane decide
 [notifications]
 blocked = true                 # an agent waiting on you
 programs = true                # a program in a pane asking to notify you (OSC 9, OSC 777)
+messages = true                # a message for you from an agent (`muster docs msg`)
 done = true                    # an agent that finished while nobody was looking
-muted = false                  # silences all three, without forgetting which you wanted
+muted = false                  # silences all four, without forgetting which you wanted
 ```
 
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
@@ -390,6 +391,12 @@ a test runner can. Its banner carries the program's own words, since it has said
 you, and it stands until you look at the pane. Notifying again before then raises nothing more,
 so a program that notifies in a loop costs one banner. It is on because a program that asks has
 decided it is worth it; `programs = false` is for a tool that decides that too often.
+
+`messages` is a message for you from an agent: posted to `@human`, or to a group whose policy
+rings you (`muster docs msg`). Its banner names the group and who wrote, one per group, replaced
+by each new message, and choosing it opens the group's transcript. It is on because an agent
+addressing you has chosen to interrupt you. `messages = false` takes the banner away and leaves
+the group asking, so ⌘⇧A still reaches it.
 
 A pane running an agent Muster recognizes never raises one, whatever this says. Every pane tells
 its programs it is Ghostty, and agents that see that notify at the moments their state already

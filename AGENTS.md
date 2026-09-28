@@ -16,7 +16,8 @@ configuration that reloads when you save it, a CLI that drives the window from i
 notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH machine in the
 same window - where one tab can hold a laptop pane beside a devenv pane - several windows that each hold their own
 tabs and hand them to each other, a newer Muster taking over an older daemon's panes with their agents still
-running, and agents on one machine posting messages to each other and being woken by them rather than polling. Not
+running, agents on one machine posting messages to each other and being woken by them rather than polling, and a
+message for you raising a notification that opens the conversation. Not
 built, and worth knowing before you install rather than after: a split keeps the direction it was made in - its size
 changes, its orientation does not - and an agent on the devenv cannot message one on the laptop.
 

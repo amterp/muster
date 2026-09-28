@@ -294,6 +294,11 @@ cursor, and the home daemon compares it with the log's head as it appends, so th
 across machines without the agent counting anything. There is no override: an agent that meant to
 post anyway reads first, which costs one call.
 
+The human is exempt. The guard keeps a model from acting on context that has gone stale, and the
+daemon cannot see a person's screen: the human reads the transcript with `log --follow`, which
+moves no cursor, so under the guard a busy group would refuse nearly every post the human made
+and ask them to reprint what they had just read. Agents keep it.
+
 `muster msg log --group review [--since N] [--follow]` prints the transcript and moves no cursor.
 The human reads it, and so does an agent catching up on history from before it joined.
 
@@ -531,6 +536,32 @@ section 3 attributes to the human, including long text with `--file` or stdin. W
 closed, messages to the human wait unread and notify at the next launch. Anything beyond that is
 Decision 1.
 
+As built in stage 3, under Decision 1 (a):
+
+- **Registering is attending.** A window subscribes to the daemon on its own machine as
+  attending, and never to one over ssh. While one attends, a message that wakes the human counts
+  as waking them; otherwise the post says the human is notified when a window opens.
+- **What waits is state.** A wake of the human is not coalesced, since a person reading the
+  transcript moves no cursor and a batch would never end. Each one updates what waits for the
+  human in its group - the unread messages that would wake them, how many were addressed to
+  them, who wrote them - which the daemon sends every window as an event and carries in its
+  snapshot. So a window that opens after the post is told, with nothing queued, and the next
+  launch notifies.
+- **One banner per group.** It names who wrote, is replaced by each new message, and asks
+  after a blocked agent and before a program's notification. Several windows raise one between
+  them: the one in front most recently, as for a tab nobody holds.
+- **The transcript is a pane.** Choosing the banner, or ⌘⇧A, goes to the pane on the human's
+  home daemon running `muster msg log --group G --follow`, found by that command, or opens a
+  tab running it. Going there is the human reading the group: the window reads it for them, and
+  the banner comes down once the daemon says nothing waits. A transcript somebody is reading in
+  a focused window reads what arrives there, and raises nothing.
+- **The human's home publishes.** For a group homed elsewhere, the home daemon's replica wakes
+  the human the way a local post does (section 11), so only the daemon on the app's machine ever
+  tells a window what waits for the human.
+
+The display name of this section's first paragraph is not built: messages name the human
+`@human`.
+
 ### 11. Across machines
 
 **A group's home daemon is the one it was created on.** The home assigns every sequence number and
@@ -680,6 +711,10 @@ green on its own.
    landing on the transcript, `log --follow`, and whatever Decision 1 adds. Proves: a message to
    the human raises exactly one notification and lands on the transcript, and chatter that does
    not wake the human raises none.
+
+   As built, under Decision 1 (a), with the human exempt from the guard (section 4); the proof
+   is `crates/muster-seam/tests/seam/messages_for_the_human.rs`, against a real daemon. Left for
+   later: the display name of section 10, and Decision 1 (b).
 
 4. **Groups with policy, and the council skill.** `ring`, `allow`, `membership` and `paused`; the
    hooks adapter and its snippet; the skill replacing `council-participant`, with its presets.
@@ -847,3 +882,6 @@ bind.
 - 2026-09-28 Stage 2 reviewed: the doorbell rings only a prompt it has just read as empty, and
   repeats Return only over its own text, so it never rings a harness it cannot read; a post
   counts only who can still be woken (sections 4, 6, 7 and 14).
+- 2026-09-28 Stage 3 built: windows attend the daemon on their machine, what waits for the
+  human is state in events and the snapshot, one banner per group lands on the transcript, and
+  the human is exempt from the guard (sections 4 and 10).
