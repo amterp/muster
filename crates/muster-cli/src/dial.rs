@@ -254,6 +254,20 @@ fn reach(
     }
 }
 
+/// Whether the window a caller who named none means would answer: the one `$MUSTER_SOCKET`
+/// names, or with that unset, any in Muster's state directory.
+///
+/// Asked only after a request found no window, to tell "nothing is listening" - when this
+/// machine's daemon can answer instead - from "several are, and nothing says which", which is
+/// the caller's to settle. A pane whose own window has quit is the first case whatever other
+/// windows are open: its daemon still holds it, and another window is a guess.
+pub fn any_window_answers(environment: &BTreeMap<String, String>) -> bool {
+    match environment.get(environment::WINDOW_SOCKET).filter(|path| !path.is_empty()) {
+        Some(path) => dial(path).is_ok(),
+        None => candidates(environment).iter().any(|path| dial(path).is_ok()),
+    }
+}
+
 fn dial(path: &str) -> std::io::Result<UnixStream> {
     UnixStream::connect(path)
 }

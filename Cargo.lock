@@ -600,6 +600,8 @@ dependencies = [
  "clap",
  "clap_complete",
  "conformance",
+ "libc",
+ "muster-core",
  "muster-daemon-client",
  "muster-daemon-proto",
  "muster-harness",

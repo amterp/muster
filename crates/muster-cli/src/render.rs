@@ -57,7 +57,7 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         Some(response::Payload::Window(window)) => Ok(if json {
             window_json(window, Others::All).to_string()
         } else {
-            window_text(window, now_ms(), Others::All)
+            window_text(window, now_ms(), Others::All, true)
         }),
         Some(response::Payload::PaneText(read)) => Ok(if json {
             json!({ "text": read.text, "rows": read.rows, "truncated": read.truncated }).to_string()
@@ -109,6 +109,25 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
                 .to_string(),
         )),
     }
+}
+
+/// What this machine's daemon holds, answered in a window's place when no window did.
+///
+/// A window's answer with what only a window has left out - places, the keyboard, what is on
+/// screen - and headed with which daemon answered, so nobody reads it as a window's.
+/// `answered_by` in the JSON says the same, and a window's own answer never carries it.
+pub fn daemon_window(window: &Window, socket: &str, json: bool) -> String {
+    if json {
+        let mut answer = window_json(window, Others::None);
+        if let Value::Object(fields) = &mut answer {
+            fields.insert("answered_by".to_string(), json!("daemon"));
+            fields.insert("name".to_string(), Value::Null);
+        }
+        return answer.to_string();
+    }
+    let heading =
+        styled(&format!("no window answered; the muster-daemon at {socket} holds:"), QUIET);
+    format!("{heading}\n{}", window_text(window, now_ms(), Others::None, false))
 }
 
 /// What a payload is called, for the one message that says a build disagrees with itself.
@@ -245,7 +264,7 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
             let body = match answer {
                 Ok(response) => match &response.payload {
                     Some(response::Payload::Window(window)) => {
-                        window_text(window, now_ms(), Others::None)
+                        window_text(window, now_ms(), Others::None, true)
                     }
                     _ => styled(named_or_empty(response), QUIET),
                 },
@@ -279,7 +298,7 @@ fn closed_windows(answers: &[(String, Result<Response, Trouble>)]) -> Vec<String
             let mut lines = vec![styled(&other_heading(other), NAME)];
             for tab in &other.tabs {
                 let say_machine = window.daemons.len() > 1;
-                lines.extend(tab_lines(&widths, tab, &states, None, now_ms(), say_machine));
+                lines.extend(tab_lines(&widths, tab, &states, None, now_ms(), say_machine, true));
             }
             sections.push(lines.join("\n"));
         }
@@ -352,7 +371,7 @@ fn other_heading(other: &muster_proto::OtherWindow) -> String {
     }
 }
 
-fn window_text(window: &Window, now_ms: i64, others: Others) -> String {
+fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> String {
     let keyboard = keyboard_pane(window);
     let states = states(window);
     let widths = Widths::across(window, &states, now_ms);
@@ -361,7 +380,15 @@ fn window_text(window: &Window, now_ms: i64, others: Others) -> String {
 
     let mut lines: Vec<String> = Vec::new();
     for tab in tabs(window) {
-        lines.extend(tab_lines(&widths, tab, &states, keyboard.as_deref(), now_ms, say_machine));
+        lines.extend(tab_lines(
+            &widths,
+            tab,
+            &states,
+            keyboard.as_deref(),
+            now_ms,
+            say_machine,
+            drawn,
+        ));
     }
 
     // Other windows' tabs, after this window's own. A tab belongs to exactly one window, so
@@ -373,7 +400,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others) -> String {
         }
         lines.push(styled(&other_heading(other), NAME));
         for tab in &other.tabs {
-            lines.extend(tab_lines(&widths, tab, &states, None, now_ms, say_machine));
+            lines.extend(tab_lines(&widths, tab, &states, None, now_ms, say_machine, drawn));
         }
     }
 
@@ -401,6 +428,7 @@ fn tab_lines(
     keyboard: Option<&str>,
     now_ms: i64,
     say_machine: bool,
+    drawn: bool,
 ) -> Vec<String> {
     let mut lines = vec![tab_line(widths, tab)];
     for pane in &tab.panes {
@@ -408,11 +436,11 @@ fn tab_lines(
         lines.push(pane_line(
             widths,
             pane,
-            agent.map_or("unknown", |agent| agent.state.as_str()),
-            &agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default(),
             agent,
+            now_ms,
             keyboard == Some(pane.pane_id.as_str()),
             say_machine,
+            drawn,
         ));
     }
     lines
@@ -493,19 +521,21 @@ fn place(place: u32) -> String {
 fn pane_line(
     widths: &Widths,
     pane: &muster_proto::RosterPane,
-    state: &str,
-    held: &str,
     agent: Option<&muster_proto::PaneStateChanged>,
+    now_ms: i64,
     has_keyboard: bool,
     say_machine: bool,
+    drawn: bool,
 ) -> String {
+    let state = agent.map_or("unknown", |agent| agent.state.as_str());
+    let held = agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default();
     let mut line = format!(
         "  {}{}  {}  {}  {}  {}",
         if has_keyboard { styled("▸", NAME) + " " } else { "  ".to_string() },
         pad(&place(pane.place), widths.place, QUIET, Align::Right),
         pad(&pane.pane_id, widths.name, PLAIN, Align::Left),
         pad(state, widths.state, agent_style(state), Align::Left),
-        pad(held, widths.held, QUIET, Align::Right),
+        pad(&held, widths.held, QUIET, Align::Right),
         pane.label,
     );
     let waiting = agent.and_then(|agent| agent.facts.as_ref()).map(|facts| facts.waiting.as_str());
@@ -522,7 +552,8 @@ fn pane_line(
             line.push_str(&styled(&format!("  {said}"), QUIET));
         }
     }
-    if !pane.on_screen {
+    // Only a window draws panes, so with none there is nothing to be hidden from.
+    if drawn && !pane.on_screen {
         line.push_str(&styled("  (hidden)", QUIET));
     }
     // Last on the row and only with more than one machine attached, because a tab may span two

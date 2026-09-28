@@ -39,6 +39,9 @@ pub struct Invocation {
 
     /// The window to talk to, when the caller named one.
     pub socket: Option<String>,
+
+    /// Ask this machine's daemon rather than any window.
+    pub no_window: bool,
 }
 
 /// Either something to ask a window, or something this CLI can answer by itself.
@@ -177,6 +180,14 @@ struct Cli {
     /// The window to talk to, instead of looking for one
     #[arg(long, global = true, value_name = "PATH", display_order = 101)]
     socket: Option<String>,
+
+    /// Ask this machine's daemon instead of a window, as happens when none answers
+    //
+    // For `window`, `pane read`, `pane send` and `pane wait`, the verbs a daemon can answer on
+    // its own. Forcing the window needs no flag of its own: `--socket` names one, and a named
+    // window that is not there is refused rather than passed over.
+    #[arg(long, global = true, conflicts_with = "socket", display_order = 102)]
+    no_window: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -785,7 +796,7 @@ pub fn parse(
         What::Completions { shell } => Asking::Print(completions(*shell)),
     };
 
-    Ok(Invocation { asking, json: cli.json, socket: cli.socket })
+    Ok(Invocation { asking, json: cli.json, socket: cli.socket, no_window: cli.no_window })
 }
 
 fn pane(

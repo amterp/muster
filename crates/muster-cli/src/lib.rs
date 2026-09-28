@@ -6,9 +6,14 @@
 //! for itself which pane to split, or what a window looks like, would be a second Muster that
 //! could be wrong.
 //!
-//! It links the schema and nothing else of Muster's. That is not tidiness: the core reaches
-//! libghostty-vt through a dylib, and this is the one part of Muster somebody copies onto a
-//! machine that has never heard of it.
+//! The one exception is a window that is not there. Then what agents are doing, what a pane
+//! printed, typing into one and waiting on one are asked of this machine's daemon instead
+//! (`windowless`), by the same rules the window applies, which is why they live where both can
+//! reach them rather than here.
+//!
+//! It links the schemas and the core's pure rules, and nothing that reaches libghostty. That is
+//! not tidiness: libghostty-vt is a dylib the app and the daemon carry, and this is the one part
+//! of Muster somebody copies onto a machine that has never heard of it.
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -22,6 +27,7 @@ pub mod environment;
 pub mod messaging;
 pub mod opening;
 pub mod render;
+pub mod windowless;
 
 /// Why a run ended without an answer.
 ///
@@ -105,6 +111,7 @@ pub fn run(
     // Read before the match takes the request out of it, so that "did the caller name a window"
     // is still answerable below.
     let named = invocation.socket.clone();
+    let no_window = invocation.no_window;
 
     let request = match invocation.asking {
         args::Asking::Print(text) => {
@@ -142,7 +149,8 @@ pub fn run(
         args::Asking::Watch { request, timeout } => {
             // Never asked around, unlike a read. A watch is one connection held open, and a
             // caller with several windows listening names one with --socket.
-            return watch(&request, timeout, named.as_deref(), environment, json, out, errors);
+            let answers = follow(&request, named.as_deref(), no_window, environment);
+            return watch(&request, timeout, answers, json, out, errors);
         }
         args::Asking::Survey => {
             let answers = dial::survey(environment, &read_window());
@@ -168,6 +176,10 @@ pub fn run(
             Err(trouble) => return report(&trouble, json, errors),
         },
     };
+
+    if no_window {
+        return finish(from_the_daemon(&request, environment, json), json, out, errors);
+    }
 
     // A question nobody narrowed, with more than one window listening. Naming no window is a
     // real problem for a write - `pane new` has to know which window it makes a pane in - and no
@@ -198,9 +210,119 @@ pub fn run(
         }
     }
 
-    let rendered = dial::ask(&request, named.as_deref(), environment)
-        .and_then(|response| render::answer(&response, json));
+    let rendered = ask_a_window(&request, named.as_deref(), environment, json);
     finish(rendered, json, out, errors)
+}
+
+/// Asks the window the caller means, or this machine's daemon when there is no window at all.
+fn ask_a_window(
+    request: &muster_proto::Request,
+    named: Option<&str>,
+    environment: &BTreeMap<String, String>,
+    json: bool,
+) -> Result<String, Trouble> {
+    match dial::ask(request, named, environment) {
+        // No window at all, rather than one that would not answer or several to choose from:
+        // this machine's daemon holds the panes, and answers what it can about them.
+        Err(Trouble::Unreachable(detail))
+            if named.is_none() && !dial::any_window_answers(environment) =>
+        {
+            if windowless::can_answer(request) {
+                from_the_daemon(request, environment, json)
+                    .map_err(|trouble| neither(&detail, trouble))
+            } else {
+                Err(Trouble::Unreachable(format!("{detail} {WITHOUT_A_WINDOW}")))
+            }
+        }
+        asked => asked.and_then(|response| render::answer(&response, json)),
+    }
+}
+
+/// Why a request found no window, and then no daemon either: both, since the first is what a
+/// caller can usually act on.
+fn neither(window: &str, daemon: Trouble) -> Trouble {
+    match daemon {
+        Trouble::Unreachable(daemon) => Trouble::Unreachable(format!(
+            "{window} This machine's muster-daemon could have answered instead, and did not \
+             either: {daemon}"
+        )),
+        other => other,
+    }
+}
+
+/// What a refusal for want of a window adds, so a caller learns what still works.
+const WITHOUT_A_WINDOW: &str = "Without one, `muster window`, `pane read`, `pane send` and \
+    `pane wait` still work, answered by this machine's muster-daemon; everything else is about \
+    what a window shows or how it lays out its tabs.";
+
+/// Asks this machine's daemon what a window was asked, and renders what it says the way a
+/// window's answer is rendered.
+fn from_the_daemon(
+    request: &muster_proto::Request,
+    environment: &BTreeMap<String, String>,
+    json: bool,
+) -> Result<String, Trouble> {
+    if !windowless::can_answer(request) {
+        return Err(Trouble::Refused(format!(
+            "--no-window asks this machine's muster-daemon, and this needs a window. \
+             {WITHOUT_A_WINDOW}"
+        )));
+    }
+    match windowless::ask(request, environment)? {
+        windowless::Answered::Response(response) => render::answer(&response, json),
+        windowless::Answered::Window { window, socket } => {
+            Ok(render::daemon_window(&window, &socket, json))
+        }
+    }
+}
+
+/// Where a watch's answers come from: the window, or this machine's daemon when none answers
+/// or the caller said `--no-window`.
+fn follow(
+    request: &muster_proto::Request,
+    named: Option<&str>,
+    no_window: bool,
+    environment: &BTreeMap<String, String>,
+) -> Result<Box<dyn Answers>, Trouble> {
+    let from_the_daemon =
+        || windowless::follow(request, environment).map(|watching| Box::new(watching) as _);
+    if no_window {
+        return from_the_daemon();
+    }
+    match dial::follow(request, named, environment) {
+        Err(Trouble::Unreachable(detail))
+            if named.is_none() && !dial::any_window_answers(environment) =>
+        {
+            from_the_daemon().map_err(|trouble| neither(&detail, trouble))
+        }
+        followed => followed.map(|answers| Box::new(answers) as _),
+    }
+}
+
+/// A stream of answers to a watch, from a window or from this machine's daemon.
+trait Answers {
+    fn next(
+        &mut self,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<muster_proto::Response, dial::Ended>;
+}
+
+impl Answers for dial::Answers {
+    fn next(
+        &mut self,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<muster_proto::Response, dial::Ended> {
+        dial::Answers::next(self, deadline)
+    }
+}
+
+impl Answers for windowless::Watching {
+    fn next(
+        &mut self,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<muster_proto::Response, dial::Ended> {
+        windowless::Watching::next(self, deadline)
+    }
 }
 
 /// Prints an answer, or reports why there is none, and says what to exit with.
@@ -233,14 +355,13 @@ fn finish(
 fn watch(
     request: &muster_proto::Request,
     timeout: Option<std::time::Duration>,
-    socket: Option<&str>,
-    environment: &BTreeMap<String, String>,
+    answers: Result<Box<dyn Answers>, Trouble>,
     json: bool,
     out: &mut impl Write,
     errors: &mut impl Write,
 ) -> i32 {
     let deadline = timeout.map(|timeout| std::time::Instant::now() + timeout);
-    let mut answers = match dial::follow(request, socket, environment) {
+    let mut answers = match answers {
         Ok(answers) => answers,
         Err(trouble) => return report(&trouble, json, errors),
     };
