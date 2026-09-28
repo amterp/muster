@@ -266,17 +266,10 @@ impl<S: Store> Messaging<S> {
             None => (self.identify(caller, presence)?, false),
             Some(name) => {
                 check_participant(name)?;
-                let me = self.lookup(caller);
-                let mut took_over = false;
-                if me.as_deref() != Some(name)
-                    && let Some(existing) = self.participants.get(name)
-                {
-                    if alive(existing, presence) {
-                        let inbox = existing.inbox.as_ref().map(|inbox| inbox.socket.clone());
-                        return Err(Refusal::NameInUse { name: name.to_string(), inbox });
-                    }
-                    took_over = true;
-                }
+                self.may_become(name, caller, presence)?;
+                let took_over = self.participants.get(name).is_some_and(|existing| {
+                    existing.inbox.is_some() && existing.inbox != caller.inbox
+                });
                 self.adopt(name, caller);
                 (name.to_string(), took_over)
             }
@@ -536,11 +529,31 @@ impl<S: Store> Messaging<S> {
             .map(|participant| participant.name.clone())
     }
 
+    /// Refuses to make the caller `name` while `name` is a live participant in another
+    /// session: `join --name` and `--as` alike (MIP-4, section 3). The caller's addresses would
+    /// replace the live one's, and it would never be woken again. A caller carrying no address,
+    /// such as a script, moves nothing, so it may act as anyone.
+    fn may_become(
+        &self,
+        name: &str,
+        caller: &Caller,
+        presence: &dyn Presence,
+    ) -> Result<(), Refusal> {
+        let Some(existing) = self.participants.get(name) else { return Ok(()) };
+        let elsewhere = caller.inbox.is_some() && existing.inbox != caller.inbox;
+        if name != HUMAN && elsewhere && alive(existing, presence) {
+            let inbox = existing.inbox.as_ref().map(|inbox| inbox.socket.clone());
+            return Err(Refusal::NameInUse { name: name.to_string(), inbox });
+        }
+        Ok(())
+    }
+
     /// The participant the caller is, registering it under a default name if it is new
     /// (MIP-4, section 3). Refreshes the addresses it carries.
     fn identify(&mut self, caller: &Caller, presence: &dyn Presence) -> Result<String, Refusal> {
         if let Some(name) = &caller.as_name {
             check_participant(name)?;
+            self.may_become(name, caller, presence)?;
             self.adopt(name, caller);
             return Ok(name.clone());
         }
