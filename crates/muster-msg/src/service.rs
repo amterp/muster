@@ -339,6 +339,16 @@ pub(crate) struct Group {
 }
 
 impl Group {
+    /// A replica of a group kept on `machine` that holds nothing yet, until its home sends it.
+    pub(crate) fn replica(machine: &str) -> Group {
+        Group {
+            policy: Policy::default(),
+            members: BTreeSet::new(),
+            log: Vec::new(),
+            home: Some(machine.to_string()),
+        }
+    }
+
     pub(crate) fn head(&self) -> u64 {
         self.log.last().map_or(0, |entry| entry.seq)
     }
@@ -404,18 +414,28 @@ impl<S: Store> Messaging<S> {
         }
         // A cursor past its log's head is what a log that lost entries leaves; the next entry
         // would take a number the reader has already passed. A replica's log is not kept, so its
-        // cursors wait for the refetch instead.
+        // cursors wait for the refetch instead, and the replica is held empty until then: the
+        // group answers as there, and behind, rather than as never heard of (MIP-4, section 12).
+        // Its members here are those with a cursor on it, which leaving takes away. Being woken
+        // for it is forgotten, since the refetch wakes each member afresh for what it has unread.
         let participants = saved
             .participants
             .into_iter()
             .map(|mut participant| {
                 for (group, cursor) in &mut participant.cursors {
-                    if split_machine(group).is_some() {
+                    if let Some((_, machine)) = split_machine(group) {
+                        groups
+                            .entry(group.clone())
+                            .or_insert_with(|| Group::replica(machine))
+                            .members
+                            .insert(participant.name.clone());
                         continue;
                     }
                     let head = groups.get(group).map_or(0, Group::head);
                     *cursor = (*cursor).min(head);
                 }
+                participant.woken.retain(|group| split_machine(group).is_none());
+                participant.rewoken.retain(|group| split_machine(group).is_none());
                 (participant.name.clone(), participant)
             })
             .collect();
@@ -693,7 +713,8 @@ impl<S: Store> Messaging<S> {
                 .cloned()
                 .collect();
             let participant = self.participants.get_mut(&name).expect("identified");
-            participant.cursors.insert(group.clone(), head);
+            // Never back: a replica held empty after a restart is behind what was read of it.
+            participant.cursors.insert(group.clone(), head.max(cursor));
             participant.woken.remove(&group);
             participant.rewoken.remove(&group);
             read.groups.push((group, entries));
@@ -1668,14 +1689,15 @@ impl<S: Store> Messaging<S> {
     /// What to tell `name` about `group`: its unread messages that would wake it, or nothing
     /// when there are none.
     pub(crate) fn notice(&self, name: &str, group: &str) -> Option<Notice> {
+        let kept = self.groups.get(group)?;
         let cursor = self.cursor(name, group);
-        let policy = &self.groups[group].policy;
+        let policy = &kept.policy;
         // A paused group wakes nobody but the human, however it would (MIP-4, section 8).
         if policy.paused && name != HUMAN {
             return None;
         }
         let mut notice: Option<Notice> = None;
-        for entry in self.groups[group].log.iter().filter(|entry| entry.seq > cursor) {
+        for entry in kept.log.iter().filter(|entry| entry.seq > cursor) {
             let What::Message { author, to, .. } = &entry.what else { continue };
             let addressed = to.iter().any(|addressee| addressee == name);
             let wakes = if to.is_empty() { policy.rings(author, name) } else { addressed };

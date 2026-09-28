@@ -589,12 +589,7 @@ impl<S: Store> Messaging<S> {
     ) -> Result<Applied, u64> {
         let key = peer.inward(&caught.group);
         let more = caught.more;
-        let group = self.groups.entry(key.clone()).or_insert_with(|| Group {
-            policy: Policy::default(),
-            members: BTreeSet::new(),
-            log: Vec::new(),
-            home: Some(peer.name.clone()),
-        });
+        let group = self.groups.entry(key.clone()).or_insert_with(|| Group::replica(&peer.name));
         let head = group.head();
         let fresh: Vec<Entry> =
             caught.entries.into_iter().filter(|entry| entry.seq > head).collect();
