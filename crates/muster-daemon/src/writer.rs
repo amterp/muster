@@ -281,15 +281,15 @@ impl Writer {
             if bytes.is_empty() {
                 continue;
             }
-            // Before as well as after: a write the program is slow to take is echoed piece by
-            // piece while it goes on.
+            // Before the write and after each piece of it the program takes: a write the program
+            // is slow to take is echoed piece by piece while it goes on.
             let wrote_input = || {
-                if let Some(io) = self.io.upgrade().filter(|_| typed) {
+                if typed && let Some(io) = self.io.upgrade() {
                     io.wrote_input(Instant::now());
                 }
             };
             wrote_input();
-            if let Err(error) = write_all(master, wake, &bytes) {
+            if let Err(error) = write_all(master, wake, &bytes, wrote_input) {
                 if error.kind() != io::ErrorKind::BrokenPipe {
                     log::warn(
                         "daemon.pane.write_failed",
@@ -303,7 +303,6 @@ impl Writer {
                 }
                 return;
             }
-            wrote_input();
         }
     }
 
@@ -548,16 +547,22 @@ pub(crate) fn decide(modes: InputModes, (x, y): (i32, i32)) -> Wheeled {
     Wheeled::Nothing
 }
 
-/// Writes all of `bytes` to the master, waiting while the program is not reading. Gives up
-/// with `BrokenPipe` once the pane lets go (its wake pipe closes), so a program that never
-/// reads again cannot hold this thread.
-fn write_all(master: &OwnedFd, wake: &OwnedFd, mut bytes: &[u8]) -> io::Result<()> {
+/// Writes all of `bytes` to the master, waiting while the program is not reading, and calls
+/// `took` each time the program takes some. Gives up with `BrokenPipe` once the pane lets go
+/// (its wake pipe closes), so a program that never reads again cannot hold this thread.
+fn write_all(
+    master: &OwnedFd,
+    wake: &OwnedFd,
+    mut bytes: &[u8],
+    took: impl Fn(),
+) -> io::Result<()> {
     while !bytes.is_empty() {
         // SAFETY: the slice is valid for reads of its length.
         let written =
             unsafe { libc::write(master.as_raw_fd(), bytes.as_ptr().cast(), bytes.len()) };
         if written >= 0 {
             bytes = &bytes[written.cast_unsigned()..];
+            took();
             continue;
         }
         let error = io::Error::last_os_error();
