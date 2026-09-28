@@ -142,6 +142,7 @@ fn a_laptop_agent_and_a_devenv_agent_share_a_group() {
     let laptop_name = there.trim_start_matches("review@");
     assert!(said.contains("refused=1") && said.contains(laptop_name), "{said}");
     assert!(said.contains("desk=6"), "a group kept on the devenv still posts: {said}");
+    assert_eq!(read(&mut near, "builder"), ["critic@devenv: after the drop"]);
     let kept = expect(&mut near, post("builder", None, &["critic"], "while you were away"), Done);
     assert_eq!(reached(&kept), [("critic@devenv".to_string(), msg_answer::Reach::Unreachable)]);
 
@@ -155,7 +156,9 @@ fn a_laptop_agent_and_a_devenv_agent_share_a_group() {
         || devenv("$M msg --as critic log --group review"),
     );
     let _ = stop(&forwarded, Duration::from_secs(10));
+    // A new session is what closes the old window, and its ssh master with it.
     drop(turn);
+    drop(muster::testing::fresh_session());
 }
 
 use proto::Outcome::Done;

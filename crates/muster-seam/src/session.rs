@@ -1121,6 +1121,10 @@ pub(crate) struct Session {
     /// kept in line with this, and this is kept in line with the file every window shares.
     holding: Holding,
 
+    /// A link held from each daemon on this machine to each reached over ssh, by the pair, so
+    /// groups of messages span the machines while this window runs (`crate::peering`).
+    peering: BTreeMap<(DaemonId, DaemonId), crate::peering::Held>,
+
     /// Which agents have been seen, and so which are `done`.
     ///
     /// Beside the mirrors rather than inside one, because it spans them: a window is focused
@@ -3471,6 +3475,33 @@ fn attaching_anything() -> bool {
 /// dropped connection: each attempt has already waited out its own patience, ten seconds for a
 /// daemon's state and more for an ssh host, so one failure is already a machine missing from the
 /// window for longer than anybody would wait without being told why.
+/// Holds a link from each daemon on this machine to each the window reaches over ssh, as each
+/// attaches: either end of a pair may be the one to arrive last. The far end is the local end
+/// of its forward, which stays the same path when the tunnel reopens, and the daemon here dials
+/// it again itself.
+fn link_daemons() {
+    let mut session = poison::lock(&SESSION, "session");
+    let ends: Vec<(DaemonId, bool, String)> = session
+        .backends
+        .iter()
+        .map(|(id, backend)| (id.clone(), backend.tunnel.is_some(), backend.socket_path.clone()))
+        .collect();
+    for (near, remote, here) in &ends {
+        for (far, far_remote, there) in &ends {
+            let pair = (near.clone(), far.clone());
+            if *remote || !*far_remote || session.peering.contains_key(&pair) {
+                continue;
+            }
+            let held = crate::peering::Held::start(
+                PathBuf::from(here),
+                far.as_str().to_string(),
+                PathBuf::from(there),
+            );
+            session.peering.insert(pair, held);
+        }
+    }
+}
+
 fn keep_attaching(daemon: &Daemon, generation: u64) {
     let key = reconnect::key(daemon.id.as_str());
     let mut attempts = reconnect::Attempts::new();
@@ -3479,6 +3510,7 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
         match attach_daemon_in(daemon, generation) {
             Ok(()) => {
                 health(&daemon.id, Health::Connected, "");
+                link_daemons();
                 if attempts.failures() > 0 {
                     clear_problem(&key, "attached");
                 }
@@ -3667,6 +3699,7 @@ fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> 
                 return Err(Unattached::Abandoned);
             }
             session.composition.detach_daemon(&daemon.id);
+            session.peering.retain(|(near, far), _| *near != daemon.id && *far != daemon.id);
             session.backends.remove(&daemon.id)
         };
         // Dropped with the lock released: dropping a follower joins its thread, which can be

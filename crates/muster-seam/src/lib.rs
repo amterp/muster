@@ -22,6 +22,7 @@ pub mod ffi;
 mod forward;
 mod handler;
 mod holding;
+mod peering;
 mod session;
 mod shared_file;
 pub mod testing;
