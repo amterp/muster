@@ -968,6 +968,9 @@ final class SidebarRowView: NSView {
   private let progressBar = CALayer()
   /// How much of the bar is filled, from 0 to 1.
   private var progressFilled: CGFloat = 0
+  /// Every layer's colour, kept to resolve again when the appearance changes: a layer holds a
+  /// resolved colour, so one set once keeps light mode's in dark.
+  private var layerColors: [(layer: CALayer, color: NSColor)] = []
   private let indented: Bool
   private let isTab: Bool
 
@@ -984,7 +987,7 @@ final class SidebarRowView: NSView {
     // everything else and only for the one row, so a list of a dozen panes beside a window
     // of two can be read back against it.
     if row.hasKeyboard {
-      highlight.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.22).cgColor
+      paint(highlight, NSColor.controlAccentColor.withAlphaComponent(0.22))
       highlight.cornerRadius = 5
       layer?.addSublayer(highlight)
     }
@@ -1014,7 +1017,7 @@ final class SidebarRowView: NSView {
       // Quiet, and deliberately not the accent colour: this says where you are looking, and the
       // accent highlight on a pane row already says where you are typing.
       if row.onScreen {
-        showing.backgroundColor = NSColor.tertiaryLabelColor.cgColor
+        paint(showing, .tertiaryLabelColor)
         showing.cornerRadius = SidebarRowView.showingSize / 2
         layer?.addSublayer(showing)
       }
@@ -1026,7 +1029,7 @@ final class SidebarRowView: NSView {
       // rather than "gone", which is the difference between a row worth clicking and one that
       // looks broken.
       name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
-      dot.backgroundColor = SidebarModel.dotColor(state: row.state).cgColor
+      paint(dot, SidebarModel.dotColor(state: row.state))
       dot.cornerRadius = SidebarRowView.dotSize / 2
       layer?.addSublayer(dot)
       if !row.subtitle.isEmpty {
@@ -1049,9 +1052,8 @@ final class SidebarRowView: NSView {
       if let progress = SidebarModel.progress(of: row) {
         let failed = progress.state == "error"
         progressFilled = failed ? 1 : CGFloat(min(max(progress.percent ?? 0, 0), 100)) / 100
-        progressTrack.backgroundColor = NSColor.quaternaryLabelColor.cgColor
-        progressBar.backgroundColor =
-          (failed ? NSColor.systemRed : NSColor.controlAccentColor).cgColor
+        paint(progressTrack, .quaternaryLabelColor)
+        paint(progressBar, failed ? .systemRed : .controlAccentColor)
         for bar in [progressTrack, progressBar] {
           bar.cornerRadius = SidebarRowView.progressHeight / 2
           layer?.addSublayer(bar)
@@ -1073,6 +1075,24 @@ final class SidebarRowView: NSView {
       setAccessibilityRole(.staticText)
       setAccessibilityLabel(details)
     }
+    resolveColors()
+  }
+
+  private func paint(_ layer: CALayer, _ color: NSColor) {
+    layerColors.append((layer, color))
+  }
+
+  private func resolveColors() {
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      for (layer, color) in layerColors {
+        layer.backgroundColor = color.cgColor
+      }
+    }
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    resolveColors()
   }
 
   /// One trailing mark, drawn small and quiet: the dot says what the agent is doing, and these
