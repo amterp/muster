@@ -250,3 +250,27 @@ fn a_changed_added_or_removed_manifest_is_that_agents_change_alone() {
     assert_eq!(added.changed_since(&before), [Agent::new("sprite")]);
     assert_eq!(before.changed_since(&added), [Agent::new("sprite")], "and removed again");
 }
+
+/// Claude Code asking whether it may run a command while something else on screen animates:
+/// sub-agents running beside it keep the title's spinner and a status line moving. It is
+/// waiting on you all the same, and a report saying so is kept only while the rules agree.
+#[test]
+fn a_claude_permission_prompt_is_blocked_while_something_else_animates() {
+    let rule = "─".repeat(100);
+    let screen = format!(
+        "  ⎿  $ rm -rf ./no-such-dir\n\n\
+         ✻ Running 2 agents… (12s · esc to interrupt)\n\n\
+         {rule}\n \
+         Bash command\n\n   \
+         rm -rf ./no-such-dir\n   \
+         Remove the no-such-dir directory if present\n\n \
+         Do you want to proceed?\n \
+         ❯ 1. Yes\n   \
+         2. Yes, and always allow access to /tmp/capture from this project\n   \
+         3. No\n\n \
+         Esc to cancel · Tab to amend\n"
+    );
+    let input = Input { screen: &screen, title: "◐ Remove no-such-dir", progress: "" };
+    let detection = Manifests::built_in().detect(Some(&Agent::new("claude")), input);
+    assert_eq!(detection.state, State::Blocked, "{detection:?}");
+}

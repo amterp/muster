@@ -934,6 +934,43 @@ fn a_blocked_report_yields_to_a_screen_that_keeps_moving() {
     );
 }
 
+/// Esc at a permission prompt, or a denial, runs no hook: the prompt goes, Claude Code is back
+/// at its own, and the screen is still from then on. A blocked report the rules confirmed gives
+/// way once they read something else.
+#[test]
+fn a_blocked_report_gives_way_once_the_prompt_it_described_is_gone() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Blocked);
+    run.paint("allow?");
+    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+
+    run.paint("ready>");
+    let after = run.run_for(Duration::from_secs(5), None);
+    let last = after.last().expect("something was published");
+    assert_eq!((last.state, last.reported), (State::Idle, false), "{after:?}");
+}
+
+/// A prompt the rules read as blocked, with something else animating beside it: the report and
+/// the rules agree, and the screen moving is no reason to stop counting it.
+#[test]
+fn a_blocked_report_the_rules_agree_with_holds_while_the_screen_moves() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Blocked);
+    run.paint("allow?");
+    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+
+    let waiting = run.run_for(Duration::from_mins(4), Some("allow? busy"));
+    assert_eq!(waiting, [], "the report stopped counting");
+}
+
 /// An idle report while a background task keeps the screen moving is the rules' to read.
 #[test]
 fn an_idle_report_yields_to_a_screen_that_keeps_moving() {
