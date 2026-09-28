@@ -1314,6 +1314,13 @@ fn build_deps():
     pin = read_pin()
     if deps_are_current(pin):
         print(dim("libghostty already built at {pin[:12]}{patch_note()}"))
+        // CI caches what a build leaves - the stamp, zig-out and the xcframework - and not the
+        // checkout it built from, which the daemon's data directory and its build script still
+        // read. A hit restores the first without the second, so the pin is checked out again,
+        // which is a single-commit fetch of a few seconds, and nothing is rebuilt.
+        if not get_path("{GHOSTTY_DIR}/.git").exists:
+            print(dim("checking out libghostty's source at {pin[:12]} beside the restored build"))
+            check_out(pin)
         return
 
     // Asked for only once there is something to build with it. Every other tier takes deps on
@@ -1338,6 +1345,21 @@ fn build_deps():
         exit(1)
 
     print(dim("building libghostty at {pin[:12]}{patch_note()} - several minutes on a cold cache"))
+    check_out(pin)
+
+    // Two builds, because -Demit-lib-vt turns the xcframework off: the surface API that
+    // the shell renders through, then the VT that the core encodes keys with and the
+    // tests read grids from. The VT stays ReleaseFast for the daemon too: ReleaseSafe parsed
+    // every byte about 35% slower (docs/mip/0003-own-daemon.md, section 13).
+    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-terminfo=true`
+    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
+    for zig_target in LINUX_DAEMONS.values():
+        $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dtarget={zig_target} --prefix zig-out/{zig_target}`
+    write_file(BUILT_STAMP, deps_stamp(pin))
+
+// The pinned commit into GHOSTTY_DIR with Muster's patches applied, leaving whatever a build left
+// there - zig-out, .zig-cache and the xcframework - in place.
+fn check_out(pin):
     $`mkdir -p {GHOSTTY_DIR}`
     $`git init -q {GHOSTTY_DIR}`
     // A fresh clone and a re-pin take the same path: fetch exactly the one commit.
@@ -1361,16 +1383,6 @@ fn build_deps():
             print_err("{GHOSTTY_DIR} by hand, resolve, and write the result back with `git diff`")
             print_err("before running ./dev again, which resets that checkout and discards it.")
             exit(1)
-
-    // Two builds, because -Demit-lib-vt turns the xcframework off: the surface API that
-    // the shell renders through, then the VT that the core encodes keys with and the
-    // tests read grids from. The VT stays ReleaseFast for the daemon too: ReleaseSafe parsed
-    // every byte about 35% slower (docs/mip/0003-own-daemon.md, section 13).
-    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-terminfo=true`
-    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
-    for zig_target in LINUX_DAEMONS.values():
-        $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dtarget={zig_target} --prefix zig-out/{zig_target}`
-    write_file(BUILT_STAMP, deps_stamp(pin))
 
 // Copies what the daemon hands its shells out of the pinned checkout, unchanged. Every time
 // rather than behind the stamp: it is a handful of copies, and two of its files are this repo's
