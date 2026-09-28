@@ -140,7 +140,7 @@ fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
     let answer = match judge(&hello) {
         Ok(()) => hello_answer::Answer::Welcome(proto::Welcome {
             protocol: Some(PROTOCOL),
-            daemon_version: env!("CARGO_PKG_VERSION").to_string(),
+            daemon_version: said_version(),
             install: install::INSTALL.to_string(),
             instance: shared.instance,
             pid: std::process::id(),
@@ -188,4 +188,18 @@ fn judge(hello: &proto::Hello) -> Result<(), String> {
             Err("the hello names no kind of connection this daemon knows".to_string())
         }
     }
+}
+
+/// The version this daemon says it is: its own, or in a debug build whatever
+/// `MUSTER_DAEMON_VERSION_SAID` names. The one way a test gets an older daemon to hand over,
+/// since every daemon a test starts is built from the same commit. A shipped daemon never reads
+/// it, so nothing in a person's environment can make one lie about its version.
+fn said_version() -> String {
+    if cfg!(debug_assertions)
+        && let Ok(said) = std::env::var("MUSTER_DAEMON_VERSION_SAID")
+        && !said.is_empty()
+    {
+        return said;
+    }
+    env!("CARGO_PKG_VERSION").to_string()
 }
