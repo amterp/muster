@@ -9,24 +9,23 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand};
-use muster_daemon_proto::connection::{self, HandshakeError};
+use muster_daemon_proto::connection;
 use muster_daemon_proto::messaging::{self as spelling, JOIN, LEAVE, LOG, POST, READ, WAIT, WHO};
 use muster_daemon_proto::msg_answer::{self, Answer, Until, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
-use muster_daemon_proto::{self as proto, ConnectionKind, install, request::Service};
+use muster_daemon_proto::{self as proto, ConnectionKind, request::Service};
 
-use crate::Trouble;
 use crate::args::{Failure, TextSource};
 use crate::environment;
+use crate::{Trouble, daemon};
 
 /// Claude Code's inbox socket, which it exports to every command a session runs.
 pub const CLAUDE_INBOX: &str = "CLAUDE_CODE_MESSAGING_SOCKET";
-/// The daemon a pane runs on, which the daemon sets in every pane it starts.
-pub const DAEMON_SOCKET: &str = "MUSTER_DAEMON_SOCKET";
+pub use crate::daemon::SOCKET as DAEMON_SOCKET;
 
 /// What `muster msg --help` says before the verbs: the protocol an agent follows.
 pub const PROTOCOL: &str = "\
@@ -232,11 +231,7 @@ pub fn run(
             }
         }
     }
-    let socket = daemon_socket(environment).ok_or_else(|| {
-        Trouble::Unreachable(format!(
-            "no muster-daemon to ask: ${DAEMON_SOCKET} is not set and neither is $HOME."
-        ))
-    })?;
+    let socket = daemon::socket_or_refusal(environment)?;
     let answer = ask(&socket, &messaging.request)?;
     render(&messaging.request, &answer, messaging.if_unread, json)
 }
@@ -257,15 +252,6 @@ fn read_body(from: &TextSource, input: &mut impl Read) -> Result<String, Trouble
     String::from_utf8(bytes).map_err(|error| {
         Trouble::Refused(format!("the message is not UTF-8 text ({error}), so nothing was posted."))
     })
-}
-
-/// `$MUSTER_DAEMON_SOCKET`, which names the daemon a pane runs on, else this install's daemon
-/// under Muster's home.
-pub fn daemon_socket(environment: &BTreeMap<String, String>) -> Option<PathBuf> {
-    if let Some(socket) = environment.get(DAEMON_SOCKET).filter(|socket| !socket.is_empty()) {
-        return Some(PathBuf::from(socket));
-    }
-    environment::muster_home(environment).map(|home| install::socket_path(Path::new(&home)))
 }
 
 /// How long to keep asking a daemon that is handing over to a new one, which is refusing
@@ -325,23 +311,7 @@ impl Patience {
 }
 
 fn ask_once(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trouble> {
-    let client = format!("muster {}", env!("CARGO_PKG_VERSION"));
-    let (mut stream, _) = connection::connect(socket, ConnectionKind::Control, &client).map_err(
-        |error| match error {
-            HandshakeError::Refused(refused) => Trouble::Refused(format!(
-                "the muster-daemon at {} would not talk to this muster: {}",
-                socket.display(),
-                refused.reason
-            )),
-            HandshakeError::Unreachable(why)
-            | HandshakeError::Garbled(why)
-            | HandshakeError::Stalled(why) => Trouble::Unreachable(format!(
-                "no muster-daemon answered at {} ({why}). One runs while Muster does; set \
-                     ${DAEMON_SOCKET} to reach another.",
-                socket.display()
-            )),
-        },
-    )?;
+    let mut stream = daemon::connect(socket, ConnectionKind::Control)?;
     let waits = matches!(request.request, Some(Asked::Wait(_)));
     let _ = stream.set_read_timeout(if waits { None } else { Some(PATIENCE) });
     let request = proto::Request { id: 1, service: Some(Service::Msg(request.clone())) };
