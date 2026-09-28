@@ -105,6 +105,11 @@ pub enum Action {
     /// beyond that have no name, no chord and no menu item. A tenth pane is reached by
     /// `next_pane`, by a direction, or by clicking its row.
     FocusPane(u8),
+    /// Puts the keyboard on the pane most urgently asking for somebody - blocked, then a
+    /// program's notification, then done, and within each the one that asked first - and
+    /// brings its tab on screen, as clicking its banner does. Ghostty has no equivalent: it
+    /// has no idea of an agent waiting.
+    FocusAsking,
     ResizeLeft,
     ResizeRight,
     ResizeUp,
@@ -156,7 +161,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 53] = [
+    pub const ALL: [Action; 54] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::NewTab,
@@ -186,6 +191,7 @@ impl Action {
         Action::FocusPane(7),
         Action::FocusPane(8),
         Action::FocusPane(9),
+        Action::FocusAsking,
         Action::ResizeLeft,
         Action::ResizeRight,
         Action::ResizeUp,
@@ -241,6 +247,7 @@ impl Action {
             Action::FocusPane(place) => {
                 PANE_PLACES.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or("focus_pane")
             }
+            Action::FocusAsking => "focus_asking",
             Action::ResizeLeft => "resize_left",
             Action::ResizeRight => "resize_right",
             Action::ResizeUp => "resize_up",
@@ -340,6 +347,10 @@ impl Action {
                 PANE_DIGITS.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or(Key::Digit1),
                 command,
             )),
+            // Muster's own, since Ghostty has no equivalent, on a chord free in both keymaps:
+            // Ghostty's ⌘⇧ chords leave A alone on macOS. A for asking, and the chord Slack puts
+            // the same jump on, All Unreads, so a hand that has done this before already knows.
+            Action::FocusAsking => Some(Chord::new(Key::KeyA, shifted)),
             Action::ResizeLeft => Some(Chord::new(Key::ArrowLeft, resizing)),
             Action::ResizeRight => Some(Chord::new(Key::ArrowRight, resizing)),
             Action::ResizeUp => Some(Chord::new(Key::ArrowUp, resizing)),

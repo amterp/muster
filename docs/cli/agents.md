@@ -216,10 +216,16 @@ fresh surface and the pane repaints.
     muster focus --next
     muster focus --left
     muster focus --place 3
+    muster focus --asking
 
 `--next` and `--previous` walk every pane the window is showing and wrap, so between them they
 reach all of it. The four directions are geometric and do not wrap. `--place` takes the number
 `muster window` prints beside each pane, which is the one `cmd+1` to `cmd+9` name.
+
+`--asking` goes to the pane most urgently asking for somebody, which is what `cmd+shift+a` does:
+`blocked` first, then a program's notification, then `done`, and within each the pane that asked
+first. It prints the pane it went to, and nothing when nothing is asking, which still exits 0. Going
+there is looking at it, so run it again for the next one.
 
 Tabs step too, on their own axis - `muster tab focus --next` reaches the tabs behind whatever is on
 screen.

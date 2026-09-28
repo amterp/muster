@@ -41,7 +41,8 @@ every tab and every machine, so an agent is one keystroke away whether or not a 
 
 **A notification when an agent needs you, and one click back to it.** An agent that starts waiting
 on you, or that finishes while nobody is looking, says so - and activating the notification takes
-you to that pane, including one no split is showing. A pane you are already looking at stays quiet;
+you to that pane, including one no split is showing. `cmd+shift+a` goes there without the click:
+to whichever agent has waited longest, the blocked ones first. A pane you are already looking at stays quiet;
 that is what its border is for. Both are switchable, and one line in your config mutes the lot.
 
 **Names you write, and titles you don't.** Name a pane and the name sticks, emoji and all, because

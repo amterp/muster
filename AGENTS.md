@@ -10,7 +10,7 @@ if your harness wants one.
 
 **Early, and specific about which parts.** Built, and covered by the suite: splits and tabs, a rebindable keymap
 that ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each
-of the first nine, renaming, trading two agents' places by dragging a row, configuration that reloads when you save
+of the first nine and one to whichever is asking for you, renaming, trading two agents' places by dragging a row, configuration that reloads when you save
 it, a CLI that drives the window from inside a pane, a notification when an agent needs you that takes you to the
 pane that asked, a second daemon on an SSH machine in the same window - where one tab can hold a laptop pane beside
 a devenv pane - and several windows that each hold their own tabs and hand them to each other. Not built, and worth

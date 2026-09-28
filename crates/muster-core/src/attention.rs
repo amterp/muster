@@ -222,11 +222,6 @@ impl Attention {
         asking.into_iter().map(|(pane, raised)| (pane, raised.alert)).collect()
     }
 
-    /// The pane to go to first: the head of [`Attention::asking`].
-    pub fn most_urgent(&self) -> Option<&PaneKey> {
-        self.asking().first().map(|(pane, _)| *pane)
-    }
-
     /// A pane this window is meeting for the first time, as its daemon already had it.
     ///
     /// Raises nothing, whatever it says. Muster witnessed no transition here, and quitting and

@@ -2834,6 +2834,20 @@ pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
     focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
+/// The pane asking for somebody that `focus_asking` goes to: the most urgent of those this window
+/// would post a banner for.
+///
+/// Only those, so that it goes where a banner click would. Another open window speaks for its own
+/// tabs and takes back what they ask once somebody looks there, which this window never sees, so
+/// one of its panes could stay at the head of this window's list for good.
+pub(crate) fn most_urgent_asking() -> Option<PaneKey> {
+    let asking: Vec<PaneKey> = {
+        let session = poison::lock(&SESSION, "session");
+        session.attention.asking().into_iter().map(|(pane, _)| pane.clone()).collect()
+    };
+    asking.into_iter().find(speaks_for)
+}
+
 /// Why a numbered chord reached nothing, said in the terms of whatever it was counting.
 ///
 /// One refusal per branch rather than one for all three, because "this window holds 2 panes"

@@ -47,6 +47,13 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             // `muster pane send --pane "$(muster pane new --down)"`.
             made.pane_id.clone()
         }),
+        // The pane it went to, as `Made` prints one. Nothing when nothing was asking, which is no
+        // failure: `[ -n "$(muster focus --asking)" ]` is how a script asks whether it went.
+        Some(response::Payload::Asking(went)) => Ok(match (json, went.pane_id.is_empty()) {
+            (true, true) => json!({ "pane": null }).to_string(),
+            (true, false) => json!({ "pane": went.pane_id, "daemon": went.daemon_id }).to_string(),
+            (false, _) => went.pane_id.clone(),
+        }),
         Some(response::Payload::Window(window)) => Ok(if json {
             window_json(window, Others::All).to_string()
         } else {

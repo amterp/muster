@@ -292,6 +292,7 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
         request::Payload::FocusPaneAt(at) => {
             json!({ "focus_pane_at": json!({ "place": at.place }) })
         }
+        request::Payload::FocusAsking(_) => json!({ "focus_asking": {} }),
         request::Payload::ReadPane(read) => json!({
             "read_pane": fields([
                 ("pane_id", said(&read.pane_id)),

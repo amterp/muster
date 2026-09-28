@@ -119,6 +119,9 @@ public enum MenuActions {
       title: "Select Pane Above", selector: #selector(MusterWindow.focusPaneUp(_:)), group: .pane),
     "focus_down": Described(
       title: "Select Pane Below", selector: #selector(MusterWindow.focusPaneDown(_:)), group: .pane),
+    "focus_asking": Described(
+      title: "Select Pane Asking", selector: #selector(MusterWindow.focusPaneAsking(_:)),
+      group: .pane),
     "resize_left": Described(
       title: "Resize Pane Left", selector: #selector(MusterWindow.resizePaneLeft(_:)), group: .pane),
     "resize_right": Described(

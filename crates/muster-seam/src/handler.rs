@@ -195,9 +195,7 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::FocusRelative(step) => focus_relative(&step.direction),
         request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
         request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
-        request::Payload::FocusAsking(_) => {
-            Response { payload: Some(response::Payload::Asking(proto::Asking::default())) }
-        }
+        request::Payload::FocusAsking(_) => focus_asking(),
         request::Payload::FocusTab(tab) => focus_tab(&tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(&arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),
@@ -1350,6 +1348,21 @@ fn focus_pane_at(place: u32) -> Response {
         );
     }
     answer(session::focus_pane_at(place))
+}
+
+/// Goes to the pane most urgently asking for somebody, the way clicking its banner does, and
+/// says which. Nothing asking is an answer naming no pane rather than a refusal: nothing failed.
+fn focus_asking() -> Response {
+    let went = match session::most_urgent_asking() {
+        Some(pane) => match session::focus(&pane.daemon, &pane.pane) {
+            Ok(()) => {
+                proto::Asking { daemon_id: pane.daemon.to_string(), pane_id: pane.pane.to_string() }
+            }
+            Err(refusal) => return relayed(Err(refusal)),
+        },
+        None => proto::Asking::default(),
+    };
+    Response { payload: Some(response::Payload::Asking(went)) }
 }
 
 /// Moves the line between two regions of the window.

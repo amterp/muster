@@ -438,7 +438,8 @@ pane (desiderata: fast is a feature, the per-event half).
 
 Attention is computed in the core from control-plane events - agent-state transitions and a program's bells,
 notifications and progress all arrive there, so the data-plane bypass costs nothing here. The core owns the unread and urgency
-ordering; the shell only delivers notifications and renders indicators. Activating a notification dispatches an
+ordering; the shell only delivers notifications and renders indicators. `focus_asking` (⌘⇧A) is that ordering's head
+as an action: it goes where clicking the most urgent banner would. Activating a notification dispatches an
 ordinary focus intent through the one action path - which may change composition first, because the pane that asked
 may not be visible in any window. Surfacing the hidden is part of the feature, and the core owns it.
 

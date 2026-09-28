@@ -813,6 +813,16 @@ public enum Core {
     send(request)
   }
 
+  /// Goes to the pane most urgently asking for somebody. False only when nothing was asking: a
+  /// refusal has already been logged by `send`, and is not the same answer.
+  @discardableResult
+  public static func focusAsking() -> Bool {
+    var request = Muster_Request()
+    request.focusAsking = Muster_FocusAsking()
+    guard case .asking(let went) = send(request) else { return true }
+    return !went.paneID.isEmpty
+  }
+
   /// Takes back a numbered chord that named a tab, because the gesture is over.
   ///
   /// What letting go of the modifier means under `numbered_chords = "tab_then_pane"`. The core

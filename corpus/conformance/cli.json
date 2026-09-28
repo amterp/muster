@@ -1759,6 +1759,21 @@
       }
     },
     {
+      "name": "the pane that asked is reached without knowing which it is",
+      "why": "The chord that goes to the most urgent pane asking for somebody, from a script. It names no pane because finding one is the point: the window knows which pane has waited longest, and a caller would have to reconstruct that from `muster window` and would get the order wrong.",
+      "given": {
+        "argv": [
+          "focus",
+          "--asking"
+        ]
+      },
+      "expect": {
+        "request": {
+          "focus_asking": {}
+        }
+      }
+    },
+    {
       "name": "a pane and a direction are two answers to one question",
       "why": "Where to put the keyboard has one answer. A name, a direction and a place are three ways of giving it, and two at once is a caller who has not decided.",
       "given": {

@@ -21,10 +21,10 @@ use std::time::Duration;
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
-    AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusPane,
-    FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, MoveTab, ReadDaemons, ReadPane,
-    ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane,
-    SplitPane, ToggleSidebar, WatchPanes, ZoomPane, request,
+    AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusAsking,
+    FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, MoveTab, ReadDaemons,
+    ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane,
+    SendToPane, SplitPane, ToggleSidebar, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -248,6 +248,10 @@ enum What {
         /// Go to the pane at this place in the window's pane order, the number ⌘1 to ⌘9 name
         #[arg(long, value_name = "N", group = "somewhere")]
         place: Option<u32>,
+
+        /// Go to the pane most urgently asking for somebody, and print it; nothing if none is
+        #[arg(long, group = "somewhere")]
+        asking: bool,
     },
 
     /// Fill the region with one pane, or put the others back
@@ -718,7 +722,8 @@ pub fn parse(
         What::Window { doing: Some(AboutWindows::Reopen), .. } => Asking::ReopenWindow,
         What::Pane { doing } => pane(doing, environment, here)?,
         What::Tab { doing } => tab(doing, environment, here)?,
-        What::Focus { pane, next, previous, left, right, up, down, place } => {
+        What::Focus { asking: true, .. } => send(request::Payload::FocusAsking(FocusAsking {})),
+        What::Focus { pane, next, previous, left, right, up, down, place, .. } => {
             // A direction and a place are answers on their own, so they are read before the
             // pane is - and clap has already refused any two of the three together.
             let stepped = chosen(&[

@@ -1082,6 +1082,13 @@ extension MusterWindow {
     Core.focus(panePlace: item.tag)
   }
 
+  @objc public func focusPaneAsking(_ sender: Any?) {
+    // Nothing asking is a press with nothing to act on, which the platform answers with a beep.
+    if !Core.focusAsking() {
+      NSSound.beep()
+    }
+  }
+
   @objc public func focusNextPane(_ sender: Any?) {
     Core.focus(step: "next")
   }
