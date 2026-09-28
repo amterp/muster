@@ -457,7 +457,7 @@ enum Doing {
         #[arg(long, value_name = "REF", required = true)]
         pane: Vec<String>,
 
-        /// The states to wait for, comma-separated. idle is also met by done
+        /// The states to wait for, comma-separated. idle is also met by done, and not by waiting
         #[arg(long, value_name = "STATE", required = true, value_delimiter = ',')]
         until: Vec<Awaited>,
 

@@ -53,6 +53,9 @@ outright: `muster window --json` gives every pane a `tab`, and yours is the row 
 **Do not poll `muster window` to find out when an agent finishes.** `muster pane wait --pane X
 --until idle,blocked` blocks until it does and exits 0; `--timeout` gives up with exit 5. A pane
 already idle answers at once, so after handing an idle agent work, wait `--until working` first.
+An agent that ended its turn to wait on its own work reads `waiting`, which is not `idle`: add it,
+`--until idle,blocked,waiting`, to hear of it, and give `--timeout`, since a wait on something that
+never wakes the agent lasts until somebody prompts it.
 To follow several agents, `muster window --watch` prints a line each time any of them changes -
 run it where each line reaches you as it arrives, such as a background monitor, rather than
 waiting for it to exit. It never does.

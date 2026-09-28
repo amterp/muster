@@ -49,11 +49,14 @@ a turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --wait
 Muster then holds off calling the pane done until a later turn ends without the agent declaring
 it again, or until you prompt it: `UserPromptSubmit` reports an empty wait. An agent that forgets
 reads as done, as before. One that waits on something that never wakes it reads as waiting until
-it is next prompted.
+it is next prompted. A turn ends at each `Stop`, so a `Stop` hook of your own that makes the agent
+keep going (one that runs the tests before it lets it stop, say) ends the wait at the second
+`Stop`, and the pane reads done while the agent waits.
 
 Muster takes a report for the pane in `$MUSTER_PANE`, whichever process sent it. A `claude -p`
 that Claude Code starts from its Bash tool inherits that, and with the plugin installed at user
-level its own `Stop` reports the pane idle mid-turn. Start it as `env -u MUSTER_DAEMON claude -p
+level its own `Stop` reports the pane idle mid-turn, which also ends a wait the agent declared.
+Start it as `env -u MUSTER_DAEMON claude -p
 ...` and its hooks do nothing.
 
 A plugin cannot set a statusline, so that is a step of its own either way.
