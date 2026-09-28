@@ -1,0 +1,6 @@
+#!/bin/sh
+# The archiver for the daemon's C dependencies (mimalloc) on the Linux targets
+# (.cargo/config.toml). Without one named, cc-rs falls back to the host's `ar`, and Apple's
+# writes an ELF object into an archive with an empty symbol index; zig's is llvm-ar, which indexes
+# ELF, from the same zig that compiled the object.
+exec zig ar "$@"
