@@ -53,3 +53,24 @@ impl Presence for Sockets {
             .is_none_or(|inbox| is_same_socket(inbox) && UnixStream::connect(&inbox.socket).is_ok())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A participant made by `join --name` from a plain shell, or left behind when a session
+    /// joined under another name, can never be woken; counting it alive kept its name from
+    /// every later session.
+    #[test]
+    fn a_participant_nothing_can_reach_is_not_alive() {
+        let participant = Participant {
+            name: "critic".to_string(),
+            inbox: None,
+            pane: None,
+            gone: false,
+            cursors: Default::default(),
+            woken: Default::default(),
+        };
+        assert!(!Sockets.alive(&participant));
+    }
+}
