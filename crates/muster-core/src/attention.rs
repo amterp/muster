@@ -281,8 +281,10 @@ impl Attention {
     /// recognized in it, if any.
     ///
     /// Asks unless somebody is looking at the pane, the file says programs are not worth
-    /// interrupting for, or the pane is already blocked, which is the more urgent ask. Each
-    /// notification is news, even from a pane already asking with one: it says something new.
+    /// interrupting for, or the pane is already blocked, which is the more urgent ask. Nor does
+    /// it ask again while the pane is still asking with a notification of its own: a program that
+    /// notifies in a loop would otherwise post a banner and a sound each time, and the first has
+    /// already said the pane wants somebody. So the banner keeps the first one's words.
     ///
     /// Nor does a pane running an agent Muster recognizes. An agent notifies at the moments its
     /// state already asks about - Claude Code when it has sat idle, and at a permission prompt -
@@ -292,7 +294,7 @@ impl Attention {
         if agent.is_some()
             || self.seen(pane)
             || !self.notifications.allows(Alert::Notified)
-            || self.raised.get(pane) == Some(&Alert::Blocked)
+            || matches!(self.raised.get(pane), Some(Alert::Blocked | Alert::Notified))
         {
             return None;
         }

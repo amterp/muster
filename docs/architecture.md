@@ -450,7 +450,8 @@ everything notifying is the same as nothing notifying, and somebody running fift
 first afternoon.
 
 **A program in a pane can ask too, and a bell never does.** A program's own notification (OSC 9, OSC 777) asks with
-its own words, which is the notification saying why; it stands until somebody looks, and a blocked agent outranks it.
+its own words, which is the notification saying why; it stands until somebody looks, the program's later notifications
+raise nothing until then, and a blocked agent outranks it.
 A pane running an agent Muster recognizes is the exception: an agent notifies when it has sat idle or wants permission,
 the moments `done` and `blocked` already ask about, so its own notification raises nothing and its state asks instead.
 A bell only marks the pane until somebody looks, because shells ring for trivia. Progress (OSC 9;4) asks nothing and

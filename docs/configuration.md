@@ -384,7 +384,8 @@ banner about something on your screen is the fastest way to learn that banners a
 
 `programs` is a program in a pane asking to notify you, with OSC 9 or OSC 777, as a build or
 a test runner can. Its banner carries the program's own words, since it has said why it wants
-you, and it stands until you look at the pane. It is on because a program that asks has
+you, and it stands until you look at the pane. Notifying again before then raises nothing more,
+so a program that notifies in a loop costs one banner. It is on because a program that asks has
 decided it is worth it; `programs = false` is for a tool that decides that too often.
 
 A pane running an agent Muster recognizes never raises one, whatever this says. Every pane tells
