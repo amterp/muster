@@ -159,8 +159,27 @@ impl Remote {
 /// Shared by everything that runs a command over a master rather than asking it a `-O`
 /// question, so that what makes such a client safe to run at Muster's control path is said
 /// once.
+///
+/// The path is Muster's, and only the `-M` process Muster spawned may hold it. Left to a
+/// personal config's `ControlMaster auto`, a client that found nothing answering there became
+/// the master itself - with no forward, persisting ten minutes past its command - and the
+/// supervisor's `-O check` called that tunnel healthy for 40 and then 75 minutes while every
+/// request to the daemon was refused (kan a_2NnC4pyPm). `-O` requests need no pin: they are
+/// only ever a client.
 pub(crate) fn client_arguments(host: &str, control_path: &str) -> Vec<String> {
-    ["-S", control_path, "-o", "BatchMode=yes", host].map(str::to_string).to_vec()
+    [
+        "-S",
+        control_path,
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ControlMaster=no",
+        "-o",
+        "ControlPersist=no",
+        host,
+    ]
+    .map(str::to_string)
+    .to_vec()
 }
 
 /// One shell word, whatever is in it.
