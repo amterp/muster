@@ -25,6 +25,7 @@ mod perform_on_pane;
 mod presentation;
 mod publish_order;
 mod quitting;
+mod reading;
 mod remembered_names;
 mod reopen;
 mod republish;
