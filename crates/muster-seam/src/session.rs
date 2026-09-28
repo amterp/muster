@@ -3827,17 +3827,14 @@ fn reopen_what_was_left() {
 /// Recorded as the wish that produced it - Muster's own daemon, wherever that turns out to be
 /// - rather than as the path that answered today.
 ///
-/// A config that named daemons is answered here even when none of them could be reached, and
-/// the answer is a refusal rather than a substitute. Standing in for a daemon somebody named
+/// A config that named daemons is never answered with this one. Each named daemon is attached
+/// on a thread of its own and retried until it answers, so while any is still on its way the
+/// window is following something, and this adds nothing. The refusal below is for the one case
+/// left: no thread could be started for any of them. Standing in for a daemon somebody named
 /// is not a lesser version of showing it: the window renders another session's panes under the
 /// configured daemon's id, and nothing on screen says which session it is looking at. Under
 /// load that is how the suite's own tests once reached a developer's live herdr (kan a_2L19sAmLZ),
 /// and a person whose devenv is briefly slow would get the same window with no way to tell.
-///
-/// `follow_configured` still skips a daemon that will not attach, and for the reason it gives:
-/// one unreachable devenv should cost its own panes and nothing else. This is the case it does
-/// not cover - *every* named daemon failing - where there are no other panes for it to be
-/// costing nothing.
 fn follow_implicitly_if_nothing_else() -> Result<(), String> {
     if following_anything() {
         return Ok(());

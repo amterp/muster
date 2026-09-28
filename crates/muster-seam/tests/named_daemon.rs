@@ -17,8 +17,8 @@
 //! has never reached a daemon at all.
 //!
 //! The window used to refuse to open instead. It opens now, because a daemon it cannot reach is
-//! tried again rather than given up on, and says which daemon as a problem once it has tried
-//! enough times.
+//! tried again rather than given up on, and it says which daemon, as a problem, the first time
+//! an attempt fails.
 
 use std::path::PathBuf;
 use std::sync::Mutex;

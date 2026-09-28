@@ -16,8 +16,8 @@ const USAGE: &str = "usage: muster-daemon replace [--socket PATH] [--program PAT
     Hands every pane of the daemon on the socket to a new daemon, which serves the same socket \
     from then on, and ends none of them. The socket is this install's daemon's unless --socket \
     names another. The new daemon is --program, or the executable the running daemon started \
-    from; --data is its data directory, or the one it finds beside itself. The new daemon is run \
-    once with --version first, and refused if it does not answer within 30 s. Every client is \
+    from; --data is its data directory, or the one it finds for itself. The new daemon is run \
+    once with --version first, and refused if it does not answer within a minute. Every client is \
     disconnected and connects again. If anything fails, the running daemon goes on as it was.";
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {

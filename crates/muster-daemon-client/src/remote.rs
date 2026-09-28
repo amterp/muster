@@ -194,8 +194,6 @@ pub fn ensure_running(
     }
 }
 
-/// What the machine is, which build is installed there, and whether its daemon can run: one
-/// round trip, since every step before a start is a wait somebody sees.
 /// Puts this build's daemon where `installed` says, unless the one there is already it.
 ///
 /// Part of starting a daemon, and on its own for handing an older one's panes to it: the older
@@ -209,6 +207,8 @@ pub fn install(remote: &impl Far, installed: &Installed, carried: &Carried) -> R
     Ok(())
 }
 
+/// What the machine is, which build is installed there, and whether its daemon can run: one
+/// round trip, since every step before a start is a wait somebody sees.
 fn survey(remote: &impl Far, installed: &Installed) -> Result<(Platform, String, bool), String> {
     let said = remote.shell(&format!(
         "printf '%s\\n' \"$(uname -sm)\" \"$(cat {} 2>/dev/null)\"; \
