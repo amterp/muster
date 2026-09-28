@@ -174,7 +174,10 @@ impl Reporting {
     /// Whether the pane has produced output in each of the last [`RESTLESS_SECONDS`] seconds,
     /// all of them after `since`.
     fn restless_since(&self, since: Instant, now: Instant) -> bool {
-        let gap = Duration::from_secs(2);
+        // A second is recorded at the first tick with output a second or more after the last,
+        // so output that never stops records them 1.0 to 1.3 s apart at the 300 ms tick. Wider
+        // than that, some second in between had none.
+        let gap = Duration::from_millis(1500);
         let mut next = now;
         let mut running = 0;
         for &start in self.active_seconds.iter().rev() {
