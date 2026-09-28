@@ -381,3 +381,180 @@ fn claude_code_inbox_delivers_holds_or_refuses_as_recorded() {
         record(&version, &seen);
     }
 }
+
+/// What a group's log holds, as `author: body` per message.
+fn log_of(control: &mut Control, group: &str) -> Vec<String> {
+    use proto::msg_answer::{Answer, entry::What};
+    let log = proto::msg_request::Log { group: group.to_string(), since: 0 };
+    let caller = proto::msg_request::Caller {
+        as_name: Some("observer".to_string()),
+        ..proto::msg_request::Caller::default()
+    };
+    let asked = proto::MsgRequest {
+        caller: Some(caller),
+        request: Some(proto::msg_request::Request::Log(log)),
+    };
+    let asked = control.ask(proto::request::Service::Msg(asked));
+    let Some(proto::answer::Detail::Msg(proto::MsgAnswer {
+        answer: Some(Answer::Entries(entries)),
+        ..
+    })) = asked.answer.detail
+    else {
+        return Vec::new();
+    };
+    entries
+        .groups
+        .iter()
+        .flat_map(|group| &group.entries)
+        .filter_map(|entry| match &entry.what {
+            Some(What::Message(message)) => Some(format!("{}: {}", message.author, message.body)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Who is in a group, as the daemon has it.
+fn members_of(control: &mut Control, group: &str) -> Vec<String> {
+    let who = proto::msg_request::Who { group: Some(group.to_string()) };
+    let asked =
+        proto::MsgRequest { caller: None, request: Some(proto::msg_request::Request::Who(who)) };
+    match control.ask(proto::request::Service::Msg(asked)).answer.detail {
+        Some(proto::answer::Detail::Msg(proto::MsgAnswer {
+            answer: Some(proto::msg_answer::Answer::Members(members)),
+            ..
+        })) => members.members.into_iter().map(|member| member.name).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn agent_state(control: &mut Control, pane: &str) -> proto::AgentState {
+    snapshot(control)
+        .panes
+        .iter()
+        .find(|record| record.pane == pane)
+        .map_or(proto::AgentState::Unknown, proto::Pane::agent_state)
+}
+
+/// Polls `condition` every two seconds until it holds or `within` runs out - a model's turn is
+/// what is being waited on, and it has no event of its own.
+fn until_turns(within: Duration, what: &str, mut condition: impl FnMut() -> bool) -> bool {
+    let deadline = Instant::now() + within;
+    while Instant::now() < deadline {
+        if condition() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+    eprintln!("claude-code: {what} did not happen within {within:?}");
+    false
+}
+
+#[test]
+#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
+fn two_claude_sessions_exchange_messages_through_the_daemon() {
+    if std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none() {
+        eprintln!(
+            "claude-code: skipped, MUSTER_CLAUDE_CODE_TESTS is not set; ./dev --claude-code sets it"
+        );
+        return;
+    }
+    let arguments = how_to_run().unwrap_or_else(|why| {
+        panic!(
+            "claude-code: could not run Claude Code: {why}.\n  Impact: nothing checked that two \
+             Claude sessions can message each other, so this tier did not pass.\n  Fix: install \
+             claude and log in (`claude auth login`), or set ANTHROPIC_API_KEY."
+        )
+    });
+    let commands = muster_harness::built_daemon().with_file_name("muster");
+    assert!(
+        commands.is_file(),
+        "no muster CLI at {}.\n  Impact: the sessions would have no `muster msg` to run.\n  \
+         Fix: run ./dev -b, or cargo build -p muster-cli.",
+        commands.display()
+    );
+    let bin = commands.parent().unwrap().display().to_string();
+
+    let home = std::env::var("HOME").expect("HOME is set");
+    let mut environment = vec![("HOME", home), ("USER", std::env::var("USER").unwrap_or_default())];
+    if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+        environment.push(("ANTHROPIC_API_KEY", key));
+    }
+    let environment: Vec<(&str, &str)> =
+        environment.iter().map(|(name, value)| (*name, value.as_str())).collect();
+    let daemon = daemon_with(&environment);
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+
+    // Default mode, which delivers a wake from outside the session with nothing configured
+    // (docs/observations/claude-code-2.1.283.md); `muster msg` allowed, so no prompt blocks it.
+    let settings = serde_json::json!({ "permissions": { "allow": ["Bash(muster msg:*)"] } });
+    for (index, name) in ["alpha", "beta"].iter().enumerate() {
+        let project = daemon.root().join(name);
+        std::fs::create_dir_all(&project).unwrap();
+        let file = project.join("settings.json");
+        std::fs::write(&file, settings.to_string()).unwrap();
+        let mut command: Vec<String> = arguments.iter().map(|argument| quoted(argument)).collect();
+        command.push(format!("--settings {}", quoted(&file.display().to_string())));
+        make(
+            &mut control,
+            proto::pane_request::Create {
+                command: Some(format!(
+                    "env -u MUSTER_PANE PATH={}:\"$PATH\" claude {}",
+                    quoted(&bin),
+                    command.join(" ")
+                )),
+                cwd: Some(project.display().to_string()),
+                grid: Some(proto::Grid { cols: 110, rows: 35, width_px: 1100, height_px: 700 }),
+                ..create(name, in_new_tab(&format!("t{index}")))
+            },
+        );
+    }
+    for name in ["alpha", "beta"] {
+        until_ready(&mut control, &mut input, name);
+    }
+    let say = |input: &mut Input, pane: &str, text: String| {
+        use proto::input_event::{Input as Event, Send};
+        input.send(pane, Event::Send(Send { text, enter: true }));
+    };
+
+    let nonce = format!("k{}", std::process::id());
+    say(
+        &mut input,
+        "beta",
+        "You are beta. Run this shell command now: `muster msg join --name beta --group duet`, \
+         then end your turn. Later, muster will tell you a message is unread: when it does, run \
+         the command it names, then run `muster msg post --to alpha \"pong WORD\"` with WORD \
+         replaced by the word that followed ping, and end your turn."
+            .to_string(),
+    );
+    let joined = until_turns(Duration::from_mins(2), "beta joining", || {
+        members_of(&mut control, "duet").iter().any(|name| name == "beta")
+            && agent_state(&mut control, "beta") == proto::AgentState::Idle
+    });
+    assert!(
+        joined,
+        "beta never joined and went idle: {}",
+        read_text(&mut control, "beta", 0, 0).text
+    );
+
+    say(
+        &mut input,
+        "alpha",
+        format!(
+            "You are alpha. Run these two shell commands, one after the other, then end your \
+             turn: `muster msg join --name alpha --group duet` and then `muster msg post --to \
+             beta \"ping {nonce}\"`"
+        ),
+    );
+    // Beta is idle and nobody prompts it again: only the daemon's wake through its inbox can
+    // start the turn in which it answers.
+    let answered = until_turns(Duration::from_mins(4), "beta answering", || {
+        log_of(&mut control, "duet").iter().any(|line| line == &format!("beta: pong {nonce}"))
+    });
+    if !answered {
+        for pane in ["alpha", "beta"] {
+            eprintln!("claude-code: {pane} shows:\n{}", read_text(&mut control, pane, 0, 0).text);
+        }
+    }
+    assert!(answered, "beta never answered; the log holds {:?}", log_of(&mut control, "duet"));
+}

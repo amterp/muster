@@ -92,6 +92,7 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
         },
     );
     until_text(&mut control, "p1", "over-there");
+    agents_message_each_other_over_there(&tunnel, &installed);
 
     let (reached, adopted) =
         ensure_running(&tunnel.remote(), &installed, &carried, local, &environment).unwrap();
@@ -99,4 +100,33 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
     assert_eq!(adopted.instance, started.instance);
 
     stop(local, Duration::from_secs(10)).unwrap();
+}
+
+/// The CLI the install linked into `~/.muster/bin` messages through the daemon over there: a
+/// wait blocks in the daemon until a post wakes it, with nothing polling, and the guard refuses
+/// a post on unread. A shell of its own, as an agent in a plain terminal on the devenv would be.
+fn agents_message_each_other_over_there(tunnel: &Tunnel, installed: &Installed) {
+    let muster = muster_ssh::quoted(&installed.commands.join("muster").to_string_lossy());
+    let log = muster_ssh::quoted(&installed.socket.with_extension("log").to_string_lossy());
+    let waited = muster_ssh::quoted(&installed.directory.join("waited").to_string_lossy());
+    // The wait has to be in the daemon before the post, or the post is simply read later. The
+    // daemon logs `msg.waiting` once it holds one, and the loop reads for that for at most
+    // twenty seconds - a deadline on a condition, not a wait standing in for one.
+    let said = tunnel
+        .remote()
+        .shell(&format!(
+            "M={muster}; $M msg --as a join --group g && $M msg --as b join --group g && \
+             {{ $M msg --as b wait --timeout 60 > {waited} 2>&1 & }}; \
+             i=0; until grep -q msg.waiting {log} || [ $i -ge 200 ]; do sleep 0.1; i=$((i+1)); done; \
+             $M msg --as a post ping > /dev/null; wait; echo \"waited: $(cat {waited})\"; \
+             $M msg --as b post too-soon 2>/dev/null; echo \"refused=$?\"; \
+             $M msg --as b read > /dev/null; $M msg --as b post pong > /dev/null; echo \"posted=$?\""
+        ))
+        .unwrap();
+    assert!(
+        said.contains("waited: [muster] g: 1 new (#4), from a. Read: muster msg read --group g"),
+        "the wait was answered by the post: {said}"
+    );
+    assert!(said.contains("refused=1"), "the guard refused a post on unread: {said}");
+    assert!(said.contains("posted=0"), "reading cleared the way: {said}");
 }
