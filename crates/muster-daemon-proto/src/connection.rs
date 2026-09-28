@@ -15,7 +15,7 @@ use crate::{ConnectionKind, Hello, HelloRefused, Welcome, hello_answer};
 
 /// The most a message either way may be.
 ///
-/// Larger than the command socket's megabyte because this protocol carries a page of a pane's
+/// Larger than the command socket's 8 MiB because this protocol carries a page of a pane's
 /// text and a set of detection manifests, both of which a person can make large. Still a ceiling:
 /// a peer announcing more than this is not a Muster peer, and is refused before anything is
 /// allocated for it.

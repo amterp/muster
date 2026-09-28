@@ -10,14 +10,16 @@ if your harness wants one.
 
 **Early, and specific about which parts.** Built, and covered by the suite: splits and tabs, a rebindable keymap
 that ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each
-of the first nine and one to whichever is asking for you, renaming, trading two agents' places by dragging a row,
+of the first nine and one to whichever is asking for you, states an agent reports itself where the screen cannot
+say them - `waiting` on its own build among them - renaming, trading two agents' places by dragging a row,
 configuration that reloads when you save it, a CLI that drives the window from inside a pane, a notification when
-an agent needs you that takes you to the
-pane that asked, a second daemon on an SSH machine in the same window - where one tab can hold a laptop pane beside
-a devenv pane - several windows that each hold their own tabs and hand them to each other, and agents on one machine
-posting messages to each other and being woken by them rather than polling. Not built, and worth knowing before you
-install rather than after: the shape of a split cannot be changed once it is made, a pane on a devenv cannot drive
-the window it is drawn in, and an agent on the devenv cannot message one on the laptop.
+an agent needs you that takes you to the pane that asked, a second daemon on an SSH machine in the same window -
+where one tab can hold a laptop pane beside a devenv pane - several windows that each hold their own tabs and hand
+them to each other, a newer Muster taking over an older daemon's panes with their agents still running, and agents
+on one machine posting messages to each other and being woken by them rather than polling. Not built, and worth
+knowing before you install rather than after: a split keeps the direction it was made in - its size changes, its
+orientation does not - a pane on a devenv cannot drive the window it is drawn in, since nothing carries the window's
+address over the connection, and an agent on the devenv cannot message one on the laptop.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.
@@ -64,8 +66,8 @@ setting, and `docs/cli/limits.md` is the same honest account for the CLI.
 - **Cross-platform stays open.** macOS ships first. The shell layer is thin and per-OS; nothing outside it may assume
   an OS, and the core is portable by construction rather than by intention - it is a different language from the
   shell, so an OS type cannot leak into it by accident. Inside that layer the most native answer wins: portability
-  constrains the core, and is never a reason to make Muster feel less like the machine it is running on. Both chosen
-  organs already run on Linux and Windows.
+  constrains the core, and is never a reason to make Muster feel less like the machine it is running on. libghostty
+  already runs on Linux and Windows, and muster-daemon on Linux; Windows is not yet a target for the daemon.
 - **AI-native surface.** Configuration is files. Every action runs through one shared path exposed to GUI, CLI, and
   API alike - parity by construction, not by discipline - so an agent can drive Muster as readily as a person can,
   through Muster's own surface and in Muster's own vocabulary.

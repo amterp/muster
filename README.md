@@ -20,7 +20,7 @@ same signature.
 ## What it is
 
 Split a window into panes, put a coding agent in each, and read the whole lot at a glance. Every
-agent's state - working, waiting on you, done, idle - sits on its row in the agent list down the
+agent's state - working, blocked on you, waiting on its own build, done, idle - sits on its row in the agent list down the
 side, and a pane whose agent wants noticing carries it on its own edge too. Fifteen agents is
 something you read rather than something you click through.
 
@@ -36,8 +36,8 @@ says what it would end before it ends it.
 
 ## What you get
 
-**A number on every agent.** `cmd+1` to `cmd+9` reach the first nine rows of the list, counting past
-every tab and every machine, so an agent is one keystroke away whether or not a split is showing it.
+**A number on every agent.** `cmd+1` to `cmd+9` reach the first nine rows of the list, counting across
+the window's tabs and machines, so an agent is one keystroke away whether or not a split is showing it.
 
 **A notification when an agent needs you, and one click back to it.** An agent that starts waiting
 on you, or that finishes while nobody is looking, says so - and activating the notification takes
@@ -59,14 +59,14 @@ another window, or use Move Tab to Window, and its agents go with it still runni
 window keeps its tabs, and any `muster` command reaches any tab from any window.
 
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
-same list as the ones on your laptop. `cmd+1` and `cmd+2` switch between a laptop tab and a devenv
-tab the way tabs switch everywhere else, and one tab can hold both at once - drag a devenv agent's
+same list as the ones on your laptop. `cmd+shift+]` and `cmd+shift+[` step between a laptop tab and a
+devenv tab the way they do in Ghostty, and one tab can hold both at once - drag a devenv agent's
 row onto a laptop tab's caption and they sit side by side.
 
 **A CLI that drives the window.** `muster` reports what every agent is doing, waits for one to
 finish, reads back what any pane has printed, makes panes and tabs, moves and resizes them, names
-them, types into them, moves the keyboard and zooms. Every pane Muster opens can reach it, and it
-talks to the window that pane is drawn in - the address is in the pane's environment, so nothing
+them, types into them, moves the keyboard and zooms. Every pane Muster opens on your laptop can reach
+it, and it talks to the window that pane is drawn in - the address is in the pane's environment, so nothing
 has to be told which window it belongs to.
 
     muster window
@@ -111,10 +111,14 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- A pane on an SSH machine cannot drive the window it is drawn in.
+- A pane on an SSH machine cannot drive the window it is drawn in: no `muster` for Linux ships, and
+  nothing carries the window's address over the connection.
+- A split keeps the direction it was made in. Its size can be dragged and evened out, but a side by
+  side pair cannot be turned into one above the other, and a pane moved into a tab lands where Muster
+  puts it.
 - Reopen Closed Window brings back the most recent closed window. An older one comes back when you
   go to one of its tabs - `muster window` lists them under the closed window's name.
-- Two windows cannot show the same tab. The session daemon allows one client per terminal, so a
+- Two windows cannot show the same tab. Muster's daemon draws each pane in one window at a time, so a
   tab is in exactly one window and moves between them rather than being shown in both.
 - A pane on its own cannot be dragged to another window; it goes with its tab.
 

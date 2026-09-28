@@ -84,7 +84,7 @@ the pane's live modes, so a multi-line message reaches a harness fenced as one p
 than as a submission per line.
 
 `--file` and `-` drop every trailing newline, as command substitution does, and keep the ones
-inside the text. A request carries at most 1 MiB, so a larger file is refused with exit 1 before
+inside the text. A request carries at most 8 MiB, so a larger file is refused with exit 1 before
 anything is sent; send a line pointing at the file instead. Only a hyphen standing alone reads
 stdin, which leaves one way to send a lone hyphen: `printf - | muster pane send -`.
 
@@ -250,11 +250,17 @@ on, so with two windows open a change that names no tab or pane - `pane new` wit
 A change that does name one goes to whichever window answers first, which carries it to the window
 holding that tab. `tab move` names enough when it gives both `--tab` and `--window`.
 
-Questions do not refuse. `muster window` and `muster pane read` answer for every window that is
-listening, because naming none of them is what "what is everything doing" means. Their output
-grows a heading per window when more than one answers, and `--json` becomes `{"windows": [...]}`
-with each window's ordinary answer inside - so `.windows[].panes[]` reads across all of them.
-With one window open, both are exactly what they were.
+Questions do not refuse. `muster window` answers for every window that is listening, because
+naming none of them is what "what is everything doing" means. Its output grows a heading per
+window when more than one answers, and `--json` becomes `{"windows": [...]}` with each window's
+ordinary answer inside - so `.windows[].panes[]` reads across all of them. With one window open,
+it is exactly what it was.
+
+`muster pane read` and `muster daemons` are asked of every window the same way, and cannot yet
+show what more than one of them answered: each window's heading is followed by the words `a
+pane's text` or `a list of daemons`, and `--json` puts them under `unreadable`. Pass `--socket`
+to read one window's answer. `muster pane wait` and `muster window --watch` refuse outright with
+several windows open, and name the sockets.
 
 ## A zoom with nothing to zoom still succeeds
 
