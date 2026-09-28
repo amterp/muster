@@ -9,7 +9,7 @@ use muster_core::diagnostics::{clock, log, poison};
 use muster_core::fields;
 use muster_core::reconnect::{self, Attempts};
 
-use crate::remote::{Remote, quoted};
+use crate::remote::{Remote, client_arguments, quoted};
 
 /// What a tunnel says about itself, to whoever is holding it.
 ///
@@ -578,20 +578,9 @@ fn forward_back(forward: &Forward) {
 /// otherwise hold that up for as long as ssh takes to notice.
 fn take_back(forward: &Forward) {
     let Some(reverse) = &forward.reverse else { return };
-    let removed = bounded(
-        forward,
-        "rm -f",
-        [
-            "-S",
-            &forward.control_path,
-            "-o",
-            "BatchMode=yes",
-            &forward.host,
-            "rm",
-            "-f",
-            &quoted(&reverse.remote_path),
-        ],
-    );
+    let mut arguments = client_arguments(&forward.host, &forward.control_path);
+    arguments.extend(["rm".to_string(), "-f".to_string(), quoted(&reverse.remote_path)]);
+    let removed = bounded(forward, "rm -f", arguments);
     if let Err(detail) = removed {
         log::debug(
             "tunnel.reverse_left",

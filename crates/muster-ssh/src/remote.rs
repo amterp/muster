@@ -57,7 +57,7 @@ impl Remote {
     /// The same, with bytes on the command's standard input.
     fn run_on(&self, argv: &[&str], input: &[u8]) -> Result<String, String> {
         let mut child = Command::new("ssh")
-            .args(["-S", &self.control_path, "-o", "BatchMode=yes", &self.host])
+            .args(client_arguments(&self.host, &self.control_path))
             .args(argv)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -152,6 +152,15 @@ impl Remote {
             )
         })
     }
+}
+
+/// What an ssh riding a master is told, up to and including the host.
+///
+/// Shared by everything that runs a command over a master rather than asking it a `-O`
+/// question, so that what makes such a client safe to run at Muster's control path is said
+/// once.
+pub(crate) fn client_arguments(host: &str, control_path: &str) -> Vec<String> {
+    ["-S", control_path, "-o", "BatchMode=yes", host].map(str::to_string).to_vec()
 }
 
 /// One shell word, whatever is in it.
