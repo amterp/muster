@@ -141,6 +141,22 @@ mod tests {
         assert_eq!(read("one\ntwo\n", false).tail(0).text, "one\ntwo\n");
     }
 
+    /// The rows beneath a prompt are the blank rest of the screen rather than rows anything
+    /// printed, so the count starts from the last row with anything on it. Counted as rows, a
+    /// pane that had just cleared its screen answered three blank ones, which reads exactly
+    /// like a pane that printed nothing.
+    #[test]
+    fn a_count_starts_at_the_last_row_with_anything_on_it() {
+        let cut = read("one\ntwo\n❯ \n\n  \n\n", false).tail(2);
+        assert_eq!(cut.text, "two\n❯ \n");
+        assert!(cut.truncated, "one row was left above");
+        let whole = read("❯\n\n\n", false).tail(0);
+        assert_eq!(whole.text, "❯\n", "nor does everything end in the blank rest of the screen");
+        assert!(!whole.truncated, "blank rows left out are not history left out");
+        assert_eq!(read("a\n\nb\n\n", false).tail(3).text, "a\n\nb\n", "a blank row between two");
+        assert_eq!(read("\n\n", false).tail(5).text, "", "a blank screen is nothing");
+    }
+
     /// A backend that truncated says so whatever the count does. The two are different
     /// claims about the same sentence - one is what the backend could not reach, the other
     /// what Muster chose not to hand over - and either one makes it true.
