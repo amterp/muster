@@ -1,7 +1,7 @@
 //! A followed daemon's own log records reach this run's log, saying which daemon wrote them.
 //!
-//! A file of its own because it installs this process's log sink, which every test in a
-//! binary shares.
+//! A binary of its own rather than a module of `daemon_client`, because it installs this
+//! process's log sink, which every test in a binary shares.
 
 use std::sync::{Arc, Mutex};
 

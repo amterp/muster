@@ -6,5 +6,4 @@ mod environment;
 mod follow;
 mod input;
 mod launch;
-mod log_relay;
 mod stream;
