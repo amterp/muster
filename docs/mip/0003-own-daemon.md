@@ -611,10 +611,11 @@ through the carried patch, since it needs the cursor's prompt state from OSC 133
 C API does not expose: history goes; at a prompt the screen is scrolled away and the shell sent a
 form feed to draw its prompt again; elsewhere the rows above the cursor go, with every kitty
 image. The surface is then sent the cleared screen as a replay, since no byte in the stream says
-what happened. On the alternate screen Ghostty does nothing and leaves the key to the program, so
-the app sends the key itself there, and `Perform{clear_screen}` only otherwise, carrying the key's
-own bytes as `unconsumed`: a program can switch screens before the daemon acts, and the daemon
-then sends it those bytes rather than swallow the key.
+what happened. On the alternate screen Ghostty does nothing and leaves the key to the program.
+The app cannot tell which screen a pane is on, and a program can switch screens before the daemon
+acts anyway, so the app always sends `Perform{clear_screen}` with the key that asked for it, and
+the daemon, finding the alternate screen, encodes that key against the program's modes and sends
+it rather than swallow it.
 
 **Mouse and wheel events go to both, always.** The surface scrolls its own viewport or selects,
 and its reports are discarded. The daemon decides from the pane's modes what the program gets: a

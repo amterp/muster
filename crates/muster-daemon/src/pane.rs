@@ -33,7 +33,7 @@ use crate::pty;
 use crate::pty::Grid;
 use crate::screen::{Cleared, Screen, Settled};
 use crate::stream::{self, Bridge, Refusal};
-use crate::writer::{self, Encoding, Input, Writer};
+use crate::writer::{self, Encoding, Input, OwnedKey, Writer};
 
 /// Told when a pane's process has ended, with the pane's serial and, when this daemon saw the
 /// process end, how it ended.
@@ -310,11 +310,11 @@ impl PaneIo {
         }
     }
 
-    /// Clears the pane's screen as Ghostty's clear_screen does, for a key that would have sent
-    /// `unconsumed`. Not while the pane is held for a handoff, as [`PaneIo::resize`] says.
-    pub(crate) fn clear_screen(&self, unconsumed: &[u8]) -> Cleared {
+    /// Clears the pane's screen as Ghostty's clear_screen does, for the key that asked. Not while
+    /// the pane is held for a handoff, as [`PaneIo::resize`] says.
+    pub(crate) fn clear_screen(&self, key: Option<&OwnedKey>) -> Cleared {
         let mut screen = self.screen();
-        let clear = Performed::ClearScreen { unconsumed: unconsumed.to_vec() };
+        let clear = Performed::ClearScreen { key: key.cloned() };
         if self.deferred_while_held(clear) {
             return Cleared::Deferred;
         }
@@ -398,12 +398,16 @@ impl PaneIo {
         for performed in deferred.performed {
             match performed {
                 Performed::Reset => self.reset(),
-                Performed::ClearScreen { unconsumed } => match self.clear_screen(&unconsumed) {
+                Performed::ClearScreen { key } => match self.clear_screen(key.as_ref()) {
                     Cleared::AtPrompt => {
                         self.queue(Input::Reply(vec![0x0c]));
                     }
+                    // Queued as the key itself, so the writer encodes it against the modes the
+                    // program has after the clear, as it does for a clear that was not held.
                     Cleared::Alternate => {
-                        self.queue(Input::Reply(unconsumed));
+                        if let Some(key) = key {
+                            self.queue(Input::Key(key));
+                        }
                     }
                     Cleared::Elsewhere | Cleared::Deferred => {}
                 },
@@ -520,9 +524,9 @@ struct Deferred {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum Performed {
     Reset,
-    /// With the bytes of the key that asked, which the program is sent on the alternate screen.
+    /// With the key that asked, which the program is sent on the alternate screen.
     ClearScreen {
-        unconsumed: Vec<u8>,
+        key: Option<OwnedKey>,
     },
 }
 

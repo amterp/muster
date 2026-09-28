@@ -677,10 +677,11 @@ fn clear_screen_during_a_handoff_that_fails_is_done_after_it() {
     until("the history to go", || !read_text(&mut control, "p1", 0, 0).text.contains("\n59\n"), ());
 }
 
-/// On the alternate screen that clear is the key's own bytes to the program, and they still
-/// reach it when the clear waited out a handoff that failed.
+/// On the alternate screen that clear is the key, sent to the program, and it still reaches it
+/// when the clear waited out a handoff that failed.
 #[test]
 fn clear_screen_on_the_alternate_screen_during_a_handoff_that_fails_sends_the_key() {
+    const KEY_K: u32 = 30;
     let mut daemon =
         daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-ready,exit-before-ready")]);
     let mut control = daemon.connect();
@@ -698,10 +699,14 @@ fn clear_screen_on_the_alternate_screen_during_a_handoff_that_fails_sends_the_ke
     let replacing = daemon.start_replacing(None);
     daemon.paused();
     let clear = input_event::perform::Action::ClearScreen(input_event::perform::ClearScreen {});
-    input.send(
-        "p1",
-        Event::Perform(input_event::Perform { action: Some(clear), unconsumed: b"k".to_vec() }),
-    );
+    let key = input_event::Key {
+        action: proto::KeyAction::Press.into(),
+        key: KEY_K,
+        text: "k".to_string(),
+        unshifted_codepoint: u32::from('k'),
+        ..input_event::Key::default()
+    };
+    input.send("p1", Event::Perform(input_event::Perform { action: Some(clear), key: Some(key) }));
     std::thread::sleep(std::time::Duration::from_millis(300));
     daemon.resume();
     let answer = daemon.finish_replacing(replacing);

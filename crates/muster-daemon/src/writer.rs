@@ -62,9 +62,10 @@ pub(crate) enum Input {
     Reset,
     /// Ghostty's clear_screen: the daemon's terminal cleared and the surface sent the result,
     /// and a shell at its prompt sent a form feed to draw the prompt again. On the alternate
-    /// screen nothing is cleared, and the program is sent `unconsumed`, the key's own bytes.
+    /// screen nothing is cleared, and the program is sent the key that asked, encoded here
+    /// against its modes as if no binding had taken it.
     ClearScreen {
-        unconsumed: Vec<u8>,
+        key: Option<OwnedKey>,
     },
 }
 
@@ -283,19 +284,7 @@ impl Writer {
         let modes = encoding.modes;
         match input {
             Input::Reply(bytes) => bytes,
-            Input::Key(key) => {
-                encoding.key.set_option_as_alt(key.option_as_alt);
-                let raw = RawKeyEvent {
-                    action: key.action,
-                    code: key.code,
-                    modifiers: key.modifiers,
-                    consumed_modifiers: key.consumed_modifiers,
-                    text: &key.text,
-                    unshifted_codepoint: key.unshifted_codepoint,
-                    composing: key.composing,
-                };
-                self.encoded(encoding.key.encode_raw(&raw))
-            }
+            Input::Key(key) => self.key(&mut encoding, &key),
             Input::Mouse(event) => {
                 if !modes.mouse_tracking {
                     return Vec::new();
@@ -385,16 +374,37 @@ impl Writer {
         let Some(io) = self.io.upgrade() else { return Vec::new() };
         match input {
             Input::Reset => io.reset(),
-            Input::ClearScreen { unconsumed } => {
-                return match io.clear_screen(unconsumed) {
+            Input::ClearScreen { key } => {
+                return match io.clear_screen(key.as_ref()) {
                     Cleared::AtPrompt => vec![0x0c],
-                    Cleared::Alternate => unconsumed.clone(),
+                    // Encoded after the clear rather than before, since the program may have
+                    // changed its keyboard modes along with its screen.
+                    Cleared::Alternate => key.as_ref().map_or_else(Vec::new, |key| {
+                        let shared = Arc::clone(&self.encoding);
+                        let mut encoding = poison::lock(&shared, "daemon.pane.encoding");
+                        self.key(&mut encoding, key)
+                    }),
                     Cleared::Elsewhere | Cleared::Deferred => Vec::new(),
                 };
             }
             _ => {}
         }
         Vec::new()
+    }
+
+    /// A keystroke, encoded against the pane's modes.
+    fn key(&self, encoding: &mut Encoding, key: &OwnedKey) -> Vec<u8> {
+        encoding.key.set_option_as_alt(key.option_as_alt);
+        let raw = RawKeyEvent {
+            action: key.action,
+            code: key.code,
+            modifiers: key.modifiers,
+            consumed_modifiers: key.consumed_modifiers,
+            text: &key.text,
+            unshifted_codepoint: key.unshifted_codepoint,
+            composing: key.composing,
+        };
+        self.encoded(encoding.key.encode_raw(&raw))
     }
 
     fn track_buttons(&mut self, event: &MouseEvent) {

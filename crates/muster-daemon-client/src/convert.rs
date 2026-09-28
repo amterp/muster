@@ -184,7 +184,7 @@ pub fn input(
         }
         InputEvent::Bytes(bytes) => input_event::Input::Perform(input_event::Perform {
             action: Some(input_event::perform::Action::Raw(bytes)),
-            unconsumed: Vec::new(),
+            key: None,
         }),
         InputEvent::Wheel(wheel) => input_event::Input::Wheel(input_event::Wheel {
             dx: wheel.dx,

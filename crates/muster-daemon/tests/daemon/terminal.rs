@@ -373,40 +373,50 @@ fn xtversion_is_answered_as_ghostty_with_term_program_version() {
 }
 
 fn clear_screen(daemon: &Daemon, pane: &str) {
-    clear_screen_with_key(daemon, pane, b"");
+    clear_screen_with_key(daemon, pane, None);
 }
 
-/// clear_screen from a key that would have sent `unconsumed` had its binding not consumed it.
-fn clear_screen_with_key(daemon: &Daemon, pane: &str, unconsumed: &[u8]) {
+/// clear_screen from the key whose binding asked for it.
+fn clear_screen_with_key(daemon: &Daemon, pane: &str, key: Option<proto::input_event::Key>) {
     use proto::input_event::{Input as Event, Perform, perform};
     let mut input = muster_harness::Input::connect(daemon.socket_path());
     input.send(
         pane,
         Event::Perform(Perform {
             action: Some(perform::Action::ClearScreen(perform::ClearScreen {})),
-            unconsumed: unconsumed.to_vec(),
+            key,
         }),
     );
 }
 
-/// On the alternate screen Ghostty leaves the key to the program, so a clear_screen the
-/// surface sent as the program switched screens reaches the program as the key's own bytes.
+/// On the alternate screen Ghostty leaves the key to the program, so a clear_screen sent there
+/// reaches the program as the key, encoded against the program's own keyboard modes - here the
+/// kitty protocol's, under which cmd+k is a sequence rather than nothing.
 #[test]
 fn clear_screen_on_the_alternate_screen_sends_the_program_the_key() {
+    const KEY_K: u32 = 30;
+    const MODS_SUPER: u32 = 8;
     let daemon = daemon();
     let mut control = daemon.connect();
     let heard = daemon.root().join("heard");
     let script = format!(
-        "printf 'before\\n\\033[?1049hvim'; stty raw -echo min 1 time 0; \
-         dd bs=1 count=1 of={} 2>/dev/null; sleep 30",
+        "printf 'before\\n\\033[?1049h\\033[>1uvim'; stty raw -echo min 1 time 0; \
+         dd bs=64 count=1 of={} 2>/dev/null; sleep 30",
         heard.display()
     );
     make(&mut control, running("p1", "t1", script));
     until_text(&mut control, "p1", "vim");
 
-    clear_screen_with_key(&daemon, "p1", b"k");
+    let key = proto::input_event::Key {
+        action: proto::KeyAction::Press.into(),
+        key: KEY_K,
+        mods: MODS_SUPER,
+        unshifted_codepoint: u32::from('k'),
+        ..proto::input_event::Key::default()
+    };
+    clear_screen_with_key(&daemon, "p1", Some(key));
 
-    assert_eq!(bytes_in(&heard), b"k", "the program gets the key");
+    assert_eq!(bytes_in(&heard), b"\x1b[107;9u", "the program gets the key, as it asked keys sent");
     assert!(read_text(&mut control, "p1", 0, 0).text.contains("vim"), "nothing was cleared");
 }
 

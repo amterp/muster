@@ -99,25 +99,7 @@ fn input_of(input: input_event::Input) -> Option<Input> {
     use input_event::Input as Event;
     let modifiers = |bits: u32| Modifiers(u16::try_from(bits).unwrap_or(0));
     match input {
-        Event::Key(key) => Some(Input::Key(OwnedKey {
-            action: match key.action() {
-                proto::KeyAction::Release => KeyAction::Release,
-                proto::KeyAction::Repeat => KeyAction::Repeated,
-                proto::KeyAction::Press | proto::KeyAction::Unspecified => KeyAction::Press,
-            },
-            code: key.key,
-            modifiers: modifiers(key.mods).0,
-            consumed_modifiers: modifiers(key.consumed_mods).0,
-            unshifted_codepoint: key.unshifted_codepoint,
-            composing: key.composing,
-            option_as_alt: match key.option_as_alt() {
-                proto::OptionAsAlt::Always => OptionAsAlt::Always,
-                proto::OptionAsAlt::Left => OptionAsAlt::LeftOnly,
-                proto::OptionAsAlt::Right => OptionAsAlt::RightOnly,
-                proto::OptionAsAlt::Never | proto::OptionAsAlt::Unspecified => OptionAsAlt::Never,
-            },
-            text: key.text,
-        })),
+        Event::Key(key) => Some(Input::Key(owned_key(key))),
         Event::Mouse(mouse) => {
             let action = match mouse.action() {
                 proto::MouseAction::Press => MouseAction::Press,
@@ -148,12 +130,34 @@ fn input_of(input: input_event::Input) -> Option<Input> {
         Event::Paste(paste) => Some(Input::Paste { text: paste.text, confirmed: paste.confirmed }),
         Event::Send(send) => Some(Input::Send { text: send.text, enter: send.enter }),
         Event::Focus(focus) => Some(Input::Focus(focus.focused)),
-        Event::Perform(input_event::Perform { action: Some(action), unconsumed }) => match action {
+        Event::Perform(input_event::Perform { action: Some(action), key }) => match action {
             perform::Action::Raw(bytes) => Some(Input::Reply(bytes)),
             perform::Action::Reset(_) => Some(Input::Reset),
-            perform::Action::ClearScreen(_) => Some(Input::ClearScreen { unconsumed }),
+            perform::Action::ClearScreen(_) => Some(Input::ClearScreen { key: key.map(owned_key) }),
         },
         Event::Perform(input_event::Perform { action: None, .. }) => None,
+    }
+}
+
+fn owned_key(key: input_event::Key) -> OwnedKey {
+    OwnedKey {
+        action: match key.action() {
+            proto::KeyAction::Release => KeyAction::Release,
+            proto::KeyAction::Repeat => KeyAction::Repeated,
+            proto::KeyAction::Press | proto::KeyAction::Unspecified => KeyAction::Press,
+        },
+        code: key.key,
+        modifiers: u16::try_from(key.mods).unwrap_or(0),
+        consumed_modifiers: u16::try_from(key.consumed_mods).unwrap_or(0),
+        unshifted_codepoint: key.unshifted_codepoint,
+        composing: key.composing,
+        option_as_alt: match key.option_as_alt() {
+            proto::OptionAsAlt::Always => OptionAsAlt::Always,
+            proto::OptionAsAlt::Left => OptionAsAlt::LeftOnly,
+            proto::OptionAsAlt::Right => OptionAsAlt::RightOnly,
+            proto::OptionAsAlt::Never | proto::OptionAsAlt::Unspecified => OptionAsAlt::Never,
+        },
+        text: key.text,
     }
 }
 
