@@ -646,7 +646,7 @@ impl<S: Store> Messaging<S> {
             body: body.to_string(),
         };
         let seq = self.append(group, message, now_ms)?;
-        let targets = self.targets(group, author, addressees);
+        let targets = self.targets(group, &self.groups[group].policy, author, addressees);
         let mut posted = Posted {
             author: author.to_string(),
             group: group.to_string(),
@@ -1737,19 +1737,20 @@ impl<S: Store> Messaging<S> {
         count as u64
     }
 
-    /// Whom a message by `author` wakes: its addressees, or the ring set its group's policy
-    /// gives for its author (MIP-4, section 5).
+    /// Whom a message by `author` wakes: its addressees, or the ring set `policy` gives for its
+    /// author (MIP-4, section 5).
     pub(crate) fn targets(
         &self,
         group: &str,
+        policy: &Policy,
         author: &str,
         addressees: Vec<String>,
     ) -> Vec<String> {
         if !addressees.is_empty() {
             return addressees;
         }
-        let group = &self.groups[group];
-        group.members.iter().filter(|member| group.policy.rings(author, member)).cloned().collect()
+        let members = &self.groups[group].members;
+        members.iter().filter(|member| policy.rings(author, member)).cloned().collect()
     }
 
     /// The machines other than `except` with a member in `group`, which a new entry there must
@@ -1779,9 +1780,13 @@ impl<S: Store> Messaging<S> {
     /// What to tell `name` about `group`: its unread messages that would wake it, or nothing
     /// when there are none.
     pub(crate) fn notice(&self, name: &str, group: &str) -> Option<Notice> {
+        self.notice_under(name, group, &self.groups.get(group)?.policy)
+    }
+
+    /// [`Self::notice`], read under `policy` rather than the group's own.
+    fn notice_under(&self, name: &str, group: &str, policy: &Policy) -> Option<Notice> {
         let kept = self.groups.get(group)?;
         let cursor = self.cursor(name, group);
-        let policy = &kept.policy;
         // A paused group wakes nobody but the human, however it would (MIP-4, section 8).
         if policy.paused && name != HUMAN {
             return None;
@@ -1838,13 +1843,27 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Reach {
+        let policy = self.groups[group].policy.clone();
+        self.reach_under(name, group, &policy, posted, presence, now_ms)
+    }
+
+    /// [`Self::reach`], for messages posted under `policy` rather than the group's policy now.
+    pub(crate) fn reach_under(
+        &mut self,
+        name: &str,
+        group: &str,
+        policy: &Policy,
+        posted: &mut Posted,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Reach {
         let Some(participant) = self.participants.get(name) else {
             return Reach::Gone;
         };
         if participant.gone {
             return Reach::Gone;
         }
-        let Some(notice) = self.notice(name, group) else {
+        let Some(notice) = self.notice_under(name, group, policy) else {
             return Reach::Waiting;
         };
         let woken_before = participant.woken.contains(group);

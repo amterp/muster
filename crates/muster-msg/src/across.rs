@@ -715,7 +715,14 @@ impl<S: Store> Messaging<S> {
         if fresh.first().is_some_and(|first| first.seq != head + 1) {
             return Err(head);
         }
-        group.policy = peer.policy(caught.policy);
+        // A batch carries the policy at its end, and the log records that a policy was set but
+        // not which. So a message rings under the replica's previous policy until the batch sets
+        // a new one, and under the final policy after; a replica that held nothing has no
+        // previous policy. Pauses are exact, since each pause and resume is an entry.
+        let policy = peer.policy(caught.policy);
+        let mut ringing = if head > 0 { group.policy.clone() } else { policy.clone() };
+        let mut paused = paused_before(&fresh, policy.paused);
+        group.policy = policy;
         let mut posted = Posted {
             author: String::new(),
             group: key.clone(),
@@ -729,9 +736,11 @@ impl<S: Store> Messaging<S> {
         let mut resumed = None;
         // Reached once the batch is in, and only those still members then: a replica refetched
         // from nothing replays its whole log, and a member who left since was woken for it
-        // already, before it left.
-        let mut targets: Vec<String> = Vec::new();
+        // already, before it left. Each is woken under the policy of its last message posted
+        // while the group was not paused, and held if every one came while it was.
+        let mut targets: Vec<(String, Option<Policy>)> = Vec::new();
         let mut human_left = false;
+        let mut forgotten = false;
         for entry in fresh {
             let entry = peer.entry(entry);
             let group = self.groups.get_mut(&key).expect("made above");
@@ -745,10 +754,18 @@ impl<S: Store> Messaging<S> {
                     human_left |= who == HUMAN;
                 }
                 What::Changed { change: Change::Paused, .. } => {
+                    paused = true;
                     resumed = None;
+                    forgotten = true;
                     self.forget_wakes(&key);
                 }
-                What::Changed { by, change: Change::Resumed } => resumed = Some(by.clone()),
+                What::Changed { by, change: Change::Resumed } => {
+                    paused = false;
+                    resumed = Some(by.clone());
+                }
+                What::Changed { change: Change::SetPolicy, .. } => {
+                    ringing = group.policy.clone();
+                }
                 _ => {}
             }
             let group = self.groups.get_mut(&key).expect("made above");
@@ -758,20 +775,15 @@ impl<S: Store> Messaging<S> {
             };
             group.log.push(entry);
             let Some((author, to)) = message else { continue };
-            for target in self.targets(&key, &author, to) {
-                if !targets.contains(&target) {
-                    targets.push(target);
+            let live = (!paused).then(|| Policy { paused: false, ..ringing.clone() });
+            for target in self.targets(&key, &ringing, &author, to) {
+                match targets.iter_mut().find(|(held, _)| *held == target) {
+                    Some((_, under)) => *under = live.clone().or(under.take()),
+                    None => targets.push((target, live.clone())),
                 }
             }
         }
-        for target in targets {
-            let member = self.groups[&key].members.contains(&target);
-            if !member || !self.participants.contains_key(&target) {
-                continue;
-            }
-            let reach = self.reach_member(&target, &key, &mut posted, presence, now_ms);
-            posted.reached.push((target, reach));
-        }
+        self.reach_batch(&key, targets, forgotten, &mut posted, presence, now_ms);
         if let Some(by) = resumed
             && !self.groups[&key].policy.paused
         {
@@ -803,6 +815,37 @@ impl<S: Store> Messaging<S> {
             unsaved,
             more,
         })
+    }
+
+    /// Reaches this machine's members a replica's new messages are for, each under the policy
+    /// its message was posted under, or as held by a pause if every one of them came while the
+    /// group was paused (see [`Self::apply`]). `forgotten` says the batch paused the group.
+    fn reach_batch(
+        &mut self,
+        key: &str,
+        targets: Vec<(String, Option<Policy>)>,
+        forgotten: bool,
+        posted: &mut Posted,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) {
+        for (target, under) in targets {
+            let member = self.groups[key].members.contains(&target);
+            if !member || !self.participants.contains_key(&target) {
+                continue;
+            }
+            let reach = match under {
+                Some(policy) => self.reach_under(&target, key, &policy, posted, presence, now_ms),
+                None if target == HUMAN => self.reach(&target, key, posted, presence, now_ms),
+                None => Reach::Paused,
+            };
+            posted.reached.push((target, reach));
+        }
+        // Woken for a message from before a pause the batch also holds, as the home woke its own
+        // members when it was posted; the pause then forgot that, as it did at the home.
+        if forgotten && self.groups[key].policy.paused {
+            self.forget_wakes(key);
+        }
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1092,6 +1135,17 @@ fn base(key: &str) -> String {
 
 fn mismatched(call: &Call) -> Refusal {
     Refusal::Store { error: format!("the answer to {call:?} was for another kind of call") }
+}
+
+/// Whether a group was paused before the first of `entries`: the opposite of what the first pause
+/// or resume among them did, since each changes it, or with neither, as it is after them.
+fn paused_before(entries: &[Entry], after: bool) -> bool {
+    let first = entries.iter().find_map(|entry| match &entry.what {
+        What::Changed { change: Change::Paused, .. } => Some(false),
+        What::Changed { change: Change::Resumed, .. } => Some(true),
+        _ => None,
+    });
+    first.unwrap_or(after)
 }
 
 /// Keeps only the last of `wakes` that tells the windows what waits for the human: it holds the
