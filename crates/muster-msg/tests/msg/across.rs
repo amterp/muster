@@ -87,6 +87,8 @@ struct Wire {
     now: u64,
     /// Every wake either machine made, for its daemon to deliver.
     wakes: Vec<(Side, Wake)>,
+    /// Waits a replica's entries ended, on either machine.
+    ended: Vec<(Side, u64)>,
 }
 
 impl Wire {
@@ -99,6 +101,7 @@ impl Wire {
             losing: false,
             now: 0,
             wakes: Vec::new(),
+            ended: Vec::new(),
         };
         wire.mend();
         wire
@@ -150,6 +153,7 @@ impl Wire {
         let (asker, sessions) = self.split(side);
         let settle = asker.settle(&side.peer(), call, answered.reply, sessions, now);
         self.wakes.extend(settle.applied.wakes.into_iter().map(|wake| (side, wake)));
+        self.ended.extend(settle.applied.ended.into_iter().map(|ticket| (side, ticket)));
         settle.result
     }
 
@@ -168,6 +172,7 @@ impl Wire {
             let peer = home.peer();
             reached.extend(applied.reached.into_iter().map(|(name, r)| (peer.inward(&name), r)));
             self.wakes.extend(applied.wakes.into_iter().map(|wake| (home.other(), wake)));
+            self.ended.extend(applied.ended.into_iter().map(|ticket| (home.other(), ticket)));
         }
         reached
     }
@@ -953,4 +958,77 @@ fn a_replica_whose_call_went_unanswered_may_be_behind_until_it_hears_again() {
     assert_eq!(wire.devenv.behind("review"), Some("lap"));
     wire.post(Side::Laptop, &builder, None, &[], "the home's next entry").unwrap();
     assert_eq!(wire.devenv.behind("review"), None);
+}
+
+/// Entries a refetch brings wake the human once, for all of them: each would otherwise raise
+/// the window's notice again, one message at a time.
+#[test]
+fn a_refetch_tells_the_human_once_for_all_it_brings() {
+    let mut wire = Wire::new();
+    wire.sessions.attended.set(true);
+    let critic = session("critic");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+
+    wire.cut();
+    for body in ["one", "two", "three"] {
+        let now = wire.tick();
+        let (devenv, sessions) = wire.split(Side::Devenv);
+        devenv.post(&critic, None, &[], body, sessions, now).unwrap();
+    }
+    wire.wakes.clear();
+    wire.mend();
+    let told: Vec<u64> = wire
+        .wakes
+        .iter()
+        .filter(|(side, wake)| *side == Side::Laptop && wake.via == Via::Human)
+        .map(|(_, wake)| wake.notice.count)
+        .collect();
+    assert_eq!(told, [3]);
+}
+
+/// A leave from every group is refused whole when a group's policy keeps the caller in one, as
+/// on one machine: no group kept elsewhere is left first.
+#[test]
+fn a_leave_from_every_group_is_refused_before_any_is_left() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.group_new(&builder, "desk", Some(directed(&["director"])), sessions, now).unwrap();
+
+    let refused = laptop.route_leave(&builder, None, sessions);
+    assert!(
+        matches!(&refused, Err(Refusal::NotPermitted { group, action: Action::Leave, .. }) if group == "desk"),
+        "{refused:?}"
+    );
+}
+
+/// The home removes a member on another machine by the name it knows it by, and that machine's
+/// replica lets it go as a leave would: no cursor left to refetch for, and a wait kept to the
+/// group ended.
+#[test]
+fn a_member_on_another_machine_can_be_removed_and_is_let_go_there() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let waited = devenv.wait(&critic, Some("review@lap"), false, sessions).unwrap();
+    let muster_msg::Waited::Waiting { ticket, .. } = waited else { panic!("nothing unread") };
+
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let removed = laptop
+        .group_members(&builder, "review", &[], &["critic@devenv".to_string()], sessions, now)
+        .unwrap();
+    assert_eq!(removed.removed, ["critic@devenv"]);
+    wire.tell(Side::Laptop, &removed.tell);
+
+    let critic_there = wire.devenv.participant("critic").unwrap();
+    assert!(!critic_there.cursors.contains_key("review@lap"), "{:?}", critic_there.cursors);
+    assert!(wire.devenv.replicas_of("lap").is_empty(), "nothing left to refetch");
+    assert_eq!(wire.ended, [(Side::Devenv, ticket)]);
 }

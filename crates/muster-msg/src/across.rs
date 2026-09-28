@@ -293,6 +293,9 @@ pub struct Applied {
     pub reached: Vec<(String, Reach)>,
     pub wakes: Vec<Wake>,
     pub answered: Vec<AnsweredWait>,
+    /// Waits kept to the group by members here its home removed, which the host ends as a
+    /// leave does. Not filled yet.
+    pub ended: Vec<u64>,
     pub unsaved: Option<String>,
     /// The replica's head, when its home said it holds more: where to fetch the next page from.
     pub more: Option<u64>,
@@ -749,6 +752,7 @@ impl<S: Store> Messaging<S> {
             reached: posted.reached,
             wakes: posted.wakes,
             answered: posted.answered,
+            ended: Vec::new(),
             unsaved,
             more: more.then(|| self.groups[&key].head()),
         })
