@@ -212,6 +212,45 @@
       }
     },
     {
+      "name": "a Ghostty action name with its argument is still told Muster's name",
+      "why": "Ghostty spells several of its actions with an argument - goto_split:left, jump_to_prompt:-1, goto_tab:3 - and a config carried over from Ghostty is written that way. Matching only the bare name told these they were about Ghostty's own windows and clipboard, which is false and names nothing to use instead.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "\"goto_split:left\" = \"cmd+alt+left\""
+        ]
+      },
+      "expect": {
+        "refused": "`goto_split:left` in the config file's [keymap] is Ghostty's name, and Muster's is `focus_left`, `focus_right`, `focus_up`, `focus_down`, `next_pane` and `previous_pane`. None of the file was applied."
+      }
+    },
+    {
+      "name": "Ghostty's rename prompt is told Muster's rename",
+      "why": "prompt_surface_title is how Ghostty asks for a new title for the surface, which is renaming the pane here.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "prompt_surface_title = \"cmd+shift+r\""
+        ]
+      },
+      "expect": {
+        "refused": "`prompt_surface_title` in the config file's [keymap] is Ghostty's name, and Muster's is `rename_pane`. None of the file was applied."
+      }
+    },
+    {
+      "name": "one of Muster's own actions given an argument says it takes none",
+      "why": "Ghostty's increase_font_size takes a number of points and Muster's steps by its own amount, so a line carried over names an action Muster has in a form it does not read. Saying the action is not something Muster does would send the reader looking for a name that is already right.",
+      "given": {
+        "file": [
+          "[keymap]",
+          "\"increase_font_size:1\" = \"cmd+=\""
+        ]
+      },
+      "expect": {
+        "refused": "`increase_font_size:1` in the config file's [keymap] gives `increase_font_size` an argument, and Muster's actions take none. None of the file was applied. Write it as `increase_font_size`."
+      }
+    },
+    {
       "name": "a chord Muster cannot read",
       "why": "The other half of the same failure, and the one where naming the piece matters most - the refusal has to say which chord and what was wrong with it, or the answer is re-reading the whole file.",
       "given": {
