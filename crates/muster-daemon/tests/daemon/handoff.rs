@@ -430,12 +430,11 @@ fn a_stop_signal_while_the_version_is_asked_stops_the_daemon_at_once() {
             })
             .then_some(())
     });
-    held.let_go();
-    let answer = daemon.finish_replacing(replacing);
-
-    assert_eq!(answer.reason, "the daemon hung up without answering");
     daemon.wait_for_exit();
     assert!(!daemon.socket_path().exists(), "a daemon that stopped removes its socket");
+    held.let_go();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.reason, "the daemon hung up without answering");
 }
 
 /// A replace asked while another is under way is refused, and says so: nothing failed, and the
