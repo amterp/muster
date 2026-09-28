@@ -16,9 +16,10 @@ which is what makes the next line possible:
     muster msg post --to "$B" 'read AGENTS.md, then write the tests'
 
 A message to a pane reaches the agent in it however long it is, and whenever the agent is ready:
-it is rung once it is idle, reads the message whole with `muster msg read`, and can answer with a
-message of its own that wakes you. `muster docs msg` is all of it. `pane send`, below, is the
-keyboard: for answering a prompt, not for telling an agent something.
+it is rung once it is idle at an empty prompt, reads the message whole with `muster msg read`,
+and can answer with a message of its own that wakes you. Only Claude Code is rung so far, and
+never while a dialog is open (`muster docs limits`). `muster docs msg` is all of it. `pane
+send`, below, is the keyboard: for answering a prompt, not for telling an agent something.
 
 Neither split moved the keyboard. Making a pane is not the same act as looking at one, and an
 agent opening three panes should not drag somebody's cursor through all three. `--focus` asks

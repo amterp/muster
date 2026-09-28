@@ -64,14 +64,21 @@ message:
     [muster] review: 3 new (#40-42), 1 to you, from director, critic. Read: muster msg read --group review
 
 **An agent in a pane is woken by the doorbell**: the wake is typed into its pane as one line and
-a Return. Only while its agent is idle or waiting, since a Return at a dialog would answer it and
-one can open while the agent works, and only once nothing has been typed into the pane for three
-seconds. Until then the wake waits in the daemon, and is rung as soon as the pane allows. A
-prompt you leave half typed in the pane for longer than that is sent with it.
+a Return, and only into a prompt the daemon has just read as empty. Just before it types, the
+agent has to be idle or waiting, nothing may have been typed into the pane for three seconds,
+the agent must still be running there, and its screen must be its prompt with nothing typed in
+it. So a dialog, a menu, a prompt holding a draft, or a screen detection does not recognize is
+never rung. Until then the wake waits in the daemon, and is rung as soon as the pane
+allows.
+
+**Only Claude Code is rung.** Reading an empty prompt needs a rule for it in the harness's
+manifest, and so far only Claude Code's has one. An agent of any other harness in a pane is not
+woken, and the post says `its prompt cannot be read`.
 
 An agent that neither starts work nor reads within five seconds of a ring has Return pressed
-again, a few times. Claude Code keeps what is typed while it is starting as its prompt, unsent,
-and the later Return sends it.
+again, a few times, but only while its prompt holds the ring's own text and nothing else. Claude
+Code keeps what is typed while it is starting as its prompt, unsent, and the later Return sends
+it. If the prompt then holds anything else, the ring ends, and the next post rings afresh.
 
 An agent that goes idle with what it was woken for still unread is woken once more, with `still
 unread` on the end, and then not again until it reads.
@@ -89,11 +96,20 @@ reason.
     posted #42 to review
     woke: builder (idle), director (working, already woken)
     rung once idle: critic (blocked)
-    not woken: scout (gone), @human (sees it when it reads)
+    rung once its prompt is empty: lexer (idle)
+    rung once an agent is found: p2w3r07bsd
+    not woken: scout (gone), p3w3r07bsd (no agent in its pane), @human (sees it when it reads)
 
 "woke" means the wake was handed over - rung, or sent to the session - not that it was read. A
-post that woke nobody live - nobody woken, to be rung, already woken, or the human - is still
-kept, and exits 6: whoever you meant to tell is not there to hear it.
+ring still to come says what it waits for: the agent to be idle, a draft left in its prompt to
+be sent or cleared, or an agent to start in a pane opened under 30 seconds ago. A pane with no
+agent past that, or whose agent's prompt cannot be read, is not woken.
+
+A post that woke nobody live - nobody woken, to be rung, already woken, or the human - is still
+kept, and exits 6: whoever you meant to tell is not there to hear it, and no answer is coming.
+With `--json` the same answer is lists of names under `woke`, `deferred`, `already_woken`,
+`waiting`, `gone`, `no_agent` and `no_doorbell`, what each agent in a pane is doing under
+`doing`, and what each deferred ring waits for under `until`: `idle`, `prompt` or `agent`.
 
 ## Reading, and the guard
 

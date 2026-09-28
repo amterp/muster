@@ -23,8 +23,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **command endpoint** - the unix socket a window answers requests on, at
   `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
   which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
-- **doorbell** - a wake typed into the pane an agent runs in, one line and a Return, only while its agent is idle
-  or waiting and nobody has typed there for three seconds (MIP-4, section 6).
+- **doorbell** - a wake typed into the pane an agent runs in, one line and a Return, only into a prompt it has
+  just read as empty, and only for a harness whose manifest can read its prompt (MIP-4, section 6).
 - **frame** - one message on a socket: a four-byte length, then that many bytes (`muster-frame`).
 - **group** - a set of participants and the one log of messages they share (MIP-4). Addressing a message decides
   whom it wakes, never who may read it.

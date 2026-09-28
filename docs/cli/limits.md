@@ -88,6 +88,28 @@ inside the text. A request carries at most 1 MiB, so a larger file is refused wi
 anything is sent; send a line pointing at the file instead. Only a hyphen standing alone reads
 stdin, which leaves one way to send a lone hyphen: `printf - | muster pane send -`.
 
+## A message wakes an agent in a pane only at an empty Claude Code prompt
+
+`muster msg post` wakes an agent in a pane by typing one line and a Return into it, and the
+daemon types only into a prompt it has just read as empty (`muster docs msg`). Three things
+follow that a sender has to plan around.
+
+**Only Claude Code is rung.** Reading an empty prompt needs a rule in the harness's manifest,
+and only Claude Code's has one. An agent of another harness in a pane is not woken: the post
+says `its prompt cannot be read`, and exits 6 if nobody else heard it. Tell that agent with
+`muster pane send`, or have it run `muster msg read` on its own.
+
+**An agent at a dialog is not rung until somebody answers it.** A permission prompt, a trust
+dialog or a menu is not the prompt, and the doorbell never presses Return there. The post says
+`rung once idle`, and the ring waits as long as the dialog does. `muster pane wait --until
+blocked` or `muster window` says that it is waiting on you, and `muster pane send` answers it.
+A draft left in the prompt holds the ring the same way, until it is sent or cleared.
+
+**The check comes just before the write, not with it.** A dialog drawn, or a key pressed, in
+between gets the line and its Return. And a screen that Claude Code's rule wrongly reads as its
+prompt - a new dialog drawn above an unchanged prompt box - is rung as one. "woke" says the line
+was typed, not that the agent read it; its reply is what says that.
+
 ## A non-zero exit does not always mean nothing happened
 
 Exit 4 is a request that was taken and never answered. Either the window never answered, or it did

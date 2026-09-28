@@ -790,9 +790,12 @@ because a wake is a connection to another process that may be slow or gone.
 
 **An agent in a pane is woken through the pane, and whether it is there is the pane's agent state.** Each request
 reads every pane's agent and state with the session held, lets it go, and only then takes the messaging lock, so the
-two are never held together. A wake for an agent that is busy, blocked, or being typed at is not typed in then: it
-waits in the daemon, and a thread of its own - woken when an agent's state changes, never on a timer - rings it once
-the agent is idle and the pane has been quiet for three seconds (MIP-4, section 6).
+two are never held together. The wake is typed in only when, just before the write, the
+pane's screen reads as its agent at an empty prompt: detection's winning rule for the screen carries a `prompt`
+pattern, and only text drawn faint follows it. So only a harness whose manifest has such a rule is ever rung, which
+today is Claude Code alone. A wake that cannot be rung yet waits in the daemon for a thread of its own, woken by posts
+and agent state changes and otherwise by the next deadline - a quiet period ending, a Return due again, or five
+seconds while a prompt holds a draft (MIP-4, section 6).
 
 **This is the one request path that does not run through the core.** Messaging has to work with no window open, and
 the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,

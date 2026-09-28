@@ -269,7 +269,10 @@ not woken: scout (gone)
 
 A post that wakes no live participant is still appended, and exits 6, so an agent does not end
 its turn expecting an answer nobody will send. Live means woken, already woken, to be rung once
-its pane allows (`rung once idle: critic (working)`), or the human. The human always counts as
+its pane allows (`rung once idle: critic (working)`), or the human. An agent in a pane is not
+live when its pane has no agent and has been open for over 30 seconds (`no agent in its pane`),
+or when its agent's prompt cannot be read, so the doorbell never rings it (`its prompt cannot be
+read`, section 6). The human always counts as
 live, since messages to the human wait for them. v1's last agent waiting forever on the human
 becomes something the agent can see.
 
@@ -326,7 +329,8 @@ inbox and doorbell adapters cannot tell whether their text reached the model.
 
 Three adapters, tried in this order; the first whose address is present and alive delivers. None
 of them is Muster assuming a harness: each is one thing Muster supports, in the sense of kan
-`a_2AJS0Xz7I`, and the doorbell works for any harness in a pane.
+`a_2AJS0Xz7I`, and the doorbell works for any harness in a pane whose manifest can read its
+empty prompt, which as built is Claude Code's alone.
 
 As built in stage 2, an agent in a pane is rung by the doorbell even when it has Claude's inbox
 too, so the order is hooks, doorbell, inbox. A session that bypasses permission prompts holds an
@@ -369,25 +373,62 @@ uses. It is one line, well under a canonical-mode line limit and under the lengt
 Code folds a paste. The daemon never rings a pane whose agent is blocked, since a Return would
 answer the dialog, and waits until no keystroke has arrived from a window for that pane for a few
 seconds, so a person's half-typed prompt is not submitted with the notice in it. Cyclops, a
-prior-art tool that rings agents in tmux panes, guards its doorbell the same way.
+prior-art tool that rings agents in tmux panes, guards its doorbell the same way. Stage 2's
+review found those two guards were not enough, and the doorbell as built rings only a prompt it
+has read as empty.
 
-As built, a pane is rung only while its agent is idle or waiting, and only once nothing has been
-typed or sent into it for three seconds. Working is ruled out as well as blocked, because a dialog
-can open between the check and the write, and the Return would answer it. A waiting agent is rung:
-it is at its prompt, and a message addressed to it may be what it is waiting for. What cannot be
-rung at once waits in the daemon, and one thread rings it when the pane allows. That thread is
-woken by changes in agents' states rather than by a timer, and also delivers the second wake of
-section 5. A daemon that starts rings again every wake it finds recorded and unread, since it
-cannot tell which its predecessor rang: at worst a wake too many.
+As built, the doorbell types into a pane only what it has just read to be its agent's empty
+prompt. The daemon's detection finds which manifest rule decides a pane's screen, and a rule may
+carry a `prompt` pattern, which says that screen is the agent's prompt and marks where its text
+starts. Immediately before each write the doorbell checks, in order:
 
-An idle agent may not be ready for a ring. Detection reads an agent as idle as soon as it finds
-it, before anything on its screen says so. Claude Code 2.1.283, while it starts, keeps what is
-typed as the text of its prompt and drops the Return, so a ring that lands then sits in the
-prompt unsent. Once its prompt is up, a Return in the same write as the text is sent with it: a
-Return that arrives while a paste is being taken is held until the paste is in, then pressed. So
-a ring counts as taken once the agent goes to work or reads what it was rung for. Until then the
-doorbell presses Return again every five seconds, at most six times, under the ring's own guards,
-and a Return at an empty prompt does nothing.
+- the agent is idle or waiting, and nothing has been typed or sent into the pane for three
+  seconds, since a keystroke may not have reached the screen yet;
+- the agent is still the pane's foreground program, not the shell it exited to, whose screen
+  still shows the agent's last frame;
+- the agent's manifest has a prompt rule;
+- that rule decides the screen as it is now, and nothing follows its marker but text drawn faint.
+
+Claude Code 2.1.283 draws a suggestion nobody typed, `Try "..."`, faint in an empty prompt, and
+draws what somebody typed at normal weight. So the faint cells are left out, and what remains
+is what the prompt holds. A dialog, a menu opened from the prompt, working, and a screen no rule
+recognizes are each decided by a rule with no `prompt`, so none of them is rung. Only Claude
+Code's manifest has a prompt rule, since its empty prompt is the only one recorded here, so an
+agent of any other harness in a pane is never rung. The post's answer says so.
+
+What cannot be rung at once waits in the daemon, and one thread rings it when the pane allows.
+That thread wakes when a post arrives and when an agent's state changes, and otherwise sleeps
+only until the next deadline: the end of a quiet period, a ring due its Return again, or five
+seconds while a prompt holds a draft or a new pane has no agent yet, since nothing announces
+either changing. It also delivers the second wake of section 5. A daemon that starts, or takes
+the panes over by a handoff, or resumes after a handoff failed, rings again every wake it finds
+recorded and unread, since it cannot tell which were rung: at worst a wake too many.
+
+A Claude Code that is starting can draw its empty prompt before it reads its terminal the way
+that prompt does. What is typed then fills its prompt and the Return is dropped, so
+the ring sits unsent. Once its prompt is up, a Return in the same write as the text is sent with
+it: a Return that arrives while a paste is being taken is held until the paste is in, then
+pressed. So a ring counts as taken once the agent goes to work, reads what it was rung for, or
+shows an empty prompt again. Until then the doorbell presses Return again every five seconds, at
+most six times, and only while every check above holds except the last, which becomes: the
+prompt holds the ring's own text and nothing else. A prompt holding anything else, or a screen
+that is no longer the prompt, ends the ring, and the wake is forgotten so that the next post
+rings afresh.
+
+**What the doorbell guarantees.** It types one line, its own wake, and only into a prompt it
+read as empty just before the write. It repeats nothing but Return, and only while the prompt
+shows that line unsent, so a repeated Return can send nothing but the wake. It never rings a
+blocked or working agent, a menu or dialog detection recognizes, a prompt holding a draft, a
+pane typed into in the last three seconds, the shell an agent exited to, or an agent whose
+manifest has no prompt rule.
+
+**What it does not guarantee.** The check and the write are close but not simultaneous: a dialog
+drawn, or a key pressed, between them gets the wake and its Return. A screen that a prompt rule
+wrongly decides as the prompt is rung as one, so the guarantee is only as good as the manifest,
+and a harness update that draws a new dialog above an unchanged prompt box needs a rule for it.
+Text a harness draws faint reads as not typed, so a harness that drew a person's draft faint
+would have it read as an empty prompt. And "woke" says the wake was typed, not that the agent
+read it.
 
 ### 7. Presence
 
@@ -397,6 +438,14 @@ A participant is working, blocked, idle, done, alive, or gone:
   closes or detection sees the agent exit. As built, `waiting` is an idle agent that declared it is
   waiting on work of its own, and an agent in a pane is there while the pane has an agent, whatever
   its inbox says.
+
+  For the doorbell a pane is in one of four states. It **rings** when an agent is there and its
+  manifest has a prompt rule. It has **no prompt** when an agent is there without one: the post
+  says `its prompt cannot be read`, and the agent counts as not live. An **agent is to come**
+  while the pane has no agent and was opened under 30 seconds ago, so that `muster pane new --run
+  claude` followed at once by a post defers the ring (`rung once an agent is found`) rather than
+  losing it. Otherwise it has **no agent**: an older pane whose agent never came or has exited,
+  or one that has closed (`no agent in its pane`).
 - **Elsewhere, with Claude's socket**: alive while the socket accepts a connection, with no finer
   state.
 - **With hooks only**: alive while a `wait` is connected or a hook has run in the last few minutes.
@@ -576,11 +625,13 @@ muster pane new --down --run claude --name "🤖 A"     # prints p1w3r07bsd
 muster msg post --to p1w3r07bsd --file brief.md
 ```
 
-The integrator's `post` registers it (section 3). The doorbell reaches the new agent once its
-trust dialog is gone, the agent runs `muster msg read`, and the brief arrives whole however long
-it is. Its answer is a message that wakes the integrator, rather than a `pane read` of its screen.
+The integrator's `post` registers it (section 3). The doorbell rings the new agent once its
+prompt shows, empty. A Claude Code that opens on its trust dialog is not at its prompt, so the
+ring waits for whoever answers the dialog; the doorbell never does. The agent then runs `muster
+msg read`, and the brief arrives whole however long it is. Its answer is a message that wakes the integrator, rather than a `pane read` of its screen.
 `./dev --claude-code` runs this flow against the Claude Code installed here, with a 20 KB brief
-and the worker bypassing permission prompts.
+and the worker bypassing permission prompts. When its trust dialog shows, the test checks that
+nothing is rung while it is up, then answers it as a person would.
 
 ### 15. Testing
 
@@ -731,10 +782,14 @@ Code with credentials. Until they are, the inbox adapter is assumed to behave th
 wakes the session with stderr as a system reminder. Untested: whether a hook started on `Stop`
 keeps running across turns, and whether its wake starts a turn in a session idle for hours.
 
-**Whether the doorbell's guards are enough.** Deferring while blocked and after recent keystrokes
-is inferred from Cyclops and from the dialog hazard in `docs/cli/limits.md`, not measured. One gap
-is known: a prompt someone left half typed for longer than three seconds is submitted with the
-ring, since the daemon cannot see what is on a pane's input line.
+**Which screens Claude Code's prompt rule reads as its prompt.** The rule is checked against
+the screens recorded in `corpus/claude-code-2.1.283/`, and a live check holds that a new
+session's suggestion is drawn faint. A dialog or menu that draws above an unchanged prompt box,
+and that no rule recognizes, would read as an empty prompt and be rung. Each release that adds
+one needs a rule for it, the same as for its state.
+
+**How other harnesses draw an empty prompt.** No other harness has a prompt rule, so none is
+rung (Future Directions).
 
 **Claude Code's limits** come from its documentation: about a million characters per message, at
 most 50 accepted messages queued and 100 held. Only the notice crosses the socket, so none should
@@ -742,6 +797,8 @@ bind.
 
 ## Future Directions
 
+- **Prompt rules for other harnesses**, Codex first, recorded from each harness's empty prompt,
+  so the doorbell can ring them.
 - **Presence from `claude agents --json`** for Claude sessions outside a pane; it reports working,
   blocked and done per session (kan `a_2XMXOShAA`).
 - **The daemon holding cross-machine links**, if Decision 4 is revisited.
@@ -783,3 +840,6 @@ bind.
   post that wakes nobody live (sections 3, 4, 6, 7 and 14).
 - 2026-09-28 A ring typed while Claude Code starts sits unsent in its prompt: Return is pressed
   again until the agent takes the ring (section 6).
+- 2026-09-28 Stage 2 reviewed: the doorbell rings only a prompt it has just read as empty, and
+  repeats Return only over its own text, so it never rings a harness it cannot read; a post
+  counts only who can still be woken (sections 4, 6, 7 and 14).

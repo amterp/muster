@@ -66,6 +66,14 @@ brief.md` reaches the agent in pane X whole, however long, once it is idle, and 
 a message that wakes you - so after posting, end your turn rather than waiting in a loop.
 `muster pane send` types into a pane: keep it for answering a prompt the agent is blocked on.
 
+**A post says whether anyone will hear it.** The daemon wakes an agent in a pane by typing into
+its prompt, and only when that prompt is Claude Code's and empty. An agent blocked at a
+permission prompt or trust dialog is not rung until somebody answers it, so a post it defers can
+wait there indefinitely: check `muster pane wait --until idle,blocked` or `muster window`, and
+answer the dialog with `pane send`. An agent of another harness is never rung, and the post says
+`its prompt cannot be read`. Exit 6 means nobody live heard the post and no answer is coming:
+do not end your turn waiting for one.
+
 **A message you are woken for says how to read it.** Run the `muster msg read` it names before
 posting to that group again; a post is refused while you have unread messages there.
 
