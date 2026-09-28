@@ -1,62 +1,133 @@
 {
-  "recorded": "2026-08-13T23:26:32.163Z",
+  "recorded": "2026-09-28T12:21:47.926Z",
   "machine": "arm64-Darwin 25.4.0",
+  "load": {
+    "one": 3.83,
+    "five": 7.75,
+    "fifteen": 11.35,
+    "cores": 10,
+    "fast_cores": 6
+  },
   "costs": [
     {
-      "name": "frame.decode",
+      "name": "output.vt_parse",
       "unit": "ns/byte",
-      "best": 0.8304517112750838,
-      "median": 0.8644866174748822,
-      "iterations": 50
+      "best": 3.3087498402046642,
+      "median": 3.4993868593785264,
+      "iterations": 20,
+      "units": 633623,
+      "nanos": 2096500.0,
+      "tolerance": 1.5
     },
     {
-      "name": "frame.vt_parse",
-      "unit": "ns/byte",
-      "best": 3.793878227559026,
-      "median": 3.839920439058529,
-      "iterations": 20
+      "name": "vt.text_read",
+      "unit": "ns/row",
+      "best": 185.75,
+      "median": 196.16666666666666,
+      "iterations": 200,
+      "units": 24,
+      "nanos": 4458.0,
+      "tolerance": 1.5
     },
     {
-      "name": "input.encode",
+      "name": "vt.cell_read",
+      "unit": "ns/row",
+      "best": 7175.375,
+      "median": 7244.791666666667,
+      "iterations": 20,
+      "units": 24,
+      "nanos": 172209.0,
+      "tolerance": 1.5
+    },
+    {
+      "name": "vt.replay_compose",
+      "unit": "ns/row",
+      "best": 235.4334,
+      "median": 238.5167,
+      "iterations": 10,
+      "units": 10000,
+      "nanos": 2354334.0,
+      "tolerance": 1.5
+    },
+    {
+      "name": "vt.replay_parse",
+      "unit": "ns/row",
+      "best": 218.0834,
+      "median": 228.95,
+      "iterations": 10,
+      "units": 10000,
+      "nanos": 2180834.0,
+      "tolerance": 1.5
+    },
+    {
+      "name": "input.route",
       "unit": "ns/key",
-      "best": 35.0,
-      "median": 42.5,
-      "iterations": 100
+      "best": 230.73,
+      "median": 245.1025,
+      "iterations": 100,
+      "units": 400,
+      "nanos": 92292.0,
+      "tolerance": 1.5
     },
     {
       "name": "mirror.apply",
       "unit": "ns/event",
-      "best": 228.0,
-      "median": 230.0,
-      "iterations": 20
+      "best": 384.01640625,
+      "median": 396.7453125,
+      "iterations": 20,
+      "units": 1280,
+      "nanos": 491541.0,
+      "tolerance": 1.5
     },
     {
       "name": "seam.dispatch",
       "unit": "ns/event",
-      "best": 290.0,
-      "median": 310.0,
-      "iterations": 200
+      "best": 330.0,
+      "median": 342.5,
+      "iterations": 200,
+      "units": 100,
+      "nanos": 33000.0,
+      "tolerance": 1.5
     },
     {
       "name": "view.build",
       "unit": "ns/pane",
-      "best": 118.66666666666667,
-      "median": 119.0,
-      "iterations": 20
+      "best": 232.02766666666668,
+      "median": 239.22233333333332,
+      "iterations": 20,
+      "units": 3000,
+      "nanos": 696083.0,
+      "tolerance": 1.5
+    },
+    {
+      "name": "roster.build",
+      "unit": "ns/pane",
+      "best": 263.94433333333336,
+      "median": 266.94466666666665,
+      "iterations": 20,
+      "units": 3000,
+      "nanos": 791833.0,
+      "tolerance": 1.5
     },
     {
       "name": "pane.channel",
       "unit": "ns/pane",
-      "best": 86400.0,
-      "median": 90866.66666666667,
-      "iterations": 10
+      "best": 86166.66666666667,
+      "median": 97911.06666666667,
+      "iterations": 10,
+      "units": 15,
+      "nanos": 1292500.0,
+      "tolerance": 3.0
     },
     {
       "name": "pane.encoder",
       "unit": "ns/pane",
-      "best": 66.66666666666667,
-      "median": 66.66666666666667,
-      "iterations": 10
+      "best": 91.38666666666667,
+      "median": 92.08333333333333,
+      "iterations": 10,
+      "units": 300,
+      "nanos": 27416.0,
+      "tolerance": 2.0
     }
   ]
 }
