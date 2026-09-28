@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "commit-the-messaging",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790617333318,
+  "creator": "Alexander Terp",
+  "description": "corpus/conformance/messaging.json is produced by a generator script kept outside the repo, and rebases have had to merge the JSON by hand. Commit the generator (and say in the file that it is generated) so cases are edited at their source.",
+  "id": "a_2YIvq5Ugm",
+  "parent": "a_2Y3ODvuwa",
+  "position": "b06",
+  "title": "Commit the messaging.json generator",
+  "type": "chore",
+  "updated_at_millis": 1790617333318,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790617333318}
+  ]
+}

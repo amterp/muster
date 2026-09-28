@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "measure-the-hooks",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790617333102,
+  "creator": "Alexander Terp",
+  "description": "The hooks adapter (a Stop hook running muster msg wait as asyncRewake) was measured on macOS with Claude Code 2.1.283, including a 65-minute idle wake. Nothing has measured it on Linux, where amterp's devenv agents run.",
+  "id": "a_2YIvpji9s",
+  "parent": "a_2Y3ODvuwa",
+  "position": "b04",
+  "title": "Measure the hooks adapter on Linux",
+  "type": "chore",
+  "updated_at_millis": 1790617333102,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790617333102}
+  ]
+}
