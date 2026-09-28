@@ -49,7 +49,7 @@ const DRAWS_AFTER: f32 = 0.3;
 fn a_send_the_pane_draws_late_is_confirmed_rather_than_refused() {
     let _turn = muster::testing::fresh_session();
     let drawing = scratch("confirmed-send-late");
-    let daemon = daemon_running(&slow_fixture(&drawing));
+    let daemon = daemon_running(&slow_fixture(&drawing, 0));
 
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
@@ -67,6 +67,34 @@ fn a_send_the_pane_draws_late_is_confirmed_rather_than_refused() {
     assert_ok(&answer(request::Payload::SendToPane(SendToPane {
         pane_id: pane,
         text: "hello".to_string(),
+        confirm: true,
+        ..SendToPane::default()
+    })));
+
+    let _ = std::fs::remove_dir_all(&drawing);
+}
+
+/// A confirmed send whose own output scrolls it far up the pane before anything reads it is still
+/// confirmed. `seq 1 100000` sent to a shell does this: by the first read after the echo, the
+/// echoed line is thousands of rows above the bottom, and a confirmation that only ever looks near
+/// the bottom refuses a command that ran - inviting a caller to run it twice.
+#[test]
+fn a_send_whose_output_scrolls_it_away_is_still_confirmed() {
+    let _turn = muster::testing::fresh_session();
+    let drawing = scratch("confirmed-send-scrolled");
+    let daemon = daemon_running(&slow_fixture(&drawing, 2000));
+
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    let pane = the_only_pane();
+    wait_until_reading(&pane);
+
+    assert_ok(&answer(request::Payload::SendToPane(SendToPane {
+        pane_id: pane,
+        text: "run the thing".to_string(),
         confirm: true,
         ..SendToPane::default()
     })));
@@ -293,12 +321,14 @@ while True:
     script
 }
 
-/// A program that draws everything it is handed, but not straight away.
+/// A program that draws everything it is handed, but not straight away, followed in the same write
+/// by `lines_after` lines of output of its own.
 ///
 /// The honest slow pane, which is what separates "did not receive it" from "has not drawn it
 /// yet". A harness redrawing a composer around a long paste, and a pane whose daemon is at the
-/// far end of an SSH forward, both take longer than an echo does.
-fn slow_fixture(drawing: &Path) -> PathBuf {
+/// far end of an SSH forward, both take longer than an echo does. The lines after are a command
+/// whose output lands before anything can read the echo above it.
+fn slow_fixture(drawing: &Path, lines_after: usize) -> PathBuf {
     let script = drawing.join("draws-it-late.py");
     std::fs::write(
         &script,
@@ -319,7 +349,8 @@ while True:
             continue
         text = chunk.replace(b"\x1b[200~", b"").replace(b"\x1b[201~", b"")
         time.sleep({DRAWS_AFTER})
-        os.write(1, text + b"\r\n")
+        after = "".join(f"output line {{n}}\r\n" for n in range({lines_after})).encode()
+        os.write(1, text + b"\r\n" + after)
 "#
         ),
     )
