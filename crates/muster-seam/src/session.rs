@@ -836,8 +836,8 @@ fn said_how_it_went(
 /// What every pane this window makes is handed beyond what its daemon gives it: the window's own
 /// socket, so a program in the pane can drive the window it is drawn in. The daemon gives the
 /// pane its name (`MUSTER_PANE`) itself, from the request that makes it.
-fn pane_environment() -> BTreeMap<String, String> {
-    command::listening_at()
+fn pane_environment(window: Option<String>, _on_this_machine: bool) -> BTreeMap<String, String> {
+    window
         .map(|socket| BTreeMap::from([(environment::WINDOW_SOCKET.to_string(), socket)]))
         .unwrap_or_default()
 }
@@ -1265,7 +1265,7 @@ impl Session {
             Arc::clone(&connection),
             Arc::clone(&mirror),
             Arc::clone(&self.minter),
-            pane_environment(),
+            pane_environment(command::listening_at(), reached.tunnel.is_none()),
             description.clone(),
         ));
         let input =
@@ -5345,4 +5345,21 @@ fn typeable(daemon: &DaemonId, pane: &PaneId) {
             pane_id: pane.to_string(),
         })),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_pane_on_this_machine_is_told_the_window_socket() {
+        let window = Some("/Users/someone/.muster/state/command-1.sock".to_string());
+        let here = pane_environment(window.clone(), true);
+        assert_eq!(here.get(environment::WINDOW_SOCKET), window.as_ref());
+        assert!(
+            pane_environment(window, false).is_empty(),
+            "a devenv pane was handed a path on the Mac, which names nothing there or \
+             something else"
+        );
+    }
 }
