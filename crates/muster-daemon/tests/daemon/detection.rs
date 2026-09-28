@@ -568,6 +568,38 @@ fn a_wait_ended_by_a_turn_the_screen_never_saw_is_a_finish() {
     );
 }
 
+/// A wait whose turn has already ended goes with the agent's next turn after a handoff, as it
+/// does without one: an orchestrator waiting for the pane to be idle is waiting for that turn.
+#[test]
+fn a_wait_ends_with_the_next_turn_after_a_handoff() {
+    use proto::AgentState::{Idle, Working};
+    let home = Home::new("waiting-handoff", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let mut daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    assert_eq!(report_state(&mut control, "claude", Working).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Working);
+    report_waiting(&mut control, "the full gate");
+    assert_eq!(report_state(&mut control, "claude", Idle).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    let mut control = daemon.connect();
+    assert_eq!(waiting_on(&mut control).as_deref(), Some("the full gate"), "handed over");
+    assert_eq!(report_state(&mut control, "claude", Working).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Working);
+    assert_eq!(report_state(&mut control, "claude", Idle).outcome(), proto::Outcome::Done);
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    assert_eq!(
+        waiting_on(&mut control),
+        None,
+        "the woken turn did not declare the wait, and the new daemon kept it anyway"
+    );
+}
+
 /// What nobody has seen yet is still unseen after a handoff, since the pane's record goes over
 /// whole.
 #[test]
