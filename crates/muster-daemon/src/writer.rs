@@ -661,9 +661,9 @@ mod tests {
             self.queue.as_ref().expect("a queue").send(input).expect("the writer is running");
         }
 
-        /// Writes `event`, and returns once the writer has finished with it: a reply queued
-        /// after it has reached the pipe.
-        fn written(&mut self, event: Event) {
+        /// Writes `event`, and returns what reached the pipe for it once the writer has finished
+        /// with it: a reply queued after it has reached the pipe too.
+        fn written(&mut self, event: Event) -> Vec<u8> {
             self.send(crate::input::input_of(event).expect("something to write"));
             self.send(Input::Reply(b"<done>".to_vec()));
             let mut seen = Vec::new();
@@ -672,6 +672,8 @@ mod tests {
                 self.written.read_exact(&mut byte).expect("the writer wrote");
                 seen.push(byte[0]);
             }
+            seen.truncate(seen.len() - b"<done>".len());
+            seen
         }
     }
 
@@ -701,8 +703,12 @@ mod tests {
     #[test]
     fn a_key_counts_as_typed_input_and_a_reply_does_not() {
         let mut writing = Writing::new();
+        // Focus reports are off until a program asks for them, and one never written would
+        // record nothing either way.
+        poison::lock(&writing.io.encoding(), "test").modes.focus_events = true;
         writing.send(Input::Reply(b"\x1b[?1;2c".to_vec()));
-        writing.written(Event::Focus(input_event::Focus { focused: true }));
+        let focus = writing.written(Event::Focus(input_event::Focus { focused: true }));
+        assert!(focus.ends_with(b"\x1b[I"), "the focus report was written: {focus:?}");
         assert_eq!(writing.io.input_at(), None, "a reply and a focus report are not typed");
         writing.written(key("a"));
         assert!(writing.io.input_at().is_some(), "a key is typed");
