@@ -42,10 +42,10 @@ A tab's name looks like `t1w3r07bsd`. The same registry mints it, on the same te
 across every machine, so `muster tab focus t1w3r07bsd` needs nothing beside it. The leading
 letter says which noun, so a tab's name can never be mistaken for a pane's.
 
-The difference is that nothing tells a tab which tab it is. There is no `$MUSTER_TAB`, and a tab
-is named the first time a daemon mentions it rather than before it is made. A tab holding panes
-on two machines is still one name: which of each machine's tabs it means is Muster's to know, and
-nothing outside Muster ever needs to. To act on the tab a
+The difference is that nothing tells a tab which tab it is: there is no `$MUSTER_TAB`. Muster
+names a tab before it is made and passes the name in the request that makes it, as it does a
+pane's. A tab holding panes on two machines is still one name, held on both daemons. To act on
+the tab a
 script is sitting in, read the name out of `muster window`, where every pane says which tab holds
 it - see `muster docs limits`.
 
@@ -56,8 +56,9 @@ menu item means, and `muster tab move` without one means the tab the window is s
 ## Machine names
 
 A machine's name is the `id` of its `[[daemon]]` block, and `local` when your config names
-none. `muster window` prints it over that machine's tabs, and `--json` carries it on every pane
-as `daemon`.
+none. `muster window` lists each machine after the tabs, with its state, and puts the name at
+the end of every pane's row once more than one machine is attached. `--json` carries it on
+every pane as `daemon`.
 
 `pane new` and `tab new` take `--daemon ID`, which says *where* rather than what to grow from -
 so it cannot be given beside a `--pane`, and it ignores `$MUSTER_PANE` rather than sending the
@@ -81,7 +82,8 @@ how a script says it outright, and how you ask again if a daemon refused.
 creates on this machine. Without it, `muster` looks for listening windows under `~/.muster/state`.
 If more than one answers, a change that names its tab or pane goes to any of them, since that
 window carries it to the one holding it; a change that names nothing refuses rather than guessing;
-a question answers for all of them, headed by which window each answer is about. `--socket PATH`
+`muster window` answers for all of them, headed by which window each answer is about. Other
+questions cannot yet answer for several windows at once - see `muster docs limits`. `--socket PATH`
 names one outright.
 
 `muster window list` says which windows are listening under this `MUSTER_HOME`, marking the one
@@ -123,7 +125,14 @@ pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to 
 ## Output
 
 Plain output is for a person to read. `--json` answers the same thing for a program, and colour
-goes to a terminal only - a pipe, a file, or `NO_COLOR` gets none.
+goes to a terminal only - a pipe, a file, or `NO_COLOR` gets none. A refusal goes to stderr
+either way, under `--json` as `{"error": "..."}`, so stdout holds the answer or nothing.
+
+A few verbs have no page of their own, because `--help` says all there is: `muster pane rename`
+names a pane, `muster zoom` fills a region with one pane and puts the others back, `muster tab
+close` closes a tab, `muster reload` reads the config again, `muster sidebar` shows or hides the
+agent list, `muster font larger`, `smaller` and `reset` size the text of the pane the keyboard is
+on, and `muster completions <shell>` prints a completion script. `muster docs` lists these pages.
 
 ## Exit codes
 

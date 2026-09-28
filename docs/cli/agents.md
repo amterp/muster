@@ -207,9 +207,10 @@ just cannot see what it does with it:
 
     muster pane reattach --pane p1w3r07bsd
 
-That asks for a bridge, and it is the only way back that keeps the agent. `muster pane close` also
-gets the pane a fresh start, by ending what is running in it, which is rarely what somebody staring
-at a stuck agent wants - and quitting Muster does the same thing to every pane at once.
+That asks for a bridge, and it keeps the agent. `muster pane close` also gets the pane a fresh
+start, by ending what is running in it, which is rarely what somebody staring at a stuck agent
+wants. Quitting Muster ends nothing, and the window that opens next gives every pane a bridge
+again, so quitting and reopening is a reattach of every pane at once.
 
 The usual thing in the way is the connection to the pane's machine: a devenv that is down, or an
 ssh that has not come back. The window says so on the pane's row in the roster. Once the machine
@@ -228,11 +229,13 @@ fresh surface and the pane repaints.
 
 `--next` and `--previous` walk every pane the window is showing and wrap, so between them they
 reach all of it. The four directions are geometric and do not wrap. `--place` takes the number
-`muster window` prints beside each pane, which is the one `cmd+1` to `cmd+9` name.
+`muster window` prints beside each pane, which is the one `cmd+1` to `cmd+9` name, and does what
+that chord does - under `numbered_chords = "tab_then_pane"`, reaching the tab first.
 
 `--asking` goes to the pane most urgently asking for somebody, which is what `cmd+shift+a` does:
 `blocked` first, then a program's notification, then `done`, and within each the pane that asked
 first. It prints the pane it went to, and nothing when nothing is asking, which still exits 0.
+A recognized agent's own notifications are its state asking twice, so they do not count.
 
 It reaches the panes this window would post a notification for: its own tabs, and those of a
 window that is closed. A pane in another open window is that window's to go to, from there.

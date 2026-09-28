@@ -9,10 +9,10 @@ out what it did.
         2  p1w3r0ab2n  working  12m  🤖 A · reading AGENTS.md  64% context  2 sub-agents
     tab 2  t1w3r0h4kp  the build
         3  p1w3r0cd4x  blocked  40m  🤖 B  (hidden)
-        4  p1w3r0ef6y  waiting   8m  🤖 C · on the full gate  31% context
+        4  p1w3r0ef6y  waiting   8m  🤖 C · on the full gate  31% context  (hidden)
 
     local  connected
-      this machine · started by Muster · 3 panes in ~/src/muster
+      this machine · started by Muster · 4 panes in ~/src/muster
       /Users/you/.muster/daemon/release.sock
 
 After a pane's label come what its agent says about itself and anything else worth a glance:
@@ -78,7 +78,7 @@ One entry per pane every followed daemon holds, on screen or not.
 
 - `pane` - its name, and what to pass to `--pane`.
 - `place` - where it sits in the window's whole pane order, counting from one across every
-  daemon and every tab. The number ⌘1 to ⌘9 name.
+  daemon and every tab. The number ⌘1 to ⌘9 name, under the default `numbered_chords`.
 - `daemon` - which machine holds it.
 - `tab` - the name of the tab it is in, and what to pass to `muster tab`. A name rather than a
   place, so that one read is enough to act on: this is how a pane finds its own tab, since
@@ -132,8 +132,9 @@ One entry per pane every followed daemon holds, on screen or not.
 - `daemons` - the machines it holds panes on, in the order their parts sit on screen. One for
   almost every tab; two for one somebody has grouped with `muster pane move --tab`. Plural because
   a tab does not belong to a machine - which machine holds a pane is on the pane.
-- `place` - where it sits in the window's tab order, counting from one. What `next_tab` walks. No
-  chord names it - ⌘1 to ⌘9 number panes.
+- `place` - where it sits in the window's tab order, counting from one. What `next_tab` walks. By
+  default no chord names it - ⌘1 to ⌘9 number panes - and under `numbered_chords =
+  "tab_then_pane"` they number tabs.
 - `label` - what to call it to somebody who did not open it. `given_name` is what somebody typed,
   empty when nobody has.
 - `on_screen` - whether this is the tab the window is showing. Exactly one carries it. Not the
@@ -189,12 +190,11 @@ not be read: an agent Muster failed to read is not an agent that finished.
 
 `done` is an agent that finished while nobody was looking. The daemon keeps the finish, so a
 window opened later still says `done`, and it lasts until a window that has the keyboard shows
-the pane - which clears it for every window - or until the agent works or waits on somebody
-again. A daemon that restarts forgets it, so a script should not expect a `done` to outlive one.
+the pane - which clears it for every window - or until the agent works, waits on somebody, or
+says it is waiting on its own work. A daemon that restarts forgets it, so a script should not expect a `done` to outlive one.
 
 The state column is coloured: `working` cyan, `blocked` yellow, `done` green, `waiting` blue. `idle` and
-`unknown` are left plain, because they are the resting answer and the row already prints the
-word. It is the same legend the window itself paints, where `blocked` is orange - the sixteen
+`unknown` are dimmed, because they are the resting answer and the row already prints the word. It is the same legend the window itself paints, where `blocked` is orange - the sixteen
 colours a terminal has hold no orange, and yellow is the nearest slot.
 
 **These are fixed, and the window's are not.** `[colors] agent_*` repaints the window; this
@@ -238,7 +238,10 @@ refuses until `--socket` names one. It ends with exit 3 if the window quits unde
 
 ## daemons[]
 
-One entry per machine this window is attached to.
+One entry per machine this window is attached to. A machine the config names that is still being
+attached has none yet, and with nothing attached at all the plain answer says so.
+
+- `daemon` is the machine's name, the `id` of its `[[daemon]]` block or `local`.
 
 - `state` is `connected`, `stale` or `disconnected`, and `detail` says why for the two that are
   not `connected`. Read this before acting on the rest: everything above comes from Muster's
@@ -277,6 +280,7 @@ from the file. A daemon Muster adopted is somebody else's to account for; `muste
 it while this window is using it, and Muster has no standing to tell you what it holds after
 that.
 
+- `socket` is the path the daemon listens on, the one its row prints.
 - `state` is `answering`, `silent`, `gone` or `herdr`. `answering` replied when it was dialed.
   `silent` has a socket file nothing answers on, which is a daemon that ended without tidying up.
   `gone` has no socket file left, and it is the one case Muster cannot resolve for you: a daemon
@@ -289,7 +293,7 @@ that.
   anything - a count of zero is a daemon you can end and lose nothing.
 - `attached_here` says whether the window answering is using it. A window can only speak for
   itself, so `false` means "not this window" rather than "nothing". With more than one window
-  open you get one answer per window, the way `muster window` does.
+  open, pass `--socket` to hear one window's answer; `muster docs limits` says why.
 - `started` is when Muster started it. It is there to be recognised, not sorted by: age is
   exactly what picks the wrong process.
 

@@ -498,10 +498,10 @@ enum Doing {
 
     /// Give a pane a bridge, for one the window has stopped drawing while its agent runs on
     //
-    // The verb that was missing when a pane went dark. Every other way back ends the agent:
-    // `close` does by design, and quitting the app does to every pane at once. This asks for
-    // the one thing a dark pane actually needs, which is a bridge - and it is the same ask
-    // the window makes on its own a few seconds after nothing dials one.
+    // The verb that was missing when a pane went dark. `close` ends the agent by design, and
+    // quitting and reopening the app reattaches every pane at once. This asks for the one thing
+    // a dark pane actually needs, which is a bridge - and it is the same ask the window makes
+    // on its own a few seconds after nothing dials one.
     Reattach {
         /// The pane to reattach, or the one this is running in
         #[arg(long, value_name = "REF")]
