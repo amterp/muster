@@ -15,7 +15,9 @@
 // - control, one per app per daemon: Request in, ControlMessage (answers and events) out;
 // - input, one per app per daemon: InputEvent in, nothing out. Never acknowledged, and never
 //   queued behind a large answer on the control connection;
-// - stream, one per bridge: StreamRequest in, StreamMessage out, for one pane's bytes.
+// - stream, one per bridge: StreamRequest in, StreamMessage out, for one pane's bytes;
+// - peer, one per pair of linked daemons on different machines: PeerFrame both ways, so that
+//   either can call the other over a connection only one of them could dial.
 //
 // ## Answers and events
 //
@@ -75,6 +77,7 @@ enum ConnectionKind {
   CONNECTION_KIND_CONTROL = 1;
   CONNECTION_KIND_INPUT = 2;
   CONNECTION_KIND_STREAM = 3;
+  CONNECTION_KIND_PEER = 4;
 }
 
 // The first frame on every connection, from the client.
@@ -485,6 +488,7 @@ message MsgRequest {
     GroupMembers group_members = 20;
     Pause pause = 21;
     Resume resume = 22;
+    Peer peer = 23;
   }
 
   message Caller {
@@ -606,6 +610,15 @@ message MsgRequest {
     // the caller as fetching with hooks.
     bool due = 3;
   }
+
+  // From the app: the daemon of the machine it calls `name` is at `socket` on this machine,
+  // forwarded over ssh. This daemon links to it for as long as this request's connection
+  // lasts, dialing again whenever the link drops, so groups can span the two machines. It is
+  // never answered while the connection lasts.
+  message Peer {
+    string name = 1;
+    string socket = 2;
+  }
 }
 
 message MsgAnswer {
@@ -704,6 +717,8 @@ message MsgAnswer {
     REACH_NO_DOORBELL = 7;
     // The group is paused: woken once it is resumed.
     REACH_PAUSED = 8;
+    // On another machine, which could not be told.
+    REACH_UNREACHABLE = 9;
   }
 
   // What an agent in a pane is doing, as detection reads the pane.
@@ -725,6 +740,9 @@ message MsgAnswer {
   message GroupEntries {
     string group = 1;
     repeated Entry entries = 2;
+    // The machine the group is kept on, when this is a replica of it and that machine cannot
+    // be reached now: what was posted there since may be missing.
+    optional string behind = 3;
   }
 
   message Entry {
@@ -779,6 +797,8 @@ message MsgAnswer {
     LIVENESS_GONE = 2;
     // The human counts as alive whether or not anyone is at the window.
     LIVENESS_HUMAN = 3;
+    // On another machine this one cannot reach now.
+    LIVENESS_UNREACHABLE = 4;
   }
 
   // What `wait` returns: per group, the unread messages that would wake the caller.
@@ -1511,4 +1531,137 @@ message Handoff {
   message Ready {}
   message Commit {}
   message Serving {}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Peer: one daemon to another (MIP-4, section 11)
+//
+// A group is kept on one daemon, its home, which numbers and stores its log. A daemon with a
+// member of a group kept elsewhere holds a replica, forwards its members' joins, leaves and
+// posts to the home, and wakes only its own members. The daemon that dials sends Introduce
+// first and the one dialed answers with its own; after that either sends calls and replies,
+// matched by id, in any order.
+//
+// Each daemon writes its own members bare and another machine's as `name@machine`, in its own
+// name for that machine. Every name in a frame is written as its sender writes it; the receiver
+// turns it into its own. Groups are named as their home names them.
+
+message PeerFrame {
+  oneof frame {
+    Introduce introduce = 1;
+    PeerCall call = 2;
+    PeerReply reply = 3;
+  }
+}
+
+message Introduce {
+  // What the sender calls itself: its host name.
+  string name = 1;
+  // What the sender calls the receiver. The dialer's comes from the app; the one dialed says
+  // the name it was introduced by.
+  string you = 2;
+}
+
+message PeerCall {
+  uint64 id = 1;
+  oneof call {
+    Find find = 10;
+    Join join = 11;
+    Leave leave = 12;
+    Post post = 13;
+    Since since = 14;
+    Who who = 15;
+    // From a group's home: its new entries, for the replica to take and wake its members for.
+    Caught replicate = 16;
+  }
+
+  // Whether a group by this name is kept there.
+  message Find {
+    string group = 1;
+  }
+
+  // `head` is how far the asker's replica reaches, so the reply can carry what it lacks.
+  message Join {
+    string name = 1;
+    string group = 2;
+    uint64 head = 3;
+  }
+
+  message Leave {
+    string name = 1;
+    string group = 2;
+    uint64 head = 3;
+  }
+
+  // `cursor` is how far the author had read, which the home's guard counts unread from.
+  message Post {
+    string author = 1;
+    string group = 2;
+    repeated string to = 3;
+    string body = 4;
+    uint64 cursor = 5;
+    uint64 head = 6;
+  }
+
+  message Since {
+    string group = 1;
+    uint64 after = 2;
+  }
+
+  // The asked daemon's own members of the group, and what each is doing.
+  message Who {
+    string group = 1;
+  }
+}
+
+message PeerReply {
+  uint64 id = 1;
+  oneof reply {
+    bool found = 10;
+    Joined joined = 11;
+    Caught left = 12;
+    Posted posted = 13;
+    Caught caught = 14;
+    MsgAnswer.Members members = 15;
+    Refused refused = 16;
+    // What a replicate did: whom it reached on the replica's machine.
+    Reached applied = 17;
+  }
+
+  message Joined {
+    // The number of the entry saying the asker's member joined.
+    uint64 seq = 1;
+    Caught caught = 2;
+  }
+
+  message Posted {
+    uint64 seq = 1;
+    repeated MsgAnswer.Reached reached = 2;
+    Caught caught = 3;
+  }
+
+  message Reached {
+    repeated MsgAnswer.Reached reached = 1;
+  }
+
+  // A refusal, as fields the asker renders in its own words and names. `code` is the one
+  // `MsgAnswer.refusal` carries; `words` are the sender's, for a code the asker does not know.
+  message Refused {
+    string code = 1;
+    string words = 2;
+    string name = 3;
+    string group = 4;
+    string machine = 5;
+    uint64 count = 6;
+    string existing = 7;
+    repeated string candidates = 8;
+    Caught caught = 9;
+  }
+}
+
+// A group's entries after some point, and the policy they are read under.
+message Caught {
+  string group = 1;
+  repeated MsgAnswer.Entry entries = 2;
+  MsgRequest.Policy policy = 3;
 }

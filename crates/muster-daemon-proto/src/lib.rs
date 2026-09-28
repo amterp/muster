@@ -72,6 +72,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(msg_request::Request::GroupMembers(_)) => "msg.group_members",
             Some(msg_request::Request::Pause(_)) => "msg.pause",
             Some(msg_request::Request::Resume(_)) => "msg.resume",
+            Some(msg_request::Request::Peer(_)) => "msg.peer",
             None => "msg",
         },
     }

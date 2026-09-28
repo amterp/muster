@@ -16,6 +16,7 @@ mod flood;
 mod handoff;
 mod handshake;
 mod lifecycle;
+mod linked;
 mod log;
 mod messaging;
 mod migration;

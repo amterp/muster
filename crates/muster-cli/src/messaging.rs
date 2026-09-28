@@ -996,6 +996,7 @@ fn members_text(members: &msg_answer::Members, json: bool) -> String {
         msg_answer::Liveness::Alive => "alive",
         msg_answer::Liveness::Gone => "gone",
         msg_answer::Liveness::Human => "human",
+        msg_answer::Liveness::Unreachable => "unreachable",
         msg_answer::Liveness::Unspecified => "unknown",
     };
     if json {

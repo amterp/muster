@@ -205,6 +205,7 @@ impl Messages {
                         .map(|(group, entries)| msg_answer::GroupEntries {
                             group,
                             entries: entries.iter().map(entry_of).collect(),
+                            behind: None,
                         })
                         .collect();
                     (read.name, Answer::Entries(msg_answer::Entries { groups }))
@@ -214,6 +215,7 @@ impl Messages {
                 let group = msg_answer::GroupEntries {
                     group: asked.group,
                     entries: entries.iter().map(entry_of).collect(),
+                    behind: None,
                 };
                 (String::new(), Answer::Entries(msg_answer::Entries { groups: vec![group] }))
             }),
@@ -225,6 +227,7 @@ impl Messages {
             Asked::Post(_) | Asked::Wait(_) | Asked::Resume(_) => {
                 unreachable!("posts, waits, resumes and follows are handled apart")
             }
+            Asked::Peer(_) => return Reply::unsupported(),
         };
         match result {
             Ok((caller, answer)) => answered(caller, answer),
@@ -366,6 +369,7 @@ fn following(shared: &Shared, log: proto::msg_request::Log, hung_up: &dyn Fn() -
                     let group = msg_answer::GroupEntries {
                         group: log.group,
                         entries: entries.iter().map(entry_of).collect(),
+                        behind: None,
                     };
                     let groups = vec![group];
                     return answered(
@@ -798,10 +802,9 @@ fn words(refusal: &Refusal) -> String {
         Refusal::NoSuchParticipant { name } => {
             format!("nobody here is called {name}; `{}` lists who is", messaging::command(WHO, ""))
         }
-        Refusal::WhichParticipant { name, candidates } => format!(
-            "{name} could be {}; say which, as name@machine",
-            candidates.join(" or ")
-        ),
+        Refusal::WhichParticipant { name, candidates } => {
+            format!("{name} could be {}; say which, as name@machine", candidates.join(" or "))
+        }
         Refusal::NoSharedGroup { name } => format!(
             "{name} is on another machine and in no group with you, so there is no group to post \
              this in; both of you join one with `{}`, then post with --group",
@@ -948,7 +951,7 @@ fn member_of(member: muster_msg::Member) -> msg_answer::Member {
         Liveness::Alive => msg_answer::Liveness::Alive,
         Liveness::Gone => msg_answer::Liveness::Gone,
         Liveness::Human => msg_answer::Liveness::Human,
-        Liveness::Unreachable => msg_answer::Liveness::Unspecified,
+        Liveness::Unreachable => msg_answer::Liveness::Unreachable,
     };
     msg_answer::Member {
         name: member.name,
@@ -970,7 +973,7 @@ fn reach_of(reach: Reach) -> msg_answer::Reach {
         Reach::Waiting => msg_answer::Reach::Waiting,
         Reach::Gone => msg_answer::Reach::Gone,
         Reach::Paused => msg_answer::Reach::Paused,
-        Reach::Unreachable => msg_answer::Reach::Unspecified,
+        Reach::Unreachable => msg_answer::Reach::Unreachable,
     }
 }
 

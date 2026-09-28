@@ -184,7 +184,7 @@ fn judge(hello: &proto::Hello) -> Result<(), String> {
     }
     match ConnectionKind::try_from(hello.kind) {
         Ok(ConnectionKind::Control | ConnectionKind::Stream | ConnectionKind::Input) => Ok(()),
-        Ok(ConnectionKind::Unspecified) | Err(_) => {
+        Ok(ConnectionKind::Unspecified | ConnectionKind::Peer) | Err(_) => {
             Err("the hello names no kind of connection this daemon knows".to_string())
         }
     }
