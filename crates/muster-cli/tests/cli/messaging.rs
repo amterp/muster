@@ -94,6 +94,23 @@ fn two_agents_post_read_and_are_held_to_the_guard() {
     assert_eq!(bodies, ["the parser is in", "done"]);
 }
 
+/// `--if-unread` is for a hook after every tool call, whose output the model is handed: a join
+/// or a leave is nothing to interrupt it with.
+#[test]
+fn read_if_unread_says_nothing_when_only_joins_and_leaves_are_new() {
+    let daemon = Daemon::start_built();
+    ok(&muster(&daemon, &["msg", "--as", "a", "join", "--group", "g"]));
+    ok(&muster(&daemon, &["msg", "--as", "b", "join", "--group", "g"]));
+    ok(&muster(&daemon, &["msg", "--as", "c", "join", "--group", "g"]));
+    assert_eq!(ok(&muster(&daemon, &["msg", "--as", "b", "read", "--if-unread"])), "");
+
+    ok(&muster(&daemon, &["msg", "--as", "c", "post", "hello"]));
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "--as", "a", "read", "--if-unread"])),
+        "--- g #3 | b joined ---\n--- g #4 | c joined ---\n--- g #5 | c ---\nhello\n--- end g #5 | c ---"
+    );
+}
+
 #[test]
 fn a_body_comes_whole_from_a_file_or_stdin() {
     let daemon = Daemon::start_built();
