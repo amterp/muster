@@ -317,6 +317,35 @@ fn a_program_that_is_not_there_is_refused_and_the_daemon_goes_on() {
     still_serving(&daemon, control.welcome().instance);
 }
 
+/// A program is run once with `--version` before any pane is touched, and one that does not
+/// answer in time, or answers with a failure, is refused there.
+#[test]
+fn a_program_that_does_not_answer_its_version_is_refused_before_anything_is_touched() {
+    let scripts = std::env::temp_dir().join(format!("muster-launch-{}", std::process::id()));
+    std::fs::create_dir_all(&scripts).unwrap();
+    for (name, body, said) in [
+        ("slow", "sleep 10", "did not answer --version within 1 s"),
+        ("failing", "exit 3", "answered --version with exit status: 3"),
+    ] {
+        let program = scripts.join(name);
+        std::fs::write(&program, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&program, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "short-launch")]);
+        let (control, _input) = two_panes(&daemon);
+        let asked = std::time::Instant::now();
+        let reason = refused(&mut daemon, Some(&program));
+        assert!(reason.contains(said), "{name}: {reason}");
+        assert!(
+            asked.elapsed() < std::time::Duration::from_secs(5),
+            "{name}: waited {:?}",
+            asked.elapsed()
+        );
+        still_serving(&daemon, control.welcome().instance);
+    }
+    let _ = std::fs::remove_dir_all(&scripts);
+}
+
 /// A new daemon that fails at each step of a handoff costs nothing.
 #[test]
 fn a_new_daemon_that_refuses_or_dies_at_any_step_leaves_the_old_one_serving() {
@@ -344,10 +373,6 @@ fn copies_of_the_daemon(names: [&str; 2]) -> [std::path::PathBuf; 2] {
             target.join(format!("handoff-{}-{name}", std::process::id())).join("muster-daemon");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::copy(built, &path).unwrap();
-        // macOS checks a binary the first time it runs, which took 1.6 to 12.6 s on a busy
-        // machine against the 10 s a successor has to answer each step of a handoff. Run once
-        // here, it is checked before anything is timed.
-        let _ = std::process::Command::new(&path).arg("--help").output();
         path
     })
 }

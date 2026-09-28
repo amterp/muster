@@ -881,6 +881,13 @@ the daemon is stopping, while it is still restoring its saved tabs (it holds les
 while another handoff is under way. `muster-daemon replace` asks for it by hand; the app asks when it
 finds an older daemon running.
 
+**A launch first.** Before it touches anything, the old daemon runs the program once with
+`--version` and waits up to thirty seconds for it to exit well, logging how long it took as
+`daemon.handoff.launched`. A program that cannot start - a bad build, a missing library - is refused
+there, with its stderr on the old daemon's. And macOS checks a binary the first time it runs, which
+took up to 12.6 s for a fresh copy on a busy machine: inside the exchange that would outlast a
+step's ten seconds and fail it late, where here it is only waited for.
+
 **The exchange.** The old daemon starts the new one in a session of its own, with one end of a socket
 pair as descriptor 3 (`--handoff 3`), and they speak `Handoff` frames over it, never over the
 daemon's socket. Those messages are in `muster_daemon.proto`, so the baseline's compatibility check

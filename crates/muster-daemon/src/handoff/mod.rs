@@ -37,6 +37,12 @@ use crate::session::{Handing, Places, Replacement, Reply, Saved, Shared, Stop};
 /// How long either side waits for the other at one step before giving the handoff up.
 const STEP: Duration = Duration::from_secs(10);
 
+/// How long the successor has to answer `--version`, which it is run with once before any pane
+/// is touched. macOS checks a binary the first time it runs, which took up to 12.6 s on a busy
+/// machine: inside a step of the handoff that would outlast [`STEP`], and here it costs only
+/// the wait.
+const LAUNCH: Duration = Duration::from_secs(30);
+
 /// A replay goes in pieces of this, each well inside the largest frame.
 const PIECE: usize = 1 << 20;
 
@@ -49,8 +55,9 @@ const FLUSH: Duration = Duration::from_secs(1);
 /// Test-only faults, a comma-separated list read by both daemons, each acting on its own: the
 /// daemon taking over `refuse`, `exit-before-ready`, `exit-after-commit`, `pause-after-accept`,
 /// `pause-before-ready` and `pause-before-serving`, and the daemon handing over
-/// `pause-before-hold`, `pause-after-serving` and `report-before-settle`, which queues a report just before it waits
-/// for the reports, as a reader does that reports as it parks.
+/// `pause-before-hold`, `pause-after-serving`, `report-before-settle`, which queues a report just before it waits
+/// for the reports, as a reader does that reports as it parks, and `short-launch`, which gives
+/// the successor one second rather than [`LAUNCH`] to answer `--version`.
 const FAULT: &str = "MUSTER_DAEMON_HANDOFF_FAULT";
 
 /// The faults this daemon was started with. Read only by a debug build, which is what every test
@@ -223,6 +230,8 @@ fn handed(
     handing: &mut Handing,
     successor: &mut Option<Child>,
 ) -> Result<handoff::Accept, String> {
+    let patience = if Faults::read().has("short-launch") { Duration::from_secs(1) } else { LAUNCH };
+    launch(&replacement.program, patience)?;
     // Two daemons writing the state file at once would share its temporary file.
     if !handing.persister.pause(STEP) {
         return Err("this daemon's write of its state file did not finish".to_string());
@@ -323,6 +332,49 @@ fn handed(
         handoff::Message::Serving(_) => Ok(accepted),
         other => Err(unexpected("serving", &other)),
     }
+}
+
+/// Runs the successor once with `--version`, before anything is paused, so a program that
+/// cannot start - a bad build, a missing library, or macOS's first check of a new binary
+/// outlasting a step - is refused here rather than partway through.
+fn launch(program: &Path, patience: Duration) -> Result<(), String> {
+    let started = Instant::now();
+    let mut child = Command::new(program)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("could not start it: {error}"))?;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < patience => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "it did not answer --version within {} s; nothing was handed over. A new \
+                     binary is checked by macOS the first time it runs, which can take this long \
+                     on a busy machine, so asking again may succeed",
+                    patience.as_secs()
+                ));
+            }
+            Err(error) => return Err(format!("could not wait for its --version: {error}")),
+        }
+    };
+    if !status.success() {
+        return Err(format!("it answered --version with {status}; nothing was handed over"));
+    }
+    log::info(
+        "daemon.handoff.launched",
+        fields! {
+            "program" => program.display(),
+            "ms" => started.elapsed().as_millis(),
+        },
+    );
+    Ok(())
 }
 
 /// Starts the successor, on its own session and with no signal blocked, with one end of a
