@@ -264,15 +264,20 @@ fn answer(mut stream: UnixStream) {
         None => dispatch(&request),
     };
     after_the_window_holds_it(&response);
+    let answered = received.elapsed();
+    let sent = write_frame(&mut stream, &response);
+    // Both, as the daemon's own line does: a large answer to a caller that reads it slowly spends
+    // its time in the write, which the time to answer does not show.
     log::debug(
         "command.answered",
         fields! {
             "request" => asked,
             "forwarded" => forwarded,
-            "ms" => format!("{:.1}", received.elapsed().as_secs_f64() * 1000.0),
+            "ms" => format!("{:.1}", answered.as_secs_f64() * 1000.0),
+            "sent_ms" => format!("{:.1}", received.elapsed().as_secs_f64() * 1000.0),
         },
     );
-    if let Err(error) = write_frame(&mut stream, &response) {
+    if let Err(error) = sent {
         log::debug(
             "command.answer.unsent",
             fields! {
