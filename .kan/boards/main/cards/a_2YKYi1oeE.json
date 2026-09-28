@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "each-worktree-gets-a",
+  "alias_explicit": false,
+  "column": "next",
+  "created_at_millis": 1790621210771,
+  "creator": "Alexander Terp",
+  "description": "./dev --ssh and the devenv-tier tests share one container (muster-devenv), and --ssh recreates it, so parallel worktrees queue for it and must coordinate by hand. On 2026-09-28 three worktrees waited on each other for it repeatedly, and one worktree's recreate changed the SSH key the others' tests used. Name the container, its port and its key per checkout (as ./dev --contract's directory now is), so two worktrees' ssh tiers can run at once and never recreate each other's container. ./devenv/devenv up/down and ./dev --doctor follow the per-checkout name; docs/testing.md says so.",
+  "id": "a_2YKYi1oeE",
+  "position": "a3",
+  "title": "Each worktree gets a devenv container of its own",
+  "type": "chore",
+  "updated_at_millis": 1790621210771,
+  "history": [
+    {"field":"column","value":"next","at":1790621210771}
+  ]
+}
