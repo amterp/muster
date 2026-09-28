@@ -1055,8 +1055,9 @@ impl Session {
         };
         // Here rather than at each place a daemon is attached or let go, because every one of
         // them reconciles next. Compared first, so the ordinary reconcile writes nothing.
-        if !self.holding.follows_exactly(self.backends.keys()) {
-            self.holding.follow(self.backends.keys().cloned().collect());
+        let followed = self.followed_or_attaching();
+        if !self.holding.follows_exactly(followed.iter()) {
+            self.holding.follow(followed);
         }
         let taken = self.holding.take_unheld(daemon, &described);
         for tab in described {
@@ -1065,6 +1066,15 @@ impl Session {
             }
         }
         !taken.is_empty()
+    }
+
+    /// Every daemon this window follows, and every configured one still on its way: the machines
+    /// the record says this window follows. A daemon being reached over ssh is one this window
+    /// will show, and leaving it out would let the record give its tabs away.
+    fn followed_or_attaching(&self) -> BTreeSet<DaemonId> {
+        let mut daemons: BTreeSet<DaemonId> = self.backends.keys().cloned().collect();
+        daemons.extend(poison::lock(&ATTACHES, "attaches").under_way.iter().cloned());
+        daemons
     }
 
     /// Lets go of what this daemon no longer holds.
@@ -2729,6 +2739,11 @@ pub(crate) fn is_following(daemon: &DaemonId) -> bool {
     session.backends.contains_key(daemon)
 }
 
+/// Whether a daemon the config names is still being attached, and not yet followed.
+pub(crate) fn is_attaching(daemon: &DaemonId) -> bool {
+    !is_following(daemon) && poison::lock(&ATTACHES, "attaches").under_way.contains(daemon)
+}
+
 /// Every daemon this window is following, in the order the window shows them.
 ///
 /// For naming the machines there are when somebody has named one there is not. The window's
@@ -3294,7 +3309,7 @@ fn say_this_window_is_open() {
                 described.extend(mirror.tabs().map(|tab| tab.id.clone()));
             }
         }
-        let followed = session.backends.keys().cloned().collect();
+        let followed = session.followed_or_attaching();
         session.holding.follow(followed);
         session.holding.open(&answered, |tab| described.contains(tab));
     }

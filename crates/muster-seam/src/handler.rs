@@ -874,6 +874,14 @@ fn nothing_to_act_on(daemon: &DaemonId) -> Response {
 
 /// Why a name somebody gave a machine reached no machine.
 fn no_such_daemon(daemon: &DaemonId) -> Response {
+    if session::is_attaching(daemon) {
+        return Response::failure(format!(
+            "the daemon {daemon} is still being attached, so nothing was done. It did not \
+             answer when this window opened, and Muster keeps trying; ask again once it has, \
+             which `muster window` shows by listing it. The window's problems say what the last \
+             attempt ran into."
+        ));
+    }
     let attached = session::attached_daemons();
     let held = if attached.is_empty() {
         "this window is following none".to_string()

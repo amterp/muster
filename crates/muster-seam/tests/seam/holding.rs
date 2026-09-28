@@ -20,7 +20,7 @@ use muster::proto::{
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, WindowName};
 use muster_core::mirror::backend::TabId;
-use muster_daemon_proto::Side;
+use muster_daemon_proto::{self as daemon_proto, Side, session_request};
 use muster_harness::requests::{beside, create, in_new_tab, make, snapshot};
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -396,6 +396,62 @@ fn coming_to_the_front_takes_the_tabs_left_for_the_window_that_was() {
     assert_eq!(listed().len(), 2, "coming to the front did not take the tab nobody holds");
 }
 
+/// A tab this window holds on a daemon that has not answered yet stays this window's.
+///
+/// The record forgets a tab no daemon describes, unless the window holding it follows a daemon
+/// that has not answered, which may be where the tab is. Were a daemon still attaching counted as
+/// not followed, this window would give up its own tab on a slow devenv the moment it opened,
+/// leaving it to whichever window came to the front next. Staged with a daemon slow to send its
+/// state; one slow to reach at all, over ssh, is counted by the same set
+/// (`Session::followed_or_attaching`), since nothing on this machine is slow to reach.
+#[test]
+fn a_tab_on_a_daemon_still_attaching_stays_this_windows() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    a_tab_made_outside_muster(&daemon, "t-slow");
+    // The record as a launch left it: this window, closed, holding the tab.
+    let path = record(&daemon);
+    let mut holders = read_record(&path);
+    holders.opened(HeldWindow {
+        name: WindowName::new("window-1"),
+        arrangement: daemon.root().join("window-1.toml").to_string_lossy().into_owned(),
+        socket: String::new(),
+        pid: 1,
+        focused: 0,
+        daemons: std::iter::once(DaemonId::new("local")).collect(),
+    });
+    holders.take(TabId::new("t-slow"), &WindowName::new("window-1"));
+    holders.closed(&WindowName::new("window-1"));
+    write_record(&path, &holders);
+
+    let relay = daemon.delaying_answers_where(subscribes, std::time::Duration::from_secs(5));
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: relay.muster_config().to_string_lossy().into_owned(),
+        state_path: daemon.root().join("window-1.toml").to_string_lossy().into_owned(),
+        tab_holders_path: path.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    let record = holders_in(&path);
+    assert!(
+        record.iter().any(|(tab, window)| tab == "t-slow" && window == "window-1"),
+        "the window let go of its tab on a daemon still attaching: {record:?}"
+    );
+    drop(relay);
+}
+
+/// The window's subscribe, whose answer carries the daemon's state.
+fn subscribes(request: &daemon_proto::Request) -> bool {
+    matches!(
+        &request.service,
+        Some(daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
+            request: Some(session_request::Request::Subscribe(_)),
+        }))
+    )
+}
+
 /// Stands in for a window that is open: a socket that answers, named in the shared record.
 fn another_window(daemon: &Daemon, name: &str, focused: i64) -> UnixListener {
     let socket = daemon.root().join(format!("{name}.sock"));
@@ -427,7 +483,11 @@ fn give(daemon: &Daemon, tab: &str, window: &str) {
 
 /// Every tab the record names, with the window holding it.
 fn holders(daemon: &Daemon) -> Vec<(String, String)> {
-    let holders = read_record(&record(daemon));
+    holders_in(&record(daemon))
+}
+
+fn holders_in(path: &Path) -> Vec<(String, String)> {
+    let holders = read_record(path);
     holders
         .windows()
         .flat_map(|window| {
