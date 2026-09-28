@@ -13,6 +13,7 @@ members = [
     "crates/muster-frame",
     "crates/muster-harness",
     "crates/muster-latency",
+    "crates/muster-msg",
     "crates/muster-perf",
     "crates/muster-proto",
     "crates/muster-seam",
@@ -37,6 +38,7 @@ muster-daemon-proto = { path = "crates/muster-daemon-proto" }
 muster-detect = { path = "crates/muster-detect" }
 muster-frame = { path = "crates/muster-frame" }
 muster-harness = { path = "crates/muster-harness" }
+muster-msg = { path = "crates/muster-msg" }
 muster-proto = { path = "crates/muster-proto" }
 muster-seam = { path = "crates/muster-seam" }
 muster-ssh = { path = "crates/muster-ssh" }

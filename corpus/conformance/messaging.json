@@ -1,0 +1,366 @@
+{
+  "concept": "messaging",
+  "source": "authored",
+  "citation": "docs/mip/0004-agent-messaging.md, sections 2 to 5 and 13, and its table of what council v1 got wrong",
+  "why": "What the message service does is a function of its participants, their groups, the logs and cursors, and whose inbox still answers, so it is data: each case is a script of steps by named callers, and each step is answered with one line. A caller is a Claude session (`session`, whose inbox socket is /tmp/cc-socks/<session>.sock), a name given with --as (`as`), or neither, which is the human. `dies` makes a session's inbox stop answering. Groups number their entries from 1, and creating one logs `created` and the creator's join before anything else.",
+  "cases": [
+    {
+      "name": "an unaddressed post wakes every member but its author",
+      "why": "The default policy's ring set is every member, and an author is never woken by its own post (MIP-4, section 5).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "a", "do": "post", "body": "hello"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c joined g",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:0 from a], c [g #5-5 x1 to-you:0 from a]"
+      ] }
+    },
+    {
+      "name": "an addressed post wakes only its addressees, and every member can still read it",
+      "why": "Council v1 released every waiter at once when a post named a departed agent. Addressing decides who is woken, never who may read: there are no private messages (MIP-4, Decision 2).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "take the lexer"},
+        {"session": "c", "do": "read"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c joined g",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:1 from a]",
+        "c read g: #5 a->b: take the lexer"
+      ] }
+    },
+    {
+      "name": "a participant is woken once per batch, and again only after it reads",
+      "why": "Ten messages arriving while an agent works cost it one wake; every wake it acts on is a turn it pays for (MIP-4, section 5).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "a", "do": "post", "body": "two"},
+        {"session": "b", "do": "read"},
+        {"session": "a", "do": "post", "body": "three"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "a posted #5 to g; already woken b",
+        "b read g: #4 a: one | #5 a: two",
+        "a posted #6 to g; woke b [g #6-6 x1 to-you:0 from a]"
+      ] }
+    },
+    {
+      "name": "the guard refuses a post while its author has unread messages",
+      "why": "The stale-context guard from council v1: a post is refused until its author has read what others posted there, and there is no override (MIP-4, section 4).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "body": "first"},
+        {"session": "b", "do": "post", "body": "reply without reading"},
+        {"session": "b", "do": "read"},
+        {"session": "b", "do": "post", "body": "reply"},
+        {"session": "a", "do": "post", "body": "again"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "refused unread g 1",
+        "b read g: #4 a: first",
+        "b posted #5 to g; woke a [g #5-5 x1 to-you:0 from b]",
+        "refused unread g 1"
+      ] }
+    },
+    {
+      "name": "joins do not count as unread",
+      "why": "Council v1's lock counted joins, so every join made every pending post stale (MIP-4, section 4).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "a", "do": "post", "body": "hi"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c joined g",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:0 from a], c [g #5-5 x1 to-you:0 from a]"
+      ] }
+    },
+    {
+      "name": "a participant whose inbox is gone is not woken",
+      "why": "A wake address is found dead at first use and marks its participant gone until it returns (MIP-4, sections 5 and 12).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "c", "do": "dies"},
+        {"session": "a", "do": "post", "body": "x"},
+        {"session": "a", "do": "post", "body": "y"},
+        {"do": "who", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c joined g",
+        "died",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:0 from a]; gone c",
+        "a posted #6 to g; already woken b; gone c",
+        "a alive, b alive, c gone"
+      ] }
+    },
+    {
+      "name": "read shows others' messages and notices, never the reader's own",
+      "why": "Reading back one's own post would count as noise; a notice about someone else is how a member learns the group changed (MIP-4, section 4).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "body": "mine"},
+        {"session": "a", "do": "read"},
+        {"session": "b", "do": "read"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "a read g: #3 b joined",
+        "b read g: #4 a: mine"
+      ] }
+    },
+    {
+      "name": "a post to agents who share no group creates the group of exactly them",
+      "why": "Two agents can message each other without convening anything, and there is still one kind of log (MIP-4, section 2).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "b", "do": "join", "name": "b"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "hello"},
+        {"session": "b", "do": "read"},
+        {"session": "b", "do": "post", "to": ["a"], "body": "hi"}
+      ] },
+      "expect": { "said": [
+        "a registered",
+        "b registered",
+        "a posted #4 to a+b; woke b [a+b #4-4 x1 to-you:1 from a]",
+        "b read a+b: #4 a->b: hello",
+        "b posted #5 to a+b; woke a [a+b #5-5 x1 to-you:1 from b]"
+      ] }
+    },
+    {
+      "name": "a post goes to the one group its author and addressees share",
+      "why": "Members of a council messaging each other stay under the council's policy (MIP-4, section 2).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "in g"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:1 from a]"
+      ] }
+    },
+    {
+      "name": "a post that fits several groups is refused until it names one",
+      "why": "Guessing between two groups would put a message under the wrong policy and in the wrong log (MIP-4, section 2).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "join", "group": "h"},
+        {"session": "b", "do": "join", "group": "h"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "which?"},
+        {"session": "a", "do": "post", "body": "which?"},
+        {"session": "a", "do": "post", "group": "h", "to": ["b"], "body": "this one"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a joined h (created)",
+        "b joined h",
+        "refused which_group g,h",
+        "refused which_group g,h",
+        "a posted #4 to h; woke b [h #4-4 x1 to-you:1 from a]"
+      ] }
+    },
+    {
+      "name": "an unaddressed post from a caller in no group is refused",
+      "why": "An unaddressed post goes to its author's group, and a caller in none has no group to post to (MIP-4, section 2).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a"},
+        {"session": "a", "do": "post", "body": "anyone?"}
+      ] },
+      "expect": { "said": [
+        "a registered",
+        "refused no_group"
+      ] }
+    },
+    {
+      "name": "joining under a gone participant's name takes it over, cursors included",
+      "why": "A resumed agent has new addresses; taking over its old name keeps what it had read, and a live holder of the name is never displaced (MIP-4, section 3).",
+      "given": { "steps": [
+        {"session": "s1", "do": "join", "name": "critic", "group": "g"},
+        {"session": "s2", "do": "join", "name": "builder", "group": "g"},
+        {"session": "s1", "do": "dies"},
+        {"session": "s2", "do": "post", "body": "while you were away"},
+        {"session": "s3", "do": "join", "name": "critic"},
+        {"session": "s3", "do": "read"},
+        {"session": "s4", "do": "join", "name": "builder"}
+      ] },
+      "expect": { "said": [
+        "critic joined g (created)",
+        "builder joined g",
+        "died",
+        "builder posted #4 to g; gone critic",
+        "critic registered (took over)",
+        "critic read g: #3 builder joined | #4 builder: while you were away",
+        "refused name_in_use builder at /tmp/cc-socks/s2.sock"
+      ] }
+    },
+    {
+      "name": "a caller that never named itself is named after its directory",
+      "why": "Parallel sessions sit in worktrees of their own, so the directory is the name a person would use; a second session there gets a suffix, and a new session takes over a name whose session is gone (MIP-4, Open Questions, answered in stage 1).",
+      "given": { "steps": [
+        {"session": "s1", "do": "read", "directory": "/src/muster-5"},
+        {"session": "s2", "do": "read", "directory": "/src/muster-5"},
+        {"session": "s1", "do": "dies"},
+        {"session": "s3", "do": "read", "directory": "/src/muster-5"},
+        {"do": "who"}
+      ] },
+      "expect": { "said": [
+        "muster-5 read nothing",
+        "muster-5-2 read nothing",
+        "died",
+        "muster-5 read nothing",
+        "muster-5 alive, muster-5-2 alive"
+      ] }
+    },
+    {
+      "name": "a caller with no agent identity is the human, who waits for messages rather than being woken",
+      "why": "A person's own shell has no agent identity, and messages to the human wait for them; nothing wakes the human until attention routing does (MIP-4, sections 3 and 10).",
+      "given": { "steps": [
+        {"do": "join", "group": "g"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "to": ["@human"], "body": "need input"},
+        {"do": "read"},
+        {"do": "who", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "@human joined g (created)",
+        "a joined g",
+        "a posted #4 to g; waiting @human",
+        "@human read g: #3 a joined | #4 a->@human: need input",
+        "@human human, a alive"
+      ] }
+    },
+    {
+      "name": "a wait returns when a waking message arrives, and a newer wait ends the older",
+      "why": "wait is what a hook runs in the background; at most one runs per participant (MIP-4, section 13).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "b", "do": "wait"},
+        {"session": "a", "do": "post", "body": "go"},
+        {"session": "b", "do": "wait"},
+        {"session": "b", "do": "read"},
+        {"session": "b", "do": "wait"},
+        {"session": "b", "do": "wait"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "waiting 1",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "ready g #4-4 x1 to-you:0 from a",
+        "b read g: #4 a: go",
+        "waiting 2",
+        "waiting 3, ended 2"
+      ] }
+    },
+    {
+      "name": "a post is refused when it addresses someone it cannot reach there",
+      "why": "Each refusal names what is wrong, so the agent can fix the post rather than guess (MIP-4, section 2).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c"},
+        {"session": "a", "do": "post", "group": "g", "to": ["c"], "body": "x"},
+        {"session": "a", "do": "post", "to": ["zed"], "body": "x"},
+        {"session": "a", "do": "post", "to": ["a"], "body": "x"},
+        {"session": "a", "do": "post", "group": "nope", "body": "x"},
+        {"session": "c", "do": "post", "group": "g", "body": "x"},
+        {"session": "a", "do": "post", "body": "   "}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c registered",
+        "refused addressee_not_in_group c g",
+        "refused no_such_participant zed",
+        "refused addressed_self",
+        "refused no_such_group nope",
+        "refused not_a_member c g",
+        "refused empty_body"
+      ] }
+    },
+    {
+      "name": "leaving a group is a notice in its log, and leaving everything stops being a participant",
+      "why": "Joins and leaves are part of the transcript a late joiner reads (MIP-4, sections 4 and 13).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "b", "do": "leave", "group": "g"},
+        {"session": "a", "do": "post", "body": "anyone?"},
+        {"session": "b", "do": "leave"},
+        {"do": "who"},
+        {"do": "log", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "b left g",
+        "a posted #5 to g",
+        "b stopped",
+        "a alive",
+        "#1 created by a | #2 a joined | #3 b joined | #4 b left | #5 a: anyone?"
+      ] }
+    },
+    {
+      "name": "a newcomer's reading starts when it joins, and the log still holds what came before",
+      "why": "History from before a join is what log is for; counting it as unread would refuse the newcomer's first post (MIP-4, section 4).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "body": "early"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "c", "do": "post", "body": "hello"},
+        {"do": "log", "group": "g", "since": 3}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "c joined g",
+        "c posted #6 to g; woke a [g #6-6 x1 to-you:0 from c]; already woken b",
+        "#4 a: early | #5 c joined | #6 c: hello"
+      ] }
+    },
+    {
+      "name": "a name must be one a command line and a log can carry",
+      "why": "Names appear in commands, notices and file names, so they are letters, digits, dot, underscore and hyphen (MIP-4, section 11 for why they must be unique).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "has space"}
+      ] },
+      "expect": { "said": [
+        "refused bad_name has space"
+      ] }
+    }
+  ]
+}

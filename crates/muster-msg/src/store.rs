@@ -1,0 +1,51 @@
+use serde::{Deserialize, Serialize};
+
+use crate::{Entry, Participant, Policy};
+
+/// Where the host keeps what must outlive it. Both calls happen before the request that caused
+/// them is answered, so an answer never reports something the store did not take.
+pub trait Store {
+    fn append(&mut self, group: &str, entry: &Entry) -> Result<(), String>;
+    fn save(&mut self, state: &Saved) -> Result<(), String>;
+}
+
+/// Everything but the logs. A group's members are not here: they are read back from its log's
+/// notices, so a log appended before a crash that lost this file still says who is in it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Saved {
+    pub participants: Vec<Participant>,
+    pub groups: Vec<GroupRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupRecord {
+    pub name: String,
+    pub policy: Policy,
+}
+
+/// A store in memory, for tests and for anything that needs no persistence.
+#[derive(Debug, Default)]
+pub struct Memory {
+    pub appended: Vec<(String, Entry)>,
+    pub saved: Option<Saved>,
+    /// Set to make every call fail, as a full disk would.
+    pub failing: bool,
+}
+
+impl Store for Memory {
+    fn append(&mut self, group: &str, entry: &Entry) -> Result<(), String> {
+        if self.failing {
+            return Err("the store is failing on purpose".to_string());
+        }
+        self.appended.push((group.to_string(), entry.clone()));
+        Ok(())
+    }
+
+    fn save(&mut self, state: &Saved) -> Result<(), String> {
+        if self.failing {
+            return Err("the store is failing on purpose".to_string());
+        }
+        self.saved = Some(state.clone());
+        Ok(())
+    }
+}

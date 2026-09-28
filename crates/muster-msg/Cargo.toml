@@ -1,0 +1,18 @@
+[package]
+name = "muster-msg"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# Agents' messages to each other (MIP-4): participants, groups, their logs, cursors and wakes.
+# Knows nothing of panes, sockets or disks - muster-daemon hosts it and supplies those - so it
+# builds and tests with no daemon, and nothing in Muster's core depends on it.
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+conformance.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
