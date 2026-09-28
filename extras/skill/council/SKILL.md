@@ -38,9 +38,8 @@ something you lack, say what to the director.
 never run `muster msg wait` or poll `read` in the foreground to wait for others. You will be
 woken, with a line saying how to read what came.
 
-**Read before you post.** When woken, run the `muster msg read` the wake names, and read what
-others said before answering it. A post is refused while you have unread messages in that
-group; read, then decide whether your post still needs saying.
+**Read before you post.** A post is refused while you have unread messages in its group, so
+run the `muster msg read` the wake names, then decide whether your post still needs saying.
 
 **Be terse.** Lead with your point. Aim under 150 words unless you are presenting analysis or
 code. No compliments, thanks, summaries of what others said (they can read it), or offers to
