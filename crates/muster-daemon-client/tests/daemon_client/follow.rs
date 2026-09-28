@@ -30,6 +30,12 @@ struct Followed {
 }
 
 fn follow(daemon: &Daemon) -> Followed {
+    follow_as(daemon, false)
+}
+
+/// Follows `daemon` as a window does one on this machine, or, when `remote`, one it reaches over
+/// ssh.
+fn follow_as(daemon: &Daemon, remote: bool) -> Followed {
     let mirror = Arc::new(Mutex::new(Mirror::new()));
     let notices = Arc::new(Mutex::new(Vec::new()));
     let heard = Arc::clone(&notices);
@@ -38,7 +44,7 @@ fn follow(daemon: &Daemon) -> Followed {
             socket: daemon.socket_path().to_path_buf(),
             client: "test".to_string(),
             daemon: "local".to_string(),
-            remote: false,
+            remote,
         },
         Arc::clone(&mirror),
         Arc::new(move |notice| heard.lock().unwrap().push(notice)),
@@ -652,4 +658,50 @@ fn a_first_subscribe_answered_without_state_fails_the_connect() {
     });
     assert!(detail.contains("without its state"), "the connect failed saying {detail:?}");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The human is homed on the machine the app runs on, so a window hears what waits for the
+/// human only from the daemon there: one it reaches over ssh may have a human of its own, from
+/// before a link told it otherwise, and a banner from it would be a second one.
+#[test]
+fn a_window_hears_of_the_human_only_from_its_own_machine() {
+    use proto::msg_request::{self, Request as Asked};
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    let ask = |control: &mut muster_harness::Control, caller: msg_request::Caller, asked| {
+        let request = proto::MsgRequest { caller: Some(caller), request: Some(asked) };
+        control.ask(proto::request::Service::Msg(request))
+    };
+    let named = |name: &str| msg_request::Caller {
+        as_name: Some(name.to_string()),
+        ..msg_request::Caller::default()
+    };
+    for (caller, name) in [(msg_request::Caller::default(), "@human"), (named("a"), "a")] {
+        let join = Asked::Join(msg_request::Join {
+            name: Some(name.to_string()),
+            group: Some("g".to_string()),
+            pull: false,
+        });
+        ask(&mut control, caller, join);
+    }
+    let post = |body: &str| {
+        Asked::Post(msg_request::Post {
+            group: Some("g".to_string()),
+            to: vec!["@human".to_string()],
+            body: body.to_string(),
+        })
+    };
+    ask(&mut control, named("a"), post("before"));
+
+    let over_ssh = follow_as(&daemon, true);
+    let here = follow(&daemon);
+    ask(&mut control, named("a"), post("after"));
+    let notice = || here.mirror.lock().unwrap().human_notice("g").cloned();
+    until(
+        "the window here to hear of both",
+        || notice().is_some_and(|notice| notice.count == 2),
+        || format!("it heard {:?}", notice()),
+    );
+    let heard = over_ssh.mirror.lock().unwrap().human_notice("g").cloned();
+    assert_eq!(heard, None, "a window heard of the human from a daemon over ssh");
 }
