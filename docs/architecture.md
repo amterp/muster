@@ -1039,7 +1039,11 @@ password into a file destined for a bug report. It used to be opt-in outside deb
 while every bundle was one; the optimized bundles of 0.9.0 would otherwise have stopped writing the file bug
 reports are made of.
 
-Where the file lives is an OS question and therefore the shell's; nothing in the core knows the path.
+Where the file lives is an OS question and therefore the shell's; nothing in the core knows the path. On macOS it is
+`~/Library/Logs/muster/`, where Console lists it, with `latest.jsonl` naming the newest run. A run with `MUSTER_HOME`
+set logs to `logs/` under that home instead, so an isolated run - a test, a bug being reproduced - neither mixes its
+records into the person's own runs nor takes `latest.jsonl` from them. `MUSTER_LOG_FILE` names one file outright and
+wins over both.
 
 ## Seams and test hooks
 

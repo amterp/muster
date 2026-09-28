@@ -1,8 +1,8 @@
 import Foundation
 
 // Where the logs go, which is the one part of logging that is an OS question. The core
-// writes the records; this file decides they belong in ~/Library/Logs, and hands the path
-// over at startup. Ports pick their own answer here and nothing below changes.
+// writes the records; this file decides they belong in ~/Library/Logs, or in an isolated
+// run's own home, and hands the path over at startup. Ports pick their own answer here and nothing below changes.
 
 /// Opens this run's log file and points every process Muster spawns at it.
 ///
@@ -42,10 +42,19 @@ public func startLogging() -> String? {
 
 /// Where a run's log goes when nothing names a file for it.
 ///
+/// `~/Library/Logs/muster`, where macOS keeps an app's logs and Console lists them. A run given
+/// a home of its own with `MUSTER_HOME` logs into that home instead, because it is isolated
+/// everywhere else: beside the person's runs its records would mix with theirs, and it would take
+/// `latest.jsonl` from them.
+///
 /// Takes its environment as a parameter so a test says what it is testing, as
 /// `musterHome(environment:)` does.
 func logDirectory(environment: [String: String]) -> URL {
-  FileManager.default.homeDirectoryForCurrentUser
+  if let home = environment["MUSTER_HOME"], !home.isEmpty {
+    return URL(fileURLWithPath: home, isDirectory: true)
+      .appendingPathComponent("logs", isDirectory: true)
+  }
+  return FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Library/Logs/muster", isDirectory: true)
 }
 

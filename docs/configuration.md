@@ -12,6 +12,9 @@ to be discovered rather than taught - an agent that can list one directory needs
 documentation to find the whole of it. `XDG_CONFIG_HOME` and its family move nothing of
 Muster's.
 
+The run log is the one exception: it goes to `~/Library/Logs/muster/`, where macOS keeps app
+logs, until `MUSTER_HOME` is set, which moves it to `logs/` in that home with everything else.
+
 ```toml
 option_as_alt = "left"         # never (the default) | always | left | right
 resize_step = "20c"            # per resize chord: cells (c) or points (px). Omit for the
