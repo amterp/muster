@@ -41,7 +41,8 @@ pub(crate) fn deliver(inbox: &Inbox, text: &str) -> Result<(), String> {
 
 /// Whether a participant is still there: a session's inbox still accepts a connection. A
 /// connection that sends nothing shows nothing in the session (the observation above, section
-/// 3). A participant with no inbox cannot be asked, so it counts as there.
+/// 3). A participant with no inbox can never be woken, so it is not there: it keeps its groups
+/// and its place in them, and its name is free to be taken over.
 #[derive(Debug)]
 pub(crate) struct Sockets;
 
@@ -50,7 +51,7 @@ impl Presence for Sockets {
         participant
             .inbox
             .as_ref()
-            .is_none_or(|inbox| is_same_socket(inbox) && UnixStream::connect(&inbox.socket).is_ok())
+            .is_some_and(|inbox| is_same_socket(inbox) && UnixStream::connect(&inbox.socket).is_ok())
     }
 }
 
