@@ -197,6 +197,8 @@ pub struct Messaging<S: Store> {
     groups: BTreeMap<String, Group>,
     waiters: BTreeMap<String, Waiter>,
     next_ticket: u64,
+    /// What the store last took, so a request that changed nothing costs no sync.
+    kept: Saved,
 }
 
 impl<S: Store> Messaging<S> {
@@ -239,7 +241,16 @@ impl<S: Store> Messaging<S> {
                 (participant.name.clone(), participant)
             })
             .collect();
-        Messaging { store, participants, groups, waiters: BTreeMap::new(), next_ticket: 1 }
+        let mut messaging = Messaging {
+            store,
+            participants,
+            groups,
+            waiters: BTreeMap::new(),
+            next_ticket: 1,
+            kept: Saved::default(),
+        };
+        messaging.kept = messaging.snapshot();
+        messaging
     }
 
     pub fn store(&self) -> &S {
@@ -881,7 +892,17 @@ impl<S: Store> Messaging<S> {
     }
 
     fn save(&mut self) -> Result<(), Refusal> {
-        let saved = Saved {
+        let saved = self.snapshot();
+        if saved == self.kept {
+            return Ok(());
+        }
+        self.store.save(&saved).map_err(|error| Refusal::Store { error })?;
+        self.kept = saved;
+        Ok(())
+    }
+
+    fn snapshot(&self) -> Saved {
+        Saved {
             participants: self.participants.values().cloned().collect(),
             groups: self
                 .groups
@@ -891,7 +912,6 @@ impl<S: Store> Messaging<S> {
                     policy: group.policy.clone(),
                 })
                 .collect(),
-        };
-        self.store.save(&saved).map_err(|error| Refusal::Store { error })
+        }
     }
 }
