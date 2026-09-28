@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "why-v2-s-signed",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790593598486,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-09-28: every thread of v2's muster-daemon (started by Launch Services as MusterSessions.app, Developer ID signed) sat at priority 20, which is exactly what taskpolicy -c utility gives; its pane threads ask for user-interactive. An ad-hoc bundle built here and started the same way stayed at 31 and 46 for 20 minutes, hidden and locked. Under a utility clamp, ./dev --latency's under-load rows measured a tail read p95 of 51 ms and an echo 62 ms slower than idle. Worth checking the next signed build's daemon with ps -M after an hour of use.",
+  "id": "a_2Y8yO3NJS",
+  "position": "am",
+  "title": "Why v2's signed daemon ran under a utility clamp",
+  "type": "bug",
+  "updated_at_millis": 1790593598486,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790593598486}
+  ]
+}

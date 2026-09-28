@@ -2,16 +2,25 @@
   "_v": 3,
   "alias": "under-heavy-load-the",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Cause: App Nap. A hidden app (or any app with the screen locked) runs every thread at priority 4, under nice-10 builds at 31; the app reads every daemon answer, so a 240 KB whole-pane answer waited up to 12 s in the socket. Fixed by an app-lifetime ProcessInfo activity (threads at 28 hidden) and reads that ask for only the rows wanted (Read.last). ./dev --latency now times reads and an echo beside a build, with budgets. Open: v2's signed daemon ran under a utility clamp (priority 20) that could not be reproduced; the latency row catches it if it recurs.",
+      "created_at_millis": 1790593598227,
+      "id": "c_2Y8yNiqOr"
+    }
+  ],
   "created_at_millis": 1790584040125,
   "creator": "Alexander Terp",
   "description": "Seen 2026-09-28 03:26 in Muster v2 (signed bundle, muster-daemon from the cut-over branch before it landed) while three `./dev` gates ran at nice 10: load average 175-240. `muster pane read` through the window took 13 s, and one attempt failed with \"the daemon local did not answer within 10s\". A `pane send` to the same pane landed. The daemon process sat at 0.9% CPU, so it was waiting rather than busy: a lock held across slow work, a thread starved despite its QoS, or the app side of the request.\n\nThis is the failure that made herdr unusable under the same load (median 1.2 s, max 5 s for zoom), and MIP-3 promised muster-daemon would not have it. The quiet-machine `--latency` tier cannot see it: it needs a measurement under load. The daemon log and the app run log for that minute should show where the time went.",
   "id": "a_2Y4xjF8wX",
-  "position": "b0A",
+  "position": "Yzp",
   "title": "Under heavy load the daemon takes over 10 s to answer a pane read",
   "type": "bug",
-  "updated_at_millis": 1790584040125,
+  "updated_at_millis": 1790593598319,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790584040125}
+    {"field":"column","value":"backlog-hi","at":1790584040125},
+    {"field":"column","value":"done","at":1790593598319}
   ]
 }
