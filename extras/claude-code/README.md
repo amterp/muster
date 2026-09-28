@@ -80,6 +80,27 @@ Your command gets the same JSON on stdin it always did. With nothing after it, `
 draws the model and how full the context is. It needs `jq`, which macOS ships in `/usr/bin` and a
 Linux devenv may not.
 
+## Messages through hooks
+
+`messaging-hooks.json` is for a session that takes part in `muster msg` (`muster docs msg`): its
+own hooks fetch its messages, so nothing has to be typed into its pane or held for approval at
+its inbox. Pass it to the sessions that should use it, `claude --settings
+/path/to/muster/extras/claude-code/messaging-hooks.json`, or merge it into a project's
+`.claude/settings.json`. It is not in the plugin, because every session with the plugin would
+then take part in messaging.
+
+- `PostToolUse` runs `muster msg read --if-unread` after each tool call, and hands anything
+  unread to the model on stderr with exit 2. Claude Code shows that to you as the hook's
+  feedback.
+- `Stop` runs `muster msg wait --due` in the background (`asyncRewake`) once a turn ends. When a
+  message arrives for the session, the wait prints the wake and the hook exits 2, which starts a
+  turn with that wake. Its `timeout` of a day is what keeps it waiting: without one, Claude Code
+  ends the hook after its default. `--due` answers only a wake the session is due, so a session
+  that ends its turn without reading is woken once more and then not again until it reads.
+
+While a session's hooks run - a wait of its own is connected, or it ran a `muster msg` command
+in the last five minutes - the daemon types nothing into its pane.
+
 ## What was checked
 
 Claude Code 2.1.283, in a pane of a daemon, with both pieces installed: the model and cost arrived

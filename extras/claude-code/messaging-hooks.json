@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "out=$(muster msg read --if-unread 2>/dev/null) && [ -n \"$out\" ] && { printf '%s\\n' \"$out\" >&2; exit 2; }; exit 0"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "muster msg wait --due >&2 && exit 2; exit 0",
+            "asyncRewake": true,
+            "timeout": 86400
+          }
+        ]
+      }
+    ]
+  }
+}
