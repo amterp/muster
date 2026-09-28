@@ -836,9 +836,6 @@ impl<S: Store> Messaging<S> {
 
     /// Wakes `name` for `group` if nothing has since the last time it read.
     fn reach(&mut self, name: &str, group: &str, posted: &mut Posted) -> Reach {
-        if name == HUMAN {
-            return Reach::Waiting;
-        }
         let Some(participant) = self.participants.get(name) else {
             return Reach::Gone;
         };
@@ -862,6 +859,11 @@ impl<S: Store> Messaging<S> {
                 notice,
             });
             return Reach::Woken;
+        }
+        // Nothing wakes the human's window until attention routing does (MIP-4, section 10);
+        // a wait of the human's is answered above like anyone's.
+        if name == HUMAN {
+            return Reach::Waiting;
         }
         if participant.woken.contains(group) {
             return Reach::AlreadyWoken;
