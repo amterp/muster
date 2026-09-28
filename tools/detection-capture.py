@@ -105,6 +105,17 @@ def main() -> int:
                 f"/{command} opened from the prompt: nobody is waiting on anybody, and the state stays what it was.",
                 skip=True,
             )
+            if command == "hooks":
+                # An event's matchers, then a matcher's hooks, end in the same footer. The
+                # first event with a hook on the recording machine is the one opened.
+                for level in ["an event's matchers", "a matcher's hooks"]:
+                    send("\r")
+                    pump(3)
+                    mark(f"the /hooks menu, {level}", "unknown", f"/hooks, {level}: still a menu someone opened.", skip=True)
+                send("\x1b")
+                pump(1)
+                send("\x1b")
+                pump(1)
             send("\x1b")
             pump(2)
 

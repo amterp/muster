@@ -2,7 +2,7 @@
   "concept": "detection.recordedScreens",
   "source": "recorded",
   "regenerate": "python3 tools/detection-capture.py <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
-  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal, rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, and in the menus the MCP servers' names, a home directory and an imported memory file's path are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal, rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
   "cases": [
     {
       "expect": {
@@ -30,6 +30,34 @@
       },
       "name": "claude 2.1.283: the /hooks menu",
       "why": "/hooks opened from the prompt: nobody is waiting on anybody, and the state stays what it was."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": " ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  PreToolUse - Matchers\n  Input to command is JSON of tool call arguments.\n  Exit code 0 - stdout/stderr not shown\n  Exit code 2 - show stderr to model and block tool call\n  Other exit codes - show stderr to user only but continue with tool call\n\n  ❯ [User] Bash   1 hook\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "name": "claude 2.1.283: the /hooks menu, an event's matchers",
+      "why": "/hooks, an event's matchers: still a menu someone opened."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": " ▐▛███▛█   Claude Code v2.1.283\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /hooks\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  PreToolUse - Matcher: Bash\n  Input to command is JSON of tool call arguments.\n  Exit code 0 - stdout/stderr not shown\n  Exit code 2 - show stderr to model and block tool call\n  Other exit codes - show stderr to user only but continue with tool call\n\n  ❯ ./check-command.sh   command\n    User Settings\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "✳ Claude Code"
+      },
+      "name": "claude 2.1.283: the /hooks menu, a matcher's hooks",
+      "why": "/hooks, a matcher's hooks: still a menu someone opened."
     },
     {
       "expect": {
