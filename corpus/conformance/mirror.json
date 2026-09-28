@@ -1441,6 +1441,97 @@
           "progress:p1"
         ]
       }
+    },
+    {
+      "name": "what waits for the human is held by group, and a reconnect reports only the groups that moved",
+      "why": "The daemon says what waits for the human as state, per group, with a count of 0 once the human has read it (MIP-4, section 10). The mirror holds it so that a window can say it again, and reports a group only when what waits there moved: a notification is raised per change, so a word repeated, or a group a reconnect found unchanged, must not be one.",
+      "given": {
+        "snapshot": {
+          "human": {
+            "g1": {
+              "last": 4,
+              "count": 1,
+              "to_you": 1,
+              "from": [
+                "a"
+              ]
+            },
+            "g2": {
+              "last": 3,
+              "count": 1,
+              "to_you": 0,
+              "from": [
+                "b"
+              ]
+            }
+          }
+        },
+        "events": [
+          {
+            "kind": "humanNotice",
+            "group": "g1",
+            "last": 6,
+            "count": 2,
+            "to_you": 2,
+            "from": [
+              "a"
+            ]
+          },
+          {
+            "kind": "humanNotice",
+            "group": "g2",
+            "count": 0
+          },
+          {
+            "kind": "humanNotice",
+            "group": "g1",
+            "last": 6,
+            "count": 2,
+            "to_you": 2,
+            "from": [
+              "a"
+            ]
+          }
+        ],
+        "resnapshot": {
+          "human": {
+            "g1": {
+              "last": 6,
+              "count": 2,
+              "to_you": 2,
+              "from": [
+                "a"
+              ]
+            },
+            "g3": {
+              "last": 2,
+              "count": 1,
+              "to_you": 1,
+              "from": [
+                "c"
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "paneTabs": {},
+        "agentStates": {},
+        "layouts": {},
+        "health": "connected",
+        "restoring": false,
+        "human": {
+          "g1": "x2 last #6 from a",
+          "g3": "x1 last #2 from c"
+        },
+        "changes": [
+          "humanNoticed:g1",
+          "humanNoticed:g2",
+          "humanNoticed:g3"
+        ]
+      }
     }
   ]
 }

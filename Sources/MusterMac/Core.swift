@@ -796,6 +796,16 @@ public enum Core {
     send(request)
   }
 
+  /// Goes to a group's transcript, as choosing a banner about a message for the human does.
+  public static func openTranscript(daemonID: String, group: String) {
+    var open = Muster_OpenTranscript()
+    open.daemonID = daemonID
+    open.group = group
+    var request = Muster_Request()
+    request.openTranscript = open
+    send(request)
+  }
+
   /// Steps the keyboard one pane along: `next` or `previous`.
   ///
   /// A direction rather than a pane, because the shell does not get to decide what is next -
@@ -834,14 +844,15 @@ public enum Core {
     send(request)
   }
 
-  /// Goes to the pane most urgently asking for somebody. False only when nothing was asking: a
-  /// refusal has already been logged by `send`, and is not the same answer.
+  /// Goes to what is most urgently asking for somebody: a pane, or the transcript of a group
+  /// where a message waits for the human. False only when nothing was asking: a refusal has
+  /// already been logged by `send`, and is not the same answer.
   @discardableResult
   public static func focusAsking() -> Bool {
     var request = Muster_Request()
     request.focusAsking = Muster_FocusAsking()
     guard case .asking(let went) = send(request) else { return true }
-    return !went.paneID.isEmpty
+    return !went.paneID.isEmpty || !went.group.isEmpty
   }
 
   /// Takes back a numbered chord that named a tab, because the gesture is over.
@@ -1060,6 +1071,7 @@ public enum Core {
     case .reattachPane: return "reattach_pane"
     case .focusPane: return "focus_pane"
     case .focusAsking: return "focus_asking"
+    case .openTranscript: return "open_transcript"
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"
     case .windowFocus: return "window_focus"
@@ -1215,7 +1227,8 @@ public enum Core {
       PaneNotifier.shared.apply(
         daemon: changed.daemonID, pane: changed.paneID, state: changed.state,
         label: changed.label, subtitle: changed.subtitle, noteTitle: changed.noteTitle,
-        noteBody: changed.noteBody)
+        noteBody: changed.noteBody, group: changed.group, count: changed.count,
+        from: changed.from)
     case .presentationChanged(let changed):
       let presentation = Presentation(sidebar: changed.sidebar)
       info("presentation.received", ["sidebar": String(presentation.sidebar)])

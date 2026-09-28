@@ -37,8 +37,8 @@ struct NotificationsTests {
 
   @Test("a state the core never raises still says something true")
   func anUnknownStateIsNotBlank() {
-    // The core raises `blocked`, `notified` and `done` and nothing else, so this is a seam
-    // disagreement.
+    // The core raises `blocked`, `notified` and `done` for a pane and nothing else, so this is
+    // a seam disagreement.
     // A banner is the wrong place to report one, and an empty body is worse than a vague one.
     #expect(!PaneNotification.reason(state: "compacting").isEmpty)
   }
@@ -67,5 +67,29 @@ struct NotificationsTests {
     #expect(
       PaneNotification.identifier(daemon: "local", pane: "w1:p1")
         != PaneNotification.identifier(daemon: "devenv", pane: "w1:p1"))
+  }
+}
+
+@Suite("what a notification about a message for the human says")
+struct MessageNotificationsTests {
+  @Test("it names the group and says who wrote")
+  func namesTheGroupAndTheAuthors() {
+    #expect(MessageNotification.title(group: "review") == "review")
+    #expect(
+      MessageNotification.body(count: 1, from: ["director"]) == "1 message for you from director")
+    #expect(
+      MessageNotification.body(count: 3, from: ["director", "critic"])
+        == "3 messages for you from director, critic")
+  }
+
+  @Test("a group's banner is its own, never a pane's")
+  func identifierIsTheGroups() {
+    // One banner per group, replaced by each message, and a withdrawal has to find it.
+    #expect(
+      MessageNotification.identifier(daemon: "local", group: "review")
+        != PaneNotification.identifier(daemon: "local", pane: "review"))
+    #expect(
+      MessageNotification.identifier(daemon: "local", group: "review")
+        == MessageNotification.identifier(daemon: "local", group: "review"))
   }
 }

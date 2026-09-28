@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
-use muster_core::attention::{Asker, Attend, Attention, Note, Notifications};
+use muster_core::attention::{Asker, Attend, Attention, GroupKey, Note, Notifications};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
@@ -38,6 +38,7 @@ use muster_core::problems::{Problem, Problems, Severity};
 use muster_core::reconnect;
 use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
+use muster_core::transcript;
 use muster_daemon_client::backend::{DaemonBackend, DaemonInput};
 use muster_daemon_client::follow::{Follower, Following, Notice};
 use muster_daemon_client::{
@@ -330,8 +331,9 @@ pub(crate) fn set_notifications(notifications: Notifications) {
         session.attention.notifying(notifications)
     };
     for asker in &stale {
-        if let Asker::Pane(pane) = asker {
-            announce_attention(pane, Attend::Withdrawn);
+        match asker {
+            Asker::Pane(pane) => announce_attention(pane, Attend::Withdrawn),
+            Asker::Group(group) => announce_message(group, Attend::Withdrawn),
         }
     }
 }
@@ -1680,6 +1682,43 @@ impl Session {
         }
     }
 
+    /// The panes on the group's daemon that are its transcript: each runs the command a
+    /// transcript runs, which the daemon keeps for as long as the pane lives.
+    fn transcripts(&self, group: &GroupKey) -> Vec<PaneKey> {
+        let Some(backend) = self.backends.get(&group.daemon) else { return Vec::new() };
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        mirror
+            .panes()
+            .filter(|pane| {
+                pane.command.as_deref().and_then(transcript::group_of) == Some(group.group.as_str())
+            })
+            .map(|pane| PaneKey::new(&group.daemon, &pane.id))
+            .collect()
+    }
+
+    /// Whether somebody is looking at the group's transcript in this window.
+    fn looking_at_transcript(&self, group: &GroupKey) -> bool {
+        self.transcripts(group).iter().any(|pane| self.attention.seen(pane))
+    }
+
+    /// Tells the group's daemon the human has read it. Queued rather than waited on, so it is
+    /// safe under the session's lock, like [`Session::report_seen`]; one that finds its daemon
+    /// disconnected is not held, since what waits is said again when it comes back.
+    fn read_as_human(&self, group: &GroupKey) {
+        let sent = self
+            .backends
+            .get(&group.daemon)
+            .is_some_and(|backend| backend.follower.read_as_human(&group.group));
+        log::info(
+            "attention.message.read",
+            fields! {
+                "daemon" => group.daemon.to_string(),
+                "group" => group.group.clone(),
+                "sent" => sent,
+            },
+        );
+    }
+
     /// One pane's agent as this window paints it, from what its daemon said: `waiting` for an
     /// idle agent waiting on its own work, and `done` laid over a finish nobody has seen.
     fn presented(
@@ -2894,26 +2933,34 @@ pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
     focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
-/// The pane asking for somebody that `focus_asking` goes to: the most urgent of those this window
-/// would post a banner for.
+/// What `focus_asking` goes to: the most urgent of what asks for somebody that this window would
+/// post a banner for - a pane, or a group where a message waits for the human.
 ///
 /// Only those, so that it goes where a banner click would. Another open window speaks for its own
 /// tabs and takes back what they ask once somebody looks there, which this window never sees, so
 /// one of its panes could stay at the head of this window's list for good.
-pub(crate) fn most_urgent_asking() -> Option<PaneKey> {
-    let asking: Vec<PaneKey> = {
+pub(crate) fn most_urgent_asking() -> Option<Asker> {
+    let asking: Vec<Asker> = {
         let session = poison::lock(&SESSION, "session");
-        session
-            .attention
-            .asking()
-            .into_iter()
-            .filter_map(|(asker, _)| match asker {
-                Asker::Pane(pane) => Some(pane),
-                Asker::Group(_) => None,
-            })
-            .collect()
+        session.attention.asking().into_iter().map(|(asker, _)| asker).collect()
     };
-    asking.into_iter().find(speaks_for)
+    asking.into_iter().find(|asker| match asker {
+        Asker::Pane(pane) => speaks_for(pane),
+        Asker::Group(group) => speaks_for_daemon(&group.daemon),
+    })
+}
+
+/// The pane on `daemon` that is the transcript of `group`, if there is one (MIP-4, section 10).
+pub(crate) fn transcript_pane(daemon: &DaemonId, group: &str) -> Option<PaneId> {
+    let session = poison::lock(&SESSION, "session");
+    let key = GroupKey { daemon: daemon.clone(), group: group.to_string() };
+    session.transcripts(&key).into_iter().next().map(|pane| pane.pane)
+}
+
+/// Reads a group for the human, who has just been taken to its transcript.
+pub(crate) fn read_as_human(daemon: &DaemonId, group: &str) {
+    let session = poison::lock(&SESSION, "session");
+    session.read_as_human(&GroupKey { daemon: daemon.clone(), group: group.to_string() });
 }
 
 /// Why a numbered chord reached nothing, said in the terms of whatever it was counting.
@@ -4536,6 +4583,7 @@ fn publish(cause: &str) {
     for pane in &noticed.withdrawn {
         announce_attention(pane, Attend::Withdrawn);
     }
+    read_what_is_looked_at();
 }
 
 /// Applies what a daemon just said to what Muster is holding open.
@@ -4751,6 +4799,9 @@ fn report(daemon: &DaemonId, change: &Change) {
     let attended = attended(daemon, change);
     if let Some((pane, attend)) = attended {
         announce_attention(&pane, attend);
+    }
+    if let Change::HumanNoticed(group) = change {
+        human_noticed(daemon, group);
     }
 
     if let Some(pane) = change.announces_agent_state() {
@@ -4971,6 +5022,7 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
             subtitle,
             note_title,
             note_body,
+            ..AttentionChanged::default()
         })),
     });
 }
@@ -4985,6 +5037,107 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
 ///
 /// Asked only when a pane starts asking for somebody, which is rare next to everything else a
 /// window hears - so dialing the other windows here costs nothing anybody will notice.
+/// What waits for the human in a group moved: a message arrived for them, or they read it
+/// (MIP-4, section 10). Somebody already reading the group's transcript is the human reading
+/// it, so the daemon is told that instead of anybody being interrupted.
+fn human_noticed(daemon: &DaemonId, group: &str) {
+    let key = GroupKey { daemon: daemon.clone(), group: group.to_string() };
+    let attend = {
+        let mut session = poison::lock(&SESSION, "session");
+        let notice = session.backends.get(daemon).and_then(|backend| {
+            poison::lock(&backend.mirror, "mirror").human_notice(group).cloned()
+        });
+        let looking = notice.is_some() && session.looking_at_transcript(&key);
+        if looking {
+            session.read_as_human(&key);
+        }
+        session.attention.messaged(&key, notice, looking)
+    };
+    if let Some(attend) = attend {
+        announce_message(&key, attend);
+    }
+}
+
+/// Groups whose transcript somebody has just come to look at, while a message there waits for
+/// the human: the human reading them. Each is read, and stops asking now rather than once the
+/// daemon has said so, as a pane somebody looks at does.
+fn read_what_is_looked_at() {
+    let withdrawn: Vec<(GroupKey, Attend)> = {
+        let mut session = poison::lock(&SESSION, "session");
+        let asking: Vec<GroupKey> = session
+            .attention
+            .asking()
+            .into_iter()
+            .filter_map(|(asker, _)| match asker {
+                Asker::Group(group) => Some(group),
+                Asker::Pane(_) => None,
+            })
+            .collect();
+        let mut withdrawn = Vec::new();
+        for key in asking {
+            if !session.looking_at_transcript(&key) {
+                continue;
+            }
+            session.read_as_human(&key);
+            if let Some(attend) = session.attention.messaged(&key, None, true) {
+                withdrawn.push((key, attend));
+            }
+        }
+        withdrawn
+    };
+    for (key, attend) in withdrawn {
+        announce_message(&key, attend);
+    }
+}
+
+/// Tells the shell a group started or stopped asking for the human, on the terms
+/// [`announce_attention`] tells it of a pane.
+fn announce_message(group: &GroupKey, attend: Attend) {
+    if matches!(attend, Attend::Raised(_)) && !speaks_for_daemon(&group.daemon) {
+        return;
+    }
+    let state = match attend {
+        Attend::Raised(alert) => alert.as_str().to_string(),
+        Attend::Withdrawn => String::new(),
+    };
+    let notice = poison::lock(&SESSION, "session").attention.human_notice(group).cloned();
+    let notice = notice.unwrap_or_default();
+    log::info(
+        "attention.changed",
+        fields! {
+            "daemon" => group.daemon.to_string(),
+            "group" => group.group.clone(),
+            "state" => if state.is_empty() { "(withdrawn)".to_string() } else { state.clone() },
+            "count" => notice.count,
+        },
+    );
+    ffi::emit(&Event {
+        payload: Some(event::Payload::AttentionChanged(AttentionChanged {
+            daemon_id: group.daemon.to_string(),
+            state,
+            label: group.group.clone(),
+            group: group.group.clone(),
+            count: notice.count,
+            from: notice.from,
+            ..AttentionChanged::default()
+        })),
+    });
+}
+
+/// Whether this window is the one to tell somebody what a daemon says, where no tab decides:
+/// the one that came to the front most recently among those open, as for a tab nobody holds.
+fn speaks_for_daemon(daemon: &DaemonId) -> bool {
+    let (me, holders) = {
+        let session = poison::lock(&SESSION, "session");
+        if !session.holding.is_shared() {
+            return true;
+        }
+        (session.holding.me().clone(), session.holding.holders().clone())
+    };
+    let open = |window: &HeldWindow| crate::holding::is_open(&me, window);
+    holders.in_front(daemon, open) == Some(&me)
+}
+
 fn speaks_for(pane: &PaneKey) -> bool {
     let Some(tab) = tab_of_pane(&pane.pane) else { return true };
     let (me, holders) = {
@@ -5370,6 +5523,9 @@ pub(crate) fn window_focused(focused: bool) {
     // never raised one in the first place.
     for pane in &noticed.withdrawn {
         announce_attention(pane, Attend::Withdrawn);
+    }
+    if focused {
+        read_what_is_looked_at();
     }
     if focused && take_what_nobody_holds() {
         publish("holders");

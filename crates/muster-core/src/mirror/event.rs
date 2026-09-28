@@ -5,6 +5,7 @@
 //! is applied as it stands, and a mirror never has to decide whether one is old news.
 
 use crate::AgentState;
+use crate::attention::HumanNotice;
 use crate::mirror::backend::{Pane, PaneId, Progress, Tab, TabId};
 
 /// One thing a daemon says happened.
@@ -52,6 +53,11 @@ pub enum BackendEvent {
     Progress {
         pane: PaneId,
         progress: Option<Progress>,
+    },
+    /// What now waits for the human in a group: a count of 0 once nothing does.
+    HumanNotice {
+        group: String,
+        notice: HumanNotice,
     },
 }
 
@@ -138,6 +144,9 @@ pub enum Change {
     /// What a program in this pane says of its progress has moved. Announced with the pane's
     /// agent, as its facts are, since it blinks as often.
     ProgressChanged(PaneId),
+    /// What waits for the human in this group has moved: a message arrived for them, or they
+    /// read it.
+    HumanNoticed(String),
 }
 
 impl Change {
@@ -160,6 +169,7 @@ impl Change {
             Change::Rang(_) => "rang",
             Change::Notified { .. } => "notified",
             Change::ProgressChanged(_) => "progress",
+            Change::HumanNoticed(_) => "human_notice",
         }
     }
 
@@ -184,6 +194,7 @@ impl Change {
                 | Change::Rang(_)
                 | Change::Notified { .. }
                 | Change::ProgressChanged(_)
+                | Change::HumanNoticed(_)
         )
     }
 

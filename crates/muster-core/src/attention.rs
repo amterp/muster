@@ -633,7 +633,8 @@ impl Attention {
         self.raised.remove(pane).filter(|raised| raised.announced).map(|_| Attend::Withdrawn)
     }
 
-    fn seen(&self, pane: &PaneKey) -> bool {
+    /// Whether somebody is looking at the pane: the window is focused and showing it.
+    pub fn seen(&self, pane: &PaneKey) -> bool {
         self.focused && self.visible.contains(pane)
     }
 }

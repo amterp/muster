@@ -143,9 +143,9 @@ pub struct Requests {
 }
 
 impl Requests {
-    /// Subscribes again, as a [`Delivered::Gap`] asks.
-    pub fn subscribe(&self) {
-        self.send(subscribe(), true);
+    /// Subscribes again, as a [`Delivered::Gap`] asks, attending as the first subscribe did.
+    pub fn subscribe(&self, attends: bool) {
+        self.send(subscribe(attends), true);
     }
 
     /// Follows the daemon's log from after record `after`.
@@ -251,8 +251,11 @@ impl Control {
 
     /// The daemon's state now, and every event after it, delivered as it happens. The snapshot
     /// is delivered as [`Delivered::Subscribed`], and the answer carries it as well.
-    pub fn subscribe(&self) -> Pending {
-        self.requests.send(subscribe(), true)
+    ///
+    /// `attends` is a window on the daemon's own machine, which tells the human what waits for
+    /// them there (MIP-4, section 10).
+    pub fn subscribe(&self, attends: bool) -> Pending {
+        self.requests.send(subscribe(attends), true)
     }
 
     /// The daemon's state now, without subscribing.
@@ -322,6 +325,17 @@ impl Control {
         }))
     }
 
+    /// Reads a group's messages as the human, which is what the human looking at the group's
+    /// transcript is: the daemon then says nothing waits for them there (MIP-4, section 10).
+    pub fn read_as_human(&self, group: &str) -> Pending {
+        use proto::msg_request::{Caller, Read, Request};
+        self.ask(Service::Msg(proto::MsgRequest {
+            // Carrying nothing that names an agent, which is who the human is.
+            caller: Some(Caller::default()),
+            request: Some(Request::Read(Read { group: Some(group.to_string()) })),
+        }))
+    }
+
     pub fn send_manifests(&self, engine: u32, manifests: Vec<proto::Manifest>) -> Pending {
         self.ask(session(session_request::Request::SendManifests(proto::SendManifests {
             engine,
@@ -349,8 +363,8 @@ fn session(request: session_request::Request) -> Service {
     Service::Session(proto::SessionRequest { request: Some(request) })
 }
 
-fn subscribe() -> Service {
-    session(session_request::Request::Subscribe(session_request::Subscribe { attends: false }))
+fn subscribe(attends: bool) -> Service {
+    session(session_request::Request::Subscribe(session_request::Subscribe { attends }))
 }
 
 fn follow_log(after: Option<u64>) -> Service {
@@ -541,14 +555,14 @@ mod tests {
     #[test]
     fn an_event_out_of_order_is_a_gap_and_nothing_more_arrives_until_a_new_subscribe() {
         let (control, mut daemon, delivered) = connected();
-        let subscribed = control.subscribe();
+        let subscribed = control.subscribe(false);
         subscribed_at(&mut daemon, 5);
         subscribed.wait(PATIENCE).unwrap();
         for message in [event(6, "a"), event(8, "b"), event(9, "c")] {
             connection::send(&mut daemon, &message).unwrap();
         }
 
-        let resubscribed = control.subscribe();
+        let resubscribed = control.subscribe(false);
         subscribed_at(&mut daemon, 9);
         resubscribed.wait(PATIENCE).unwrap();
         for message in [event(9, "old"), event(10, "d")] {
@@ -564,7 +578,7 @@ mod tests {
     #[test]
     fn a_subscribe_nobody_waits_for_still_delivers_its_snapshot_first() {
         let (control, mut daemon, delivered) = connected();
-        drop(control.subscribe());
+        drop(control.subscribe(false));
         subscribed_at(&mut daemon, 5);
         for message in [event(6, "a"), event(7, "b")] {
             connection::send(&mut daemon, &message).unwrap();
@@ -578,7 +592,7 @@ mod tests {
     #[test]
     fn an_answer_during_a_gap_waits_for_the_next_snapshot() {
         let (control, mut daemon, delivered) = connected();
-        let subscribed = control.subscribe();
+        let subscribed = control.subscribe(false);
         subscribed_at(&mut daemon, 5);
         subscribed.wait(PATIENCE).unwrap();
         for message in [event(6, "a"), event(8, "b")] {
@@ -591,7 +605,7 @@ mod tests {
             asked.wait(Duration::from_millis(200)).is_err(),
             "answered while the events behind the answer were being dropped"
         );
-        let resubscribed = control.subscribe();
+        let resubscribed = control.subscribe(false);
         subscribed_at(&mut daemon, 9);
         resubscribed.wait(PATIENCE).unwrap();
         asked.wait(PATIENCE).expect("answered once the snapshot is delivered");
@@ -606,12 +620,12 @@ mod tests {
     #[test]
     fn a_resubscribe_refused_during_a_gap_ends_the_connection() {
         let (control, mut daemon, delivered) = connected();
-        let subscribed = control.subscribe();
+        let subscribed = control.subscribe(false);
         subscribed_at(&mut daemon, 5);
         subscribed.wait(PATIENCE).unwrap();
         connection::send(&mut daemon, &event(7, "a")).unwrap();
 
-        let resubscribed = control.subscribe();
+        let resubscribed = control.subscribe(false);
         answer_to(&mut daemon, None);
         resubscribed.wait(PATIENCE).expect("the refusal is still an answer");
         let ended = std::iter::from_fn(|| delivered.recv_timeout(PATIENCE).ok())
@@ -629,7 +643,7 @@ mod tests {
     fn an_event_before_the_first_snapshot_is_not_delivered() {
         let (control, mut daemon, delivered) = connected();
         connection::send(&mut daemon, &event(3, "early")).unwrap();
-        let subscribed = control.subscribe();
+        let subscribed = control.subscribe(false);
         subscribed_at(&mut daemon, 5);
         subscribed.wait(PATIENCE).unwrap();
         connection::send(&mut daemon, &event(6, "a")).unwrap();
@@ -643,11 +657,11 @@ mod tests {
         let (tell, delivered) = mpsc::channel();
         let (control, mut daemon) = connected_with(move |what, requests| {
             if matches!(what, Delivered::Gap { .. }) {
-                requests.subscribe();
+                requests.subscribe(false);
             }
             let _ = tell.send(what);
         });
-        let subscribed = control.subscribe();
+        let subscribed = control.subscribe(false);
         subscribed_at(&mut daemon, 5);
         subscribed.wait(PATIENCE).unwrap();
         for message in [event(6, "a"), event(8, "b")] {
@@ -669,7 +683,7 @@ mod tests {
                 let _ = released.recv();
             }
         });
-        let subscribed = control.subscribe();
+        let subscribed = control.subscribe(false);
         subscribed_at(&mut daemon, 0);
         subscribed.wait(PATIENCE).unwrap();
 

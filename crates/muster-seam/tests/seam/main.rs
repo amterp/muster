@@ -18,6 +18,7 @@ mod holding;
 mod inherited;
 mod just_made;
 mod late_daemon;
+mod messages_for_the_human;
 mod numbering;
 mod pane_focus;
 mod pane_gone;

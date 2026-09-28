@@ -29,8 +29,9 @@ public enum PaneNotification {
     case "blocked": return "is waiting on you"
     case "done": return "has finished"
     case "notified": return "has something for you"
-    // Never sent by the core, which raises only those three. A banner is the wrong place to
-    // report a seam disagreement, so this says the honest minimum rather than nothing.
+    // Never sent by the core for a pane, which raises only those three; a message for the
+    // human is worded by `MessageNotification`. A banner is the wrong place to report a seam
+    // disagreement, so this says the honest minimum rather than nothing.
     default: return "needs you"
     }
   }
@@ -59,6 +60,31 @@ public enum PaneNotification {
   /// what a notification *is*, and because the delegate reading them is not on the main actor.
   public static let daemonKey = "daemon"
   public static let paneKey = "pane"
+}
+
+/// What a banner about messages for the human says (MIP-4, section 10): no pane asks it, so it
+/// names the group they wait in and who wrote them.
+public enum MessageNotification {
+  public static func title(group: String) -> String {
+    group
+  }
+
+  /// How many wait and from whom. Every one of them woke the human, whether addressed to them
+  /// or rung to them by the group, so "for you" is true of each.
+  public static func body(count: UInt64, from: [String]) -> String {
+    let messages = count == 1 ? "1 message" : "\(count) messages"
+    let authors = from.joined(separator: ", ")
+    return authors.isEmpty ? "\(messages) for you" : "\(messages) for you from \(authors)"
+  }
+
+  /// One banner per group, so a new message replaces the group's banner rather than stacking
+  /// on it. `msg/` keeps a group from ever sharing an identifier with a pane.
+  public static func identifier(daemon: String, group: String) -> String {
+    "\(daemon)/msg/\(group)"
+  }
+
+  /// Where a posted banner carries its group, beside `PaneNotification.daemonKey`.
+  public static let groupKey = "group"
 }
 
 /// Posts the core's attention events as macOS notifications, and turns an activated one back
@@ -142,12 +168,19 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
   /// An empty state is the withdrawal. Taking a delivered banner down matters more here than
   /// in most apps: activating one focuses the pane that raised it, so a stale banner is a
   /// keystroke that lands somebody on an agent which stopped needing them.
+  ///
+  /// A message for the human carries its `group` and no pane, and says how many wait and who
+  /// wrote them rather than what a pane is doing.
   public func apply(
     daemon: String, pane: String, state: String, label: String, subtitle: String,
-    noteTitle: String = "", noteBody: String = ""
+    noteTitle: String = "", noteBody: String = "", group: String = "", count: UInt64 = 0,
+    from: [String] = []
   ) {
     guard let center else { return }
-    let id = PaneNotification.identifier(daemon: daemon, pane: pane)
+    let id =
+      group.isEmpty
+      ? PaneNotification.identifier(daemon: daemon, pane: pane)
+      : MessageNotification.identifier(daemon: daemon, group: group)
     guard !state.isEmpty else {
       center.removeDeliveredNotifications(withIdentifiers: [id])
       center.removePendingNotificationRequests(withIdentifiers: [id])
@@ -155,16 +188,24 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     let content = UNMutableNotificationContent()
-    content.title = PaneNotification.title(label: label, paneID: pane)
-    content.subtitle = PaneNotification.subtitle(
-      state: state, subtitle: subtitle, noteTitle: noteTitle)
-    content.body = PaneNotification.body(state: state, noteBody: noteBody)
+    if group.isEmpty {
+      content.title = PaneNotification.title(label: label, paneID: pane)
+      content.subtitle = PaneNotification.subtitle(
+        state: state, subtitle: subtitle, noteTitle: noteTitle)
+      content.body = PaneNotification.body(state: state, noteBody: noteBody)
+      // Read back when somebody activates it. The pane's name alone would do on one machine
+      // and would reach the wrong pane on two.
+      content.userInfo = [
+        PaneNotification.daemonKey: daemon, PaneNotification.paneKey: pane,
+      ]
+    } else {
+      content.title = MessageNotification.title(group: group)
+      content.body = MessageNotification.body(count: count, from: from)
+      content.userInfo = [
+        PaneNotification.daemonKey: daemon, MessageNotification.groupKey: group,
+      ]
+    }
     content.sound = .default
-    // Read back when somebody activates it. The pane's name alone would do on one machine
-    // and would reach the wrong pane on two.
-    content.userInfo = [
-      PaneNotification.daemonKey: daemon, PaneNotification.paneKey: pane,
-    ]
 
     // No trigger: posted now. A request with the same identifier replaces the one on screen,
     // which is what a pane that asks twice should do.
@@ -208,9 +249,18 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
     didReceive response: UNNotificationResponse
   ) async {
     let info = response.notification.request.content.userInfo
-    guard let daemon = info[PaneNotification.daemonKey] as? String,
-      let pane = info[PaneNotification.paneKey] as? String
-    else { return }
+    guard let daemon = info[PaneNotification.daemonKey] as? String else { return }
+    // A message for the human goes to its group's transcript, the same request going to what
+    // asks sends for it.
+    if let group = info[MessageNotification.groupKey] as? String {
+      await MainActor.run {
+        Core.info("notifications.activated", ["daemon": daemon, "group": group])
+        NSApp.activate(ignoringOtherApps: true)
+        Core.openTranscript(daemonID: daemon, group: group)
+      }
+      return
+    }
+    guard let pane = info[PaneNotification.paneKey] as? String else { return }
     await MainActor.run {
       Core.info("notifications.activated", ["daemon": daemon, "pane": pane])
       // Before the focus request, so the window is in front by the time the core answers with

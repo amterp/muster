@@ -1,7 +1,7 @@
 //! The mirror is the core's picture of daemon truth, and everything above it renders from
 //! that picture. Cases and their reasoning live in corpus/conformance/mirror.json.
 
-use crate::support::backend::{read_pane, read_snapshot, read_tab, text};
+use crate::support::backend::{read_human_notice, read_pane, read_snapshot, read_tab, text};
 use conformance::{Conformance, fields};
 use muster_core::mirror::backend::{PaneId, Progress, ProgressState, TabId};
 use muster_core::mirror::{BackendEvent, Change, Mirror, Restored};
@@ -42,6 +42,7 @@ fn mirror_conformance() {
             ("health", Some(json!(mirror.health().as_str()))),
             ("restoring", Some(json!(mirror.restoring()))),
             ("progress", progress(&mirror)),
+            ("human", human(&mirror)),
             ("changes", Some(json!(changes.iter().map(describe).collect::<Vec<_>>()))),
         ]))
     });
@@ -108,6 +109,19 @@ fn progress(mirror: &Mirror) -> Option<Value> {
     (!said.is_empty()).then_some(Value::Object(said))
 }
 
+/// What waits for the human, per group, when anything does.
+fn human(mirror: &Mirror) -> Option<Value> {
+    let said: Map<String, Value> = mirror
+        .human_notices()
+        .map(|(group, notice)| {
+            let line =
+                format!("x{} last #{} from {}", notice.count, notice.last, notice.from.join(","));
+            (group.clone(), json!(line))
+        })
+        .collect();
+    (!said.is_empty()).then_some(Value::Object(said))
+}
+
 /// Each tab's tree on one line, keyed by tab.
 fn layouts(mirror: &Mirror) -> Value {
     let mut map = Map::new();
@@ -153,6 +167,7 @@ fn describe(change: &Change) -> String {
         Change::Rang(pane) => format!("rang:{pane}"),
         Change::Notified { pane, title, body } => format!("notified:{pane}:{title}:{body}"),
         Change::ProgressChanged(pane) => format!("progress:{pane}"),
+        Change::HumanNoticed(group) => format!("humanNoticed:{group}"),
     }
 }
 
@@ -208,6 +223,10 @@ fn read_event(given: &Value) -> BackendEvent {
                     .and_then(Value::as_u64)
                     .and_then(|percent| u8::try_from(percent).ok()),
             }),
+        },
+        "humanNotice" => BackendEvent::HumanNotice {
+            group: text(given, "group"),
+            notice: read_human_notice(given),
         },
         // Loudly, because a case naming an event this driver cannot build would otherwise pass
         // by exercising nothing at all.

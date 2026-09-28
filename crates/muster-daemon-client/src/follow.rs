@@ -218,6 +218,16 @@ impl Follower {
         true
     }
 
+    /// Reads a group as the human, somebody having looked at its transcript, and says whether
+    /// it was sent. Not held for a later connection: the next look reads it then.
+    pub fn read_as_human(&self, group: &str) -> bool {
+        let Some(control) = self.connection.control() else {
+            return false;
+        };
+        drop(control.read_as_human(group));
+        true
+    }
+
     /// Tells the daemon these settings now, if connected, and at every connect after. Only
     /// what differs from the last settings is sent, once the daemon has taken those.
     pub fn configure(&self, settings: &DaemonSettings) {
@@ -355,7 +365,9 @@ fn connect(
         return Err("this window stopped following the daemon".to_string());
     }
 
-    let subscribed = control.subscribe().wait(PATIENCE);
+    // The human is homed on the machine the app runs on, so a window attends only the daemon
+    // there (MIP-4, sections 10 and 11).
+    let subscribed = control.subscribe(!following.remote).wait(PATIENCE);
     // Published by the snapshot's delivery, unless the subscribe failed.
     lock(&connection.connecting).take();
     let subscribed =
@@ -459,7 +471,7 @@ fn delivery(
             }
         }
         // The snapshot that answers says where things stand, and arrives as `Subscribed`.
-        Delivered::Gap { .. } => requests.subscribe(),
+        Delivered::Gap { .. } => requests.subscribe(!remote),
         Delivered::Log(line) => {
             let received = remote.then(monotonic_now);
             log::relay(&line.line, &daemon, received);

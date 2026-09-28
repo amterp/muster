@@ -484,6 +484,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
         }],
         panes: ids.iter().map(|id| agent_pane(id, &tab)).collect(),
         restoring: false,
+        human: std::collections::BTreeMap::new(),
     });
 
     let daemon = DaemonId::new("local");

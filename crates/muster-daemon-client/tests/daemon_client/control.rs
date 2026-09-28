@@ -32,7 +32,7 @@ fn next_event(delivered: &Receiver<Delivered>) -> proto::Event {
 fn a_subscription_starts_at_its_snapshot_and_a_request_is_answered_after_its_events() {
     let daemon = Daemon::start_built();
     let (control, delivered) = open(&daemon);
-    let subscribed = answered(&control.subscribe());
+    let subscribed = answered(&control.subscribe(false));
     let Some(proto::answer::Detail::Snapshot(snapshot)) = subscribed.detail else {
         panic!("a subscribe answers with a snapshot: {subscribed:?}");
     };

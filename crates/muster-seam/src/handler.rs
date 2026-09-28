@@ -10,6 +10,7 @@ use muster_core::diagnostics::log::{self, LogLevel};
 use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
+use muster_core::attention::Asker;
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step, View};
 use muster_core::config::{self, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
@@ -25,6 +26,7 @@ use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::pane_text::{self, rows_of};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
+use muster_core::transcript;
 use muster_core::{AgentState, PaneKey};
 
 use crate::proto::{self, Request, Response, event, request, response};
@@ -196,6 +198,14 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
         request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
         request::Payload::FocusAsking(_) => focus_asking(),
+        request::Payload::OpenTranscript(open) if open.group.is_empty() => Response::failure(
+            "a request to open a transcript named no group, so nothing opened. A banner for a \
+             message always carries its group, so the shell building this has a bug.",
+        ),
+        request::Payload::OpenTranscript(open) => match resolve_daemon(&open.daemon_id) {
+            Ok(daemon) => open_transcript(&daemon, &open.group),
+            Err(refusal) => *refusal,
+        },
         request::Payload::FocusTab(tab) => focus_tab(&tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(&arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(set),
@@ -1352,19 +1362,58 @@ fn focus_pane_at(place: u32) -> Response {
     answer(session::focus_pane_at(place))
 }
 
-/// Goes to the pane most urgently asking for somebody, the way clicking its banner does, and
-/// says which. Nothing asking is an answer naming no pane rather than a refusal: nothing failed.
+/// Goes to what is most urgently asking for somebody, the way clicking its banner does, and
+/// says which: a pane, or the transcript of a group where a message waits for the human. Nothing
+/// asking is an answer naming nothing rather than a refusal: nothing failed.
 fn focus_asking() -> Response {
     let went = match session::most_urgent_asking() {
-        Some(pane) => match session::focus(&pane.daemon, &pane.pane) {
-            Ok(()) => {
-                proto::Asking { daemon_id: pane.daemon.to_string(), pane_id: pane.pane.to_string() }
-            }
+        Some(Asker::Pane(pane)) => match session::focus(&pane.daemon, &pane.pane) {
+            Ok(()) => proto::Asking {
+                daemon_id: pane.daemon.to_string(),
+                pane_id: pane.pane.to_string(),
+                ..proto::Asking::default()
+            },
             Err(refusal) => return relayed(Err(refusal)),
         },
+        Some(Asker::Group(group)) => {
+            let opened = open_transcript(&group.daemon, &group.group);
+            if !matches!(
+                opened.payload,
+                Some(response::Payload::Ok(_) | response::Payload::Made(_))
+            ) {
+                return opened;
+            }
+            proto::Asking {
+                daemon_id: group.daemon.to_string(),
+                group: group.group,
+                ..proto::Asking::default()
+            }
+        }
         None => proto::Asking::default(),
     };
     Response { payload: Some(response::Payload::Asking(went)) }
+}
+
+/// Goes to a group's transcript on a daemon: the pane there that runs it, or a new tab running
+/// it when none does (MIP-4, section 10). A new tab rather than a split, so that nobody's
+/// layout moves under them because a message arrived. Going there is the human reading the
+/// group, so its daemon is told.
+fn open_transcript(daemon: &DaemonId, group: &str) -> Response {
+    let response = match session::transcript_pane(daemon, group) {
+        Some(pane) => relayed(session::focus(daemon, &pane).map(|()| Response::ok())),
+        None => open_a_tab(
+            daemon,
+            None,
+            Keyboard::Follows,
+            None,
+            Some(transcript::command(group)),
+            Some(transcript::pane_name(group)),
+        ),
+    };
+    if matches!(response.payload, Some(response::Payload::Ok(_) | response::Payload::Made(_))) {
+        session::read_as_human(daemon, group);
+    }
+    response
 }
 
 /// Moves the line between two regions of the window.

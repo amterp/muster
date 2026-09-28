@@ -7,6 +7,7 @@
 use std::fmt::Write as _;
 
 use muster_core::AgentState;
+use muster_core::attention::HumanNotice;
 use muster_core::composition::{Daemon, Endpoint};
 use muster_core::mirror::backend::{
     AgentFacts, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
@@ -57,6 +58,24 @@ pub(crate) fn read_snapshot(given: &Value) -> Snapshot {
         tabs: collect(given, "tabs", read_tab),
         panes: collect(given, "panes", read_pane),
         restoring: given.get("restoring").and_then(Value::as_bool).unwrap_or(false),
+        human: given
+            .get("human")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .map(|(group, notice)| (group.clone(), read_human_notice(notice)))
+            .collect(),
+    }
+}
+
+/// What waits for the human in one group: `{ "last": 5, "count": 1, "to_you": 1, "from": ["a"] }`.
+pub(crate) fn read_human_notice(given: &Value) -> HumanNotice {
+    let number = |key: &str| given.get(key).and_then(Value::as_u64).unwrap_or_default();
+    HumanNotice {
+        last: number("last"),
+        count: number("count"),
+        to_you: number("to_you"),
+        from: collect(given, "from", |from| from.as_str().unwrap_or_default().to_string()),
     }
 }
 

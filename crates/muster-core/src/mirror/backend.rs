@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 
 use crate::AgentState;
+use crate::attention::HumanNotice;
 
 /// The ids are separate types because they are all short strings, and passing one where
 /// another belongs is a lookup that quietly finds nothing. A pane that never appears is much
@@ -261,6 +262,9 @@ pub struct Snapshot {
     /// The daemon is still bringing back its saved tabs, which arrive as events. Until it
     /// says it has finished, a daemon holding nothing is not an empty one.
     pub restoring: bool,
+    /// What waits for the human, by group, in each group with anything waiting (MIP-4,
+    /// section 10). Empty from a daemon that is not the human's home.
+    pub human: BTreeMap<String, HumanNotice>,
 }
 
 /// How much of the backend's truth Muster currently has.

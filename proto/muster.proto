@@ -75,6 +75,7 @@ message Request {
     Mouse mouse = 53;
     PerformOnPane perform_on_pane = 54;
     FocusAsking focus_asking = 55;
+    OpenTranscript open_transcript = 56;
   }
 
   // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
@@ -966,12 +967,24 @@ message FocusTab {
 // the same pane again.
 message FocusAsking {}
 
-// Where a FocusAsking went: both empty when nothing was asking, which is no failure. A window
+// Where a FocusAsking went: all empty when nothing was asking, which is no failure. A window
 // with nothing waiting is already where the request wanted it, and the shell says so its own
 // way rather than logging a refusal.
 message Asking {
   string daemon_id = 1;
   string pane_id = 2;
+  // A group where a message waited for the human, whose transcript it went to; `pane_id` is
+  // then empty.
+  string group = 3;
+}
+
+// Goes to a group's transcript on a daemon, the way choosing a notification of a message for
+// the human does (MIP-4, section 10): the pane there running `muster msg log --group G
+// --follow`, or a new tab running it when there is none. Going there is the human reading the
+// group, so the daemon is told, and says nothing waits for them there any more.
+message OpenTranscript {
+  string daemon_id = 1;
+  string group = 2;
 }
 
 // Puts the keyboard on the pane at a given place in the window's pane order.
@@ -1761,8 +1774,8 @@ message AttentionChanged {
   string daemon_id = 1;
   string pane_id = 2;
 
-  // `blocked`, `notified` or `done` - what this pane is asking, which is what a banner has to
-  // say. `notified` is a program in the pane asking to notify somebody, in its own words. Empty
+  // `blocked`, `message`, `notified` or `done` - what this pane is asking, which is what a
+  // banner has to say. `notified` is a program in the pane asking to notify somebody, in its own words. Empty
   // means it has stopped asking: the agent moved on, somebody looked at it, the pane closed,
   // or the file stopped asking for that state. Anything already delivered for this pane is
   // then stale and should be taken down, because activating it would land a person on a pane
@@ -1782,6 +1795,13 @@ message AttentionChanged {
   // none), and its message. The why a banner exists to carry.
   string note_title = 6;
   string note_body = 7;
+
+  // For `message`, which no pane asks: the group where messages wait for the human, with
+  // `pane_id` empty, how many wait and who wrote them. Choosing the banner is an
+  // OpenTranscript for this group, and one banner stands per group, replaced by each message.
+  string group = 8;
+  uint64 count = 9;
+  repeated string from = 10;
 }
 
 // What is wrong with this window, whole.

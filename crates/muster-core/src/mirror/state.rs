@@ -11,6 +11,7 @@
 use std::collections::BTreeMap;
 
 use crate::AgentState;
+use crate::attention::HumanNotice;
 use crate::mirror::backend::{Health, LayoutNode, Pane, PaneId, Progress, Snapshot, Tab, TabId};
 use crate::mirror::event::{BackendEvent, Change};
 use crate::mirror::ordered::Ordered;
@@ -36,6 +37,8 @@ pub struct Mirror {
     progress: BTreeMap<PaneId, Progress>,
     /// The daemon is still bringing back its saved tabs.
     restoring: bool,
+    /// What waits for the human, by group, as the daemon last said.
+    human: BTreeMap<String, HumanNotice>,
     health: Health,
     /// Why the health is what it is, for anyone who has to say so out loud. Empty when
     /// connected, because a live connection needs no excuse.
@@ -62,6 +65,7 @@ impl Mirror {
         let previous_tabs = std::mem::take(&mut self.tabs);
         self.unplaced.clear();
         let previous_progress = std::mem::take(&mut self.progress);
+        let previous_human = std::mem::replace(&mut self.human, snapshot.human);
         self.restoring = snapshot.restoring;
         self.health = Health::Connected;
         self.health_detail.clear();
@@ -140,7 +144,24 @@ impl Mirror {
                 changes.push(Change::LayoutChanged(id.clone()));
             }
         }
+        let groups: std::collections::BTreeSet<&String> =
+            previous_human.keys().chain(self.human.keys()).collect();
+        for group in groups {
+            if previous_human.get(group) != self.human.get(group) {
+                changes.push(Change::HumanNoticed(group.clone()));
+            }
+        }
         changes
+    }
+
+    /// What waits for the human in `group`, as the daemon last said: nothing once they read it.
+    pub fn human_notice(&self, group: &str) -> Option<&HumanNotice> {
+        self.human.get(group)
+    }
+
+    /// Every group where something waits for the human.
+    pub fn human_notices(&self) -> impl Iterator<Item = (&String, &HumanNotice)> {
+        self.human.iter()
     }
 
     /// Applies one event, and reports what it actually changed.
@@ -182,6 +203,15 @@ impl Mirror {
                     None => self.progress.remove(&pane),
                 };
                 if before == progress { Vec::new() } else { vec![Change::ProgressChanged(pane)] }
+            }
+            BackendEvent::HumanNotice { group, notice } => {
+                let before = if notice.count == 0 {
+                    self.human.remove(&group)
+                } else {
+                    self.human.insert(group.clone(), notice.clone())
+                };
+                let after = (notice.count > 0).then_some(notice);
+                if before == after { Vec::new() } else { vec![Change::HumanNoticed(group)] }
             }
             // For a pane no tree names yet, which draws nowhere.
             BackendEvent::Bell { .. }

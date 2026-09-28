@@ -4,6 +4,7 @@
 //! section 11) and a change to either side is a change here.
 
 use muster_core::AgentState;
+use muster_core::attention::HumanNotice;
 use muster_core::config::{CursorStyle, Rgb, ShellMode};
 use muster_core::daemon_settings::{DaemonSettings, Palette};
 use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, OptionAsAlt};
@@ -32,6 +33,11 @@ pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
         tabs,
         panes: snapshot.panes.into_iter().map(pane).collect(),
         restoring: snapshot.restoring,
+        human: snapshot
+            .human
+            .into_iter()
+            .map(|notice| (notice.group.clone(), human(notice)))
+            .collect(),
     };
     (converted, unreadable)
 }
@@ -72,9 +78,16 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
         }
         event::Event::SettingsChanged(_)
         | event::Event::PaneEffect(_)
-        | event::Event::Replaced(_)
-        | event::Event::HumanNotice(_) => return None,
+        | event::Event::Replaced(_) => return None,
+        event::Event::HumanNotice(notice) => {
+            BackendEvent::HumanNotice { group: notice.group.clone(), notice: human(notice) }
+        }
     })
+}
+
+/// What the daemon says waits for the human in one group (MIP-4, section 10).
+fn human(notice: proto::msg_answer::Notice) -> HumanNotice {
+    HumanNotice { last: notice.last, count: notice.count, to_you: notice.to_you, from: notice.from }
 }
 
 /// What a program says of its progress, or `None` once it takes it back.
