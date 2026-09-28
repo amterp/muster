@@ -63,6 +63,7 @@ on stderr to touch a file, which is how the test sees the model act on it.
 |---|---|---|---|---|
 | `timeout` 86400 | 2 | 30 s, then 30 s again | woken both times | `hooks-rewake-30s.txt` |
 | `timeout` 86400 | 2 | 660 s, then 30 s | woken both times | `hooks-rewake-660s.txt` |
+| `timeout` 86400 | 2 | 3900 s, then 30 s | woken both times | `hooks-rewake-3900s.txt` |
 | no `timeout` | 2 | 660 s | **not woken**: Claude Code had ended the hook | `hooks-rewake-660s-no-timeout.txt` |
 | `timeout` 86400 | 1 | 30 s | nothing | the first two |
 
@@ -77,7 +78,7 @@ on stderr to touch a file, which is how the test sees the model act on it.
 - **A hook with no `timeout` is ended at a default**, before 660 s here; the binary holds
   `timeout ? timeout * 1000 : <default>` beside a constant of 600000, so the default is probably
   ten minutes, though that was not measured. With `timeout` set it ran for as long as it was
-  given.
+  given, up to the longest run here, 65 minutes.
 - **A woken turn that ends having written nothing visible** is sent `[Your previous response had
   no visible output. Please continue and produce a user-visible response.]` by Claude Code, and
   takes one more short turn.

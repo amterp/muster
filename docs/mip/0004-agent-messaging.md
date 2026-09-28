@@ -786,7 +786,7 @@ green on its own.
    As built, the forty-message proof is `claude_code_council.rs` in `./dev --claude-code`: three
    Haiku sessions reached 56 messages in six minutes for about $1.59. Its first four runs failed
    on the skill, not on delivery, and the skill was fixed from them. Left for later: `group
-   delete`, a session idle for more than eleven minutes, and the hooks on Linux.
+   delete`, a session idle for more than an hour, and the hooks on Linux.
 
 5. **Across machines.** `msg.peer`, peer links over the forwarded socket, replicas, presence over
    the link, forwarding to the home, and loud failure when the link is down, in the `--ssh` tier.
@@ -889,11 +889,11 @@ sent, and `crossSessionInbound: "accept"` passed with `--settings` makes a bypas
 The four Linux cases were not run, because no Linux machine this repository reaches has a Claude
 Code with credentials. Until they are, the inbox adapter is assumed to behave the same there.
 
-**Whether `asyncRewake` wakes a session idle for hours.** Settled up to eleven minutes in
+**Whether `asyncRewake` wakes a session idle for hours.** Settled up to 65 minutes in
 `docs/observations/claude-code-2.1.283.md`, sections 4 and 5, for a session bypassing
 permission prompts on macOS: a `Stop` hook keeps running after its turn, its exit 2 starts a turn
 in the idle session, every turn's end starts it again, and without a `timeout` Claude Code ends it
-before eleven minutes. Longer than that was not measured; nor was Linux.
+before eleven minutes. Longer than 65 minutes was not measured; nor was Linux.
 
 **Which screens Claude Code's prompt rule reads as its prompt.** The rule is checked against
 the screens recorded in `corpus/claude-code-2.1.283/`, and a live check holds that a new
