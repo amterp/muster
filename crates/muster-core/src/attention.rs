@@ -132,6 +132,14 @@ pub struct Observed {
     pub reported: bool,
 }
 
+/// What a pane is asking for, and when it started asking for it.
+#[derive(Debug, Clone, Copy)]
+struct Raised {
+    alert: Alert,
+    /// When, as a count of raises: a pane's wait restarts when what it asks for changes.
+    order: u64,
+}
+
 /// What this window has seen, and what is still waiting for somebody.
 #[derive(Debug, Default)]
 pub struct Attention {
@@ -159,7 +167,10 @@ pub struct Attention {
     /// window still paints `done` on its borders and still lists it in the roster; what mute
     /// takes away is the interruption. Folding the two together would make a preference about
     /// banners silently change the state vocabulary this product is built on.
-    raised: BTreeMap<PaneKey, Alert>,
+    raised: BTreeMap<PaneKey, Raised>,
+
+    /// How many times a pane has started asking, which numbers each [`Raised`].
+    raises: u64,
 
     /// What each pane raised as [`Alert::Notified`] said.
     notes: BTreeMap<PaneKey, Note>,
@@ -189,7 +200,7 @@ impl Attention {
         let stale: Vec<PaneKey> = self
             .raised
             .iter()
-            .filter(|(_, alert)| !notifications.allows(**alert))
+            .filter(|(_, raised)| !notifications.allows(raised.alert))
             .map(|(pane, _)| pane.clone())
             .collect();
         for pane in &stale {
@@ -203,12 +214,17 @@ impl Attention {
     ///
     /// The ordering is the urgency ordering rather than an incidental one: `blocked` is
     /// somebody held up right now and `done` is somebody who was held up at some point, so a
-    /// reader working down this list works down it in the order that costs least.
+    /// reader working down this list works down it in the order that costs least. Within one
+    /// alert, the pane that started asking first comes first, having waited longest.
     pub fn asking(&self) -> Vec<(&PaneKey, Alert)> {
-        let mut asking: Vec<(&PaneKey, Alert)> =
-            self.raised.iter().map(|(pane, alert)| (pane, *alert)).collect();
-        asking.sort_by_key(|(pane, alert)| (*alert, *pane));
-        asking
+        let mut asking: Vec<(&PaneKey, &Raised)> = self.raised.iter().collect();
+        asking.sort_by_key(|(_, raised)| (raised.alert, raised.order));
+        asking.into_iter().map(|(pane, raised)| (pane, raised.alert)).collect()
+    }
+
+    /// The pane to go to first: the head of [`Attention::asking`].
+    pub fn most_urgent(&self) -> Option<&PaneKey> {
+        self.asking().first().map(|(pane, _)| *pane)
     }
 
     /// A pane this window is meeting for the first time, as its daemon already had it.
@@ -253,12 +269,12 @@ impl Attention {
         }
         let attend = if state == AgentState::Blocked {
             self.raise(pane, Alert::Blocked)
-        } else if self.raised.get(pane) == Some(&Alert::Notified) {
+        } else if self.alert(pane) == Some(Alert::Notified) {
             // A program's request stands until somebody looks, whatever its agent does next.
             None
         } else if newly_finished {
             self.raise(pane, Alert::Done)
-        } else if finished && self.raised.get(pane) == Some(&Alert::Done) {
+        } else if finished && self.alert(pane) == Some(Alert::Done) {
             None
         } else {
             self.withdraw(pane)
@@ -294,18 +310,18 @@ impl Attention {
         if agent.is_some()
             || self.seen(pane)
             || !self.notifications.allows(Alert::Notified)
-            || matches!(self.raised.get(pane), Some(Alert::Blocked | Alert::Notified))
+            || matches!(self.alert(pane), Some(Alert::Blocked | Alert::Notified))
         {
             return None;
         }
         self.notes.insert(pane.clone(), note);
-        self.raised.insert(pane.clone(), Alert::Notified);
+        self.stamp(pane, Alert::Notified);
         Some(Attend::Raised(Alert::Notified))
     }
 
     /// What the pane's program said, while the pane is asking with it.
     pub fn note(&self, pane: &PaneKey) -> Option<&Note> {
-        if self.raised.get(pane) == Some(&Alert::Notified) { self.notes.get(pane) } else { None }
+        if self.alert(pane) == Some(Alert::Notified) { self.notes.get(pane) } else { None }
     }
 
     /// What the window should show for a pane, given what its daemon says the agent is doing.
@@ -428,11 +444,24 @@ impl Attention {
             return self.withdraw(pane);
         }
         // An unchanged answer is not news. A pane that blocks, is re-reported as blocked, and
-        // blocks again should interrupt somebody once.
-        if self.raised.insert(pane.clone(), alert) == Some(alert) {
+        // blocks again should interrupt somebody once, and keeps its place in the list.
+        if self.alert(pane) == Some(alert) {
             return None;
         }
+        self.stamp(pane, alert);
         Some(Attend::Raised(alert))
+    }
+
+    /// What the pane is asking for, if anything.
+    fn alert(&self, pane: &PaneKey) -> Option<Alert> {
+        self.raised.get(pane).map(|raised| raised.alert)
+    }
+
+    /// Records that the pane has started asking for `alert`, after every pane that asked
+    /// before it.
+    fn stamp(&mut self, pane: &PaneKey, alert: Alert) {
+        self.raises += 1;
+        self.raised.insert(pane.clone(), Raised { alert, order: self.raises });
     }
 
     fn withdraw(&mut self, pane: &PaneKey) -> Option<Attend> {
