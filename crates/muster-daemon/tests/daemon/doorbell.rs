@@ -25,10 +25,16 @@ struct Agent {
 impl Agent {
     /// A daemon with the fake agent idle in pane `p1`.
     fn in_a_pane() -> Agent {
+        let agent = Agent::to_come();
+        agent.daemon.run_agent("p1");
+        agent
+    }
+
+    /// A daemon with pane `p1` at its shell, where no agent runs yet.
+    fn to_come() -> Agent {
         let daemon = Daemon::start_detecting();
         let mut control = daemon.connect();
         make(&mut control, create("p1", in_new_tab("t1")));
-        daemon.run_agent("p1");
         Agent { daemon, control }
     }
 
@@ -147,4 +153,18 @@ fn an_agent_gone_idle_with_messages_unread_is_rung_once_more() {
     agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
     std::thread::sleep(QUIET + Duration::from_secs(1));
     assert_eq!(agent.rung().len(), 2, "woken a third time: {:?}", agent.rung());
+}
+
+/// `muster pane new --run claude` and then a post to the pane it printed: the post comes before
+/// detection has found the agent, and is rung once it has and the agent is idle (MIP-4, section
+/// 14).
+#[test]
+fn a_pane_addressed_before_its_agent_is_found_is_rung_once_it_is() {
+    let mut agent = Agent::to_come();
+    let posted = agent.post("p1", "a brief");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Deferred);
+
+    agent.daemon.run_agent("p1");
+    let rung = agent.until_rung(1);
+    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
 }

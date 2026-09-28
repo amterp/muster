@@ -93,4 +93,8 @@ impl Presence for Panes {
     fn agent_in(&self, pane: &str) -> bool {
         self.agents.contains_key(pane)
     }
+
+    fn has_pane(&self, pane: &str) -> bool {
+        self.open.contains(pane)
+    }
 }

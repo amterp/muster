@@ -89,10 +89,17 @@ pub trait Presence {
         None
     }
 
-    /// Whether `pane` names a pane with an agent in it, which may be addressed by that name
-    /// before it has run any command (MIP-4, section 3).
+    /// Whether `pane` names a pane with an agent in it, which identifies whoever runs a
+    /// command there (MIP-4, section 3).
     fn agent_in(&self, _pane: &str) -> bool {
         false
+    }
+
+    /// Whether `pane` names an open pane, which may be addressed by that name before it has run
+    /// any command, and before its agent has even been found: a pane just made is addressed at
+    /// once (MIP-4, section 14). Its wakes wait until an agent there can take them.
+    fn has_pane(&self, pane: &str) -> bool {
+        self.agent_in(pane)
     }
 }
 
@@ -595,7 +602,7 @@ impl<S: Store> Messaging<S> {
         if let Some(holder) = self.by_pane(name) {
             return Ok(holder);
         }
-        if name == HUMAN || presence.agent_in(name) {
+        if name == HUMAN || presence.has_pane(name) {
             let mut participant = Participant::named(name);
             if name != HUMAN {
                 participant.pane = Some(name.to_string());
@@ -1020,7 +1027,7 @@ impl<S: Store> Messaging<S> {
     /// approval (`docs/observations/claude-code-2.1.283.md`), the host cannot tell which
     /// sessions do, and the doorbell's guards make typing into a pane safe (MIP-4, section 6).
     fn via(participant: &Participant, presence: &dyn Presence) -> Option<Via> {
-        if let Some(pane) = participant.pane.as_ref().filter(|pane| presence.agent_in(pane)) {
+        if let Some(pane) = participant.pane.as_ref().filter(|pane| presence.has_pane(pane)) {
             return Some(Via::Pane(pane.clone()));
         }
         participant.inbox.clone().map(Via::Inbox)

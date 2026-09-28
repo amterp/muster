@@ -226,14 +226,14 @@ fn posting(
         }
         let now = Instant::now();
         for wake in &posted.wakes {
-            let seen = match &wake.via {
-                Via::Pane(pane) => panes.get(pane),
-                Via::Inbox(_) => None,
+            let Via::Pane(pane) = &wake.via else {
+                sending.push(wake.clone());
+                continue;
             };
-            match seen.map(|seen| (doorbell::may_ring(seen, now), seen)) {
-                None => sending.push(wake.clone()),
+            // A pane whose agent has not been found yet waits for it like a busy one.
+            match panes.get(pane).map(|seen| (doorbell::may_ring(seen, now), seen)) {
                 Some((Now::Ring, seen)) => ringing.push((wake.clone(), seen.clone())),
-                Some((Now::At(_) | Now::AtIdle, _)) => {
+                Some((Now::At(_) | Now::AtIdle, _)) | None => {
                     deferred.push(wake.name.clone());
                     messages.pending.push(wake.clone());
                 }
