@@ -11,11 +11,16 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
+use std::sync::Mutex;
+
+use muster::proto::{
+    Event, OpenWindow, ProblemsChanged, ReadWindow, Request, Response, Startup, event, request,
+    response,
+};
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, Holders, WindowName};
 use muster_core::mirror::backend::TabId;
-use muster_harness::DAEMON_DATA;
+use muster_harness::{DAEMON_DATA, PATIENCE, built_daemon, until};
 use prost::Message;
 
 /// The daemon Muster finds for itself, with no `[[daemon]]` configured, is started on a thread of
@@ -43,6 +48,43 @@ fn a_window_opens_while_the_daemon_it_found_is_still_starting() {
     assert!(
         waited < Duration::from_secs(5),
         "the window waited {waited:?} for a daemon that has not answered"
+    );
+}
+
+/// Muster's own daemon arriving after the window opened fills it: the window asks it for a tab
+/// on its first snapshot, as it asks any daemon that holds nothing.
+#[test]
+fn muster_s_own_daemon_arriving_late_still_fills_the_window() {
+    let home = scratch_home();
+    // Past the second the window waits, then the real daemon with whatever it was started with.
+    let late =
+        script("late-daemon", &format!("sleep 2\nexec '{}' \"$@\"", built_daemon().display()));
+    let _turn = muster::testing::fresh_session();
+    // After the turn, so it is dropped first: the next test's turn starts with it stopped.
+    let _stopped = Stopped(muster_daemon_proto::install::socket_path(home));
+    open_with_no_daemon_configured(&late, "late");
+    until(
+        "a tab from the daemon that arrived late",
+        || !keyboard().1.is_empty(),
+        || format!("the keyboard is at {:?}", keyboard()),
+    );
+}
+
+/// Muster's own daemon failing to start is a problem the window says, and tries again from, as
+/// a configured daemon's is. It used to refuse the window, which then rendered nothing at all.
+#[test]
+fn muster_s_own_daemon_that_cannot_start_is_a_problem_not_a_refused_window() {
+    scratch_home();
+    let failing = script("failing-daemon", "exit 1");
+
+    let _turn = muster::testing::fresh_session();
+    *PROBLEMS.lock().expect("a panicking test poisoned the problems") = None;
+    muster::ffi::muster_set_event_callback(Some(note_problems));
+    open_with_no_daemon_configured(&failing, "failing");
+    until(
+        "the window to say its daemon could not start",
+        || problems().iter().any(|key| key == "daemon:local"),
+        || format!("the problems raised are {:?}", problems()),
     );
 }
 
@@ -117,6 +159,84 @@ fn scratch_home() -> &'static Path {
             .expect("the script can be made executable");
         path
     })
+}
+
+/// Starts and opens a window with no `[[daemon]]` configured, so Muster starts `program` as its
+/// own daemon. `name` keeps each test's window and record apart.
+fn open_with_no_daemon_configured(program: &Path, name: &str) {
+    let home = scratch_home();
+    let config = home.join("no-daemons.toml");
+    std::fs::write(&config, "").expect("the config can be written");
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        daemon_path: program.to_string_lossy().into_owned(),
+        daemon_data_path: DAEMON_DATA.to_string(),
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: home.join(format!("window-{name}.toml")).to_string_lossy().into_owned(),
+        tab_holders_path: home
+            .join(format!("holding/tabs-{name}.toml"))
+            .to_string_lossy()
+            .into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+}
+
+/// An executable shell script in the scratch home.
+fn script(name: &str, body: &str) -> PathBuf {
+    let path = scratch_home().join(name);
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("the home is writable");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+        .expect("the script can be made executable");
+    path
+}
+
+/// Stops the daemon at this socket when dropped, so a daemon Muster started for a test does not
+/// outlive it and answer the next one.
+struct Stopped(PathBuf);
+
+impl Drop for Stopped {
+    fn drop(&mut self) {
+        let _ = muster_daemon_client::launch::stop(&self.0, PATIENCE);
+    }
+}
+
+/// The tab on screen and the pane with the keyboard.
+fn keyboard() -> (String, String) {
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow {})).payload
+    else {
+        return (String::new(), String::new());
+    };
+    let view = window.view.unwrap_or_default();
+    let pane = view
+        .regions
+        .iter()
+        .find(|region| region.region_id == view.focused_region)
+        .map(|region| region.pane_id.clone())
+        .unwrap_or_default();
+    (view.tab_id, pane)
+}
+
+static PROBLEMS: Mutex<Option<ProblemsChanged>> = Mutex::new(None);
+
+extern "C" fn note_problems(bytes: *const u8, len: usize) {
+    // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which is
+    // the contract in include/muster.h.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let event = Event::decode(bytes).expect("the core emits events this build can decode");
+    if let Some(event::Payload::ProblemsChanged(problems)) = event.payload {
+        *PROBLEMS.lock().expect("a panicking test poisoned the problems") = Some(problems);
+    }
+}
+
+/// The key of each problem the window has raised.
+fn problems() -> Vec<String> {
+    PROBLEMS
+        .lock()
+        .expect("a panicking test poisoned the problems")
+        .clone()
+        .map(|changed| changed.problems.into_iter().map(|problem| problem.key).collect())
+        .unwrap_or_default()
 }
 
 /// A daemon program that never answers, so a launch waits for it well past the window opening.
