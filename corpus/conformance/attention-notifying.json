@@ -744,6 +744,151 @@
           "local/w1:p1 notified"
         ]
       }
+    },
+    {
+      "name": "an agent's own notification after its finish asks nothing more",
+      "why": "Claude Code writes a notification of its own (OSC 777, because every pane says it is Ghostty) once it has sat idle for a minute. For an agent that finished unseen that is the same finish `done` already asked about, so a banner for it is the same news twice, with a second sound. Agents notify at the moments their state already routes, so a pane whose agent Muster recognizes leaves asking to the state.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "state": "working"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p2",
+            "agent": "claude",
+            "notification": {
+              "title": "Claude Code",
+              "body": "Claude is waiting for your input"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 done"
+        ],
+        "asking": [
+          "local/w1:p2 done"
+        ]
+      }
+    },
+    {
+      "name": "a waiting agent's own notification asks nothing",
+      "why": "An agent that ended its turn to wait on its own work asks nobody, which is what `waiting` is for. A minute later Claude Code says it is waiting for your input, which is not true of an agent waiting on its gate, and a banner saying so would interrupt somebody for nothing.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "state": "working"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "waiting"
+          },
+          {
+            "pane": "local/w1:p2",
+            "agent": "claude",
+            "notification": {
+              "title": "Claude Code",
+              "body": "Claude is waiting for your input"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "an agent's permission notification leaves asking to blocked, whichever arrives first",
+      "why": "Claude Code notifies on every permission prompt, and the prompt reaches Muster twice: as those bytes, and as `blocked` once the daemon has read the screen or the agent's hook. Whichever arrives first, somebody should hear one banner, and `blocked` is the one that goes when the prompt is answered.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "agent": "claude",
+            "notification": {
+              "title": "Claude Code",
+              "body": "Claude needs your permission to use Bash"
+            }
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p2",
+            "agent": "claude",
+            "notification": {
+              "title": "Claude Code",
+              "body": "Claude needs your permission to use Bash"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked"
+        ],
+        "asking": [
+          "local/w1:p2 blocked"
+        ]
+      }
+    },
+    {
+      "name": "an agent's own notification does not undo done = false",
+      "why": "Somebody who turned `done` off does not want a banner when an agent finishes. The agent's idle notification a minute later is that banner under another key, and `programs` is about a program asking in its own right.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "notifications": {
+          "done": false
+        },
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "state": "working"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p2",
+            "agent": "claude",
+            "notification": {
+              "title": "Claude Code",
+              "body": "Claude is waiting for your input"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
     }
   ]
 }

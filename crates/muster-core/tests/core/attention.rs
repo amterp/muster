@@ -170,12 +170,14 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
             run.attention.bell(&pane);
             continue;
         }
-        // A program in the pane asked for a notification, and said what.
+        // A program in the pane asked for a notification, and said what: the pane's agent, when
+        // the case names the one its daemon recognized there.
         if let Some(note) = event.get("notification") {
             let pane = read_pane(event, "pane")?;
             let said = |key: &str| note.get(key).and_then(Value::as_str).unwrap_or_default();
             let note = Note { title: said("title").to_string(), body: said("body").to_string() };
-            if let Some(Attend::Raised(alert)) = run.attention.notified(&pane, note) {
+            let agent = event.get("agent").and_then(Value::as_str);
+            if let Some(Attend::Raised(alert)) = run.attention.notified(&pane, note, agent) {
                 let body = run.attention.note(&pane).map(|note| note.body.clone());
                 run.notified.push(format!(
                     "{pane} {}: {}",

@@ -7,7 +7,8 @@
 # run this script as `claude` - the daemon identifies the agent from the pane's foreground
 # process name (crates/muster-harness/src/agents.rs does both).
 #
-# Commands, one per line: working | blocked | idle | quit
+# Commands, one per line: working | blocked | idle | quit, or notify <text>, which asks the
+# terminal to notify somebody the way Claude Code does in Ghostty (OSC 777).
 
 state=idle
 tick=0
@@ -24,6 +25,7 @@ paint
 while IFS= read -r line; do
     tick=$((tick + 1))
     case "$line" in
+        notify\ *) printf '\033]777;notify;Claude Code;%s\a' "${line#notify }" ;;
         *working*) state=working ;;
         *blocked*) state=blocked ;;
         *idle*)    state=idle ;;

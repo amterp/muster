@@ -1228,6 +1228,12 @@ impl Session {
         mirror.pane(&key.pane).map(|pane| self.presented(key, pane, mirror.progress(&pane.id)))
     }
 
+    /// The harness a pane's daemon recognized in it, if it recognized one.
+    fn recognized_agent(&self, pane: &PaneKey) -> Option<String> {
+        let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
+        mirror.pane(&pane.pane)?.agent.clone()
+    }
+
     /// Whether a pane's daemon says its agent finished and nobody has seen it since.
     fn finished_unseen(&self, pane: &PaneKey) -> bool {
         self.backends.get(&pane.daemon).is_some_and(|backend| {
@@ -4102,7 +4108,9 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
         Change::Notified { pane, title, body } => {
             let key = PaneKey::new(daemon, pane);
             let note = Note { title: title.clone(), body: body.clone() };
-            let attended = poison::lock(&SESSION, "session").attention.notified(&key, note);
+            let mut session = poison::lock(&SESSION, "session");
+            let agent = session.recognized_agent(&key);
+            let attended = session.attention.notified(&key, note, agent.as_deref());
             attended.map(|attend| (key, attend))
         }
         _ => None,

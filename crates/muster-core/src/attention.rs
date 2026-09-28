@@ -277,12 +277,13 @@ impl Attention {
         self.rang.contains(pane)
     }
 
-    /// A program in the pane asked to notify somebody.
+    /// A program in the pane asked to notify somebody. `agent` is the harness the pane's daemon
+    /// recognized in it, if any.
     ///
     /// Asks unless somebody is looking at the pane, the file says programs are not worth
     /// interrupting for, or the pane is already blocked, which is the more urgent ask. Each
     /// notification is news, even from a pane already asking with one: it says something new.
-    pub fn notified(&mut self, pane: &PaneKey, note: Note) -> Option<Attend> {
+    pub fn notified(&mut self, pane: &PaneKey, note: Note, _agent: Option<&str>) -> Option<Attend> {
         if self.seen(pane)
             || !self.notifications.allows(Alert::Notified)
             || self.raised.get(pane) == Some(&Alert::Blocked)
