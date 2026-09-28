@@ -405,6 +405,12 @@ pub(crate) const PAGE_BYTES: usize = 4 << 20;
 /// pane's output a batch at a time rather than for the whole page.
 const PAGE_BATCH: u32 = 256;
 
+/// The most rows a read of the last rows takes under one hold of the screen. Row numbers count
+/// from the oldest row held, so output that prunes the top between finding the last row and
+/// reading up to it would shift or empty the answer; a hold this short costs the pane's output
+/// well under a millisecond, where one across a 4 MiB read would not.
+pub(crate) const HELD_TAIL: u32 = 512;
+
 /// A page of text from `first_row`: `rows` of them, or to the last row when `rows` is zero,
 /// stopping short at `limit` bytes. `read` returns a batch's lines and the rows held in all.
 pub(crate) fn page(

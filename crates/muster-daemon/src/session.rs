@@ -523,7 +523,10 @@ pub(crate) struct Reading {
 impl Reading {
     pub(crate) fn read(&self) -> Reply {
         let rows = |first, count| self.io.screen().rows(first, count);
-        let text = if self.last > 0 {
+        let text = if self.last > 0 && self.last <= screen::HELD_TAIL {
+            let held = self.io.screen();
+            screen::last_page(self.last, screen::PAGE_BYTES, |first, count| held.rows(first, count))
+        } else if self.last > 0 {
             screen::last_page(self.last, screen::PAGE_BYTES, rows)
         } else {
             screen::page(self.first_row, self.rows, screen::PAGE_BYTES, rows)
