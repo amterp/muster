@@ -943,6 +943,43 @@
           "local/w1:p2 notified"
         ]
       }
+    },
+    {
+      "name": "a look clears a bell's mark on a pane that also finished",
+      "why": "A look is one look, whatever else the pane has to say: a row keeping its bell while somebody reads the pane contradicts them, and the next bell would find the mark already there and bounce nothing.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "rang": "local/w1:p2"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "working"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "visible": [
+              "local/w1:p1",
+              "local/w1:p2"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 done",
+          "local/w1:p2 withdrawn"
+        ],
+        "asking": []
+      }
     }
   ]
 }
