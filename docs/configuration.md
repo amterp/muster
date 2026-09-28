@@ -385,9 +385,18 @@ banner about something on your screen is the fastest way to learn that banners a
 `programs` is a program in a pane asking to notify you, with OSC 9 or OSC 777, as a build or
 a test runner can. Its banner carries the program's own words, since it has said why it wants
 you, and it stands until you look at the pane. It is on because a program that asks has
-decided it is worth it; `programs = false` is for a tool that decides that too often. A bell
-is never a banner, whatever this says: shells ring for a completion that found nothing, so a
-bell marks the pane's row until you look, and bounces the Dock once if Muster is behind
+decided it is worth it; `programs = false` is for a tool that decides that too often.
+
+A pane running an agent Muster recognizes never raises one, whatever this says. Every pane tells
+its programs it is Ghostty, and agents that see that notify at the moments their state already
+asks about: Claude Code writes "Claude is waiting for your input" once it has sat idle for a
+minute, and "Claude needs your permission to use ..." at every permission prompt. Codex can
+write one too, as its `notification_method` setting allows. So `done` and `blocked` ask for an
+agent, once each, and `done = false` means no banner when an agent finishes. Once the agent
+leaves the pane, what its shell runs notifies again.
+
+A bell is never a banner, whatever this says: shells ring for a completion that found nothing,
+so a bell marks the pane's row until you look, and bounces the Dock once if Muster is behind
 another app.
 
 `muted = true` is the quiet path for somebody running fifteen agents, and it is a third key
