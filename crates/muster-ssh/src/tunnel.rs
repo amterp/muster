@@ -295,20 +295,22 @@ impl Tunnel {
                 };
 
                 let retry = attempts.failed();
-                log::warn(
-                    "tunnel.down",
-                    fields! {
-                        "host" => forward.host.clone(),
-                        "attempt" => retry.attempt.to_string(),
-                        "retry_in_ms" => (retry.after / 1_000_000).to_string(),
-                        "detail" => down,
-                        "impact" => "every pane on this daemon is rendering what it last \
-                                     showed, and its agent states are a guess about the \
-                                     present",
-                        "check" => "whether the host is reachable - the connection is being \
-                                    retried and recovers on its own once it is",
-                    },
-                );
+                if retry.logged {
+                    log::warn(
+                        "tunnel.down",
+                        fields! {
+                            "host" => forward.host.clone(),
+                            "attempt" => retry.attempt.to_string(),
+                            "retry_in_ms" => (retry.after / 1_000_000).to_string(),
+                            "detail" => down,
+                            "impact" => "every pane on this daemon is rendering what it last \
+                                         showed, and its agent states are a guess about the \
+                                         present",
+                            "check" => "whether the host is reachable - the connection is being \
+                                        retried and recovers on its own once it is",
+                        },
+                    );
+                }
                 if retry.report {
                     report(State::Unreachable {
                         detail: reconnect::unreachable(&forward.host, retry.attempt),

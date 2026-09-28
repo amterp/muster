@@ -3354,19 +3354,21 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
             Err(Unattached::Abandoned) => return,
             Err(Unattached::Failed(refusal)) => {
                 let retry = attempts.failed();
-                log::warn(
-                    "daemon.unavailable",
-                    fields! {
-                        "daemon" => daemon.id.to_string(),
-                        "detail" => &refusal,
-                        "attempt" => attempts.failures(),
-                        "impact" => "this daemon's panes are absent from the window until an \
-                                     attempt succeeds; every other daemon in the config is \
-                                     unaffected",
-                        "check" => "whether the daemon is running, whether its socket path \
-                                    has moved, and whether an ssh host is reachable",
-                    },
-                );
+                if retry.logged {
+                    log::warn(
+                        "daemon.unavailable",
+                        fields! {
+                            "daemon" => daemon.id.to_string(),
+                            "detail" => &refusal,
+                            "attempt" => attempts.failures(),
+                            "impact" => "this daemon's panes are absent from the window until an \
+                                         attempt succeeds; every other daemon in the config is \
+                                         unaffected",
+                            "check" => "whether the daemon is running, whether its socket path \
+                                        has moved, and whether an ssh host is reachable",
+                        },
+                    );
+                }
                 // Once: a condition that stays true has nothing new to say, and the run log has
                 // every attempt after it.
                 if attempts.failures() == 1 {

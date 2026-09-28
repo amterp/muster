@@ -50,6 +50,13 @@ pub const BACKOFF_NS: [u64; 7] = [
 /// who has walked back into range of nothing finds out from the window rather than by typing.
 pub const PATIENCE: u32 = 5;
 
+/// After the first `PATIENCE` failures of a run, one in how many reaches the run log.
+///
+/// Twenty, which at the ceiling is one line about every ten minutes. Every attempt used to
+/// write one, which is about 2,900 a day for each machine that is not coming back, in the log a
+/// bug report is built from; the first few are the ones that say what went wrong.
+pub const LOGGED_EVERY: u32 = 20;
+
 /// How long a connection must hold before it counts as having worked, in nanoseconds.
 ///
 /// Thirty seconds, matching `respawn::SETTLED_NS` and for the same reason: it is well past
@@ -107,7 +114,7 @@ impl Attempts {
             attempt: self.failures,
             after: BACKOFF_NS[step.min(BACKOFF_NS.len() - 1)],
             report,
-            logged: true,
+            logged: self.failures <= PATIENCE || self.failures.is_multiple_of(LOGGED_EVERY),
         }
     }
 
