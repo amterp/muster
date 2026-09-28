@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "mip-4-agents-message",
+  "alias_explicit": false,
+  "column": "next",
+  "created_at_millis": 1790580291940,
+  "creator": "Alexander Terp",
+  "description": "Parent card for `docs/mip/0004-agent-messaging.md`. The MIP is the design; the child cards are its five delivery stages, each sized for a round.\n\nWhy: `muster pane send` types into a pty, which is wrong for a message (a Return mid-paste submits a fragment, long text folds into a placeholder, a pane at a dialog answers its first option), and council v1 stranded agents inside a blocking await. amterp wants council working and polished before the next minor release (2026-09-27).\n\nDecisions: 1 (a) transcript pane first; 2 (a) no private messages; 4 (a) the app holds cross-machine links; all per the MIP's recommendations. 3 (a) `muster msg \u003cverb\u003e` with a Linux `muster` CLI is being built as recommended, pending amterp's yes; the verbs are spelled in one place so a rename before release is cheap.",
+  "id": "a_2Y3ODvuwa",
+  "position": "a2",
+  "title": "📜 MIP-4: agents message each other through the daemon",
+  "type": "feature",
+  "updated_at_millis": 1790580291940,
+  "history": [
+    {"field":"column","value":"next","at":1790580291940}
+  ]
+}

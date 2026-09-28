@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "mip-4-stage-5",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790580306085,
+  "creator": "Alexander Terp",
+  "description": "MIP-4 Delivery stage 5. `msg.peer`, peer links over the forwarded socket (Decision 4 (a): the app holds the link), replicas, presence over the link, forwarding to the home, and loud failure when the link is down, in the `--ssh` tier. Proves: a laptop agent and a devenv agent in plain terminals share one group, the guard holds across the link, and local groups keep working while it is cut.",
+  "id": "a_2Y3Oajna1",
+  "parent": "a_2Y3ODvuwa",
+  "position": "b09",
+  "title": "MIP-4 stage 5: messages across machines",
+  "type": "feature",
+  "updated_at_millis": 1790580306085,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790580306085}
+  ]
+}

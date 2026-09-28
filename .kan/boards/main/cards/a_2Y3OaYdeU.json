@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "mip-4-stage-4-groups",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790580305972,
+  "creator": "Alexander Terp",
+  "description": "MIP-4 Delivery stage 4. `ring`, `allow`, `membership` and `paused`; the hooks adapter and its snippet; the skill replacing `council-participant`, with its presets. Proves: every v1 failure that policy or delivery answers as a passing case, and one real directed council of three agents and the human running past forty messages with no agent leaving or stranded.",
+  "id": "a_2Y3OaYdeU",
+  "parent": "a_2Y3ODvuwa",
+  "position": "b08",
+  "title": "MIP-4 stage 4: groups with policy, and the council skill",
+  "type": "feature",
+  "updated_at_millis": 1790580305972,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790580305972}
+  ]
+}
