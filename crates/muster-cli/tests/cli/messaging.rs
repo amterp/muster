@@ -195,17 +195,19 @@ fn a_post_needs_a_message() {
 #[test]
 fn the_reference_spells_every_verb_as_the_command_does() {
     let reference = include_str!("../../../../docs/cli/msg.md");
-    for verb in messaging::VERBS {
-        let spelled = messaging::command(verb, "");
-        let in_table = format!("| `{verb}");
-        assert!(
-            reference.contains(&spelled) || reference.contains(&in_table),
-            "docs/cli/msg.md never spells `{spelled}`"
-        );
-    }
     let help = muster_with(Path::new("/nonexistent"), &["msg", "--help"], None);
     let help = said(&help);
     for verb in messaging::VERBS {
-        assert!(help.contains(verb), "`muster msg --help` does not list {verb}: {help}");
+        let row = reference.lines().any(|line| {
+            line.strip_prefix(&format!("| `{verb}"))
+                .is_some_and(|rest| rest.starts_with(' ') || rest.starts_with('`'))
+        });
+        assert!(row, "docs/cli/msg.md's table of verbs has no row for `{verb}`");
+        let listed = help.lines().any(|line| line.split_whitespace().next() == Some(verb));
+        assert!(listed, "`muster msg --help` does not list {verb} as a command: {help}");
     }
+    assert!(
+        reference.contains(&messaging::command(messaging::READ, "")),
+        "docs/cli/msg.md never spells the command as `muster msg read`"
+    );
 }

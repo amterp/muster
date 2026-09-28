@@ -118,11 +118,17 @@ fn agents_message_each_other_over_there(tunnel: &Tunnel, installed: &Installed) 
             "M={muster}; $M msg --as a join --group g && $M msg --as b join --group g && \
              {{ $M msg --as b wait --timeout 60 > {waited} 2>&1 & }}; \
              i=0; until grep -q msg.waiting {log} || [ $i -ge 200 ]; do sleep 0.1; i=$((i+1)); done; \
+             grep -q msg.waiting {log} && echo blocked-before-the-post; \
              $M msg --as a post ping > /dev/null; wait; echo \"waited: $(cat {waited})\"; \
              $M msg --as b post too-soon 2>/dev/null; echo \"refused=$?\"; \
              $M msg --as b read > /dev/null; $M msg --as b post pong > /dev/null; echo \"posted=$?\""
         ))
         .unwrap();
+    assert!(
+        said.contains("blocked-before-the-post"),
+        "the wait never reached the daemon before the post, so this shows nothing about a \
+         blocked wait being woken: {said}"
+    );
     assert!(
         said.contains("waited: [muster] g: 1 new (#4), from a. Read: muster msg read --group g"),
         "the wait was answered by the post: {said}"

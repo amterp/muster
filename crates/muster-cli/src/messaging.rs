@@ -639,6 +639,26 @@ mod tests {
         assert!(!patience.allows_another(at(10_000), at(10_200)));
     }
 
+    /// A daemon from before messaging decodes a `msg` request as one it does not know, and
+    /// refuses it with no msg answer: the caller is told to update, not shown the refusal.
+    #[test]
+    fn a_daemon_from_before_messaging_is_named_as_such() {
+        let request = proto::MsgRequest {
+            caller: None,
+            request: Some(Asked::Who(msg_request::Who::default())),
+        };
+        let answer = proto::Answer {
+            outcome: proto::Outcome::Refused.into(),
+            reason: "unsupported request".to_string(),
+            ..proto::Answer::default()
+        };
+        let Err(Trouble::Refused(said)) = render(&request, &answer, false, false) else {
+            panic!("an old daemon's refusal is a refusal");
+        };
+        assert!(said.contains("predates messaging"), "{said}");
+        assert!(said.contains("Update Muster"), "{said}");
+    }
+
     /// A wait that ran for minutes and was then ended by a handover is asked again of the new
     /// daemon: its patience is for the handover, not for the wait before it.
     #[test]
