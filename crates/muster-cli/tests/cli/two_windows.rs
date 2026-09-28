@@ -77,6 +77,47 @@ fn a_caller_inside_a_pane_still_hears_only_its_own_window() {
     );
 }
 
+/// Muster relaunched: the window that made this pane has quit, and a new one of the same install
+/// holds its tab now. The pane's `$MUSTER_SOCKET` still names the old window, and what it runs
+/// reaches the new one, which carries a change to whichever window holds the pane.
+#[test]
+fn a_pane_whose_window_quit_reaches_the_window_open_now() {
+    let scratch = Scratch::new("relaunched");
+    let home = scratch.home();
+    let gone = quit_window(home, 111);
+    let live = window(home, 222, "live-pane");
+
+    let (code, out, errors) = run_in_pane(&["window"], home, &gone, "old-pane");
+    assert_eq!(code, 0, "the pane could not ask the window open now: {errors}");
+    assert!(out.contains(&live), "the answer is not the open window's:\n{out}");
+
+    let (code, _, errors) = run_in_pane(&["pane", "new", "--down"], home, &gone, "old-pane");
+    assert_ne!(code, 3, "a change from the pane found no window: {errors}");
+    assert!(!errors.contains("has quit"), "the pane was told its window has quit:\n{errors}");
+}
+
+/// Two windows of the install are open and the pane's own has quit. Its change names its pane, so
+/// either window can take it and carry it to the one holding the pane; a question is answered by
+/// both, as it is for a caller outside every pane.
+#[test]
+fn with_two_windows_open_a_pane_whose_window_quit_reaches_them() {
+    let scratch = Scratch::new("relaunched-two");
+    let home = scratch.home();
+    let gone = quit_window(home, 111);
+    let first = window(home, 333, "first-pane");
+    let second = window(home, 444, "second-pane");
+
+    let (code, _, errors) = run_in_pane(&["pane", "new", "--down"], home, &gone, "old-pane");
+    assert_ne!(code, 3, "a change naming its pane was refused for want of a window: {errors}");
+    assert!(!errors.contains("--socket"), "the pane was asked which window it meant:\n{errors}");
+
+    let (code, out, errors) = run_in_pane(&["window"], home, &gone, "old-pane");
+    assert_eq!(code, 0, "{errors}");
+    for expected in [&first, &second] {
+        assert!(out.contains(expected), "{expected} is missing from the answer:\n{out}");
+    }
+}
+
 #[test]
 fn a_change_with_two_windows_open_still_refuses_and_names_them() {
     let scratch = Scratch::new("write");
@@ -304,12 +345,36 @@ fn window(home: &Path, pid: u32, pane: &str) -> String {
     pane.to_string()
 }
 
+/// Where a window that has quit listened: its socket file left behind, with nothing answering.
+fn quit_window(home: &Path, pid: u32) -> String {
+    let path = first_socket(home, pid);
+    drop(UnixListener::bind(&path).expect("the temporary directory is writable"));
+    path
+}
+
 fn run(argv: &[&str], home: &Path, in_a_pane: Option<&str>) -> (i32, String, String) {
     let mut environment = BTreeMap::new();
-    environment.insert("MUSTER_HOME".to_string(), home.to_string_lossy().into_owned());
     if let Some(socket) = in_a_pane {
         environment.insert("MUSTER_SOCKET".to_string(), socket.to_string());
     }
+    run_with(argv, home, environment)
+}
+
+/// A command run inside `pane`, whose window listened at `socket`.
+fn run_in_pane(argv: &[&str], home: &Path, socket: &str, pane: &str) -> (i32, String, String) {
+    let environment = BTreeMap::from([
+        ("MUSTER_SOCKET".to_string(), socket.to_string()),
+        ("MUSTER_PANE".to_string(), pane.to_string()),
+    ]);
+    run_with(argv, home, environment)
+}
+
+fn run_with(
+    argv: &[&str],
+    home: &Path,
+    mut environment: BTreeMap<String, String>,
+) -> (i32, String, String) {
+    environment.insert("MUSTER_HOME".to_string(), home.to_string_lossy().into_owned());
     let argv: Vec<String> = argv.iter().map(|word| (*word).to_string()).collect();
     let mut out = Vec::new();
     let mut errors = Vec::new();
