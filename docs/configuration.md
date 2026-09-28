@@ -482,7 +482,7 @@ version over there, `~/.muster/daemon/<version>/muster-daemon` with its data bes
 one still running from last time, agents and all. One left running by an older Muster is asked to
 hand its panes to the new daemon, which keeps every agent running; the same happens on this
 machine. Older means a lower version number, and 0.10.1 is the first release whose daemon is
-muster-daemon, so the first handoff between releases is from 0.10.1 to the one after. The first
+muster-daemon, so the first handoff between releases is from 0.10.1 to 0.11.0. The first
 time, or when that directory holds another build, Muster copies its own daemon there over the same
 ssh connection; nothing is downloaded. Linux on x86_64 or aarch64 and macOS on Apple silicon are the
 machines it carries a daemon for, and the run log says so for any other. Naming a `socket` in a
