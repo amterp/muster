@@ -1124,7 +1124,15 @@ fn read_keymap(
     })?;
 
     for (name, chord) in block {
-        let action = Action::parse(name).ok_or_else(|| match ghostty_equivalent(name) {
+        // Ghostty spells some actions with an argument, `goto_split:left`, and a line carried
+        // over from a Ghostty config is answered by the action's name alone.
+        let bare = name.split_once(':').map_or(name.as_str(), |(bare, _)| bare);
+        let action = Action::parse(name).ok_or_else(|| match ghostty_equivalent(bare) {
+            _ if bare != name && Action::parse(bare).is_some() => format!(
+                "`{name}` in the config file's [keymap] gives `{bare}` an argument, and \
+                 Muster's actions take none. None of the file was applied. Write it as \
+                 `{bare}`."
+            ),
             Some(ours) => format!(
                 "`{name}` in the config file's [keymap] is Ghostty's name, and Muster's is \
                  {ours}. None of the file was applied."

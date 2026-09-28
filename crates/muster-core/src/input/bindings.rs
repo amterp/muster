@@ -397,9 +397,11 @@ pub fn ghostty_equivalent(name: &str) -> Option<&'static str> {
         }
         "resize_split" => "`resize_left`, `resize_right`, `resize_up` and `resize_down`",
         "toggle_split_zoom" => "`zoom`",
+        "prompt_surface_title" => "`rename_pane`",
+        "prompt_tab_title" => "`rename_tab`",
         "close_surface" => "`close_pane`",
         "goto_tab" => "`focus_pane_1` to `focus_pane_9`, which go to a pane and bring its tab",
-        "start_search" => "`find`",
+        "start_search" | "search" => "`find`",
         "navigate_search" => "`find_next` and `find_previous`",
         "jump_to_prompt" => "`jump_to_previous_prompt` and `jump_to_next_prompt`",
         "reset" => "`reset_terminal`",
