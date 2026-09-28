@@ -1,5 +1,5 @@
 id = "claude"
-version = "2026.09.27.1"
+version = "2026.09.27.2"
 min_engine_version = 2
 updated_at = "2026-09-27T00:00:00Z"
 aliases = ["claude-code"]
@@ -74,6 +74,22 @@ any = [
   { contains = ["ctrl+e", "collapse"] },
   { contains = ["↑↓ scroll"] },
   { contains = ["? for shortcuts"] },
+]
+
+[[rules]]
+id = "own_menu"
+state = "unknown"
+# Menus someone opens from the prompt end in a live dialog's footer, and nobody is waiting on
+# anybody: above live_blocked_form, so the state stays what it was. Keyed on each menu's title,
+# the first line below the last horizontal rule.
+priority = 1160
+region = "after_last_horizontal_rule"
+skip_state_update = true
+contains = ["esc to cancel"]
+any = [
+  { line_regex = ['(?i)^\s*hooks\s*$'] },
+  { line_regex = ['(?i)^\s*manage mcp servers\s*$'] },
+  { line_regex = ['(?i)^\s*memory\s*$'] },
 ]
 
 [[rules]]
