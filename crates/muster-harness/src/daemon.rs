@@ -38,6 +38,12 @@ pub const DAEMON_DATA: &str =
 /// What a pane runs unless a test sets a shell: a `/bin/sh`, so nobody's dotfiles play a part.
 const SHELL: &str = "/bin/sh";
 
+/// What every pane's login shell reads last: a prompt that is the same on every machine. The
+/// system's names the host - macOS's is `host:dir user$` - and a long hostname pushes typed text
+/// past a pane's 80 columns, where it wraps and reads back as two rows. A test that writes its
+/// own `.profile` replaces this one.
+const PROFILE: &str = "PS1='$ '\n";
+
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
 /// The `muster-daemon` built into the same target directory as the running test.
@@ -169,6 +175,9 @@ impl Daemon {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("home")).unwrap_or_else(|error| {
             panic!("could not create the harness root at {}: {error}", root.display())
+        });
+        std::fs::write(root.join("home/.profile"), PROFILE).unwrap_or_else(|error| {
+            panic!("could not write the harness home's .profile under {}: {error}", root.display())
         });
         prepare_home(&root.join("home"));
         let mut daemon = Daemon {
