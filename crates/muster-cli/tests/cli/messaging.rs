@@ -274,6 +274,14 @@ fn a_post_to_agents_in_panes_says_when_each_is_rung() {
          rung once its prompt is empty: p3 (idle)\n\
          rung once an agent is found: p4"
     );
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "--as", "lead", "who"])),
+        "lead  gone             lead+p1+p2+p3+p4\n\
+         p1    alive (idle)     lead+p1+p2+p3+p4\n\
+         p2    alive (working)  lead+p1+p2+p3+p4\n\
+         p3    alive (idle)     lead+p1+p2+p3+p4\n\
+         p4    gone             lead+p1+p2+p3+p4"
+    );
 
     let json = ["msg", "--json", "--as", "other", "post", "--to", "p2,p3,p4", "another"];
     let posted: Value = serde_json::from_str(&ok(&muster(&daemon, &json))).unwrap();
