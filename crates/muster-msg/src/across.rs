@@ -482,6 +482,13 @@ impl<S: Store> Messaging<S> {
             Some(group) => vec![self.locate(group)?],
             None => self.memberships(&name),
         };
+        // A leave from every group is refused whole (MIP-4, section 8), so each group's policy
+        // is asked before any group elsewhere is left. A replica holds its home's policy.
+        if group.is_none() {
+            for key in &keys {
+                self.permitted(key, &name, Action::Leave)?;
+            }
+        }
         let mut away = Vec::new();
         for key in keys {
             let Some(machine) = self.groups[&key].home.clone() else { continue };
