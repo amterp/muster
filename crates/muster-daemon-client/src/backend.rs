@@ -178,10 +178,15 @@ impl DaemonBackend {
 
 /// Whether a read that asked for the last `rows` rows got them.
 ///
-/// A daemon that predates reading from the end reads from the first row instead, which it gives
-/// away by sending more rows than were asked for.
+/// A daemon that predates reading from the end reads from the first row instead. It gives that
+/// away by sending more rows than were asked for, or, when its 4 MiB cut the page short of that,
+/// by starting at row 0 and ending far from the last row. A tail ends at the last row with
+/// anything on it, so at most a screen of blank rows short of the end.
 fn answers_the_tail(page: &proto::PaneText, rows: u32) -> bool {
-    rows > 0 && page.rows <= rows
+    /// Taller than any screen, and far shorter than the rows a 4 MiB cut leaves out.
+    const A_SCREEN: u64 = 1000;
+    let ends = page.first_row + u64::from(page.rows);
+    rows > 0 && page.rows <= rows && (page.first_row > 0 || ends + A_SCREEN >= page.total_rows)
 }
 
 fn reaches_the_end(page: &proto::PaneText) -> bool {
