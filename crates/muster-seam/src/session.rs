@@ -744,6 +744,12 @@ pub(crate) struct Session {
     /// a moment later (kan a_2I6h18OU6). A daemon that refuses is left in here for the sharper
     /// version of the same reason: a rule that retried a refusal would retry it forever.
     tabs_asked_of: BTreeSet<DaemonId>,
+    /// The arrangement this window opened from, kept while `awaiting` is not empty.
+    left: Option<Saved>,
+    /// The daemons whose part of `left` is waiting for them to answer: configured, still
+    /// attaching when the window opened, and holding something `left` names. Their part is put
+    /// back when they arrive (`restore_late`) and written back meanwhile (`save`).
+    awaiting: BTreeSet<DaemonId>,
 
     /// Which window this is, and which window holds each tab.
     ///
@@ -3035,6 +3041,7 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
                     clear_problem(&key, "attached");
                 }
                 attach_ended(&daemon.id, generation);
+                restore_late(&daemon.id);
                 return;
             }
             Err(Unattached::Abandoned) => return,
@@ -3065,6 +3072,53 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
             }
         }
     }
+}
+
+/// Puts back what the arrangement the window opened from had on a daemon that answered after
+/// the window opened: its regions, with their widths and the pane each was on, in the places
+/// the arrangement had them among whatever the window holds by now (`Saved::keeping`).
+///
+/// The keyboard is not moved to them. A daemon arriving seconds after launch finds somebody
+/// already typing, and moving the keyboard would send what they type next to another machine.
+fn restore_late(daemon: &DaemonId) {
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        if !session.awaiting.remove(daemon) {
+            return;
+        }
+        let Some(left) = session.left.clone() else { return };
+        if session.awaiting.is_empty() {
+            session.left = None;
+        }
+        let described: BTreeSet<TabId> =
+            session.backends.get(daemon).map_or_else(BTreeSet::new, |backend| {
+                poison::lock(&backend.mirror, "mirror").tabs().map(|tab| tab.id.clone()).collect()
+            });
+        let mut regions = 0usize;
+        for tab in &left.tabs {
+            if !session.holding.holds(&tab.id) || !described.contains(&tab.id) {
+                continue;
+            }
+            for region in tab.regions.iter().filter(|region| &region.daemon == daemon) {
+                let Some(id) = session.composition.open_region(daemon, tab.id.clone()) else {
+                    continue;
+                };
+                session.composition.set_weight(id, region.weight);
+                if let Some(pane) = &region.pane {
+                    session.composition.focus_pane(id, pane.clone());
+                }
+                regions += 1;
+            }
+        }
+        let wanted = Saved::of(&session.composition, session.presentation, &session.font_sizes)
+            .keeping(&left, &BTreeSet::from([daemon.clone()]));
+        session.composition.arrange_like(&wanted);
+        log::info(
+            "composition.restored_late",
+            fields! { "daemon" => daemon.to_string(), "regions" => regions.to_string() },
+        );
+    }
+    publish("restored_late");
 }
 
 /// What to tell somebody whose configured daemon has not attached since launch.
@@ -3365,6 +3419,16 @@ fn reopen_what_was_left() {
     // down - is taken here, which is how a window that was alone comes back exactly as it was.
     let listed: Vec<TabId> = saved.tabs.iter().map(|tab| tab.id.clone()).collect();
     session.holding.keep(&listed);
+    let attaching = poison::lock(&ATTACHES, "attaches").under_way.clone();
+    session.awaiting = saved
+        .tabs
+        .iter()
+        .flat_map(|tab| tab.regions.iter().map(|region| region.daemon.clone()))
+        .filter(|daemon| attaching.contains(daemon))
+        .collect();
+    if !session.awaiting.is_empty() {
+        session.left = Some(saved.clone());
+    }
     let restorable = saved.restorable(|daemon, tab| {
         session.holding.holds(tab)
             && session
@@ -3800,14 +3864,19 @@ fn reconcile_every_daemon() {
 /// Replaced rather than appended to, through a temporary beside it: a window that quit while
 /// this was half-written would otherwise come back to a file that parses as far as the third
 /// region and stops.
-fn save(composition: &Composition, presentation: Presentation, font_sizes: &FontSizes) {
+fn save(session: &Session) {
     if !opened() {
         return;
     }
     let mut held = poison::lock(&STATE, "saved-arrangement");
     let Some((path, written)) = held.as_mut() else { return };
 
-    let text = saved::to_toml(&Saved::of(composition, presentation, font_sizes));
+    let mut arrangement =
+        Saved::of(&session.composition, session.presentation, &session.font_sizes);
+    if let Some(left) = &session.left {
+        arrangement = arrangement.keeping(left, &session.awaiting);
+    }
+    let text = saved::to_toml(&arrangement);
     if &text == written {
         return;
     }
@@ -3894,7 +3963,7 @@ pub(crate) fn saved_presentation() -> Presentation {
 pub(crate) fn set_window_frame(frame: Option<Frame>, full_screen: bool) {
     let mut session = poison::lock(&SESSION, "session");
     session.presentation = session.presentation.with_frame(frame, full_screen);
-    save(&session.composition, session.presentation, &session.font_sizes);
+    save(&session);
 }
 
 /// Tells the shell what this window is showing.
@@ -3944,7 +4013,7 @@ fn publish(cause: &str) {
         watchdog::showing(view.showing().clone());
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
-        save(&session.composition, session.presentation, &session.font_sizes);
+        save(&session);
         session.forget_what_closed();
         let view_message = convert::view(&view);
         let roster_message = convert::roster(&roster, &numbering);

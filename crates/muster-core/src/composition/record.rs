@@ -513,7 +513,21 @@ impl Composition {
     }
 
     /// Puts the tabs, and each tab's regions, in the order `order` has them.
-    pub fn arrange_like(&mut self, _order: &super::saved::Saved) {}
+    ///
+    /// For a daemon that answered after the window opened, whose regions open at the end of
+    /// wherever they go (`Saved::keeping` says where they belong). A tab or region `order` does
+    /// not name keeps its place relative to the others it does not name, after the ones it does.
+    /// Nothing is brought on screen and the keyboard stays where it was.
+    pub fn arrange_like(&mut self, order: &super::saved::Saved) {
+        let place = |id: &TabId| order.tabs.iter().position(|tab| &tab.id == id);
+        self.tabs.sort_by_key(|tab| place(&tab.id).unwrap_or(usize::MAX));
+        for tab in &mut self.tabs {
+            let Some(wanted) = order.tabs.iter().find(|wanted| wanted.id == tab.id) else {
+                continue;
+            };
+            tab.regions.sort_by_key(|region| super::saved::side_of(wanted, &region.daemon));
+        }
+    }
 
     /// Moves the line between a region and the one to its right.
     ///

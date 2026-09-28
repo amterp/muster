@@ -10,10 +10,13 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use std::path::Path;
+
 use muster::proto::{
-    Event, OpenWindow, ProblemsChanged, ReadWindow, Request, Response, Startup, event, request,
-    response,
+    CreateTab, Event, OpenWindow, ProblemsChanged, Quitting, ReadWindow, Request, Response,
+    Startup, event, request, response,
 };
+use muster_core::composition::saved;
 use muster_daemon_proto::{self as daemon_proto, session_request};
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -91,6 +94,82 @@ fn a_daemon_missing_at_launch_is_attached_once_it_answers() {
         || problems().is_empty(),
         || format!("the problems still raised are {:?}", problems()),
     );
+}
+
+/// A daemon on its way when the window opens keeps its place in the arrangement, and gets it
+/// back when it answers.
+///
+/// The window writes its arrangement as it opens. Written as it stood then, without the tabs of a
+/// daemon that had not answered, one slow launch erased them from the file, and a daemon that
+/// answered later had its tabs opened at the end of the list.
+#[test]
+fn a_daemon_on_its_way_keeps_its_place_in_the_arrangement() {
+    let turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let arrangement = daemon.root().join("window-1.toml");
+    start(&daemon.muster_config(), &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the window to open onto a tab",
+        || listed_tabs().len() == 1,
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        take_focus: true,
+        ..CreateTab::default()
+    })));
+    until(
+        "the second tab to arrive",
+        || listed_tabs().len() == 2,
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    let before = listed_tabs();
+    assert_ok(&answer(request::Payload::Quitting(Quitting::default())));
+
+    turn.relaunch();
+    let relay = daemon.delaying_answers_where(subscribes, SLOW);
+    start(&relay.muster_config(), &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_eq!(
+        saved_tabs(&arrangement),
+        before,
+        "opening while the daemon was on its way rewrote the arrangement without its tabs"
+    );
+    until(
+        "the daemon's tabs to come back as they were left",
+        || listed_tabs() == before,
+        || format!("the window lists {:?} and was left with {before:?}", listed_tabs()),
+    );
+    drop(relay);
+}
+
+fn start(config: &Path, arrangement: &Path) {
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: arrangement.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+}
+
+/// The tabs the window lists, in order.
+fn listed_tabs() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window
+            .roster
+            .iter()
+            .flat_map(|roster| roster.tabs.iter())
+            .map(|tab| tab.tab_id.clone())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The tabs the arrangement on disk names, in order.
+fn saved_tabs(arrangement: &Path) -> Vec<String> {
+    let text = std::fs::read_to_string(arrangement).unwrap_or_default();
+    saved::from_toml(&text)
+        .map(|saved| saved.tabs.iter().map(|tab| tab.id.to_string()).collect())
+        .unwrap_or_default()
 }
 
 static PROBLEMS: Mutex<Option<ProblemsChanged>> = Mutex::new(None);

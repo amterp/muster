@@ -122,9 +122,81 @@ impl Saved {
         }
     }
 
-    /// This arrangement, with what `left` had on the daemons in `awaiting` put back.
-    pub fn keeping(self, _left: &Saved, _awaiting: &BTreeSet<DaemonId>) -> Saved {
+    /// This arrangement, with what `left` had on the daemons in `awaiting` put back where `left`
+    /// had it.
+    ///
+    /// `awaiting` is the daemons a window has not heard from yet. A window writes its arrangement
+    /// as soon as it opens, and a devenv still on its way has nothing in it to write, so without
+    /// this the first save after a slow launch erases that devenv's part of the arrangement.
+    ///
+    /// A tab goes back after the nearest tab that came before it and is here, which keeps it
+    /// between the tabs it sat between and leaves a tab made since where it was made. A region
+    /// goes back into a tab still here on the side it was on, and never with the keyboard when
+    /// the tab's other half has it, since somebody may be typing there by now.
+    #[must_use]
+    pub fn keeping(mut self, left: &Saved, awaiting: &BTreeSet<DaemonId>) -> Saved {
+        if awaiting.is_empty() {
+            return self;
+        }
+        for (at, tab) in left.tabs.iter().enumerate() {
+            let late: Vec<&SavedRegion> =
+                tab.regions.iter().filter(|region| awaiting.contains(&region.daemon)).collect();
+            if late.is_empty() {
+                continue;
+            }
+            let position = self.tabs.iter().position(|held| held.id == tab.id);
+            // A tab only late daemons hold, open because they have now answered, is moved to its
+            // place as a whole: it opened at the end, where a reconcile puts a new tab.
+            if let Some(index) = position
+                && self.tabs[index].regions.iter().all(|region| awaiting.contains(&region.daemon))
+            {
+                let mut moved = self.tabs.remove(index);
+                moved.regions.sort_by_key(|region| side_of(tab, &region.daemon));
+                let place = self.place_of(left, at);
+                self.tabs.insert(place, moved);
+            } else if let Some(index) = position {
+                let here = &mut self.tabs[index];
+                let keyboard = here.regions.iter().any(|region| region.keyboard);
+                for region in late {
+                    if here.regions.iter().all(|held| held.daemon != region.daemon) {
+                        here.regions.push(SavedRegion {
+                            keyboard: region.keyboard && !keyboard,
+                            ..region.clone()
+                        });
+                    }
+                }
+                here.regions.sort_by_key(|region| side_of(tab, &region.daemon));
+            } else {
+                let place = self.place_of(left, at);
+                self.tabs.insert(
+                    place,
+                    SavedTab { id: tab.id.clone(), regions: late.into_iter().cloned().collect() },
+                );
+            }
+        }
+        for daemon in &left.daemons {
+            if awaiting.contains(&daemon.id) && self.daemons.iter().all(|held| held.id != daemon.id)
+            {
+                self.daemons.push(daemon.clone());
+            }
+        }
+        if self.showing.is_none() {
+            self.showing = left
+                .showing
+                .clone()
+                .filter(|showing| self.tabs.iter().any(|tab| &tab.id == showing));
+        }
         self
+    }
+
+    /// Where the tab `left` had at `at` goes among these: after the nearest tab before it in
+    /// `left` that is here, or else before the nearest one after it, or else at the end.
+    fn place_of(&self, left: &Saved, at: usize) -> usize {
+        let here = |id: &TabId| self.tabs.iter().position(|tab| &tab.id == id);
+        if let Some(before) = left.tabs[..at].iter().rev().find_map(|tab| here(&tab.id)) {
+            return before + 1;
+        }
+        left.tabs[at + 1..].iter().find_map(|tab| here(&tab.id)).unwrap_or(self.tabs.len())
     }
 
     /// The tabs worth reopening, given what each daemon turns out to hold.
@@ -160,6 +232,12 @@ impl Saved {
             .or_else(|| tabs.first().map(|tab| tab.id.clone()));
         Restorable { tabs, showing }
     }
+}
+
+/// Where a daemon's region sits in a saved tab, for sorting a tab's regions into that order. A
+/// daemon the tab did not have sorts after every one it did.
+pub(crate) fn side_of(tab: &SavedTab, daemon: &DaemonId) -> usize {
+    tab.regions.iter().position(|region| &region.daemon == daemon).unwrap_or(usize::MAX)
 }
 
 /// The version this format is on.

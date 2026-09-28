@@ -835,7 +835,9 @@ Health is per-connection *and* per-channel, and it is state, not an error path:
 A daemon that has not answered by the time the window opens is the same case from the other end. The window waits
 one second for the daemons its config names, each attached on a thread of its own, and opens without the rest; a
 daemon that arrives later is reconciled into the open window like any first snapshot, and one that cannot be reached
-is tried again on the reconnect backoff until it answers. Waiting on every daemon before showing anything made one
+is tried again on the reconnect backoff until it answers. Its part of the saved arrangement waits for it: the file
+keeps that part while the daemon is on its way, and when it answers its tabs and halves of tabs go back where they
+were, with their widths, without taking the keyboard from whoever is typing by then. Waiting on every daemon before showing anything made one
 slow devenv a window that did not appear for a minute and a half.
 
 Liveness needs an active probe - the control plane is legitimately silent when nothing happens - and how it probes
