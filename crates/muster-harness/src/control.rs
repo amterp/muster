@@ -107,20 +107,33 @@ impl Control {
     pub fn next_message(&mut self, within: Duration) -> Option<control_message::Message> {
         let deadline = Instant::now() + within;
         loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() {
-                return None;
+            match self.next_frame(deadline)? {
+                Frame::Logged => {}
+                Frame::Message(message) => return Some(*message),
             }
-            // macOS refuses a timeout on a socket whose peer has hung up, and reading one never
-            // blocks: what was sent before it hung up still arrives, then the end.
-            let _ = self.stream.set_read_timeout(Some(left));
-            match connection::receive::<proto::ControlMessage>(&mut self.stream) {
-                Ok(Some(proto::ControlMessage {
-                    message: Some(control_message::Message::LogLine(line)),
-                })) => self.logged.push(line),
-                Ok(Some(message)) => return message.message,
-                Ok(None) | Err(_) => return None,
+        }
+    }
+
+    /// The next frame to arrive before `deadline`, keeping a log line rather than returning it.
+    fn next_frame(&mut self, deadline: Instant) -> Option<Frame> {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        // macOS refuses a timeout on a socket whose peer has hung up, and reading one never
+        // blocks: what was sent before it hung up still arrives, then the end.
+        let _ = self.stream.set_read_timeout(Some(left));
+        match connection::receive::<proto::ControlMessage>(&mut self.stream) {
+            Ok(Some(proto::ControlMessage {
+                message: Some(control_message::Message::LogLine(line)),
+            })) => {
+                self.logged.push(line);
+                Some(Frame::Logged)
             }
+            Ok(Some(proto::ControlMessage { message: Some(message) })) => {
+                Some(Frame::Message(Box::new(message)))
+            }
+            Ok(Some(proto::ControlMessage { message: None }) | None) | Err(_) => None,
         }
     }
 
@@ -129,14 +142,19 @@ impl Control {
     pub fn logged_until(&mut self, needle: &str, within: Duration) -> &[proto::LogLine] {
         let deadline = Instant::now() + within;
         while !self.logged.iter().any(|line| line.line.contains(needle)) {
-            let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() {
-                break;
-            }
-            if let Some(message) = self.next_message(left) {
-                panic!("waiting for the log, the daemon sent {message:?}");
+            match self.next_frame(deadline) {
+                None => break,
+                Some(Frame::Logged) => {}
+                Some(Frame::Message(message)) => {
+                    panic!("waiting for the log, the daemon sent {message:?}")
+                }
             }
         }
         &self.logged
     }
+}
+
+enum Frame {
+    Logged,
+    Message(Box<control_message::Message>),
 }
