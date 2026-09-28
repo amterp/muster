@@ -346,3 +346,18 @@ fn a_ring_waiting_for_an_agent_that_exits_is_not_typed_into_its_shell() {
     let shown = read_text(&mut agent.control, "p1", 0, 0).text;
     assert!(!shown.contains("[muster]"), "typed into the shell: {shown}");
 }
+
+/// A daemon that takes the panes over by a handoff does not know whether a wake still unread
+/// was rung, so it rings it again, without waiting for a post or a change in the pane to prompt
+/// it.
+#[test]
+fn a_daemon_that_took_over_rings_a_wake_still_unread() {
+    let mut agent = Agent::in_a_pane();
+    agent.post("p1", "a brief");
+    agent.until_rung(1);
+
+    let answer = agent.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    let rung = agent.until_rung(2);
+    assert!(rung[1].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+}
