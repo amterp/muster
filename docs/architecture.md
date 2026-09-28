@@ -133,7 +133,7 @@ any other build - two development builds share a version - gets this one instead
 follows: adopt a daemon already answering, and otherwise start this one, in a session of its own.
 
 **Nothing is downloaded, by either machine.** A devenv is often a container or a build box with no route out, and
-the app already holds every daemon it can install: two stripped static builds of about 2.5 MB each, where bundling
+the app already holds every daemon it can install: two stripped static builds of 5 and 6 MB, where bundling
 the four herdr assets a download once fetched would have cost 72 MB. So there is no pin and no checksum file, and an
 app and the daemon it installs are one tested unit - which a pin could not make them, since a daemon built from this
 repository has no checksum until the commit that would record it is built.
