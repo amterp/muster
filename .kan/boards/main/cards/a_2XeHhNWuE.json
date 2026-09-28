@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "the-config-watcher",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790520459136,
   "creator": "Alexander Terp",
   "description": "Muster watches the config file's directory, so it sees a save that replaces the file (what editors do) but not one written in place, such as printf \u003e config.toml or some editors' write-in-place mode. The save then does nothing until the next replacing save or a relaunch. Either watch the file as well as the directory, or say in docs/configuration.md that a save must replace the file.",
   "id": "a_2XeHhNWuE",
-  "position": "ad",
+  "position": "Yzw",
   "title": "The config watcher misses a config written in place",
   "type": "bug",
-  "updated_at_millis": 1790520459204,
+  "updated_at_millis": 1790589809426,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790520459136}
+    {"field":"column","value":"backlog-lo","at":1790520459136},
+    {"field":"column","value":"done","at":1790589809426}
   ]
 }

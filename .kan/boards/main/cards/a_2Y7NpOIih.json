@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "the-daemon-muster",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790589809848,
+  "creator": "Alexander Terp",
+  "description": "Configured [[daemon]] blocks now attach on their own threads with a 1 s grace, so a slow one no longer holds the window closed. The daemon Muster finds for itself when no [[daemon]] is configured still attaches while the window opens, as before. Its first launch after an update can take 44 s while macOS scans the new binary.",
+  "id": "a_2Y7NpOIih",
+  "position": "al",
+  "title": "The daemon Muster finds for itself attaches off the startup path too",
+  "type": "feature",
+  "updated_at_millis": 1790589809848,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790589809848}
+  ]
+}

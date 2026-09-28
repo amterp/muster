@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "a-slow-devenv-holds",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790580185595,
   "creator": "Alexander Terp",
   "description": "Configured remote daemons are attached one after another from the startup request, before the window opens (`handler.rs` into `session::follow_configured`, sent by the shell before `app.run()`). A devenv whose freshly started daemon never answers through the forward now costs up to 90 s (the remote patience, raised from 30 s because a reinstalled daemon measured 46 s) before any window appears, while `follow_configured`'s own comment says one unreachable devenv should cost its own panes and nothing else.\n\nAttaching in parallel only bounds the total, not the 90 s. Attaching remote daemons after the window opens is the real fix, and it is not small: regions, the restored arrangement and the empty-window message would all have to accept a daemon that arrives late, and a daemon unreachable at launch would need a retry, which does not exist today.\n\nFrom the cut-over landing review (1a M6).",
   "id": "a_2Y3LSOogS",
-  "position": "b05",
+  "position": "Yzu",
   "title": "A slow devenv holds the window closed for up to 90 seconds",
   "type": "bug",
-  "updated_at_millis": 1790580185595,
+  "updated_at_millis": 1790589809565,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790580185595}
+    {"field":"column","value":"backlog-hi","at":1790580185595},
+    {"field":"column","value":"done","at":1790589809565}
   ]
 }

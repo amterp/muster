@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "the-run-log-ignores",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790520459319,
   "creator": "Alexander Terp",
   "description": "Muster's run log goes to ~/Library/Logs/muster/ whatever MUSTER_HOME says, so an isolated test run (MUSTER_HOME=/tmp/x) writes its timeline beside the person's own runs, and two isolated runs interleave in one directory. Found during the cut-over's manual runs.",
   "id": "a_2XeHhhDHQ",
-  "position": "ae",
+  "position": "Yzv",
   "title": "The run log ignores MUSTER_HOME",
   "type": "bug",
-  "updated_at_millis": 1790520459365,
+  "updated_at_millis": 1790589809496,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790520459319}
+    {"field":"column","value":"backlog-lo","at":1790520459319},
+    {"field":"column","value":"done","at":1790589809496}
   ]
 }

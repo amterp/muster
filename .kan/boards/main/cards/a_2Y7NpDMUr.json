@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "the-ssh-tier-checks",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790589809739,
+  "creator": "Alexander Terp",
+  "description": "The app now asks an older daemon at its own socket to hand its panes to this build's daemon, local and remote. The local path has tests; the remote path (install this build's daemon over ssh first, then ask the older one) is covered only by a manual check. The --ssh tier could start an older-saying daemon in the devenv container (debug-only MUSTER_DAEMON_VERSION_SAID), attach, and expect a handoff with the panes' pids kept.",
+  "id": "a_2Y7NpDMUr",
+  "position": "ak",
+  "title": "The ssh tier checks a remote daemon is handed over",
+  "type": "chore",
+  "updated_at_millis": 1790589809739,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790589809739}
+  ]
+}

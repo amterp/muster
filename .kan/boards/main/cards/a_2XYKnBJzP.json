@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "the-app-replaces-an",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -16,11 +16,12 @@
   "description": "muster-daemon can hand its panes to a newer daemon (SessionRequest.replace, a_2XJ1irQcI), but nothing in the product asks it to. The app should ask an older daemon it finds to replace itself with the bundled one, and each bridge should attach again when its stream ends with DetachReason REPLACED rather than exiting. The reconnect side is part of the cut-over (a_2XJ1hqla3); the trigger belongs with shipping the helper bundle (a_2XJ1ie3Ep).",
   "id": "a_2XYKnBJzP",
   "parent": "a_2XJ1fUIyr",
-  "position": "ay",
+  "position": "Yzt",
   "title": "The app replaces an older daemon, and bridges reattach on REPLACED",
   "type": "feature",
-  "updated_at_millis": 1790580164672,
+  "updated_at_millis": 1790589809633,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790506278356}
+    {"field":"column","value":"backlog-hi","at":1790506278356},
+    {"field":"column","value":"done","at":1790589809633}
   ]
 }
