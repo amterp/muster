@@ -50,6 +50,7 @@ fn every_change_is_in_the_corpus() {
         "paneAdded",
         "paneRemoved",
         "agentStateChanged",
+        "finishedUnseen",
         "paneRelabelled",
         "tabAdded",
         "tabRelabelled",
@@ -80,6 +81,10 @@ fn read_change(given: &Value) -> Result<Change, CaseError> {
             pane: PaneId::new(text("pane")?),
             from: AgentState::from_backend(&text("from")?),
             to: AgentState::from_backend(&text("to")?),
+        },
+        "finishedUnseen" => Change::FinishedUnseen {
+            pane: PaneId::new(text("pane")?),
+            unseen: given.get("unseen").and_then(Value::as_bool).unwrap_or_default(),
         },
         "paneRelabelled" => Change::PaneRelabelled(PaneId::new(text("pane")?)),
         "tabAdded" => Change::TabAdded(TabId::new(text("tab")?)),

@@ -19,6 +19,7 @@ use muster_core::daemon_settings::DaemonSettings;
 use muster_core::diagnostics::{log, monotonic_now};
 use muster_core::fields;
 use muster_core::input::NotSent;
+use muster_core::mirror::backend::PaneId;
 use muster_core::mirror::{Change, Mirror};
 use muster_core::reconnect::Attempts;
 use muster_daemon_proto::{self as proto, answer};
@@ -177,6 +178,17 @@ impl Follower {
 
     pub fn connection(&self) -> Arc<Connection> {
         Arc::clone(&self.connection)
+    }
+
+    /// Tells the daemon a window with the keyboard is showing these panes, and says whether it
+    /// was sent. Not held for a later connection: what a window is showing then is reported
+    /// again when it comes back (`muster_core::attention`).
+    pub fn seen(&self, panes: &[PaneId]) -> bool {
+        let Some(control) = self.connection.control() else {
+            return false;
+        };
+        control.seen(panes.iter().map(ToString::to_string).collect());
+        true
     }
 
     /// Tells the daemon these settings now, if connected, and at every connect after. Only

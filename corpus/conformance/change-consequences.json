@@ -48,6 +48,20 @@
       }
     },
     {
+      "name": "a finish set or cleared announces the pane and moves nothing",
+      "why": "It moves a pane between `done` and its agent state, so the shell has to be told the pane's state again: a window that missed it would keep painting `done` on a pane another window already looked at. Nothing about where the pane sits has moved.",
+      "given": {
+        "change": "finishedUnseen",
+        "pane": "w1:p1",
+        "unseen": true
+      },
+      "expect": {
+        "movesStructure": false,
+        "republishes": false,
+        "announcesAgentState": "w1:p1"
+      }
+    },
+    {
       "name": "a pane that goes away moves the arrangement and announces nothing",
       "why": "A region may have been showing it, so composition has to look. There is no state to announce because there is no longer a pane to have one, and a shell told a state for a pane it has just been told to drop would have to guess which message won.",
       "given": {

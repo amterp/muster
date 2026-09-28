@@ -9,16 +9,16 @@
         "herdr_only": "A count of herdr's pane.agent_status_changed events in this run, which included herdr's derived done."
       },
       "agent_status_event_sequence": {
-        "differs": "muster-daemon publishes working and then idle and has no done state; the core derives done from whether the pane was on screen in a focused window (attach.rs::an_agent_finishing_unseen_waits_to_be_noticed)."
+        "differs": "muster-daemon publishes working and then idle and has no done state; it holds the finish as the pane's finished_unseen, and a window paints the pane done until one with the keyboard shows it and reports it seen (agent_states.rs::a_finish_waits_in_the_daemon_until_a_window_with_the_keyboard_shows_it)."
       },
       "completion_in_active_tab": {
-        "pinned": "corpus/conformance/attention.json#an agent that finishes in front of you is idle, not done"
+        "pinned": "corpus/conformance/attention.json#an agent that finishes in front of you is idle, and its daemon is told"
       },
       "completion_in_background_tab": {
         "pinned": "corpus/conformance/attention.json#an agent that finishes on a pane no window shows is done"
       },
       "done_is_derived_not_reported": {
-        "pinned": "crates/muster-seam/tests/seam/attach.rs::an_agent_finishing_unseen_waits_to_be_noticed"
+        "pinned": "crates/muster-seam/tests/seam/agent_states.rs::a_finish_waits_in_the_daemon_until_a_window_with_the_keyboard_shows_it"
       },
       "event_kinds_delivered": {
         "herdr_only": "herdr's own event names and their spelling; muster-daemon's events are protobuf messages with no string names."
@@ -397,7 +397,7 @@
         "herdr_only": "herdr's key-name vocabulary and its invalid_key errors."
       },
       "status_after_focus_gained_sequence": {
-        "differs": "In Muster a done pane is settled when the window gains focus with the pane on screen, reported across the seam rather than written to the pane (attention.json, 'looking at a pane that finished unseen settles it')."
+        "differs": "In Muster a done pane is settled when a window gains focus with the pane on screen: the shell reports the focus across the seam, and the window reports the pane seen to its daemon rather than writing to the pane (attention.json, 'looking at a pane that finished unseen settles it')."
       },
       "status_before_focus_gained_sequence": {
         "herdr_only": "A precondition of the probe's run: herdr's derived done before the bytes were sent."

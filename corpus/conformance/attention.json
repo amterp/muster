@@ -1,12 +1,12 @@
 {
   "concept": "attention.seenness",
   "source": "authored",
-  "citation": "docs/architecture.md, agent state and seen-ness; docs/observations/herdr-0.8.0.md section 3, which measured herdr's own derivation and found architecture.md's account of the mechanism wrong",
-  "why": "`done` is the state attention routing is built on, and it is the only one of the five nobody observes - it is `idle` on a pane nobody looked at. herdr derives it from whether the pane's tab is active and whether the foreground client's window has OS focus, and there is no way to feed the second over its JSON API. So a Muster window sitting unfocused while an agent finishes is told `idle`, which reads as 'nothing needs you' at the exact moment something does.\n\nMuster computes it instead, from the transitions the agent channel delivers and the window focus only the shell can know. These cases are that rule. They are worth pinning as data rather than as tests because the rule is small, entirely about edges, and every edge is a way for the product's whole reason to exist to be quietly wrong: a `done` that never appears routes nobody, and a `done` that appears for a pane somebody watched finish trains the user to ignore it.\n\nThe events are a sequence on purpose. Seen-ness is a fold - what a transition means depends on what the window was showing when it arrived - so a case that set up state and asked one question would be pinning a snapshot rather than the rule.",
+  "citation": "docs/architecture.md, agent state and seen-ness; MIP-3 section 8, which gives the daemon the finish and the window the look",
+  "why": "`done` is the state attention routing is built on, and it is the only one of the five no daemon can decide alone: it is an agent that finished while nobody looked. muster-daemon knows when an agent finished and holds it on the pane's record as `finished_unseen`; only a window knows whether somebody was looking, because only the shell sees its own focus. So a window paints a pane carrying the fact as `done`, and a window that shows it while it has the keyboard reports it seen, which clears it for every window.\n\nThese cases are the window's half. Each event is a pane's record as its daemon now has it, and `reported` is every pane the window told its daemon it had seen, in order. They are worth pinning as data rather than as tests because the rule is small, entirely about edges, and every edge is a way for the product's whole reason to exist to be quietly wrong: a `done` that never appears routes nobody, and a `done` that appears for a pane somebody watched finish trains the user to ignore it.\n\nThe events are a sequence on purpose. Whether a finish was seen depends on what the window was showing when it arrived, so a case that set up state and asked one question would be pinning a snapshot rather than the rule.",
   "cases": [
     {
-      "name": "an agent that finishes in front of you is idle, not done",
-      "why": "The case that keeps `done` meaningful. If finishing on a pane somebody is looking at still raised `done`, every completed agent would raise it and the state would carry no information at all.",
+      "name": "an agent that finishes in front of you is idle, and its daemon is told",
+      "why": "The case that keeps `done` meaningful. If finishing on a pane somebody is looking at still raised `done`, every completed agent would raise it and the state would carry no information at all. The daemon cannot see the window, so it records the finish anyway, and the report is what clears it for every other window.",
       "given": {
         "focused": true,
         "visible": [
@@ -15,20 +15,23 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
       "expect": {
         "states": {
           "local/w1:p1": "idle"
-        }
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
       }
     },
     {
       "name": "an agent that finishes while the window is unfocused is done",
-      "why": "The reason this module exists, and the case herdr cannot answer: the pane is on screen and its tab is active, so every input herdr has says the user saw it. Only the window knows nobody was there.",
+      "why": "The pane is on screen, so every input a daemon could have says somebody saw it. Only the window knows nobody was there.",
       "given": {
         "focused": false,
         "visible": [
@@ -37,15 +40,16 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
       "expect": {
         "states": {
           "local/w1:p1": "done"
-        }
+        },
+        "reported": []
       }
     },
     {
@@ -59,15 +63,16 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
       "expect": {
         "states": {
           "local/w1:p1": "done"
-        }
+        },
+        "reported": []
       }
     },
     {
@@ -81,8 +86,8 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "focused": true
@@ -92,7 +97,10 @@
       "expect": {
         "states": {
           "local/w1:p1": "idle"
-        }
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
       }
     },
     {
@@ -106,8 +114,8 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "visible": [
@@ -119,7 +127,10 @@
       "expect": {
         "states": {
           "local/w1:p1": "idle"
-        }
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
       }
     },
     {
@@ -131,8 +142,8 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "visible": [
@@ -144,12 +155,13 @@
       "expect": {
         "states": {
           "local/w1:p1": "done"
-        }
+        },
+        "reported": []
       }
     },
     {
-      "name": "looking away does not un-see what you already saw",
-      "why": "Seen-ness is written when an agent finishes and never taken back. If losing focus could resurrect `done`, every pane in the window would raise one the moment the user switched to a browser, which is the notification behaviour people disable products over.",
+      "name": "a pane reported seen is idle before its daemon answers",
+      "why": "The window paints what it just saw rather than waiting a round trip for the daemon to agree, or a pane somebody is looking at would stay `done` under their eyes - for longer on a devenv, and for as long as a daemon that never answers takes.",
       "given": {
         "focused": true,
         "visible": [
@@ -158,8 +170,8 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "focused": false
@@ -169,32 +181,92 @@
       "expect": {
         "states": {
           "local/w1:p1": "idle"
-        }
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
       }
     },
     {
-      "name": "an agent that goes back to work is working, not done",
-      "why": "herdr's own rule, worth matching rather than improving on: anything that is not idle means the agent is doing something, so the pane is no longer waiting on anybody. A pane that kept its `done` while visibly working would be showing two states at once.",
+      "name": "looking away does not un-see what you already saw",
+      "why": "Once the daemon has cleared the finish there is nothing left to un-see. If losing focus could resurrect `done`, every pane in the window would raise one the moment the user switched to a browser, which is the notification behaviour people disable products over.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "idle"
+          },
+          {
+            "focused": false
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a finish another window saw is idle here too",
+      "why": "The reason the fact lives in the daemon. Two windows each keeping their own idea of what had been seen left one of them saying `done` about a pane somebody had already read in the other.",
       "given": {
         "focused": false,
         "visible": [],
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "pane": "local/w1:p1",
-            "from": "idle",
-            "to": "working"
+            "state": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        },
+        "reported": []
+      }
+    },
+    {
+      "name": "an agent that goes back to work is working, not done",
+      "why": "Anything busy means the agent is doing something, so the pane is no longer waiting on anybody, and the daemon clears the finish as it says so. A pane that kept its `done` while visibly working would be showing two states at once.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "working"
           }
         ]
       },
       "expect": {
         "states": {
           "local/w1:p1": "working"
-        }
+        },
+        "reported": []
       }
     },
     {
@@ -206,89 +278,70 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "pane": "local/w1:p1",
-            "from": "idle",
-            "to": "blocked"
+            "state": "blocked"
           }
         ]
       },
       "expect": {
         "states": {
           "local/w1:p1": "blocked"
-        }
+        },
+        "reported": []
       }
     },
     {
-      "name": "an idle that finished nothing leaves seen-ness alone",
-      "why": "Only a completion can leave a pane waiting. A pane whose harness could not be classified and then read as idle never finished anything, so raising `done` for it would be announcing work that was never done - which is worse than the `unknown` it came from, because it is confident.",
+      "name": "an agent that ends while working is done",
+      "why": "A crash, or a one-shot run reaching its end, leaves no agent in the pane to be idle. The daemon counts it as a finish, and somebody who left an agent working wants to hear that it stopped however it stopped.",
       "given": {
         "focused": false,
         "visible": [],
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "unknown",
-            "to": "idle"
-          }
-        ]
-      },
-      "expect": {
-        "states": {
-          "local/w1:p1": "idle"
-        }
-      }
-    },
-    {
-      "name": "the daemon's own done is not taken at its word",
-      "why": "herdr publishes a derived `done` from inputs it has about a client that never reported its focus. Taking it would mean two writers for one field with no way to tell whose answer is on screen. It is normalized back to idle on the way in, and this window's own answer decides - here, that somebody was looking.",
-      "given": {
-        "focused": true,
-        "visible": [
-          "local/w1:p1"
-        ],
-        "events": [
-          {
-            "pane": "local/w1:p1",
-            "from": "working",
-            "to": "done"
-          }
-        ]
-      },
-      "expect": {
-        "states": {
-          "local/w1:p1": "idle"
-        }
-      }
-    },
-    {
-      "name": "the daemon's done still counts as finishing when nobody was looking",
-      "why": "The other side of normalizing it: refusing the daemon's derivation must not mean refusing the transition underneath it. herdr saying `done` is herdr saying the agent stopped, and the agent did stop.",
-      "given": {
-        "focused": false,
-        "visible": [
-          "local/w1:p1"
-        ],
-        "events": [
-          {
-            "pane": "local/w1:p1",
-            "from": "working",
-            "to": "done"
+            "state": "unknown",
+            "finished": true
           }
         ]
       },
       "expect": {
         "states": {
           "local/w1:p1": "done"
-        }
+        },
+        "reported": []
+      }
+    },
+    {
+      "name": "an idle the daemon says finished nothing is idle",
+      "why": "Only the daemon's finish makes a `done`. A pane whose harness could not be classified and then read as idle never finished anything, and announcing work that was never done is worse than the `unknown` it came from, because it is confident.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "unknown"
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        },
+        "reported": []
       }
     },
     {
       "name": "two daemons that hand out the same pane id are two panes",
-      "why": "Every daemon names its first pane `w1:p1`. A set keyed by pane alone would let the devenv's agent finishing unseen mark the laptop's pane as waiting, and the user would be sent to the wrong machine - which is the failure attention routing is least able to afford.",
+      "why": "Every daemon names its first pane `w1:p1`. A set keyed by pane alone would let the devenv's agent finishing unseen mark the laptop's pane as waiting, and would tell the laptop's daemon about a look at the devenv - and the user would be sent to the wrong machine, which is the failure attention routing is least able to afford.",
       "given": {
         "focused": true,
         "visible": [
@@ -297,13 +350,13 @@
         "events": [
           {
             "pane": "devenv/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
@@ -311,12 +364,89 @@
         "states": {
           "devenv/w1:p1": "done",
           "local/w1:p1": "idle"
-        }
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a pane that finished before the window opened is done",
+      "why": "A daemon outlives the app, so quitting and coming back is the ordinary case, and agents finish in between. The window saw none of it; the daemon kept the finish for exactly this.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [
+          {
+            "appeared": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        },
+        "reported": []
+      }
+    },
+    {
+      "name": "a pane that finished before the window opened is reported once it is looked at",
+      "why": "Arriving is not looking. The window reports it when it first has the keyboard with the pane on screen, the same as a finish it watched arrive.",
+      "given": {
+        "focused": false,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "appeared": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "focused": true
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a pane that finished before the window opened, arriving in front of you, is reported",
+      "why": "A window coming up in front of somebody shows the panes it arrives with, and a finish on one of them is seen the moment it is drawn.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "appeared": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
       }
     },
     {
       "name": "a pane the daemon says nobody needs is not made into a request",
-      "why": "The other half of trusting first sight. Adopting the daemon's answer means adopting it when it says idle too - inventing a `done` for a pane it never raised one for would fill a fresh window with requests nobody made, which costs the state its meaning just as surely as never raising it.",
+      "why": "Adopting the daemon's answer means adopting it when it says idle too - inventing a `done` for a pane it never raised one for would fill a fresh window with requests nobody made, which costs the state its meaning just as surely as never raising it.",
       "given": {
         "focused": false,
         "visible": [],
@@ -330,12 +460,13 @@
       "expect": {
         "states": {
           "local/w1:p1": "idle"
-        }
+        },
+        "reported": []
       }
     },
     {
       "name": "a window that has never been told about focus has seen nothing",
-      "why": "The starting state, and it is deliberately the pessimistic one. A core that assumed it was focused until told otherwise would mark every agent seen during startup - the window is not on screen yet, and startup is exactly when a session full of running agents is being read for the first time.",
+      "why": "The starting state, and it is deliberately the pessimistic one. A core that assumed it was focused until told otherwise would report every agent seen during startup - the window is not on screen yet, and startup is exactly when a session full of running agents is being read for the first time.",
       "given": {
         "visible": [
           "local/w1:p1"
@@ -343,28 +474,31 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
       "expect": {
         "states": {
           "local/w1:p1": "done"
-        }
+        },
+        "reported": []
       }
     },
     {
-      "name": "a pane that closes takes its waiting with it, so the next pane to be called that is new",
-      "why": "Ids belong to the backend and the backend reuses them - a restarted herdr hands out `w1:p1` again - so waiting-to-be-looked-at cannot outlive the pane it was about. Left behind, the entry is inherited: the next pane given that id renders `done` before its agent has done anything, which is this product's headline state saying something false about a fresh session. The set also only ever grew, since it was emptied by looking rather than by closing, but the leak is the smaller half - a wrong `done` is visible and a few dead keys are not.",
+      "name": "a pane that closes takes what was held about it, so the next pane to be called that is new",
+      "why": "Ids belong to the daemon and it reuses them - a restarted daemon brings each pane back under its old name - so nothing held about a pane can outlive it. Left behind, a report still waiting for its answer is inherited: the next pane with that id finishes in front of somebody, the window believes it already said so, and every other window goes on showing it `done`.",
       "given": {
         "focused": true,
-        "visible": [],
+        "visible": [
+          "local/w1:p1"
+        ],
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "closed": "local/w1:p1"
@@ -372,13 +506,128 @@
           {
             "appeared": "local/w1:p1",
             "state": "idle"
+          },
+          {
+            "visible": [
+              "local/w1:p1"
+            ]
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
           }
         ]
       },
       "expect": {
         "states": {
           "local/w1:p1": "idle"
-        }
+        },
+        "reported": [
+          "local/w1:p1",
+          "local/w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a daemon that comes back is told again what is on screen",
+      "why": "A report sent as the connection dropped may never have arrived, and the daemon would go on saying `done` to every other window. What the window is showing when the connection returns is reported again; a daemon that did hear the first one answers that it already knew.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "reconnected": "local"
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle"
+        },
+        "reported": [
+          "local/w1:p1",
+          "local/w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a daemon that comes back has its finishes off screen shown as done again",
+      "why": "What the daemon still holds may be a finish it never heard was seen, or a new one that arrived while the connection was down, and the window cannot tell which. `done` is the answer that can be wrong only by asking somebody to look.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "visible": [
+              "local/w1:p2"
+            ]
+          },
+          {
+            "reconnected": "local"
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "done"
+        },
+        "reported": [
+          "local/w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a daemon coming back takes back only its own reports",
+      "why": "The devenv's connection dropping says nothing about what the laptop's daemon heard.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1",
+          "devenv/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "devenv/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "visible": []
+          },
+          {
+            "reconnected": "devenv"
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "idle",
+          "devenv/w1:p1": "done"
+        },
+        "reported": [
+          "local/w1:p1",
+          "devenv/w1:p1"
+        ]
       }
     }
   ]

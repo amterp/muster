@@ -98,6 +98,12 @@ impl Mirror {
                             to: pane.agent_state,
                         });
                     }
+                    if before.finished_unseen != pane.finished_unseen {
+                        changes.push(Change::FinishedUnseen {
+                            pane: id.clone(),
+                            unseen: pane.finished_unseen,
+                        });
+                    }
                     if relabelled(before, pane) {
                         changes.push(Change::PaneRelabelled(id.clone()));
                     }
@@ -172,6 +178,9 @@ impl Mirror {
                 from: before.agent_state,
                 to: pane.agent_state,
             });
+        }
+        if before.finished_unseen != pane.finished_unseen {
+            changes.push(Change::FinishedUnseen { pane: id.clone(), unseen: pane.finished_unseen });
         }
         if relabelled(before, &pane) {
             changes.push(Change::PaneRelabelled(id.clone()));

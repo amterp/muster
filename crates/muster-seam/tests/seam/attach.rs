@@ -402,14 +402,13 @@ fn a_pane_no_region_shows_can_still_be_reached() {
 
 /// An agent that finishes while nobody is looking, and what happens when somebody looks.
 ///
-/// The half of agent state no daemon can answer. The daemon says `idle` when an agent stops,
-/// because it cannot see whether anybody was looking - and `idle` reads as "nothing needs you"
-/// at the exact moment something does, which is what this window's own focus is for. So `done`
-/// is Muster's: an idle agent nobody has looked at since it worked.
+/// The half of agent state no daemon can answer alone. The daemon keeps the finish, but it
+/// cannot see whether anybody was looking - so `done` holds until a window that has the
+/// keyboard shows the pane, and that window's own focus is what decides it.
 ///
-/// The settling assertion is the one that cannot pass by accident. The daemon never revises
-/// its answer when a Muster window gains focus, because it cannot see that happen at all, so a
-/// core relaying the daemon would leave this `done` forever.
+/// The settling assertion is the one that cannot pass by accident. A window that has not been
+/// told it is focused has shown nobody anything, so nothing but the focus it is told about
+/// can settle this.
 #[test]
 fn an_agent_finishing_unseen_waits_to_be_noticed() {
     let _turn = muster::testing::fresh_session();

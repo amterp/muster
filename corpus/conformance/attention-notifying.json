@@ -15,8 +15,7 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           }
         ]
       },
@@ -40,8 +39,7 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           }
         ]
       },
@@ -61,8 +59,7 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           }
         ]
       },
@@ -86,8 +83,8 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
@@ -102,7 +99,7 @@
     },
     {
       "name": "an agent that finishes in front of you does not",
-      "why": "The twin of the blocked case, and it falls out of seen-ness rather than being decided again: a completion somebody watched never joins the unseen set, so there is nothing to announce.",
+      "why": "The twin of the blocked case, and it falls out of seen-ness rather than being decided again: a finish somebody watched is reported seen rather than announced, so there is nothing to interrupt anybody about.",
       "given": {
         "focused": true,
         "visible": [
@@ -111,8 +108,8 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
@@ -132,19 +129,45 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "pane": "local/w1:p2",
-            "from": "blocked",
-            "to": "working"
+            "state": "working"
           }
         ]
       },
       "expect": {
         "notified": [
           "local/w1:p2 blocked",
+          "local/w1:p2 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "a finish another window saw takes its request back",
+      "why": "Somebody read it in the other window, so the banner here is a question already answered. The daemon clearing the finish is how this window learns that.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 done",
           "local/w1:p2 withdrawn"
         ],
         "asking": []
@@ -161,8 +184,7 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "visible": [
@@ -191,8 +213,7 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "focused": true
@@ -218,8 +239,7 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "closed": "local/w1:p2"
@@ -245,13 +265,11 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "pane": "local/w1:p2",
-            "from": "blocked",
-            "to": "blocked"
+            "state": "blocked"
           }
         ]
       },
@@ -266,7 +284,7 @@
     },
     {
       "name": "a pane that was already finished when the window arrived says nothing",
-      "why": "The one place a daemon's own `done` is taken, and it is history rather than news. A pane that finished before Muster attached produced no transition to observe, and quitting and coming back is the ordinary case - so notifying here would mean every launch after a break opens with a stack of banners about work that finished yesterday. The roster and the border still say it, which is what they are for.",
+      "why": "History rather than news. The daemon kept the finish while no window was open, and quitting and coming back is the ordinary case - so notifying here would mean every launch after a break opens with a stack of banners about work that finished yesterday. The roster and the border still say it, which is what they are for.",
       "given": {
         "focused": true,
         "visible": [
@@ -275,13 +293,54 @@
         "events": [
           {
             "appeared": "local/w1:p2",
-            "state": "done"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
       "expect": {
         "notified": [],
         "asking": []
+      }
+    },
+    {
+      "name": "a finish asks once, however its pane moves after",
+      "why": "The finish is one event and its banner is about that moment. An agent that finished and then quit is the same finish, still waiting for the same look, and a second banner about it is a person being asked twice.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "appeared": "local/w1:p2",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "unknown",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p3",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p3",
+            "state": "unknown",
+            "finished": true
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p3 done"
+        ],
+        "asking": [
+          "local/w1:p3 done"
+        ]
       }
     },
     {
@@ -298,13 +357,12 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "pane": "local/w1:p3",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           }
         ]
       },
@@ -331,8 +389,8 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
@@ -355,13 +413,12 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "pane": "local/w1:p3",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           }
         ]
       },
@@ -381,8 +438,7 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "notifications": {
@@ -413,8 +469,7 @@
         "events": [
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "notifications": {
@@ -437,13 +492,12 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "idle"
+            "state": "idle",
+            "finished": true
           },
           {
             "pane": "local/w1:p2",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           }
         ]
       },
@@ -467,18 +521,15 @@
         "events": [
           {
             "pane": "local/w1:p1",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "pane": "devenv/w1:p1",
-            "from": "working",
-            "to": "blocked"
+            "state": "blocked"
           },
           {
             "pane": "local/w1:p1",
-            "from": "blocked",
-            "to": "working"
+            "state": "working"
           }
         ]
       },

@@ -522,6 +522,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         id: id.clone(),
         tab: tab.clone(),
         agent_state: AgentState::Idle,
+        finished_unseen: false,
         agent: Some("claude".to_string()),
         cwd: "/tmp".to_string(),
         name: None,

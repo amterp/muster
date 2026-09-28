@@ -4,8 +4,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 
 - **adapter** - the module translating the Muster vocabulary to one concrete backend; nothing backend-shaped escapes
   it.
-- **agent state** - working / blocked / idle / done / unknown, per pane. Daemon-detected, except `done`, which Muster
-  derives from seen-ness.
+- **agent state** - working / blocked / idle / done / unknown, per pane. Daemon-detected, except `done`: a finish the
+  daemon holds as `finished_unseen`, which a window paints until it is seen.
 - **backend** - the daemon system that owns sessions: `muster-daemon`, Muster's own since it replaced herdr (MIP-3).
 - **backend session** - one live connection to one daemon.
 - **bridge** - the subprocess a surface runs to deliver a pane channel; output only.
@@ -42,8 +42,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   tabs and would otherwise vanish. What the view is to the screen, this is to the session.
 - **seam** - an injected boundary the core is tested and swapped at. Two exist: backend and renderer.
 - **seen-ness** - whether anybody has looked at a pane since its agent finished; distinguishes idle from done. A pane
-  is seen when it is on screen in a window holding the OS's focus, so Muster computes this rather than reading it -
-  no daemon can see a window.
+  is seen when it is on screen in a window holding the OS's focus. No daemon can see a window, so the window decides
+  it and reports it to the daemon, which clears the finish for every window.
 - **shell** - the per-OS native layer: windows, chrome, key capture, surfaces. Owns nothing.
 - **surface** - one libghostty terminal view rendering one pane channel; disposable.
 - **tab** - a named set of panes a window shows together. Muster's own unit, and the one thing here that is not a

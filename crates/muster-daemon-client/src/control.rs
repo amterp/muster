@@ -20,8 +20,8 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto::connection::{self, HandshakeError};
 use muster_daemon_proto::{
-    self as proto, ConnectionKind, Welcome, answer, control_message, request::Service,
-    session_request,
+    self as proto, ConnectionKind, Welcome, answer, control_message, pane_request,
+    request::Service, session_request,
 };
 
 /// What the reader thread hands the caller, in the order the daemon sent it.
@@ -258,6 +258,14 @@ impl Control {
         self.ask(session(session_request::Request::SetScrollMultiplier(
             proto::SetScrollMultiplier { multiplier },
         )))
+    }
+
+    /// Says a window with the keyboard is showing these panes, which clears each one's
+    /// `finished_unseen`.
+    pub fn seen(&self, panes: Vec<String>) -> Pending {
+        self.ask(Service::Pane(proto::PaneRequest {
+            request: Some(pane_request::Request::Seen(pane_request::Seen { panes })),
+        }))
     }
 
     pub fn send_manifests(&self, engine: u32, manifests: Vec<proto::Manifest>) -> Pending {

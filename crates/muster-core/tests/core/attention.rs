@@ -7,14 +7,14 @@
 //! otherwise have to state the other, and every existing seen-ness case would carry an
 //! assertion it was not written to make.
 //!
-//! Every case is a fold over a sequence, because both are: what a transition means depends
+//! Every case is a fold over a sequence, because both are: what a pane's record means depends
 //! on what the window was showing when it arrived.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{CaseError, Conformance, fields};
 use muster_core::AgentState;
-use muster_core::attention::{Attend, Attention, Notifications};
+use muster_core::attention::{Attend, Attention, Noticed, Notifications};
 use muster_core::composition::{DaemonId, PaneKey};
 use muster_core::mirror::backend::PaneId;
 use serde_json::{Map, Value, json};
@@ -32,7 +32,10 @@ fn attention_conformance() {
                 (pane.to_string(), json!(run.attention.presented(pane, *state).as_str()))
             })
             .collect();
-        Ok(fields([("states", Some(Value::Object(states)))]))
+        Ok(fields([
+            ("states", Some(Value::Object(states))),
+            ("reported", Some(json!(run.reported))),
+        ]))
     });
 
     assert_eq!(ran, corpus.cases.len());
@@ -77,11 +80,17 @@ struct Run {
     backend: BTreeMap<PaneKey, AgentState>,
     /// Every notification the run raised or withdrew, in order.
     notified: Vec<String>,
+    /// Every pane the window reported seen to its daemon, in order.
+    reported: Vec<String>,
 }
 
 fn fold(given: &Value) -> Result<Run, CaseError> {
-    let mut run =
-        Run { attention: Attention::new(), backend: BTreeMap::new(), notified: Vec::new() };
+    let mut run = Run {
+        attention: Attention::new(),
+        backend: BTreeMap::new(),
+        notified: Vec::new(),
+        reported: Vec::new(),
+    };
     if let Some(notifications) = read_notifications(given) {
         run.attention.notifying(notifications);
     }
@@ -89,7 +98,7 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
         run.attention.window_focused(focused);
     }
     let noticed = run.attention.showing(read_panes(given, "visible")?);
-    record(&mut run.notified, &noticed.withdrawn);
+    record(&mut run, &noticed);
 
     for event in given.get("events").and_then(Value::as_array).into_iter().flatten() {
         // A file saved while the window is up. Its own step because the rule it proves is
@@ -97,17 +106,23 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
         // come back.
         if let Some(notifications) = read_notifications(event) {
             let stale = run.attention.notifying(notifications);
-            record(&mut run.notified, &stale);
+            run.notified.extend(stale.iter().map(withdrawn));
             continue;
         }
         if let Some(focused) = event.get("focused").and_then(Value::as_bool) {
             let noticed = run.attention.window_focused(focused);
-            record(&mut run.notified, &noticed.withdrawn);
+            record(&mut run, &noticed);
             continue;
         }
         if event.get("visible").is_some() {
             let noticed = run.attention.showing(read_panes(event, "visible")?);
-            record(&mut run.notified, &noticed.withdrawn);
+            record(&mut run, &noticed);
+            continue;
+        }
+        // A daemon's connection came back, so what the window reported to it may be lost.
+        if let Some(daemon) = event.get("reconnected").and_then(Value::as_str) {
+            let noticed = run.attention.reconnected(&DaemonId::new(daemon));
+            record(&mut run, &noticed);
             continue;
         }
         // A pane the backend no longer holds. Its own step because what it proves is
@@ -126,28 +141,39 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
         if event.get("appeared").is_some() {
             let pane = read_pane(event, "appeared")?;
             let state = read_state(event, "state")?;
+            if run.attention.met(&pane, finished(event)) {
+                run.reported.push(pane.to_string());
+            }
             run.backend.insert(pane, state);
             continue;
         }
+        // A pane's record as its daemon now has it.
         let pane = read_pane(event, "pane")?;
-        let from = read_state(event, "from")?;
-        let to = read_state(event, "to")?;
-        match run.attention.observed(&pane, from, to) {
+        let state = read_state(event, "state")?;
+        let observed = run.attention.observed(&pane, state, finished(event));
+        match observed.attend {
             Some(Attend::Raised(alert)) => {
                 run.notified.push(format!("{pane} {}", alert.as_str()));
             }
             Some(Attend::Withdrawn) => run.notified.push(withdrawn(&pane)),
             None => {}
         }
-        run.backend.insert(pane, to);
+        if observed.reported {
+            run.reported.push(pane.to_string());
+        }
+        run.backend.insert(pane, state);
     }
     Ok(run)
 }
 
-fn record(notified: &mut Vec<String>, withdrawn_panes: &[PaneKey]) {
-    for pane in withdrawn_panes {
-        notified.push(withdrawn(pane));
-    }
+fn record(run: &mut Run, noticed: &Noticed) {
+    run.notified.extend(noticed.withdrawn.iter().map(withdrawn));
+    run.reported.extend(noticed.reported.iter().map(ToString::to_string));
+}
+
+/// Whether the record carries the daemon's `finished_unseen`, which a case says only when it does.
+fn finished(event: &Value) -> bool {
+    event.get("finished").and_then(Value::as_bool).unwrap_or_default()
 }
 
 fn withdrawn(pane: &PaneKey) -> String {

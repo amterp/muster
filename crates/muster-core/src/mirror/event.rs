@@ -65,6 +65,12 @@ pub enum Change {
         from: AgentState,
         to: AgentState,
     },
+    /// The daemon set or cleared this pane's `finished_unseen`, which moves it between `done`
+    /// and what its agent state says.
+    FinishedUnseen {
+        pane: PaneId,
+        unseen: bool,
+    },
     /// What this pane is called has moved - its name, its directory, or the harness detected
     /// in it.
     ///
@@ -107,6 +113,7 @@ impl Change {
             Change::PaneAdded(_) => "pane_added",
             Change::PaneRemoved(_) => "pane_removed",
             Change::AgentStateChanged { .. } => "agent_state",
+            Change::FinishedUnseen { .. } => "finished_unseen",
             Change::PaneRelabelled(_) => "pane_relabelled",
             Change::TabAdded(_) => "tab_added",
             Change::TabRelabelled(_) => "tab_relabelled",
@@ -130,6 +137,7 @@ impl Change {
         !matches!(
             self,
             Change::AgentStateChanged { .. }
+                | Change::FinishedUnseen { .. }
                 | Change::PaneRelabelled(_)
                 | Change::TabRelabelled(_)
                 | Change::PasteHeld { .. }
@@ -165,7 +173,9 @@ impl Change {
     /// travelling beside the pane id is a second copy to disagree.
     pub fn announces_agent_state(&self) -> Option<&PaneId> {
         match self {
-            Change::AgentStateChanged { pane, .. } | Change::PaneAdded(pane) => Some(pane),
+            Change::AgentStateChanged { pane, .. }
+            | Change::FinishedUnseen { pane, .. }
+            | Change::PaneAdded(pane) => Some(pane),
             _ => None,
         }
     }

@@ -80,6 +80,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         // Set by the mirror from the trees; a case never has to.
         tab: TabId::new(""),
         agent_state: AgentState::from_backend(&text(given, "agentState")),
+        finished_unseen: given.get("finishedUnseen").and_then(Value::as_bool).unwrap_or_default(),
         agent: optional(given, "agent"),
         cwd: text(given, "cwd"),
         name: optional(given, "name"),

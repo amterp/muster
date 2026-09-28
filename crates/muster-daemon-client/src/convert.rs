@@ -84,6 +84,7 @@ pub fn pane(record: proto::Pane) -> Pane {
             proto::AgentState::Idle => AgentState::Idle,
             proto::AgentState::Unknown => AgentState::Unknown,
         },
+        finished_unseen: record.finished_unseen,
         agent: record.agent,
         cwd: record.cwd,
         name: record.label,

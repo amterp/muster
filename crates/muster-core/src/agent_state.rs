@@ -4,9 +4,9 @@
 /// harness we cannot classify - and it renders as itself. An agent we failed to read is
 /// not an agent that finished.
 ///
-/// `Done` is never something a backend stores. It is `Idle` on a pane nobody has seen
-/// yet, derived wherever seen-ness is tracked, and Muster reads the derived value rather
-/// than computing it. See `docs/architecture.md`.
+/// `Done` is never a daemon's agent state. It is an agent that finished while nobody looked:
+/// the daemon holds the finish on the pane's record, and a window paints it `done` until
+/// somebody sees it (`crate::attention`, `docs/architecture.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AgentState {
     Working,

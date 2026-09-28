@@ -73,6 +73,10 @@ pub struct Pane {
     /// mirror sets it from the tab trees it holds, and whatever a backend passes is replaced.
     pub tab: TabId,
     pub agent_state: AgentState,
+    /// The agent stopped working or waiting on somebody, and no window with the keyboard has
+    /// shown the pane since. The daemon's fact, cleared by a window reporting it seen; a pane
+    /// carrying it is `done` (`crate::attention`).
+    pub finished_unseen: bool,
     /// The harness the daemon recognized, if it recognized one. `None` is not
     /// `AgentState::Unknown`: a pane can run no agent at all and be perfectly idle.
     pub agent: Option<String>,

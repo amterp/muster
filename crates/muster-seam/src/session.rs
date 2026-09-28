@@ -1217,6 +1217,50 @@ impl Session {
         mirror.agent_state(&pane.pane)
     }
 
+    /// Whether a pane's daemon says its agent finished and nobody has seen it since.
+    fn finished_unseen(&self, pane: &PaneKey) -> bool {
+        self.backends.get(&pane.daemon).is_some_and(|backend| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            mirror.pane(&pane.pane).is_some_and(|record| record.finished_unseen)
+        })
+    }
+
+    /// Hands attention a pane's record as its daemon now has it, and tells the daemon when the
+    /// pane finished in front of somebody.
+    fn observe(&mut self, pane: &PaneKey) -> Option<Attend> {
+        let state = self.agent_state(pane)?;
+        let observed = self.attention.observed(pane, state, self.finished_unseen(pane));
+        if observed.reported {
+            self.report_seen(std::slice::from_ref(pane));
+        }
+        observed.attend
+    }
+
+    /// Tells each daemon which of its finished panes this window has just shown somebody, so
+    /// that it clears them for every window (`muster_core::attention`).
+    ///
+    /// Queued to each connection's writer rather than waited on, so it is safe under the
+    /// session's lock. One that finds its daemon disconnected is not held: the window reports
+    /// what it is showing again when the daemon comes back.
+    fn report_seen(&self, panes: &[PaneKey]) {
+        let mut by_daemon: BTreeMap<&DaemonId, Vec<PaneId>> = BTreeMap::new();
+        for pane in panes {
+            by_daemon.entry(&pane.daemon).or_default().push(pane.pane.clone());
+        }
+        for (daemon, panes) in by_daemon {
+            let sent =
+                self.backends.get(daemon).is_some_and(|backend| backend.follower.seen(&panes));
+            log::info(
+                "attention.seen",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "panes" => panes.iter().map(PaneId::as_str).collect::<Vec<&str>>().join(","),
+                    "sent" => sent,
+                },
+            );
+        }
+    }
+
     /// One pane's agent as this window paints it, from what its daemon said.
     fn presented(&self, pane: &PaneKey, backend: AgentState) -> PaneAgent {
         PaneAgent {
@@ -3636,6 +3680,7 @@ fn publish(cause: &str) {
         let roster = session.roster(&view);
         let numbering = session.numbering(&roster);
         let noticed = session.attention.showing(view.showing().clone());
+        session.report_seen(&noticed.reported);
         // The typeable watch is settled against the same set, and for a reason of its own: what
         // it says is that a pane renders and swallows what is typed into it, and a pane no
         // region is drawing renders nothing - so a socket bound for one is owed no bridge until
@@ -3813,11 +3858,37 @@ fn announce(daemon: &DaemonId, notice: Notice) {
         Notice::Reconnected => {
             log::info("backend.reconnected", fields! { "daemon" => daemon.to_string() });
             health(daemon, Health::Connected, "");
+            report_again(daemon);
         }
     }
 }
 
+/// A daemon came back, so the finishes this window reported seen to it may never have arrived.
+/// Attention takes them back and reports again whatever is on screen now; the rest are `done`
+/// again until somebody looks (`Attention::reconnected`).
+fn report_again(daemon: &DaemonId) {
+    let noticed = {
+        let mut session = poison::lock(&SESSION, "session");
+        let noticed = session.attention.reconnected(daemon);
+        session.report_seen(&noticed.reported);
+        noticed
+    };
+    for pane in &noticed.settled {
+        announce_state(pane);
+    }
+}
+
 fn report(daemon: &DaemonId, change: &Change) {
+    if let Change::FinishedUnseen { pane, unseen } = change {
+        log::info(
+            "agent.finished_unseen",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "pane" => pane.to_string(),
+                "unseen" => *unseen,
+            },
+        );
+    }
     if let Change::AgentStateChanged { pane, from, to } = change {
         log::info(
             "agent.state",
@@ -3872,26 +3943,44 @@ fn report(daemon: &DaemonId, change: &Change) {
         });
     }
 
-    // Recorded before anything is announced, because it is what the announcement depends on:
-    // whether this transition finished on a pane somebody was looking at is the difference
-    // between `idle` and `done`.
-    //
+    // Recorded before anything is announced, because it is what the announcement depends on.
     // The lock is let go before anything is emitted, on the same terms as `announce_state`
     // below: emitting reaches the shell, the shell reacts by dispatching, and a dispatch
     // arriving while this held the session would deadlock against it on the same thread.
-    //
-    // `state_since` is kept beside attention and nowhere else, because these three arms are
-    // the daemon's own transitions. A look settling `done` to `idle` goes through attention
-    // alone, so it does not restart how long the agent has been resting.
-    let attended = match change {
+    let attended = attended(daemon, change);
+    if let Some((pane, attend)) = attended {
+        announce_attention(&pane, attend);
+    }
+
+    if let Some(pane) = change.announces_agent_state() {
+        announce_state(&PaneKey::new(daemon, pane));
+    }
+    if let Change::PaneRemoved(pane) = change {
+        watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
+    }
+}
+
+/// What a daemon's change does to attention: whether a finish landed on a pane somebody was
+/// looking at, which is the difference between `idle` and `done`, and what the pane is now
+/// asking of anybody.
+///
+/// `state_since` is kept beside attention and nowhere else, because these arms are the daemon's
+/// own word. A look settling `done` to `idle` goes through attention alone, so it does not
+/// restart how long the agent has been resting.
+fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
+    match change {
         Change::AgentStateChanged { pane, from, to } => {
             let key = PaneKey::new(daemon, pane);
             let mut session = poison::lock(&SESSION, "session");
             if from != to {
                 session.state_since.insert(key.clone(), clock::wall_clock_millis());
             }
-            let attended = session.attention.observed(&key, *from, *to);
-            attended.map(|attend| (key, attend))
+            session.observe(&key).map(|attend| (key, attend))
+        }
+        Change::FinishedUnseen { pane, .. } => {
+            let key = PaneKey::new(daemon, pane);
+            let mut session = poison::lock(&SESSION, "session");
+            session.observe(&key).map(|attend| (key, attend))
         }
         // A pane this window is meeting for the first time. Muster saw no transition for it,
         // so nothing is asked of anybody: a banner would be Muster announcing history at launch.
@@ -3899,7 +3988,11 @@ fn report(daemon: &DaemonId, change: &Change) {
             let key = PaneKey::new(daemon, pane);
             let mut session = poison::lock(&SESSION, "session");
             if session.agent_state(&key).is_some() {
-                session.state_since.entry(key).or_insert_with(clock::wall_clock_millis);
+                session.state_since.entry(key.clone()).or_insert_with(clock::wall_clock_millis);
+            }
+            let finished = session.finished_unseen(&key);
+            if session.attention.met(&key, finished) {
+                session.report_seen(std::slice::from_ref(&key));
             }
             None
         }
@@ -3911,16 +4004,6 @@ fn report(daemon: &DaemonId, change: &Change) {
             attended.map(|attend| (key, attend))
         }
         _ => None,
-    };
-    if let Some((pane, attend)) = attended {
-        announce_attention(&pane, attend);
-    }
-
-    if let Some(pane) = change.announces_agent_state() {
-        announce_state(&PaneKey::new(daemon, pane));
-    }
-    if let Change::PaneRemoved(pane) = change {
-        watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
     }
 }
 
@@ -4101,20 +4184,14 @@ fn announce_state(pane: &PaneKey) {
 /// already running is the case that needs this. For a transition the mirror was written
 /// before this runs, so it holds exactly what the transition moved to.
 ///
-/// Then `done` is decided here rather than accepted from the daemon, because the daemon
-/// cannot see this window (`attention`).
+/// Then `done` is laid over it: a finish the daemon holds that this window has not yet
+/// reported seen (`attention`).
 fn presented(pane: &PaneKey) -> Option<PaneAgent> {
     let session = poison::lock(&SESSION, "session");
     let backend = session.agent_state(pane)?;
     Some(session.presented(pane, backend))
 }
 
-/// The window gained or lost the OS's focus.
-///
-/// The one thing about attention no daemon can tell the core and no core can observe. What
-/// it changes is which finished agents are still waiting to be noticed, so only those panes
-/// are re-announced - an agent-state change costs that change rather than a walk of every
-/// pane (`architecture.md`, fast is a feature).
 /// Shows the roster or puts it away, and says what it settled on.
 ///
 /// The write goes through `publish` like every other change, which is what gets it saved: the
@@ -4413,6 +4490,12 @@ pub(crate) fn follow_the_record() {
     publish("holders");
 }
 
+/// The window gained or lost the OS's focus.
+///
+/// The one thing about attention no daemon can tell the core and no core can observe. What
+/// it changes is which finished agents this window has seen, so only those panes are
+/// re-announced and reported to their daemons - an agent-state change costs that change
+/// rather than a walk of every pane (`architecture.md`, fast is a feature).
 pub(crate) fn window_focused(focused: bool) {
     log::info("window.focus", fields! { "focused" => focused });
     let noticed = {
@@ -4421,7 +4504,9 @@ pub(crate) fn window_focused(focused: bool) {
         if focused {
             session.holding.focused();
         }
-        session.attention.window_focused(focused)
+        let noticed = session.attention.window_focused(focused);
+        session.report_seen(&noticed.reported);
+        noticed
     };
     for pane in &noticed.settled {
         announce_state(pane);

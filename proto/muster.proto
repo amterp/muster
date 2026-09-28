@@ -576,11 +576,10 @@ message SetRegionBoundary {
 // Whether this window has the OS's focus.
 //
 // The one input to the vocabulary that no daemon can supply and no core can observe. `done`
-// is `idle` on a pane nobody looked at, and no daemon can see a window's focus: herdr derived
-// `done` from the foreground client's window focus, which its JSON API had no method for, so it
-// answered for a Muster window from a client that never reported. The consequence is not
-// cosmetic: an agent finishing while this window sits behind a browser reads as `idle`, which
-// says nothing needs you at the moment something does.
+// is an agent that finished while nobody looked: its daemon holds the finish, and only the
+// shell can see whether this window had the keyboard while it showed the pane. An agent
+// finishing while this window sits behind a browser has not been seen, and a window that said
+// it had would clear the finish for every window - `idle` at the moment something needs you.
 //
 // So the shell reports what only it can see and the core decides what it means. Nothing else
 // crosses this seam about focus: which pane the keyboard feeds is Muster's own cursor and
@@ -1162,8 +1161,8 @@ message Window {
   // for it. A pane running an ordinary shell is `unknown`, the same word as an agent whose
   // harness could not be read - the daemon draws no distinction and neither does this.
   //
-  // What the window would paint, not what the daemon said: `done` is decided per window,
-  // because a daemon cannot see which window somebody has looked at.
+  // What the window would paint, not what the daemon said: `done` is a finish the daemon holds
+  // that no window has yet reported seen, and the daemon's own four states never say it.
   repeated PaneStateChanged panes = 3;
 
   // Which machines this window is attached to, how healthy each is, and what each holds.

@@ -238,6 +238,79 @@
       }
     },
     {
+      "name": "a finish the daemon sets or clears is a change of its own",
+      "why": "The daemon's `finished_unseen` is what makes a pane `done`, and it moves without the agent state moving: a window reporting a pane seen clears it on an idle pane. Reported apart from the state, so a reader does not have to compare records to learn it.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "finishedUnseen": true
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "finishedUnseen": false
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "p1",
+          "p2"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1",
+          "p2": "t1"
+        },
+        "agentStates": {
+          "p1": "idle",
+          "p2": "idle"
+        },
+        "layouts": {
+          "t1": "columns(p1, p2@0.5)"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "finishedUnseen:p1:true",
+          "finishedUnseen:p1:false"
+        ]
+      }
+    },
+    {
       "name": "a record that changed nothing reports nothing",
       "why": "Applying an event twice is applying it once, and an event that changed nothing must not repaint anything.",
       "given": {

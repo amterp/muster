@@ -16,7 +16,7 @@ use muster::proto::{
     SplitPane, Startup, WatchPanes, Window, WindowFocus, request, response,
 };
 use muster_daemon_proto::AgentState;
-use muster_harness::requests::{create, in_new_tab, make};
+use muster_harness::requests::{create, in_new_tab, make, snapshot};
 use muster_harness::{Daemon, PATIENCE, until, until_some};
 use prost::Message;
 
@@ -66,6 +66,41 @@ fn a_pane_says_since_when_its_agent_has_been_doing_it() {
         seen.since_ms, finished.since_ms,
         "looking at a finished pane restarted how long it has been resting, so an idle worker \
          reads as having finished the moment somebody glanced at it"
+    );
+}
+
+/// A finish nobody saw outlives the window, and a window that shows it clears it for every window.
+///
+/// The daemon keeps the finish on the pane's record, because it is the one that outlives the app,
+/// and quitting and coming back is the ordinary case: a window opened after the agent finished
+/// still says `done`. Only a window can say somebody looked, so it tells the daemon, and the
+/// daemon's record is what every other window reads.
+#[test]
+fn a_finish_waits_in_the_daemon_until_a_window_with_the_keyboard_shows_it() {
+    let turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+
+    open.report(AgentState::Working);
+    until_state(&open, "working");
+    open.report(AgentState::Idle);
+    until_state(&open, "done");
+    assert!(
+        finished_unseen(&open),
+        "the window says `done` and the daemon holds no finish, so a window opened after this one \
+         would say `idle`"
+    );
+
+    turn.relaunch();
+    open_the_window(&open.daemon, &open.socket);
+    until_state(&open, "done");
+    assert!(finished_unseen(&open), "a window that has not had the keyboard cleared the finish");
+
+    assert_ok(&dispatch(request::Payload::WindowFocus(WindowFocus { focused: true })));
+    until_state(&open, "idle");
+    until(
+        "the daemon to clear the finish the window saw",
+        || !finished_unseen(&open),
+        || "the daemon still holds the finish, so every other window still says `done`".to_string(),
     );
 }
 
@@ -367,12 +402,7 @@ fn a_window_onto_one_pane() -> Open {
     daemon.run_agent(&pane);
 
     let socket = daemon.root().join("command.sock");
-    assert_ok(&dispatch(request::Payload::Startup(Startup {
-        config_path: daemon.muster_config().to_string_lossy().into_owned(),
-        command_socket_path: socket.to_string_lossy().into_owned(),
-        ..Startup::default()
-    })));
-    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+    open_the_window(&daemon, &socket);
 
     until(
         "the window to say the pane's agent is idle",
@@ -385,6 +415,24 @@ fn a_window_onto_one_pane() -> Open {
         || format!("the window reads {:?}", read_window(&socket)),
     );
     Open { daemon, socket, pane }
+}
+
+fn open_the_window(daemon: &Daemon, socket: &std::path::Path) {
+    assert_ok(&dispatch(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        command_socket_path: socket.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+}
+
+/// Whether the pane's daemon holds a finish nobody has seen, asked of the daemon itself.
+fn finished_unseen(open: &Open) -> bool {
+    snapshot(&mut open.daemon.connect())
+        .panes
+        .into_iter()
+        .find(|record| record.pane == open.pane)
+        .is_some_and(|record| record.finished_unseen)
 }
 
 /// Opens a watch, and hands back the connection its answers arrive on.

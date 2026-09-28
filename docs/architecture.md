@@ -204,27 +204,21 @@ Agent states are working / blocked / idle / done / **unknown** - five, not four;
 success. State is daemon truth, but one of the five is computed from a client-side input, so the vocabulary has to
 carry that input.
 
-`done` is not stored anywhere: it is `idle` on a pane that has not been *seen*, and seen-ness is written only when an
-agent completes - a working or blocked pane going idle. **Muster derives it rather than reading it.** muster-daemon
-reports four states and never `done`, because deciding it takes a window's focus, which no daemon can see. herdr, the
-daemon Muster ran before its own, did derive one, from whether the pane's tab was active and whether the foreground
-client's window had OS focus. Its JSON API had no method for the second (`observations/herdr-0.8.0.md` section 3), so
-it answered for a window that never reported. Two writers for one field is the failure named below; of the two, only
-one can see the window.
+`done` is an agent that finished while nobody looked, and its two halves have different owners. **The daemon holds the
+finish; the window decides the look.** muster-daemon reports four states and never `done`, and marks a pane's record
+`finished_unseen` when an agent that was working or blocked goes idle or leaves the pane. It keeps that for as long as
+it runs, so a window opened after an agent finished still paints it `done` - quitting and coming back is the ordinary
+case, and agents finish in between. Only a window can see its own focus, so the shell reports that focus across the
+seam, and a pane is seen when it is on screen in a window that has it. The window then tells the pane's daemon with
+`PaneRequest.Seen` (MIP-3 section 8), which clears the fact for every window. herdr, the daemon Muster ran before its
+own, derived `done` itself from whether the foreground client's window had focus, which its JSON API had no way to
+report (`observations/herdr-0.8.0.md` section 3); so it answered for a window it could not see.
 
-Muster's rule is the same shape with inputs it actually has. A pane is seen when it is on screen in a window that has
-the OS's focus, and the shell reports that focus across the seam because nothing else can observe it. A completion on
-a seen pane is `idle`; anywhere else it is `done`, until somebody looks - gaining focus and bringing a pane on screen
-both settle it. Looking away does not un-see what was already seen.
-
-**A pane that finished while no window was open reads `idle`, and that is a gap rather than a decision.** A daemon
-outlives the app, so quitting and coming back is the ordinary case, and agents finish in between. Muster saw no
-transition there. muster-daemon now records one: a pane's record carries `finished_unseen` until a window reports
-seeing it with `PaneRequest.Seen` (MIP-3 section 8). The app does not read that fact or send `Seen` yet, so the gap
-stays open until it does. With herdr, first sight adopted the daemon's own `done`.
-
-What this cannot answer, stated rather than hidden: ours is the only focus we can observe, so `done` means "nobody
-*we know of* saw it". A second Muster window is outside it.
+A finish on a seen pane is `idle` at once; anywhere else it is `done` until somebody looks, and gaining focus and
+bringing a pane on screen both settle it. The window paints a pane it has just reported as `idle` before the daemon
+answers, so the border never contradicts somebody reading the pane for a round trip. Looking away does not un-see what
+was already seen. A daemon that reconnects may never have heard a report, so the window takes its reports to that
+daemon back: what is on screen is reported again, and the rest read `done` until somebody looks.
 
 **One legend, and the window holds it.** working cyan, blocked orange, done green, idle grey, and unknown a fainter
 grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
@@ -446,7 +440,7 @@ everything notifying is the same as nothing notifying, and somebody running fift
 first afternoon.
 
 **A pane the window is focused on and showing raises nothing.** That is what the border is for, and it costs no new
-rule: seen-ness is already computed for exactly that pane, and `done` is *defined* as a completion that was not seen.
+rule: seen-ness is already computed for exactly that pane, and a finish there is reported seen rather than announced.
 So the notification set is the same fold the state is, with the file's answer laid over it.
 
 **Notifying and seen-ness are two sets, deliberately.** Seen-ness decides what a pane *is* and is not a person's to
