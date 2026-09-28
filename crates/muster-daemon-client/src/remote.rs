@@ -525,6 +525,13 @@ mod tests {
         for placed in ["muster-daemon", "libghostty-vt.dylib", "muster-daemon-data/terminfo"] {
             assert!(installed.directory.join(placed).exists(), "{placed} was not installed");
         }
+        let wrapper = installed.directory.join("muster-daemon-data/bin/ghostty");
+        let mode = std::os::unix::fs::PermissionsExt::mode(
+            &std::fs::metadata(&wrapper)
+                .expect("the ssh wrapper's script was installed")
+                .permissions(),
+        );
+        assert_ne!(mode & 0o111, 0, "a pane's `ssh` runs {} directly", wrapper.display());
         let stamp = std::fs::read_to_string(installed.stamp()).unwrap();
         let payload = carried.payload("here", &Platform::from_uname("Darwin arm64").unwrap());
         assert_eq!(stamp, payload.unwrap().stamp, "the install says which build it is");

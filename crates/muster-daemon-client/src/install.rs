@@ -219,6 +219,46 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The data carries a script a pane's shell runs directly: Ghostty's `ssh` wrapper calls
+    /// `bin/ghostty +ssh`. Packed without its execute bit, every `ssh` typed in a pane over
+    /// there is refused.
+    #[test]
+    fn an_executable_in_the_data_stays_executable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = scratch("modes");
+        std::fs::create_dir_all(root.join("data/bin")).unwrap();
+        std::fs::write(root.join("data/bin/ghostty"), b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(root.join("data/bin/ghostty"), PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let carried = Carried {
+            linux: Some(root.join("linux")),
+            data: Some(root.join("data")),
+            ..Carried::default()
+        };
+        let payload = carried.payload("box", &platform("Linux x86_64")).unwrap();
+
+        let mut archive = tar::Archive::new(payload.archive.as_slice());
+        let modes: Vec<(String, u32)> = archive
+            .entries()
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                let name = entry.path().unwrap().to_string_lossy().into_owned();
+                (name, entry.header().mode().unwrap())
+            })
+            .filter(|(name, _)| name.ends_with("bin/ghostty") || name.ends_with("README.md"))
+            .collect();
+        assert_eq!(
+            modes,
+            [
+                ("muster-daemon-data/README.md".to_string(), 0o644),
+                ("muster-daemon-data/bin/ghostty".to_string(), 0o755),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn a_machine_nothing_is_carried_for_is_named_in_the_refusal() {
         let root = scratch("refuse");

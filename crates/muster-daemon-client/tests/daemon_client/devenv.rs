@@ -71,12 +71,17 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
     let placed = tunnel
         .remote()
         .shell(&format!(
-            "test -f {}/installed && test -d {}/muster-daemon-data && echo placed",
-            muster_ssh::quoted(&installed.directory.to_string_lossy()),
+            "cd {} && test -f installed && test -d muster-daemon-data \
+             && test -x muster-daemon-data/bin/ghostty && echo placed",
             muster_ssh::quoted(&installed.directory.to_string_lossy()),
         ))
         .unwrap();
-    assert_eq!(placed.trim(), "placed", "the daemon was installed with its data and its stamp");
+    assert_eq!(
+        placed.trim(),
+        "placed",
+        "the daemon was installed with its data and its stamp, and the script a pane's `ssh` \
+         runs is executable"
+    );
 
     let mut control = Control::connect(local);
     make(
