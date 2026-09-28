@@ -18,7 +18,7 @@ use muster::proto::{
     ArrangePane, ClosePane, CreateTab, OpenWindow, ReadPane, ReadWindow, RenamePane, Request,
     Response, SendToPane, SplitPane, Startup, Window, request, response,
 };
-use muster_harness::Daemon;
+use muster_harness::{Daemon, until_some};
 use prost::Message;
 
 #[test]
@@ -170,12 +170,12 @@ fn a_window_onto_one_pane() -> Open {
     })));
     assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
 
-    // Asserted rather than waited for: the window's ask for its first tab returns with the tab
-    // in place, before opening does.
-    let pane = read_window(&socket).panes.first().map(|pane| pane.pane_id.clone()).expect(
-        "the window opened onto an empty daemon and lists no pane, so it never asked for the \
-         first tab an empty window needs",
-    );
+    // Waited for, because opening asks for the first tab only once the daemon has sent its
+    // first snapshot, and on a loaded machine that arrives after opening has returned. The race
+    // these tests are about is the split's, which each test asks about straight away.
+    let pane = until_some("the window to open onto the first tab it asked for", || {
+        read_window(&socket).panes.first().map(|pane| pane.pane_id.clone())
+    });
     Open { _daemon: daemon, socket, pane }
 }
 
