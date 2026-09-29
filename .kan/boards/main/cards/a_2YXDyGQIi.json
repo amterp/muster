@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "a-second-hop-one",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1790651396228,
+  "creator": "Alexander Terp",
+  "description": "Split from a_2YJsPqrQP. --to and groups now cross between the laptop and each devenv it links to, but a group or agent on devenv A cannot be reached from devenv B: that needs the laptop to relay with names translated twice, and replica keys for a machine B has no link to. Found building cross-machine messaging (round of 2026-09-28).",
+  "id": "a_2YXDyGQIi",
+  "parent": "a_2Y3ODvuwa",
+  "position": "b07",
+  "title": "A second hop: one devenv's agents reach another devenv's through the laptop",
+  "type": "feature",
+  "updated_at_millis": 1790651396228,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790651396228}
+  ]
+}

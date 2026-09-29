@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "a-replica-applies-a",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790619584904,
   "creator": "Alexander Terp",
   "description": "A replica applies the policy that came with a catch-up batch before the batch's entries, so a batch holding a message and then a pause marks the message as paused, and its member is woken on resume instead of at once. Found checking the stage 5 rebase.",
   "id": "a_2YJsPfDol",
   "parent": "a_2Y3ODvuwa",
-  "position": "b07",
+  "position": "YzZ",
   "title": "A replica applies a batch's final policy before its entries",
   "type": "bug",
-  "updated_at_millis": 1790619584904,
+  "updated_at_millis": 1790651395965,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790619584904}
+    {"field":"column","value":"backlog-lo","at":1790619584904},
+    {"field":"column","value":"done","at":1790651395965}
   ]
 }
