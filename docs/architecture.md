@@ -179,6 +179,24 @@ where they accumulate. Killing the child remains the fallback for a master that 
 the question are kept: the first holds a daemon to one ssh process rather than two, and the second is right whatever
 a future ssh does about forking.
 
+**A check that times out is asked again before the master is ended.** `-O check` is answered on this machine and never
+touches the network, and a master whose connection dies exits once `ServerAlive` gives up, after which the check fails
+at once. So a check that fails at once ends the master, and one that times out is a slow or wedged master, or a
+checking ssh slow to start on a loaded machine: it is logged as `tunnel.slow` and asked again on the next poll, and
+only a second timeout ends it. Ending on the first cost seven panes their bridges on a master that was working
+(kan a_2YQCqiInL).
+
+**Only Muster's master can hold Muster's control path.** Every ssh that runs a command over a master pins
+`ControlMaster=no` and `ControlPersist=no`, because under a personal config's `ControlMaster auto` a client that finds
+nothing answering its `-S` path becomes the master for it, with no forward, and `-O check` then calls a tunnel healthy
+while every request is refused (kan a_2NnC4pyPm). The bridges run no ssh at all; they dial the forwarded socket.
+
+**No master outlives the Muster that started it.** Quitting ends every master, after stopping the daemons if that
+was asked, because the process exits without dropping its session and nothing else would; a master left running keeps
+the quit window's socket answering on the devenv (kan a_2YAdjRtMB). A crash cannot end them, so the first tunnel a
+Muster opens also ends every master in `$TMPDIR` whose `muster-<pid>-<daemon>.ctl` names a pid that no longer runs. A
+pid that runs is left alone whatever it is, since it may be a second window on this Mac with a master to the same host.
+
 ## The vocabulary
 
 The backend contract speaks Muster's terms, not any backend's. Nouns: backend session (one daemon connection), tab
@@ -793,6 +811,19 @@ done at all. Until the bridge reported how it ended, all three raised one senten
 file - true, useless, and asking the person to open the one surface this list exists to replace. The endings arrive
 on the pane's own control socket, and the sentence for each is a case in `corpus/conformance/typeable.json`, where
 prose somebody reads under pressure can be reviewed as prose.
+
+**The same watch asks for another bridge, timed from when the shell started the last one.** The shell builds a bridge
+when the number a view carries for a pane moves, and reports `BridgeStarted` once it has acted on it. A pane whose
+started bridge has not dialed three deadlines later is asked for again. Timed from Muster's own ask instead, a loaded
+machine whose shell ran minutes behind was asked nine times in two minutes and had bridges replaced that were only slow
+to spawn (kan a_2YBZU4Ujx), so Muster also asks nothing more on its own for a pane whose last ask has not been
+started. A person's `muster pane reattach` always asks, since it is the way back for a shell that never started one,
+and so does a replacement for a bridge that ended.
+
+**And a daemon that answers again gets bridges for its dark panes at once.** Bridges started while a devenv's tunnel
+was down fail to attach, and the watch would not ask again for fifteen seconds. So the moment the daemon answers,
+every pane of its that nothing has dialed is asked for, and its wait starts over, so a pane still dark says nothing
+has dialed rather than telling the person to check a connection that is back (kan a_2YQD5xCFq).
 
 Nothing renders an intent optimistically. A split, a close, a focus and a divider drag are all requests, and what
 came of them arrives as the next published view - so a window can never show an arrangement no daemon agreed to. The
