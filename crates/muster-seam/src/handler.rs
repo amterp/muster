@@ -1352,7 +1352,7 @@ fn no_such_tab(tab: &TabId, verb: &str) -> Response {
 fn focus_pane_at(place: u32) -> Response {
     match counted_from_one(place, "a pane was asked for at place") {
         Ok(place) => answer(session::focus_pane_at(place)),
-        Err(refusal) => refusal,
+        Err(refusal) => *refusal,
     }
 }
 
@@ -1360,26 +1360,26 @@ fn focus_pane_at(place: u32) -> Response {
 fn press_numbered_chord(press: u32) -> Response {
     match counted_from_one(press, "a numbered chord was pressed as") {
         Ok(press) => answer(session::press_numbered_chord(press)),
-        Err(refusal) => refusal,
+        Err(refusal) => *refusal,
     }
 }
 
 /// A number that counts from one, as an index, or the refusal for one no roster could have
 /// handed out. `asked` says what the number was, for the refusal's first words.
-fn counted_from_one(number: u32, asked: &str) -> Result<usize, Response> {
+fn counted_from_one(number: u32, asked: &str) -> Result<usize, Box<Response>> {
     let Ok(number) = usize::try_from(number) else {
-        return Err(Response::failure(format!(
+        return Err(Box::new(Response::failure(format!(
             "{asked} {number}, which does not fit this machine's index type. Nothing moved. \
              Numbers come from the roster and no window holds that many panes, so this is a \
              bug in whatever built the request."
-        )));
+        ))));
     };
     if number == 0 {
-        return Err(Response::failure(format!(
+        return Err(Box::new(Response::failure(format!(
             "{asked} zero, so the keyboard stayed where it was. These count from one, the way \
              the sidebar numbers rows and the way ⌘1 reads - so whatever built this has an \
              off-by-one."
-        )));
+        ))));
     }
     Ok(number)
 }
