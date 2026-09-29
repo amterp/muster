@@ -13,13 +13,14 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use muster::proto::{
-    BridgeExited, Event, OpenWindow, Quitting, ReattachPane, Request, Response, Startup,
-    ViewChanged, ViewNode, event, request, response, view_node,
+    BridgeExited, BridgeStarted, Event, OpenWindow, Quitting, ReattachPane, Request, Response,
+    Startup, ViewChanged, ViewNode, event, request, response, view_node,
 };
 use muster_core::bridge_link::Report;
-use muster_harness::{Daemon, until};
+use muster_harness::{Daemon, until, until_within};
 use prost::Message;
 
 #[test]
@@ -74,6 +75,31 @@ fn a_bridge_that_ends_while_the_window_quits_gets_no_replacement() {
     report_exited(&pane, false);
 
     assert_eq!(restarts(&pane), Some(0), "a quitting window started a replacement bridge");
+}
+
+#[test]
+fn a_pane_with_no_bridge_is_asked_for_one_when_its_daemon_comes_back() {
+    // A devenv's tunnel dropped and came back in about a second, and the bridges started while
+    // it was down had failed to attach. Nothing asked again until the watch on panes nothing has
+    // dialed, fifteen seconds after the drop, so the panes on screen sat dead for fourteen
+    // seconds on a connection that was working (kan a_2YQD5xCFq). The daemon answering again is
+    // the moment a bridge can attach, so that is when every pane of its with none is asked for.
+    let _turn = muster::testing::fresh_session();
+    let mut daemon = Daemon::start_built();
+    let pane = open_a_window(&daemon);
+    report_started(&pane, 0);
+
+    daemon.kill();
+    daemon.restart();
+
+    // Well inside the fifteen seconds the watch waits before it asks on its own, so this is the
+    // reconnect asking rather than the watch.
+    until_within(
+        "the core to ask for a bridge for a pane with none once its daemon answers again",
+        Duration::from_secs(8),
+        || restarts(&pane).is_some_and(|restarts| restarts > 0),
+        || format!("the last view the core published: {:?}", latest_view()),
+    );
 }
 
 #[test]
@@ -200,6 +226,15 @@ fn open_a_window(daemon: &Daemon) -> Pane {
 struct Pane {
     daemon: String,
     pane: String,
+}
+
+/// Says the shell built the surface for this bridge number, the way it does after starting one.
+fn report_started(pane: &Pane, bridge_restarts: u32) {
+    assert_ok(&answer(request::Payload::BridgeStarted(BridgeStarted {
+        daemon_id: pane.daemon.clone(),
+        pane_id: pane.pane.clone(),
+        bridge_restarts,
+    })));
 }
 
 fn report_exited(pane: &Pane, process_alive: bool) {
