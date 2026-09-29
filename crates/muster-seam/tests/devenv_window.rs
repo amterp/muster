@@ -143,20 +143,7 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
         on_devenv(window).len() == before + 1
     });
 
-    // Quitting ends the window's master, and its forwards with it: nothing is left running
-    // here for launchd to inherit, still carrying this window's socket to the devenv, where a
-    // pane asking for its window would reach one that has quit (kan a_2YAdjRtMB). Asked to end
-    // the session as well, so the devenv's daemon is stopped through the master first.
-    assert_ok(&answer(request::Payload::Quitting(Quitting { close_sessions: true })));
-    let checked = Command::new("ssh")
-        .arg("-O")
-        .arg("check")
-        .arg("-S")
-        .arg(&control)
-        .arg(&host)
-        .output()
-        .expect("ssh runs");
-    assert!(!checked.status.success(), "the window's ssh master outlived its quit: {checked:?}");
+    quitting_ends_the_master(&control, &host);
 
     // And its socket is off the devenv, so what is left there does not look like a window that
     // might answer.
@@ -171,6 +158,24 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
         ),
     );
     assert!(left.trim().is_empty(), "the window's socket outlived it on the devenv: {left}");
+}
+
+/// Quits, asking for the session to end too, and expects the window's ssh master to be gone.
+fn quitting_ends_the_master(control: &Path, host: &str) {
+    // Quitting ends the window's master, and its forwards with it: nothing is left running
+    // here for launchd to inherit, still carrying this window's socket to the devenv, where a
+    // pane asking for its window would reach one that has quit (kan a_2YAdjRtMB). Asked to end
+    // the session as well, so the devenv's daemon is stopped through the master first.
+    assert_ok(&answer(request::Payload::Quitting(Quitting { close_sessions: true })));
+    let checked = Command::new("ssh")
+        .arg("-O")
+        .arg("check")
+        .arg("-S")
+        .arg(control)
+        .arg(host)
+        .output()
+        .expect("ssh runs");
+    assert!(!checked.status.success(), "the window's ssh master outlived its quit: {checked:?}");
 }
 
 /// A devenv pane's `muster window` is answered by the window while the window answers there. A
