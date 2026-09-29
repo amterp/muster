@@ -229,8 +229,8 @@ fresh surface and the pane repaints.
 
 `--next` and `--previous` walk every pane the window is showing and wrap, so between them they
 reach all of it. The four directions are geometric and do not wrap. `--place` takes the number
-`muster window` prints beside each pane, which is the one `cmd+1` to `cmd+9` name, and does what
-that chord does - under `numbered_chords = "tab_then_pane"`, reaching the tab first.
+`muster window` prints beside each pane and goes to that pane, bringing its tab on screen. It is
+not a press of `cmd+1` to `cmd+9`, whose meaning depends on the press before it.
 
 `--asking` goes to the pane most urgently asking for somebody, which is what `cmd+shift+a` does:
 `blocked` first, then a program's notification, then `done`, and within each the pane that asked

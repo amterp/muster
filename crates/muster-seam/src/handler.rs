@@ -198,6 +198,7 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::FocusRelative(step) => focus_relative(&step.direction),
         request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
         request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
+        request::Payload::PressNumberedChord(chord) => press_numbered_chord(chord.press),
         request::Payload::FocusAsking(_) => focus_asking(),
         request::Payload::OpenTranscript(open) if open.group.is_empty() => Response::failure(
             "a request to open a transcript named no group, so nothing opened. A banner for a \
@@ -256,8 +257,8 @@ fn answer_carried(carried: proto::Carried) -> Response {
 ///
 /// A question does, which is `muster_proto::only_reads` and is shared with the CLI, where the
 /// same distinction decides whether a command may be asked of every window at once. One entry
-/// here is not a question and still leaves the chord alone: `FocusPaneAt` is the second press
-/// itself, the one request whose whole job is to spend what the first one armed. It is stated
+/// here is not a question and still leaves the chord alone: `PressNumberedChord` is the second
+/// press itself, the one request whose whole job is to spend what the first one armed. It is stated
 /// here rather than folded into the shared list because it is a fact about this rule - a CLI
 /// that fanned it out would move the keyboard in every window somebody had open.
 ///
@@ -267,7 +268,10 @@ fn answer_carried(carried: proto::Carried) -> Response {
 /// disarmed by the window's own echo.
 fn leaves_the_chord_armed(payload: &request::Payload) -> bool {
     muster_proto::only_reads(payload)
-        || matches!(payload, request::Payload::FocusPaneAt(_) | request::Payload::ReadTabHolders(_))
+        || matches!(
+            payload,
+            request::Payload::PressNumberedChord(_) | request::Payload::ReadTabHolders(_)
+        )
 }
 
 /// Hands back what a pane has printed.
@@ -1346,21 +1350,38 @@ fn no_such_tab(tab: &TabId, verb: &str) -> Response {
 
 /// Goes to the pane at a place in the window's pane order, counting from one.
 fn focus_pane_at(place: u32) -> Response {
-    let Ok(place) = usize::try_from(place) else {
-        return Response::failure(format!(
-            "a pane was asked for at place {place}, which does not fit this machine's index \
-             type. Nothing moved. Places come from the roster and no window holds that many \
-             panes, so this is a bug in whatever built the request."
-        ));
-    };
-    if place == 0 {
-        return Response::failure(
-            "a pane was asked for at place zero, so the keyboard stayed where it was. Places \
-             count from one, the way the sidebar numbers them and the way ⌘1 reads - so the \
-             shell building this has an off-by-one.",
-        );
+    match counted_from_one(place, "a pane was asked for at place") {
+        Ok(place) => answer(session::focus_pane_at(place)),
+        Err(refusal) => refusal,
     }
-    answer(session::focus_pane_at(place))
+}
+
+/// Does what one of ⌘1 to ⌘9 does.
+fn press_numbered_chord(press: u32) -> Response {
+    match counted_from_one(press, "a numbered chord was pressed as") {
+        Ok(press) => answer(session::press_numbered_chord(press)),
+        Err(refusal) => refusal,
+    }
+}
+
+/// A number that counts from one, as an index, or the refusal for one no roster could have
+/// handed out. `asked` says what the number was, for the refusal's first words.
+fn counted_from_one(number: u32, asked: &str) -> Result<usize, Response> {
+    let Ok(number) = usize::try_from(number) else {
+        return Err(Response::failure(format!(
+            "{asked} {number}, which does not fit this machine's index type. Nothing moved. \
+             Numbers come from the roster and no window holds that many panes, so this is a \
+             bug in whatever built the request."
+        )));
+    };
+    if number == 0 {
+        return Err(Response::failure(format!(
+            "{asked} zero, so the keyboard stayed where it was. These count from one, the way \
+             the sidebar numbers rows and the way ⌘1 reads - so whatever built this has an \
+             off-by-one."
+        )));
+    }
+    Ok(number)
 }
 
 /// Goes to what is most urgently asking for somebody, the way clicking its banner does, and

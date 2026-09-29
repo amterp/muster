@@ -846,16 +846,15 @@ public enum Core {
     send(request)
   }
 
-  /// Puts the keyboard on the pane at a place in the window's pane order, counting from one.
+  /// Does what one of ⌘1 to ⌘9 does, counting from one.
   ///
-  /// The place is the core's numbering, which is the number the sidebar draws beside the row -
-  /// so ⌘3 and the third numbered row are one pane. A pane in a tab nothing is showing brings
-  /// that tab on screen, which is why there is no numbered chord for a tab.
-  public static func focus(panePlace: Int) {
-    var at = Muster_FocusPaneAt()
-    at.place = UInt32(max(0, panePlace))
+  /// What that reaches is the core's to say, because it depends on the press before this one -
+  /// so the menu item sends the digit and nothing else.
+  public static func pressNumberedChord(_ press: Int) {
+    var chord = Muster_PressNumberedChord()
+    chord.press = UInt32(max(0, press))
     var request = Muster_Request()
-    request.focusPaneAt = at
+    request.pressNumberedChord = chord
     send(request)
   }
 
@@ -1115,6 +1114,7 @@ public enum Core {
     case .toggleSidebar: return "toggle_sidebar"
     case .focusTabRelative: return "focus_tab_relative"
     case .focusPaneAt: return "focus_pane_at"
+    case .pressNumberedChord: return "press_numbered_chord"
     case .focusTab: return "focus_tab"
     case .arrangePane: return "arrange_pane"
     // The kind of request, never the name it carried. A name is text a person wrote about

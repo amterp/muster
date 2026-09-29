@@ -2956,7 +2956,29 @@ fn reopened_for(tab: &TabId, show: &str) -> bool {
     true
 }
 
-/// Puts the keyboard on whatever the numbered chord for `place` names.
+/// Puts the keyboard on the pane at `place` in the window's pane order.
+///
+/// What `muster focus --place` asks for, with a number read off `muster window`, so it is
+/// resolved as that number was printed and never through what the chords are naming. Taking a
+/// half-typed chord back is the handler's, as for any request that changes something: a script
+/// moving the keyboard is not the second press of a chord somebody began.
+pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
+    let found = {
+        let session = poison::lock(&SESSION, "session");
+        let roster = session.roster(&session.view());
+        match roster.numbered(&Numbering::Panes, place) {
+            Some(landing) => {
+                let pane = landing.pane();
+                Ok((pane.key.daemon.clone(), pane.key.pane.clone()))
+            }
+            None => Err(nothing_numbered(&roster, &Numbering::Panes, place)),
+        }
+    };
+    let (daemon, pane) = found?;
+    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
+}
+
+/// Puts the keyboard on whatever the numbered chord `press` names.
 ///
 /// What ⌘1 to ⌘9 mean, and under `numbered_chords = "panes"` that is a pane at a place in the
 /// window's pane order and nothing else happens. A place past the last one is refused by name
@@ -2977,12 +2999,12 @@ fn reopened_for(tab: &TabId, show: &str) -> bool {
 /// No `landing` step for a pane, unlike a tab: a pane names itself, where a tab has to
 /// nominate one of its own. Reaching a tab nothing is showing still works either way, because
 /// [`focus`] surfaces the tab holding the pane.
-pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
+pub(crate) fn press_numbered_chord(press: usize) -> Result<(), String> {
     let found = {
         let mut session = poison::lock(&SESSION, "session");
         let roster = session.roster(&session.view());
         let numbering = session.numbering(&roster);
-        if let Some(landing) = roster.numbered(&numbering, place) {
+        if let Some(landing) = roster.numbered(&numbering, press) {
             let pane = landing.pane();
             let found = (pane.key.daemon.clone(), pane.key.pane.clone());
             // Set from the landing either way, so that a press onto a pane starts the next one
@@ -2991,7 +3013,7 @@ pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
             Ok(found)
         } else {
             session.armed = None;
-            Err(nothing_numbered(&roster, &numbering, place))
+            Err(nothing_numbered(&roster, &numbering, press))
         }
     };
     let (daemon, pane) = found?;

@@ -267,7 +267,7 @@ enum What {
         #[arg(long, group = "somewhere")]
         down: bool,
 
-        /// Go to the pane at this place in the window's pane order, the number ⌘1 to ⌘9 name
+        /// Go to the pane at this place in the window's pane order, as `muster window` prints it
         #[arg(long, value_name = "N", group = "somewhere")]
         place: Option<u32>,
 

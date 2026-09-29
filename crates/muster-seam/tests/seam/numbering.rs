@@ -20,9 +20,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use muster::proto::{
-    EndNumberedChord, Event, FocusPaneAt, OpenWindow, ReadTabHolders, ReloadConfig, Request,
-    Response, RosterChanged, Startup, ViewChanged, WindowFocus, event, request, response,
-    roster_changed::Counting,
+    EndNumberedChord, Event, FocusPaneAt, OpenWindow, PressNumberedChord, ReadTabHolders,
+    ReloadConfig, Request, Response, RosterChanged, Startup, ViewChanged, WindowFocus, event,
+    request, response, roster_changed::Counting,
 };
 use muster_daemon_proto::{Placement, Side};
 use muster_harness::requests::{beside, create, in_new_tab, make};
@@ -68,7 +68,7 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
         "this test is pointless unless pane 2 starts hidden, and the view already shows it"
     );
 
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
 
     until(
         "the hidden pane to be on screen with the keyboard",
@@ -82,7 +82,7 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
 
     // And the refusal, in the same breath, because a place past the end is what ⌘9 means in a
     // window of two and it has to do nothing rather than land somewhere.
-    let reason = refusal(request::Payload::FocusPaneAt(FocusPaneAt { place: 9 }));
+    let reason = refusal(request::Payload::PressNumberedChord(PressNumberedChord { press: 9 }));
     assert!(
         reason.contains("2 panes") && reason.contains("no pane 9"),
         "a place past the end should say how many there are, and said: {reason}"
@@ -177,7 +177,7 @@ fn one_tab_under_the_prototype_numbers_panes_and_arms_nothing() {
 
     // One press, and it is the whole gesture. Under the uncollapsed prototype this would have
     // named the tab and left the window waiting for a second press.
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the second pane of the only tab to have the keyboard",
         || showing(&named(INNER_SECOND)),
@@ -217,7 +217,7 @@ fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
     assert_eq!(armed_tabs(), Vec::<u32>::new(), "nothing was pressed and a tab is already armed");
 
     let inner_second = named(INNER_SECOND);
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
 
     // Acted on immediately rather than waiting for a second press: the tab is on screen and the
     // keyboard is on its first pane, which is where a click on its caption would have put it.
@@ -238,7 +238,7 @@ fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
     assert_eq!(tab_presses(), vec![1, 2], "a tab lost its press to a chord being half-typed");
     assert_eq!(chords(), addresses, "the addresses moved under somebody reading them");
 
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the second pane of the second tab to have the keyboard",
         || showing(&inner_second),
@@ -271,7 +271,7 @@ fn anything_between_the_two_presses_takes_the_first_one_back() {
         || format!("the roster holds {:?}", roster().map(|held| places(&held))),
     );
 
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the second tab to be named",
         || armed_tabs() == vec![2],
@@ -290,7 +290,7 @@ fn anything_between_the_two_presses_takes_the_first_one_back() {
     );
 
     // So the press that follows is a first press again, and reaches a tab rather than a pane.
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 1 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 1 })));
     until(
         "the first tab's only pane to have the keyboard",
         || showing(&named(VISIBLE)),
@@ -320,7 +320,7 @@ fn letting_go_of_the_modifier_takes_the_first_press_back() {
     );
     assert_eq!(counting(), Counting::Tabs, "the chords should be naming tabs before any press");
 
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the second tab to be named",
         || counting() == Counting::PanesInTab,
@@ -339,7 +339,7 @@ fn letting_go_of_the_modifier_takes_the_first_press_back() {
 
     // So the press after it is a first press again, and reaches a tab rather than a pane. This
     // is the whole complaint the change answers: ⌘2, let go, ⌘1 should be two tab jumps.
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 1 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 1 })));
     until(
         "the first tab's only pane to have the keyboard",
         || showing(&named(VISIBLE)),
@@ -373,14 +373,14 @@ fn hearing_who_holds_which_tab_leaves_a_chord_armed() {
         || format!("the roster holds {:?}", roster().map(|held| places(&held))),
     );
 
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the tab the press named to be armed",
         || armed_tabs() == vec![2],
         || format!("the armed tabs carry {:?}", armed_tabs()),
     );
     assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the second press to land in the armed tab",
         || showing(&named(INNER_SECOND)),
@@ -467,7 +467,7 @@ fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
     assert_eq!(tab_presses(), Vec::<u32>::new(), "the tabs kept presses the chords do not name");
 
     // And the chords agree with them: ⌘2 is the second pane of the window again, in one press.
-    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 2 })));
+    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the second pane of the window to have the keyboard",
         || showing(&named(INNER_FIRST)),

@@ -1083,13 +1083,13 @@ extension MusterWindow {
     Core.focus(tabStep: "previous")
   }
 
-  /// Goes to the pane this item was numbered for.
+  /// Presses the numbered chord this item was made for.
   ///
-  /// One method for all nine, reading the place off the item's tag. Nine methods differing by
+  /// One method for all nine, reading the digit off the item's tag. Nine methods differing by
   /// a digit is nine places for one of them to drift, and the number is data anyway.
   @objc public func focusPaneAtPlace(_ sender: Any?) {
     guard let item = sender as? NSMenuItem, item.tag > 0 else { return }
-    Core.focus(panePlace: item.tag)
+    Core.pressNumberedChord(item.tag)
   }
 
   @objc public func focusPaneAsking(_ sender: Any?) {

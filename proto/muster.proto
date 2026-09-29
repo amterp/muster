@@ -77,6 +77,7 @@ message Request {
     FocusAsking focus_asking = 55;
     OpenTranscript open_transcript = 56;
     BridgeStarted bridge_started = 57;
+    PressNumberedChord press_numbered_chord = 58;
   }
 
   // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
@@ -1007,17 +1008,31 @@ message OpenTranscript {
 
 // Puts the keyboard on the pane at a given place in the window's pane order.
 //
-// What ⌘1 to ⌘9 mean. The place is the roster's numbering, counting from one across every
-// attached daemon and every tab, so it is the number the sidebar draws beside the row.
+// The place is the roster's `place`, counting from one across every attached daemon and every
+// tab, so it is the number `muster window` prints beside the pane and a script can hand back
+// what it read. A pane in a tab nothing is showing brings that tab on screen, because focusing
+// a pane surfaces it.
 //
-// A pane in a tab nothing is showing brings that tab on screen, because focusing a pane
-// surfaces it - which is why numbering panes reaches every tab too, and why there is no
-// numbered chord for a tab.
+// Not what ⌘1 to ⌘9 mean: that is PressNumberedChord, whose answer depends on what the numbered
+// chords are naming and on the press before it. A place read off a window has to mean what it
+// was read as.
 message FocusPaneAt {
-  // Counting from one. A place past the last pane does nothing, rather than landing on the
-  // last one: ⌘9 meaning something different every time a pane opened would be worse than ⌘9
-  // meaning nothing until there are nine panes.
+  // Counting from one. A place past the last pane does nothing rather than landing on the last
+  // one, so a script holding a stale place is told so instead of moving somewhere else.
   uint32 place = 1;
+}
+
+// What ⌘1 to ⌘9 mean: one numbered chord, pressed.
+//
+// A press names whatever the numbered chords are naming at that moment, which depends on the
+// press before it, so the core holds that state and this request spends or sets it. Its own
+// request rather than FocusPaneAt with a flag, because the two answer different callers: the
+// keyboard presses chords, and a script reading `muster window` asks for a place.
+message PressNumberedChord {
+  // Counting from one, as the key reads. A press naming nothing does nothing, rather than
+  // landing on the last row: ⌘9 meaning something different every time a pane opened would be
+  // worse than ⌘9 meaning nothing until there are nine.
+  uint32 press = 1;
 }
 
 // Takes back a `tab_then_pane` press that named a tab, because the gesture is over.
