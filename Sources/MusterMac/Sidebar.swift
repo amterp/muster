@@ -1151,14 +1151,15 @@ final class SidebarRowView: NSView {
   ///
   /// `live` is brighter and heavier because at that moment the press is not a reference
   /// somebody might consult - it is the keystroke about to be made, and the modifier is still
-  /// down. At rest everything stays quiet: a chord beside every row, drawn as loudly as the
-  /// name it sits next to, is a list that is harder to read for the sake of something you
-  /// already know.
+  /// down. At rest the pane digit reads in the secondary label color, a step below the name
+  /// beside it, and the tab digit a step below that. They used to be a step quieter each, and
+  /// in use they were too faint to find at a glance, which is what they are drawn for (amterp,
+  /// kan a_2YSLBqN6a).
   private func style(_ field: NSTextField, operative: Bool, live: Bool) {
     field.font = .monospacedDigitSystemFont(
-      ofSize: operative ? 10 : 9, weight: live ? .semibold : .regular)
+      ofSize: operative ? 11 : 10, weight: live ? .semibold : (operative ? .medium : .regular))
     field.textColor =
-      live ? .controlAccentColor : (operative ? .tertiaryLabelColor : .quaternaryLabelColor)
+      live ? .controlAccentColor : (operative ? .secondaryLabelColor : .tertiaryLabelColor)
   }
 
   /// Whether a press is one of the nine ⌘1 to ⌘9 name.
@@ -1194,7 +1195,7 @@ final class SidebarRowView: NSView {
   static let pressWidth: CGFloat = 12
   /// Narrower, because a prefix is drawn a point smaller - and because the two columns
   /// together come off a 200pt list that is already truncating labels.
-  static let prefixWidth: CGFloat = 10
+  static let prefixWidth: CGFloat = 11
   /// Between the two presses of one chord: close enough to read as one address rather than as
   /// two columns that happen to be adjacent.
   static let pressGap: CGFloat = 3
