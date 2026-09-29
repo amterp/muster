@@ -243,6 +243,13 @@ whose program has taken the whole terminal - an agent harness, an editor, anythi
 alternate screen - is searched as that one screen, and its history is searchable again once
 the program gives the terminal back.
 
+**`cmd`-click a link in a pane to open it**, whether it is an address on the screen or an OSC 8
+hyperlink a program printed. Web and mail links open on this Mac, from a devenv pane too. A path
+opens only from a pane on this Mac, since from a devenv it names a file over there; and a file
+that would run code when opened, or a link hiding invisible characters, is refused with a beep.
+A hyperlink to another app's scheme, such as `vscode://`, asks first, because the screen shows
+its text rather than where it goes. The rules are Ghostty's.
+
 **A row in the agent list says two things, and you write the first one.** Underneath is what
 the agent calls itself - Claude sets its terminal title to what it is working on, so the row
 reads `chasing a flaky test` while it does - and on top is what to call the pane, which starts
