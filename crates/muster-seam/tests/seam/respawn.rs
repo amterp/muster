@@ -15,8 +15,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use muster::proto::{
-    BridgeExited, Event, OpenWindow, ReattachPane, Request, Response, Startup, ViewChanged,
-    ViewNode, event, request, response, view_node,
+    BridgeExited, Event, OpenWindow, Quitting, ReattachPane, Request, Response, Startup,
+    ViewChanged, ViewNode, event, request, response, view_node,
 };
 use muster_core::bridge_link::Report;
 use muster_harness::{Daemon, until};
@@ -59,6 +59,21 @@ fn a_surface_muster_tore_down_gets_no_replacement() {
         Some(0),
         "Muster replaced a bridge it had ended itself, which is a second one racing the first"
     );
+}
+
+#[test]
+fn a_bridge_that_ends_while_the_window_quits_gets_no_replacement() {
+    // Quitting ends the window's ssh masters, and with them every bridge riding one. Answering
+    // each of those endings would start bridges the exit is about to kill, and leave the run
+    // log ending on replacements that read as a fault.
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let pane = open_a_window(&daemon);
+
+    assert_ok(&answer(request::Payload::Quitting(Quitting { close_sessions: false })));
+    report_exited(&pane, false);
+
+    assert_eq!(restarts(&pane), Some(0), "a quitting window started a replacement bridge");
 }
 
 #[test]

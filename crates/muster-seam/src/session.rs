@@ -1131,6 +1131,14 @@ pub(crate) struct Session {
     /// kept in line with this, and this is kept in line with the file every window shares.
     holding: Holding,
 
+    /// Whether the shell has said this process is going away.
+    ///
+    /// Read by everything that would start a bridge on its own. Quitting ends the ssh masters,
+    /// which ends every devenv bridge riding them, and a window that answered each of those
+    /// endings with a replacement would spend its last moments starting bridges it is about to
+    /// kill - and end its run log on seven lines that read as a fault.
+    quitting: bool,
+
     /// A link held from each daemon on this machine to each reached over ssh, by the pair, so
     /// groups of messages span the machines while this window runs (`crate::peering`).
     peering: BTreeMap<(DaemonId, DaemonId), crate::peering::Held>,
@@ -2246,6 +2254,14 @@ pub(crate) fn bridge_ended(pane: &PaneKey, ended: &Ended) {
 fn replace_bridge(pane: &PaneKey, ending: Ending) {
     let (decision, why) = {
         let mut session = poison::lock(&SESSION, "session");
+        if session.quitting {
+            drop(session);
+            log::info(
+                "bridge.replacing.skipped",
+                fields! { "pane" => pane.to_string(), "why" => "the window is quitting" },
+            );
+            return;
+        }
         let gone = if !session.holds(pane) {
             Some("the daemon no longer holds this pane")
         } else if !session.in_a_held_tab(pane) {
@@ -2360,6 +2376,9 @@ pub(crate) fn reattach(pane: &PaneKey) -> bool {
 pub(crate) fn bridge_stalled(pane: &PaneKey, deadline: u64) {
     let asked = {
         let mut session = poison::lock(&SESSION, "session");
+        if session.quitting {
+            return;
+        }
         if !session.holds(pane) {
             session.respawns.forget(pane);
             return;
@@ -5446,19 +5465,45 @@ fn no_pane_to_size() -> String {
 /// its tabs: its agents are still running, and reopening it comes back to them - unless ending
 /// them is what was asked.
 pub(crate) fn quitting(close_sessions: bool) {
-    poison::lock(&SESSION, "session").holding.close();
-    if !close_sessions {
-        return;
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        session.holding.close();
+        session.quitting = true;
     }
-    let daemons: Vec<(DaemonId, String)> = {
-        let session = poison::lock(&SESSION, "session");
-        session
-            .backends
-            .iter()
-            .map(|(id, backend)| (id.clone(), backend.socket_path.clone()))
-            .collect()
+    if close_sessions {
+        let daemons: Vec<(DaemonId, String)> = {
+            let session = poison::lock(&SESSION, "session");
+            session
+                .backends
+                .iter()
+                .map(|(id, backend)| (id.clone(), backend.socket_path.clone()))
+                .collect()
+        };
+        close_daemons(&daemons);
+    }
+    // After the daemons, because a devenv's is stopped through its master.
+    end_tunnels();
+}
+
+/// Ends every ssh master this window holds, and returns once they have gone.
+///
+/// The process exits after this without dropping its session, so nothing else would: a master
+/// left running is reparented to launchd with its forwards up, and the reverse one keeps this
+/// window's socket answering on the far machine, where a pane asking for its window reaches one
+/// that has quit (kan a_2YAdjRtMB). All at once, because each is a bounded ssh or two and a quit
+/// waits on the slowest rather than on their sum.
+fn end_tunnels() {
+    let tunnels: Vec<Tunnel> = {
+        let mut session = poison::lock(&SESSION, "session");
+        session.backends.values_mut().filter_map(|backend| backend.tunnel.take()).collect()
     };
-    close_daemons(&daemons);
+    let count = tunnels.len();
+    let ending: Vec<_> =
+        tunnels.into_iter().map(|tunnel| std::thread::spawn(move || drop(tunnel))).collect();
+    for ended in ending {
+        let _ = ended.join();
+    }
+    log::info("quit.tunnels.ended", fields! { "count" => count.to_string() });
 }
 
 /// Asks every daemon this window is attached to stop, and says what came of it.
