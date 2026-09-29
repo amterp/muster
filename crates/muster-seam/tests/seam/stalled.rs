@@ -20,8 +20,8 @@ use std::sync::Mutex;
 use std::sync::{atomic::AtomicUsize, atomic::Ordering};
 
 use muster::proto::{
-    BridgeExited, Event, OpenWindow, Request, Response, Startup, ViewChanged, ViewNode, event,
-    request, response, view_node,
+    BridgeExited, Event, OpenWindow, ReattachPane, Request, Response, Startup, ViewChanged,
+    ViewNode, event, request, response, view_node,
 };
 use muster_core::bridge_link::Report;
 use muster_harness::{Daemon, until};
@@ -79,6 +79,35 @@ fn a_replacement_that_never_arrives_is_asked_for_again() {
         || restarts(&pane).is_some_and(|restarts| restarts > 1),
         || format!("the last view the core published: {:?}", latest_view()),
     );
+}
+
+#[test]
+fn an_ask_the_shell_never_started_is_not_asked_for_again_until_a_person_does() {
+    // What a loaded machine did: the watch asked nine times in two minutes for panes a shell
+    // running minutes behind had not reached once, and each ask it did reach replaced a bridge
+    // that was only slow to spawn (kan a_2YBZU4Ujx). The shell builds a bridge when the number
+    // moves, so an ask it has not reached is still waiting for it, and asking again helps
+    // nothing. Nothing here reports a start, which is a shell that has not got there.
+    let _turn = muster::testing::fresh_session();
+    shorten_the_deadline();
+    let daemon = Daemon::start_built();
+    let pane = open_a_window(&daemon);
+
+    std::thread::sleep(std::time::Duration::from_millis(DEADLINE_MS * 8));
+    assert_eq!(
+        restarts(&pane),
+        Some(0),
+        "the core asked again for a bridge the shell had not started yet, which replaces the \
+         one it is about to start"
+    );
+
+    // A person is always asked for: it is the way back for a shell that got the number and
+    // never started a bridge, which nothing automatic asks about again.
+    assert_ok(&answer(request::Payload::ReattachPane(ReattachPane {
+        daemon_id: pane.daemon.clone(),
+        pane_id: pane.pane.clone(),
+    })));
+    assert_eq!(restarts(&pane), Some(1), "a person's reattach was held back");
 }
 
 /// Sets the deadline this test runs under, before any pane opens.
