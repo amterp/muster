@@ -9,7 +9,7 @@
 //! A call is answered on a thread of its own: answering a post makes calls of its own - the new
 //! entry sent on to other machines - whose replies the reader has to be free to take.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -38,6 +38,11 @@ const CALLING: Duration = Duration::from_secs(5);
 /// A post's body is up to a mebibyte, over ssh.
 const POSTING: Duration = Duration::from_secs(15);
 
+/// How long a request carried to the human's home waits for its answer, but for a wait, which
+/// waits for as long as its caller does. Longer than a post's, since answering it may make calls
+/// of its own, to this machine among them.
+const CARRYING: Duration = Duration::from_mins(1);
+
 /// How long either side waits for the other's introduction.
 const INTRODUCING: Duration = Duration::from_secs(5);
 
@@ -53,6 +58,9 @@ pub(crate) struct Link {
     pending: Mutex<HashMap<u64, Sender<proto::PeerReply>>>,
     next: AtomicU64,
     closed: AtomicBool,
+    /// Calls from the other end that it no longer wants answered: carried waits whose callers
+    /// hung up.
+    cancelled: Mutex<HashSet<u64>>,
 }
 
 impl Link {
@@ -63,6 +71,7 @@ impl Link {
             pending: Mutex::new(HashMap::new()),
             next: AtomicU64::new(1),
             closed: AtomicBool::new(false),
+            cancelled: Mutex::new(HashSet::new()),
         }))
     }
 
@@ -90,6 +99,54 @@ impl Link {
             }
             Err(RecvTimeoutError::Disconnected) => {
                 Err(Failed::Unanswered("the link closed after the call was sent".to_string()))
+            }
+        }
+    }
+
+    /// [`Self::call`] for a carried request: waits for as long as `patience` says, or with none
+    /// until the reply, and ends early when `hung_up` says the caller has gone, telling the
+    /// other end to stop.
+    fn call_until(
+        &self,
+        call: Called,
+        patience: Option<Duration>,
+        hung_up: &dyn Fn() -> bool,
+    ) -> Result<Replied, Failed> {
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        let (reply, replied) = mpsc::channel();
+        poison::lock(&self.pending, "daemon.peer.pending").insert(id, reply);
+        let sent = self.send(Frame::Call(proto::PeerCall { id, call: Some(call) }));
+        if let Err(error) = sent {
+            poison::lock(&self.pending, "daemon.peer.pending").remove(&id);
+            return Err(Failed::Unsent(format!("the call could not be sent: {error}")));
+        }
+        let deadline = patience.map(|patience| std::time::Instant::now() + patience);
+        loop {
+            match replied.recv_timeout(LOOK_UP) {
+                Ok(reply) => {
+                    return reply
+                        .reply
+                        .ok_or_else(|| Failed::Unanswered("the reply was empty".to_string()));
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(Failed::Unanswered(
+                        "the link closed after the call was sent".to_string(),
+                    ));
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    let late = deadline.is_some_and(|at| std::time::Instant::now() >= at);
+                    if !late && !hung_up() {
+                        continue;
+                    }
+                    poison::lock(&self.pending, "daemon.peer.pending").remove(&id);
+                    let _ = self.send(Frame::Cancel(proto::Cancel { id }));
+                    let why = if late {
+                        format!("no reply within {patience:?}")
+                    } else {
+                        "its caller hung up".to_string()
+                    };
+                    return Err(Failed::Unanswered(why));
+                }
             }
         }
     }
@@ -449,10 +506,13 @@ fn read(shared: &Arc<Shared>, link: &Arc<Link>, mut stream: UnixStream) -> Strin
                 let (shared, link) = (Arc::clone(shared), Arc::clone(link));
                 let _ =
                     std::thread::Builder::new().name("peer-call".to_string()).spawn(move || {
-                        let reply = answer(&shared, &link, call.call);
+                        let reply = answer(&shared, &link, call.id, call.call);
                         let reply = proto::PeerReply { id: call.id, reply: Some(reply) };
                         let _ = link.send(Frame::Reply(reply));
                     });
+            }
+            Some(Frame::Cancel(cancel)) => {
+                poison::lock(&link.cancelled, "daemon.peer.cancelled").insert(cancel.id);
             }
             Some(Frame::Introduce(_)) | None => {}
         }
@@ -661,13 +721,15 @@ pub(crate) fn tell(shared: &Shared, tells: &[Tell]) -> Vec<(String, Reach)> {
 // ---------------------------------------------------------------------------------------------
 // Answering a call
 
-fn answer(shared: &Arc<Shared>, link: &Arc<Link>, call: Option<Called>) -> Replied {
+fn answer(shared: &Arc<Shared>, link: &Arc<Link>, id: u64, call: Option<Called>) -> Replied {
     let refused = |refusal: &Refusal| Replied::Refused(wire::refusal_to(refusal));
     let Some(call) = call else {
         return refused(&Refusal::Store { error: "an empty call".to_string() });
     };
-    if let Called::Replicate(caught) = call {
-        return replicated(shared, link, caught);
+    match call {
+        Called::Replicate(caught) => return replicated(shared, link, caught),
+        Called::Carried(request) => return carried(shared, link, id, request),
+        _ => {}
     }
     let Some(call) = wire::call_from(call) else {
         return refused(&Refusal::Store { error: "a call this daemon cannot answer".to_string() });
@@ -705,6 +767,69 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, call: Option<Called>) -> Repli
         }
     }
     wire::reply_to(reply)
+}
+
+/// A request the person made on the other machine, done here as the human. It ends when the
+/// link does, or when the other end cancels it because its caller hung up.
+fn carried(shared: &Arc<Shared>, link: &Arc<Link>, id: u64, request: proto::MsgRequest) -> Replied {
+    let Some(asked) = request.request else {
+        let refusal = Refusal::Store { error: "an empty carried request".to_string() };
+        return Replied::Refused(wire::refusal_to(&refusal));
+    };
+    let hung_up = || {
+        link.closed.load(Ordering::Acquire)
+            || poison::lock(&link.cancelled, "daemon.peer.cancelled").contains(&id)
+    };
+    let reply = super::carried(shared, &link.peer, asked, &hung_up);
+    poison::lock(&link.cancelled, "daemon.peer.cancelled").remove(&id);
+    Replied::Carried(super::carry::reply_to(reply))
+}
+
+/// Carries a request the person made here to `machine`, where the human is homed, and answers
+/// it as that machine did. None when there is no link to it, so the refusal made here stands.
+pub(crate) fn carry(
+    shared: &Shared,
+    machine: &str,
+    asked: proto::msg_request::Request,
+    hung_up: &dyn Fn() -> bool,
+) -> Option<Reply> {
+    let link = shared.peers.to(machine)?;
+    let verb = super::carry::verb(&asked);
+    let patience = (!matches!(asked, proto::msg_request::Request::Wait(_))).then_some(CARRYING);
+    let request = proto::MsgRequest { caller: None, request: Some(asked) };
+    log::info("msg.carrying", fields! { "machine" => machine, "verb" => verb });
+    let refused = |code: &str, words: &str| super::refused_as("", code, words);
+    Some(match link.call_until(Called::Carried(request), patience, hung_up) {
+        Ok(Replied::Carried(carried)) => super::carry::reply_from(carried),
+        Ok(Replied::Refused(refused_there)) => refused(&refused_there.code, &refused_there.words),
+        Ok(other) => refused(
+            "mismatched",
+            &format!("{machine} answered a carried {verb} with {other:?}; this is a bug"),
+        ),
+        Err(Failed::Unsent(_)) => return None,
+        Err(Failed::Unanswered(why)) => {
+            log::warn(
+                "msg.peer.call_failed",
+                fields! {
+                    "machine" => machine,
+                    "verb" => verb,
+                    "error" => why,
+                    "impact" => "the person's request was refused as unanswered: it may have been \
+                                 done on that machine all the same",
+                    "check" => "whether the link to that machine dropped (msg.peer.unlinked \
+                                follows) or its daemon is stalled",
+                },
+            );
+            refused(
+                "unanswered",
+                &format!(
+                    "this was sent to {machine}, where your messages are kept, and no answer \
+                     came back ({why}): it may have been done there. `muster msg log` there \
+                     says whether"
+                ),
+            )
+        }
+    })
 }
 
 /// A group's home sent new entries: take them into the replica, fetching first whatever came

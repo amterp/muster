@@ -418,13 +418,6 @@ fn a_daemon_dialed_from_the_apps_machine_has_no_human_of_its_own() {
 
     join(&mut far_control, &named("critic"), "critic", "review");
     assert_eq!(join(&mut near_control, &person, "@human", "review"), "review@far");
-    let asked = Asked::Join(msg_request::Join {
-        name: None,
-        group: Some("review".to_string()),
-        pull: false,
-    });
-    let refused = far_control.ask(msg(&person, asked));
-    assert_eq!(msg_answer(&refused).refusal, "human_elsewhere", "{}", refused.answer.reason);
 
     let posted = expect(
         &mut far_control,
@@ -482,4 +475,99 @@ fn a_post_to_a_pane_on_the_linked_machine_rings_it_there() {
 
     let refused = near_control.ask(post(&named("builder"), None, &["nobody"], "anyone?"));
     assert_eq!(msg_answer(&refused).refusal, "no_such_participant", "{}", refused.answer.reason);
+}
+
+fn messages_of(asked: &muster_harness::Asked) -> Vec<String> {
+    let Some(Answer::Entries(entries)) = &msg_answer(asked).answer else {
+        panic!("expected entries, got {:?}", msg_answer(asked));
+    };
+    let mut messages = Vec::new();
+    for group in &entries.groups {
+        for entry in &group.entries {
+            if let Some(msg_answer::entry::What::Message(message)) = &entry.what {
+                messages.push(format!("{} {}: {}", group.group, message.author, message.body));
+            }
+        }
+    }
+    messages
+}
+
+/// The person at a shell on the dialed machine is the near machine's human, and what the far
+/// daemon cannot do as the human it carries to the near one, which does it and answers in its
+/// own names: a post to a pane there, joining, reading, waiting and making a group. A wait
+/// whose caller hangs up ends on the near daemon too. With the link cut, the far daemon says
+/// there is no link to carry it over.
+#[test]
+fn the_persons_requests_on_the_dialed_machine_are_carried_to_the_near_one() {
+    let (near, far) = (daemon(), Daemon::start_detecting());
+    let mut far_control = far.connect();
+    make(&mut far_control, create("p1", in_new_tab("t1")));
+    far.run_agent("p1");
+    let mut near_log = following(&near);
+    let holding = link(&near, &far, &mut near_log, 1);
+    let person = msg_request::Caller::default();
+
+    let posted =
+        expect(&mut far_control, post(&person, None, &["p1"], "carry on"), proto::Outcome::Done);
+    let Some(Answer::Posted(answer)) = &msg_answer(&posted).answer else { panic!("{posted:?}") };
+    assert_eq!(answer.group, "@human+p1", "made where the human's messages are kept");
+    let heard = far.root().join("home/fake-agent-heard");
+    until_some("the far agent to be rung", || {
+        let heard = std::fs::read_to_string(&heard).unwrap_or_default();
+        heard.lines().any(|line| line.starts_with("[muster] ")).then_some(())
+    });
+
+    join(&mut far_control, &named("critic"), "critic", "review");
+    assert_eq!(join(&mut far_control, &person, "@human", "review"), "review@far");
+    expect(
+        &mut far_control,
+        post(&named("critic"), None, &["@human"], "a question"),
+        proto::Outcome::Done,
+    );
+    let read = expect(
+        &mut far_control,
+        msg(&person, Asked::Read(msg_request::Read { group: None })),
+        proto::Outcome::Done,
+    );
+    assert_eq!(messages_of(&read), ["review@far critic@far: a question"]);
+
+    let mut waiting = far.connect();
+    waiting.send(msg(&person, Asked::Wait(msg_request::Wait::default())));
+    near_log.logged_until("msg.waiting", LINKING);
+    expect(
+        &mut far_control,
+        post(&named("critic"), None, &["@human"], "another"),
+        proto::Outcome::Done,
+    );
+    match waiting.next_message(LINKING) {
+        Some(proto::control_message::Message::Answer(answer)) => {
+            assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+        }
+        other => panic!("the carried wait was answered: {other:?}"),
+    }
+    expect(
+        &mut far_control,
+        msg(&person, Asked::Read(msg_request::Read { group: None })),
+        proto::Outcome::Done,
+    );
+    let mut hanging_up = far.connect();
+    hanging_up.send(msg(&person, Asked::Wait(msg_request::Wait::default())));
+    near_log.logged_times_until("msg.waiting", 2, LINKING);
+    drop(hanging_up);
+    near_log.logged_until("msg.wait.ended", LINKING);
+
+    let asked = Asked::GroupNew(msg_request::GroupNew { group: "board".to_string(), policy: None });
+    let made = expect(&mut far_control, msg(&person, asked), proto::Outcome::Done);
+    let Some(Answer::Changed(changed)) = &msg_answer(&made).answer else { panic!("{made:?}") };
+    assert_eq!(changed.group, "board");
+    let asked = Asked::Pause(msg_request::Pause { group: "board".to_string() });
+    let paused = expect(&mut far_control, msg(&person, asked), proto::Outcome::Done);
+    let Some(Answer::Changed(changed)) = &msg_answer(&paused).answer else { panic!("{paused:?}") };
+    assert_eq!(changed.group, "board", "a group the far machine holds nothing of");
+
+    let mut far_log = following(&far);
+    cut(holding, &mut near_log, &mut far_log, 1);
+    let refused = far_control.ask(msg(&person, Asked::Read(msg_request::Read { group: None })));
+    assert_eq!(msg_answer(&refused).refusal, "human_elsewhere", "{}", refused.answer.reason);
+    assert!(refused.answer.reason.contains("no link"), "{}", refused.answer.reason);
 }

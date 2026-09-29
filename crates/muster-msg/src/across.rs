@@ -78,7 +78,7 @@ impl Peer {
 
     /// A policy's names turned like any other, but for `*` and `@human`, which name roles
     /// rather than participants: `@human` is the human wherever it is homed.
-    fn policy(&self, policy: Policy) -> Policy {
+    pub fn policy(&self, policy: Policy) -> Policy {
         let name =
             |name: String| if name == "*" || name == HUMAN { name } else { self.inward(&name) };
         let names = |names: Vec<String>| names.into_iter().map(name).collect::<Vec<_>>();
@@ -891,6 +891,90 @@ impl<S: Store> Messaging<S> {
         // members when it was posted; the pause then forgot that, as it did at the home.
         if forgotten && self.groups[key].policy.paused {
             self.forget_wakes(key);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // The person, carried to the human's home
+
+    /// Where the human is homed, when the caller is this machine's person and that is elsewhere:
+    /// a request the service refuses them as `human_elsewhere`, or as `kept_elsewhere` for a
+    /// group kept there, is carried there and done as the human (MIP-4, section 10).
+    pub fn person_elsewhere(&self, caller: &Caller, presence: &dyn Presence) -> Option<HumanHome> {
+        let home = self.human_elsewhere(presence)?;
+        let addressed = Self::addressed(caller, presence);
+        let named = addressed.as_name.clone().or_else(|| self.lookup(&addressed));
+        (named.as_deref() == Some(HUMAN)).then(|| home.clone())
+    }
+
+    /// The machine `group` is kept on, when that is another one.
+    pub fn home_of(&self, group: &str) -> Option<String> {
+        let key = self.locate(group).ok()?;
+        self.groups.get(&key)?.home.clone()
+    }
+
+    /// A group named in a request carried to the human's home, as this machine writes it, for
+    /// the home to turn into its own: one this machine knows by the name as it knows it, and one
+    /// it does not as the home's, which the home reads as its own bare name.
+    pub fn carrying_group(&self, name: &str) -> String {
+        let name = self.own(name);
+        if let Ok(key) = self.locate(name) {
+            return key;
+        }
+        self.at_home(name)
+    }
+
+    /// A participant named in a request carried to the human's home, as this machine writes it:
+    /// one this machine knows - its own, an agent in a pane here, or a member of a group it
+    /// holds, by its own name - as it knows it, the human as the home's, and anyone else as the
+    /// home's too, which the home reads as its own bare name and asks around for if it has none.
+    pub fn carrying_name(&self, name: &str, presence: &dyn Presence) -> String {
+        let name = self.own(name);
+        if name == HUMAN {
+            return self.at_home(name);
+        }
+        let here = self.participants.contains_key(name)
+            || self.by_pane(name).is_some()
+            || presence.has_pane(name)
+            || split_machine(name).is_some();
+        if here {
+            return name.to_string();
+        }
+        let members: BTreeSet<&String> = self
+            .groups
+            .values()
+            .flat_map(|group| &group.members)
+            .filter(|member| split_machine(member).is_some_and(|(base, _)| base == name))
+            .collect();
+        match members.into_iter().collect::<Vec<_>>().as_slice() {
+            [only] => (*only).clone(),
+            _ => self.at_home(name),
+        }
+    }
+
+    /// A policy in a request carried to the human's home, its names as [`Self::carrying_name`]
+    /// writes them but for `*` and `@human`, which name roles rather than participants.
+    pub fn carrying_policy(&self, policy: Policy, presence: &dyn Presence) -> Policy {
+        let name = |name: String| {
+            if name == "*" || name == HUMAN { name } else { self.carrying_name(&name, presence) }
+        };
+        let names = |names: Vec<String>| names.into_iter().map(name).collect::<Vec<_>>();
+        let table = |table: BTreeMap<String, Vec<String>>| {
+            table.into_iter().map(|(author, set)| (name(author), names(set))).collect()
+        };
+        Policy {
+            ring: table(policy.ring),
+            allow: table(policy.allow),
+            membership: names(policy.membership),
+            paused: policy.paused,
+        }
+    }
+
+    /// A bare `name` as this machine writes the one on the human's home.
+    fn at_home(&self, name: &str) -> String {
+        match (&self.human_home, split_machine(name)) {
+            (Some(home), None) => format!("{name}@{}", home.machine),
+            _ => name.to_string(),
         }
     }
 

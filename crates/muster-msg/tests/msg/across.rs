@@ -1216,7 +1216,9 @@ fn human_elsewhere() -> Refusal {
 }
 
 /// A person's shell on a daemon the laptop's dialed is the laptop's human. What keeps the
-/// human's cursors is refused there, naming the laptop, and no human is made on the devenv.
+/// human's cursors is refused there, naming the laptop, and no human is made on the devenv. Its
+/// daemon carries such a request to the laptop while a link is up (`linked.rs` in
+/// muster-daemon's tests).
 #[test]
 fn a_person_on_the_far_machine_is_the_laptops_human() {
     let mut wire = dialed();
@@ -1548,4 +1550,38 @@ fn a_policy_names_a_member_on_another_machine() {
             allowed: vec!["director".to_string(), HUMAN.to_string()],
         }
     );
+}
+
+/// A request the person makes on the far machine is carried to the laptop with its names as the
+/// devenv writes them, which the laptop turns into its own: what the devenv knows means what
+/// it means there, and what it does not is taken to be the laptop's.
+#[test]
+fn a_carried_request_names_what_the_far_machine_meant() {
+    let mut wire = dialed();
+    wire.pane(Side::Devenv, "p9");
+    wire.join(Side::Devenv, &session("critic"), Some("critic"), "review");
+    wire.join(Side::Laptop, &session("builder"), Some("builder"), "board");
+    wire.join(Side::Devenv, &session("scout"), Some("scout"), "board");
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    assert_eq!(
+        devenv.person_elsewhere(&human(), sessions).map(|home| home.machine),
+        Some("lap".to_string())
+    );
+    assert_eq!(devenv.person_elsewhere(&session("critic"), sessions), None);
+    assert_eq!(devenv.home_of("board"), Some("lap".to_string()));
+    assert_eq!(devenv.home_of("review"), None);
+
+    let laptop_reads = Side::Laptop.peer();
+    let group = |name: &str| laptop_reads.inward(&devenv.carrying_group(name));
+    assert_eq!(group("review"), "review@devenv");
+    assert_eq!(group("review@devenv"), "review@devenv");
+    assert_eq!(group("board"), "board");
+    assert_eq!(group("council"), "council");
+    let name = |name: &str| laptop_reads.inward(&devenv.carrying_name(name, sessions));
+    assert_eq!(name("critic"), "critic@devenv");
+    assert_eq!(name("p9"), "p9@devenv");
+    assert_eq!(name("builder"), "builder");
+    assert_eq!(name("stranger"), "stranger");
+    assert_eq!(name(HUMAN), HUMAN);
+    assert_eq!(name("critic@devenv"), "critic@devenv");
 }

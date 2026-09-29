@@ -1554,7 +1554,15 @@ message PeerFrame {
     Introduce introduce = 1;
     PeerCall call = 2;
     PeerReply reply = 3;
+    // Since 1.2.
+    Cancel cancel = 4;
   }
+}
+
+// The call `id` is no longer wanted: a carried wait whose caller hung up. The machine asked ends
+// it, and may reply to it or not.
+message Cancel {
+  uint64 id = 1;
 }
 
 message Introduce {
@@ -1578,6 +1586,10 @@ message PeerCall {
     Caught replicate = 16;
     // Since 1.2.
     Whom whom = 17;
+    // A request the person made on the asking machine, done here as the human, who is homed on
+    // this one (MIP-4, section 10). Its names are written as the asker writes them; its answer
+    // is in this machine's.
+    MsgRequest carried = 18;
   }
 
   // Whether a group by this name is kept there.
@@ -1638,11 +1650,19 @@ message PeerReply {
     Reached applied = 17;
     // Since 1.2.
     Named named = 18;
+    Carried carried = 19;
   }
 
   // Who a `whom` names, if anybody.
   message Named {
     optional string name = 1;
+  }
+
+  // What a carried request came to, as this machine answers the request when it is made here.
+  message Carried {
+    bool refused = 1;
+    string reason = 2;
+    MsgAnswer answer = 3;
   }
 
 

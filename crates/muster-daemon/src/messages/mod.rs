@@ -5,6 +5,7 @@
 //! wait on another agent, and neither has anything to do with panes. Wakes are delivered with
 //! that lock let go, so a session slow to take one delays only the post that woke it.
 
+mod carry;
 mod doorbell;
 mod inbox;
 pub(crate) mod peer;
@@ -259,6 +260,9 @@ impl Messages {
 
 /// Answers a `msg` request. `hung_up` says whether the caller has gone, for a wait that would
 /// otherwise outlive it.
+///
+/// A person's request this machine refuses because the human is homed elsewhere is carried
+/// there, when a link to it is up, and answered as that machine answers it (MIP-4, section 10).
 pub(crate) fn handle(
     shared: &Arc<Shared>,
     request: proto::MsgRequest,
@@ -270,19 +274,55 @@ pub(crate) fn handle(
         return peer::hold(shared, &peer.name, &peer.socket, hung_up);
     }
     let panes = Panes::of(shared);
+    let person_elsewhere = shared.messages().service.person_elsewhere(&caller, &panes).is_some();
+    let kept = person_elsewhere.then(|| asked.clone());
+    let reply = respond(shared, &caller, asked, hung_up, &panes);
+    let Some(asked) = kept else { return reply };
+    let Some(home) = carry::destination(shared, &caller, &asked, &reply, &panes) else {
+        return reply;
+    };
+    let asked = carry::outward(&shared.messages().service, asked, &panes);
+    peer::carry(shared, &home.machine, asked, hung_up).unwrap_or(reply)
+}
+
+/// A request the person made on `peer`'s machine, carried here to be done as the human.
+pub(crate) fn carried(
+    shared: &Arc<Shared>,
+    peer: &muster_msg::Peer,
+    asked: Asked,
+    hung_up: &dyn Fn() -> bool,
+) -> Reply {
+    let asked = carry::inward(peer, asked);
+    log::info("msg.carried", fields! { "machine" => peer.name, "verb" => carry::verb(&asked) });
+    let panes = Panes::of(shared);
+    let human = Caller { at_ms: now_ms(), ..Caller::default() };
+    respond(shared, &human, asked, hung_up, &panes)
+}
+
+/// Answers `asked` on this machine, as `caller`.
+fn respond(
+    shared: &Arc<Shared>,
+    caller: &Caller,
+    asked: Asked,
+    hung_up: &dyn Fn() -> bool,
+    panes: &Panes,
+) -> Reply {
     match asked {
-        Asked::Post(post) => posting(shared, &caller, &post, &panes),
-        Asked::Resume(resume) => resuming(shared, &caller, &resume.group, &panes),
-        Asked::Wait(wait) => waiting(shared, &caller, &wait, hung_up, &panes),
+        Asked::Post(post) => posting(shared, caller, &post, panes),
+        Asked::Resume(resume) => resuming(shared, caller, &resume.group, panes),
+        Asked::Wait(wait) => waiting(shared, caller, &wait, hung_up, panes),
         Asked::Log(log) if log.follow => following(shared, log, hung_up),
-        Asked::Join(join) => joining(shared, &caller, &join, &panes),
-        Asked::Leave(leave) => leaving(shared, &caller, &leave, &panes),
-        Asked::Who(who) => whoing(shared, &who, &panes),
-        Asked::GroupMembers(members) => membering(shared, &caller, &members, &panes),
+        Asked::Join(join) => joining(shared, caller, &join, panes),
+        Asked::Leave(leave) => leaving(shared, caller, &leave, panes),
+        Asked::Who(who) => whoing(shared, &who, panes),
+        Asked::GroupMembers(members) => membering(shared, caller, &members, panes),
+        Asked::Peer(_) => {
+            refused_as("", "not_carried", "a link is held by the daemon it is asked of")
+        }
         asked => {
             let (reply, told, telling) = {
                 let mut messages = shared.messages();
-                let reply = messages.answer(&caller, asked, &panes);
+                let reply = messages.answer(caller, asked, panes);
                 messages.appended();
                 (reply, messages.take_told(), std::mem::take(&mut messages.telling))
             };
@@ -1074,6 +1114,8 @@ fn waiting(
                     }
                     messages.service.cancel_wait(ticket);
                     messages.waits.remove(&ticket);
+                    let why = if timed_out { "timed_out" } else { "hung_up" };
+                    log::debug("msg.wait.ended", fields! { "ticket" => ticket, "why" => why });
                     return refused_as("", "timed_out", "nothing arrived before the timeout");
                 }
             }
@@ -1178,10 +1220,10 @@ pub(super) fn words(refusal: &Refusal) -> String {
         ),
         Refusal::HumanElsewhere { machine, calls_us } => format!(
             "this shell is the person at the Muster window on {machine}, whose messages are \
-             kept there: this machine's daemon was reached from there, so it has no person of \
-             its own. Run this on {machine}, where a group kept here is named <group>@{calls_us}. \
-             Here you can post in and change a group kept here that you are in, and read its \
-             log"
+             kept there, and this machine has no link to {machine} now to do this there for \
+             you: a window attached to both machines links them. Until it does, run this on \
+             {machine}, where a group kept here is named <group>@{calls_us}; here you can post \
+             in and change a group kept here that you are in, and read its log"
         ),
         Refusal::NotAParticipant { name } => format!(
             "{} not taking part, so there is nothing to leave",

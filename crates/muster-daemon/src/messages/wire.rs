@@ -24,7 +24,8 @@ pub(super) fn call_to(call: &Call) -> Called {
     }
 }
 
-/// The call, or nothing for a replicate, which is not a call the service answers.
+/// The call, or nothing for a replicate or a carried request, which the service does not
+/// answer as calls.
 pub(super) fn call_from(called: Called) -> Option<Call> {
     Some(match called {
         Called::Find(find) => Call::Find { group: find.group },
@@ -43,7 +44,7 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
         Called::Since(since) => Call::Since { group: since.group, after: since.after },
         Called::Who(who) => Call::Who { group: who.group },
         Called::Whom(whom) => Call::Whom { name: whom.name },
-        Called::Replicate(_) => return None,
+        Called::Replicate(_) | Called::Carried(_) => return None,
     })
 }
 
@@ -174,7 +175,8 @@ pub(super) fn reply_to(reply: Reply) -> Replied {
     }
 }
 
-/// The reply, or nothing for an applied, which answers a replicate rather than a call.
+/// The reply, or nothing for an applied or a carried, which answer a replicate or a carried
+/// request rather than a call.
 pub(super) fn reply_from(replied: Replied) -> Option<Reply> {
     let caught = |caught: Option<proto::Caught>| caught_from(caught.unwrap_or_default());
     Some(match replied {
@@ -195,7 +197,7 @@ pub(super) fn reply_from(replied: Replied) -> Option<Reply> {
             Reply::Refused { refusal: refusal_from(refused), caught }
         }
         Replied::Named(named) => Reply::Named(named.name),
-        Replied::Applied(_) => return None,
+        Replied::Applied(_) | Replied::Carried(_) => return None,
     })
 }
 
