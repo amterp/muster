@@ -24,9 +24,9 @@ fn typeable_conformance() {
         let mut waiting = Waiting::new();
         let (mut raised, mut cleared, mut details) = (Vec::new(), Vec::new(), Vec::new());
         let mut asked: Vec<Value> = Vec::new();
-        // What each `ask` step answered, only for a case that has one, so that the cases about
-        // something else need not spell it.
-        let mut asks: Vec<Value> = Vec::new();
+        // What each `ask` step answered and each `reconnected` step named, only for a case that
+        // has such a step, so that the cases about something else need not spell them.
+        let (mut asks, mut reconnects): (Vec<Value>, Vec<Value>) = (Vec::new(), Vec::new());
         let mut last_read = 0;
 
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
@@ -41,6 +41,10 @@ fn typeable_conformance() {
             } else if let Some(pane) = step.get("ask").and_then(Value::as_str) {
                 let made = waiting.ask(&pane_key(pane)?, asker(step)?);
                 asks.push(json!({ "pane": pane, "made": made }));
+            } else if let Some(daemon) = step.get("reconnected").and_then(Value::as_str) {
+                let unstarted = waiting.reconnected(&DaemonId::new(daemon), number(step, "at")?);
+                reconnects
+                    .push(json!(unstarted.iter().map(ToString::to_string).collect::<Vec<_>>()));
             } else if let Some(pane) = step.get("typeable").and_then(Value::as_str) {
                 waiting.typeable(&pane_key(pane)?);
             } else if let Some(pane) = step.get("closed").and_then(Value::as_str) {
@@ -81,6 +85,7 @@ fn typeable_conformance() {
             // paragraph restated in thirteen cases that are about something else.
             ("detail", given.get("detail").is_some().then(|| json!(details.last()))),
             ("asks", (!asks.is_empty()).then_some(Value::Array(asks))),
+            ("reconnected", (!reconnects.is_empty()).then_some(Value::Array(reconnects))),
         ]))
     });
 

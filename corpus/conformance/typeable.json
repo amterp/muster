@@ -1091,6 +1091,104 @@
         ],
         "next_wake": null
       }
+    },
+    {
+      "name": "a daemon that answers again asks for its panes nothing dialed, and not for the others",
+      "why": "The moment a bridge can attach again (kan a_2YQD5xCFq). A pane on that daemon whose last bridge was started has failed or will, so it is named for an ask. One whose ask the shell has not started yet is not: that bridge will start against a daemon that answers. A pane on another machine keeps its own wait, which is why the next wake is its deadline, 3.5s on, rather than a whole deadline from the reconnect.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "started": "devenv/p206y9p61r",
+            "at": 100000000
+          },
+          {
+            "opened": "devenv/p206y9rm8s",
+            "at": 0
+          },
+          {
+            "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "reconnected": "devenv",
+            "at": 1500000000
+          }
+        ],
+        "now": 1500000000
+      },
+      "expect": {
+        "raised": [],
+        "cleared": [],
+        "asked": [],
+        "next_wake": 3500000000,
+        "reconnected": [
+          [
+            "devenv/p206y9p61r"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "a connection that is back is not blamed for a pane still dark",
+      "why": "A wait that carried a lost connection said to check that the machine was reachable, and said it four seconds after it was (kan a_2YQD5xCFq). Once the daemon answers again that sentence is false, so one already said is taken back, and a pane still dark a deadline later says only that nothing has dialed.",
+      "given": {
+        "deadline": 5000000000,
+        "detail": true,
+        "steps": [
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "started": "devenv/p206y9p61r",
+            "at": 0
+          },
+          {
+            "reconcile": 6000000000
+          },
+          {
+            "reconnected": "devenv",
+            "at": 7000000000
+          },
+          {
+            "reconcile": 7000000000
+          },
+          {
+            "reconcile": 12000000000
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:devenv/p206y9p61r",
+          "pane:devenv/p206y9p61r"
+        ],
+        "cleared": [
+          {
+            "key": "pane:devenv/p206y9p61r",
+            "because": "restarted"
+          }
+        ],
+        "asked": [],
+        "next_wake": 10000000000,
+        "detail": "The pane devenv/p206y9p61r has had a socket open for over 5s, and no bridge has attached - the bridge that draws this pane either never started or cannot reach the socket or its daemon. The pane shows what it last drew and nothing typed into it appears, so it looks frozen rather than broken; every other pane in the window is unaffected. Muster asks for another bridge every 15s and keeps asking; `muster pane reattach --pane p206y9p61r` asks now. The run log has the cause: look for `link.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`.",
+        "reconnected": [
+          [
+            "devenv/p206y9p61r"
+          ]
+        ]
+      }
     }
   ]
 }

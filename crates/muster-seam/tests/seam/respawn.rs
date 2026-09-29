@@ -10,9 +10,12 @@
 //! the only way a bridge is ever started - so a view carrying the number is the seam under test.
 
 use std::io::Write;
+use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
+use std::path::Path;
+use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use muster::proto::{
@@ -20,7 +23,7 @@ use muster::proto::{
     Startup, ViewChanged, ViewNode, event, request, response, view_node,
 };
 use muster_core::bridge_link::Report;
-use muster_harness::{Daemon, until, until_within};
+use muster_harness::{Daemon, Pump, Relay, until, until_within};
 use prost::Message;
 
 #[test]
@@ -85,12 +88,16 @@ fn a_pane_with_no_bridge_is_asked_for_one_when_its_daemon_comes_back() {
     // seconds on a connection that was working (kan a_2YQD5xCFq). The daemon answering again is
     // the moment a bridge can attach, so that is when every pane of its with none is asked for.
     let _turn = muster::testing::fresh_session();
-    let mut daemon = Daemon::start_built();
-    let pane = open_a_window(&daemon);
+    let daemon = Daemon::start_built();
+    let tunnel = Arc::new(Cuttable::default());
+    let relay = Relay::start(daemon.root(), daemon.socket_path(), tunnel.clone());
+    let pane = open_a_window_with(&relay.muster_config());
     report_started(&pane, 0);
 
-    daemon.kill();
-    daemon.restart();
+    // The connection drops and comes back, as a tunnel's does when its master is replaced.
+    tunnel.cut(true);
+    std::thread::sleep(Duration::from_millis(500));
+    tunnel.cut(false);
 
     // Well inside the fifteen seconds the watch waits before it asks on its own, so this is the
     // reconnect asking rather than the watch.
@@ -200,10 +207,15 @@ fn dial_a_bridge(pane: &Pane) -> UnixStream {
 
 /// Starts the core against this daemon, opens the window, and names the pane it came up on.
 fn open_a_window(daemon: &Daemon) -> Pane {
+    open_a_window_with(&daemon.muster_config())
+}
+
+/// The same, with whichever config names the daemon.
+fn open_a_window_with(config: &Path) -> Pane {
     forget_the_view();
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        config_path: config.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -219,6 +231,49 @@ fn open_a_window(daemon: &Daemon) -> Pane {
         || format!("the last view the core published: {:?}", latest_view()),
     );
     first_pane().expect("just waited for it")
+}
+
+/// A connection to the daemon that can be cut, the way a tunnel's is when its master goes: every
+/// connection carried is ended, and each new one is closed as soon as it arrives, until it is
+/// restored.
+#[derive(Debug, Default)]
+struct Cuttable {
+    cut: AtomicBool,
+    carried: Mutex<Vec<UnixStream>>,
+}
+
+impl Cuttable {
+    fn cut(&self, cut: bool) {
+        self.cut.store(cut, Ordering::Release);
+        if cut {
+            for stream in self.carried.lock().expect("a relay thread panicked").drain(..) {
+                let _ = stream.shutdown(Shutdown::Both);
+            }
+        }
+    }
+}
+
+impl Pump for Cuttable {
+    fn carry(&self, client: UnixStream, daemon: &Path) {
+        if self.cut.load(Ordering::Acquire) {
+            return;
+        }
+        let Ok(upstream) = UnixStream::connect(daemon) else { return };
+        let (Ok(mut from_client), Ok(mut to_daemon), Ok(client_kept), Ok(daemon_kept)) =
+            (client.try_clone(), upstream.try_clone(), client.try_clone(), upstream.try_clone())
+        else {
+            return;
+        };
+        self.carried.lock().expect("a relay thread panicked").extend([client_kept, daemon_kept]);
+        let forward = std::thread::spawn(move || {
+            let _ = std::io::copy(&mut from_client, &mut to_daemon);
+            let _ = to_daemon.shutdown(Shutdown::Write);
+        });
+        let (mut from_daemon, mut to_client) = (upstream, client);
+        let _ = std::io::copy(&mut from_daemon, &mut to_client);
+        let _ = to_client.shutdown(Shutdown::Both);
+        let _ = forward.join();
+    }
 }
 
 /// A pane, named the way anything crossing the seam names one.

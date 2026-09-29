@@ -39,6 +39,13 @@ fn respawn_conformance() {
                 let restarts = respawns.asked(&pane, number(step, "at")?);
                 decisions.push(json!(format!("ask:{restarts}")));
                 last = Some(pane);
+            } else if let Some(pane) = step.get("reconnected").and_then(Value::as_str) {
+                let pane = pane_key(pane)?;
+                let asked = respawns.reconnected(&pane, number(step, "at")?);
+                decisions.push(json!(
+                    asked.map_or_else(|| "left".to_string(), |restarts| format!("ask:{restarts}"))
+                ));
+                last = Some(pane);
             } else if let Some(pane) = step.get("forgot").and_then(Value::as_str) {
                 let pane = pane_key(pane)?;
                 respawns.forget(&pane);
@@ -67,7 +74,7 @@ fn respawn_conformance() {
 
 /// `start:2`, so a case reads as a sequence of answers rather than a shape to decode.
 ///
-/// The two steps that ask for a bridge without one having ended spell themselves at the call
+/// The steps that ask for a bridge without one having ended spell themselves at the call
 /// site, as `ask:N` and `left` - they answer how many bridges the pane has been given rather
 /// than which attempt in a run of failures this is, and reusing `start:N` for both would put
 /// two different numbers under one word.

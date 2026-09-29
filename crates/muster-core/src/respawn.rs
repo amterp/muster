@@ -193,6 +193,10 @@ struct Started {
     /// next exit is the bridge's life to within a few milliseconds.
     asked_at: u64,
 
+    /// Whether this pane was left to another window, or to the daemon that says it is gone,
+    /// rather than given up on. Only a person asks for a bridge for such a pane.
+    left: bool,
+
     /// Whether the bridge asked for at `asked_at` has ended.
     ///
     /// The difference between the two failures that look identical from a pane: a bridge that
@@ -226,11 +230,11 @@ impl Respawns {
         let held = self.started.get(pane).copied().unwrap_or_default();
         match ending {
             Ending::TakenOver => {
-                self.finished(pane, held);
+                self.finished(pane, held, true);
                 return Decision::Yield;
             }
             Ending::Gone => {
-                self.finished(pane, held);
+                self.finished(pane, held, true);
                 return Decision::Leave;
             }
             Ending::Lost | Ending::Refused => {}
@@ -241,7 +245,7 @@ impl Respawns {
             .is_none_or(|started| now.saturating_sub(started.asked_at) >= SETTLED_NS);
         let tried = if settled { 0 } else { held.tried };
         if tried >= LIMIT {
-            self.finished(pane, held);
+            self.finished(pane, held, false);
             return Decision::GiveUp(tried);
         }
         let tried = tried + 1;
@@ -294,9 +298,31 @@ impl Respawns {
         self.restarts(pane)
     }
 
+    /// The daemon holding this pane answers again after it stopped, and nothing has dialed the
+    /// pane.
+    ///
+    /// The run of failures starts over, as it does for a person asking: what ended the last
+    /// bridges was most likely the connection that has just come back, and a pane the limit
+    /// stopped rebuilding while it was down deserves its tries back. `None` for a pane left to
+    /// another window or to its closing, which nothing automatic takes back.
+    pub fn reconnected(&mut self, pane: &PaneKey, now: u64) -> Option<u32> {
+        let held = self.started.get(pane).copied().unwrap_or_default();
+        if held.left {
+            return None;
+        }
+        self.ask(pane, held, 0, now);
+        Some(self.restarts(pane))
+    }
+
     /// Records a bridge asked for: one more for the pane, `tried` for the run of failures.
     fn ask(&mut self, pane: &PaneKey, held: Started, tried: u32, now: u64) {
-        let started = Started { restarts: held.restarts + 1, tried, asked_at: now, ended: false };
+        let started = Started {
+            restarts: held.restarts + 1,
+            tried,
+            asked_at: now,
+            left: false,
+            ended: false,
+        };
         self.started.insert(pane.clone(), started);
     }
 
@@ -305,8 +331,8 @@ impl Respawns {
     /// Kept rather than dropped, on the same terms as the count itself: a pane that gave up or
     /// yielded is one nothing is going to ask about again on its own, and the record is what
     /// says so.
-    fn finished(&mut self, pane: &PaneKey, held: Started) {
-        self.started.insert(pane.clone(), Started { ended: true, ..held });
+    fn finished(&mut self, pane: &PaneKey, held: Started, left: bool) {
+        self.started.insert(pane.clone(), Started { ended: true, left, ..held });
     }
 
     /// How many bridges this pane has been given, counting from zero for one nobody replaced.

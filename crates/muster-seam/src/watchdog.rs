@@ -211,6 +211,14 @@ pub(crate) fn started(pane: &PaneKey) {
     KNOCK.notify_all();
 }
 
+/// This daemon answers again, so every pane of its nothing has dialed waits again from now.
+/// Answers which of them to ask for (`typeable::Waiting::reconnected`).
+pub(crate) fn reconnected(daemon: &DaemonId) -> Vec<PaneKey> {
+    let unstarted = poison::lock(&WAITING, "typeable").reconnected(daemon, clock::monotonic_now());
+    KNOCK.notify_all();
+    unstarted
+}
+
 /// A bridge dialed in.
 pub(crate) fn typeable(pane: &PaneKey) {
     poison::lock(&WAITING, "typeable").typeable(pane);

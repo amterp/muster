@@ -536,6 +536,102 @@
         ],
         "restarts": 5
       }
+    },
+    {
+      "name": "a pane with no bridge is asked for when its daemon answers again",
+      "why": "The bridges started while a devenv's tunnel was down failed to attach, and nothing asked again until the watch did, fifteen seconds after the drop and fourteen after the tunnel was back (kan a_2YQD5xCFq). The daemon answering again is the moment a bridge can attach. The ask costs nothing from the run of failures, on the same terms as the watch's.",
+      "given": {
+        "steps": [
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 0,
+            "ending": "lost"
+          },
+          {
+            "reconnected": "devenv/p206y9p61r",
+            "at": 1500000000
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "start:1",
+          "ask:2"
+        ],
+        "restarts": 2
+      }
+    },
+    {
+      "name": "a reconnect gives a pane the limit stopped its tries back",
+      "why": "What ended those bridges was most likely the connection that has just come back, so the run of failures starts over the way it does when a person asks. The next bridge that dies on sight is the first of a new run, not the fourth of the old one.",
+      "given": {
+        "steps": [
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 0,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 100000000,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 200000000,
+            "ending": "refused"
+          },
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 300000000,
+            "ending": "refused"
+          },
+          {
+            "reconnected": "devenv/p206y9p61r",
+            "at": 2000000000
+          },
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 2100000000,
+            "ending": "refused"
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "start:1",
+          "start:2",
+          "start:3",
+          "give_up:3",
+          "ask:4",
+          "start:1"
+        ],
+        "restarts": 5
+      }
+    },
+    {
+      "name": "a reconnect does not take back a terminal left to another window",
+      "why": "The pane was handed to a bridge somebody asked for elsewhere, and its daemon answering again changes nothing about that. Taking it back would be answered the same way from the other window. Only a person asks for such a pane.",
+      "given": {
+        "steps": [
+          {
+            "ended": "devenv/p206y9p61r",
+            "at": 0,
+            "ending": "taken_over"
+          },
+          {
+            "reconnected": "devenv/p206y9p61r",
+            "at": 2000000000
+          }
+        ]
+      },
+      "expect": {
+        "decisions": [
+          "yield",
+          "left"
+        ],
+        "restarts": 0
+      }
     }
   ]
 }

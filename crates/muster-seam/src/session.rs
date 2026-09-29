@@ -4787,11 +4787,51 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             log::info("backend.reconnected", fields! { "daemon" => daemon.to_string() });
             health(daemon, Health::Connected, "");
             report_again(daemon);
+            ask_for_bridges_again(daemon);
         }
     }
 }
 
-/// Tells panes they gained or lost the keyboard of a focused window. The daemon writes the
+/// Asks for a bridge for every pane of this daemon that nothing has dialed, now that it answers.
+///
+/// The moment a bridge can attach again. The bridges started while the daemon was away failed
+/// to, and their failures are not new endings - the pane was already dark - so nothing else
+/// asks until the watch on panes nothing has dialed, three deadlines after the drop. On a devenv
+/// tunnel that came back in a second, that was fourteen seconds of dead panes on a working
+/// connection, and a notification to check the machine was reachable four seconds after it was
+/// (kan a_2YQD5xCFq). Every such pane also starts its wait over, so what it says if it stays
+/// dark is about the bridge rather than about a connection that is back.
+fn ask_for_bridges_again(daemon: &DaemonId) {
+    let unstarted = watchdog::reconnected(daemon);
+    let asked: Vec<PaneKey> = {
+        let mut session = poison::lock(&SESSION, "session");
+        if session.quitting {
+            return;
+        }
+        let now = clock::monotonic_now();
+        let shown: Vec<PaneKey> = unstarted
+            .into_iter()
+            .filter(|pane| session.holds(pane) && session.in_a_held_tab(pane))
+            .collect();
+        shown.into_iter().filter(|pane| session.respawns.reconnected(pane, now).is_some()).collect()
+    };
+    if asked.is_empty() {
+        return;
+    }
+    for pane in &asked {
+        watchdog::ask(pane, Ask::Unprompted);
+    }
+    log::info(
+        "bridge.reconnect.asked",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "panes" => asked.iter().map(ToString::to_string).collect::<Vec<_>>().join(","),
+        },
+    );
+    publish("backend_reconnected");
+}
+
+/// Tells panes they gained or lost the keyboard of a focused window./// Tells panes they gained or lost the keyboard of a focused window. The daemon writes the
 /// report only to a program that asked (`muster_core::pane_focus`).
 fn tell_focus(focus: Vec<(Arc<AttachedPane>, bool)>) {
     for (pane, focused) in focus {

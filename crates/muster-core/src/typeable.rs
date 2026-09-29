@@ -29,7 +29,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::composition::PaneKey;
+use crate::composition::{DaemonId, PaneKey};
 use crate::diagnostics::clock::describe;
 use crate::respawn::{self, Ended, Ending};
 
@@ -235,6 +235,31 @@ impl Waiting {
         if let Some(wait) = self.waits.get_mut(pane) {
             wait.started = at;
         }
+    }
+
+    /// The daemon holding these panes answers again after it stopped, so every pane of its that
+    /// no bridge has dialed starts waiting again, from now and with nothing known about why.
+    ///
+    /// Answers which of them to ask for, which is every one whose last ask has been started: a
+    /// bridge started while the daemon was away has failed or will, and one not started yet
+    /// will start against a daemon that answers.
+    ///
+    /// Starting over is what stops a pane accusing the connection once it is back. A wait
+    /// carrying a lost connection says to check that the machine is reachable, and said it four
+    /// seconds after it was (kan a_2YQD5xCFq); after this, one already said is taken back as
+    /// `restarted`, and a pane still dark a deadline later says only that nothing has dialed.
+    pub fn reconnected(&mut self, daemon: &DaemonId, at: u64) -> Vec<PaneKey> {
+        let mut unstarted = Vec::new();
+        for (pane, wait) in &mut self.waits {
+            if &pane.daemon != daemon {
+                continue;
+            }
+            *wait = Wait { since: at, started: at, last: None };
+            if !self.pending.contains(pane) {
+                unstarted.push(pane.clone());
+            }
+        }
+        unstarted
     }
 
     /// A bridge for this pane has ended, so the wait starts again knowing why.
