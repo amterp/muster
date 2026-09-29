@@ -234,7 +234,7 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "conformance"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "serde_json",
 ]
@@ -578,7 +578,7 @@ checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
 name = "muster-bridge"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "libc",
  "muster-core",
@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "muster-cli"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anstream 0.6.21",
  "anstyle",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "muster-contract"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "libc",
  "muster-core",
@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "muster-core"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "conformance",
  "flexid",
@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "muster-daemon"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "libc",
  "mimalloc",
@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "muster-daemon-client"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "conformance",
  "libc",
@@ -675,7 +675,7 @@ dependencies = [
 
 [[package]]
 name = "muster-daemon-proto"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "muster-frame",
  "prost",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "muster-detect"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "conformance",
  "libc",
@@ -701,11 +701,11 @@ dependencies = [
 
 [[package]]
 name = "muster-frame"
-version = "0.11.0"
+version = "0.12.0"
 
 [[package]]
 name = "muster-harness"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "libc",
  "muster-daemon-proto",
@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "muster-latency"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "libc",
  "muster-daemon-proto",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "muster-msg"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "conformance",
  "serde",
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "muster-perf"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "libc",
  "muster-core",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "muster-proto"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "muster-frame",
  "prost",
@@ -763,7 +763,7 @@ dependencies = [
 
 [[package]]
 name = "muster-seam"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "libc",
  "muster-core",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "muster-ssh"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "conformance",
  "libc",
@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "muster-vt"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bindgen",
  "conformance",
