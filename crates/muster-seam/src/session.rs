@@ -22,7 +22,7 @@ use muster_core::composition::{
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
     zoom_filling,
 };
-use muster_core::config::{Appearance, Config, Feel};
+use muster_core::config::{Appearance, Config, Feel, Rgb};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::diagnostics::{clock, log, poison};
 use muster_core::equalize::{self, Evenly};
@@ -310,7 +310,17 @@ pub(crate) fn config_path() -> String {
 static APPEARANCE: Mutex<Option<Appearance>> = Mutex::new(None);
 
 pub(crate) fn set_appearance(appearance: Appearance) {
+    *poison::lock(&MACHINE_COLORS, "settings") = appearance.machine_colors.clone();
     *poison::lock(&APPEARANCE, "settings") = Some(appearance);
+}
+
+/// The colors the config file chose for machines' marks, apart from the rest of the
+/// appearance because every roster published reads them, and cloning a palette and a font
+/// name to get at them would be work per publish for nothing.
+static MACHINE_COLORS: Mutex<BTreeMap<DaemonId, Rgb>> = Mutex::new(BTreeMap::new());
+
+pub(crate) fn machine_colors() -> BTreeMap<DaemonId, Rgb> {
+    poison::lock(&MACHINE_COLORS, "settings").clone()
 }
 
 /// The appearance in force, which with no config file is every value absent - so the renderer
@@ -3098,13 +3108,13 @@ pub(crate) fn disarm() {
 /// The narrow half of [`publish`], for the callers that have changed which rows carry numbers
 /// and nothing else. Going through `publish` would reconcile every daemon and save the
 /// composition on a keystroke, which is a lot of work to say that a number moved.
-fn announce_roster() {
+pub(crate) fn announce_roster() {
     let _publishing = poison::lock(&PUBLISHING, "publishing");
     let (roster, numbering, message) = {
         let mut session = poison::lock(&SESSION, "session");
         let roster = session.roster(&session.view());
         let numbering = session.numbering(&roster);
-        let message = convert::roster(&roster, &numbering);
+        let message = convert::roster(&roster, &numbering, &machine_colors());
         let unseen = session.sent.roster(&message);
         (roster, numbering, unseen.then_some(message))
     };
@@ -4634,7 +4644,7 @@ fn publish(cause: &str) {
         save(&session);
         session.forget_what_closed();
         let view_message = convert::view(&view);
-        let roster_message = convert::roster(&roster, &numbering);
+        let roster_message = convert::roster(&roster, &numbering, &machine_colors());
         let view_message = session.sent.view(&view_message).then_some(view_message);
         let roster_message = session.sent.roster(&roster_message).then_some(roster_message);
         (view, roster, numbering, noticed, focus, view_message, roster_message)

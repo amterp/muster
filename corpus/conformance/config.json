@@ -18,6 +18,44 @@
       }
     },
     {
+      "name": "a daemon may choose the color that marks its rows",
+      "why": "A machine's color is drawn from its name, so two names can land on the same one - five devenvs share six colors. The block that names the machine is where somebody fixes that, and the color is kept apart from the daemon itself so that saving it recolors the agent list instead of asking for a relaunch. Written the way `[colors]` writes one, and read back normalized.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "host = \"devenv\"",
+          "color = \"4A90D9\""
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv ssh=devenv"
+        ],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "daemon.devenv.color=#4a90d9"
+        ]
+      }
+    },
+    {
+      "name": "a daemon's color that is not a color is refused where it was written",
+      "why": "The same answer a bad `[colors]` entry gets, named against the block it sits in, because a file with several daemons has several places a `color` could be wrong.",
+      "given": {
+        "file": [
+          "[[daemon]]",
+          "id = \"devenv\"",
+          "host = \"devenv\"",
+          "color = 4"
+        ]
+      },
+      "expect": {
+        "refused": "the first `[[daemon]]` block has a `color` that is a number, and it has to be a string of six hex digits - `color = \"#e5484d\"`. None of the file was applied."
+      }
+    },
+    {
       "name": "a daemon needs only a name",
       "why": "Someone running one herdr should have to say one thing. The socket is absent rather than defaulted here, because what gets written down is the wish - find whatever is on this machine - and a path found today is worth nothing to a run tomorrow (architecture.md, durability: persist intent, never observation).",
       "given": {
@@ -128,7 +166,7 @@
         ]
       },
       "expect": {
-        "refused": "the first `[[daemon]]` block has a key called \"hosts\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: id, socket, host, ssh_options."
+        "refused": "the first `[[daemon]]` block has a key called \"hosts\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: id, socket, host, ssh_options, color."
       }
     },
     {
@@ -352,7 +390,7 @@
         ]
       },
       "expect": {
-        "refused": "the third `[[daemon]]` block has a key called \"sock\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: id, socket, host, ssh_options."
+        "refused": "the third `[[daemon]]` block has a key called \"sock\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: id, socket, host, ssh_options, color."
       }
     },
     {

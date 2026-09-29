@@ -546,7 +546,8 @@ being on screen: a zoomed tab is on screen while all but one of its panes are no
 **The machine is not a level of it, and that is the change stage three of MIP-2 made.** A tab may hold panes on two
 machines, so a heading over it would be wrong for some of its panes and the list would stop describing the window
 beside it. Which machine holds a pane is on the pane's row, drawn only while more than one is attached - on one
-machine the answer is the same on every row and says nothing. Beside the tabs, the roster carries the machines
+machine the answer is the same on every row and says nothing. It is drawn as a swatch in the machine's color, which
+the core decides - the config file's choice, or one drawn from the machine's id - so every window agrees about it. Beside the tabs, the roster carries the machines
 themselves, for the two states no pane row can hold: a machine that is unreachable, and a machine holding no panes at
 all. Without them a machine you asked to see would vanish from the window entirely the moment you closed its last
 pane, which is the state kan a_2HpkpfIfq was about.

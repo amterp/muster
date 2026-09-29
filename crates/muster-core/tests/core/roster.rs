@@ -6,9 +6,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::support::backend::{read_snapshot, text};
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
+use muster_core::config::Rgb;
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
-use muster_core::roster::{Chord, Landing, Numbering, Roster, RosterPane, RosterTab, TabStep};
+use muster_core::roster::{
+    Chord, Landing, Numbering, Roster, RosterPane, RosterTab, TabStep, machine_color,
+};
 use serde_json::{Value, json};
 
 #[test]
@@ -164,6 +167,35 @@ fn a_chord_is_the_same_whatever_has_already_been_pressed() {
         }
     }
     assert!(compared > 0, "no corpus case builds a window, so nothing was compared");
+}
+
+#[test]
+fn a_machine_keeps_its_color_from_one_release_to_the_next() {
+    // Pinned as values rather than compared with each other, because what has to hold is that
+    // a machine somebody has learned to recognize by its color keeps it after an update - a
+    // test that only checked two calls agreed would pass across a change of hash.
+    let none = BTreeMap::new();
+    let color = |name: &str| machine_color(&DaemonId::new(name), &none).to_string();
+    assert_eq!(color("local"), "#e5484d");
+    assert_eq!(color("devenv"), "#8d9440");
+
+    // Six names landing on six colors, so no entry in the palette is out of reach.
+    let spread: BTreeSet<String> =
+        ["box", "dev3", "dev2", "ci", "local", "devenv"].into_iter().map(color).collect();
+    assert_eq!(spread.len(), 6, "some color is never drawn: {spread:?}");
+}
+
+#[test]
+fn a_color_the_config_file_chose_beats_the_one_drawn_from_the_name() {
+    let devenv = DaemonId::new("devenv");
+    let chosen = Rgb::parse("#123456").expect("a color");
+    let colors = BTreeMap::from([(devenv.clone(), chosen)]);
+    assert_eq!(machine_color(&devenv, &colors), chosen);
+    assert_eq!(
+        machine_color(&DaemonId::new("local"), &colors).to_string(),
+        "#e5484d",
+        "choosing one machine's color moved another's"
+    );
 }
 
 /// One tab, as a line.

@@ -1549,7 +1549,7 @@ fn read_window() -> Response {
     Response {
         payload: Some(response::Payload::Window(proto::Window {
             view: Some(convert::view(&now.view)),
-            roster: Some(convert::roster(&now.roster, &now.numbering)),
+            roster: Some(convert::roster(&now.roster, &now.numbering, &session::machine_colors())),
             panes: now.agents.iter().map(convert::pane_state).collect(),
             daemons: now
                 .daemons
@@ -1574,7 +1574,12 @@ fn read_window() -> Response {
                     name: other.name.clone(),
                     pid: other.pid,
                     tabs: unnumbered(
-                        convert::roster(&other.roster, &muster_core::Numbering::Panes).tabs,
+                        convert::roster(
+                            &other.roster,
+                            &muster_core::Numbering::Panes,
+                            &BTreeMap::new(),
+                        )
+                        .tabs,
                     ),
                 })
                 .collect(),
@@ -2187,6 +2192,10 @@ fn reload_config() -> Response {
     );
     announce_bindings();
     announce_appearance();
+    // The roster too, because a machine's color is on it and the file may have just chosen
+    // one. Announced here rather than left to the next publish, so the agent list is right
+    // when the save returns rather than whenever a daemon next says something.
+    session::announce_roster();
     Response::ok()
 }
 

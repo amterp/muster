@@ -1980,6 +1980,12 @@ message RosterMachine {
 
   // How many panes it holds, on screen or not. Zero is the state worth drawing.
   uint32 panes = 3;
+
+  // What marks this machine's rows in the agent list, as `#rrggbb`: the `color` its
+  // `[[daemon]]` block chose, or one drawn from its id, so the same machine has the same color
+  // in every window. The core's answer rather than the shell's, so two windows and a script
+  // agree about it.
+  string color = 4;
 }
 
 message RosterTab {

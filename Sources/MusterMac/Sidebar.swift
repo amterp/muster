@@ -125,10 +125,14 @@ public struct Roster: Equatable {
     /// How many panes it holds, on screen or not. Zero is the state worth drawing.
     public let panes: Int
 
-    public init(id: String, state: String, panes: Int) {
+    /// What marks its rows, as `#rrggbb`. The core's answer, so every window agrees on it.
+    public let color: String
+
+    public init(id: String, state: String, panes: Int, color: String = "") {
       self.id = id
       self.state = state
       self.panes = panes
+      self.color = color
     }
 
     /// Whether this machine has something to say that its panes do not.
@@ -212,6 +216,13 @@ public struct Presentation: Equatable {
 /// mostly stable and an agent state blinks, so they are two messages; the shell holds both
 /// and puts them together, which it already does to paint a pane's border.
 public enum SidebarModel {
+  /// Which machine a row is on, as the row draws it: a swatch in the machine's color.
+  public struct MachineMark: Equatable {
+    public let daemon: String
+    /// `#rrggbb`, as the core sent it.
+    public let color: String
+  }
+
   /// What one line in the list is.
   public enum Kind: Equatable {
     /// A tab, over the panes in it, carrying the press that reaches it or 0.
@@ -276,16 +287,18 @@ public enum SidebarModel {
     /// press would be an indent that buys nothing.
     public let reservedPresses: Int
 
-    /// Whether this row says which machine its pane is on.
+    /// The machine this row marks itself with, or nil for none.
     ///
-    /// True on every pane row while more than one machine is attached, and false on all of them
-    /// otherwise - the answer is a property of the window rather than of the row, because a
-    /// column that appeared on some rows and not others would be worse than either.
+    /// On every pane row and machine heading while more than one machine is attached, and on
+    /// none of them otherwise - the answer is a property of the window rather than of the row,
+    /// because a column that appeared on some rows and not others would be worse than either.
+    /// The heading carries the same mark as its machine's panes, so the list is its own legend
+    /// whenever a heading is drawn.
     ///
     /// Here rather than in the view so the rule is testable, and because it is the visible half
     /// of the flattening: with no heading per machine, this is the only thing that says a pane
     /// is on the devenv (MIP-2).
-    public let showsMachine: Bool
+    public let machine: MachineMark?
 
     /// Whether this row's pane press is the second press of a chord already begun.
     ///
@@ -370,7 +383,11 @@ public enum SidebarModel {
     // happens to carry, so the column is a property of the list - which is the whole point of
     // reserving it.
     let twoPress = roster.numbering.takesTwoPresses
-    let sayMachine = roster.spansMachines
+    let colors = Dictionary(
+      roster.machines.map { ($0.id, $0.color) }, uniquingKeysWith: { first, _ in first })
+    let mark = { (daemon: String) -> MachineMark? in
+      roster.spansMachines ? MachineMark(daemon: daemon, color: colors[daemon] ?? "") : nil
+    }
     var rows: [Row] = []
     for tab in roster.tabs {
       if captions {
@@ -379,7 +396,7 @@ public enum SidebarModel {
             kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
             label: tab.label, subtitle: "", givenName: tab.givenName, state: "", agent: nil,
             onScreen: tab.onScreen, hasKeyboard: false, reservedPresses: twoPress ? 1 : 0,
-            showsMachine: false,
+            machine: nil,
             // A caption carries the one press that reaches its tab, which is a first press or
             // none - so there is no such thing as a second press onto a caption.
             isSecondPress: false))
@@ -397,7 +414,7 @@ public enum SidebarModel {
             onScreen: pane.onScreen,
             hasKeyboard: pane.key == keyboard,
             reservedPresses: twoPress ? 2 : 0,
-            showsMachine: sayMachine,
+            machine: mark(pane.key.daemon),
             isSecondPress: tab.armed))
       }
     }
@@ -406,7 +423,7 @@ public enum SidebarModel {
         Row(
           kind: .machine, daemon: machine.id, tab: "", pane: nil, label: machine.id,
           subtitle: "", givenName: "", state: machine.state, agent: nil, onScreen: false,
-          hasKeyboard: false, reservedPresses: 0, showsMachine: false, isSecondPress: false))
+          hasKeyboard: false, reservedPresses: 0, machine: mark(machine.id), isSecondPress: false))
     }
     return rows
   }
@@ -463,7 +480,8 @@ public enum SidebarModel {
   /// this is the look.
   public static func details(of row: Row) -> String {
     var lines = [row.label]
-    guard let agent = row.agent else { return row.label }
+    if let machine = row.machine { lines.append("on \(machine.daemon)") }
+    guard let agent = row.agent else { return lines.joined(separator: "\n") }
     var state = agent.state
     if agent.reported { state += ", as the agent reports" }
     lines.append(state)
@@ -958,6 +976,8 @@ final class SidebarRowView: NSView {
   private let tabPress = NSTextField(labelWithString: "")
   private let press = NSTextField(labelWithString: "")
   private let highlight = CALayer()
+  /// Which machine the row is on, at the very trailing edge (`SidebarModel.Row.machine`).
+  private let swatch = CALayer()
   /// The marks at the trailing edge, left to right (`SidebarModel.accessories(of:)`).
   private var marks: [NSView] = []
   private let progressTrack = CALayer()
@@ -986,6 +1006,15 @@ final class SidebarRowView: NSView {
       paint(highlight, NSColor.controlAccentColor.withAlphaComponent(0.22))
       highlight.cornerRadius = 5
       layer?.addSublayer(highlight)
+    }
+
+    // A square rather than a circle, and at the far edge rather than beside the name: the dot
+    // by the name is the agent's state, and a second round mark in a second color beside it
+    // would read as a second state.
+    if let machine = row.machine, let color = NSColor(hex: machine.color) {
+      paint(swatch, color)
+      swatch.cornerRadius = 2
+      layer?.addSublayer(swatch)
     }
 
     switch row.kind {
@@ -1189,6 +1218,8 @@ final class SidebarRowView: NSView {
   /// Smaller than a state dot, and in the same column. A mark the size of a pane's dot would
   /// read as a state on a row that has no agent to have one.
   static let showingSize: CGFloat = 4
+  /// A point smaller than a state dot, so the two read as different kinds of mark.
+  static let swatchSize: CGFloat = 6
   static let inset: CGFloat = 8
   static let indent: CGFloat = 10
   /// Wide enough for the digit a press is drawn as, at the size an operative press is drawn.
@@ -1239,6 +1270,12 @@ final class SidebarRowView: NSView {
     // The marks from the trailing edge in, each centred on the row as the dot is, so a column of
     // them reads straight down the list whatever each row's second line does.
     var right = bounds.width - SidebarRowView.inset
+    if swatch.superlayer != nil {
+      let size = SidebarRowView.swatchSize
+      swatch.frame = CGRect(
+        x: right - size, y: (bounds.height - size) / 2, width: size, height: size)
+      right -= size + SidebarRowView.markGap
+    }
     for mark in marks.reversed() {
       let size = mark.fittingSize
       mark.frame = CGRect(
@@ -1256,7 +1293,7 @@ final class SidebarRowView: NSView {
     // Sized to the text and then centred, rather than given the whole row. A label draws its
     // text at the top of whatever frame it is handed, so a full-height frame puts the words
     // above the dot beside them - which reads as the dot being wrong rather than the text.
-    let width = max(0, (marks.isEmpty ? bounds.width - SidebarRowView.inset : right) - textLeft)
+    let width = max(0, right - textLeft)
     let textHeight = min(bounds.height, name.fittingSize.height)
     guard subtitle.superview != nil else {
       name.frame = CGRect(

@@ -103,6 +103,14 @@ pub struct Appearance {
     /// Zero is a real answer rather than an absent one - a window of fifteen agent panes fits
     /// more rows without it, and somebody who wants that has to be able to say so.
     pub pane_padding: Option<u16>,
+
+    /// The color a `[[daemon]]` block chose for its machine's mark in the agent list, by id.
+    ///
+    /// Only the machines whose block names one: every other machine takes the color
+    /// [`crate::roster::machine_color`] draws from its name. Here rather than on the daemon
+    /// itself because it describes the window and not the session, so saving it reloads like
+    /// any other color instead of asking for the relaunch a change to `[[daemon]]` needs.
+    pub machine_colors: BTreeMap<DaemonId, Rgb>,
 }
 
 /// `[font]`.
@@ -512,7 +520,7 @@ impl std::fmt::Display for Rgb {
 }
 
 /// The keys a `[[daemon]]` block may carry.
-const DAEMON_KEYS: [&str; 4] = ["id", "socket", "host", "ssh_options"];
+const DAEMON_KEYS: [&str; 5] = ["id", "socket", "host", "ssh_options", "color"];
 
 /// The keys the file itself may carry.
 const ROOT_KEYS: [&str; 15] = [
@@ -589,8 +597,9 @@ pub fn parse(text: &str) -> Result<Config, String> {
     known_keys(root.keys(), &ROOT_KEYS, "the config file")?;
 
     let mut daemons: Vec<Daemon> = Vec::new();
+    let mut machine_colors = BTreeMap::new();
     for (index, block) in daemon_blocks(root)?.iter().enumerate() {
-        let daemon = read_daemon(block, index)?;
+        let (daemon, chosen) = read_daemon(block, index)?;
         if let Some(clash) = daemons.iter().find(|held| held.id == daemon.id) {
             return Err(format!(
                 "two daemons are called `{}`, and a name is how everything else refers to \
@@ -600,6 +609,9 @@ pub fn parse(text: &str) -> Result<Config, String> {
                 describe(&clash.endpoint),
                 describe(&daemon.endpoint),
             ));
+        }
+        if let Some(chosen) = chosen {
+            machine_colors.insert(daemon.id.clone(), chosen);
         }
         daemons.push(daemon);
     }
@@ -615,7 +627,7 @@ pub fn parse(text: &str) -> Result<Config, String> {
         given_up,
         input: PaneInputSettings { option_as_alt: read_option_as_alt(root)?, text },
         feel: read_feel(root)?,
-        appearance: read_appearance(root)?,
+        appearance: Appearance { machine_colors, ..read_appearance(root)? },
         panes: read_panes(root)?,
         notifications: read_notifications(block(root, "notifications", &NOTIFICATION_KEYS)?)?,
     })
@@ -813,6 +825,7 @@ fn read_appearance(root: &toml::Table) -> Result<Appearance, String> {
         colors: read_colors(block(root, "colors", &COLOR_KEYS)?.as_ref())?,
         cursor: read_cursor(block(root, "cursor", &CURSOR_KEYS)?.as_ref())?,
         pane_padding: None,
+        machine_colors: BTreeMap::new(),
     };
 
     if let Some(value) = root.get("pane_padding") {
@@ -1269,7 +1282,7 @@ fn daemon_blocks(root: &toml::Table) -> Result<Vec<toml::Table>, String> {
         .collect()
 }
 
-fn read_daemon(block: &toml::Table, index: usize) -> Result<Daemon, String> {
+fn read_daemon(block: &toml::Table, index: usize) -> Result<(Daemon, Option<Rgb>), String> {
     let where_ = format!("the {} `[[daemon]]` block", ordinal(index));
     known_keys(block.keys(), &DAEMON_KEYS, &where_)?;
 
@@ -1314,7 +1327,22 @@ fn read_daemon(block: &toml::Table, index: usize) -> Result<Daemon, String> {
             Endpoint::Local { socket_path: socket }
         }
     };
-    Ok(Daemon { id: DaemonId::new(id), endpoint })
+    let chosen = match block.get("color") {
+        None => None,
+        Some(value) => {
+            let text = value.as_str().ok_or_else(|| {
+                format!(
+                    "{where_} has a `color` that is {}, and it has to be a string of six hex \
+                     digits - `color = \"#e5484d\"`. None of the file was applied.",
+                    described(value)
+                )
+            })?;
+            Some(Rgb::parse(text).map_err(|refusal| {
+                format!("{where_} has a `color` Muster cannot read: {refusal} None of the file was applied.")
+            })?)
+        }
+    };
+    Ok((Daemon { id: DaemonId::new(id), endpoint }, chosen))
 }
 
 /// Refuses a key nobody will read.

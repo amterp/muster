@@ -42,6 +42,11 @@ struct SidebarTests {
       onScreen: onScreen, panes: panes)
   }
 
+  /// The color the core draws for the two machine names these cases use.
+  private func color(of daemon: String) -> String {
+    daemon == "local" ? "#e5484d" : "#8d9440"
+  }
+
   /// A roster of tabs, with the machines behind them worked out from the panes.
   ///
   /// Derived rather than stated, because what the machines list decides up here is whether a
@@ -57,7 +62,8 @@ struct SidebarTests {
     }
     return Roster(
       tabs: tabs,
-      machines: machines ?? found.map { Roster.Machine(id: $0, state: "connected", panes: 1) },
+      machines: machines
+        ?? found.map { Roster.Machine(id: $0, state: "connected", panes: 1, color: color(of: $0)) },
       numbering: numbering)
   }
 
@@ -75,9 +81,39 @@ struct SidebarTests {
     // The core's order, not re-sorted here. A list that sorted for itself would disagree
     // with the window it sits beside for any arrangement but the alphabetical one.
     #expect(rows.compactMap(\.pane?.daemon) == ["local", "devenv"])
-    // And with two machines attached, every pane row says which it is on. With one it says
-    // nothing, because the answer would be the same on every row.
-    #expect(rows.filter { $0.isPane }.allSatisfy { $0.showsMachine })
+    // And with two machines attached, every pane row says which it is on, in the color the core
+    // gave that machine. With one it says nothing, because the answer would be the same on
+    // every row.
+    #expect(
+      rows.compactMap(\.machine) == [
+        SidebarModel.MachineMark(daemon: "local", color: "#e5484d"),
+        SidebarModel.MachineMark(daemon: "devenv", color: "#8d9440"),
+      ])
+  }
+
+  @Test("one machine marks nothing, and a heading carries its machine's mark")
+  func theMachineMarkIsTheListsOwnLegend() {
+    let alone = SidebarModel.rows(
+      roster: roster([tab("local", panes: [pane("local", "w1:p1")])]), agents: [:])
+    #expect(alone.allSatisfy { $0.machine == nil })
+
+    // Two machines, one of them holding nothing, so it gets a heading. The heading's mark is the
+    // one its panes would carry, which is what lets somebody learn the colors from the list.
+    let rows = SidebarModel.rows(
+      roster: roster(
+        [tab("local", panes: [pane("local", "w1:p1")])],
+        machines: [
+          Roster.Machine(id: "local", state: "connected", panes: 1, color: "#e5484d"),
+          Roster.Machine(id: "devenv", state: "disconnected", panes: 0, color: "#8d9440"),
+        ]),
+      agents: [:])
+    let heading = try? #require(rows.first { $0.isMachine })
+    #expect(heading?.machine == SidebarModel.MachineMark(daemon: "devenv", color: "#8d9440"))
+    let paneRow = try? #require(rows.first { $0.isPane })
+    #expect(paneRow?.machine == SidebarModel.MachineMark(daemon: "local", color: "#e5484d"))
+    // A color says which machine to somebody who has learned the colors; hovering says it to
+    // everybody else, and VoiceOver reads the same text.
+    #expect(paneRow.map(SidebarModel.details(of:))?.contains("on local") == true)
   }
 
   /// What the sidebar's partial redraw rests on.

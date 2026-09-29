@@ -27,7 +27,10 @@
 //! machine holds a pane is on the pane, and a machine holding no panes at all is in `machines`
 //! below - a state that would otherwise have nowhere to be said.
 
+use std::collections::BTreeMap;
+
 use crate::composition::{Composition, DaemonId, PaneKey};
+use crate::config::Rgb;
 use crate::mirror::Mirror;
 use crate::mirror::backend::Health;
 use crate::mirror::backend::{Pane, PaneId, TabId};
@@ -58,6 +61,44 @@ pub struct RosterMachine {
 
     /// How many panes it holds, on screen or not. Zero is the state worth drawing.
     pub panes: usize,
+}
+
+/// The color that marks a machine's rows in the agent list.
+///
+/// What the config file chose for it when it chose one, and otherwise a color drawn from its
+/// name: the same machine gets the same color in every window and every launch, because the
+/// only input is the name. Drawn from a name rather than handed out in config order, so a
+/// machine keeps its color when another is added or removed (amterp, kan a_2Mi2uZQUx).
+///
+/// Two names can land on one color, and there are six to go round. That is what the config
+/// file's `color` is for.
+pub fn machine_color(id: &DaemonId, chosen: &BTreeMap<DaemonId, Rgb>) -> Rgb {
+    if let Some(chosen) = chosen.get(id) {
+        return *chosen;
+    }
+    let hash = fnv1a(id.to_string().as_bytes());
+    MACHINE_COLORS[usize::try_from(hash).unwrap_or_default() % MACHINE_COLORS.len()]
+}
+
+/// What a machine's mark may be painted in when the file says nothing.
+///
+/// Chosen to stay clear of the colors Muster ships for agent states - cyan, orange, indigo,
+/// green and grey - because the mark sits on the same row as a state's dot, and a machine
+/// that looked like `working` would be a row that lies. Six rather than more: past six, hues
+/// stop being told apart at the size of a swatch.
+const MACHINE_COLORS: [Rgb; 6] = [
+    Rgb { red: 0xff, green: 0x4f, blue: 0x9a },
+    Rgb { red: 0xf2, green: 0xc2, blue: 0x00 },
+    Rgb { red: 0xa8, green: 0x78, blue: 0x4f },
+    Rgb { red: 0xb2, green: 0x5c, blue: 0xe6 },
+    Rgb { red: 0xe5, green: 0x48, blue: 0x4d },
+    Rgb { red: 0x8d, green: 0x94, blue: 0x40 },
+];
+
+/// FNV-1a over 32 bits. Written out rather than taken from `std`, because `std`'s hasher is
+/// free to change between Rust releases and a machine's color must not.
+fn fnv1a(bytes: &[u8]) -> u32 {
+    bytes.iter().fold(0x811c_9dc5, |hash, &byte| (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193))
 }
 
 /// One tab, as something to list and something to go to.

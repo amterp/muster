@@ -6,10 +6,13 @@
 //! few keys quietly do nothing, which is the failure mode this whole vocabulary exists to
 //! avoid.
 
-use muster_core::composition::{View, ViewNode};
+use std::collections::BTreeMap;
+
+use muster_core::composition::{DaemonId, View, ViewNode};
+use muster_core::config::Rgb;
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
 use muster_core::mirror::backend::{AgentFacts, SplitAxis};
-use muster_core::roster::{Numbering, Roster};
+use muster_core::roster::{Numbering, Roster, machine_color};
 
 use crate::proto;
 use crate::session::{DaemonHealth, PaneAgent};
@@ -89,7 +92,11 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
 /// [`counting`] rides alongside and does not weaken that: it says what kind of thing a press
 /// names, never what reaches what. Three readers need it and no row can answer them - see
 /// `RosterChanged.Counting` in the schema.
-pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterChanged {
+pub(crate) fn roster(
+    roster: &Roster,
+    numbering: &Numbering,
+    chosen: &BTreeMap<DaemonId, Rgb>,
+) -> proto::RosterChanged {
     proto::RosterChanged {
         counting: counting(numbering).into(),
         machines: roster
@@ -99,6 +106,7 @@ pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterCha
                 daemon_id: machine.id.to_string(),
                 state: machine.health.as_str().to_string(),
                 panes: u32::try_from(machine.panes).unwrap_or(u32::MAX),
+                color: machine_color(&machine.id, chosen).to_string(),
             })
             .collect(),
         tabs: roster

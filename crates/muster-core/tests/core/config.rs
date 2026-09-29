@@ -82,6 +82,9 @@ fn appearance(appearance: &config::Appearance) -> Vec<String> {
     if let Some(padding) = appearance.pane_padding {
         set.push(format!("pane_padding={padding}"));
     }
+    for (daemon, color) in &appearance.machine_colors {
+        set.push(format!("daemon.{daemon}.color={color}"));
+    }
 
     set
 }

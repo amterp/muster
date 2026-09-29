@@ -97,7 +97,9 @@ extension Roster {
     self.init(
       tabs: changed.tabs.map(Roster.Tab.init),
       machines: changed.machines.map { machine in
-        Roster.Machine(id: machine.daemonID, state: machine.state, panes: Int(machine.panes))
+        Roster.Machine(
+          id: machine.daemonID, state: machine.state, panes: Int(machine.panes),
+          color: machine.color)
       },
       numbering: Roster.Numbering(changed.counting))
   }

@@ -24,6 +24,11 @@ clipboard_write = "deny"       # allow (the default) | deny: may a program set t
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
 
+[[daemon]]
+id = "devenv"                  # Muster's name for the machine, in the agent list and the logs
+host = "devenv"                # an ssh destination; omit for a daemon on this machine
+color = "#4a90d9"              # its swatch in the agent list; omit for one drawn from its id
+
 [shell]
 command = "/opt/homebrew/bin/fish"  # omit for whatever this machine thinks your shell is
 mode = "login"                 # auto (the default) | login | non_login
@@ -482,11 +487,19 @@ panes arrive when they do. A daemon that cannot be reached is tried again, on th
 dropped connection, for as long as Muster runs; the window says which one is missing and why from
 the first failed attempt, and takes that back when it answers, so there is no need to relaunch.
 
+**Each machine has a color, and its rows in the agent list carry a swatch of it** while the
+window is attached to more than one, so a laptop pane and a devenv pane can be told apart
+without reading their labels. The color is drawn from the machine's `id`, so the same machine
+has the same color in every window and after every launch, from six chosen to stay clear of the
+agent-state colors. Six go round quickly, and two machines can land on one: a `color` in either
+one's `[[daemon]]` block settles it. Hovering a row names the machine too. A machine's heading,
+drawn when it is unreachable or holds no panes, carries the same swatch.
+
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `clipboard_write`,
-and `[notifications]` all take effect where they are, including in panes that were already open; `pane_padding`
+`[notifications]` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.
