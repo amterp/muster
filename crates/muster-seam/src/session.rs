@@ -1182,16 +1182,16 @@ pub(crate) struct Session {
     /// names are unique across machines, so one minter draws them all.
     minter: Arc<Mutex<Minter>>,
 
-    /// The tab a numbered chord has just named, while `numbered_chords = "tab_then_pane"`.
+    /// The tab a numbered chord has just named.
     ///
-    /// The whole of the prototype scheme's state, and it is here because on macOS a chord is
+    /// The whole of the numbered chords' state, and it is here because on macOS a chord is
     /// a menu item and a menu item's only way to say anything is to dispatch a request - so
     /// this side is the only side that sees both presses. A flag in the shell would be
     /// unreachable from a test, the corpus and the CLI alike.
     ///
     /// Advisory rather than authoritative: [`Session::numbering`] derives what is numbered
     /// from this *and* the roster every time, so a tab that closed while it was armed reads
-    /// as disarmed rather than wedging the chords. Always `None` under the settled scheme.
+    /// as disarmed rather than wedging the chords.
     armed: Option<TabId>,
 
     /// The last view and roster the shell was sent, so one it already has is not sent again.
@@ -1918,11 +1918,11 @@ impl Session {
 
     /// What ⌘1 to ⌘9 name at this moment.
     ///
-    /// The scheme is the config file's answer and the armed tab is this session's; putting
-    /// the two together is [`Numbering::of`]'s, so that the corpus is exercising the same
-    /// function the window runs on rather than a second copy of the same reasoning.
+    /// The armed tab is this session's and the rest is [`Numbering::of`]'s, so that the corpus
+    /// is exercising the same function the window runs on rather than a second copy of the same
+    /// reasoning.
     fn numbering(&self, roster: &Roster) -> Numbering {
-        Numbering::of(feel().numbered_chords, self.armed.as_ref(), roster)
+        Numbering::of(self.armed.as_ref(), roster)
     }
 
     /// The pane this window's keyboard feeds.
@@ -2966,11 +2966,8 @@ pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
     let found = {
         let session = poison::lock(&SESSION, "session");
         let roster = session.roster(&session.view());
-        match roster.numbered(&Numbering::Panes, place) {
-            Some(landing) => {
-                let pane = landing.pane();
-                Ok((pane.key.daemon.clone(), pane.key.pane.clone()))
-            }
+        match roster.at(place) {
+            Some(pane) => Ok((pane.key.daemon.clone(), pane.key.pane.clone())),
             None => Err(nothing_numbered(&roster, &Numbering::Panes, place)),
         }
     };
@@ -2980,14 +2977,12 @@ pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
 
 /// Puts the keyboard on whatever the numbered chord `press` names.
 ///
-/// What ⌘1 to ⌘9 mean, and under `numbered_chords = "panes"` that is a pane at a place in the
-/// window's pane order and nothing else happens. A place past the last one is refused by name
-/// rather than clamped to the last: a chord that lands somewhere different every time a pane
-/// opens is worse than a chord that does nothing until there is something to do it to.
+/// What ⌘1 to ⌘9 mean. A press past the last tab or pane is refused by name rather than clamped
+/// to the last: a chord that lands somewhere different every time a pane opens is worse than a
+/// chord that does nothing until there is something to do it to.
 ///
-/// Under `tab_then_pane` the same request means the second press as readily as the first, and
-/// which one it is depends on what the press before it did. That is the prototype's whole
-/// cost, and it is paid here rather than in the shell because on macOS a menu item cannot hold
+/// The same request means the second press as readily as the first, and which one it is
+/// depends on what the press before it did. That state is paid for here rather than in the shell because on macOS a menu item cannot hold
 /// two-stage state - the round trip into this side is the only place both presses meet.
 ///
 /// **Reaching a tab acts immediately.** ⌘2 goes to the second tab there and then, landing
@@ -3063,15 +3058,15 @@ fn nothing_numbered(roster: &Roster, numbering: &Numbering, place: usize) -> Str
         ),
         Numbering::Tabs => format!(
             "this window holds {} tabs, so there is no tab {place} to go to and the keyboard \
-             stayed where it was. ⌘1 to ⌘9 are naming tabs because `numbered_chords` is \
-             `tab_then_pane`; under `panes` they would be naming panes.",
+             stayed where it was. ⌘1 to ⌘9 name tabs, and the press after one names a pane \
+             inside it.",
             roster.tabs().count()
         ),
         Numbering::PanesIn(key) => {
             let held = roster.tabs().find(|tab| &tab.id == key).map_or(0, |tab| tab.panes.len());
             format!(
                 "{key} holds {held} panes, so there is no pane {place} in it and the keyboard \
-                 stayed where it was. This was the second press of a `tab_then_pane` chord, so \
+                 stayed where it was. This was the second press of a chord, so \
                  the number was counting inside that tab rather than down the whole window."
             )
         }
@@ -3080,7 +3075,7 @@ fn nothing_numbered(roster: &Roster, numbering: &Numbering, place: usize) -> Str
 
 /// Forgets a tab a numbered chord had named, and says so on the way out.
 ///
-/// Called for every request that changes anything, so that the second half of a `tab_then_pane`
+/// Called for every request that changes anything, so that the second half of a numbered
 /// chord has to be the very next thing that happens. See [`crate::handler`] for the rule, and
 /// why it is one line there rather than a list of callers here.
 ///
@@ -3103,7 +3098,7 @@ pub(crate) fn disarm() {
 /// The narrow half of [`publish`], for the callers that have changed which rows carry numbers
 /// and nothing else. Going through `publish` would reconcile every daemon and save the
 /// composition on a keystroke, which is a lot of work to say that a number moved.
-pub(crate) fn announce_roster() {
+fn announce_roster() {
     let _publishing = poison::lock(&PUBLISHING, "publishing");
     let (roster, numbering, message) = {
         let mut session = poison::lock(&SESSION, "session");
@@ -3289,7 +3284,7 @@ pub(crate) struct WindowNow {
     pub view: View,
     pub roster: Roster,
     /// What the numbered chords name at this moment, so the answer carries the same numbers
-    /// the sidebar is drawing rather than leaving a reader to guess the scheme.
+    /// the sidebar is drawing rather than leaving a reader to guess them.
     pub numbering: Numbering,
     /// Every pane, with the state the window would paint for it - which is not always the one
     /// the daemon reported: `done` is this window's answer rather than the daemon's, because a

@@ -320,8 +320,7 @@ public final class PaneChrome: NSView {
 
   /// Draws the number a chord would reach this pane by, or nothing for zero.
   ///
-  /// Handed zero except under `numbered_chords = "tab_then_pane"` while a press has named this
-  /// pane's tab, so the resting window carries nothing extra. That gating is the window's -
+  /// Handed zero except while a press has named this pane's tab, so the resting window carries nothing extra. That gating is the window's -
   /// a pane's row carries its whole chord at all times, and only the window knows whether a
   /// press is outstanding. What number arrives comes off the roster - the same field the agent
   /// list draws - rather than being counted here, so the digit on the pane and the digit on its
@@ -360,8 +359,8 @@ public final class PaneChrome: NSView {
 
 /// One large number over a pane, while a two-stage numbered chord is being typed.
 ///
-/// The agent list already draws these, and drawing them again here is not redundancy: under
-/// `numbered_chords = "tab_then_pane"` the second press picks between panes, and the panes are
+/// The agent list already draws these, and drawing them again here is not redundancy: the
+/// second press picks between panes, and the panes are
 /// what somebody is looking at while deciding. Reading a number off a list at the edge of the
 /// window and mapping it back onto a split is the work this saves - and it is the only
 /// indicator at all when the list is closed.

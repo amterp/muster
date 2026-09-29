@@ -146,8 +146,8 @@ pub(crate) fn roster(roster: &Roster, numbering: &Numbering) -> proto::RosterCha
 
 /// What the chords are counting, as the wire says it.
 ///
-/// One arm per [`Numbering`] variant and no default, so a fourth scheme cannot reach the shell
-/// spelled as the settled one - which would be a window drawing badges over its panes for a
+/// One arm per [`Numbering`] variant and no default, so a fourth variant cannot reach the shell
+/// spelled as one of these - which would be a window drawing badges over its panes for a
 /// gesture nobody made.
 fn counting(numbering: &Numbering) -> proto::roster_changed::Counting {
     match numbering {

@@ -28,7 +28,6 @@
 //! below - a state that would otherwise have nowhere to be said.
 
 use crate::composition::{Composition, DaemonId, PaneKey};
-use crate::input::NumberedChords;
 use crate::mirror::Mirror;
 use crate::mirror::backend::Health;
 use crate::mirror::backend::{Pane, PaneId, TabId};
@@ -75,10 +74,9 @@ pub struct RosterTab {
 
     /// Where this tab sits in the window's whole tab order, counting from one.
     ///
-    /// The order `next_tab` walks, and what a tab nobody has named is called. Under the scheme
-    /// Muster ships no chord names it: ⌘1 to ⌘9 number panes, because the rows carrying the
-    /// agent states are pane rows and two numberings in one sidebar is worse than either.
-    /// Whether a chord names it at this moment is [`Numbering::on_tab`], not this. Counted
+    /// The order `next_tab` walks, what a tab nobody has named is called, and the press ⌘1 to ⌘9
+    /// name it by once the window holds more than one tab. Whether a chord names it at this
+    /// moment is [`Numbering::on_tab`], not this. Counted
     /// across every daemon rather than within one, because a window showing a laptop beside a
     /// devenv is one list.
     pub place: usize,
@@ -105,7 +103,7 @@ pub struct RosterTab {
 }
 
 impl RosterTab {
-    /// Whether reaching this tab leaves a press outstanding, under `tab_then_pane`.
+    /// Whether reaching this tab leaves a press outstanding.
     ///
     /// A tab holding one pane does not: the press has already landed on the only pane there is,
     /// so naming it would spend the press after it on a chord that can only miss. Here rather
@@ -125,8 +123,8 @@ pub struct RosterPane {
 
     /// Where this pane sits in the window's whole pane order, counting from one.
     ///
-    /// The handle ⌘1 to ⌘9 name under the scheme Muster ships, so the fourth row down the
-    /// sidebar and ⌘4 are one pane. Counted across every daemon and every tab rather than
+    /// What `muster window` prints beside the pane and `muster focus --place` takes back, and
+    /// what ⌘1 to ⌘9 name in a window of one tab. Counted across every daemon and every tab rather than
     /// within one, because the sidebar is one list and somebody reading it counts down the
     /// whole thing.
     ///
@@ -176,8 +174,7 @@ pub struct RosterPane {
 /// One value with three states rather than a scheme plus a flag, because the rule this holds
 /// up is that a press means exactly one thing at a time. Split into two values, a reader would
 /// have to combine them to answer "what does ⌘2 do", and two readers could combine them
-/// differently - which is exactly the disagreement the settled scheme was designed to make
-/// impossible.
+/// differently.
 ///
 /// **What a press names and what the sidebar draws are two questions now.** They used to be
 /// one: the numbers sat wherever the next press could reach, so they moved between the tab
@@ -188,31 +185,31 @@ pub struct RosterPane {
 /// pair built out of the first, so the two cannot drift.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Numbering {
-    /// Every pane, counted down the whole window. What Muster does.
+    /// Every pane, counted down the whole window. A window holding one tab, where a pane's
+    /// place in the window and its place in the tab are the same number.
     #[default]
     Panes,
 
-    /// Every tab, counted across the window. The prototype scheme, waiting for a first press.
+    /// Every tab, counted across the window, waiting for a first press.
     Tabs,
 
-    /// The panes inside one tab. The prototype scheme, after a first press named that tab.
+    /// The panes inside one tab, after a first press named that tab.
     PanesIn(TabId),
 }
 
 impl Numbering {
-    /// What the chords name, given the scheme, the tab a press named, and what exists.
+    /// What the chords name, given the tab a press named and what exists.
     ///
     /// Derived from all three every time rather than remembered, so the order things happen in
     /// stops mattering: a tab that closed while a press had named it is simply not in the
     /// roster, and the answer falls back to numbering tabs. Deciding this once, at the moment
     /// an input arrived, is the shape of a bug this codebase has shipped before.
     ///
-    /// **A window holding one tab numbers panes under either scheme.** ⌘1 would otherwise be
+    /// **A window holding one tab numbers its panes.** ⌘1 would otherwise be
     /// spent naming the only tab there is, and reaching that tab's second pane would take ⌘1 ⌘2,
     /// a first press carrying no information every time, for as long as the window holds one tab
     /// (kan a_2Hx68fXqr). With one tab a pane's place down the whole window and its place inside
-    /// that tab are the same number, so this is not a third behaviour: it is the settled scheme,
-    /// which under these conditions the prototype agrees with.
+    /// that tab are the same number, so this is the same chord drawn with one press less.
     ///
     /// Said as `Panes` rather than as `PanesIn(the only tab)` for what follows from it. A
     /// numbering that says panes-inside-a-tab also says a chord is half-typed: the shell draws a
@@ -226,16 +223,13 @@ impl Numbering {
     /// when a second tab appears, which at least moves every number in the sidebar as it
     /// happens - and this function is handed the roster and knows nothing about the keyboard,
     /// which is the shape the other reading would have to break.
-    pub fn of(scheme: NumberedChords, named: Option<&TabId>, roster: &Roster) -> Numbering {
-        match scheme {
-            NumberedChords::Panes => Numbering::Panes,
-            NumberedChords::TabThenPane if roster.tabs().count() == 1 => Numbering::Panes,
-            NumberedChords::TabThenPane => match named {
-                Some(key) if roster.tabs().any(|tab| &tab.id == key) => {
-                    Numbering::PanesIn(key.clone())
-                }
-                _ => Numbering::Tabs,
-            },
+    pub fn of(named: Option<&TabId>, roster: &Roster) -> Numbering {
+        if roster.tabs().count() == 1 {
+            return Numbering::Panes;
+        }
+        match named {
+            Some(key) if roster.tabs().any(|tab| &tab.id == key) => Numbering::PanesIn(key.clone()),
+            _ => Numbering::Tabs,
         }
     }
 
@@ -261,7 +255,7 @@ impl Numbering {
 
     /// The whole chord that reaches this tab, which is one press or none.
     ///
-    /// Under `tab_then_pane` this is the tab's place whether or not a press is outstanding,
+    /// This is the tab's place whether or not a press is outstanding,
     /// which is where it parts company with [`Numbering::on_tab`] above. ⌘4 stops meaning tab 4
     /// for as long as a press is outstanding, and saying so by taking the digit away would
     /// mean the sidebar's numbers move as a chord is typed - which is the thing kan
@@ -310,7 +304,7 @@ impl Numbering {
     /// Whether the next press names a pane inside this tab.
     ///
     /// What a window says instead of moving its numbers. True for exactly one tab, and only
-    /// under `tab_then_pane` with a press outstanding.
+    /// while a press is outstanding.
     pub fn armed_on(&self, tab: &RosterTab) -> bool {
         matches!(self, Numbering::PanesIn(key) if key == &tab.id)
     }
@@ -318,7 +312,7 @@ impl Numbering {
 
 /// The presses that reach one row, in the order a hand makes them.
 ///
-/// Two named presses rather than a list, because two is as deep as either scheme goes and a
+/// Two named presses rather than a list, because two is as deep as a chord goes and a
 /// `Vec` would make every reader handle lengths neither can produce.
 ///
 /// **A press outside ⌘1 to ⌘9 is no press at all**, and takes the rest of the chord with it.
@@ -327,12 +321,12 @@ impl Numbering {
 /// keystroke that looks like it goes there and goes somewhere else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Chord {
-    /// The press that names the tab, under `tab_then_pane`. None under the settled scheme,
+    /// The press that names the tab. None in a window of one tab,
     /// where one press names a pane and no press names a tab.
     pub tab: Option<usize>,
 
-    /// The press that names the pane: inside its tab under `tab_then_pane`, and down the whole
-    /// window under the settled scheme.
+    /// The press that names the pane: inside its tab, or down the whole window when the window
+    /// holds one tab.
     pub pane: Option<usize>,
 }
 
@@ -390,7 +384,7 @@ impl Landing<'_> {
 
     /// The tab this press named, for the press after it to count inside.
     ///
-    /// `None` after landing on a pane, so the next press starts over at whatever the scheme
+    /// `None` after landing on a pane, so the next press starts over at whatever the window
     /// numbers first. That is what keeps the sequence two deep: three ⌘2s in a row are the
     /// second tab, its second pane, and the second tab again, rather than descending into
     /// something with no third level to descend into.
@@ -537,9 +531,8 @@ impl Roster {
 
     /// The pane at a given place in the order, counting from one.
     ///
-    /// `None` for a place past the end, which is what a numbered chord in a window with fewer
-    /// panes means. Doing nothing is the right answer there: landing on the last pane instead
-    /// would make ⌘9 mean something different every time a pane opened.
+    /// What `muster focus --place` goes to. `None` for a place past the end: landing on the last
+    /// pane instead would send a stale place somewhere different every time a pane opened.
     pub fn at(&self, place: usize) -> Option<&RosterPane> {
         self.panes().find(|pane| pane.place == place)
     }

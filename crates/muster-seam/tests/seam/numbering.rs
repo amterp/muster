@@ -6,23 +6,19 @@
 //! bug this project has shipped recently has had, each one green at every level and wrong when
 //! the app ran.
 //!
-//! So this asserts the gesture: the number the roster hands the shell is the number the shell
-//! can send back, and doing so lands the keyboard on the pane whose row carries it. The
-//! interesting case is a pane in a tab nothing is showing, because that is the argument for
-//! numbering panes at all - reaching one has to bring its tab on screen, or nine chords do not
-//! replace what the tab numbers used to do.
-//!
-//! The second test is the prototype scheme beside it, for the same reason: every layer of a
-//! two-stage chord is pinned in the corpus, and what only a running window shows is that the
-//! first press does not quietly disarm itself on whatever it causes the shell to send back.
+//! So this asserts the gesture: the chord the roster hands the shell is the chord the shell can
+//! send back, and pressing it lands the keyboard on the pane whose row carries it - including a
+//! pane in a tab nothing is showing, which reaching has to bring on screen. Every layer of a
+//! two-press chord is pinned in the corpus; what only a running window shows is that the first
+//! press does not quietly disarm itself on whatever it causes the shell to send back.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use muster::proto::{
-    EndNumberedChord, Event, FocusPaneAt, OpenWindow, PressNumberedChord, ReadTabHolders,
-    ReloadConfig, Request, Response, RosterChanged, Startup, ViewChanged, WindowFocus, event,
-    request, response, roster_changed::Counting,
+    EndNumberedChord, Event, FocusPaneAt, OpenWindow, PressNumberedChord, ReadTabHolders, Request,
+    Response, RosterChanged, Startup, ViewChanged, WindowFocus, event, request, response,
+    roster_changed::Counting,
 };
 use muster_daemon_proto::{Placement, Side};
 use muster_harness::requests::{beside, create, in_new_tab, make};
@@ -30,7 +26,7 @@ use muster_harness::{Daemon, until};
 use prost::Message;
 
 #[test]
-fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
+fn a_numbered_chord_lands_on_the_row_carrying_it() {
     let _turn = a_fresh_window();
     let daemon = Daemon::start_built();
     a_session_of_two_tabs(&daemon);
@@ -50,22 +46,17 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
         || format!("the roster holds {:?}", roster().map(|r| places(&r))),
     );
 
-    // The numbering is one count across every tab, so the pane in the second tab is 2 even
-    // though it is the first pane of its own tab. Read off the roster rather than assumed: the
-    // whole point is that the shell sends back the number it was given.
-    let numbered = places(&roster().expect("just waited for it"));
-    assert_eq!(
-        numbered,
-        vec![(1, VISIBLE.to_string()), (2, HIDDEN.to_string())],
-        "the count should run across tabs, so the second tab's first pane is 2"
-    );
+    // Each tab holds one pane, so reaching the tab is the whole chord: the second tab's only
+    // pane carries ⌘2 and nothing after it. Read off the roster rather than assumed, because
+    // the whole point is that the shell sends back the press it was given.
+    assert_eq!(chords(), vec![vec![1], vec![2]], "each pane should be one press onto its tab");
     let hidden = named(HIDDEN);
 
-    // The tab holding pane 2 is not on screen: one region, showing the first tab. That is the
-    // case the numbers exist for, and the one a tab-numbering scheme handled by numbering tabs.
+    // The tab holding it is not on screen: one region, showing the first tab. That is the case
+    // the chords exist for.
     assert!(
         !showing(&hidden),
-        "this test is pointless unless pane 2 starts hidden, and the view already shows it"
+        "this test is pointless unless the second tab starts hidden, and the view already shows it"
     );
 
     assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
@@ -80,12 +71,12 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
     // copies of one window, and the region count is what tells those apart.
     assert_eq!(regions(), 1, "reaching a hidden pane opened a region instead of retargeting one");
 
-    // And the refusal, in the same breath, because a place past the end is what ⌘9 means in a
-    // window of two and it has to do nothing rather than land somewhere.
+    // And the refusal, in the same breath, because a press past the end is what ⌘9 means in a
+    // window of two tabs and it has to do nothing rather than land somewhere.
     let reason = refusal(request::Payload::PressNumberedChord(PressNumberedChord { press: 9 }));
     assert!(
-        reason.contains("2 panes") && reason.contains("no pane 9"),
-        "a place past the end should say how many there are, and said: {reason}"
+        reason.contains("2 tabs") && reason.contains("no tab 9"),
+        "a press past the end should say how many tabs there are, and said: {reason}"
     );
     assert!(
         showing(&hidden),
@@ -97,7 +88,7 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
 /// numbered chords are naming.
 ///
 /// A script reads a place off `muster window` and hands it back, so the number has to mean
-/// what it was read as. Under `tab_then_pane` the chord ⌘3 names the third tab, and a place
+/// what it was read as. The chord ⌘3 names the third tab, and a place
 /// resolved through the chords would send `--place 3` there - or nowhere, in a window of two.
 #[test]
 fn a_place_is_the_pane_at_that_place_whatever_the_chords_name() {
@@ -107,10 +98,7 @@ fn a_place_is_the_pane_at_that_place_whatever_the_chords_name() {
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon
-            .muster_config_with("numbered_chords = \"tab_then_pane\"")
-            .to_string_lossy()
-            .into_owned(),
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -134,7 +122,7 @@ fn a_place_is_the_pane_at_that_place_whatever_the_chords_name() {
     assert_eq!(armed_tabs(), Vec::<u32>::new(), "going to a place armed a chord");
 }
 
-/// A window of one tab under the prototype, where the first press would name that tab.
+/// A window of one tab, where the first press would name that tab.
 ///
 /// The collapse (kan a_2Hx68fXqr): ⌘1 naming the only tab there is spends a press on nothing,
 /// so a window holding one tab numbers panes instead. What only a running window can show is
@@ -143,17 +131,14 @@ fn a_place_is_the_pane_at_that_place_whatever_the_chords_name() {
 /// releasing ⌘ ends a gesture, so a collapse spelled as "the panes in that tab" would leave
 /// those numbers drawn over a window nobody had pressed anything in.
 #[test]
-fn one_tab_under_the_prototype_numbers_panes_and_arms_nothing() {
+fn one_tab_numbers_its_panes_and_arms_nothing() {
     let _turn = a_fresh_window();
     let daemon = Daemon::start_built();
     a_session_of_one_tab_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon
-            .muster_config_with("numbered_chords = \"tab_then_pane\"")
-            .to_string_lossy()
-            .into_owned(),
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -175,8 +160,8 @@ fn one_tab_under_the_prototype_numbers_panes_and_arms_nothing() {
          a number and the next ⌘ release ends a gesture nobody started"
     );
 
-    // One press, and it is the whole gesture. Under the uncollapsed prototype this would have
-    // named the tab and left the window waiting for a second press.
+    // One press, and it is the whole gesture. Without the collapse this would have named the
+    // tab and left the window waiting for a second press.
     assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
     until(
         "the second pane of the only tab to have the keyboard",
@@ -187,17 +172,14 @@ fn one_tab_under_the_prototype_numbers_panes_and_arms_nothing() {
 }
 
 #[test]
-fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
+fn a_tab_is_named_first_and_a_pane_inside_it_second() {
     let _turn = a_fresh_window();
     let daemon = Daemon::start_built();
     a_session_of_two_tabs_the_second_holding_two(&daemon);
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon
-            .muster_config_with("numbered_chords = \"tab_then_pane\"")
-            .to_string_lossy()
-            .into_owned(),
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -245,8 +227,8 @@ fn under_the_prototype_a_tab_is_named_first_and_a_pane_inside_it_second() {
         || format!("the view still shows {:?}", shown()),
     );
 
-    // The flat scheme would have landed the same two presses on the second pane of the window
-    // twice over, which is a different pane - so this passing under both schemes is impossible.
+    // Two presses counted down the whole window would have landed on its second pane twice
+    // over, which is a different pane, so this cannot pass by counting the wrong way.
     assert_ne!(inner_second, named(INNER_FIRST), "the arrangement this test needs came apart");
 }
 
@@ -258,10 +240,7 @@ fn anything_between_the_two_presses_takes_the_first_one_back() {
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon
-            .muster_config_with("numbered_chords = \"tab_then_pane\"")
-            .to_string_lossy()
-            .into_owned(),
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -306,10 +285,7 @@ fn letting_go_of_the_modifier_takes_the_first_press_back() {
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon
-            .muster_config_with("numbered_chords = \"tab_then_pane\"")
-            .to_string_lossy()
-            .into_owned(),
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -360,10 +336,7 @@ fn hearing_who_holds_which_tab_leaves_a_chord_armed() {
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon
-            .muster_config_with("numbered_chords = \"tab_then_pane\"")
-            .to_string_lossy()
-            .into_owned(),
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -396,10 +369,7 @@ fn ending_a_chord_nobody_started_says_nothing() {
 
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon
-            .muster_config_with("numbered_chords = \"tab_then_pane\"")
-            .to_string_lossy()
-            .into_owned(),
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
@@ -423,55 +393,6 @@ fn ending_a_chord_nobody_started_says_nothing() {
         before,
         "ending a chord nobody started republished the roster, so every ⌘ release would redraw \
          the agent list"
-    );
-}
-
-#[test]
-fn turning_the_prototype_off_moves_the_numbers_back_on_the_save() {
-    let _turn = a_fresh_window();
-    let daemon = Daemon::start_built();
-    a_session_of_two_tabs_the_second_holding_two(&daemon);
-
-    muster::ffi::muster_set_event_callback(Some(note));
-    assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon
-            .muster_config_with("numbered_chords = \"tab_then_pane\"")
-            .to_string_lossy()
-            .into_owned(),
-        ..Startup::default()
-    })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
-    until(
-        "the chords to be naming tabs",
-        || tab_presses() == vec![1, 2],
-        || format!("the tabs carry {:?} and the panes {:?}", tab_presses(), chords()),
-    );
-
-    // Written to the same path, which is what saving the file is. Going back to the settled
-    // scheme is the likeliest thing to happen to this option, so it is the half worth pinning.
-    daemon.muster_config_with("numbered_chords = \"panes\"");
-    assert_ok(&answer(request::Payload::ReloadConfig(ReloadConfig {})));
-
-    // Asserted the moment the reload returns rather than waited for, and that is the test.
-    // A reload sends the daemons their settings again, and anything they say back republishes
-    // the roster anyway - so a version of this that waited could pass whether or not the reload
-    // announced anything, and would be pinning the daemon's timing rather than Muster's
-    // guarantee.
-    assert_eq!(
-        chords(),
-        vec![vec![1], vec![2], vec![3]],
-        "the save returned with the panes still carrying two-press chords, so the sidebar was \
-         promising that ⌘2 ⌘1 reaches a pane while one press had already gone back to reaching \
-         it"
-    );
-    assert_eq!(tab_presses(), Vec::<u32>::new(), "the tabs kept presses the chords do not name");
-
-    // And the chords agree with them: ⌘2 is the second pane of the window again, in one press.
-    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
-    until(
-        "the second pane of the window to have the keyboard",
-        || showing(&named(INNER_FIRST)),
-        || format!("the view still shows {:?}", shown()),
     );
 }
 

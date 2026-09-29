@@ -2,12 +2,11 @@ import AppKit
 
 /// When a half-typed numbered chord is over, decided from the keyboard alone.
 ///
-/// Only under `numbered_chords = "tab_then_pane"` is there anything to decide. There ⌘2 names a
-/// tab and the press after it names a pane inside it, and the core takes the first press back on
-/// anything that changes something - a keystroke, a click, another chord. What that rule cannot
-/// cover is somebody who does nothing at all: ⌘2, let go, walk away. Until this existed the
-/// window sat waiting for a second press with its numbers moved, and the only way out was to go
-/// and click on something.
+/// ⌘2 names a tab and the press after it names a pane inside it, and the core takes the first
+/// press back on anything that changes something - a keystroke, a click, another chord. What
+/// that rule cannot cover is somebody who does nothing at all: ⌘2, let go, walk away. Until this
+/// existed the window sat waiting for a second press with its numbers moved, and the only way
+/// out was to go and click on something.
 ///
 /// Letting go of the modifier is what a hand means by "that was the whole gesture", and only a
 /// shell can see it - the core is handed requests and never a keyboard. So the watching happens
@@ -49,10 +48,9 @@ public enum NumberedChord {
 
   /// What the nine actions are called, which is the one place this shell reads that name.
   ///
-  /// `focus_pane_1` to `focus_pane_9`. They keep those names under both schemes even though
-  /// under this one a press means the Nth numbered chord rather than the Nth pane - see
-  /// `docs/configuration.md`, which explains why renaming them for a prototype was the thing
-  /// that would have made it expensive to take out again.
+  /// `focus_pane_1` to `focus_pane_9`, although a press means the Nth numbered chord rather
+  /// than the Nth pane: the names come from before the chords named tabs, and a config file
+  /// binds them by name.
   private static let place = "focus_pane_"
 }
 

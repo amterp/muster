@@ -271,7 +271,7 @@ struct PaneChromeTests {
   @MainActor
   func theBadgeAppearsOnlyMidChord() {
     let chrome = pane()
-    // Zero is what every pane carries under the settled scheme and what they go back to the
+    // Zero is what every pane carries at rest and what they go back to the
     // moment a gesture ends, so a badge visible at rest would be one visible almost always.
     #expect(chrome.badgeShown == false)
     chrome.apply(badge: 2)

@@ -422,7 +422,7 @@ public final class MusterWindow: NSObject {
 
   /// Takes what the keyboard is holding, and ends a numbered chord that was still being typed.
   ///
-  /// Under `numbered_chords = "tab_then_pane"` only, and only while a press has named a tab -
+  /// Only while a press has named a tab -
   /// so an idle window makes no round trip for the ⌘ every other shortcut is held with.
   private func apply(held: NSEvent.ModifierFlags) {
     guard NumberedChord.ends(numbering: roster.numbering, held: held, chord: chordModifiers)

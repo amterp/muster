@@ -97,7 +97,7 @@ One entry per pane every followed daemon holds, on screen or not.
 
 - `pane` - its name, and what to pass to `--pane`.
 - `place` - where it sits in the window's whole pane order, counting from one across every
-  daemon and every tab. The number ⌘1 to ⌘9 name, under the default `numbered_chords`.
+  daemon and every tab. What `muster focus --place` takes; ⌘1 to ⌘9 name tabs first instead.
 - `daemon` - which machine holds it.
 - `tab` - the name of the tab it is in, and what to pass to `muster tab`. A name rather than a
   place, so that one read is enough to act on: this is how a pane finds its own tab, since
@@ -151,9 +151,8 @@ One entry per pane every followed daemon holds, on screen or not.
 - `daemons` - the machines it holds panes on, in the order their parts sit on screen. One for
   almost every tab; two for one somebody has grouped with `muster pane move --tab`. Plural because
   a tab does not belong to a machine - which machine holds a pane is on the pane.
-- `place` - where it sits in the window's tab order, counting from one. What `next_tab` walks. By
-  default no chord names it - ⌘1 to ⌘9 number panes - and under `numbered_chords =
-  "tab_then_pane"` they number tabs.
+- `place` - where it sits in the window's tab order, counting from one. What `next_tab` walks. The
+  number ⌘1 to ⌘9 name, once the window holds more than one tab.
 - `label` - what to call it to somebody who did not open it. `given_name` is what somebody typed,
   empty when nobody has.
 - `on_screen` - whether this is the tab the window is showing. Exactly one carries it. Not the

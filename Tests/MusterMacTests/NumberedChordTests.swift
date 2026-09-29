@@ -3,8 +3,7 @@ import Testing
 
 @testable import MusterMac
 
-// When a half-typed numbered chord is over. Only `tab_then_pane` has anything to decide, and
-// the whole of the decision is made from the keyboard - which is why it is pinned here rather
+// When a half-typed numbered chord is over. The whole of the decision is made from the keyboard - which is why it is pinned here rather
 // than in the corpus: the core is handed requests and never sees a modifier.
 //
 // The rebound cases are the reason this is a test rather than something to try in the app.

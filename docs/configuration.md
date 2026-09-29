@@ -21,7 +21,6 @@ resize_step = "20c"            # per resize chord: cells (c) or points (px). Omi
                                # daemon's own step. The unit is required.
 scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
 clipboard_write = "deny"       # allow (the default) | deny: may a program set the clipboard
-numbered_chords = "panes"      # panes (the default) | tab_then_pane. A prototype; see below
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
 
@@ -138,68 +137,39 @@ know that everything else here is undone by doing it again and this is not.
 `reset_terminal` is the eighth, as it is in Ghostty: it throws away the pane's screen and modes,
 and a chord for that is one somebody finds by losing their screen.
 
-**`cmd+1` to `cmd+9` go to a numbered agent.** The number is drawn on its row in the agent
-list, counting down the whole list across every machine, so `cmd+3` is the third row whichever
-daemon holds it. Panes rather than tabs, because the unit here is an agent and an agent is a
-pane: attention routing promises that when one needs you, a keystroke lands you on the pane
-that asked, and only a click used to do that.
+**`cmd+1` to `cmd+9` go to a tab, and the press after one goes to a pane inside it.** `cmd+2`
+moves you to the second tab the moment you press it. Keep `cmd` down and press `3`, and you land
+on that tab's third pane. A tab's number is its place in the window's tab order, counted across
+every machine, and a pane's is its place inside its tab.
 
-It reaches the tabs too. Going to a pane brings its tab on screen, so a number gets you into
-any tab through any pane in it - which is why nine chords are enough for both and why nothing
-else is numbered. Past nine the numbers run out, and the tenth pane is reached by `next_pane`,
-by a direction, or by clicking its row.
-
-The number is a position, so it moves when a pane above it opens or closes. That is the cost
-of numbering the thing that churns, and it is the right way round: the order is yours to
-arrange, and a number that stayed put when you moved its row would be fighting you.
-
-The two ways of moving are still different axes. `next_pane` and the four directions reach
-every pane the window is **showing**; `next_tab` and `previous_tab` walk the tabs behind
-those, including ones no region has on screen.
-
-These used to be `focus_tab_1` to `focus_tab_9`, and the old names are gone rather than kept
-as aliases. A `[keymap]` naming one is refused, and the whole file with it, which is what a
-config carried over from before should get - silently binding `cmd+3` to something other than
-what it used to reach is the one outcome worse than the refusal. Tab captions lose their
-numbers in the same change: two numberings in one list is worse than either, and a tab you
-have not named is now captioned `Tab 2` rather than carrying a chord's number.
-
-**`numbered_chords = "tab_then_pane"` is a prototype of the other answer, and may be deleted
-rather than finished.** Under it `cmd+2` goes to the second tab, and the `cmd+2` after it goes
-to that tab's second pane. Everything above stays true and stays the default; this is here
-because the argument above is one nobody can settle by reading it, and a day of driving the
-other scheme is the only thing that will.
-
-**Hold the modifier to reach a pane, and let go to stop at the tab.** `cmd+2` moves you to the
-second tab the moment you press it. Keep `cmd` down and press `3`, and you land on that tab's
-third pane. Release `cmd` instead and the sequence is over, so `cmd+2` then `cmd+3` is two tab
-jumps rather than a tab and a pane. That is what makes this something other than a prefix key:
-you cannot be left in a mode you have forgotten about, because the mode lasts exactly as long
-as your thumb is down. Whichever modifier the nine chords are bound with is the one that ends
-it, so rebinding them to `ctrl+1` moves that too.
+**Let go of the modifier to stop at the tab.** Release `cmd` after `cmd+2` and the sequence is
+over, so `cmd+2`, let go, `cmd+3` is two tab jumps rather than a tab and a pane. The sequence
+lasts exactly as long as your thumb is down, so you cannot be left in a mode you have forgotten
+about. Whichever modifier the nine chords are bound with is the one that ends it, so rebinding
+them to `ctrl+1` moves that too.
 
 Everything else that ends a sequence still ends it - a keystroke into a pane, another chord, a
 click, `Escape`. Nothing times out. And a tab holding a single pane does not start one at all:
 `cmd+2` onto it lands on the only pane it has and stops there, because there is nothing inside
 to choose between.
 
-**A window holding one tab numbers panes, the way the default does.** Naming the only tab
-there is spends a press on nothing, so with one tab `cmd+2` reaches the second pane in one
-press. This is not a third scheme: with one tab, a pane's place down the window and its place
-inside that tab are the same number. The moment a second tab appears anywhere in the window -
-you make one, or you attach a machine that brings its own - `cmd+2` means the second tab
-again, and every row in the agent list grows a second digit as it happens. That the chord
-changes meaning under you is the real cost of this, and it is why the chords are drawn beside
-the rows at all: what reaches an agent is something you read rather than remember.
+**A window holding one tab numbers its panes.** Naming the only tab there is spends a press on
+nothing, so with one tab `cmd+2` reaches the second pane in one press - with one tab, a pane's
+place in the window and its place inside the tab are the same number. The moment a second tab
+appears anywhere in the window - you make one, or you attach a machine that brings its own -
+`cmd+2` means the second tab again, and every pane row in the agent list grows a second digit as
+it happens. That the chord changes meaning under you is the real cost of this, and it is why
+the chords are drawn beside the rows at all: what reaches an agent is something you read rather
+than remember.
 
 **Every row in the agent list shows the whole chord that reaches it.** A pane in the second tab
 reads `2 1`, and pressing those two is how you get there - including when you are looking at
 another tab entirely, which is the case this list exists for. The pane digit is the one that
-varies down a group, so it reads at full weight and the tab digit in front of it stays faint.
-A row nothing reaches shows nothing: a tenth pane in a tab has no second press, and its tab's
-digit alone would be a keystroke that lands on that tab's first pane instead. A tab holding one
-pane is the other way round - reaching the tab is the whole chord, so its pane reads `2` and
-`2 1` would be the first tab.
+varies down a group, so it is drawn brighter and the tab digit in front of it quieter. A row
+nothing reaches shows nothing: a tenth pane in a tab has no second press, and its tab's digit
+alone would be a keystroke that lands on that tab's first pane instead. A tab holding one pane
+is the other way round - reaching the tab is the whole chord, so its pane reads `2` and `2 1`
+would be the first tab.
 
 Nothing in that moves as you type. Press `cmd+2` and the digits stay exactly where they are;
 what changes is that the second digit down that tab's panes turns the accent colour, because
@@ -220,10 +190,27 @@ in one motion from flashing them on the way past.
 A zoomed tab is the rough edge. It still starts a sequence when it holds several panes, and you
 will see one number, because only one pane is on screen to draw one.
 
-The nine actions do not move: `focus_pane_3` is still what `[keymap]` names and still what the
-menu carries, and under this scheme it means the third numbered chord rather than the third
-pane. Renaming nine actions for a prototype is the thing that would make it expensive to take
-out again.
+The numbers are positions, so they move when a tab or pane before them opens or closes. That is
+the cost of numbering things that churn, and it is the right way round: the order is yours to
+arrange, and a number that stayed put when you moved its row would be fighting you. Past nine
+they run out, and a tenth tab, or a tenth pane in a tab, is reached by `next_tab`, `next_pane`,
+a direction, or clicking its row.
+
+The two ways of moving are still different axes. `next_pane` and the four directions reach
+every pane the window is **showing**; `next_tab` and `previous_tab` walk the tabs behind
+those, including ones no region has on screen.
+
+The nine actions are `focus_pane_1` to `focus_pane_9` in `[keymap]` and in the menu, and each
+is the Nth numbered chord rather than the Nth pane. `muster focus --place 3` is not one of them:
+it goes to the pane `muster window` prints at place 3, counted down the whole window, because a
+script reading that number has to be able to hand it back.
+
+**`numbered_chords` is gone.** It chose between this and an older scheme, where `cmd+3` was the
+third pane down the whole agent list. A file still saying `numbered_chords = "tab_then_pane"`
+loads, because that is what Muster now does, and the line can be deleted. One saying `"panes"`
+is refused, and the whole file with it: silently turning `cmd+3` from the third pane into the
+third tab is the one outcome worse than the refusal. `focus_tab_1` to `focus_tab_9`, the names
+from before either scheme, are refused the same way.
 
 **Two things cannot hold one chord, and the file is refused rather than one of them losing.**
 Three ways that happens: two `[keymap]` actions on the same chord, a `[keymap]` action on a
@@ -259,8 +246,8 @@ emoji included: `🔥 payments spike`. Double-clicking a row asks the same thing
 knowing because the rows most worth naming are the ones no split is showing.
 
 **Drag a row and the pane moves with it.** Dropping one agent's row on another exchanges the
-two, so the list you arrange is the window you get - and the numbers move with them, since
-`cmd+3` is whatever the third row now holds. Drop a row on one in a different tab and the agent
+two, so the list you arrange is the window you get - and the numbers move with them, since a
+chord reaches whatever sits at its place now. Drop a row on one in a different tab and the agent
 joins that tab, landing directly behind the row you dropped it on.
 
 An exchange rather than an insertion, because an arrangement has no "between": two panes side
@@ -499,7 +486,7 @@ the first failed attempt, and takes that back when it answers, so there is no ne
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `clipboard_write`,
-`numbered_chords` and `[notifications]` all take effect where they are, including in panes that were already open; `pane_padding`
+and `[notifications]` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

@@ -6,7 +6,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::support::backend::{read_snapshot, text};
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
-use muster_core::input::NumberedChords;
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::roster::{Chord, Landing, Numbering, Roster, RosterPane, RosterTab, TabStep};
@@ -36,8 +35,8 @@ fn roster_conformance() {
             ),
             ("pressed", pressed.as_ref().map(|(landed, _)| json!(landed))),
             // What the sidebar draws beside every row, at whatever the presses above left the
-            // window counting. Only for a case that names a scheme: what reaches a row is the
-            // scheme's answer, and a case that presses nothing has not said which.
+            // window counting. Only for a case that presses, so that the cases about naming and
+            // ordering are not also restating every chord.
             (
                 "chords",
                 pressed.as_ref().map(|(_, numbering)| json!(describe_chords(&roster, numbering))),
@@ -138,9 +137,9 @@ fn a_chord_is_the_same_whatever_has_already_been_pressed() {
     let mut compared = 0;
     for case in &corpus.cases {
         let Ok(roster) = built(&case.given) else { continue };
-        let rest = Numbering::of(NumberedChords::TabThenPane, None, &roster);
+        let rest = Numbering::of(None, &roster);
         for armed in roster.tabs() {
-            let half = Numbering::of(NumberedChords::TabThenPane, Some(&armed.id), &roster);
+            let half = Numbering::of(Some(&armed.id), &roster);
             for tab in roster.tabs() {
                 assert_eq!(
                     rest.chord_on_tab(tab),
@@ -165,28 +164,6 @@ fn a_chord_is_the_same_whatever_has_already_been_pressed() {
         }
     }
     assert!(compared > 0, "no corpus case builds a window, so nothing was compared");
-}
-
-#[test]
-fn every_numbering_scheme_is_pressed_in_the_corpus() {
-    // A scheme added to the config and not pressed here is a control scheme nothing decides.
-    // Both of these fail invisibly: the settled one would stop being pinned the moment the
-    // prototype's cases outnumbered it, and the prototype has no other test of what a second
-    // press means.
-    let corpus = Conformance::load("roster.json");
-    let pressed: Vec<String> = corpus
-        .cases
-        .iter()
-        .filter_map(|case| case.given.get("numbered"))
-        .map(|asked| text(asked, "scheme"))
-        .collect();
-
-    for scheme in NumberedChords::READABLE {
-        assert!(
-            pressed.iter().any(|named| named == scheme),
-            "no corpus case presses a chord under `{scheme}`, so nothing pins what one does"
-        );
-    }
 }
 
 /// One tab, as a line.
@@ -235,7 +212,7 @@ fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
 
 /// The numbered chords a case presses, and what each one reached.
 ///
-/// A sequence rather than one press, because under `tab_then_pane` a press means one thing or
+/// A sequence rather than one press, because a press means one thing or
 /// another depending on what the press before it did - so a case pressing once could only ever
 /// pin half the scheme. The line for each press says what it landed on *and* what the chords
 /// name afterwards, which is the pair a person driving this has to be able to predict.
@@ -248,12 +225,6 @@ fn read_presses(
     roster: &Roster,
 ) -> Result<Option<(Vec<String>, Numbering)>, CaseError> {
     let Some(asked) = given.get("numbered") else { return Ok(None) };
-    let spelled = text(asked, "scheme");
-    let scheme = NumberedChords::parse(&spelled).ok_or_else(|| {
-        CaseError::new(format!(
-            "`{spelled}` is not a numbering scheme - write `panes` or `tab_then_pane`"
-        ))
-    })?;
 
     let mut named = None;
     let mut landed = Vec::new();
@@ -262,14 +233,14 @@ fn read_presses(
             .as_u64()
             .and_then(|place| usize::try_from(place).ok())
             .ok_or_else(|| CaseError::new("`press` holds something that is not a place"))?;
-        let numbering = Numbering::of(scheme, named.as_ref(), roster);
+        let numbering = Numbering::of(named.as_ref(), roster);
         let landing = roster.numbered(&numbering, place);
         landed.push(describe_press(place, &numbering, landing.as_ref()));
         named = landing.and_then(|landing| landing.named());
     }
     // Where the presses left the window, which is the at-rest numbering for a case that made
     // none. Handed back rather than dropped so the chords below are read off the same walk.
-    Ok(Some((landed, Numbering::of(scheme, named.as_ref(), roster))))
+    Ok(Some((landed, Numbering::of(named.as_ref(), roster))))
 }
 
 /// What reaches every row, as a line each, tabs with their panes indented under them.

@@ -36,8 +36,9 @@ says what it would end before it ends it.
 
 ## What you get
 
-**A number on every agent.** `cmd+1` to `cmd+9` reach the first nine rows of the list, counting across
-the window's tabs and machines, so an agent is one keystroke away whether or not a split is showing it.
+**A chord to every agent.** `cmd+2` goes to the second tab, and `3` pressed with `cmd` still down
+goes on to that tab's third pane. Every row in the list shows the chord that reaches it, so an agent
+is a glance and two keystrokes away whether or not a split is showing it.
 
 **A notification when an agent needs you, and one click back to it.** An agent that starts waiting
 on you, or that finishes while nobody is looking, says so - and activating the notification takes

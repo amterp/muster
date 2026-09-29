@@ -12,13 +12,12 @@ public struct Roster: Equatable {
     /// Where this pane sits in the window's whole pane order, counting from one.
     public let place: Int
 
-    /// The press that names this pane's tab, or 0 when none does - which is every pane under
-    /// the scheme Muster ships, where one press names a pane and no press names a tab.
+    /// The press that names this pane's tab, or 0 when none does - which is every pane in a
+    /// window of one tab, where one press names a pane and no press names a tab.
     public let tabPress: Int
 
-    /// The press that names this pane: inside its tab under `numbered_chords =
-    /// "tab_then_pane"`, and down the whole window under the scheme Muster ships. 0 when none
-    /// does.
+    /// The press that names this pane: inside its tab, or down the whole window when the window
+    /// holds one tab. 0 when none does.
     ///
     /// With `tabPress`, the presses that reach this pane in the order a hand makes them, and
     /// what the row draws. Distinct from `place` above, which is where the row sits whether or
@@ -68,8 +67,8 @@ public struct Roster: Equatable {
     /// the caption of a tab nobody named.
     public let place: Int
 
-    /// The press that names this tab, or 0 when none does - which is every tab under the
-    /// scheme Muster ships, where ⌘N names panes. See `Pane.press`.
+    /// The press that names this tab, or 0 when none does - which is the only tab in a window,
+    /// where ⌘N names panes. See `Pane.press`.
     ///
     /// It stays drawn while a press is outstanding, even though ⌘N means something else for
     /// as long as one is. `armed` below is where that is said instead: taking the digit away
@@ -78,8 +77,7 @@ public struct Roster: Equatable {
 
     /// Whether the next press names a pane inside this tab.
     ///
-    /// At most one tab carries it, and only under `numbered_chords = "tab_then_pane"` with a
-    /// press outstanding. What the window says in place of moving its numbers - the presses
+    /// At most one tab carries it, and only while a press is outstanding. What the window says in place of moving its numbers - the presses
     /// the next keystroke can make are this tab's panes', and the list draws those as live.
     public let armed: Bool
 
@@ -141,8 +139,7 @@ public struct Roster: Equatable {
   ///
   /// Not a second answer to what reaches which row - that is the presses on the row, and this
   /// side reads them rather than working them out. What this adds is the question a row cannot
-  /// answer: under `numbered_chords = "tab_then_pane"` a first press leaves the window waiting
-  /// for a second, and three things here need to know it. Panes draw a number over themselves
+  /// answer: a first press leaves the window waiting for a second, and three things here need to know it. Panes draw a number over themselves
   /// only then, the window ends the gesture when the modifier comes up, and the list reserves
   /// the room a two-press chord takes.
   ///
@@ -150,11 +147,11 @@ public struct Roster: Equatable {
   /// the rows - it was the tab whose panes held the numbers - and once every pane row carries
   /// its own chord, the rows no longer say it.
   public enum Numbering: Equatable {
-    /// Panes, down the whole window. What Muster does.
+    /// Panes, down the whole window. A window holding one tab.
     case panes
-    /// Tabs, across the window. `tab_then_pane`, with no press outstanding.
+    /// Tabs, across the window, with no press outstanding.
     case tabs
-    /// The panes inside the tab a press named. `tab_then_pane`, half-typed.
+    /// The panes inside the tab a press named, half-typed.
     case panesInTab
 
     /// Whether a chord is half-typed, waiting for the press that names a pane.
@@ -162,8 +159,8 @@ public struct Roster: Equatable {
 
     /// Whether reaching a pane in this window takes two presses.
     ///
-    /// What decides how much room the list reserves for a chord. Under the settled scheme one
-    /// press names a pane, tab captions carry nothing, and there is no gutter to reserve.
+    /// What decides how much room the list reserves for a chord. In a window of one tab one
+    /// press names a pane, the tab has no caption, and there is no gutter to reserve.
     public var takesTwoPresses: Bool { self != .panes }
   }
 
@@ -270,14 +267,13 @@ public enum SidebarModel {
 
     /// How many presses this row leaves room for, whether or not it carries them.
     ///
-    /// Two on a pane row and one on a caption under `numbered_chords = "tab_then_pane"`, which
-    /// is what each kind of row can carry. Reserved rather than measured per row because the
+    /// Two on a pane row and one on a caption, which is what each kind of row can carry. Reserved rather than measured per row because the
     /// rows that carry nothing are scattered through the list - a pane past the ninth in its
     /// tab, a tab past the ninth - and labels that lined up only where a chord happened to
     /// exist would read as a list with a column missing.
     ///
-    /// Zero under the settled scheme, where a caption carries nothing and reserving space for a
-    /// press no tab will ever have would be an indent that buys nothing.
+    /// Zero in a window of one tab, where one press names a pane and reserving space for a tab
+    /// press would be an indent that buys nothing.
     public let reservedPresses: Int
 
     /// Whether this row says which machine its pane is on.
@@ -293,7 +289,7 @@ public enum SidebarModel {
 
     /// Whether this row's pane press is the second press of a chord already begun.
     ///
-    /// Only under `tab_then_pane`, and only on the pane rows of the tab a press has named.
+    /// Only on the pane rows of the tab a press has named.
     /// Drawn brighter than a press at rest, because at that moment it is not a reference - it
     /// is the thing the hand is about to do, and the window has to say which presses are live
     /// while the modifier is still down.
@@ -346,8 +342,8 @@ public enum SidebarModel {
   ///
   /// The exception is a numbered tab, which is drawn whatever else this rule says: a number
   /// nothing draws is a chord nobody can find. The core stopped producing one in a window of a
-  /// single tab - under `numbered_chords = "tab_then_pane"` such a window numbers panes,
-  /// because with one tab the two numberings are the same numbers - so the exception guards a
+  /// single tab - such a window numbers panes, because with one tab a pane's place in the
+  /// window and in its tab are the same number - so the exception guards a
   /// state rather than describing one. It stays because which rows carry numbers is the core's
   /// answer and not this one's, and a list that hid one would be worse than a caption nobody
   /// needed.
@@ -1121,8 +1117,8 @@ final class SidebarRowView: NSView {
   /// The chord that reaches this row, drawn beside the dot rather than instead of it.
   ///
   /// The dot is what the row is for and the chord is how to get there, so a row wants both.
-  /// Zero draws nothing, which is what a press a row does not have carries - the tab column
-  /// under the scheme Muster ships, and both columns on a pane nothing reaches.
+  /// Zero draws nothing, which is what a press a row does not have carries - the tab column in
+  /// a window of one tab, and both columns on a pane nothing reaches.
   ///
   /// One function for every kind of row, because a chord means one thing wherever it lands and
   /// two implementations of "draw the chord" would be two chances for them to look different

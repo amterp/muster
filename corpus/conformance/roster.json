@@ -1317,7 +1317,7 @@
     },
     {
       "name": "a number names the pane at that place, counting from one",
-      "why": "What \u23183 means. Counting from one rather than zero because the sidebar counts that way and the keyboard has no zero next to the one - and the number a person reads off a row has to be the number that takes them there.\n\nThe count runs across daemons and across tabs alike, so the third numbered row is the third pane in the window rather than the third on some machine. Here that lands on a pane the second daemon holds, in a tab nothing is showing: focusing a pane surfaces the tab holding it, so the numbers reach every tab through the panes in it and no tab needs a chord of its own.",
+      "why": "What `muster focus --place 3` means: the pane `muster window` prints at place 3. Counting from one rather than zero because the sidebar counts that way, and down the whole window rather than within a tab because a script reads the number off `muster window` and hands it back, so it has to mean what it was read as - whatever the numbered chords are naming at the time.\n\nThe count runs across daemons and across tabs alike, so place 3 is the third pane in the window rather than the third on some machine. Here that lands on a pane the second daemon holds, in a tab nothing is showing: focusing a pane surfaces the tab holding it.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1413,7 +1413,7 @@
     },
     {
       "name": "a number past the last pane names nothing",
-      "why": "Doing nothing beats landing somewhere. Clamping to the last pane would make \u23189 mean a different pane every time one opened or closed, which is a chord nobody can build a habit on - and the honest answer to 'go to the ninth pane' in a window of four is that there isn't one.",
+      "why": "Doing nothing beats landing somewhere. Clamping to the last pane would send a script holding a stale place to a different pane every time one opened or closed, and the honest answer to 'go to the ninth pane' in a window of four is that there isn't one.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1961,115 +1961,8 @@
       }
     },
     {
-      "name": "with the settled scheme a numbered chord names a pane and nothing is left over",
-      "why": "The half of `numbered_chords` that has to keep working exactly as it did. \u23182 is the second row down the whole list, one press is the whole gesture, and no press leaves anything behind for the next one to mean something different. This window is arranged so the two schemes disagree - the second pane of the window and the second pane of the second tab are different panes - so a case that passed under either would be pinning nothing.",
-      "given": {
-        "worlds": {
-          "laptop": {
-            "tabs": [
-              {
-                "id": "w1:t1",
-                "label": "t1",
-                "root": {
-                  "axis": "columns",
-                  "ratio": 0.5,
-                  "first": "w1:p1",
-                  "second": "w1:p2"
-                }
-              },
-              {
-                "id": "w1:t2",
-                "label": "t2",
-                "root": {
-                  "axis": "columns",
-                  "ratio": 0.5,
-                  "first": "w1:p3",
-                  "second": {
-                    "axis": "columns",
-                    "ratio": 0.5,
-                    "first": "w1:p4",
-                    "second": "w1:p5"
-                  }
-                }
-              }
-            ],
-            "panes": [
-              {
-                "id": "w1:p1",
-                "cwd": "/src/first"
-              },
-              {
-                "id": "w1:p2",
-                "cwd": "/src/second"
-              },
-              {
-                "id": "w1:p3",
-                "cwd": "/src/third"
-              },
-              {
-                "id": "w1:p4",
-                "cwd": "/src/fourth"
-              },
-              {
-                "id": "w1:p5",
-                "cwd": "/src/fifth"
-              }
-            ]
-          }
-        },
-        "daemons": [
-          {
-            "id": "local",
-            "world": "laptop"
-          }
-        ],
-        "regions": [
-          {
-            "daemon": "local",
-            "tab": "w1:t1"
-          }
-        ],
-        "numbered": {
-          "scheme": "panes",
-          "press": [
-            2,
-            2
-          ]
-        }
-      },
-      "expect": {
-        "chords": [
-          "w1:t1 nothing",
-          "  local/w1:p1 \u23181",
-          "  local/w1:p2 \u23182",
-          "w1:t2 nothing",
-          "  local/w1:p3 \u23183",
-          "  local/w1:p4 \u23184",
-          "  local/w1:p5 \u23185"
-        ],
-        "machines": [
-          "local connected 5 panes"
-        ],
-        "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
-          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
-          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
-          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
-        ],
-        "pressed": [
-          "\u23182 of panes \u2192 pane local/w1:p2",
-          "\u23182 of panes \u2192 pane local/w1:p2"
-        ],
-        "tabs": [
-          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
-        ]
-      }
-    },
-    {
-      "name": "a window of one tab numbers panes under the prototype too",
-      "why": "With one tab the first press of `tab_then_pane` carries no information: \u23181 names the only tab there is, and reaching its second pane costs \u23181 \u23182. So a window holding one tab numbers panes, which is not a third behaviour - a pane's place down the whole window and its place inside that tab are the same number here, so this is the settled scheme, which under these conditions the prototype agrees with.\n\nBoth presses are pinned, and that is the half worth pinning. Counting `panes` rather than `panes in local/w1:t1` is what says no chord is half-typed: the shell draws a number over every pane while one is and ends the gesture when the modifier comes up, so a numbering that said panes-inside-a-tab here would leave those numbers drawn forever with nothing having been pressed. Two presses in a row reaching the same pane is what that reads as.\n\nThe trigger is one tab in the window rather than one tab on the machine holding the keyboard. Per machine the same key would mean different things depending which column the keyboard sat in, with nothing on screen changing as it moved; per window the meaning changes only when a second tab appears, and that at least moves every number in the list as it happens. kan a_2Hx68fXqr.",
+      "name": "a window of one tab numbers its panes",
+      "why": "With one tab a first press carries no information: \u23181 names the only tab there is, and reaching its second pane costs \u23181 \u23182. So a window holding one tab numbers panes, one press each - a pane's place down the whole window and its place inside that tab are the same number here.\n\nBoth presses are pinned, and that is the half worth pinning. Counting `panes` rather than `panes in local/w1:t1` is what says no chord is half-typed: the shell draws a number over every pane while one is and ends the gesture when the modifier comes up, so a numbering that said panes-inside-a-tab here would leave those numbers drawn forever with nothing having been pressed. Two presses in a row reaching the same pane is what that reads as.\n\nThe trigger is one tab in the window rather than one tab on the machine holding the keyboard. Per machine the same key would mean different things depending which column the keyboard sat in, with nothing on screen changing as it moved; per window the meaning changes only when a second tab appears, and that at least moves every number in the list as it happens. kan a_2Hx68fXqr.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2119,7 +2012,6 @@
           }
         ],
         "numbered": {
-          "scheme": "tab_then_pane",
           "press": [
             2,
             2
@@ -2152,7 +2044,7 @@
     },
     {
       "name": "the first press picks a tab and the one after it picks a pane inside that tab",
-      "why": "The prototype, in one line. Pressing \u23182 twice reaches the second tab's second pane, which is the fourth pane of the window - so the second press is counting inside the tab the first one named rather than down the list. Both halves are needed to see it: after the first press the chords are counting panes in that tab, and that is what makes the same keystroke mean two things.",
+      "why": "The numbered chords, in one line. Pressing \u23182 twice reaches the second tab's second pane, which is the fourth pane of the window - so the second press is counting inside the tab the first one named rather than down the list. Both halves are needed to see it: after the first press the chords are counting panes in that tab, and that is what makes the same keystroke mean two things.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2220,7 +2112,6 @@
           }
         ],
         "numbered": {
-          "scheme": "tab_then_pane",
           "press": [
             2,
             2
@@ -2327,7 +2218,6 @@
           }
         ],
         "numbered": {
-          "scheme": "tab_then_pane",
           "press": [
             2,
             1
@@ -2434,7 +2324,6 @@
           }
         ],
         "numbered": {
-          "scheme": "tab_then_pane",
           "press": [
             2,
             2,
@@ -2543,7 +2432,6 @@
           }
         ],
         "numbered": {
-          "scheme": "tab_then_pane",
           "press": [
             2,
             3
@@ -2584,7 +2472,7 @@
     },
     {
       "name": "a second press past the end of its tab does nothing, and the press after it starts over",
-      "why": "The second tab holds three panes, so \u23189 after it has nothing to reach. Doing nothing rather than landing on the last pane is the same answer the flat scheme gives, for the same reason - a chord that landed elsewhere as the tab grew would mean something different every time a pane opened. What is new is what it leaves behind: nothing, so the next press is a first press again rather than being stuck counting inside a tab.",
+      "why": "The second tab holds three panes, so \u23189 after it has nothing to reach. Doing nothing rather than landing on the last pane, because a chord that landed elsewhere as the tab grew would mean something different every time a pane opened. What is new is what it leaves behind: nothing, so the next press is a first press again rather than being stuck counting inside a tab.",
       "given": {
         "worlds": {
           "laptop": {
@@ -2652,7 +2540,6 @@
           }
         ],
         "numbered": {
-          "scheme": "tab_then_pane",
           "press": [
             2,
             9,
@@ -2824,7 +2711,6 @@
           }
         ],
         "numbered": {
-          "scheme": "tab_then_pane",
           "press": [
             2,
             9
@@ -2945,7 +2831,6 @@
           }
         ],
         "numbered": {
-          "scheme": "tab_then_pane",
           "press": [
             5,
             2

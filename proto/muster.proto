@@ -1035,9 +1035,9 @@ message PressNumberedChord {
   uint32 press = 1;
 }
 
-// Takes back a `tab_then_pane` press that named a tab, because the gesture is over.
+// Takes back a numbered chord's press that named a tab, because the gesture is over.
 //
-// What releasing the modifier means. Under the prototype scheme ⌘2 names a tab and the press
+// What releasing the modifier means. ⌘2 names a tab and the press
 // after it names a pane inside it, and until this existed the only way out was to do
 // something else - so letting go of ⌘ and walking away left a window whose numbers were
 // waiting for a press nobody was going to make.
@@ -1954,21 +1954,20 @@ message RosterChanged {
   // layout, which reserves the room a two-press chord takes on every row whether or not that
   // row has one.
   //
-  // No row can answer any of the three. In a window of one tab under `numbered_chords =
-  // "panes"`, a settled roster and a half-typed one carry byte-identical rows: the panes are
-  // numbered either way, and only the reason differs.
+  // No row can answer any of the three: a row carries the same presses whether or not a chord
+  // is half-typed, which is the point of carrying them.
   //
   // *Which* tab a press named is RosterTab.armed rather than anything here. It used to be
   // readable off the rows - it was the tab whose panes carried the numbers - and once every
   // pane row carries its own chord, the rows no longer say it.
   enum Counting {
-    // Panes, down the whole window. What Muster does.
+    // Panes, down the whole window. A window holding one tab.
     PANES = 0;
 
-    // Tabs, across the window. `tab_then_pane`, with no press outstanding.
+    // Tabs, across the window, with no press outstanding.
     TABS = 1;
 
-    // The panes inside one tab. `tab_then_pane`, after a press named that tab.
+    // The panes inside one tab, after a press named that tab.
     PANES_IN_TAB = 2;
   }
 }
@@ -2001,8 +2000,8 @@ message RosterTab {
 
   // Where this tab sits in the window's whole tab order, counting from one. The order
   // next_tab walks, counted across every daemon rather than within one. It is what a tab
-  // nobody named is called, and under the scheme Muster ships no chord names it - ⌘1 to ⌘9
-  // number panes. Which press reaches it, if any does, is `tab_press` below rather than this.
+  // nobody named is called. Which press reaches it, if any does, is `tab_press` below rather
+  // than this.
   uint32 place = 3;
 
   // Was `number`: which chord reached this tab *right now*, which went to 0 while a press was
@@ -2011,7 +2010,7 @@ message RosterTab {
   reserved 8;
 
   // The press that names this tab - 2 means ⌘2 gets you here - and 0 when none does, which is
-  // what every tab carries under the settled scheme. Distinct from `place` above, which is
+  // what the only tab in a window carries. Distinct from `place` above, which is
   // where the tab sits whether or not anything can reach it by press.
   //
   // Unlike the field it replaces this does not go to 0 while a press is outstanding. ⌘2 does
@@ -2024,7 +2023,7 @@ message RosterTab {
   uint32 tab_press = 10;
 
   // Whether the next press names a pane inside this tab. At most one tab carries it, and only
-  // under `numbered_chords = "tab_then_pane"` with a press outstanding.
+  // while a press is outstanding.
   //
   // What a window says in place of moving its numbers: the presses the next keystroke can make
   // are this tab's panes' `pane_press`, and a shell draws those as live while everything else
@@ -2095,20 +2094,20 @@ message RosterPane {
   // digit, so the field is retired rather than reinterpreted.
   reserved 8;
 
-  // The press that names this pane's tab, and 0 when none does - which is every pane under the
-  // settled scheme, where one press names a pane and no press names a tab. See
+  // The press that names this pane's tab, and 0 when none does - which is every pane in a window
+  // of one tab, where one press names a pane and no press names a tab. See
   // RosterTab.tab_press.
   uint32 tab_press = 9;
 
-  // The press that names this pane: inside its tab under `tab_then_pane`, and down the whole
-  // window under the settled scheme. 0 when none does.
+  // The press that names this pane: inside its tab, or down the whole window when the window
+  // holds one tab. 0 when none does.
   //
   // The two together are the presses that reach this pane, in the order a hand makes them, and
   // they do not change as a chord is typed - a pane in a tab nobody is looking at has a
   // readable address, which is what kan a_2LSUoy7dd was about.
   //
   // **Both 0 means nothing reaches this pane**, and there is no half-reachable state. Two rows
-  // land there under `tab_then_pane`: a pane past the ninth in its tab, and any pane in a tab
+  // land there: a pane past the ninth in its tab, and any pane in a tab
   // past the ninth. Sending a tab press alone for those would be a keystroke that looks like it
   // goes here and lands on another tab.
   //

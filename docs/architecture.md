@@ -559,15 +559,22 @@ the same vocabulary.
 is its composition (above), so the list walks tabs in that order, and one number runs across every attached daemon -
 which no daemon could produce, because no daemon knows the others exist.
 
-**One numbering, and it is on the panes.** Every pane carries a place in a single count that runs across every
-attached daemon and every tab, and that number is what the list draws and what ⌘1 to ⌘9 name. It is on panes because
-the unit of this product is an agent and an agent is a pane: the rows carrying the states are pane rows, so a number
-drawn a level above them would be one thing pointing at another. Numbering panes costs the tab axis nothing, because
-focusing a pane surfaces the tab holding it - so the nine chords reach every tab too, through any pane in it. Tabs
-keep a place of their own for stepping and for captioning one nobody has named, and no chord names it: two numberings
-in one list is worse than either, and whichever thing is numbered, only one may be.
+**A chord names a tab, and the press after it names a pane in that tab.** Every tab carries a place in one count
+across every attached daemon, and every pane a place within its tab. ⌘1 to ⌘9 name a tab, and the next press, made
+with the modifier still held, names a pane inside it. The core holds the half-typed chord, because on macOS a chord
+is a menu item and the round trip into the core is the only place both presses meet; anything that changes something
+takes it back, and so does the shell reporting that the modifier came up. A window of one tab numbers its panes
+instead, because there a first press carries no information. Each row carries the whole chord that reaches it, built
+from the same functions that resolve a press, so the digits drawn and the keys pressed cannot disagree.
 
-The number is positional and it moves when a pane above it closes. That is the cost of numbering the thing that
+Panes also keep a place in the whole window's order, which is what `muster window` prints and `muster focus --place`
+takes. A script needs a number that means one thing, and a chord means one thing or another depending on the press
+before it, so the two are separate requests.
+
+This replaced an earlier scheme where ⌘1 to ⌘9 named panes down the whole window in one press. Both were driven side
+by side, and amterp chose this one (kan a_2A6T9c2r4).
+
+The numbers are positional and they move when a tab or pane before them closes. That is the cost of numbering the thing that
 churns, and it is the right trade once the order is the user's to arrange: a stable number would keep its value when
 you moved the row, which is the opposite of what the gesture asked for. What it does not fix is a number going stale
 between reading it and pressing it, and the answer to that is elsewhere - a notification names the agent, not the
@@ -599,8 +606,7 @@ beside a devenv one (MIP-2, stage four). `muster pane move --tab` is the same re
 tabs are different questions: the *relative* pane moves reach everything the window is *showing*, and the tab moves
 reach what is behind it. Without the second, a pane in a tab the window is not showing would be reachable only by
 clicking its row - and the list can be put away, which would leave those panes with no door. The numbered chords are
-the third
-route and cut across both, because a place names a pane whether or not anything is showing it. Tab moves have no
+the third route and cut across both, because a chord reaches a pane whether or not anything is showing it. Tab moves have no
 geometry, because tabs are a list and nothing is to the left of a tab; both directions wrap.
 
 **Within the panes on screen, moving comes in two kinds.** Next and previous walk reading order across every region

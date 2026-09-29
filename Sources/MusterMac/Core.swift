@@ -871,9 +871,8 @@ public enum Core {
 
   /// Takes back a numbered chord that named a tab, because the gesture is over.
   ///
-  /// What letting go of the modifier means under `numbered_chords = "tab_then_pane"`. The core
-  /// decides what that costs; this side only decides that the hand has finished, which is the
-  /// one half of it only a shell can see.
+  /// What letting go of the modifier means. The core decides what that costs; this side only
+  /// decides that the hand has finished, which is the one half of it only a shell can see.
   public static func endNumberedChord() {
     var request = Muster_Request()
     request.endNumberedChord = Muster_EndNumberedChord()

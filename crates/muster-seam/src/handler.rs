@@ -77,7 +77,7 @@ fn handle(request: Request) -> Response {
         return nothing_was_asked();
     };
 
-    // A `tab_then_pane` chord is armed by one request and spent by the next, so the rule that
+    // A numbered chord is armed by one request and spent by the next, so the rule that
     // ends it is stated here rather than at every caller that could: **a request that only
     // reads keeps it, and anything that changes something clears it.** So the second press
     // uses it, and a keystroke into a pane, an Escape, another action, a click or a divider
@@ -2187,14 +2187,6 @@ fn reload_config() -> Response {
     );
     announce_bindings();
     announce_appearance();
-    // The roster too, because `numbered_chords` decides which rows carry a number and the
-    // sidebar is drawing them. Without this, saving a file that changes the scheme moves what
-    // the chords do and leaves the numbers beside the rows saying what they used to do - which
-    // is the one failure the numbers are drawn to prevent.
-    //
-    // Announced here rather than left to the next publish: what has to be true is that the
-    // numbers are right when the save returns, not whenever a daemon next says something.
-    session::announce_roster();
     Response::ok()
 }
 

@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use toml::Value;
 
 use crate::input::{
-    Action, Binding, Bindings, Chord, NumberedChords, OptionAsAlt, PaneInputSettings, TEXT_EDITING,
+    Action, Binding, Bindings, Chord, OptionAsAlt, PaneInputSettings, TEXT_EDITING,
     ghostty_equivalent,
 };
 
@@ -244,8 +244,6 @@ impl CursorStyle {
 /// with a defensible default, and none is a decision Muster wants to make on somebody's
 /// behalf. What the first two have in common is that getting them wrong is an irritation
 /// nobody can name - a resize that moves too far, a trackpad that scrolls too slowly.
-/// `numbered_chords` is a bigger question wearing the same shape, and is here on sufferance
-/// while it is being tried.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Feel {
     /// How far a resize chord moves a divider.
@@ -261,19 +259,11 @@ pub struct Feel {
     /// size is the input device's business: a trackpad reports many small ones and a wheel
     /// mouse a few large ones, and only the person using them knows which needs adjusting.
     pub scroll_multiplier: f64,
-
-    /// What ⌘1 to ⌘9 name.
-    ///
-    /// The odd one out here, and knowingly: the others are small answers with a defensible
-    /// default, and this is a whole control scheme being tried beside the settled one. It
-    /// sits with them because it is still one value read once, and because a prototype that
-    /// grew a `[table]` of its own would be advertising a permanence it has not earned.
-    pub numbered_chords: NumberedChords,
 }
 
 impl Default for Feel {
     fn default() -> Feel {
-        Feel { resize_step: None, scroll_multiplier: 1.0, numbered_chords: NumberedChords::Panes }
+        Feel { resize_step: None, scroll_multiplier: 1.0 }
     }
 }
 
@@ -786,27 +776,34 @@ fn read_feel(root: &toml::Table) -> Result<Feel, String> {
         feel.scroll_multiplier = multiplier;
     }
 
-    if let Some(value) = root.get("numbered_chords") {
-        let name = value.as_str().ok_or_else(|| {
-            format!(
-                "`numbered_chords` in the config file is {}, and it has to be one of {}. None \
-                 of the file was applied.",
-                described(value),
-                quoted(&NumberedChords::READABLE),
-            )
-        })?;
-        feel.numbered_chords = NumberedChords::parse(name).ok_or_else(|| {
-            format!(
-                "`numbered_chords` in the config file is {name:?}, which is not a scheme ⌘1 to \
-                 ⌘9 can be on, so none of the file was applied. It is one of {}: `panes` counts \
-                 down the whole agent list, and `tab_then_pane` is a prototype where the first \
-                 press picks a tab and the next picks a pane inside it.",
-                quoted(&NumberedChords::READABLE),
-            )
-        })?;
-    }
+    read_retired_numbered_chords(root)?;
 
     Ok(feel)
+}
+
+/// `numbered_chords`, which chose between two schemes for ⌘1 to ⌘9 while both were tried.
+///
+/// Still a key the file may carry, because a file from that trial names `tab_then_pane`, the
+/// scheme that won, and refusing it would throw away somebody's whole config for asking for
+/// what Muster does anyway. `panes`, the scheme that lost, is refused like a removed action
+/// name: that file expects ⌘3 to reach the third pane, and silently getting the third tab is
+/// worse than being told.
+fn read_retired_numbered_chords(root: &toml::Table) -> Result<(), String> {
+    let Some(value) = root.get("numbered_chords") else { return Ok(()) };
+    match value.as_str() {
+        Some("tab_then_pane") => Ok(()),
+        Some("panes") => Err("`numbered_chords` in the config file is \"panes\", a scheme Muster \
+             no longer has, so none of the file was applied. ⌘1 to ⌘9 now name a tab and the \
+             press after one names a pane inside it, which is what `tab_then_pane` did. Delete \
+             the line; nothing replaces it."
+            .to_string()),
+        other => Err(format!(
+            "`numbered_chords` in the config file is {}, and the key no longer chooses anything, \
+             so none of the file was applied. ⌘1 to ⌘9 always name a tab and the press after \
+             one names a pane inside it. Delete the line.",
+            other.map_or_else(|| described(value).to_string(), |name| format!("{name:?}")),
+        )),
+    }
 }
 
 /// `[font]`, `[colors]`, `[cursor]` and `pane_padding`.
