@@ -93,6 +93,47 @@ fn a_numbered_chord_lands_on_the_row_carrying_that_number() {
     );
 }
 
+/// `muster focus --place` goes to the pane `muster window` prints at that place, whatever the
+/// numbered chords are naming.
+///
+/// A script reads a place off `muster window` and hands it back, so the number has to mean
+/// what it was read as. Under `tab_then_pane` the chord ⌘3 names the third tab, and a place
+/// resolved through the chords would send `--place 3` there - or nowhere, in a window of two.
+#[test]
+fn a_place_is_the_pane_at_that_place_whatever_the_chords_name() {
+    let _turn = a_fresh_window();
+    let daemon = Daemon::start_built();
+    a_session_of_two_tabs_the_second_holding_two(&daemon);
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon
+            .muster_config_with("numbered_chords = \"tab_then_pane\"")
+            .to_string_lossy()
+            .into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the roster to arrive with all three panes in it",
+        || roster().is_some_and(|roster| rows(&roster).len() == 3),
+        || format!("the roster holds {:?}", roster().map(|held| places(&held))),
+    );
+    let third = rows(&roster().expect("just waited for it"))
+        .into_iter()
+        .find_map(|(place, _, pane)| (place == 3).then_some(pane))
+        .expect("the roster numbers three panes");
+    assert_eq!(third, named(INNER_SECOND), "the arrangement this test needs came apart");
+
+    assert_ok(&answer(request::Payload::FocusPaneAt(FocusPaneAt { place: 3 })));
+    until(
+        "the pane at place 3 to have the keyboard",
+        || showing(&third),
+        || format!("the view still shows {:?}", shown()),
+    );
+    assert_eq!(armed_tabs(), Vec::<u32>::new(), "going to a place armed a chord");
+}
+
 /// A window of one tab under the prototype, where the first press would name that tab.
 ///
 /// The collapse (kan a_2Hx68fXqr): ⌘1 naming the only tab there is spends a press on nothing,
