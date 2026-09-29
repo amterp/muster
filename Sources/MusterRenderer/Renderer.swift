@@ -51,7 +51,9 @@ private func rendererAction(
     // Copied here, on libghostty's thread: the bytes are only libghostty's until this returns.
     let open = action.action.open_url
     let url =
-      open.url.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(open.len)), as: UTF8.self) }
+      open.url.map {
+        String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(open.len)), as: UTF8.self)
+      }
       ?? ""
     let kind: OpenedLink.Kind = open.kind == GHOSTTY_ACTION_OPEN_URL_KIND_OSC8 ? .hyperlink : .text
     guard target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface else {

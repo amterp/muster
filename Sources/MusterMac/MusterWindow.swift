@@ -560,7 +560,8 @@ public final class MusterWindow: NSObject {
     case .open(let url):
       NSWorkspace.shared.open(url)
     case .confirm(let url):
-      let handler = NSWorkspace.shared.urlForApplication(toOpen: url)
+      let handler =
+        NSWorkspace.shared.urlForApplication(toOpen: url)
         .map { FileManager.default.displayName(atPath: $0.path) } ?? "whichever app handles it"
       ConfirmSheet.ask(
         on: window, question: "Open this link?",

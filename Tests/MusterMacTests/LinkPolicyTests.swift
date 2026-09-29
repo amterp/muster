@@ -21,7 +21,8 @@ struct LinkPolicyTests {
     let url = URL(string: "https://example.com/pr/42")!
     #expect(decide("https://example.com/pr/42") == .open(url))
     #expect(decide("https://example.com/pr/42", .hyperlink, here: false) == .open(url))
-    #expect(decide("mailto:someone@example.com") == .open(URL(string: "mailto:someone@example.com")!))
+    #expect(
+      decide("mailto:someone@example.com") == .open(URL(string: "mailto:someone@example.com")!))
   }
 
   @Test("a web link with no host, or a mail link with no address, is refused")
