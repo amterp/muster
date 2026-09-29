@@ -551,6 +551,38 @@ public final class MusterWindow: NSObject {
     return region
   }
 
+  /// Opens a link somebody cmd-clicked in a pane, on this Mac, if `LinkPolicy` allows it.
+  ///
+  /// A web link in a devenv pane opens here like one in a laptop pane: the browser is on this
+  /// machine, and the address means the same from either.
+  private func open(_ link: OpenedLink, onThisMachine: Bool, daemon: String) {
+    switch LinkPolicy.decide(link, onThisMachine: onThisMachine) {
+    case .open(let url):
+      NSWorkspace.shared.open(url)
+    case .confirm(let url):
+      let handler = NSWorkspace.shared.urlForApplication(toOpen: url)
+        .map { FileManager.default.displayName(atPath: $0.path) } ?? "whichever app handles it"
+      ConfirmSheet.ask(
+        on: window, question: "Open this link?",
+        body: "A program in this pane linked some text to this address, which the screen does "
+          + "not show. It opens in \(handler).",
+        confirm: "Open Link", preview: url.absoluteString,
+        then: { NSWorkspace.shared.open(url) })
+    case .refuse(let reason):
+      NSSound.beep()
+      // The link itself is left out: it is text a program printed, and may carry a token.
+      Core.warn(
+        "link.refused",
+        [
+          "daemon": daemon,
+          "reason": reason,
+          "impact": "a cmd-clicked link in this pane did not open",
+          "check": "whether the link is a path on another machine, or a file that would run "
+            + "code; copy it and open it by hand if it is what you meant",
+        ])
+    }
+  }
+
   /// Gives a pane's chrome a surface, and starts the bridge that paints it.
   private func start(
     _ chrome: PaneChrome, in region: WindowContents.Region, pane: PaneTree.Leaf
@@ -591,6 +623,10 @@ public final class MusterWindow: NSObject {
     // ending means the daemon has dropped the pane, which is the commonest reason.
     chrome.surface.onProcessExited = { processAlive in
       Core.bridgeExited(daemonID: daemonID, paneID: paneID, processAlive: processAlive)
+    }
+    let onThisMachine = !region.remote
+    chrome.surface.onOpenLink = { [weak self] link in
+      self?.open(link, onThisMachine: onThisMachine, daemon: daemonID)
     }
     start(
       chrome,

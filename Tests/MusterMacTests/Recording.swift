@@ -34,6 +34,7 @@ final class RecordingSurface: PaneSurface {
   /// Every step through a search, `true` for next.
   var navigations: [Bool] = []
   var onSearch: (@MainActor (SearchReport) -> Void)?
+  var onOpenLink: (@MainActor (OpenedLink) -> Void)?
   /// What this surface will not do, for the tests about a renderer that refuses.
   var refuses: [String] = []
   /// Every wheel it was handed, as the deltas and flags the surface was given.

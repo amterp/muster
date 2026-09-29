@@ -26,11 +26,13 @@ private func rendererWakeup(_ userdata: UnsafeMutableRawPointer?) {
   Task { @MainActor in Renderer.current?.tick() }
 }
 
-/// Takes the actions Muster's find bar is built on, and declines the rest.
+/// Takes the actions Muster's find bar and links are built on, and declines the rest.
 ///
 /// The counts are what the bar draws. Starting and ending a search are claimed without doing
 /// anything, because Muster's own bar is what starts and ends one - a surface never opens
-/// Ghostty's. Everything else arrives with the feature that consumes it.
+/// Ghostty's. A link is claimed and handed to the surface it was clicked in, which is the one
+/// place that knows which machine the pane is on. Everything else arrives with the feature that
+/// consumes it.
 private func rendererAction(
   _ app: ghostty_app_t?, _ target: ghostty_target_s, _ action: ghostty_action_s
 ) -> Bool {
@@ -44,6 +46,19 @@ private func rendererAction(
   case GHOSTTY_ACTION_SEARCH_SELECTED:
     let selected = action.action.search_selected.selected
     report(.selected(selected >= 0 ? Int(selected) : nil), to: target)
+    return true
+  case GHOSTTY_ACTION_OPEN_URL:
+    // Copied here, on libghostty's thread: the bytes are only libghostty's until this returns.
+    let open = action.action.open_url
+    let url =
+      open.url.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(open.len)), as: UTF8.self) }
+      ?? ""
+    let kind: OpenedLink.Kind = open.kind == GHOSTTY_ACTION_OPEN_URL_KIND_OSC8 ? .hyperlink : .text
+    guard target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface else {
+      return false
+    }
+    let token = UInt(bitPattern: ghostty_surface_userdata(surface))
+    Task { @MainActor in Surface.report(OpenedLink(kind: kind, url: url), token: token) }
     return true
   default:
     return false
@@ -380,6 +395,10 @@ public final class Surface {
 
   static func report(_ search: SearchReport, token: UInt) {
     living[token]?.surface?.onSearch?(search)
+  }
+
+  static func report(_ link: OpenedLink, token: UInt) {
+    living[token]?.surface?.onOpenLink?(link)
   }
 
   public func setSize(width: UInt32, height: UInt32) {

@@ -48,6 +48,9 @@ public protocol PaneSurface: AnyObject {
   /// Called when the running search has counted its matches or moved to one.
   var onSearch: (@MainActor (SearchReport) -> Void)? { get set }
 
+  /// Called when somebody cmd-clicks a link in the pane, asking for it to be opened.
+  var onOpenLink: (@MainActor (OpenedLink) -> Void)? { get set }
+
   /// Called when the command this surface is running exits, which for a pane means its
   /// bridge is gone. Settable rather than reported once, because whoever owns the surface is
   /// not who needs to know.

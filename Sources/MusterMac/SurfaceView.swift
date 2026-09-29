@@ -65,6 +65,10 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// than on the surface, because the find bar can open before the pane's surface exists.
   public var onSearch: (@MainActor (SearchReport) -> Void)?
 
+  /// Called when somebody cmd-clicks a link in this pane. Held here for the reason `onSearch`
+  /// is: whoever sets it may do so before the surface exists.
+  public var onOpenLink: (@MainActor (OpenedLink) -> Void)?
+
   public override init(frame: NSRect) {
     super.init(frame: frame)
     // Layer-backed before the surface is created, and on the main thread. libghostty's
@@ -98,6 +102,9 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     }
     surface.onSearch = { [weak self] report in
       self?.onSearch?(report)
+    }
+    surface.onOpenLink = { [weak self] link in
+      self?.onOpenLink?(link)
     }
     attach(typeable: typeable)
     surface.setSize(
