@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "reopening-a-window",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "devenv"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790686659590,
+  "creator": "Alexander Terp",
+  "description": "`muster tab focus t27bs52b82`, naming a tab of the closed window-6, launched `muster --window window-6 --show t27bs52b82`. Every tab window-6 held was on the devenv. 110ms after launch, before the devenv connection was up, the window made a new local tab (`CreateTab t27k39rcjc`) and showed it, and the `--show` gave up:\n\n    window.show.failed  detail: no daemon holds a pane or tab called t27bs52b82\n                        impact: the window opened where it was left rather than on what it was reopened for\n\nSo the window came back in front of an empty shell instead of the tab it was asked for, and that shell's tab is now recorded as window-6's own (`window-6.toml` has `showing = \"t27k39rcjc\"`). `docs/cli/window.md` says `muster tab focus` on a closed window's tab reopens that window onto it.\n\nObserved 2026-09-29 on 0.12.0, right after upgrading from 0.11.0: pid 26942 in `muster-2026-09-29_07-52-53-24430.jsonl`. A notification click and `muster window reopen` probably take the same path for a window holding only remote tabs; not checked.\n\nA guess at the fix, in two parts: a window whose tabs are on a daemon still connecting should wait for it rather than treat itself as empty, and `--show` naming a tab on such a daemon should wait for that daemon rather than fail at once.",
+  "id": "a_2Ym1KdQdH",
+  "position": "b0H",
+  "title": "Reopening a window whose tabs are all on a devenv adds an empty local tab",
+  "type": "bug",
+  "updated_at_millis": 1790686659590,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790686659590}
+  ]
+}
