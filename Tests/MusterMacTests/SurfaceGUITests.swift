@@ -153,6 +153,45 @@ extension SurfaceGUITests {
   }
 }
 
+extension SurfaceGUITests {
+  /// libghostty finds the link under a cmd-click and reports it as a runtime action, which
+  /// reaches the surface only through `rendererAction`. A shell that declined that action is a
+  /// link that does nothing when clicked, which is what shipped until 0.11.0.
+  @MainActor
+  @Test("reports a cmd-clicked hyperlink as a link to open")
+  func aCmdClickedLinkIsReported() async throws {
+    let renderer = try sharedRenderer()
+    let view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    // Cleared first, so the link is on the first row whatever a login shell printed before it.
+    let surface = try renderer.makeSurface(
+      in: view,
+      command:
+        "/bin/sh -c \"printf '\\033[H\\033[2J\\033]8;;https://example.com/muster\\007%s"
+        + "\\033]8;;\\007\\n' "
+        + "click-me-please; sleep 10\"")
+    surface.setSize(width: 800, height: 600)
+    var reports: [SearchReport] = []
+    surface.onSearch = { reports.append($0) }
+    var opened: [OpenedLink] = []
+    surface.onOpenLink = { opened.append($0) }
+
+    try await answered("the link to be drawn") {
+      surface.search(nil)
+      surface.search("click-me-please")
+      return await polled(within: .milliseconds(250)) { reports.contains(.total(1)) }
+    }
+    surface.search(nil)
+
+    try await answered("the cmd-click to be reported as a link") {
+      surface.mouseMoved(to: NSPoint(x: 20, y: 6), modifiers: .command)
+      surface.mouseButton(0, pressed: true, modifiers: .command)
+      surface.mouseButton(0, pressed: false, modifiers: .command)
+      return await polled(within: .milliseconds(250)) { !opened.isEmpty }
+    }
+    #expect(opened.first == OpenedLink(kind: .hyperlink, url: "https://example.com/muster"))
+  }
+}
+
 /// Whether a shift-drag across the first row selects it, over a program reporting the mouse that
 /// asked (CSI > 1 s) or declined (CSI > 0 s) to be sent shift-clicks.
 @MainActor

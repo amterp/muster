@@ -318,6 +318,12 @@ public final class Surface {
   /// Called when a search this surface is running has counted its matches or moved to one.
   public var onSearch: (@MainActor (SearchReport) -> Void)?
 
+  /// Called when somebody cmd-clicks a link in this surface, asking for it to be opened.
+  ///
+  /// Only reported: whether to open it, and with what, is the shell's to decide, because a link
+  /// is text a program printed and may point anywhere.
+  public var onOpenLink: (@MainActor (OpenedLink) -> Void)?
+
   /// The offset this surface is already drawn at.
   ///
   /// Not a second home for the answer - the core owns it - but a memo of what was last pushed
@@ -584,6 +590,24 @@ public final class Surface {
 }
 
 /// What a surface's search has found, as libghostty reports it: one fact at a time.
+/// A link somebody asked to open, as libghostty reported it.
+public struct OpenedLink: Equatable, Sendable {
+  public enum Kind: Equatable, Sendable {
+    /// Text on the screen that looked like a URL or a path, so the target is what was shown.
+    case text
+    /// An OSC 8 hyperlink, whose target the program chose and the screen does not show.
+    case hyperlink
+  }
+
+  public let kind: Kind
+  public let url: String
+
+  public init(kind: Kind, url: String) {
+    self.kind = kind
+    self.url = url
+  }
+}
+
 public enum SearchReport: Equatable, Sendable {
   /// How many matches there are. Nil while libghostty does not know.
   case total(Int?)
