@@ -630,10 +630,16 @@ As built in stage 3, under Decision 1 (a):
   then on, unless a window attends it, a person's shell there is that machine's human,
   `@human@laptop`, and an agent's `@human` means the same. The person may post in a group kept
   there that they are in, and change its policy, members or pause. Reading, waiting, joining,
-  leaving and making a group need the human's cursors, so they, and a post in a group kept
-  anywhere else, are refused as `human_elsewhere`, naming the machine to run them on. An agent there reaches the
-  human only in a group the human joined, as it reaches any member on another machine. A daemon
-  no link has dialed yet keeps a human of its own, which no window hears of.
+  leaving and making a group need the human's cursors, so the service refuses them there as
+  `human_elsewhere`, as it does a post in a group kept anywhere else or in a new pair group. The
+  daemon carries each such request over the link to the human's home, as it does a change to a
+  group kept there and a request naming a group it holds nothing of. The home does it as the
+  human and answers in its own names, which the far machine reads as its own when typed back
+  (section 11). Names in the request are written as the far machine knows them, and one it does
+  not know as the home's. A carried wait lasts as long as its caller, and ends at the home when
+  the caller hangs up. Only with no link up does the person see `human_elsewhere`, saying so. An
+  agent there reaches the human as it reaches any member on another machine. A daemon no link
+  has dialed yet keeps a human of its own, which no window hears of.
 
 The display name of this section's first paragraph is not built: messages name the human
 `@human`.
@@ -677,20 +683,32 @@ by the guard included. Whatever a peer names is checked before it is turned: a c
 whoever acts in it are bare, so a peer cannot act as one of this machine's participants or land
 entries on a group kept here, and every other name must be one a participant could have. A change
 sent to the home and never answered is refused as `unanswered` rather than `unreachable`, since it
-may have landed, and the replica says it may be behind until the home is next heard from. Two
-things are not built: a post `--to` someone on another machine needs a
-group both joined, since the pair group would hold a member that never joined it; and a daemon
-reaches only the machines it is linked to directly, so a devenv agent cannot join a group kept on
-a second devenv.
+may have landed, and the replica says it may be behind until the home is next heard from. A name
+written as another machine writes one of this machine's, `review@devenv` on the devenv, is this
+machine's own.
+
+A name in a post's `--to` or a `group add` that means nobody here is asked of each linked machine,
+or of the one `name@machine` names, with a `whom` call: the machine answers the participant it
+means, the one in the pane of that name, or the pane while an agent may start there. A post to
+someone on another machine who shares no group with its author makes the pair group on the
+author's machine, as on one machine, named from the members' own names without their machines; a
+name a group holding anyone else already has takes `-2`, `-3`. A replica told of a join by a pane
+or the human it has no participant for makes one, as `--to` does, and wakes it. One thing is not
+built: a daemon reaches only the machines it is linked to directly, so an agent on one devenv
+cannot reach an agent or group on a second devenv (the second hop).
 
 **A group's policy binds at its home** (section 8). A forwarded post runs through the same checks
 as one made there, whom its author may address and whether the group is paused among them, and a
 forwarded join or leave is checked against `membership`. Every batch of entries the home sends
 carries the policy, so a replica wakes its own members as the home would, and a pause or resume
-there holds or wakes the replica's members too. Only the home changes a policy, its members or its
-pause; those verbs on a replica are refused as `kept_elsewhere`, naming the home. A policy names
-this machine's participants, `*` and `@human`, so a group whose `membership` is not `*` cannot yet
-be joined from another machine.
+there holds or wakes the replica's members too. The policy is the one at the batch's end, and the
+log says that a policy was set but not which, so a replica reads each message under what the log
+can say of the one it was posted under: a pause exactly, since each pause and resume is an entry,
+and a ring set as the replica's previous policy until the batch sets a new one. Only the home
+changes a policy, its members or its pause; those verbs on a replica are refused as
+`kept_elsewhere`, naming the home. A policy may name a member on another machine as the home names
+it, `director@devenv`, and a replica reads it in its own names, so a devenv agent can direct a
+council kept on the laptop, or join a group whose `membership` names it.
 
 **`@human` in a policy is the human on any machine.** There is one person, homed on the machine
 the app runs on (section 10), so a policy's `@human`, like its `*`, names a role rather than a
@@ -822,8 +840,9 @@ green on its own.
    reaches has Claude Code with credentials. The `--ssh` tier proves the same exchange there
    between two callers of the installed `muster`, one of them woken from a blocked `wait`. Left
    for later: a `msg` verb starting a daemon when none runs, which needs the launch code out of
-   `muster-daemon-client`; a remote pane's `PATH` reaching `~/.muster/bin`; and a daemon adopted
-   rather than installed gets the CLI only at its next install.
+   `muster-daemon-client`, and a remote pane's `PATH` reaching `~/.muster/bin`. A daemon adopted
+   rather than installed got the CLI only at its next install, until adopting one whose machine
+   has no CLI installed it there.
 
 2. **Presence, panes, and the end of `pane send` for messages.** Presence from detection; pane
    participants addressed by pane name; the doorbell and its guards; the post answer and its exit
@@ -858,7 +877,9 @@ green on its own.
 
    As built, the `--ssh` tier's proof is `crates/muster-seam/tests/devenv_messages.rs`, with a
    window attached to both machines, and the gate runs the same exchange between two daemons on
-   one machine (`crates/muster-daemon/tests/daemon/linked.rs`).
+   one machine (`crates/muster-daemon/tests/daemon/linked.rs`). Later, pair groups and `--to` a
+   pane across machines, a policy naming another machine's member, and the person's requests on
+   a far machine carried to the human's home (sections 10 and 11), with the same two proofs.
 
 ## Rationale
 
@@ -1036,3 +1057,7 @@ bind.
 - 2026-09-28 Stage 5 reviewed: a daemon holds an empty replica from its start, names from a peer
   are checked, a change never answered is `unanswered`, and the near machine's name is kept
   (sections 11 and 12).
+- 2026-09-28 Across machines, continued: `--to` finds a name or pane on a linked machine and
+  makes the pair group there, a policy may name another machine's member, the person's requests
+  on a far machine are carried to the human's home, and a replica reads a batch in its order
+  (sections 10 and 11). The second hop is still not built.

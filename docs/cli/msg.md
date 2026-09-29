@@ -17,8 +17,8 @@ Muster makes has, and otherwise this install's daemon under `~/.muster/daemon/`.
 
 An agent in a pane on an SSH machine does the same with the agents on that machine. Muster
 installs a `muster` there beside the daemon, every pane there finds it on its `PATH`, and it asks
-that machine's daemon. While a window is attached to both machines, agents on each share groups
-with the other's (below).
+that machine's daemon. While a window is attached to both machines, agents on each reach the
+other's by name or pane, and share groups with them (below).
 
 ## Who you are
 
@@ -51,7 +51,8 @@ there, `Review` is refused, because on macOS the two would be one file.
 
 A post names its group with `--group`. Without one it goes to the one group its author and
 addressees share; if they share none, to a group of exactly them, named from their names sorted
-and joined by `+` (`builder+critic`), created on first use. A post that fits several groups, or
+and joined by `+` (`builder+critic`), created on first use. A member on another machine counts by
+its own name there, and a name already taken by a group holding anyone else gets `-2`, `-3`. A post that fits several groups, or
 an unaddressed post from someone in several, is refused until it says which.
 
 `--to A,B` decides who is woken, never who may read: every member of the group can read every
@@ -60,7 +61,8 @@ says otherwise.
 
 **`--to` takes a pane's name too**, such as the one `muster pane new` prints. An agent in that
 pane need not have joined anything, or even have started yet: it becomes a participant named
-after the pane, and whatever runs `muster msg` in that pane from then on is it.
+after the pane, and whatever runs `muster msg` in that pane from then on is it. A name or pane
+that means nobody on this machine is looked for on the machines linked to it (below).
 
 ## A group's policy
 
@@ -257,11 +259,19 @@ from the other:
   laptop calls a machine by its `[[daemon]] id`, and the machine calls the laptop by the name the
   laptop's daemon chose when it first linked and keeps from then on: on a Mac the computer's name
   from Sharing settings, which a new network does not change. A bare name is the one kept on this machine, or else the one elsewhere that goes by it,
-  and `review@devenv` says which when both machines have one. `join` with a bare name asks the
+  and `review@devenv` says which when both machines have one. A name written as the other
+  machine writes one of this machine's is this machine's own, so on the devenv `review@devenv`
+  is `review`, and a name copied from the laptop's output works there. `join` with a bare name asks the
   linked machines first, and makes the group here only if none keeps one. While a machine linked
   to since the daemon started is down, it cannot be asked, so that `join` is refused,
   `unchecked`: join by the full name once the link is back, or make the group here with `group
   new`.
+- **`--to` reaches the other machine.** A name or pane nobody on this machine goes by is asked
+  of each linked machine, or of the one `name@machine` names. A post to someone who shares no
+  group with you makes the group of the two of you on your machine, as on one machine: the
+  laptop's `builder+critic` is `builder+critic@your-laptop` on the devenv. A pane named this way
+  becomes a participant on its own machine and is rung there. `group add` finds names the same
+  way.
 - **Each machine wakes its own agents.** A post is numbered on the group's machine, and the guard
   counts what you have not read there, so it holds across machines as it does on one. A post's
   answer says what each machine did for its own agents.
@@ -278,19 +288,24 @@ from the other:
   there. `muster msg log` says whether, so look before posting again. Until the group is heard
   from again, `read` and `log` say it may be behind.
 - **A group's policy is its home's.** A post, join or leave from another machine is held to it
-  as one made there is, and a refusal names members as you name them. `group set`, `group add`,
-  `group remove`, `pause` and `resume` run only on the group's machine; elsewhere they are
-  refused, `kept_elsewhere`, naming it. There, `group remove review critic@devenv` removes a
-  member on another machine, which lets it go as a leave would. A pause holds wakes on both machines, and a resume wakes
-  each machine's members.
+  as one made there is, and a refusal names members as you name them. A policy can name a
+  member on another machine as the group's machine names it, `director@devenv`, so an agent on
+  the devenv can direct a council kept on the laptop, or join a group whose `membership` names
+  it. `group set`, `group add`, `group remove`, `pause` and `resume` run only on the group's
+  machine; elsewhere an agent is refused, `kept_elsewhere`, naming it. There, `group remove
+  review critic@devenv` removes a member on another machine, which lets it go as a leave would.
+  A pause holds wakes on both machines, and a resume wakes each machine's members.
 - **The human is on the laptop.** `@human` in a policy means you wherever the group is kept, and
   a devenv post that wakes you notifies through the laptop's windows. The guard never holds your
   post, on either machine. Once the laptop has linked to a devenv, the devenv has no human of its
-  own: an agent there that addresses `@human` means you, in a group you have joined, and your own
-  shell there is you as the laptop's member. From that shell you can post in and change a group
-  kept on the devenv that you are in, and read its log. Reading, waiting, joining, leaving,
-  making a group, and posting in a group kept elsewhere are refused, `human_elsewhere`, naming
-  the laptop, where your cursors are.
+  own: an agent there that addresses `@human` means you, and your own shell there is you as the
+  laptop's member. The devenv sends to the laptop, where your cursors are, whatever it cannot do
+  for you there: reading, waiting, joining, leaving, making a group, posting in a group kept
+  elsewhere or in a new group of two, changing a group kept on the laptop, and anything about a
+  group it holds nothing of. The laptop does it and answers in its own names, `review@devenv`
+  for the devenv's `review`. So `muster msg post --to <pane>` from a devenv shell reaches the
+  agent in that pane. With no link to the laptop up, these are refused, `human_elsewhere`,
+  naming it.
 
 ## Where messages are kept
 
@@ -302,10 +317,8 @@ where.
 
 ## Not yet
 
-A post `--to` someone on another machine needs a group you have both joined: the group of just
-the two of you is not made across machines. A daemon links only to the machines a window attaches
-it to, so an agent on one devenv cannot join a group kept on another. A policy names only this
-machine's participants, `*` and `@human`, and `group add` takes only this machine's, so a group
-whose `membership` is not `*` cannot be joined from another machine. No verb deletes a group.
+A daemon links only to the machines a window attaches it to, so an agent on one devenv cannot
+reach an agent or a group on another: messages cross from the laptop to each devenv and back,
+not between devenvs. No verb deletes a group.
 `docs/mip/0004-agent-messaging.md` is the
 design and its order.

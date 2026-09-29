@@ -42,11 +42,12 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   `stale` means the rest of it is an old picture. A pane you made may since have been closed,
   renamed or moved by the person at the keyboard.
 - **Ask the person with `muster msg post --to @human`.** It notifies them, and their answer
-  wakes you; do not sit at your prompt hoping they notice. On a devenv the person is on the
-  laptop, so this needs a group they have joined.
-- **Tell an agent something with `muster msg post --to <pane>`, not with `muster pane send`.**
-  A message arrives whole and wakes the agent once it is idle at an empty prompt; `pane send`
-  types into the pane, and is for answering a prompt the agent is blocked on.
+  wakes you; do not sit at your prompt hoping they notice. On a devenv this reaches the person
+  on the laptop.
+- **Tell an agent something with `muster msg post --to <pane>`, not with `muster pane send`**,
+  on this machine or another the window is attached to. A message arrives whole and wakes the
+  agent once it is idle at an empty prompt; `pane send` types into the pane, and is for
+  answering a prompt the agent is blocked on.
 - **After posting, end your turn.** An answer wakes you. Exit 6 means nobody live heard the post
   and no answer is coming; a post that says `its prompt cannot be read` reached a harness the
   doorbell cannot ring. When you are woken, run the `muster msg read` the wake names before
