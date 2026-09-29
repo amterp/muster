@@ -16,8 +16,8 @@ use std::time::Duration;
 
 use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster::proto::{
-    CreateTab, OpenWindow, ReadPane, ReadWindow, Request, Response, SendToPane, Startup, Window,
-    request, response,
+    CreateTab, OpenWindow, Quitting, ReadPane, ReadWindow, Request, Response, SendToPane, Startup,
+    Window, request, response,
 };
 use muster_daemon_client::launch::stop;
 use muster_daemon_client::remote::Installed;
@@ -143,9 +143,23 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
         on_devenv(window).len() == before + 1
     });
 
-    // Closing the window takes its socket off the devenv with it, so what is left there does
-    // not look like a window that might answer.
-    let _ = stop(&local, Duration::from_secs(10));
+    // Quitting ends the window's master, and its forwards with it: nothing is left running
+    // here for launchd to inherit, still carrying this window's socket to the devenv, where a
+    // pane asking for its window would reach one that has quit (kan a_2YAdjRtMB). Asked to end
+    // the session as well, so the devenv's daemon is stopped through the master first.
+    assert_ok(&answer(request::Payload::Quitting(Quitting { close_sessions: true })));
+    let checked = Command::new("ssh")
+        .arg("-O")
+        .arg("check")
+        .arg("-S")
+        .arg(&control)
+        .arg(&host)
+        .output()
+        .expect("ssh runs");
+    assert!(!checked.status.success(), "the window's ssh master outlived its quit: {checked:?}");
+
+    // And its socket is off the devenv, so what is left there does not look like a window that
+    // might answer.
     drop(turn);
     drop(muster::testing::fresh_session());
     let left = over_ssh(
