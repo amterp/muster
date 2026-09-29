@@ -1484,3 +1484,68 @@ fn a_name_written_as_the_other_machine_writes_ours_is_ours() {
         devenv.post(&critic, Some("review"), &["critic@devenv".to_string()], "me", sessions, 9);
     assert_eq!(refused.unwrap_err(), Refusal::AddressedSelf);
 }
+
+/// A group's policy can name a member on another machine, as its home names it: a director on
+/// the devenv of a council kept on the laptop joins it, rings it and is rung by it, and a member
+/// added there from the laptop is held to it. The devenv reads the policy in its own names.
+#[test]
+fn a_policy_names_a_member_on_another_machine() {
+    let set = |names: &[&str]| names.iter().map(ToString::to_string).collect::<Vec<_>>();
+    let council = Policy {
+        ring: BTreeMap::from([
+            ("director@devenv".to_string(), set(&["*"])),
+            ("*".to_string(), set(&["director@devenv"])),
+        ]),
+        allow: BTreeMap::from([
+            ("director@devenv".to_string(), set(&["*"])),
+            ("*".to_string(), set(&["director@devenv", HUMAN])),
+        ]),
+        membership: set(&["director@devenv", "builder"]),
+        paused: false,
+    };
+    let mut wire = Wire::new();
+    let (builder, director, critic) = (session("builder"), session("director"), session("critic"));
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.join(&builder, Some("builder"), None, sessions, now).unwrap();
+    laptop.group_new(&builder, "council", Some(council), sessions, now).unwrap();
+
+    assert_eq!(wire.join(Side::Devenv, &director, Some("director"), "council"), "council@lap");
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let route = devenv.route_join(&critic, Some("critic"), Some("council@lap"), sessions);
+    let Route::Away(away) = route.unwrap() else { panic!("council is kept on the laptop") };
+    assert_eq!(
+        wire.send(Side::Devenv, &away.call).unwrap_err(),
+        Refusal::NotPermitted {
+            name: "critic".to_string(),
+            group: "council@lap".to_string(),
+            action: Action::Join,
+            permitted: vec!["director".to_string(), "builder@lap".to_string()],
+        }
+    );
+
+    let found = wire.found(Side::Laptop, &["critic".to_string()]);
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let added = laptop
+        .group_members(&builder, "council", &["critic".to_string()], &[], &found, sessions, now)
+        .unwrap();
+    assert_eq!(added.added, ["critic@devenv"]);
+    wire.tell(Side::Laptop, &added.tell);
+
+    let posted = wire.post(Side::Laptop, &builder, None, &[], "ready").unwrap();
+    assert_eq!(woke(&posted), [("director@devenv", Reach::Woken)]);
+    wire.read(Side::Devenv, &director, None);
+    let posted = wire.post(Side::Devenv, &director, None, &[], "go").unwrap();
+    assert_eq!(woke(&posted), [("builder@lap", Reach::Woken), ("critic", Reach::Woken)]);
+    wire.read(Side::Devenv, &critic, None);
+    let refused = wire.post(Side::Devenv, &critic, None, &["builder"], "around the director");
+    assert_eq!(
+        refused.unwrap_err(),
+        Refusal::NotAllowed {
+            addressee: "builder@lap".to_string(),
+            group: "council@lap".to_string(),
+            allowed: vec!["director".to_string(), HUMAN.to_string()],
+        }
+    );
+}

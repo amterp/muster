@@ -3,11 +3,11 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::Refusal;
-use crate::names::{HUMAN, check_participant, is_human};
+use crate::names::{HUMAN, check_addressee, is_human};
 
 /// A group's rules (MIP-4, section 8), enforced by the service, since a rule a prompt carries
-/// has faded by turn 40 (section 9). Names are participants' names; `*` is anyone, and `@human`
-/// the human.
+/// has faded by turn 40 (section 9). Names are participants' names, a member on another machine
+/// as `name@machine` in the group's home's name for it; `*` is anyone, and `@human` the human.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Policy {
     /// Whom an unaddressed post wakes, by author; `*` is any author, or every member but the
@@ -58,13 +58,14 @@ impl Policy {
         names(&self.membership, role(name))
     }
 
-    /// Every name the policy holds, which must each be a participant's name, `*`, or `@human`.
+    /// Every name the policy holds, which must each be a participant's name, here or on
+    /// another machine, `*`, or `@human`.
     pub(crate) fn check(&self) -> Result<(), Refusal> {
         let keys = self.ring.keys().chain(self.allow.keys());
         let sets = self.ring.values().chain(self.allow.values()).flatten();
         for name in keys.chain(sets).chain(&self.membership) {
             if name != "*" {
-                check_participant(name)?;
+                check_addressee(name)?;
             }
         }
         Ok(())
@@ -169,6 +170,8 @@ mod tests {
     #[test]
     fn a_policy_naming_what_no_participant_could_be_called_is_refused() {
         let mut policy = directed();
+        assert_eq!(policy.check(), Ok(()));
+        policy.membership.push("critic@devenv".to_string());
         assert_eq!(policy.check(), Ok(()));
         policy.membership.push("two words".to_string());
         assert_eq!(policy.check(), Err(Refusal::BadName { name: "two words".to_string() }));
