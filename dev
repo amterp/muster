@@ -436,7 +436,7 @@ SKIPPED_SUITES = [
       "note": "reach the network and spend model turns; ./dev --claude-code runs them" },
     { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 10,
       "note": "need a logged-in session; ./dev --contract runs them" },
-    { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 4,
+    { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 5,
       "note": "need a logged-in session; ./dev --contract runs them" },
 ]
 
