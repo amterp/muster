@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-mirror-that-stays",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790652108132,
+  "creator": "Alexander Terp",
+  "description": "Defense in depth from a_2NnC4pyPm. A devenv daemon that stays stale with its forwarded socket refusing connections, while ssh -O check passes, is grounds to rebuild the tunnel. Now that only Muster's master can hold its control path this should not happen, but the supervisor still never dials the socket every mirror request uses.",
+  "id": "a_2YXWURAX9",
+  "position": "b0A",
+  "title": "🔌 A mirror that stays refused should tell the tunnel to rebuild",
+  "type": "enhancement",
+  "updated_at_millis": 1790652108132,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790652108132}
+  ]
+}

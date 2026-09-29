@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790634670169,
   "creator": "Alexander Terp",
   "description": "On 2026-09-28 at 22:25:50Z (0.11.0, Alex's Mac, window 98894), the tunnel supervisor's once-a-second `ssh -O check` did not return within `CONTROL_WITHIN` (2s). The supervisor ended the master 100ms later and opened a new one. All seven devenv panes lost their bridges, and the four on screen were dead for 15s, 14s of it waiting on a retry (a_2YQD5xCFq).\n\nThe master was very likely working. `-O check` is answered locally and never touches the network (`crates/muster-ssh/src/tunnel.rs:468`), and pane p27bs5f62b painted every second up to 22:25:50. A second window (pid 42509) held its own master to the same host through that second and never logged `tunnel.down`. Load average was about 7 on 8 performance cores. The log does not say why this one check took over 2s.\n\n`-O check` fails in two ways that mean different things:\n\n- It fails at once, because no socket is there or nothing answers on it: the master is gone, and reopening at once is right.\n- It times out: something still holds the control path and did not answer in 2s. One timeout is enough to end it today (`supervise`, tunnel.rs:314-363).\n\nA timeout never means the network dropped. A master whose connection dies exits when ServerAlive gives up, and the next check then fails at once. So a timeout is a master that is slow or wedged, and asking again on the next poll before ending it costs a wedged master about 3s and a slow one nothing.\n\nFrom `~/Library/Logs/muster/muster-2026-09-28_16-30-31-98894.jsonl`:\n\n    22:25:50.723Z  tunnel.down           the master on .../muster-98894-devenv.ctl did not answer `-O check` within 2s\n    22:25:50.815Z  bridge.stream.lost x7 the daemon hung up\n    22:25:50.839Z  tunnel.master_ended\n    22:25:51.814Z  tunnel.reopened\n    22:25:52.313Z  tunnel.reverse",
   "id": "a_2YQCqiInL",
-  "position": "b0K",
+  "position": "YzW",
   "title": "🔌 One slow -O check ends an ssh master that is carrying every pane",
   "type": "bug",
-  "updated_at_millis": 1790634684907,
+  "updated_at_millis": 1790652107193,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790634670169}
+    {"field":"column","value":"backlog-hi","at":1790634670169},
+    {"field":"column","value":"done","at":1790652107193}
   ]
 }

@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "the-stall-watch",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790599791034,
   "creator": "Alexander Terp",
   "description": "Seen in the overnight freeze: the core's stall watch (bridge.stalled every 3 deadlines, 15 s) counted 9 restarts in 2 minutes that the shell, running minutes behind, never acted on, and under load it replaces bridges that were only slow to spawn (5.6-21 s measured against a 15 s premise). After the freeze fix it cannot hang a window, only waste bridges. The fix is the shell reporting when it starts a bridge, with the watch timing from that report: a proto request and a change to typeable and respawn.",
   "id": "a_2YBZU4Ujx",
-  "position": "b0G",
+  "position": "YzT",
   "title": "The stall watch replaces bridges the shell never started",
   "type": "bug",
-  "updated_at_millis": 1790599791034,
+  "updated_at_millis": 1790652107660,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790599791034}
+    {"field":"column","value":"backlog-hi","at":1790599791034},
+    {"field":"column","value":"done","at":1790652107660}
   ]
 }

@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1790634679621,
   "creator": "Alexander Terp",
   "description": "When a devenv tunnel is reopened, the bridges started while it was down fail, and nothing asks for them again when the tunnel is back. They wait for the watchdog's `bridge.stalled`, which came 15s after the drop and 14s after the tunnel was usable.\n\nMeasured 2026-09-28 at 22:25:50Z (0.11.0, Alex's Mac, window 98894), after the drop in a_2YQCqiInL. The core replaced the four on-screen devenv bridges 80ms after the old ones hung up. The tunnel's local socket did not exist yet, so each new bridge failed to attach.\n\nFrom `~/Library/Logs/muster/muster-2026-09-28_16-30-31-98894.jsonl`:\n\n    22:25:50.815Z       bridge.stream.lost x7    the daemon hung up\n    22:25:50.897-.904Z  bridge.attach.failed x4  could not connect to .../muster-98894-devenv.sock: No such file or directory\n    22:25:51.587Z       backend.reconnected      devenv\n    22:25:52.313Z       tunnel.reverse\n    22:25:55.819Z       problem.raised x4        lost the connection carrying it and has not got one back within 5s\n    22:26:05.820Z       bridge.stalled x4        quiet_for_ms=5000 restarts=2\n    22:26:05.935-.950Z  problem.cleared x4       pane.typeable\n\nThe notification raised at 22:25:55 told Alex to check that the machine was reachable, 4s after it was reachable again. Asking again for a bridge for every pane on that daemon with none live, on `backend.reconnected` or `tunnel.reopened`, would have brought these panes back at about 22:25:52 and raised nothing. `session::reattach` in `crates/muster-seam/src/session.rs` already does this for one pane when a person asks.",
   "id": "a_2YQD5xCFq",
-  "position": "b0L",
+  "position": "YzS",
   "title": "🐢 A bridge that fails during a reconnect waits 15s for the watchdog, not for the tunnel",
   "type": "bug",
-  "updated_at_millis": 1790634679621,
+  "updated_at_millis": 1790652107842,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790634679621}
+    {"field":"column","value":"backlog-hi","at":1790634679621},
+    {"field":"column","value":"done","at":1790652107842}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "find-what-made-one",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790652108366,
+  "creator": "Alexander Terp",
+  "description": "a_2YQCqiInL is fixed by asking again before ending the master, but why the check took over 2s on 2026-09-28 is unknown. The next occurrence logs tunnel.slow; check machine load then, and whether a personal ~/.ssh/config (Match exec and similar) makes the checking ssh itself slow.",
+  "id": "a_2YXWUqeQf",
+  "position": "b0B",
+  "title": "🔎 Find what made one ssh -O check take over 2s",
+  "type": "chore",
+  "updated_at_millis": 1790652108366,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790652108366}
+  ]
+}
