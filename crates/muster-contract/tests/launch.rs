@@ -1124,6 +1124,17 @@ fn unsettled(records: &[Value]) -> Option<String> {
              {missing:?} render as empty squares."
         ));
     }
+    // The shell tells the core it acted on each bridge it was asked for, and the core times its
+    // next ask from that (kan a_2YBZU4Ujx). A shell that stopped saying so would leave every
+    // pane whose bridge never dials without anything asking for another.
+    let reported = values(records, "bridge.started", "pane");
+    let unreported: Vec<&String> = surfaced.difference(&reported).collect();
+    if !unreported.is_empty() {
+        return Some(format!(
+            "{unreported:?} got a surface and the shell never told the core it started their \
+             bridge, so a bridge of theirs that never dials is never asked for again"
+        ));
+    }
     // A surface that renders and swallows the keyboard is the failure that has cost this project
     // the most time, and it is invisible without asking per pane. `pane.typeable` is the moment
     // a bridge said it attached, which is the one that decides it.

@@ -104,21 +104,42 @@ impl Cleared {
     }
 }
 
+/// Who is asking for a bridge, which decides whether an ask the shell has not started yet holds
+/// this one back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ask {
+    /// Somebody ran `muster pane reattach`, or its menu item. Always made: it is the way back for
+    /// a pane whose shell got an ask and never started a bridge, which nothing automatic will
+    /// ask about again.
+    Person,
+
+    /// A bridge ended and the replacement policy started another. Always made, because a bridge
+    /// ending means the shell started one, whether or not its report has arrived yet.
+    Replacement,
+
+    /// Muster asking on its own because nothing has dialed: a daemon that came back. Not made
+    /// while the last ask has not been started, for the reason [`Waiting::ask`] gives.
+    Unprompted,
+}
+
 /// One pane's wait, and what is known about why it is waiting.
 #[derive(Debug, Clone)]
 struct Wait {
     /// When this wait started, on whatever monotonic scale the caller counts in.
     since: u64,
 
-    /// When a bridge for this pane was last asked for.
+    /// When the shell last started a bridge for this pane, or failing that when the wait began.
     ///
     /// Separate from `since` because the two answer different questions and must not move
     /// together. How long the pane has been deaf is what the sentence is about, and it has to
     /// keep climbing or a problem raised would clear itself and be raised again every
-    /// deadline - the nagging that keying a problem by its condition exists to end. How long
-    /// ago somebody asked is what paces the asking, and that has to restart on every ask or
-    /// the pane would be asked for on every tick.
-    asked: u64,
+    /// deadline - the nagging that keying a problem by its condition exists to end. How long a
+    /// started bridge has had to dial is what paces the asking.
+    ///
+    /// From the start rather than from the ask, because a loaded machine puts minutes between
+    /// the two: the watch counted nine asks in two minutes that a shell running behind never
+    /// reached, and replaced bridges that were only slow to spawn (kan a_2YBZU4Ujx).
+    started: u64,
 
     /// How the last bridge for this pane ended, when there was one.
     ///
@@ -132,6 +153,12 @@ struct Wait {
 #[derive(Debug, Default)]
 pub struct Waiting {
     waits: BTreeMap<PaneKey, Wait>,
+
+    /// Panes asked for whose shell has not said it started the bridge yet.
+    ///
+    /// Kept apart from the waits because it outlives them: an ask can be made for a pane that
+    /// has a bridge, and the report of its start can arrive after that bridge dialed.
+    pending: BTreeSet<PaneKey>,
 
     /// Which panes have already been reported, so that clearing knows what to take back.
     ///
@@ -157,6 +184,7 @@ impl Waiting {
     pub const fn new() -> Waiting {
         Waiting {
             waits: BTreeMap::new(),
+            pending: BTreeSet::new(),
             reported: BTreeSet::new(),
             settled: BTreeMap::new(),
             visible: None,
@@ -169,8 +197,44 @@ impl Waiting {
     /// and built again, so a bridge that exited is a bridge whose replacement has to dial
     /// too - and that second wait is the one the seam's `bridge_link.rs` calls out as the exact
     /// failure the accept loop exists to prevent.
+    ///
+    /// A socket bound is the first ask for a bridge, so the pane is pending until the shell says
+    /// it started one.
     pub fn opened(&mut self, pane: PaneKey, at: u64) {
-        self.waits.insert(pane, Wait { since: at, asked: at, last: None });
+        self.pending.insert(pane.clone());
+        self.waits.insert(pane, Wait { since: at, started: at, last: None });
+    }
+
+    /// A surface was torn down to be built again, so its bridge has to dial again.
+    ///
+    /// Not an ask, unlike [`Waiting::opened`], and it leaves whether one is pending alone: the
+    /// notice that the old surface went can arrive after the shell has reported starting the new
+    /// one, and taking that start back would leave a pane nothing asks about again.
+    pub fn restarted(&mut self, pane: PaneKey, at: u64) {
+        self.waits.insert(pane, Wait { since: at, started: at, last: None });
+    }
+
+    /// Asks for a bridge for this pane, and says whether the ask is made.
+    ///
+    /// An [`Ask::Unprompted`] ask is not made while the last one is pending. The shell builds a
+    /// bridge only when the number a view carries for the pane moves, so a second ask it has not
+    /// reached yet changes nothing it will see sooner - it only replaces the bridge the shell is
+    /// about to start. The other two are always made. Either way a made ask is pending until the
+    /// shell reports starting it.
+    pub fn ask(&mut self, pane: &PaneKey, ask: Ask) -> bool {
+        if ask == Ask::Unprompted && self.pending.contains(pane) {
+            return false;
+        }
+        self.pending.insert(pane.clone());
+        true
+    }
+
+    /// The shell started a bridge for the latest ask, so the asking is timed from now.
+    pub fn started(&mut self, pane: &PaneKey, at: u64) {
+        self.pending.remove(pane);
+        if let Some(wait) = self.waits.get_mut(pane) {
+            wait.started = at;
+        }
     }
 
     /// A bridge for this pane has ended, so the wait starts again knowing why.
@@ -189,12 +253,15 @@ impl Waiting {
             self.closed(&pane);
             return;
         }
-        self.waits.insert(pane, Wait { since: at, asked: at, last: Some(ended) });
+        self.waits.insert(pane, Wait { since: at, started: at, last: Some(ended) });
     }
 
     /// A bridge dialed in, so this pane can be typed into.
+    ///
+    /// Also settles any ask still pending: a bridge dialing is a bridge the shell started.
     pub fn typeable(&mut self, pane: &PaneKey) {
         self.waits.remove(pane);
+        self.pending.remove(pane);
         self.settle(pane, Cleared::Dialed);
     }
 
@@ -205,6 +272,7 @@ impl Waiting {
     /// outlive it and sit in the roster naming a pane nobody can look at.
     pub fn closed(&mut self, pane: &PaneKey) {
         self.waits.remove(pane);
+        self.pending.remove(pane);
         self.settle(pane, Cleared::Closed);
     }
 
@@ -230,7 +298,7 @@ impl Waiting {
             let drawn = self.visible.as_ref().is_none_or(|held| held.contains(pane));
             if !drawn && visible.contains(pane) {
                 wait.since = at;
-                wait.asked = at;
+                wait.started = at;
             }
         }
         self.visible = Some(visible);
@@ -252,17 +320,18 @@ impl Waiting {
                 .collect()
         };
 
-        // Every overdue pane whose last ask is a deadline old, which is what paces the asking.
-        // Taken before `asked` is restamped below, and separately from `raise`, because the
-        // two are opposite rules on purpose: a condition that stays true is said once, and a
-        // bridge that never arrived is asked for again.
+        // Every overdue pane whose started bridge has had three deadlines to dial, which is what
+        // paces the asking. Separately from `raise`, because the two are opposite rules on
+        // purpose: a condition that stays true is said once, and a bridge that never arrived is
+        // asked for again. Never a pane whose last ask is pending, for the reason `ask` gives.
         let ask_after = deadline.saturating_mul(ASK_AFTER_DEADLINES);
         let stalled: Vec<PaneKey> = overdue
             .iter()
+            .filter(|pane| !self.pending.contains(*pane))
             .filter(|pane| {
                 self.waits
                     .get(*pane)
-                    .is_some_and(|wait| now.saturating_sub(wait.asked) >= ask_after)
+                    .is_some_and(|wait| now.saturating_sub(wait.started) >= ask_after)
             })
             .cloned()
             .collect();
@@ -283,9 +352,7 @@ impl Waiting {
             stalled: stalled.clone(),
         };
         for pane in &stalled {
-            if let Some(wait) = self.waits.get_mut(pane) {
-                wait.asked = now;
-            }
+            self.pending.insert(pane.clone());
         }
         self.reported = overdue;
         self.settled.clear();
@@ -325,9 +392,11 @@ impl Waiting {
     /// else would ever wake it.
     ///
     /// The asking answers separately, and is why a stalled pane does not simply go quiet. A
-    /// pane nothing has dialed is asked for again a deadline after the last ask, whether or
-    /// not anybody has been told about it - so the loop keeps waking for as long as the pane
-    /// is dark, rather than sleeping forever the moment its problem is raised.
+    /// pane nothing has dialed is asked for again three deadlines after its last bridge started,
+    /// whether or not anybody has been told about it - so the loop keeps waking for as long as
+    /// the pane is dark, rather than sleeping forever the moment its problem is raised. A pane
+    /// whose last ask has not been started adds nothing: only the shell's report ends that wait,
+    /// and the report arrives as a call that knocks.
     pub fn next_wake(&self, now: u64, deadline: u64) -> Option<u64> {
         if deadline == 0 {
             return None;
@@ -335,17 +404,22 @@ impl Waiting {
         self.waits
             .iter()
             .filter(|(pane, _)| self.drawn(pane))
-            .map(|(pane, wait)| {
+            .filter_map(|(pane, wait)| {
                 let waited = now.saturating_sub(wait.since);
                 let to_say = if waited < deadline {
                     Some(deadline - waited)
                 } else {
                     (!self.reported.contains(pane)).then_some(0)
                 };
-                let to_ask = deadline
-                    .saturating_mul(ASK_AFTER_DEADLINES)
-                    .saturating_sub(now.saturating_sub(wait.asked));
-                to_say.map_or(to_ask, |say| say.min(to_ask))
+                let to_ask = (!self.pending.contains(pane)).then(|| {
+                    deadline
+                        .saturating_mul(ASK_AFTER_DEADLINES)
+                        .saturating_sub(now.saturating_sub(wait.started))
+                });
+                match (to_say, to_ask) {
+                    (Some(say), Some(ask)) => Some(say.min(ask)),
+                    (say, ask) => say.or(ask),
+                }
             })
             .min()
     }

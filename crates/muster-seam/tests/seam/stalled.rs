@@ -9,7 +9,9 @@
 //!
 //! No bridge is started here and none is needed, on the same terms as `respawn.rs`: the view
 //! is the whole of what the shell is told, and `bridge_restarts` moving is the only thing that
-//! makes it build the surface a bridge is the command of.
+//! makes it build the surface a bridge is the command of. A test says the shell started one by
+//! reporting it, as the shell does, and the asking is timed from that report; a pane whose ask
+//! nobody reported starting is not asked for again on Muster's own account.
 //!
 //! The short deadline is this file's alone, since each test's reset puts it back: the other
 //! respawn tests must not run under it - a stall ask landing between their bridge deaths would
@@ -20,8 +22,8 @@ use std::sync::Mutex;
 use std::sync::{atomic::AtomicUsize, atomic::Ordering};
 
 use muster::proto::{
-    BridgeExited, Event, OpenWindow, ReattachPane, Request, Response, Startup, ViewChanged,
-    ViewNode, event, request, response, view_node,
+    BridgeExited, BridgeStarted, Event, OpenWindow, ReattachPane, Request, Response, Startup,
+    ViewChanged, ViewNode, event, request, response, view_node,
 };
 use muster_core::bridge_link::Report;
 use muster_harness::{Daemon, until};
@@ -35,14 +37,15 @@ const DEADLINE_MS: u64 = 300;
 
 #[test]
 fn a_pane_whose_first_bridge_never_dials_is_asked_for_another() {
-    // The launch half of the bug. Nothing has ended, so the replacement policy has never been
-    // consulted about this pane - and until it is, the shell has no reason to build the
-    // surface that would start a bridge.
+    // The launch half of the bug. The shell started the first bridge and it never dialed, and
+    // nothing has ended, so the replacement policy has never been consulted about this pane -
+    // and until it is, the shell has no reason to build the surface that would start another.
     let _turn = muster::testing::fresh_session();
     shorten_the_deadline();
     let daemon = Daemon::start_built();
     let pane = open_a_window(&daemon);
     assert_eq!(restarts(&pane), Some(0), "a pane nobody has replaced is on none");
+    report_started(&pane, 0);
 
     until(
         "the core to ask for a bridge for a pane nothing has dialed",
@@ -54,7 +57,7 @@ fn a_pane_whose_first_bridge_never_dials_is_asked_for_another() {
 #[test]
 fn a_replacement_that_never_arrives_is_asked_for_again() {
     // The measured case. The core decided to replace - `bridge.replacing` is in the run log
-    // with an attempt number - and no `bridge.start` followed it, so there was no bridge to
+    // with an attempt number - and the bridge it got never dialed, so there was no bridge to
     // end and nothing that could ask a second time.
     let _turn = muster::testing::fresh_session();
     shorten_the_deadline();
@@ -71,6 +74,7 @@ fn a_replacement_that_never_arrives_is_asked_for_again() {
         || restarts(&pane) == Some(1),
         || format!("the last view the core published: {:?}", latest_view()),
     );
+    report_started(&pane, 1);
 
     // Nothing dials it, which is the bug. A second number is the pane getting another chance
     // rather than staying dark until somebody quits the app.
@@ -155,6 +159,15 @@ fn open_a_window(daemon: &Daemon) -> Pane {
 struct Pane {
     daemon: String,
     pane: String,
+}
+
+/// Says the shell built the surface for this bridge number, the way it does after starting one.
+fn report_started(pane: &Pane, bridge_restarts: u32) {
+    assert_ok(&answer(request::Payload::BridgeStarted(BridgeStarted {
+        daemon_id: pane.daemon.clone(),
+        pane_id: pane.pane.clone(),
+        bridge_restarts,
+    })));
 }
 
 fn report_exited(pane: &Pane, process_alive: bool) {

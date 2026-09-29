@@ -752,6 +752,21 @@ public enum Core {
     send(request)
   }
 
+  /// Reports that the window acted on the number a view carried for a pane's bridge.
+  ///
+  /// Sent whether or not the surface could be built, because the core times its next ask from
+  /// this and asking again is how a surface that failed is tried again. Not sent for a surface
+  /// deferred for want of a socket: that one is built on the republish that brings the socket.
+  public static func bridgeStarted(daemonID: String, paneID: String, bridgeRestarts: UInt32) {
+    var started = Muster_BridgeStarted()
+    started.daemonID = daemonID
+    started.paneID = paneID
+    started.bridgeRestarts = bridgeRestarts
+    var request = Muster_Request()
+    request.bridgeStarted = started
+    send(request)
+  }
+
   /// One of Muster's actions and the chord asking for it.
   ///
   /// The core's vocabulary, in the shell's own type: the generated messages stop at this
@@ -1093,6 +1108,7 @@ public enum Core {
     case .carried: return "carried"
     case .moveTab: return "move_tab"
     case .bridgeExited: return "bridge_exited"
+    case .bridgeStarted: return "bridge_started"
     case .resizePane: return "resize_pane"
     case .equalizePanes: return "equalize_panes"
     case .zoomPane: return "zoom_pane"

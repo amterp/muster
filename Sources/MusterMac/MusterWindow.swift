@@ -589,6 +589,7 @@ public final class MusterWindow: NSObject {
         linkSocketPath: linkSocketPath, remote: region.remote,
         reattaching: pane.bridgeRestarts > 0),
       typeable: true)
+    Core.bridgeStarted(daemonID: daemonID, paneID: paneID, bridgeRestarts: pane.bridgeRestarts)
   }
 
   private func start(_ chrome: PaneChrome, command: String?, typeable: Bool) {

@@ -12,7 +12,7 @@ use muster_core::PaneKey;
 use muster_core::composition::DaemonId;
 use muster_core::mirror::backend::PaneId;
 use muster_core::respawn::{Ended, Ending};
-use muster_core::typeable::Waiting;
+use muster_core::typeable::{Ask, Waiting};
 use serde_json::{Value, json};
 
 #[test]
@@ -24,6 +24,9 @@ fn typeable_conformance() {
         let mut waiting = Waiting::new();
         let (mut raised, mut cleared, mut details) = (Vec::new(), Vec::new(), Vec::new());
         let mut asked: Vec<Value> = Vec::new();
+        // What each `ask` step answered, only for a case that has one, so that the cases about
+        // something else need not spell it.
+        let mut asks: Vec<Value> = Vec::new();
         let mut last_read = 0;
 
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
@@ -31,6 +34,13 @@ fn typeable_conformance() {
                 waiting.opened(pane_key(pane)?, number(step, "at")?);
             } else if let Some(pane) = step.get("ended").and_then(Value::as_str) {
                 waiting.ended(pane_key(pane)?, number(step, "at")?, ended(step)?);
+            } else if let Some(pane) = step.get("restarted").and_then(Value::as_str) {
+                waiting.restarted(pane_key(pane)?, number(step, "at")?);
+            } else if let Some(pane) = step.get("started").and_then(Value::as_str) {
+                waiting.started(&pane_key(pane)?, number(step, "at")?);
+            } else if let Some(pane) = step.get("ask").and_then(Value::as_str) {
+                let made = waiting.ask(&pane_key(pane)?, asker(step)?);
+                asks.push(json!({ "pane": pane, "made": made }));
             } else if let Some(pane) = step.get("typeable").and_then(Value::as_str) {
                 waiting.typeable(&pane_key(pane)?);
             } else if let Some(pane) = step.get("closed").and_then(Value::as_str) {
@@ -70,11 +80,24 @@ fn typeable_conformance() {
             // Only where a case asks for it. One sentence pinned once beats the same
             // paragraph restated in thirteen cases that are about something else.
             ("detail", given.get("detail").is_some().then(|| json!(details.last()))),
+            ("asks", (!asks.is_empty()).then_some(Value::Array(asks))),
         ]))
     });
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+/// Who an `ask` step is, which it always says: whether the ask is made turns on it.
+fn asker(step: &Value) -> Result<Ask, CaseError> {
+    match step.get("by").and_then(Value::as_str) {
+        Some("person") => Ok(Ask::Person),
+        Some("replacement") => Ok(Ask::Replacement),
+        Some("unprompted") => Ok(Ask::Unprompted),
+        _ => Err(CaseError::new(format!(
+            "the step names no known asker in `by` (person, replacement, unprompted): {step}"
+        ))),
+    }
 }
 
 /// How the bridge ended, which every `ended` step says: the sentence a person reads turns on

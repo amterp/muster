@@ -39,6 +39,7 @@ use muster_core::reconnect;
 use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_core::transcript;
+use muster_core::typeable::Ask;
 use muster_daemon_client::backend::{DaemonBackend, DaemonInput};
 use muster_daemon_client::follow::{Follower, Following, Notice};
 use muster_daemon_client::{
@@ -2202,13 +2203,40 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
         // The wait starts again. A pane keeps its link while its surface is thrown away and
         // built again, so the replacement bridge has to attach too - and a replacement that
         // never arrives is the same dark pane, which is the case `bridge_link` names as the
-        // reason its accept loop runs more than once.
-        watchdog::opened(key);
+        // reason its accept loop runs more than once. Not an ask: this notice can arrive after
+        // the new surface's start was reported, and must not take that start back.
+        watchdog::restarted(key);
         return;
     }
     // Nothing to add about how it ended: this arrival says only that a surface's command is
     // gone, which is `Ended::unsaid` by definition.
     bridge_ended(&key, &Ended::unsaid());
+}
+
+/// Takes the shell's word that it acted on the number a view carried for this pane's bridge.
+///
+/// What the watch on panes nothing has dialed times its asking from, because the shell can reach
+/// a view minutes after the core published it: timed from the ask, the watch replaced bridges
+/// that were only slow to spawn, and asked nine times in two minutes for a pane the shell had not
+/// reached once (kan a_2YBZU4Ujx). A report for an older number than the latest ask is about a
+/// surface the shell is about to replace, so it starts nothing on the clock.
+pub(crate) fn bridge_started(daemon: &str, pane: &str, restarts: u32) {
+    let daemon = DaemonId::new(if daemon.is_empty() { LOCAL } else { daemon });
+    let key = PaneKey::new(&daemon, &PaneId::new(pane));
+    let latest = poison::lock(&SESSION, "session").respawns.restarts(&key);
+    let current = restarts >= latest;
+    log::info(
+        "bridge.started",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "pane" => pane.to_string(),
+            "bridge_restarts" => restarts.to_string(),
+            "latest" => latest.to_string(),
+        },
+    );
+    if current {
+        watchdog::started(&key);
+    }
 }
 
 /// A pane's bridge has stopped, said in its own words on the socket the app bound for it.
@@ -2301,6 +2329,7 @@ fn replace_bridge(pane: &PaneKey, ending: Ending) {
                 "bridge.replacing",
                 fields! { "pane" => pane.to_string(), "attempt" => count.to_string() },
             );
+            watchdog::ask(pane, Ask::Replacement);
             publish("bridge_replaced");
         }
         // Written down and not raised in the roster, although this is a pane nobody can type
@@ -2359,6 +2388,9 @@ pub(crate) fn reattach(pane: &PaneKey) -> bool {
         "bridge.reattach.asked",
         fields! { "pane" => pane.to_string(), "restarts" => restarts.to_string() },
     );
+    // Made whatever the shell has not started yet: this is the way back for a pane whose shell
+    // got an ask and never started a bridge, which nothing automatic asks about again.
+    watchdog::ask(pane, Ask::Person);
     publish("reattach");
     true
 }

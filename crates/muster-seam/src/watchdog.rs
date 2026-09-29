@@ -42,7 +42,7 @@ use muster_core::fields;
 use muster_core::painting::Painting;
 use muster_core::problems::Severity;
 use muster_core::respawn::Ended;
-use muster_core::typeable::Waiting;
+use muster_core::typeable::{Ask, Waiting};
 
 use crate::session;
 
@@ -192,6 +192,23 @@ pub(crate) fn opened(pane: PaneKey) {
 pub(crate) fn ended(pane: PaneKey, ended: Ended) {
     poison::lock(&WAITING, "typeable").ended(pane, clock::monotonic_now(), ended);
     start();
+}
+
+/// A surface was torn down to be built again, so its bridge has to dial again.
+pub(crate) fn restarted(pane: PaneKey) {
+    poison::lock(&WAITING, "typeable").restarted(pane, clock::monotonic_now());
+    start();
+}
+
+/// Records an ask for a bridge, and answers whether it was made (`typeable::Waiting::ask`).
+pub(crate) fn ask(pane: &PaneKey, ask: Ask) -> bool {
+    poison::lock(&WAITING, "typeable").ask(pane, ask)
+}
+
+/// The shell started a bridge for this pane's latest ask, so the asking is timed from now.
+pub(crate) fn started(pane: &PaneKey) {
+    poison::lock(&WAITING, "typeable").started(pane, clock::monotonic_now());
+    KNOCK.notify_all();
 }
 
 /// A bridge dialed in.

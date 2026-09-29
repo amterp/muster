@@ -16,6 +16,10 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "reconcile": 5000000000
           }
         ]
@@ -68,6 +72,10 @@
         "steps": [
           {
             "opened": "devenv/p206y9rm8s",
+            "at": 0
+          },
+          {
+            "started": "devenv/p206y9rm8s",
             "at": 0
           },
           {
@@ -185,6 +193,10 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "reconcile": 5000000000
           },
           {
@@ -282,11 +294,23 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "opened": "local/p1w3r0ab2n",
             "at": 0
           },
           {
+            "started": "local/p1w3r0ab2n",
+            "at": 0
+          },
+          {
             "opened": "devenv/p206y9p61r",
+            "at": 0
+          },
+          {
+            "started": "devenv/p206y9p61r",
             "at": 0
           },
           {
@@ -320,7 +344,15 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "opened": "devenv/p206y9p61r",
+            "at": 0
+          },
+          {
+            "started": "devenv/p206y9p61r",
             "at": 0
           },
           {
@@ -349,10 +381,14 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "typeable": "local/p1w3r07bsd"
           },
           {
-            "opened": "local/p1w3r07bsd",
+            "restarted": "local/p1w3r07bsd",
             "at": 6000000000
           },
           {
@@ -380,6 +416,10 @@
         "steps": [
           {
             "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "started": "local/p1w3r07bsd",
             "at": 0
           },
           {
@@ -468,7 +508,15 @@
             "at": 1000000000
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 1000000000
+          },
+          {
             "opened": "local/p1w3r0ab2n",
+            "at": 3000000000
+          },
+          {
+            "started": "local/p1w3r0ab2n",
             "at": 3000000000
           },
           {
@@ -494,7 +542,15 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "opened": "local/p1w3r0ab2n",
+            "at": 3000000000
+          },
+          {
+            "started": "local/p1w3r0ab2n",
             "at": 3000000000
           },
           {
@@ -542,7 +598,15 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "opened": "local/p1w3r0ab2n",
+            "at": 0
+          },
+          {
+            "started": "local/p1w3r0ab2n",
             "at": 0
           },
           {
@@ -653,6 +717,10 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "showing": [],
             "at": 1000000000
           },
@@ -704,8 +772,8 @@
       }
     },
     {
-      "name": "a pane nothing has dialed is asked for again, and again",
-      "why": "The recovery, and the shape that makes it one. The first ask is exactly the one that may have produced no bridge at all, so a watch that asked once would be a watch that noticed the bug and did nothing about it. Three readings three deadlines apart are three asks, while the sentence is said once - the two halves of a reading answer opposite rules on purpose.\n\nThe two clocks behind that are also why the problem is not cleared and raised again three times here. How long the pane has been deaf is what the sentence is about and keeps climbing; how long ago somebody asked is what paces the asking and restarts on every ask. Sharing one number would make a pane stop being overdue the moment it was asked for, and the roster would clear and re-raise its problem every deadline for as long as the pane stayed dark.",
+      "name": "a pane nothing has dialed is asked for again each time its bridge was started",
+      "why": "The recovery, and the shape that makes it one. The first ask is exactly the one that may have produced a bridge that never dials, so a watch that asked once would be a watch that noticed the bug and did nothing about it. Each started bridge that has not dialed three deadlines later is asked for again, while the sentence is said once - the two halves of a reading answer opposite rules on purpose.\n\nThe two clocks behind that are also why the problem is not cleared and raised again here. How long the pane has been deaf is what the sentence is about and keeps climbing; how long ago the shell started the last bridge is what paces the asking, and restarts on every start. Sharing one number would make a pane stop being overdue the moment it was asked for, and the roster would clear and re-raise its problem every deadline for as long as the pane stayed dark.\n\nThe last ask is not started, so there is nothing more on the clock: `next_wake` is null.",
       "given": {
         "deadline": 5000000000,
         "steps": [
@@ -714,13 +782,25 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "reconcile": 15000000000
           },
           {
-            "reconcile": 30000000000
+            "started": "local/p1w3r07bsd",
+            "at": 16000000000
           },
           {
-            "reconcile": 45000000000
+            "reconcile": 31000000000
+          },
+          {
+            "started": "local/p1w3r07bsd",
+            "at": 32000000000
+          },
+          {
+            "reconcile": 47000000000
           }
         ]
       },
@@ -734,7 +814,7 @@
           "local/p1w3r07bsd",
           "local/p1w3r07bsd"
         ],
-        "next_wake": 15000000000
+        "next_wake": null
       }
     },
     {
@@ -748,7 +828,15 @@
             "at": 0
           },
           {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
             "reconcile": 15000000000
+          },
+          {
+            "started": "local/p1w3r07bsd",
+            "at": 15000000000
           },
           {
             "reconcile": 16000000000
@@ -777,6 +865,10 @@
         "steps": [
           {
             "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "started": "local/p1w3r07bsd",
             "at": 0
           },
           {
@@ -838,6 +930,165 @@
           }
         ],
         "asked": [],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "an ask the shell has not started is not asked for again",
+      "why": "What a loaded machine did to the asking: the watch counted nine asks in two minutes that a shell running minutes behind never reached, and replaced bridges that were only slow to spawn (kan a_2YBZU4Ujx). The shell builds a bridge only when the number a view carries for the pane moves, so an ask it has not reached is still waiting for it, and a second one changes nothing it will see sooner - it only replaces the bridge it is about to start. So a pane whose socket is bound and whose shell has not said it started a bridge is reported like any other, and is not asked for, however long it waits.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          {
+            "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "reconcile": 5000000000
+          },
+          {
+            "reconcile": 15000000000
+          },
+          {
+            "reconcile": 60000000000
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:local/p1w3r07bsd"
+        ],
+        "cleared": [],
+        "asked": [],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "the asking is timed from when the shell started the bridge",
+      "why": "The other half of the same card. A bridge started twelve seconds after it was asked for has had three seconds to dial at the moment an ask timed from the ask would replace it. Timed from the start, it gets the same three deadlines as any other bridge; the sentence is still timed from when the pane went deaf, because that is what it is about.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          {
+            "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "reconcile": 5000000000
+          },
+          {
+            "started": "local/p1w3r07bsd",
+            "at": 12000000000
+          },
+          {
+            "reconcile": 15000000000
+          },
+          {
+            "reconcile": 27000000000
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:local/p1w3r07bsd"
+        ],
+        "cleared": [],
+        "asked": [
+          "local/p1w3r07bsd"
+        ],
+        "next_wake": null
+      }
+    },
+    {
+      "name": "a person asks even while the last ask has not been started",
+      "why": "The way back for a shell that got an ask and never started a bridge. Nothing automatic asks about that pane again, by the rule above, so `muster pane reattach` has to: a person is always asked for. So is a replacement for a bridge that ended, because a bridge ending means the shell started one whether or not its report has arrived. Only Muster asking on its own is held back.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          {
+            "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "reconcile": 5000000000
+          },
+          {
+            "ask": "local/p1w3r07bsd",
+            "by": "unprompted"
+          },
+          {
+            "ask": "local/p1w3r07bsd",
+            "by": "person"
+          },
+          {
+            "ask": "local/p1w3r07bsd",
+            "by": "replacement"
+          },
+          {
+            "started": "local/p1w3r07bsd",
+            "at": 20000000000
+          },
+          {
+            "reconcile": 35000000000
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:local/p1w3r07bsd"
+        ],
+        "cleared": [],
+        "asked": [
+          "local/p1w3r07bsd"
+        ],
+        "next_wake": null,
+        "asks": [
+          {
+            "pane": "local/p1w3r07bsd",
+            "made": false
+          },
+          {
+            "pane": "local/p1w3r07bsd",
+            "made": true
+          },
+          {
+            "pane": "local/p1w3r07bsd",
+            "made": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "a surface torn down after its new bridge started keeps the start",
+      "why": "The notice that a surface went and the report that its replacement started arrive in no fixed order. Read as a fresh ask, a late notice would leave the pane waiting on a start that has already happened, and nothing automatic would ask about it again. So the wait restarts and the start stands.",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
+          {
+            "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "started": "local/p1w3r07bsd",
+            "at": 1000000000
+          },
+          {
+            "restarted": "local/p1w3r07bsd",
+            "at": 2000000000
+          },
+          {
+            "reconcile": 17000000000
+          }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:local/p1w3r07bsd"
+        ],
+        "cleared": [],
+        "asked": [
+          "local/p1w3r07bsd"
+        ],
         "next_wake": null
       }
     }

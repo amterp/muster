@@ -117,6 +117,7 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::OpenWindow(_) => open_window(),
         request::Payload::CreateTab(create) => create_tab(&create),
         request::Payload::BridgeExited(exited) => bridge_exited(&exited),
+        request::Payload::BridgeStarted(started) => bridge_started(&started),
         request::Payload::KeyDown(down) => with_pane("a keystroke", |pane| key_down(pane, &down)),
         request::Payload::KeyUp(up) => with_pane("a key release", |pane| key_up(pane, &up)),
         request::Payload::SendText(text) => with_pane("text", |pane| {
@@ -1806,6 +1807,14 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
 /// Always `Ok`. Nothing was asked for, so there is nothing to refuse.
 fn bridge_exited(exited: &proto::BridgeExited) -> Response {
     session::bridge_exited(&exited.daemon_id, &exited.pane_id, exited.process_alive);
+    Response::ok()
+}
+
+/// The shell acted on the number a view carried for a pane's bridge.
+///
+/// Always `Ok`, like the report of one exiting: it is an observation.
+fn bridge_started(started: &proto::BridgeStarted) -> Response {
+    session::bridge_started(&started.daemon_id, &started.pane_id, started.bridge_restarts);
     Response::ok()
 }
 

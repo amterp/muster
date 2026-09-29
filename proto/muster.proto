@@ -76,6 +76,7 @@ message Request {
     PerformOnPane perform_on_pane = 54;
     FocusAsking focus_asking = 55;
     OpenTranscript open_transcript = 56;
+    BridgeStarted bridge_started = 57;
   }
 
   // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
@@ -539,6 +540,23 @@ message BridgeExited {
   // Whether libghostty saw a process still alive when it gave up on the surface. Carried for
   // the log rather than branched on: either way nothing is painting this pane.
   bool process_alive = 3;
+}
+
+// The shell has acted on a pane's bridge_restarts: it built the surface whose command is the
+// bridge, or tried to and could not.
+//
+// An observation, like BridgeExited. Muster asks for a pane's bridge by moving the number, and
+// on a loaded machine the shell can reach that view minutes later, so the core times the
+// asking from this report rather than from its own ask - and asks nothing more on its own for
+// a pane whose last ask has not been reported (kan a_2YBZU4Ujx). A surface that could not be
+// built is reported too, because asking again is how it is tried again.
+//
+// bridge_restarts is the number the surface was built for, so a report about an older ask
+// that arrives after a newer one is recognized and ignored.
+message BridgeStarted {
+  string daemon_id = 1;
+  string pane_id = 2;
+  uint32 bridge_restarts = 3;
 }
 
 // Show whatever there is to show.
