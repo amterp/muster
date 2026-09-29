@@ -513,7 +513,7 @@ fn sleep_unless_stopping(wait: Duration, stopping: &Arc<AtomicBool>) -> bool {
 /// this process's stderr every second for as long as the outage lasts.
 fn control(forward: &Forward, request: &str) -> Result<(), Unanswered> {
     bounded(
-        forward,
+        &forward.control_path,
         &format!("-O {request}"),
         ["-O", request, "-S", &forward.control_path, &forward.host],
     )
@@ -541,7 +541,7 @@ impl Unanswered {
 }
 
 /// Runs one ssh through the master's control path, and gives up on it after [`CONTROL_WITHIN`].
-fn bounded<I, S>(forward: &Forward, what: &str, arguments: I) -> Result<(), Unanswered>
+fn bounded<I, S>(control_path: &str, what: &str, arguments: I) -> Result<(), Unanswered>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
@@ -575,8 +575,7 @@ where
             let _ = asked.kill();
             let _ = asked.wait();
             return Err(Unanswered::Silent(format!(
-                "the master on {} did not answer `{what}` within {}s",
-                forward.control_path,
+                "the master on {control_path} did not answer `{what}` within {}s",
                 CONTROL_WITHIN.as_secs(),
             )));
         }
@@ -609,7 +608,7 @@ fn forward_back(forward: &Forward) {
                 quoted(&reverse.remote_path)
             ))
             .and_then(|_| {
-                bounded(forward, "-O forward -R", reverse_arguments(forward, reverse))
+                bounded(&forward.control_path, "-O forward -R", reverse_arguments(forward, reverse))
                     .map_err(Unanswered::into_detail)
             })
     };
@@ -646,7 +645,7 @@ fn take_back(forward: &Forward) {
     let Some(reverse) = &forward.reverse else { return };
     let mut arguments = client_arguments(&forward.host, &forward.control_path);
     arguments.extend(["rm".to_string(), "-f".to_string(), quoted(&reverse.remote_path)]);
-    let removed = bounded(forward, "rm -f", arguments);
+    let removed = bounded(&forward.control_path, "rm -f", arguments);
     if let Err(detail) = removed.map_err(Unanswered::into_detail) {
         log::debug(
             "tunnel.reverse_left",
@@ -695,6 +694,17 @@ fn end_master(forward: &Forward, child: &Arc<Mutex<Child>>) {
     );
     let _ = std::fs::remove_file(&forward.local_socket);
     let _ = std::fs::remove_file(&forward.control_path);
+}
+
+/// Asks whichever master holds this control path to leave, without knowing which host it
+/// reaches.
+///
+/// For a master nothing in this process started, so there is no [`Forward`] to address it by.
+/// ssh still wants a destination on the command line, but a `-O` request never resolves or
+/// dials it: it only talks to the socket at the path.
+pub(crate) fn end_master_at(control_path: &str) -> Result<(), String> {
+    bounded(control_path, "-O exit", ["-O", "exit", "-S", control_path, "muster-left-behind"])
+        .map_err(Unanswered::into_detail)
 }
 
 /// Whether a master that was just started is actually carrying anything.

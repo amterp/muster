@@ -782,6 +782,7 @@ name = "muster-ssh"
 version = "0.11.0"
 dependencies = [
  "conformance",
+ "libc",
  "muster-core",
  "serde_json",
 ]

@@ -21,9 +21,11 @@
 //! [`Reverse`] is the connection's other direction: a socket on this machine made to answer at a
 //! path over there, which is how a program on the far machine reaches the window that drew it.
 
+mod left_behind;
 mod remote;
 mod tunnel;
 
+pub use left_behind::{end_left_behind, tunnel_path};
 pub use remote::{Platform, Remote, quoted};
 pub use tunnel::{
     Forward, Report, Reverse, State, Tunnel, master_arguments, remote_environment,

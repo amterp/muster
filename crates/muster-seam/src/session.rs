@@ -1008,6 +1008,14 @@ fn open_tunnel(
     remote_socket: String,
     reverse: Option<Reverse>,
 ) -> Result<Tunnel, String> {
+    // Once per process, and before this one opens: an earlier Muster that exited without ending
+    // its masters left their forwards up, and the reverse one keeps its window's socket
+    // answering on the far machine (kan a_2YAdjRtMB). On a thread of its own, because each
+    // master found costs a bounded ssh and this attach should not wait on them.
+    static LEFT_BEHIND: std::sync::Once = std::sync::Once::new();
+    LEFT_BEHIND.call_once(|| {
+        std::thread::spawn(|| muster_ssh::end_left_behind(&std::env::temp_dir()));
+    });
     let reported = daemon.clone();
     Tunnel::open(
         Forward {
@@ -1045,8 +1053,7 @@ fn tunnel_state(daemon: &DaemonId, state: &TunnelState) {
 }
 
 fn tunnel_path(daemon: &DaemonId, extension: &str) -> String {
-    let name = format!("muster-{}-{daemon}.{extension}", std::process::id());
-    std::env::temp_dir().join(name).to_string_lossy().into_owned()
+    muster_ssh::tunnel_path(&std::env::temp_dir(), std::process::id(), daemon.as_str(), extension)
 }
 
 /// Everything one attached pane needs to be typed into.
