@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-handoff-version",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1790654762391,
+  "creator": "Alexander Terp",
+  "description": "muster-daemon handoff::a_program_that_does_not_answer_its_version_is_refused_before_anything_is_touched failed once in a --ssh run while other worktrees were building: a stub did not answer --version within 1 s. Not rerun alone; likely a load flake in the test's timing.",
+  "id": "a_2YYdXYv3W",
+  "position": "b0G",
+  "title": "🎲 The handoff --version test's 1s limit fails under load",
+  "type": "bug",
+  "updated_at_millis": 1790654762391,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1790654762391}
+  ]
+}

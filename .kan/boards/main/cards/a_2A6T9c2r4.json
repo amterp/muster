@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -30,15 +30,16 @@
   "creator": "Alexander Terp",
   "description": "amterp, 2026-09-28, after a day on it: make numbered_chords = \"tab_then_pane\" the default, and remove the older scheme where cmd+N reaches the Nth pane down the window. Asked whether to keep the old one as an option: no, remove it.\n\ndocs/configuration.md calls tab_then_pane a prototype that \"may be deleted rather than finished\"; this is the decision the other way. What goes with the old scheme: the setting's other value (a config still naming it should be refused with a message saying what replaced it, as the focus_tab_N removal was), its code paths in the core and shell, its tests and corpus cases, and the docs' argument for it. Whether the numbered_chords key stays at all once it has one value is part of the work.",
   "id": "a_2A6T9c2r4",
-  "position": "Zz",
+  "position": "YzO",
   "title": "🎹 tab_then_pane becomes the only numbered-chord scheme",
   "type": "enhancement",
-  "updated_at_millis": 1790639783357,
+  "updated_at_millis": 1790654761901,
   "history": [
     {"field":"column","value":"backlog-lo","at":1787041310779},
     {"field":"column","value":"in-progress","at":1787041483308},
     {"field":"column","value":"next","at":1787047305148},
     {"field":"column","value":"in-progress","at":1787049242884},
-    {"field":"column","value":"next","at":1790639776030}
+    {"field":"column","value":"next","at":1790639776030},
+    {"field":"column","value":"done","at":1790654761901}
   ]
 }

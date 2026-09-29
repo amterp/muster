@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1790639757217,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-09-28: \"allow sidebar dragging resize\".\n\nThe agent list down the side of the window has one fixed width (SidebarModel.widths), so a long pane name is cut off and a narrow window cannot give the panes more room. Dragging the list's edge should resize it, the width should survive a relaunch, and the list should keep a sensible minimum and maximum. The dividers between panes already drag (DividerView); the same feel is the target.",
   "id": "a_2YSLBf29X",
-  "position": "a5",
+  "position": "YzQ",
   "title": "↔️ The agent list's width cannot be dragged",
   "type": "feature",
-  "updated_at_millis": 1790639757217,
+  "updated_at_millis": 1790654761761,
   "history": [
-    {"field":"column","value":"next","at":1790639757217}
+    {"field":"column","value":"next","at":1790639757217},
+    {"field":"column","value":"done","at":1790654761761}
   ]
 }
