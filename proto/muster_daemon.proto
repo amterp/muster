@@ -1576,6 +1576,8 @@ message PeerCall {
     Who who = 15;
     // From a group's home: its new entries, for the replica to take and wake its members for.
     Caught replicate = 16;
+    // Since 1.2.
+    Whom whom = 17;
   }
 
   // Whether a group by this name is kept there.
@@ -1615,6 +1617,11 @@ message PeerCall {
   message Who {
     string group = 1;
   }
+
+  // The participant a name means on the asked machine, for an asker that has nobody by it.
+  message Whom {
+    string name = 1;
+  }
 }
 
 message PeerReply {
@@ -1629,7 +1636,15 @@ message PeerReply {
     Refused refused = 16;
     // What a replicate did: whom it reached on the replica's machine.
     Reached applied = 17;
+    // Since 1.2.
+    Named named = 18;
   }
+
+  // Who a `whom` names, if anybody.
+  message Named {
+    optional string name = 1;
+  }
+
 
   message Joined {
     // The number of the entry saying the asker's member joined.

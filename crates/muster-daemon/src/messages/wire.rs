@@ -20,6 +20,7 @@ pub(super) fn call_to(call: &Call) -> Called {
         }
         Call::Since { group, after } => Called::Since(peer_call::Since { group, after }),
         Call::Who { group } => Called::Who(peer_call::Who { group }),
+        Call::Whom { name } => Called::Whom(peer_call::Whom { name }),
     }
 }
 
@@ -41,6 +42,7 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
         },
         Called::Since(since) => Call::Since { group: since.group, after: since.after },
         Called::Who(who) => Call::Who { group: who.group },
+        Called::Whom(whom) => Call::Whom { name: whom.name },
         Called::Replicate(_) => return None,
     })
 }
@@ -163,6 +165,7 @@ pub(super) fn reply_to(reply: Reply) -> Replied {
         Reply::Members(members) => Replied::Members(msg_answer::Members {
             members: members.into_iter().map(member_of).collect(),
         }),
+        Reply::Named(name) => Replied::Named(peer_reply::Named { name }),
         Reply::Refused { refusal, caught } => {
             let mut refused = refusal_to(&refusal);
             refused.caught = caught.as_ref().map(caught_to);
@@ -191,6 +194,7 @@ pub(super) fn reply_from(replied: Replied) -> Option<Reply> {
             let caught = refused.caught.clone().map(caught_from);
             Reply::Refused { refusal: refusal_from(refused), caught }
         }
+        Replied::Named(named) => Reply::Named(named.name),
         Replied::Applied(_) => return None,
     })
 }
@@ -202,9 +206,7 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
         ..peer_reply::Refused::default()
     };
     match refusal.clone() {
-        Refusal::BadName { name }
-        | Refusal::NoSuchParticipant { name }
-        | Refusal::NoSharedGroup { name } => refused.name = name,
+        Refusal::BadName { name } | Refusal::NoSuchParticipant { name } => refused.name = name,
         Refusal::NameInUse { name, inbox } => {
             refused.name = name;
             refused.existing = inbox.unwrap_or_default();
@@ -291,7 +293,6 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "pair_too_long" => Refusal::PairTooLong { group },
         "no_such_participant" => Refusal::NoSuchParticipant { name },
         "which_participant" => Refusal::WhichParticipant { name, candidates },
-        "no_shared_group" => Refusal::NoSharedGroup { name },
         "unreachable" => Refusal::Unreachable { group, machine },
         "unanswered" => Refusal::Unanswered { group, machine },
         "kept_elsewhere" => Refusal::KeptElsewhere { group, machine },
@@ -359,7 +360,6 @@ mod tests {
             Refusal::PairTooLong { group: "a+b".into() },
             Refusal::NoSuchParticipant { name: "a".into() },
             Refusal::WhichParticipant { name: "a".into(), candidates: vec!["a@x".into()] },
-            Refusal::NoSharedGroup { name: "a@x".into() },
             Refusal::Unreachable { group: "g@x".into(), machine: "x".into() },
             Refusal::Unanswered { group: "g@x".into(), machine: "x".into() },
             Refusal::KeptElsewhere { group: "g@x".into(), machine: "x".into() },

@@ -431,15 +431,55 @@ fn a_daemon_dialed_from_the_apps_machine_has_no_human_of_its_own() {
         post(&named("critic"), None, &[], "the lexer is done"),
         proto::Outcome::Done,
     );
-    let reached = reached(&posted);
-    assert_eq!(reached.len(), 1, "one human, on the near machine: {reached:?}");
-    assert!(reached[0].0.starts_with("@human@"), "{reached:?}");
+    let woke = reached(&posted);
+    assert_eq!(woke.len(), 1, "one human, on the near machine: {woke:?}");
+    assert!(woke[0].0.starts_with("@human@"), "{woke:?}");
     assert!(snapshot(&mut far_control).human.is_empty(), "the far daemon told of a human");
     let told = snapshot(&mut near_control).human;
     assert_eq!(told.len(), 1, "{told:?}");
     assert_eq!((told[0].group.as_str(), told[0].count), ("review@far", 1));
 
     join(&mut far_control, &named("scout"), "scout", "other");
-    let refused = far_control.ask(post(&named("scout"), None, &["@human"], "a question"));
-    assert_eq!(msg_answer(&refused).refusal, "no_shared_group", "{}", refused.answer.reason);
+    let posted = expect(
+        &mut far_control,
+        post(&named("scout"), None, &["@human"], "a question"),
+        proto::Outcome::Done,
+    );
+    let woke = reached(&posted);
+    assert!(woke.len() == 1 && woke[0].0.starts_with("@human@"), "{woke:?}");
+    let told = snapshot(&mut near_control).human;
+    assert!(told.iter().any(|told| told.group == "@human+scout@far"), "{told:?}");
+}
+
+/// A post `--to` a pane on the other machine, whose agent never joined anything and shares no
+/// group with the author, rings that agent there: the near daemon asks the far one who the pane
+/// is, and makes the group of the two.
+#[test]
+fn a_post_to_a_pane_on_the_linked_machine_rings_it_there() {
+    let (near, far) = (daemon(), Daemon::start_detecting());
+    let mut far_control = far.connect();
+    make(&mut far_control, create("p1", in_new_tab("t1")));
+    far.run_agent("p1");
+    let mut near_control = near.connect();
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+
+    let posted = expect(
+        &mut near_control,
+        post(&named("builder"), None, &["p1"], "carry on"),
+        proto::Outcome::Done,
+    );
+    let reached = reached(&posted);
+    assert_eq!(reached.len(), 1, "{reached:?}");
+    assert_eq!(reached[0].0, "p1@far");
+    let heard = far.root().join("home/fake-agent-heard");
+    let rung = until_some("the far agent to be rung", || {
+        let heard = std::fs::read_to_string(&heard).unwrap_or_default();
+        heard.lines().find(|line| line.starts_with("[muster] ")).map(str::to_string)
+    });
+    assert!(rung.contains("builder+p1@"), "{rung}");
+
+    let refused = near_control.ask(post(&named("builder"), None, &["nobody"], "anyone?"));
+    assert_eq!(msg_answer(&refused).refusal, "no_such_participant", "{}", refused.answer.reason);
 }

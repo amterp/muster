@@ -32,11 +32,6 @@ pub enum Refusal {
         name: String,
         candidates: Vec<String>,
     },
-    /// A post to someone on another machine, with whom the author shares no group: the group
-    /// of exactly them would have a member that never joined it.
-    NoSharedGroup {
-        name: String,
-    },
     /// The group is kept on a machine this one has no link to now.
     Unreachable {
         group: String,
@@ -132,7 +127,6 @@ impl Refusal {
             Refusal::PairTooLong { .. } => "pair_too_long",
             Refusal::NoSuchParticipant { .. } => "no_such_participant",
             Refusal::WhichParticipant { .. } => "which_participant",
-            Refusal::NoSharedGroup { .. } => "no_shared_group",
             Refusal::Unreachable { .. } => "unreachable",
             Refusal::Unchecked { .. } => "unchecked",
             Refusal::Unanswered { .. } => "unanswered",

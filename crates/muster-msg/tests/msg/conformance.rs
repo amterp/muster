@@ -124,9 +124,7 @@ fn rung(via: &Via) -> String {
 
 fn refused(refusal: &Refusal) -> String {
     let detail = match refusal {
-        Refusal::BadName { name }
-        | Refusal::NoSuchParticipant { name }
-        | Refusal::NoSharedGroup { name } => name.clone(),
+        Refusal::BadName { name } | Refusal::NoSuchParticipant { name } => name.clone(),
         Refusal::WhichParticipant { name, candidates } => {
             format!("{name} {}", candidates.join(","))
         }
@@ -415,6 +413,7 @@ fn group_step(
                 group,
                 &strings(step.get("add")),
                 &strings(step.get("remove")),
+                &[],
                 sessions,
                 now,
             )

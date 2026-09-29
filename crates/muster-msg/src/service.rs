@@ -601,10 +601,26 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
+        self.post_found(caller, group, to, &[], body, presence, now_ms)
+    }
+
+    /// [`Self::post`], with names other machines said they have: `found` holds each as
+    /// `name@machine`, for a `--to` name that means nobody here (MIP-4, section 11).
+    #[allow(clippy::too_many_arguments)]
+    pub fn post_found(
+        &mut self,
+        caller: &Caller,
+        group: Option<&str>,
+        to: &[String],
+        found: &[String],
+        body: &str,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Posted, Refusal> {
         check_body(body)?;
         let author = self.acting(caller, presence)?;
         let group = group.map(|group| self.locate(group)).transpose()?;
-        let addressees = self.addressees(&author, to, group.as_deref(), presence)?;
+        let addressees = self.addressees(&author, to, found, group.as_deref(), presence)?;
         let group = self.resolve_group(&author, &addressees, group.as_deref(), now_ms)?;
         self.here(&group)?;
         let cursor = self.cursor(&author, &group);
@@ -957,13 +973,16 @@ impl<S: Store> Messaging<S> {
     }
 
     /// Adds and removes members. Names are read as a post's `--to` reads them, so a pane can
-    /// be added before its agent ever joined anything.
+    /// be added before its agent ever joined anything, and `found` holds what other machines
+    /// said a name means there, as [`Self::post_found`] takes it.
+    #[allow(clippy::too_many_arguments)]
     pub fn group_members(
         &mut self,
         caller: &Caller,
         group: &str,
         add: &[String],
         remove: &[String],
+        found: &[String],
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Changed, Refusal> {
@@ -980,8 +999,8 @@ impl<S: Store> Messaging<S> {
         // Told from before the change too, so the machine of a member removed there lets it go.
         let before = self.tell(group, after, None);
         for name in add {
-            check_participant(name)?;
-            let name = self.addressee(name, &by, Some(group), presence)?;
+            check_addressee(name)?;
+            let name = self.addressee(name, &by, found, Some(group), presence)?;
             if !self.groups[group].members.contains(&name) {
                 self.add_member(group, &name, now_ms)?;
                 changed.added.push(name);
@@ -1183,13 +1202,14 @@ impl<S: Store> Messaging<S> {
         &mut self,
         author: &str,
         to: &[String],
+        found: &[String],
         group: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<Vec<String>, Refusal> {
         let mut addressees: Vec<String> = Vec::new();
         for name in to {
             check_addressee(name)?;
-            let name = self.addressee(name, author, group, presence)?;
+            let name = self.addressee(name, author, found, group, presence)?;
             if name == author {
                 return Err(Refusal::AddressedSelf);
             }
@@ -1205,11 +1225,13 @@ impl<S: Store> Messaging<S> {
     /// `critic` reaches `critic@devenv` (MIP-4, section 11); else a participant by that name;
     /// else the one in the pane of that name; else, for a pane with an agent in it, a
     /// participant made for it, named after the pane, which is what lets a post reach an agent
-    /// that never joined (MIP-4, section 3). The human is made on first address too.
+    /// that never joined (MIP-4, section 3). The human is made on first address too. Else the
+    /// one another machine said it has, in `found`.
     fn addressee(
         &mut self,
         name: &str,
         author: &str,
+        found: &[String],
         group: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
@@ -1249,15 +1271,36 @@ impl<S: Store> Messaging<S> {
         if let Some(holder) = self.by_pane(name) {
             return Ok(holder);
         }
-        if name == HUMAN || presence.has_pane(name) {
-            let mut participant = Participant::named(name);
-            if name != HUMAN {
-                participant.pane = Some(name.to_string());
-            }
-            self.participants.insert(name.to_string(), participant);
+        if self.make_addressed(name, presence) {
             return Ok(name.to_string());
         }
-        Err(Refusal::NoSuchParticipant { name: name.to_string() })
+        let found: Vec<String> = found
+            .iter()
+            .filter(|each| {
+                *each == name || split_machine(each).is_some_and(|(base, _)| base == name)
+            })
+            .cloned()
+            .collect();
+        match found.as_slice() {
+            [] => Err(Refusal::NoSuchParticipant { name: name.to_string() }),
+            [only] => Ok(only.clone()),
+            _ => Err(Refusal::WhichParticipant { name: name.to_string(), candidates: found }),
+        }
+    }
+
+    /// Makes the participant a name means when it is not one yet: the human, where it is homed,
+    /// or an agent that may start in the pane of that name. Says whether it did.
+    pub(crate) fn make_addressed(&mut self, name: &str, presence: &dyn Presence) -> bool {
+        let human = name == HUMAN && self.human_elsewhere(presence).is_none();
+        if !human && !presence.has_pane(name) {
+            return false;
+        }
+        let mut participant = Participant::named(name);
+        if name != HUMAN {
+            participant.pane = Some(name.to_string());
+        }
+        self.participants.insert(name.to_string(), participant);
+        true
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1285,7 +1328,7 @@ impl<S: Store> Messaging<S> {
             .map(|participant| participant.name.clone())
     }
 
-    fn by_pane(&self, pane: &str) -> Option<String> {
+    pub(crate) fn by_pane(&self, pane: &str) -> Option<String> {
         self.participants
             .values()
             .find(|participant| participant.pane.as_deref() == Some(pane))
@@ -1629,13 +1672,7 @@ impl<S: Store> Messaging<S> {
             Some(group) => Ok(group),
             None if addressees.is_empty() => Err(Refusal::NoGroup),
             None => {
-                // The group of exactly these would have a member that joined from nowhere: one on
-                // another machine is reached through a group it joined itself.
-                if let Some(elsewhere) =
-                    addressees.iter().find(|name| split_machine(name).is_some())
-                {
-                    return Err(Refusal::NoSharedGroup { name: elsewhere.clone() });
-                }
+                // The human's groups are made where its cursors are kept.
                 if let Some(home) = &self.human_home
                     && author == home.human()
                 {
@@ -1643,10 +1680,7 @@ impl<S: Store> Messaging<S> {
                 }
                 let mut everyone: Vec<&str> = vec![author];
                 everyone.extend(addressees.iter().map(String::as_str));
-                let group = pair_group(&everyone);
-                if check_group(&group).is_err() {
-                    return Err(Refusal::PairTooLong { group });
-                }
+                let group = self.pair_name(&everyone)?;
                 self.ensure_group(&group, author, now_ms)?;
                 for name in everyone {
                     self.add_member(&group, name, now_ms)?;
@@ -1654,6 +1688,33 @@ impl<S: Store> Messaging<S> {
                 Ok(group)
             }
         }
+    }
+
+    /// The name of the group of exactly `everyone`: [`pair_group`]'s, unless a group here
+    /// already goes by it with somebody else in it - the pair of another machine's `critic` and
+    /// this one's `builder` is named as this machine's own pair is - and then the first of
+    /// `-2`, `-3`, ... that is free. A group by the name holding only some of them is theirs: one
+    /// of them left it.
+    fn pair_name(&self, everyone: &[&str]) -> Result<String, Refusal> {
+        let base = pair_group(everyone);
+        if check_group(&base).is_err() {
+            return Err(Refusal::PairTooLong { group: base });
+        }
+        let theirs = |name: &str| match self.groups.get(name) {
+            Some(group) => group.members.iter().all(|member| everyone.contains(&member.as_str())),
+            None => !self.groups.keys().any(|other| other.eq_ignore_ascii_case(name)),
+        };
+        let mut candidate = base.clone();
+        for suffix in 2.. {
+            if theirs(&candidate) {
+                break;
+            }
+            candidate = format!("{base}-{suffix}");
+        }
+        if check_group(&candidate).is_err() {
+            return Err(Refusal::PairTooLong { group: candidate });
+        }
+        Ok(candidate)
     }
 
     /// Refuses a post to `group` unless its author and every addressee are members.

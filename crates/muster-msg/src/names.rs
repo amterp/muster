@@ -78,12 +78,17 @@ pub fn default_name(directory: Option<&str>) -> String {
 }
 
 /// The group of exactly these participants, which a post to them creates when they share none:
-/// their names sorted and joined by `+`, so the same set always names the same group.
+/// their own names sorted and joined by `+`, so the same set always names the same group. A
+/// member on another machine goes by its own name there, without the machine's, since a group
+/// name cannot hold `@`: `critic@devenv` and `builder` make `builder+critic`.
 pub fn pair_group(names: &[&str]) -> String {
     let mut names: Vec<&str> = names.to_vec();
     names.sort_unstable();
     names.dedup();
-    names.join("+")
+    let mut own: Vec<&str> =
+        names.iter().map(|name| split_machine(name).map_or(*name, |(base, _)| base)).collect();
+    own.sort_unstable();
+    own.join("+")
 }
 
 #[cfg(test)]
@@ -118,6 +123,8 @@ mod tests {
     fn a_pair_group_is_the_same_whoever_names_it_first() {
         assert_eq!(pair_group(&["critic", "builder"]), "builder+critic");
         assert_eq!(pair_group(&["builder", "critic"]), "builder+critic");
+        assert_eq!(pair_group(&["critic@devenv", "builder"]), "builder+critic");
+        assert_eq!(pair_group(&["@human@lap", "p2"]), "@human+p2");
         assert!(check_group("builder+critic").is_ok());
         assert!(check_group("@human+builder").is_ok());
         assert!(check_group("has space").is_err());

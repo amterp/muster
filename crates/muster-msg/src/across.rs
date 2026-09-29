@@ -175,6 +175,10 @@ pub enum Call {
     Who {
         group: String,
     },
+    /// The participant a name means there: see [`Messaging::whom`].
+    Whom {
+        name: String,
+    },
 }
 
 impl Call {
@@ -183,6 +187,9 @@ impl Call {
     /// the asker's own participant, so bare too. `builder@<us>` there would become this
     /// machine's `builder` on arrival.
     pub fn check(&self) -> Result<(), Refusal> {
+        if let Call::Whom { name } = self {
+            return check_participant(name);
+        }
         check_group(self.group())?;
         match self {
             Call::Join { name, .. } | Call::Leave { name, .. } => check_participant(name),
@@ -190,11 +197,11 @@ impl Call {
                 check_participant(author)?;
                 to.iter().try_for_each(|name| check_addressee(name))
             }
-            Call::Find { .. } | Call::Since { .. } | Call::Who { .. } => Ok(()),
+            Call::Find { .. } | Call::Since { .. } | Call::Who { .. } | Call::Whom { .. } => Ok(()),
         }
     }
 
-    /// The group the call is about, as its home names it.
+    /// The group the call is about, as its home names it; nothing for [`Call::Whom`].
     pub fn group(&self) -> &str {
         match self {
             Call::Find { group }
@@ -203,6 +210,7 @@ impl Call {
             | Call::Post { group, .. }
             | Call::Since { group, .. }
             | Call::Who { group } => group,
+            Call::Whom { .. } => "",
         }
     }
 }
@@ -269,12 +277,26 @@ impl Caught {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reply {
     Found(bool),
-    Joined { seq: u64, caught: Caught },
-    Left { caught: Caught },
-    Posted { seq: u64, reached: Vec<(String, Reach)>, caught: Caught },
+    Joined {
+        seq: u64,
+        caught: Caught,
+    },
+    Left {
+        caught: Caught,
+    },
+    Posted {
+        seq: u64,
+        reached: Vec<(String, Reach)>,
+        caught: Caught,
+    },
     Caught(Caught),
     Members(Vec<Member>),
-    Refused { refusal: Refusal, caught: Option<Caught> },
+    /// The participant a [`Call::Whom`] asked about, if there is one.
+    Named(Option<String>),
+    Refused {
+        refusal: Refusal,
+        caught: Option<Caught>,
+    },
 }
 
 impl Reply {
@@ -292,6 +314,7 @@ impl Reply {
             Reply::Members(members) => {
                 members.iter().try_for_each(|member| check_addressee(&member.name))
             }
+            Reply::Named(name) => name.as_deref().map_or(Ok(()), check_participant),
             Reply::Refused { caught, .. } => caught.as_ref().map_or(Ok(()), Caught::check),
         }
     }
@@ -331,6 +354,8 @@ pub enum Settled {
     /// Who was reached, on both machines. The wakes on this one are in [`Settle::applied`].
     Posted(Posted),
     Members(Vec<Member>),
+    /// Who a name means there, as this machine writes it.
+    Named(Option<String>),
     Caught,
     /// The entries left a gap after this head, which the host fills with [`Call::Since`].
     Gap(u64),
@@ -470,18 +495,23 @@ impl<S: Store> Messaging<S> {
     /// Where `post` is answered. A post to a group kept elsewhere is checked here against the
     /// replica, then forwarded with its author's cursor, which the home's guard compares with
     /// the log as it appends (MIP-4, section 4).
+    ///
+    /// A `--to` name that means nobody here is refused as [`Refusal::NoSuchParticipant`]; the
+    /// host asks linked machines with [`Call::Whom`] and routes again with what they said in
+    /// `found`, as [`Self::post_found`] takes it.
     pub fn route_post(
         &mut self,
         caller: &Caller,
         group: Option<&str>,
         to: &[String],
+        found: &[String],
         body: &str,
         presence: &dyn Presence,
     ) -> Result<Route, Refusal> {
         check_body(body)?;
         let author = self.acting(caller, presence)?;
         let group = group.map(|group| self.locate(group)).transpose()?;
-        let addressees = self.addressees(&author, to, group.as_deref(), presence)?;
+        let addressees = self.addressees(&author, to, found, group.as_deref(), presence)?;
         let key = match group {
             Some(key) => key,
             None => match self.shared_group(&author, &addressees)? {
@@ -613,6 +643,7 @@ impl<S: Store> Messaging<S> {
         };
         match reply {
             Reply::Found(found) => Ok(Settled::Found(found)),
+            Reply::Named(name) => Ok(Settled::Named(name.map(|name| peer.inward(&name)))),
             Reply::Members(members) => Ok(Settled::Members(
                 members
                     .into_iter()
@@ -762,7 +793,7 @@ impl<S: Store> Messaging<S> {
             match &entry.what {
                 What::Joined { who } => {
                     group.members.insert(who.clone());
-                    self.cursor_from_join(who, &key, entry.seq);
+                    self.cursor_from_join(who, &key, entry.seq, presence);
                 }
                 What::Left { who } => {
                     group.members.remove(who);
@@ -892,6 +923,7 @@ impl<S: Store> Messaging<S> {
                 self.since(&group, after).map_or_else(refused, Reply::Caught)
             }
             Call::Who { group } => Reply::Members(self.members_here(peer, &group, presence)),
+            Call::Whom { name } => Reply::Named(self.whom(&name, presence)),
             Call::Join { name, group, head } => self
                 .join_from(peer, &name, &group, head, now_ms, &mut answered)
                 .unwrap_or_else(refused),
@@ -906,10 +938,28 @@ impl<S: Store> Messaging<S> {
         answered
     }
 
+    /// The participant `name` means on this machine, for another that has nobody by it: one by
+    /// that name, or the one in the pane of that name, or the pane itself while an agent may
+    /// start there, as a post's `--to` reads it here. The human is not asked for: it is homed
+    /// where the app runs, and every machine names it already.
+    pub fn whom(&self, name: &str, presence: &dyn Presence) -> Option<String> {
+        if name == HUMAN {
+            return None;
+        }
+        if self.participants.contains_key(name) {
+            return Some(name.to_string());
+        }
+        self.by_pane(name).or_else(|| presence.has_pane(name).then(|| name.to_string()))
+    }
+
     /// Starts the cursor of `name`, if it is one of this machine's participants, at its join to
     /// the replica `key` when the join's own answer did not, so nothing from before the join is
-    /// unread to it.
-    fn cursor_from_join(&mut self, name: &str, key: &str, seq: u64) {
+    /// unread to it. A name the home added that is nobody here yet - a pane named in `--to` or
+    /// `group add` on another machine, or the human - becomes a participant as it would here.
+    fn cursor_from_join(&mut self, name: &str, key: &str, seq: u64, presence: &dyn Presence) {
+        if !self.participants.contains_key(name) && split_machine(name).is_none() {
+            self.make_addressed(name, presence);
+        }
         if let Some(participant) = self.participants.get_mut(name) {
             participant.cursors.entry(key.to_string()).or_insert(seq);
         }

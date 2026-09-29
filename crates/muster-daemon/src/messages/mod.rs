@@ -144,6 +144,21 @@ impl Messages {
         }
     }
 
+    /// A group's members changed: ends the waits of those removed, and tells the windows
+    /// nothing waits for the human if it was.
+    fn members_changed(&mut self, members: Changed) -> (String, Answer) {
+        for ticket in &members.ended {
+            if let Some(wait) = self.waits.remove(ticket) {
+                let _ = wait.send(WaitEnded::Left);
+            }
+        }
+        // Removed is the human leaving, as far as the windows are concerned.
+        if members.removed.iter().any(|name| name == muster_msg::HUMAN) {
+            self.told.push(nothing_waits(&members.group));
+        }
+        changed("members", members, &mut self.telling)
+    }
+
     fn answer(&mut self, caller: &Caller, asked: Asked, panes: &Panes) -> Reply {
         let changes = !matches!(asked, Asked::Who(_) | Asked::Log(_) | Asked::Groups(_));
         if changes && self.handing_over {
@@ -180,12 +195,11 @@ impl Messages {
                 };
                 (String::new(), Answer::Entries(msg_answer::Entries { groups: vec![group] }))
             }),
-            Asked::Groups(_)
-            | Asked::GroupNew(_)
-            | Asked::GroupSet(_)
-            | Asked::GroupMembers(_)
-            | Asked::Pause(_) => self.group(caller, asked, panes),
+            Asked::Groups(_) | Asked::GroupNew(_) | Asked::GroupSet(_) | Asked::Pause(_) => {
+                self.group(caller, asked, panes)
+            }
             Asked::Join(_)
+            | Asked::GroupMembers(_)
             | Asked::Leave(_)
             | Asked::Post(_)
             | Asked::Wait(_)
@@ -234,31 +248,6 @@ impl Messages {
                 self.told.push(notice_of(&self.service.human_notice(&changed_it.group)));
                 Ok(changed("set_policy", changed_it, &mut self.telling))
             }
-            Asked::GroupMembers(members) => {
-                let waits = &mut self.waits;
-                let told = &mut self.told;
-                self.service
-                    .group_members(
-                        caller,
-                        &members.group,
-                        &members.add,
-                        &members.remove,
-                        panes,
-                        now_ms(),
-                    )
-                    .map(|members| {
-                        for ticket in &members.ended {
-                            if let Some(wait) = waits.remove(ticket) {
-                                let _ = wait.send(WaitEnded::Left);
-                            }
-                        }
-                        // Removed is the human leaving, as far as the windows are concerned.
-                        if members.removed.iter().any(|name| name == muster_msg::HUMAN) {
-                            told.push(nothing_waits(&members.group));
-                        }
-                        changed("members", members, telling)
-                    })
-            }
             Asked::Pause(pause) => self
                 .service
                 .pause(caller, &pause.group, panes, now_ms())
@@ -289,6 +278,7 @@ pub(crate) fn handle(
         Asked::Join(join) => joining(shared, &caller, &join, &panes),
         Asked::Leave(leave) => leaving(shared, &caller, &leave, &panes),
         Asked::Who(who) => whoing(shared, &who, &panes),
+        Asked::GroupMembers(members) => membering(shared, &caller, &members, &panes),
         asked => {
             let (reply, told, telling) = {
                 let mut messages = shared.messages();
@@ -715,39 +705,120 @@ fn posting(
     post: &proto::msg_request::Post,
     panes: &Panes,
 ) -> Reply {
-    let route = {
+    let routed = finding(shared, |found| {
         let mut messages = shared.messages();
         if messages.handing_over {
-            return refused_as("", "handing_over", HANDING_OVER);
+            return Ok(None);
         }
-        messages.service.route_post(caller, post.group.as_deref(), &post.to, &post.body, panes)
-    };
-    let delivered = match route {
+        let group = post.group.as_deref();
+        messages.service.route_post(caller, group, &post.to, found, &post.body, panes).map(Some)
+    });
+    let (route, found) = match routed {
         Err(refusal) => return refused("", &refusal),
-        Ok(Route::Away(away)) => {
-            let (settle, holding) = peer::call_away(shared, &away);
-            let rang = ring(shared, holding);
-            match settle.result {
-                Ok(Settled::Posted(posted)) => {
-                    let activities = activities_of(shared, &posted, panes);
-                    Delivered { posted, rang, activities }
-                }
-                Ok(other) => return mismatched("post", &other),
-                Err(refusal) => return refused("", &refusal),
+        Ok((None, _)) => return refused_as("", "handing_over", HANDING_OVER),
+        Ok((Some(route), found)) => (route, found),
+    };
+    let delivered = if let Route::Away(away) = route {
+        let (settle, holding) = peer::call_away(shared, &away);
+        let rang = ring(shared, holding);
+        match settle.result {
+            Ok(Settled::Posted(posted)) => {
+                let activities = activities_of(shared, &posted, panes);
+                Delivered { posted, rang, activities }
             }
+            Ok(other) => return mismatched("post", &other),
+            Err(refusal) => return refused("", &refusal),
         }
-        Ok(_) => {
-            let delivered = delivering(shared, panes, |service| {
-                service.post(caller, post.group.as_deref(), &post.to, &post.body, panes, now_ms())
-            });
-            match delivered {
-                Ok(delivered) => delivered,
-                Err(reply) => return reply,
-            }
+    } else {
+        let delivered = delivering(shared, panes, |service| {
+            let group = post.group.as_deref();
+            service.post_found(caller, group, &post.to, &found, &post.body, panes, now_ms())
+        });
+        match delivered {
+            Ok(delivered) => delivered,
+            Err(reply) => return reply,
         }
     };
     let posted = told("msg.posted", Some(post.body.len()), &delivered);
     answered(delivered.posted.author.clone(), Answer::Posted(posted))
+}
+
+/// Adds and removes a group's members, finding a name added that means nobody here on the
+/// machines linked to this one.
+fn membering(
+    shared: &Arc<Shared>,
+    caller: &Caller,
+    members: &proto::msg_request::GroupMembers,
+    panes: &Panes,
+) -> Reply {
+    let result = finding(shared, |found| {
+        let mut messages = shared.messages();
+        if messages.handing_over {
+            return Ok(None);
+        }
+        let (group, add, remove) = (&members.group, &members.add, &members.remove);
+        let changed =
+            messages.service.group_members(caller, group, add, remove, found, panes, now_ms())?;
+        let answer = messages.members_changed(changed);
+        messages.appended();
+        Ok(Some((answer, messages.take_told(), std::mem::take(&mut messages.telling))))
+    });
+    match result {
+        Err(refusal) => refused("", &refusal),
+        Ok((None, _)) => refused_as("", "handing_over", HANDING_OVER),
+        Ok((Some(((by, answer), told, telling)), _)) => {
+            tell_human(shared, told);
+            peer::tell(shared, &telling);
+            answered(by, answer)
+        }
+    }
+}
+
+/// Runs `act` with the names other machines said they have, starting with none. Each time it
+/// is refused for a name that means nobody here, asks the machines linked to this one whom
+/// that name means there (MIP-4, section 11) and runs it again, until it is refused for a name
+/// already asked about, or for anything else. Returns what was found with the outcome, for a
+/// later step of the same request to take.
+fn finding<T>(
+    shared: &Shared,
+    mut act: impl FnMut(&[String]) -> Result<T, Refusal>,
+) -> Result<(T, Vec<String>), Refusal> {
+    let mut found = Vec::new();
+    let mut asked = std::collections::BTreeSet::new();
+    loop {
+        match act(&found) {
+            Err(Refusal::NoSuchParticipant { name }) if asked.insert(name.clone()) => {
+                let there = whom(shared, &name);
+                if there.is_empty() {
+                    return Err(Refusal::NoSuchParticipant { name });
+                }
+                found.extend(there);
+            }
+            Err(refusal) => return Err(refusal),
+            Ok(outcome) => return Ok((outcome, found)),
+        }
+    }
+}
+
+/// Whom `name` means on each machine linked to this one, as this machine writes it: only the
+/// machine it names, for `name@machine`.
+fn whom(shared: &Shared, name: &str) -> Vec<String> {
+    let (base, machines) = match muster_msg::split_machine(name) {
+        Some((base, machine)) => (base, vec![machine.to_string()]),
+        None => (name, shared.peers.machines()),
+    };
+    let call = muster_msg::Call::Whom { name: base.to_string() };
+    if call.check().is_err() {
+        return Vec::new();
+    }
+    let mut found = Vec::new();
+    for machine in machines {
+        let (settle, _) = peer::call_away(shared, &Away { machine, call: call.clone() });
+        if let Ok(Settled::Named(Some(there))) = settle.result {
+            found.push(there);
+        }
+    }
+    found
 }
 
 /// A resume wakes as a post does, and is answered as one.
@@ -1075,16 +1146,15 @@ pub(super) fn words(refusal: &Refusal) -> String {
             messaging::command(JOIN, "--group <group>")
         ),
         Refusal::NoSuchParticipant { name } => {
-            format!("nobody here is called {name}; `{}` lists who is", messaging::command(WHO, ""))
+            format!(
+                "nobody here or on a machine linked to this one is called {name}; `{}` lists \
+                 who is here",
+                messaging::command(WHO, "")
+            )
         }
         Refusal::WhichParticipant { name, candidates } => {
             format!("{name} could be {}; say which, as name@machine", candidates.join(" or "))
         }
-        Refusal::NoSharedGroup { name } => format!(
-            "{name} is on another machine and in no group with you, so there is no group to post \
-             this in; both of you join one with `{}`, then post with --group",
-            messaging::command(JOIN, "--group <group>")
-        ),
         Refusal::Unreachable { group, machine } => format!(
             "{group} is kept on {machine}, which this machine cannot reach now: messages cross \
              machines only while a Muster window is attached to both, and its connection to \

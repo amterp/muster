@@ -19,6 +19,10 @@ struct Sessions {
     attended: Cell<bool>,
     /// Panes an agent was found in, on either machine.
     agents: RefCell<BTreeSet<String>>,
+    /// Panes open on each machine.
+    panes: RefCell<BTreeMap<String, Side>>,
+    /// The machine whose daemon is asking, which [`Wire::split`] sets.
+    asking: Cell<Option<Side>>,
 }
 
 impl Presence for Sessions {
@@ -32,6 +36,10 @@ impl Presence for Sessions {
 
     fn agent_in(&self, pane: &str) -> bool {
         self.agents.borrow().contains(pane)
+    }
+
+    fn has_pane(&self, pane: &str) -> bool {
+        self.panes.borrow().get(pane).is_some_and(|side| Some(*side) == self.asking.get())
     }
 }
 
@@ -52,7 +60,7 @@ fn human() -> Caller {
     Caller::default()
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
 enum Side {
     Laptop,
     Devenv,
@@ -141,6 +149,15 @@ impl Wire {
 
     /// Sends `call` from `side` to the other machine and settles the answer there.
     fn send(&mut self, side: Side, call: &Call) -> Result<Settled, Refusal> {
+        self.settle(side, call).0
+    }
+
+    /// [`Self::send`], with what the entries its answer carried did on `side`.
+    fn settle(
+        &mut self,
+        side: Side,
+        call: &Call,
+    ) -> (Result<Settled, Refusal>, muster_msg::Applied) {
         assert!(self.up, "a daemon never calls over a link that is down");
         let now = self.tick();
         let from = side.other().peer();
@@ -152,12 +169,15 @@ impl Wire {
         self.tell(side.other(), &answered.tell);
         let (asker, sessions) = self.split(side);
         let settle = asker.settle(&side.peer(), call, answered.reply, sessions, now);
-        self.wakes.extend(settle.applied.wakes.into_iter().map(|wake| (side, wake)));
-        self.ended.extend(settle.applied.ended.into_iter().map(|ticket| (side, ticket)));
-        settle.result
+        let mut applied = settle.applied;
+        self.wakes.extend(applied.wakes.drain(..).map(|wake| (side, wake)));
+        self.ended.extend(applied.ended.drain(..).map(|ticket| (side, ticket)));
+        (settle.result, applied)
     }
 
-    /// Sends a home's new entries on to the machines it named.
+    /// Sends a home's new entries on to the machines it named. A machine that holds too little
+    /// of the group to take them - none of it, when its first member was just added - fetches
+    /// what it lacks, as its daemon does.
     fn tell(&mut self, home: Side, tell: &[Tell]) -> Vec<(String, Reach)> {
         let mut reached = Vec::new();
         if self.losing {
@@ -167,8 +187,14 @@ impl Wire {
             let caught = self.service(home).since(&tell.group, tell.after).unwrap();
             let now = self.tick();
             let (replica, sessions) = self.split(home.other());
-            let applied =
-                replica.apply(&home.other().peer(), caught, sessions, now).expect("no gap");
+            let applied = match replica.apply(&home.other().peer(), caught, sessions, now) {
+                Ok(applied) => applied,
+                Err(head) => {
+                    let call = Call::Since { group: tell.group.clone(), after: head };
+                    let (_, applied) = self.settle(home.other(), &call);
+                    applied
+                }
+            };
             let peer = home.peer();
             reached.extend(applied.reached.into_iter().map(|(name, r)| (peer.inward(&name), r)));
             self.wakes.extend(applied.wakes.into_iter().map(|wake| (home.other(), wake)));
@@ -178,6 +204,7 @@ impl Wire {
     }
 
     fn split(&mut self, side: Side) -> (&mut Messaging<Memory>, &Sessions) {
+        self.sessions.asking.set(Some(side));
         match side {
             Side::Laptop => (&mut self.laptop, &self.sessions),
             Side::Devenv => (&mut self.devenv, &self.sessions),
@@ -223,14 +250,16 @@ impl Wire {
     ) -> Result<Posted, Refusal> {
         let now = self.tick();
         let to: Vec<String> = to.iter().map(|name| (*name).to_string()).collect();
+        let found = self.found(side, &to);
         let (service, sessions) = self.split(side);
-        match service.route_post(caller, group, &to, body, sessions)? {
+        match service.route_post(caller, group, &to, &found, body, sessions)? {
             Route::Away(away) => match self.send(side, &away.call)? {
                 Settled::Posted(posted) => Ok(posted),
                 other => panic!("a post settles as posted: {other:?}"),
             },
             Route::Here => {
-                let mut posted = service.post(caller, group, &to, body, sessions, now)?;
+                let mut posted =
+                    service.post_found(caller, group, &to, &found, body, sessions, now)?;
                 self.wakes.extend(posted.wakes.iter().map(|wake| (side, wake.clone())));
                 let reached = self.tell(side, &posted.tell);
                 posted.reached.extend(reached);
@@ -238,6 +267,32 @@ impl Wire {
             }
             Route::Ask { .. } => panic!("a post never asks"),
         }
+    }
+
+    /// What the other machine says each of `names` means there, as a daemon asks when a name
+    /// means nobody here. Asked of every name, which is the same answer for those known here.
+    fn found(&mut self, side: Side, names: &[String]) -> Vec<String> {
+        if !self.up {
+            return Vec::new();
+        }
+        let mut found = Vec::new();
+        for name in names {
+            let base = muster_msg::split_machine(name).map_or(name.as_str(), |(base, _)| base);
+            let call = Call::Whom { name: base.to_string() };
+            if call.check().is_err() {
+                continue;
+            }
+            if let Ok(Settled::Named(Some(there))) = self.send(side, &call) {
+                found.push(there);
+            }
+        }
+        found
+    }
+
+    /// Opens `pane` on `side`, with an agent in it.
+    fn pane(&self, side: Side, pane: &str) {
+        self.sessions.panes.borrow_mut().insert(pane.to_string(), side);
+        self.sessions.agents.borrow_mut().insert(pane.to_string());
     }
 
     fn read(&mut self, side: Side, caller: &Caller, group: Option<&str>) -> Vec<String> {
@@ -415,21 +470,72 @@ fn a_bare_group_name_is_the_one_kept_here() {
 
 /// Someone on another machine is addressed within a group both are in; with none, the post is
 /// refused rather than making a group the other never joined.
+/// A post to someone on another machine, sharing no group with them, makes the group of
+/// exactly them on the author's machine, as it does on one; the other machine holds it as a
+/// replica and wakes its own member.
 #[test]
-fn a_post_to_someone_elsewhere_needs_a_group_in_common() {
+fn a_post_to_someone_elsewhere_makes_the_group_of_them_here() {
+    let mut wire = Wire::new();
+    let (builder, critic, scout) = (session("builder"), session("critic"), session("scout"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "far");
+    wire.join(Side::Laptop, &scout, Some("scout"), "near");
+
+    let posted = wire.post(Side::Laptop, &scout, None, &["critic"], "hi").unwrap();
+    assert_eq!(
+        (posted.group.as_str(), woke(&posted)),
+        ("critic+scout", vec![("critic@devenv", Reach::Woken)])
+    );
+    assert_eq!(wire.read(Side::Devenv, &critic, None), ["critic+scout@lap scout@lap: hi"]);
+
+    let posted = wire.post(Side::Devenv, &critic, None, &["scout@lap"], "back").unwrap();
+    assert_eq!(posted.group, "critic+scout@lap", "the group the two share, wherever it is kept");
+    let posted = wire.post(Side::Devenv, &critic, None, &["builder"], "and you").unwrap();
+    assert_eq!(
+        (posted.group.as_str(), woke(&posted)),
+        ("builder+critic", vec![("builder@lap", Reach::Woken)])
+    );
+    let posted =
+        wire.post(Side::Laptop, &builder, None, &["critic", "scout"], "all of you").unwrap();
+    assert_eq!(posted.group, "builder+critic+scout");
+}
+
+/// `--to` a pane on another machine reaches the agent in it, though it never joined anything:
+/// that machine makes it a participant, named after the pane, as `--to` does there.
+#[test]
+fn a_post_to_a_pane_on_another_machine_rings_it_there() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Devenv, "p2dev");
+    let builder = session("builder");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+
+    let posted = wire.post(Side::Laptop, &builder, None, &["p2dev"], "carry on").unwrap();
+    assert_eq!(
+        (posted.group.as_str(), woke(&posted)),
+        ("builder+p2dev", vec![("p2dev@devenv", Reach::Woken)])
+    );
+    let rung: Vec<_> = wire.wakes.iter().filter(|(side, _)| *side == Side::Devenv).collect();
+    assert_eq!(rung.len(), 1);
+    assert_eq!(rung[0].1.via, Via::Pane("p2dev".to_string()));
+
+    let refused = wire.post(Side::Laptop, &builder, None, &["nobody"], "anyone?");
+    assert_eq!(refused.unwrap_err(), Refusal::NoSuchParticipant { name: "nobody".to_string() });
+}
+
+/// The group of this machine's `critic` and `builder` goes by `builder+critic`, so the group of
+/// `builder` and the other machine's `critic` takes the next free name.
+#[test]
+fn a_pair_whose_name_is_taken_by_another_pair_takes_the_next() {
     let mut wire = Wire::new();
     let (builder, critic) = (session("builder"), session("critic"));
     wire.join(Side::Laptop, &builder, Some("builder"), "review");
-    wire.join(Side::Devenv, &critic, Some("critic"), "review");
-    wire.join(Side::Laptop, &session("scout"), Some("scout"), "other");
+    wire.join(Side::Laptop, &critic, Some("critic"), "other");
+    wire.join(Side::Devenv, &session("critic"), Some("critic"), "far");
+    wire.post(Side::Laptop, &builder, None, &["critic"], "near").unwrap();
 
-    let refused = wire.post(Side::Laptop, &session("scout"), None, &["critic@devenv"], "hi");
-    assert_eq!(
-        refused.unwrap_err(),
-        Refusal::NoSuchParticipant { name: "critic@devenv".to_string() }
-    );
-    let refused = wire.post(Side::Laptop, &builder, None, &["critic", "scout"], "all of you");
-    assert_eq!(refused.unwrap_err(), Refusal::NoSharedGroup { name: "critic@devenv".to_string() });
+    let posted = wire.post(Side::Laptop, &builder, None, &["critic@devenv"], "far").unwrap();
+    assert_eq!(posted.group, "builder+critic-2");
+    assert_eq!(woke(&posted), [("critic@devenv", Reach::Woken)]);
 }
 
 /// A laptop human in a group kept on the devenv is woken by the laptop, through the same
@@ -1028,7 +1134,7 @@ fn a_member_on_another_machine_can_be_removed_and_is_let_go_there() {
     let now = wire.tick();
     let (laptop, sessions) = wire.split(Side::Laptop);
     let removed = laptop
-        .group_members(&builder, "review", &[], &["critic@devenv".to_string()], sessions, now)
+        .group_members(&builder, "review", &[], &["critic@devenv".to_string()], &[], sessions, now)
         .unwrap();
     assert_eq!(removed.removed, ["critic@devenv"]);
     wire.tell(Side::Laptop, &removed.tell);
@@ -1154,7 +1260,8 @@ fn the_persons_join_on_the_far_machine_names_the_laptop_whatever_the_link() {
 }
 
 /// An agent on the far machine that asks for the human means the laptop's: in a group the
-/// human joined, the laptop is told and wakes it; in none, there is no group to post in.
+/// human joined, the laptop is told and wakes it; in none, the group of the two is made there,
+/// and the laptop is told of it too.
 #[test]
 fn the_far_machines_human_is_the_laptops() {
     let mut wire = dialed();
@@ -1167,8 +1274,10 @@ fn the_far_machines_human_is_the_laptops() {
     assert_eq!(woke(&posted), [("@human@lap", Reach::Waiting)]);
     assert_eq!(told_the_human(&wire), [(Side::Laptop, "review@devenv")]);
 
-    let refused = wire.post(Side::Devenv, &scout, None, &[HUMAN], "and mine");
-    assert_eq!(refused.unwrap_err(), Refusal::NoSharedGroup { name: "@human@lap".to_string() });
+    let posted = wire.post(Side::Devenv, &scout, None, &[HUMAN], "and mine").unwrap();
+    assert_eq!(posted.group, "@human+scout");
+    assert_eq!(woke(&posted), [("@human@lap", Reach::Waiting)]);
+    assert_eq!(told_the_human(&wire).last(), Some(&(Side::Laptop, "@human+scout@devenv")));
     assert!(wire.devenv.participant(HUMAN).is_none(), "the devenv made a human of its own");
 }
 
