@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "one-process-holds",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790687773015,
+  "creator": "Alexander Terp",
+  "description": "Every Muster window is its own app instance today: opening another launches the bundle again with `createsNewApplicationInstance` (3ca8e4bb), so that quitting one window leaves the others running. macOS registers each instance as a separate foreground app. `lsappinfo` on 0.12.0 with two windows open:\n\n    \"Muster\" bundleID=\"dev.amterp.muster\" pid = 24430 type=\"Foreground\"\n    \"Muster\" bundleID=\"dev.amterp.muster\" pid = 26942 type=\"Foreground\"\n\nAnything that groups windows by app therefore sees two apps. amterp hit it with AltTab: opt+backtick, set to show the front app's windows, lists only the Muster window in front. The system's cmd+backtick, which cycles the front app's windows, should have the same limit; not checked. The desiderata ask for the platform's own keybindings, and cycling an app's windows is one of them.\n\n**Decided (amterp, 2026-09-29): one process holds every window.** The alternative was keeping a process per window and adding a Muster chord that cycles them, which fixes Muster's own keyboard path and leaves every outside tool still seeing two apps. What 3ca8e4bb bought with separate processes matters less than it did: closing a window now keeps its tabs and agents on the daemon, and `muster window reopen` brings it back. Big enough that it may want a MIP.\n\nWhat assumes one window per process today, found by reading rather than exhaustively:\n\n- The seam has no window in it. `muster_dispatch` takes a request that names no window, and `muster_set_event_callback` registers one callback for the whole process (`crates/muster-seam/src/ffi.rs`). The command socket (`LISTENING` in `crates/muster-seam/src/command.rs`) and the watchdog's state are process statics too.\n- A window is named by its pid. The command socket is `command-\u003cpid\u003e.sock`, an arrangement claim and a tab's holder in `holding/tabs.toml` record a pid, `muster window` prints `window \u003cpid\u003e (window-N)`, and `--window` takes a pid.\n- ssh masters and bridge sockets are per process (`muster-\u003cpid\u003e-\u003cdaemon\u003e.ctl`, `muster-\u003cpid\u003e-N.sock`), so each window has its own connection to a devenv. One process could share one master across its windows. Ending the masters a gone Muster left running (`crates/muster-ssh/src/left_behind.rs`) keys on the pid as well.\n- Going to another window's tab activates that window's app by pid (`window.raise.handed` in `Sources/MusterMac/Core.swift`). In one process it becomes bringing a window to the front.\n- The run log is one file per process (`Sources/MusterMac/LogDestination.swift`), so several windows' events would share a file and need a field saying which window.\n\nOpen questions:\n\n- What cmd+q does. Today it quits the one window in front; in one process it quits every window, which is what it means in every other Mac app. Closing a single window stays possible from its close button and the menu.\n- Whether a pid stays a way to address a window from the CLI, or its name (`window-1`) becomes the only handle.\n- How a newer app takes over from an older one holding several windows during an upgrade, and whether a relaunch reopens every window that was open at quit. It should: on 2026-09-29 a brew upgrade quit two windows and brought back one.",
+  "id": "a_2YmUITiN8",
+  "position": "!!!!!1",
+  "title": "One process holds every window, so window switchers see one app",
+  "type": "enhancement",
+  "updated_at_millis": 1790688217817,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1790687773015},
+    {"field":"column","value":"backlog-hi","at":1790688217816}
+  ]
+}
