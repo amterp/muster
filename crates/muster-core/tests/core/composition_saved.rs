@@ -195,6 +195,7 @@ fn what_is_written_is_what_comes_back() {
         &composition,
         Presentation::default()
             .with_sidebar(false)
+            .with_sidebar_width(262.5)
             .with_frame(Some(Frame { x: -120.5, y: 240.0, width: 1400.0, height: 902.5 }), true),
         &sizes,
     );
@@ -212,7 +213,7 @@ fn what_is_written_is_what_comes_back() {
 fn a_window_with_no_frame_says_so_rather_than_writing_a_corner() {
     let file = to_toml(&Saved::default());
     assert!(
-        !file.contains("width"),
+        !file.lines().any(|line| line.trim_start().starts_with("width")),
         "a window that has never settled wrote a rectangle anyway:\n{file}"
     );
 

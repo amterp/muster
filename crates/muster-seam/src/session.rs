@@ -516,6 +516,21 @@ fn set_sidebar(shown: bool) {
     publish("sidebar");
 }
 
+/// Makes the roster this wide, as far as its limits allow, and says what it settled on.
+///
+/// Saved rather than published, like the window's frame: a drag sends one of these per step and
+/// nothing the window shows of a session has moved. The shell draws the width it is answered
+/// with, so a drag past a limit settles at the limit.
+pub(crate) fn set_sidebar_width(width: f64) {
+    let presentation = {
+        let mut session = poison::lock(&SESSION, "session");
+        session.presentation = session.presentation.with_sidebar_width(width);
+        save(&session);
+        session.presentation
+    };
+    announce_presentation(presentation);
+}
+
 fn announce_problems() {
     let problems = problems();
     ffi::emit(&Event {
@@ -5662,6 +5677,7 @@ fn announce_presentation(presentation: Presentation) {
     ffi::emit(&Event {
         payload: Some(event::Payload::PresentationChanged(PresentationChanged {
             sidebar: presentation.sidebar,
+            sidebar_width: presentation.sidebar_width,
         })),
     });
 }

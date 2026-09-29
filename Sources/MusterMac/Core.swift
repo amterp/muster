@@ -656,6 +656,16 @@ public enum Core {
   /// Sent through `WindowFrameSender` rather than from here, because a drag produces one of
   /// these per frame of animation and each one ends in a file write. This builds the request;
   /// the sender decides when it goes.
+  /// Asks for the agent list at this width. Built here and sent by the window's
+  /// `LatestRequestSender`, for the reason `setWindowFrame` is.
+  static func setSidebarWidth(_ width: CGFloat) -> Muster_Request {
+    var set = Muster_SetSidebarWidth()
+    set.width = Double(width)
+    var request = Muster_Request()
+    request.setSidebarWidth = set
+    return request
+  }
+
   static func setWindowFrame(rect: NSRect?, fullScreen: Bool) -> Muster_Request {
     var frame = Muster_WindowFrame()
     if let rect { frame.rect = self.rect(rect) }
@@ -1097,6 +1107,7 @@ public enum Core {
     case .watchPanes: return "watch_panes"
     case .readWindowFrame: return "read_window_frame"
     case .setWindowFrame: return "set_window_frame"
+    case .setSidebarWidth: return "set_sidebar_width"
     case .reportFontFamily: return "report_font_family"
     // The kind, never the text: what somebody types into their own terminal is theirs.
     case .sendToPane: return "send_to_pane"
@@ -1245,8 +1256,11 @@ public enum Core {
         noteBody: changed.noteBody, group: changed.group, count: changed.count,
         from: changed.from)
     case .presentationChanged(let changed):
-      let presentation = Presentation(sidebar: changed.sidebar)
-      info("presentation.received", ["sidebar": String(presentation.sidebar)])
+      let presentation = Presentation(
+        sidebar: changed.sidebar, sidebarWidth: CGFloat(changed.sidebarWidth))
+      info(
+        "presentation.received",
+        ["sidebar": String(presentation.sidebar), "width": String(changed.sidebarWidth)])
       window?.apply(presentation: presentation)
     case .pasteHeld(let held):
       // The kind and the size, never the text: it is somebody's clipboard.

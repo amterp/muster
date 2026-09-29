@@ -152,6 +152,10 @@ fn route(payload: request::Payload) -> Response {
             Response::ok()
         }
         request::Payload::ResizePane(resize) => resize_pane(&resize),
+        request::Payload::SetSidebarWidth(set) => {
+            session::set_sidebar_width(set.width);
+            Response::ok()
+        }
         request::Payload::ToggleSidebar(_) => {
             session::toggle_sidebar();
             Response::ok()

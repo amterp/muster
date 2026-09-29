@@ -316,6 +316,8 @@ pub fn to_toml(saved: &Saved) -> String {
     let mut window = toml::Table::new();
     window.insert("sidebar".to_string(), toml::Value::Boolean(saved.presentation.sidebar));
     window.insert("full_screen".to_string(), toml::Value::Boolean(saved.presentation.full_screen));
+    window
+        .insert("sidebar_width".to_string(), toml::Value::Float(saved.presentation.sidebar_width));
     // The four numbers go flat beside the two above rather than into a table of their own. They
     // are the same kind of value - what the window looked like, not what session it was
     // showing - and a level of nesting for four scalars makes this file slower to read for
@@ -526,6 +528,19 @@ fn read_presentation(window: Option<&toml::Table>) -> Presentation {
                 .and_then(|window| window.get("sidebar"))
                 .and_then(toml::Value::as_bool)
                 .unwrap_or(Presentation::default().sidebar),
+        )
+        .with_sidebar_width(
+            // Held to the limits on the way in as well as on a drag, so a width somebody typed
+            // by hand cannot hide the list or take the window.
+            window
+                .and_then(|window| window.get("sidebar_width"))
+                .and_then(|value| {
+                    // Integers too, through i32 for the reason `read_frame` gives.
+                    value.as_float().or_else(|| {
+                        value.as_integer().and_then(|n| i32::try_from(n).ok()).map(f64::from)
+                    })
+                })
+                .unwrap_or(Presentation::SIDEBAR_WIDTH),
         )
         .with_frame(
             window.and_then(read_frame),

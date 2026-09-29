@@ -78,6 +78,7 @@ message Request {
     OpenTranscript open_transcript = 56;
     BridgeStarted bridge_started = 57;
     PressNumberedChord press_numbered_chord = 58;
+    SetSidebarWidth set_sidebar_width = 59;
   }
 
   // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
@@ -220,6 +221,17 @@ message ReadWindowFrame {
 // see `LatestRequestSender`. Nothing here is answered with anything but Ok.
 message SetWindowFrame {
   WindowFrame frame = 1;
+}
+
+// Asks for the roster at this width, which is what dragging its edge means.
+//
+// Answered with PresentationChanged carrying the width the core settled on, and the list moves
+// when that arrives - the same round trip a divider between panes makes, so the shell never
+// draws a width the core did not agree to. A width past the limits is held to them rather than
+// refused, because a drag past the edge wants the edge. Sent per step of a drag, and coalesced
+// by the shell the way SetWindowFrame is.
+message SetSidebarWidth {
+  double width = 1;
 }
 
 // Asks what this window is showing, and what it holds that it is not showing.
@@ -1900,6 +1912,11 @@ message BindingsChanged {
 message PresentationChanged {
   // Whether the roster is on screen.
   bool sidebar = 1;
+
+  // How wide the roster is when it is on screen, in points, already held to the limits the
+  // core allows. A window too narrow for it may still draw it narrower, or not at all; that is
+  // the shell's layout, and nothing it decides is written back.
+  double sidebar_width = 3;
 
   // 2 was a font size for the whole window, from when `cmd+=` sized every pane at once. Text
   // is sized per pane now and travels on `ViewPane.font_size_offset`, where the shell is

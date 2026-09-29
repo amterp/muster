@@ -1113,7 +1113,7 @@ window reads the result the way it reads any other daemon state.
 
 **Muster's own durable state is composition, plus what the window looks like.** Composition is which daemons are
 attached, which tabs the window holds and in what order, which of them is on screen, and how each divides between the
-machines holding panes in it. Beside it, in the same file and under a table of its own, is the window's own chrome: whether the roster is open, how far the text is sized from what the
+machines holding panes in it. Beside it, in the same file and under a table of its own, is the window's own chrome: whether the roster is open and how wide, how far the text is sized from what the
 config asked for, how big the window is, and whether it is full-screen. Everything else Muster holds is derived.
 That is a few hundred bytes, and its smallness is the point: the shell owns nothing, so there is nearly nothing to
 save.

@@ -532,12 +532,17 @@ turns up late, and it goes with the pane if you close it.
 
 `~/.muster/state/` is Muster's to write, and nothing in it should be edited by hand. Arrangements
 live under `windows/`, one file per window rather than one for the machine, and each is rewritten
-whenever that window settles: which tabs it was showing, in what order, at what widths, under
-`[window]` whether the agent list was open and how big the window itself was, and one `[[pane]]`
-row for each pane whose text somebody sized. A running window writes its pid beside the file it
+whenever that window settles: which tabs it was showing, in what order, at what widths; under
+`[window]`, whether the agent list was open and how wide, and how big the window itself was; and
+one `[[pane]]` row for each pane whose text somebody sized. A running window writes its pid beside the file it
 took, which is how a launch tells an arrangement nobody is holding from one in use. Delete the
 directory and the next launch opens fresh. Nothing about a session is in any of them - what a tab
 holds is the daemon's answer, asked again on every launch.
+
+**Drag the agent list's edge to make it wider or narrower**, anywhere from 140 to 480 points.
+The width is the window's, written down with the rest of `[window]`, so it comes back on the next
+launch and a new window starts at 200. A window too small to give the list its width gives it half
+the window instead, and a window narrower than 400 points still puts the list away altogether.
 
 **A window opens at the size and position it was left, and full-screen if that is how you left
 it.** The rectangle is written down as the window settles rather than at quit, because quitting

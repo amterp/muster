@@ -6,13 +6,14 @@
 //! settled reaches the same file the arrangement does, and - the one that has broken before -
 //! that a frame reported during launch is not thrown away by the restore that follows it.
 //!
-//! One test here so far, and no longer because a second could not be had: the seam's session
-//! is reset between tests and they take their turns through `muster::testing::fresh_session`,
-//! which is what the first line of each one is asking for.
+//! The roster's width rides the same round trip, into the same `[window]` table.
+//!
+//! The seam's session is reset between tests and they take their turns through
+//! `muster::testing::fresh_session`, which is what the first line of each one is asking for.
 
 use muster::proto::{
-    OpenWindow, ReadWindowFrame, Request, Response, SetWindowFrame, Startup, WindowFrame,
-    WindowRect, request, response,
+    OpenWindow, ReadWindowFrame, Request, Response, SetSidebarWidth, SetWindowFrame, Startup,
+    WindowFrame, WindowRect, request, response,
 };
 use muster_core::composition::presentation::{Frame, Presentation};
 use muster_core::composition::saved::{Saved, to_toml};
@@ -112,6 +113,36 @@ fn a_window_comes_back_the_size_it_was_left() {
         Some((rect.x, rect.y)),
         "reporting no screens moved the window"
     );
+}
+
+#[test]
+fn the_roster_keeps_the_width_it_was_dragged_to() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let state = daemon.muster_config().with_file_name("window.toml");
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        state_path: state.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+
+    let saved_width = || {
+        let written = std::fs::read_to_string(&state).expect("the window wrote its state");
+        muster_core::composition::saved::from_toml(&written)
+            .expect("the core can read back what it just wrote")
+            .presentation
+            .sidebar_width
+    };
+
+    assert_ok(&answer(request::Payload::SetSidebarWidth(SetSidebarWidth { width: 262.0 })));
+    assert!((saved_width() - 262.0).abs() < f64::EPSILON, "the drag's width was not written down");
+
+    // Dragged past the widest the list may be, which is where a drag across the window ends up.
+    // What is written is the limit, so the next launch opens a list that is still usable.
+    assert_ok(&answer(request::Payload::SetSidebarWidth(SetSidebarWidth { width: 5000.0 })));
+    let widest = *Presentation::SIDEBAR_WIDTHS.end();
+    assert!((saved_width() - widest).abs() < f64::EPSILON, "a width past the limit was kept");
 }
 
 /// What the core says about where to open, given these screens.

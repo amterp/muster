@@ -139,6 +139,12 @@ public final class MusterWindow: NSObject {
   /// Reports where the window has settled, one request at a time.
   private lazy var frames = WindowFrameSender()
 
+  /// Asks for the agent list's width while its edge is dragged, one request at a time: a drag
+  /// reports a width per frame of motion, and each one ends in a file write.
+  private lazy var sidebarWidths = LatestRequestSender<Void>(
+    what: "set_sidebar_width", queue: "muster.sidebar-width", dispatcher: Core.dispatcher,
+    read: { response in readResponse(response).map { _ in () } })
+
   /// Pastes a daemon held, asked about on this window one at a time.
   ///
   /// This window rather than whichever shows the pane, because it is the window the paste was
@@ -171,6 +177,9 @@ public final class MusterWindow: NSObject {
     // A window narrowed until the roster will not fit takes the problems area with it, so the
     // title has to pick them up at exactly that moment.
     split.onSidebarVisibilityChanged = { [weak self] in self?.applyTitle() }
+    split.onSidebarDragged = { [weak self] width in
+      self?.sidebarWidths.send(Core.setSidebarWidth(width))
+    }
     strip.attach(empty: empty)
     let bindings = Core.bindings()
     self.bindings = bindings
@@ -436,6 +445,7 @@ public final class MusterWindow: NSObject {
   /// once at startup, so this window never has a default of its own to disagree with.
   public func apply(presentation: Presentation) {
     split.sidebarShown = presentation.sidebar
+    split.sidebarWidth = presentation.sidebarWidth
   }
 
   /// Says so when the renderer would not size a pane's text.
@@ -1127,13 +1137,25 @@ extension MusterWindow {
 /// The sidebar down the left, and everything else to the right of it.
 ///
 /// Its own view rather than arithmetic inside the window, so that the one number here - how
-/// much width the list takes - is a pure function a test can call. The list is a fixed width
-/// because it holds a directory and a harness name and nothing that benefits from more; the
-/// regions get what is left.
+/// much width the list takes - is a pure function a test can call. The list is as wide as it was
+/// last dragged, and the regions get what is left.
 @MainActor
 final class WindowLayout: NSView {
   private var sidebar: NSView?
   private var strip: NSView?
+  private let edge = SidebarEdgeView()
+
+  /// How wide the core says the list is. Mirrored like `sidebarShown`: a drag asks for a width
+  /// and this changes when the answer arrives.
+  var sidebarWidth = SidebarModel.width {
+    didSet { needsLayout = true }
+  }
+
+  /// Called while the list's edge is dragged, with the width being asked for.
+  var onSidebarDragged: ((CGFloat) -> Void)? {
+    get { edge.onDrag }
+    set { edge.onDrag = newValue }
+  }
 
   /// Whether the core says the list belongs on screen. Mirrored, never decided: the answer
   /// is written down beside the arrangement and comes back on the next launch.
@@ -1159,14 +1181,22 @@ final class WindowLayout: NSView {
     self.strip = strip
     addSubview(sidebar)
     addSubview(strip)
+    // Last, so it is on top of both: it straddles the line between them.
+    addSubview(edge)
     needsLayout = true
   }
 
   override func layout() {
     super.layout()
-    let (listWidth, regionWidth) = SidebarModel.widths(in: bounds.width, shown: sidebarShown)
+    let (listWidth, regionWidth) = SidebarModel.widths(
+      in: bounds.width, shown: sidebarShown, wanted: sidebarWidth)
     sidebar?.frame = CGRect(x: 0, y: 0, width: listWidth, height: bounds.height)
     sidebar?.isHidden = listWidth == 0
+    edge.frame = CGRect(
+      x: listWidth - SidebarEdgeView.reach, y: 0, width: SidebarEdgeView.reach * 2,
+      height: bounds.height)
+    edge.isHidden = listWidth == 0
+    window?.invalidateCursorRects(for: edge)
     strip?.frame = CGRect(x: listWidth, y: 0, width: regionWidth, height: bounds.height)
     strip?.needsLayout = true
     let visible = listWidth > 0
@@ -1174,6 +1204,31 @@ final class WindowLayout: NSView {
       sidebarVisible = visible
       onSidebarVisibilityChanged?()
     }
+  }
+}
+
+/// The line between the agent list and the panes, as something to drag.
+///
+/// Invisible: the list and the panes already meet at a line, and this only gives it a grip. It
+/// reaches a few points either side of that line so the pointer does not have to find a single
+/// pixel, and it is laid out over both views so it wins the cursor there.
+///
+/// Like `DividerView`, a drag asks rather than moves: it reports the width the pointer is asking
+/// for, and the list moves when the core answers with the width it settled on.
+@MainActor
+final class SidebarEdgeView: NSView {
+  /// How far the grip reaches either side of the line, in points.
+  static let reach: CGFloat = 3
+
+  var onDrag: ((CGFloat) -> Void)?
+
+  override func resetCursorRects() {
+    addCursorRect(bounds, cursor: .resizeLeftRight)
+  }
+
+  override func mouseDragged(with event: NSEvent) {
+    guard let superview else { return }
+    onDrag?(superview.convert(event.locationInWindow, from: nil).x)
   }
 }
 

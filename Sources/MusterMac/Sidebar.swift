@@ -201,8 +201,12 @@ public struct Presentation: Equatable {
   /// Whether the roster is on screen.
   public let sidebar: Bool
 
-  public init(sidebar: Bool) {
+  /// How wide the roster is when it is on screen, already held to the core's limits.
+  public let sidebarWidth: CGFloat
+
+  public init(sidebar: Bool, sidebarWidth: CGFloat = SidebarModel.width) {
     self.sidebar = sidebar
+    self.sidebarWidth = sidebarWidth
   }
 }
 
@@ -595,8 +599,8 @@ public enum SidebarModel {
     return (redraw, remeasure)
   }
 
-  /// Wide enough for a directory and a harness name, narrow enough to leave a full window of
-  /// panes readable beside it.
+  /// How wide the list is until the core has said otherwise. The core holds the real answer,
+  /// which is whatever the list was last dragged to.
   public static let width: CGFloat = 200
 
   /// How wide the list is, and how much is left for panes.
@@ -610,11 +614,17 @@ public enum SidebarModel {
   /// core was asked for and remembers; the width check is this window being too small right
   /// now. A window narrowed until the list disappears and then widened again gets it back,
   /// because nothing about that was a decision.
-  public static func widths(in total: CGFloat, shown: Bool = true) -> (
+  ///
+  /// `wanted` is the width the list was dragged to. It gets at most half the window, so a list
+  /// dragged wide in a big window narrows as the window does instead of taking the panes' room,
+  /// and the window gives the list up where it always did - below twice the default width -
+  /// whatever it was dragged to.
+  public static func widths(in total: CGFloat, shown: Bool = true, wanted: CGFloat = width) -> (
     sidebar: CGFloat, regions: CGFloat
   ) {
     guard shown, total >= width * 2 else { return (0, max(0, total)) }
-    return (width, total - width)
+    let sidebar = min(wanted, total / 2)
+    return (sidebar, total - sidebar)
   }
 }
 

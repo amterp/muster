@@ -134,6 +134,14 @@ pub struct Presentation {
     /// Whether the roster is on screen.
     pub sidebar: bool,
 
+    /// How wide the roster is when it is on screen, in points, always within
+    /// [`Presentation::SIDEBAR_WIDTHS`].
+    ///
+    /// Per window, like everything else here: a window of long pane names beside a narrow one of
+    /// short names is two answers, and a new window starts from the default rather than from
+    /// whichever window was dragged last.
+    pub sidebar_width: f64,
+
     /// Where the window last settled, or nothing for one that never has.
     ///
     /// Nothing is a first launch, a state file written before this key existed, or a file
@@ -160,11 +168,39 @@ impl Default for Presentation {
     /// on a first launch nobody has decided otherwise. And no frame at all, which is a window
     /// that has never been anywhere to come back to.
     fn default() -> Presentation {
-        Presentation { sidebar: true, frame: None, full_screen: false }
+        Presentation {
+            sidebar: true,
+            sidebar_width: Presentation::SIDEBAR_WIDTH,
+            frame: None,
+            full_screen: false,
+        }
     }
 }
 
 impl Presentation {
+    /// Wide enough for a directory and a harness name, narrow enough to leave a full window of
+    /// panes readable beside it.
+    pub const SIDEBAR_WIDTH: f64 = 200.0;
+
+    /// The narrowest and widest the roster may be dragged to. At 140 a row still shows its
+    /// chord, its dot and a short name; past 480 the list is taking a terminal's worth of room
+    /// to show labels that are rarely that long.
+    pub const SIDEBAR_WIDTHS: std::ops::RangeInclusive<f64> = 140.0..=480.0;
+
+    /// The roster at this width, held to [`Presentation::SIDEBAR_WIDTHS`].
+    ///
+    /// Clamped here rather than refused, because a drag past the edge is somebody pushing
+    /// against a limit, and the answer they expect is the limit. A width that is not a number
+    /// at all is a caller's bug, and keeps the width there was.
+    #[must_use]
+    pub fn with_sidebar_width(self, width: f64) -> Presentation {
+        if !width.is_finite() {
+            return self;
+        }
+        let (least, most) = Presentation::SIDEBAR_WIDTHS.into_inner();
+        Presentation { sidebar_width: width.clamp(least, most), ..self }
+    }
+
     #[must_use]
     pub fn with_sidebar(self, sidebar: bool) -> Presentation {
         Presentation { sidebar, ..self }
@@ -413,6 +449,18 @@ mod tests {
 
         assert_eq!(presentation.with_sidebar(true).frame, Some(frame));
         assert_eq!(presentation.with_frame(None, false).sidebar, presentation.sidebar);
+        assert_eq!(presentation.with_sidebar_width(300.0).frame, Some(frame));
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // whole numbers, and the clamp returns its bounds exactly
+    fn the_roster_is_dragged_as_far_as_its_limits_and_no_further() {
+        let at = |width| Presentation::default().with_sidebar_width(width).sidebar_width;
+        assert_eq!(Presentation::default().sidebar_width, 200.0);
+        assert_eq!(at(260.0), 260.0);
+        assert_eq!(at(20.0), 140.0, "a list dragged to nothing should stop at its narrowest");
+        assert_eq!(at(4000.0), 480.0, "a list dragged across the window should stop at its widest");
+        assert_eq!(at(f64::NAN), 200.0, "a width that is no number moved the list");
     }
 
     #[test]

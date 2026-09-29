@@ -483,7 +483,7 @@ struct SidebarTests {
     #expect(rows.filter { $0.isMachine }.map(\.label) == ["devenv"])
   }
 
-  @Test("the list takes a fixed width, and gives it up before squeezing the panes")
+  @Test("the list takes its width, and gives it up before squeezing the panes")
   func theTerminalsWin() {
     let roomy = SidebarModel.widths(in: 960)
     #expect(roomy.sidebar == SidebarModel.width)
@@ -494,6 +494,47 @@ struct SidebarTests {
     let cramped = SidebarModel.widths(in: SidebarModel.width)
     #expect(cramped.sidebar == 0)
     #expect(cramped.regions == SidebarModel.width)
+  }
+
+  @Test("a list dragged wide takes at most half the window, and goes where it always went")
+  func aDraggedWidthStillLeavesThePanesTheirRoom() {
+    // The width it was dragged to, in a window with room for it.
+    #expect(SidebarModel.widths(in: 1400, wanted: 320) == (320, 1080))
+    // The same list in a window too small to give it that: half, not more, so a wide list
+    // narrows with the window rather than leaving the panes a sliver.
+    #expect(SidebarModel.widths(in: 500, wanted: 320) == (250, 250))
+    // And it goes away below the width it always went away at, however it was dragged, so a
+    // narrow window behaves the same whether or not anybody touched the list.
+    #expect(SidebarModel.widths(in: 399, wanted: 140).sidebar == 0)
+    #expect(SidebarModel.widths(in: 1400, shown: false, wanted: 320) == (0, 1400))
+  }
+
+  @MainActor
+  @Test("dragging the list's edge asks for a width, and the list takes the one it is given")
+  func theEdgeAsksAndTheLayoutAnswers() throws {
+    let layout = WindowLayout(frame: NSRect(x: 0, y: 0, width: 1000, height: 400))
+    let list = NSView()
+    layout.attach(sidebar: list, strip: NSView())
+    var asked: [CGFloat] = []
+    layout.onSidebarDragged = { asked.append($0) }
+
+    // The drag reports where the pointer is, which is the width being asked for. Nothing moves
+    // yet: the list keeps the width the core last gave it until an answer arrives.
+    layout.layoutSubtreeIfNeeded()
+    let edge = try #require(layout.subviews.last as? SidebarEdgeView)
+    let drag = try #require(
+      NSEvent.mouseEvent(
+        with: .leftMouseDragged, location: NSPoint(x: 312, y: 100), modifierFlags: [],
+        timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+    edge.mouseDragged(with: drag)
+    #expect(asked == [312])
+    #expect(list.frame.width == SidebarModel.width)
+
+    // The answer, which is what moves it - and the grip moves with the edge.
+    layout.sidebarWidth = 312
+    layout.layoutSubtreeIfNeeded()
+    #expect(list.frame.width == 312)
+    #expect(edge.frame.midX == 312)
   }
 
   @Test("the pane with the keyboard is marked, and only that one")
