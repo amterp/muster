@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-surface-keeps-the",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790774029892,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-09-30 after waking the laptop, whose built-in display is Retina (2x) beside a 3440x1440 ultrawide at 1x. All four panes of the tab on screen drew their text in the top-left quarter of the pane, and their PTYs on the devenv were half the grid each pane has room for: the left pane ran at 74x40 where it holds about 150x80.\n\nCause, confirmed in the code: makeSurface in Sources/MusterRenderer/Renderer.swift sets libghostty's scale_factor once, when the surface is created, and nothing calls ghostty_surface_set_content_scale afterward. SurfaceView has no viewDidChangeBackingProperties. Its setFrameSize does multiply by the window's current backingScaleFactor, so a surface created at 2x and later sized on a 1x screen is given its size in 1x pixels while its cells are still 2x pixels. libghostty then computes half the columns and half the rows, sizes the bridge's PTY to that, and the bridge sends the same grid to the daemon, so the program runs at half size too.\n\nThe run log (muster-2026-09-29_07-52-53-24430.jsonl) has the sequence: the lid opened at 12:52:38 UTC, the four bridges were replaced with new surfaces at 12:53:09 (pane.surface.rebuilt), and at 12:58:34 the left pane's bridge reported 74x40, after which nothing resized it. The log records no screen or scale change, so that the window was on the built-in display at 12:53:09 is inferred, not confirmed.\n\nFix: what Ghostty's own SurfaceView_AppKit.swift does in viewDidChangeBackingProperties - set the layer's contentsScale to the window's backingScaleFactor, call ghostty_surface_set_content_scale with the backing-to-frame ratio, then ghostty_surface_set_size with the backing size. Also log the change, since today nothing in the run log says a window changed scale.\n\nWorkaround: quit and relaunch Muster. The new surfaces take the scale of the screen the window is on, and the daemon keeps the agents running.\n\nDragging a window between displays of different scale should reproduce this without a sleep; untested.",
+  "id": "a_2ZMgETdtq",
+  "position": "!!!!!1",
+  "title": "🖥️ A surface keeps the scale of the screen it was made on, so its grid halves on a 1x display",
+  "type": "bug",
+  "updated_at_millis": 1790774029892,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790774029892}
+  ]
+}
