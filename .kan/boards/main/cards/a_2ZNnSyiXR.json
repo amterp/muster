@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "window-verbs-hang-on",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1790776691242,
+  "creator": "Alexander Terp",
+  "description": "Window-bound verbs (`muster window`, `pane read`, `pane send`, `pane wait`) hang for about two minutes when the window's socket still exists but nothing behind it answers, and never fall back to the daemon. The daemon already answers them itself when the window has quit cleanly, so the gap is only in how an unresponsive window is told apart from a live one.\n\n## Measured: muster 0.12.0, 2026-09-29\n\nA laptop runs the window, attached over SSH to a Linux dev box. On the dev box an agent (Claude Code) in one pane was driving three worker agents in panes beside it, through `muster msg` for messages and `muster pane read` / `pane send` for the plan-approval dialogs each worker raises. The laptop then went to sleep.\n\n- `muster pane wait --pane \u003cp\u003e --until blocked --timeout 120` ran its full 120 s.\n- `muster pane read --pane \u003cp\u003e --rows 25` failed after about two minutes with: `the window at ~/.muster/daemon/window-release-\u003cid\u003e.sock took the request and never answered (Resource temporarily unavailable (os error 11)). Whatever was asked for may well have happened ...`\n- A plain `muster window` hung past 120 s and printed nothing. `timeout 30 muster pane read` was killed with no output.\n- Meanwhile `muster msg who`, `msg post` and `msg read` answered at once, and `who` knew the worker was `blocked`: the daemon had every fact the window verbs were waiting for.\n\nThe next morning the window quit cleanly instead. The same `pane send` then answered at once: `nothing is listening on ~/.muster/daemon/window-release-\u003cid\u003e.sock (No such file or directory (os error 2)) ... Without one, muster window, pane read, pane send and pane wait still work, answered by this machine's muster-daemon`. So the fallback exists; it only triggers on ENOENT, not on a socket that accepts and never answers.\n\n## Why it matters\n\nA node going away should cost the view, not the work. An agent driving other agents from the dev box has no way to answer a dialog, and no way to learn quickly that it cannot, while the laptop sleeps, though its daemon could do both. The two-minute wait per call also compounds: every check an agent makes costs two minutes before it learns anything.\n\n## Things that might be true\n\n- **Time out a window that takes a request and does not answer** within a second or two, then fall back to the daemon exactly as the ENOENT path does, and say which one answered.\n- **Have the daemon track whether a window is attached** (a heartbeat over the bridge) and route window-bound verbs to itself when none is, rather than finding out per request.\n- Where only the window can do something (anything about layout or what the window shows), fail fast with \"no window is attached (last seen \u003ctime\u003e)\" instead of hanging.\n\nRelated: a_2HpkpQlZP (a devenv's first attach hangs) is another case of a call waiting on a window that is not coming.",
+  "id": "a_2ZNnSyiXR",
+  "position": "b0N",
+  "title": "⏳ Window verbs hang on a window whose host is asleep, and never fall back to the daemon",
+  "type": "bug",
+  "updated_at_millis": 1790776691242,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790776691242}
+  ]
+}
