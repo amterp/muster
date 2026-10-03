@@ -81,6 +81,9 @@ pub(crate) struct Rung {
     /// When it was rung, or Return last pressed for it.
     at: Instant,
     presses: u8,
+    /// Typed while its agent worked, which takes what it is typed as part of the running turn
+    /// and may stop to ask a person at any moment.
+    at_work: bool,
     /// Whether its Return has been pressed. A ring typed at work waits for a second look first.
     returned: bool,
 }
@@ -151,7 +154,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                 rang(&wake, took);
                 if took {
                     let at = Instant::now();
-                    rung.push(Rung { wake, at, presses: 0, returned: !at_work });
+                    rung.push(Rung { wake, at, presses: 0, at_work, returned: !at_work });
                     came.push(Came::Rang);
                 } else {
                     came.push(Came::Refused);
@@ -483,8 +486,23 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
 }
 
 /// Gives up a ring its agent never took, and forgets that the agent was woken for it, so the
-/// next post there rings again rather than counting it woken.
+/// next post there rings again rather than counting it woken. A ring typed at work is given up
+/// and the agent still counted woken: whatever ended it - a person typing, a dialog, a screen
+/// pushed aside - came while the agent works, and it is woken once more as it goes idle with the
+/// message unread, which forgetting would lose.
 fn ended(messages: &mut Messages, rung: &Rung, why: &str) {
+    if rung.at_work {
+        log::info(
+            "msg.ring.left",
+            fields! {
+                "name" => rung.wake.name,
+                "group" => rung.wake.notice.group,
+                "returned" => rung.returned,
+                "why" => why,
+            },
+        );
+        return;
+    }
     log::warn(
         "msg.ring.ended",
         fields! {

@@ -566,6 +566,25 @@ fn a_dialog_opened_over_an_urgent_ring_before_its_return_is_never_answered() {
     assert_eq!(agent.heard(), ["working"], "a Return reached the dialog");
 }
 
+/// A ring typed at work, then something typed into the pane before it was seen taken: the ring
+/// is left alone, and the agent still counts as woken, so it is rung once more as it goes idle
+/// with the message unread.
+#[test]
+fn an_agent_rung_at_work_whose_pane_is_typed_into_is_rung_again_as_it_goes_idle() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    std::thread::sleep(QUIET);
+
+    agent.post_urgently("p1", "now");
+    agent.until_rung(1);
+    agent.type_in("z", false);
+    std::thread::sleep(ANSWER + Duration::from_secs(1));
+    agent.type_in("idle", true);
+    agent.daemon.until_agent("p1", proto::AgentState::Idle);
+    let rung = agent.until_rung(2);
+    assert!(rung[1].contains("still unread"), "{rung:?}");
+}
+
 /// Nor a menu opened over the prompt of an agent at work.
 #[test]
 fn an_urgent_post_waits_out_a_menu_opened_while_the_agent_works() {

@@ -512,7 +512,8 @@ itself, pasted or typed, does nothing there (`docs/observations/claude-code-2.1.
 only if the prompt box holds the ring and nothing else; a dialog over it keeps the Return back
 until the box shows again, for half a minute at most. What remains unguarded is a dialog drawn
 in the milliseconds between that second look and the Return reaching the agent: the Return would
-answer it.
+answer it. Anything else that ends a ring at work - a person typing, a screen the doorbell cannot
+read - leaves the agent counted as woken, so it is rung "still unread" as it goes idle.
 Until then Return is pressed again as for any ring. The hooks adapter and the inbox already reach
 an agent mid-turn, so urgency changes nothing for a participant they serve. Whether the model
 stops to read is its own call: in the recording Sonnet read at once, and Haiku 4.5 finished its
