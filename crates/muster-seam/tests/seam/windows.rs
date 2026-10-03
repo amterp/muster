@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use muster::proto::{
-    CreateTab, Event, MoveTab, OpenWindow, Quitting, ReadWindow, Request, Response, Startup,
-    ToggleSidebar, WindowFocus, event, request, response,
+    ClosePane, CreateTab, Event, FocusPane, MoveTab, OpenWindow, Quitting, ReadWindow, Request,
+    Response, SplitPane, Startup, ToggleSidebar, WindowFocus, event, request, response,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::AgentState;
@@ -225,6 +225,112 @@ fn an_agent_in_the_window_behind_is_seen_when_that_window_comes_forward() {
     until_state("p1", "idle");
 }
 
+/// Going to a pane in the other window's tab, from the window in front, is answered by the window
+/// holding it: its keyboard moves there and it comes forward, and the window asked keeps its own.
+#[test]
+fn a_pane_in_the_other_window_is_gone_to_there() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    let theirs = keyboard_in("window-2").expect("the second window opened onto a pane");
+    let split = split_in("window-2");
+    let ours = keyboard_in("window-1");
+
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::FocusPane(FocusPane { pane_id: theirs.clone(), ..FocusPane::default() }),
+    )));
+
+    until(
+        "the second window's keyboard to move back onto its first pane",
+        || keyboard_in("window-2").as_deref() == Some(theirs.as_str()),
+        || {
+            format!(
+                "window-2's keyboard is on {:?}, not {theirs} or {split}",
+                keyboard_in("window-2")
+            )
+        },
+    );
+    assert_eq!(keyboard_in("window-1"), ours, "the window asked moved its own keyboard too");
+    assert_eq!(
+        windows_sent(|payload| matches!(payload, event::Payload::RaiseWindow(_))),
+        vec!["window-2".to_string()],
+        "the window holding the pane was not brought forward, or another one was"
+    );
+}
+
+/// A request naming no window, sent from a pane, is about the window holding that pane's tab and
+/// not whichever is in front.
+#[test]
+fn a_request_from_a_pane_is_about_that_panes_window() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    let theirs = keyboard_in("window-2").expect("the second window opened onto a pane");
+    focus_window("window-1");
+
+    let mut asked = Request::new(request::Payload::ReadWindow(ReadWindow {}));
+    asked.from_pane = theirs;
+    match answer(&asked).payload {
+        Some(response::Payload::Window(window)) => assert_eq!(
+            window.name, "window-2",
+            "a request from a pane in the second window was answered by the one in front"
+        ),
+        other => panic!("reading the window answered {other:?}"),
+    }
+}
+
+/// A window name nobody here has is refused even when the request names a pane that decides which
+/// window answers: the caller meant some window, and was wrong about which.
+#[test]
+fn a_window_nobody_has_is_refused_even_naming_a_pane() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    let theirs = keyboard_in("window-2").expect("the second window opened onto a pane");
+
+    let response = answer(&in_window(
+        "window-99",
+        request::Payload::FocusPane(FocusPane { pane_id: theirs, ..FocusPane::default() }),
+    ));
+    match response.payload {
+        Some(response::Payload::Failure(failure)) => assert!(
+            failure.reason.contains("window-99"),
+            "the refusal does not name the window it could not find: {}",
+            failure.reason
+        ),
+        other => panic!("a request for a window nobody opened was carried out: {other:?}"),
+    }
+}
+
+/// A change to a pane in the other window's tab is made there, and the window it was sent to keeps
+/// showing its own tab.
+#[test]
+fn a_change_to_the_other_windows_pane_is_made_there() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, second) = two_windows(&daemon);
+    let theirs = keyboard_in("window-2").expect("the second window opened onto a pane");
+    split_in("window-2");
+
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::ClosePane(ClosePane { pane_id: theirs.clone(), ..ClosePane::default() }),
+    )));
+
+    until(
+        "the pane to close",
+        || !panes_in("window-2").contains(&theirs),
+        || format!("window-2 still holds {:?}", panes_in("window-2")),
+    );
+    assert_eq!(listed("window-1"), vec![first], "the window asked took the other one's tab");
+    assert_eq!(listed("window-2"), vec![second], "the window holding the pane lost its tab");
+}
+
 /// Quitting the process closes every window in it, each keeping its tabs for when it reopens.
 #[test]
 fn quitting_closes_every_window_here() {
@@ -410,6 +516,49 @@ fn windows_sent(kind: impl Fn(&event::Payload) -> bool) -> Vec<String> {
         .collect();
     windows.dedup();
     windows
+}
+
+/// The pane a window's keyboard is on, from the last view sent to it.
+fn keyboard_in(window: &str) -> Option<String> {
+    let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let view = events.iter().rev().find_map(|event| match &event.payload {
+        Some(event::Payload::ViewChanged(view)) if event.window == window => Some(view),
+        _ => None,
+    })?;
+    let region = view.regions.iter().find(|region| region.region_id == view.focused_region)?;
+    Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
+}
+
+/// Every pane a window lists.
+fn panes_in(window: &str) -> Vec<String> {
+    read_window(window)
+        .roster
+        .iter()
+        .flat_map(|roster| roster.tabs.iter())
+        .flat_map(|tab| tab.panes.iter().map(|pane| pane.pane_id.clone()))
+        .collect()
+}
+
+/// Splits the pane a window's keyboard is on, moves the keyboard into the new one, and names it.
+fn split_in(window: &str) -> String {
+    let response = answer(&in_window(
+        window,
+        request::Payload::SplitPane(SplitPane {
+            side: "right".to_string(),
+            take_focus: true,
+            ..SplitPane::default()
+        }),
+    ));
+    let made = match response.payload {
+        Some(response::Payload::Made(made)) => made.pane_id,
+        other => panic!("a split in {window} answered {other:?}"),
+    };
+    until(
+        &format!("{window}'s keyboard to move into the split"),
+        || keyboard_in(window).as_deref() == Some(made.as_str()),
+        || format!("{window}'s keyboard is on {:?}", keyboard_in(window)),
+    );
+    made
 }
 
 fn in_window(window: &str, payload: request::Payload) -> Request {

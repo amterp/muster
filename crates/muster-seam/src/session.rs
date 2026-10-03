@@ -52,8 +52,8 @@ use muster_ssh::{Forward, Reverse, State as TunnelState, Tunnel, remote_environm
 use crate::bridge_link::{PaneLink, Reports};
 use crate::holding::Holding;
 use crate::proto::{
-    AttentionChanged, ClipboardWrite, Event, PaneTypeable, PasteHeld, PresentationChanged,
-    Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReopenWindow, RosterChanged,
+    AttentionChanged, ClipboardWrite, Event, Names, PaneTypeable, PasteHeld, PresentationChanged,
+    Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReopenWindow, Request, RosterChanged,
     ViewChanged, event,
 };
 use crate::watch::{self, Seen};
@@ -2149,6 +2149,42 @@ impl Session {
         self.backends.get(daemon).map(|backend| Arc::clone(&backend.channel))
     }
 
+    /// [`locate`], for a caller already holding the session.
+    fn locate(&self, pane: &PaneId) -> Option<(DaemonId, TabId)> {
+        let mut found: Option<(DaemonId, TabId)> = None;
+        for (id, backend) in &self.backends {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            let Some(held) = mirror.pane(pane) else { continue };
+            if let Some((first, ..)) = &found {
+                log::warn(
+                    "pane.ambiguous",
+                    fields! {
+                        "pane" => pane.to_string(),
+                        "daemons" => format!("{first}, {id}"),
+                        "impact" => "the first of them was used, so a command about this name may \
+                                     reach the wrong machine",
+                        "check" => "this should be impossible: names are minted unique across \
+                                    daemons. Look for a saved pane-name file read back under a \
+                                    different mint, or two Musters writing one",
+                    },
+                );
+                break;
+            }
+            found = Some((id.clone(), held.tab.clone()));
+        }
+        found
+    }
+
+    /// The open window here holding a tab, if one does.
+    ///
+    /// Open meaning it has said so and not since closed: a closed window's tab is asked about by
+    /// reopening it (`reopened_for`), and a window not yet opened has nothing on screen to act in.
+    fn window_holding(&self, tab: &TabId) -> Option<WindowId> {
+        let holder = self.holding.holders().holder(tab)?;
+        let window = self.windows.named(holder.as_str())?;
+        self.holding.has_opened(holder).then_some(window)
+    }
+
     fn next_socket_path(&mut self) -> String {
         // A pid in the name because nothing else can legitimately own this path, which is
         // what makes unlinking a stale one safe.
@@ -2158,24 +2194,58 @@ impl Session {
     }
 }
 
-/// The window a request is for: the one it names, or the one in front when it names none.
+/// The windows a request is about: the one it came from, and the one that answers it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Resolved {
+    /// The window the request names, else the one holding the tab of the pane it was sent from,
+    /// else the one in front.
+    pub(crate) from: WindowId,
+    /// The window holding the tab or pane the request is about, when an open one here does, and
+    /// `from` otherwise.
+    pub(crate) to: WindowId,
+}
+
+/// Which windows a request is for, in MIP-6's order.
 ///
-/// A name this process has no window by is refused rather than read as the front window: a
-/// caller that named one meant it, and acting on another would be acting somewhere it did not ask.
-pub(crate) fn resolve(name: &str) -> Result<WindowId, String> {
+/// What a request is about comes first, because a tab is in exactly one window and acting on it
+/// from any other is refused: a notification clicked in one window, or a `muster` command run in
+/// a pane of one, about a pane in another, is answered by the window holding it. Then the window
+/// the request names, then the window holding the pane it was sent from (`$MUSTER_PANE`), then
+/// the one in front.
+///
+/// A window name this process has none by is refused even when the request's pane decides,
+/// rather than read as some other window: a caller that named one meant it, and is better told
+/// it was wrong than left believing it was right.
+pub(crate) fn resolve(request: &Request) -> Result<Resolved, String> {
     let session = poison::lock(&SESSION, "session");
-    if name.is_empty() {
-        return Ok(session.front);
-    }
-    session.windows.named(name).ok_or_else(|| {
-        let here: Vec<String> =
-            session.windows.values().map(|window| window.name.to_string()).collect();
-        format!(
-            "this Muster has no window called {name}, so nothing was done. Its windows are: {}. \
-             `muster window list` names every window there is.",
-            here.join(", ")
-        )
-    })
+    let named = if request.window.is_empty() {
+        None
+    } else {
+        Some(session.windows.named(&request.window).ok_or_else(|| {
+            let here: Vec<String> =
+                session.windows.values().map(|window| window.name.to_string()).collect();
+            format!(
+                "this Muster has no window called {}, so nothing was done. Its windows are: {}. \
+                 `muster window list` names every window there is.",
+                request.window,
+                here.join(", ")
+            )
+        })?)
+    };
+    let tab_of = |pane: &str| session.locate(&PaneId::new(pane)).map(|(_, tab)| tab);
+    let from = named
+        .or_else(|| {
+            let tab = (!request.from_pane.is_empty()).then(|| tab_of(&request.from_pane))??;
+            session.window_holding(&tab)
+        })
+        .unwrap_or(session.front);
+    let about =
+        request.payload.as_ref().and_then(muster_proto::names).and_then(|names| match names {
+            Names::Tab(tab) => Some(TabId::new(tab)),
+            Names::Pane(pane) => tab_of(pane),
+        });
+    let to = about.and_then(|tab| session.window_holding(&tab)).unwrap_or(from);
+    Ok(Resolved { from, to })
 }
 
 /// The pane a window's keyboard feeds, if it has one.
@@ -3545,6 +3615,13 @@ pub(crate) fn raise_window(pid: u32) {
     ffi::emit(&Event::new(event::Payload::RaiseWindow(RaiseWindow { pid })));
 }
 
+/// Brings one of this process's windows to the front, because somebody went to one of its tabs
+/// from somewhere else.
+pub(crate) fn raise(window: WindowId) {
+    let name = window_name(window);
+    ffi::emit(&Event::new(event::Payload::RaiseWindow(RaiseWindow { pid: 0 })).for_window(name));
+}
+
 /// The daemon this window's keyboard is on.
 ///
 /// What a request naming no daemon means, for the same reason an empty pane id means the
@@ -4875,29 +4952,7 @@ pub(crate) fn daemon_holding_tab(tab: &TabId) -> Option<DaemonId> {
 /// than something a caller could have said more precisely - hence the warning rather than a
 /// refusal, and the first answer rather than none.
 fn locate(pane: &PaneId) -> Option<(DaemonId, TabId)> {
-    let session = poison::lock(&SESSION, "session");
-    let mut found: Option<(DaemonId, TabId)> = None;
-    for (id, backend) in &session.backends {
-        let mirror = poison::lock(&backend.mirror, "mirror");
-        let Some(held) = mirror.pane(pane) else { continue };
-        if let Some((first, ..)) = &found {
-            log::warn(
-                "pane.ambiguous",
-                fields! {
-                    "pane" => pane.to_string(),
-                    "daemons" => format!("{first}, {id}"),
-                    "impact" => "the first of them was used, so a command about this name may \
-                                 reach the wrong machine",
-                    "check" => "this should be impossible: names are minted unique across \
-                                daemons. Look for a saved pane-name file read back under a \
-                                different mint, or two Musters writing one",
-                },
-            );
-            break;
-        }
-        found = Some((id.clone(), held.tab.clone()));
-    }
-    found
+    poison::lock(&SESSION, "session").locate(pane)
 }
 
 /// Settles what this window is showing, after anything that could have changed it.

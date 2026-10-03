@@ -30,7 +30,7 @@ use muster_core::transcript;
 use muster_core::{AgentState, PaneKey};
 
 use crate::proto::{self, Request, Response, event, request, response};
-use crate::session::{self, AttachError, AttachedPane, Keyboard, WindowId};
+use crate::session::{self, AttachError, AttachedPane, Keyboard, Resolved, WindowId};
 use crate::{command, convert, forward, watch};
 use prost::Message;
 
@@ -73,20 +73,20 @@ fn nothing_was_asked() -> Response {
 }
 
 fn handle(request: Request) -> Response {
-    let Some(payload) = request.payload else {
-        return nothing_was_asked();
-    };
     // Which window this is about, before anything else: the chord below is that window's, and
     // so is every answer that means "this window". A request about the whole app is about none,
     // and is not held up behind the session's lock to find one: the shell logs through here from
     // its main thread, and quitting must not be refused over a window name.
-    let window = if about_the_whole_app(&payload) {
-        WindowId::default()
+    let resolved = if request.payload.as_ref().is_none_or(about_the_whole_app) {
+        Resolved { from: WindowId::default(), to: WindowId::default() }
     } else {
-        match session::resolve(&request.window) {
-            Ok(window) => window,
+        match session::resolve(&request) {
+            Ok(resolved) => resolved,
             Err(refusal) => return Response::failure(refusal),
         }
+    };
+    let Some(payload) = request.payload else {
+        return nothing_was_asked();
     };
 
     // A numbered chord is armed by one request and spent by the next, so the rule that
@@ -100,18 +100,43 @@ fn handle(request: Request) -> Response {
     // A request added after this defaults to clearing, which is the safe direction: an
     // over-eager disarm costs a chord, and a stuck one is a window whose numbers lie.
     //
+    // Both windows, when a request from one is about the other: the one it came from is where
+    // somebody was pressing, and the one answering is the one whose numbers it may change.
+    //
     // It costs one uncontended lock on every request, including each keystroke, and that is
     // affordable next to the protobuf decode two lines above it - which allocates, on the same
     // path, for every one of them. Skipping it when nothing can be armed would mean reading
     // whether anything is, which is the same lock.
     if !leaves_the_chord_armed(&payload) {
-        session::disarm(window);
+        session::disarm(resolved.from);
+        if resolved.to != resolved.from {
+            session::disarm(resolved.to);
+        }
     }
 
-    if let Some(handed_on) = forward::hand_on(window, &payload) {
+    if let Some(handed_on) = forward::hand_on(resolved.to, &payload) {
         return handed_on;
     }
-    route(window, payload)
+    let goes_to_a_tab = goes_to_a_tab(&payload);
+    let response = route(resolved.to, payload);
+    // Somebody looking at one window went to a tab in another, so that window comes forward, as it
+    // does when a window in another process is carried a focus. A request from a pane in the
+    // window it is about raises nothing: a script moving its own window's keyboard must not take
+    // the screen from whatever is in front.
+    if resolved.to != resolved.from && goes_to_a_tab && is_ok(&response) {
+        session::raise(resolved.to);
+    }
+    response
+}
+
+/// Whether a request goes to a pane or a tab, which brings the window holding it forward when
+/// somebody asked from elsewhere.
+fn goes_to_a_tab(payload: &request::Payload) -> bool {
+    matches!(payload, request::Payload::FocusTab(_) | request::Payload::FocusPane(_))
+}
+
+fn is_ok(response: &Response) -> bool {
+    matches!(response.payload, Some(response::Payload::Ok(_)))
 }
 
 /// Whether a request is about the app rather than any one window, so it names none.
@@ -278,20 +303,28 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
 /// Answered as though it had arrived directly, and never carried on - see `forward`. Going to a
 /// tab this way brings the window forward, because whoever asked was looking at something else.
 fn answer_carried(window: WindowId, carried: proto::Carried) -> Response {
-    let Some(payload) = carried.request.and_then(|request| request.payload) else {
-        return Response::failure(format!(
-            "window {} carried an empty request here, so nothing was done - a bug in whatever \
-             built it.",
-            carried.by
-        ));
+    let Some(request) = carried.request else {
+        return empty_carried(&carried.by);
     };
-    let goes_to_a_tab =
-        matches!(payload, request::Payload::FocusTab(_) | request::Payload::FocusPane(_));
+    // The window it was carried to is whichever is in front here, since a carried request names
+    // none (`forward::carry`); the window holding its tab is the one to answer it.
+    let window = session::resolve(&request).map_or(window, |resolved| resolved.to);
+    let Some(payload) = request.payload else {
+        return empty_carried(&carried.by);
+    };
+    let goes_to_a_tab = goes_to_a_tab(&payload);
     let response = route(window, payload);
-    if goes_to_a_tab && matches!(response.payload, Some(response::Payload::Ok(_))) {
-        session::raise_window(0);
+    if goes_to_a_tab && is_ok(&response) {
+        session::raise(window);
     }
     response
+}
+
+fn empty_carried(by: &str) -> Response {
+    Response::failure(format!(
+        "window {by} carried an empty request here, so nothing was done - a bug in whatever built \
+         it."
+    ))
 }
 
 /// Whether a request leaves an armed numbered chord alone.

@@ -257,8 +257,8 @@ fn answer(mut stream: UnixStream) {
     // A request about another window's tab is that window's to answer (`forward`).
     // A window name nobody here has is left for `dispatch`, which refuses it in so many words.
     let carried = decoded.and_then(|decoded| {
-        let window = session::resolve(&decoded.window).ok()?;
-        Some((window, forward::elsewhere(window, &decoded)?, decoded))
+        let resolved = session::resolve(&decoded).ok()?;
+        Some((resolved.from, forward::elsewhere(resolved.to, &decoded)?, decoded))
     });
     let forwarded = carried.is_some();
 
