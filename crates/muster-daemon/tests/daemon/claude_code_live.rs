@@ -53,7 +53,7 @@ pub(super) fn quoted(argument: &str) -> String {
 }
 
 /// Every change to either pane's record, in order, until both have gone working and then idle.
-fn until_both_settle(control: &mut Control, panes: [&str; 2]) -> [Vec<proto::Pane>; 2] {
+pub(super) fn until_both_settle(control: &mut Control, panes: [&str; 2]) -> [Vec<proto::Pane>; 2] {
     let settled = |seen: &[proto::Pane]| {
         let working =
             seen.iter().position(|record| record.agent_state() == proto::AgentState::Working);
