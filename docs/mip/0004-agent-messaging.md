@@ -332,6 +332,18 @@ It carries the range because Claude Code drops identical repeats arriving within
 would vanish. It carries no body because only the agent's own `read` moves the cursor, and the
 inbox and doorbell adapters cannot tell whether their text reached the model.
 
+**An urgent post is the exception to one wake per batch.** Added after stage 5: `post --urgent`
+wakes its addressees even when they were woken for the group and have not read since, because
+once per batch is the rule for what can wait until a turn ends, and an urgent post is one that
+cannot. Each urgent post wakes; the doorbell keeps one ring per participant and group waiting, so
+a burst before the ring lands costs one ring. Urgency is kept on the message in the log, so it
+crosses machines with it and survives a restart. The wake counts it and asks for a read now, since
+it lands in the middle of a task:
+
+```
+[muster] review: 2 new (#41-42), 1 urgent, 1 to you, from director. Read it now, before you go on: muster msg read --group review
+```
+
 ### 6. Wake adapters
 
 Three adapters, tried in this order; the first whose address is present and alive delivers. None
@@ -459,9 +471,9 @@ forgotten so that the next post rings afresh.
 read as empty just before the write. It repeats nothing but Return, and only while the prompt
 shows that line unsent and nothing has been typed into the pane since, so a repeated Return can
 send nothing but the wake. It never rings a
-blocked or working agent, a menu or dialog detection recognizes, a prompt holding a draft, a
-pane typed into in the last three seconds, the shell an agent exited to, or an agent whose
-manifest has no prompt rule.
+blocked agent, a working one but for an urgent wake (below), a menu or dialog detection
+recognizes, a prompt holding a draft, a pane typed into in the last three seconds, the shell an
+agent exited to, or an agent whose manifest has no prompt rule.
 
 **What it does not guarantee.** The check and the write are close but not simultaneous: a dialog
 drawn, or a key pressed, between them gets the wake and its Return. A screen that a prompt rule
@@ -470,6 +482,31 @@ and a harness update that draws a new dialog above an unchanged prompt box needs
 Text a harness draws faint reads as not typed, so a harness that drew a person's draft faint
 would have it read as an empty prompt. And "woke" says the wake was typed, not that the agent
 read it.
+
+**An urgent wake may ring an agent at work.** Claude Code keeps its prompt box on screen while it
+works; a line typed there with Return is queued, and handed to the model once the tool call it is
+in returns, as a reminder to address it before going on
+(`docs/observations/claude-code-2.1.288.md`). So for a wake whose messages include an urgent one,
+the first check above also lets the agent be working, and the last also takes the prompt box of an
+agent at work. Every other check is unchanged, and a blocked agent waits until it is out of its
+dialog, which the post's answer says.
+
+Detection's engine 6 reads that prompt. A rule whose state is `working` may carry `prompt`, and
+any prompt rule may name a `prompt_region` to read it in. The prompt of an agent at work is read
+only when two rules agree: the rule deciding the screen with its title is a working one, and the
+rule deciding the screen alone, the title left out, is a working rule with a prompt. The second
+look is what keeps a dialog out: Claude's title spinner outranks every screen rule, its Bash
+permission dialog included. Claude's `live_turn_working` reads the prompt in its box alone,
+because a working screen draws the request that started the turn above the box with the same
+caret. The idle prompt's reading is unchanged, so an ordinary ring is held to exactly what it
+was.
+
+A ring typed at work is taken once the agent's prompt box is empty again, which is how Claude
+Code shows a line it queued; going to work says nothing, since the agent was already working.
+Until then Return is pressed again as for any ring. The hooks adapter and the inbox already reach
+an agent mid-turn, so urgency changes nothing for a participant they serve. Whether the model
+stops to read is its own call: in the recording Sonnet read at once, and Haiku 4.5 finished its
+task first.
 
 ### 7. Presence
 
@@ -500,13 +537,14 @@ entry. Nothing is replicated that could go stale.
 
 ### 8. Groups and policy
 
-A group's policy is four fields. `ring` and `allow` are keyed by author. Every group gets the
+A group's policy is five fields. `ring` and `allow` are keyed by author. Every group gets the
 permissive default unless its creator passes a policy:
 
 ```toml
 ring = { "*" = ["*", "@human"] }  # an unaddressed post wakes every member but its author
 allow = { "*" = ["*"] }           # anyone may address anyone
 membership = ["*"]        # anyone may join, and any member may leave
+urgent = ["*"]            # anyone may post urgently
 paused = false
 ```
 
@@ -559,6 +597,11 @@ As built in stage 4:
   counts as heard, since a wake is coming. Pausing forgets which members were woken, so `resume`
   wakes each member with waking messages unread once, including one woken before the pause, and
   its answer lists them as a post's does.
+- **`urgent` says who may post urgently**, added after stage 5. An urgent post interrupts an
+  agent mid-turn, so a directed council can keep that to its director and the human. A post it
+  does not allow is refused as `not_urgent`, naming who may, rather than sent as an ordinary
+  post, which would arrive later than its author was told. A policy from a daemon older than
+  the key says nothing about it, which is the default.
 - **There is no `group delete` yet.** Whether groups ever close is an open question, below.
 
 `allow` binds within its group. Two members who share no other group can still reach each other
@@ -1061,3 +1104,6 @@ bind.
   makes the pair group there, a policy may name another machine's member, the person's requests
   on a far machine are carried to the human's home, and a replica reads a batch in its order
   (sections 10 and 11). The second hop is still not built.
+- 2026-10-03 Urgent posts: `post --urgent` rings an agent in a pane while it works, at a prompt
+  box read as empty, and wakes one woken already; a policy's `urgent` says who may (sections 5, 6
+  and 8). Detection engine 6 reads a working agent's prompt.

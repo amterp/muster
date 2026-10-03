@@ -66,12 +66,13 @@ that means nobody on this machine is looked for on the machines linked to it (be
 
 ## A group's policy
 
-A group made with `group new G --policy F` has the policy in file F, TOML with four keys:
+A group made with `group new G --policy F` has the policy in file F, TOML with five keys:
 
     # a director and members who answer to it
     ring = { director = ["*"], "*" = ["director"] }
     allow = { director = ["*"], "@human" = ["*"], "*" = ["director", "@human"] }
     membership = ["director", "@human"]
+    urgent = ["director", "@human"]
     paused = false
 
 - **`ring`** says, per author, whom an unaddressed post wakes; `*` as the author is everyone
@@ -84,11 +85,15 @@ A group made with `group new G --policy F` has the policy in file F, TOML with f
 - **`membership`** says who may change the group: join it, leave it, `group add` and `group
   remove`, `group set`, `pause` and `resume`. Here a member cannot leave on its own, and the
   refusal names who may dismiss it.
+- **`urgent`** says who may post with `--urgent` (below). Here only the director and the human
+  may interrupt an agent at work; a member's urgent post is refused, and the refusal names who
+  may. It is refused rather than sent as an ordinary post, which would arrive later than its
+  author was told.
 - **`paused`** makes a new group paused, as `pause` does. `group set` leaves whether a group is
   paused alone, and refuses a file saying `paused = true`: `pause` and `resume` change it.
 
 A key left out keeps its default, which lets anyone do anything: `ring` of
-`{ "*" = ["*", "@human"] }`, `allow` of `{ "*" = ["*"] }`, `membership` of `["*"]`. A key no
+`{ "*" = ["*", "@human"] }`, `allow` of `{ "*" = ["*"] }`, `membership` and `urgent` of `["*"]`. A key no
 field reads is refused, so a misspelled key is not quietly the default. Names are participants' names, `*`, or `@human`. A group made by
 `join` or by a post has the default. `group set` replaces the rest of the policy with a file's, and
 every change of policy, and every pause and resume, is a line in the group's log.
@@ -128,6 +133,32 @@ show it yet - the ring ends, and the next post rings afresh.
 An agent that goes idle with what it was woken for still unread is woken once more, with `still
 unread` on the end, and then not again until it reads.
 
+**An urgent post reaches an agent at work.** `post --urgent` is for what should change what an
+agent is doing now, not once it is done:
+
+    muster msg post --urgent --to builder "Stop: the schema changed under you. Read #41."
+
+Its ring may be typed while the agent works. Claude Code queues a line typed into its prompt box
+during a turn, and hands it to the model once the tool call it is in returns, with a reminder to
+address it before going on (`docs/observations/claude-code-2.1.288.md`). Everything else above
+still holds: nothing typed into the pane for three seconds, the agent still running there, and
+its prompt box read as empty just before the ring. So a draft in the box, a dialog, a menu, or
+a blocked agent is never rung; the post waits, and says what for. The wake counts what is
+urgent and says to read now:
+
+    [muster] review: 2 new (#41-42), 1 urgent, 1 to you, from director. Read it now, before you go on: muster msg read --group review
+
+An urgent post wakes even an agent already woken for the group and not yet read, so each one
+rings: once per batch is the rule for what can wait until a turn ends. A ring rung at work counts
+as taken once the prompt box is empty again, which is how Claude Code shows a queued line. Whether
+the model stops to read is its call: Claude Code's reminder asks it to, Sonnet does, and Haiku
+4.5 has been seen finishing its task first.
+
+Urgency changes nothing where messages already arrive mid-turn. A session whose hooks fetch its
+messages reads it at its next tool call, as it would any post, and is still not rung; a session
+outside a pane is sent it on its inbox. Nor does it change anything for the human, whom every
+post that wakes them notifies at once.
+
 **A Claude Code session can fetch its own messages with hooks** instead of being rung.
 `extras/claude-code/messaging-hooks.json` holds two: after every tool call, `read --if-unread`
 hands the model any message that arrived, and when a turn ends, `wait --due` waits in the
@@ -152,12 +183,15 @@ reason.
     woke: builder (idle), director (working, already woken)
     rung once idle: critic (blocked)
     rung once its prompt is empty: lexer (idle)
+    rung once it is not blocked: scout (blocked)
     rung once an agent is found: p2w3r07bsd
     not woken: scout (gone), p3w3r07bsd (no agent in its pane), @human (notified when a window opens)
 
 "woke" means the wake was handed over - rung, or sent to the session - not that it was read. A
-ring still to come says what it waits for: the agent to be idle, a draft left in its prompt to
-be sent or cleared, or an agent to start in a pane opened under 30 seconds ago. A pane with no
+ring still to come says what it waits for: the agent to be idle, an urgent post's agent to be
+out of its dialog, a draft left in its prompt to be sent or cleared, or an agent to start in a
+pane opened under 30 seconds ago. An urgent post's first line says so: `posted #42 to review,
+urgent`. A pane with no
 agent past that, or whose agent's prompt cannot be read, is not woken.
 
 A post that woke nobody live - nobody woken, to be rung, already woken, held until a group is
@@ -165,7 +199,8 @@ resumed or a machine can be reached, or the human - is still kept, and exits 6: 
 to tell is not there to hear it, and no answer is coming. With `--json` the same answer is lists
 of names under `woke`, `deferred`, `already_woken`, `waiting`, `gone`, `no_agent`, `no_doorbell`,
 `paused` and `unreachable`, what each agent in a pane is doing under
-`doing`, and what each deferred ring waits for under `until`: `idle`, `prompt` or `agent`.
+`doing`, what each deferred ring waits for under `until`: `idle`, `unblocked`, `prompt` or
+`agent`, and whether the post was urgent under `urgent`.
 
 ## Reading, and the guard
 
@@ -176,6 +211,8 @@ place past them. It skips your own messages and shows joins and leaves as one li
     Take the lexer; leave the parser to critic.
     --- end review #41 | director ---
     --- review #43 | scout joined ---
+
+An urgent message says so on its first line: `--- review #44 | director -> builder, urgent ---`.
 
 **A post is refused while you have unread messages from others in that group**, and the refusal
 says how many and the `read` that clears it. There is no override: read, then post again. The
@@ -227,7 +264,7 @@ once Ctrl-C has stopped the follow and left its shell.
 | `join [--name N] [--group G] [--pull]` | registers you, and joins a group, creating it if absent |
 | `leave [--group G]` | leaves a group; with none, leaves every group and stops taking part |
 | `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, and their groups |
-| `post [--group G] [--to A,B] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for |
+| `post [--group G] [--to A,B] [--urgent] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work |
 | `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
 | `log --group G [--since N] [--follow]` | the transcript, moving nothing; `--follow` keeps printing |
 | `wait [--group G] [--timeout S] [--due]` | blocks until a message would wake you |
@@ -316,6 +353,10 @@ one. Message bodies never enter the daemon's own log, which records who posted h
 where.
 
 ## Not yet
+
+An urgent post needs this machine's daemon, and the daemon of the machine its group is kept on,
+to be from a Muster that knows it; either being older refuses it, saying which. A member on a
+machine whose daemon is older is rung for it as for an ordinary post.
 
 A daemon links only to the machines a window attaches it to, so an agent on one devenv cannot
 reach an agent or a group on another: messages cross from the laptop to each devenv and back,

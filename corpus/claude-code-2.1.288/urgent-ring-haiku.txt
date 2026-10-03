@@ -1,0 +1,26 @@
+An urgent post rung into a Claude Code pane while it ran a forty-second command: Claude Code took the ring into the running turn, and the model read the message only once its turn had ended.
+
+Recorded 2026-10-03 on macOS 26.4.1 / arm64, Claude Code 2.1.288 running Haiku 4.5 in
+bypassPermissions mode, by crates/muster-daemon/tests/daemon/claude_code_doorbell.rs
+(an_urgent_post_reaches_claude_code_mid_turn). Times are UTC. The post's body was a test's,
+asking the model to answer with `muster msg post` at once.
+
+The session's transcript, condensed from its Claude Code log:
+    2026-10-03 13:26:36  the session is given:
+        Run this command in the foreground with the Bash tool: for i in 1 2 3 4 5 6 7 8; do date; sleep 5; done. When it finishes, run it once more the same way. Then say DONE.
+    2026-10-03 13:26:39  the model runs: for i in 1 2 3 4 5 6 7 8; do date; sleep 5; done
+    2026-10-03 13:26:47  queue-operation enqueue: the doorbell's ring, typed and sent with Return
+    2026-10-03 13:27:21  queue-operation remove, reason "absorbed_mid_turn"
+    2026-10-03 13:27:21  the command's result, with the queued line as a system reminder:
+        <system-reminder>
+        The user sent a new message while you were working:
+        [muster] integrator+worker: 1 new (#4), 1 urgent, 1 to you, from integrator. Read it now, before you go on: muster msg read --group integrator+worker
+
+        This is how Claude Code surfaces messages the user sends mid-turn — within the running turn, often alongside the next tool result, rather than as a separate conversation turn. Address the message above as you continue this turn.
+        </system-reminder>
+    2026-10-03 13:27:23  the model runs: for i in 1 2 3 4 5 6 7 8; do date; sleep 5; done
+    2026-10-03 13:28:04  the model says: DONE
+    2026-10-03 13:28:04  the session is given (the doorbell, the agent idle with it unread):
+        [muster] integrator+worker: 1 new (#4), 1 urgent, 1 to you, from integrator, still unread. Read it now, before you go on: muster msg read --group integrator+worker
+    2026-10-03 13:28:05  the model runs: muster msg read --group integrator+worker
+    2026-10-03 13:28:07  the model runs: muster msg post --to integrator "got u89018"

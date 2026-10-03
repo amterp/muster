@@ -47,7 +47,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
 - **Tell an agent something with `muster msg post --to <pane>`, not with `muster pane send`**,
   on this machine or another the window is attached to. A message arrives whole and wakes the
   agent once it is idle at an empty prompt; `pane send` types into the pane, and is for
-  answering a prompt the agent is blocked on.
+  answering a prompt the agent is blocked on. `--urgent` reaches the agent while it works, for
+  what should change what it is doing now rather than once it is done.
 - **After posting, end your turn.** An answer wakes you. Exit 6 means nobody live heard the post
   and no answer is coming; a post that says `its prompt cannot be read` reached a harness the
   doorbell cannot ring. When you are woken, run the `muster msg read` the wake names before

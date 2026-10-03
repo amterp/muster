@@ -24,7 +24,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
   which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
 - **doorbell** - a wake typed into the pane an agent runs in, one line and a Return, only into a prompt it has
-  just read as empty, and only for a harness whose manifest can read its prompt (MIP-4, section 6).
+  just read as empty, and only for a harness whose manifest can read its prompt (MIP-4, section 6). The prompt is
+  an idle agent's, or for an urgent post a working one's too.
 - **frame** - one message on a socket: a four-byte length, then that many bytes (`muster-frame`).
 - **group** - a set of participants and the one log of messages they share (MIP-4). Addressing a message decides
   whom it wakes, never who may read it. Kept on the daemon it was made on, its home; another machine with a member
