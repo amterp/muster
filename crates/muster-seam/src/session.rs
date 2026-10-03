@@ -529,10 +529,7 @@ fn remedy_message(remedy: &Remedy) -> problem::Remedy {
             pane_id: pane.pane.to_string(),
         }),
     };
-    problem::Remedy {
-        title: remedy.title().to_string(),
-        request: Some(Request::new(payload)),
-    }
+    problem::Remedy { title: remedy.title().to_string(), request: Some(Request::new(payload)) }
 }
 
 /// Where the first window's arrangement is written, as Startup says.
@@ -1302,6 +1299,16 @@ pub(crate) struct Window {
     /// Kept so that clearing the last error can put it back the way somebody left it -
     /// borrowing the roster is defensible, keeping it is not.
     opened_sidebar: bool,
+
+    /// How many bridges each of this window's panes had been given, in any window, when the
+    /// pane came into this one.
+    ///
+    /// A view's `bridge_restarts` says how many times *this window* has replaced a pane's
+    /// bridge, which is what decides whether its next one takes the terminal over. The count of
+    /// replacements is the session's, since one policy replaces every window's bridges, so a
+    /// window reports it less what the pane had when it arrived: a tab moved here from the
+    /// window beside it starts at zero rather than with that window's history.
+    bridge_baselines: BTreeMap<PaneKey, u32>,
 }
 
 impl Default for Window {
@@ -1323,6 +1330,7 @@ impl Default for Window {
             closed: false,
             show: None,
             opened_sidebar: false,
+            bridge_baselines: BTreeMap::new(),
         }
     }
 }
@@ -2104,7 +2112,7 @@ impl Session {
             |daemon| mirrors.get(daemon).map(|held| &**held),
             |daemon| self.daemon_socket(daemon),
             |daemon| self.remote(daemon),
-            |daemon, pane| self.view_pane(daemon, pane),
+            |daemon, pane| self.view_pane(window, daemon, pane),
         )
     }
 
@@ -2122,7 +2130,7 @@ impl Session {
                     |daemon| mirrors.get(daemon).map(|held| &**held),
                     |daemon| self.daemon_socket(daemon),
                     |daemon| self.remote(daemon),
-                    |daemon, pane| self.view_pane(daemon, pane),
+                    |daemon, pane| self.view_pane(window, daemon, pane),
                 )
             })
             .collect()
@@ -2136,13 +2144,59 @@ impl Session {
         self.backends.get(daemon).is_some_and(|backend| backend.tunnel.is_some())
     }
 
-    fn view_pane(&self, daemon: &DaemonId, pane: &PaneId) -> ViewPane {
+    fn view_pane(&self, window: WindowId, daemon: &DaemonId, pane: &PaneId) -> ViewPane {
         let key = PaneKey::new(daemon, pane);
         ViewPane {
             id: pane.clone(),
             link_socket_path: self.channel(daemon, pane).map(|held| held.link_path().to_string()),
             font_size_offset: self.font_sizes.offset(&key),
-            bridge_restarts: self.respawns.restarts(&key),
+            bridge_restarts: self.bridge_restarts(window, &key),
+        }
+    }
+
+    /// How many times `window` has replaced this pane's bridge (`Window::bridge_baselines`).
+    fn bridge_restarts(&self, window: WindowId, key: &PaneKey) -> u32 {
+        let baseline = self.windows[window].bridge_baselines.get(key).copied().unwrap_or(0);
+        self.respawns.restarts(key).saturating_sub(baseline)
+    }
+
+    /// Gives each open window's newly arrived panes a baseline, and drops the baselines of panes
+    /// it no longer holds, so one that comes back later starts afresh.
+    ///
+    /// Before any view is built, because a view reports against the baseline, and on every
+    /// publish, because a pane arrives in a window more ways than one: its tab moved here, it was
+    /// dragged into one of this window's tabs, or the window opened onto it.
+    fn rebase_bridge_counts(&mut self) {
+        let held: Vec<(WindowId, BTreeSet<PaneKey>)> = {
+            let mirrors = self.mirrors();
+            self.windows
+                .iter()
+                .filter(|(_, window)| window.opened)
+                .map(|(id, window)| {
+                    let tabs: BTreeSet<&TabId> =
+                        window.composition.tabs().map(|tab| &tab.id).collect();
+                    let panes = mirrors
+                        .iter()
+                        .flat_map(|(daemon, mirror)| {
+                            mirror
+                                .panes()
+                                .filter(|pane| tabs.contains(&pane.tab))
+                                .map(|pane| PaneKey::new(daemon, &pane.id))
+                        })
+                        .collect();
+                    (id, panes)
+                })
+                .collect()
+        };
+        for (window, panes) in held {
+            let baselines: Vec<(PaneKey, u32)> = panes
+                .iter()
+                .filter(|key| !self.windows[window].bridge_baselines.contains_key(*key))
+                .map(|key| (key.clone(), self.respawns.restarts(key)))
+                .collect();
+            let held = &mut self.windows[window].bridge_baselines;
+            held.retain(|key, _| panes.contains(key));
+            held.extend(baselines);
         }
     }
 
@@ -2730,7 +2784,17 @@ pub(crate) fn bridge_exited(daemon: &str, pane: &str, process_alive: bool) {
 pub(crate) fn bridge_started(daemon: &str, pane: &str, restarts: u32) {
     let daemon = DaemonId::new(if daemon.is_empty() { LOCAL } else { daemon });
     let key = PaneKey::new(&daemon, &PaneId::new(pane));
-    let latest = poison::lock(&SESSION, "session").respawns.restarts(&key);
+    // Against the count the window drawing it was shown, which is that window's. A pane is in one
+    // window, and only that one keeps a baseline for it.
+    let latest = {
+        let session = poison::lock(&SESSION, "session");
+        let baseline = session
+            .windows
+            .values()
+            .find_map(|window| window.bridge_baselines.get(&key).copied())
+            .unwrap_or(0);
+        session.respawns.restarts(&key).saturating_sub(baseline)
+    };
     let current = restarts >= latest;
     log::info(
         "bridge.started",
@@ -5461,6 +5525,7 @@ fn publish(cause: &str) {
         for daemon in &daemons {
             session.reconcile(daemon);
         }
+        session.rebase_bridge_counts();
         // Only the windows that have opened: one not yet open has no shell window to draw in,
         // and a view sent there would be lost while `sent` recorded it as delivered.
         let built: Vec<(WindowId, View, Roster, Numbering)> = {

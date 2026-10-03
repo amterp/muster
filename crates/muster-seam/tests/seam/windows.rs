@@ -11,8 +11,9 @@ use std::sync::Mutex;
 
 use muster::proto::{
     AskForWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking, FocusHistory, FocusPane,
-    FocusTab, MoveTab, OpenWindow, Quitting, ReadReopening, ReadTabHolders, ReadWindow, Request,
-    Response, SplitPane, Startup, ToggleSidebar, WindowFocus, event, request, response,
+    FocusTab, MoveTab, OpenWindow, Quitting, ReadReopening, ReadTabHolders, ReadWindow,
+    ReattachPane, Request, Response, SplitPane, Startup, ToggleSidebar, ViewNode, WindowFocus,
+    event, request, response, view_node,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::AgentState;
@@ -229,7 +230,53 @@ fn a_windows_layout_covers_the_tabs_of_the_window_beside_it() {
         .iter()
         .find(|layout| layout.tab_id == second)
         .unwrap_or_else(|| panic!("the other window's tab is not laid out: {laid_out:?}"));
-    assert!(!other.places.is_empty(), "the other window's tab is laid out with no panes: {other:?}");
+    assert!(
+        !other.places.is_empty(),
+        "the other window's tab is laid out with no panes: {other:?}"
+    );
+}
+
+/// A pane's bridge restarts are counted per window: a tab moved here from the window beside this
+/// one brings none of that window's replacements with it, so its first bridge here takes nothing
+/// over, and a replacement asked for here counts from there.
+#[test]
+fn a_moved_tabs_bridges_are_counted_from_zero_in_the_window_it_moved_to() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, _) = two_windows(&daemon);
+    let pane = keyboard_in("window-1").expect("the first window opens with the keyboard on a pane");
+
+    assert_ok(&answer(&in_window("window-1", reattach(&pane))));
+    until(
+        "the first window to be given a second bridge for its pane",
+        || restarts_in("window-1", &pane) == Some(1),
+        || format!("window-1 counts {:?}", restarts_in("window-1", &pane)),
+    );
+
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab {
+            tab_id: first.clone(),
+            window: "window-2".to_string(),
+        }),
+    )));
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::FocusTab(FocusTab { tab_id: first.clone(), ..FocusTab::default() }),
+    )));
+    until(
+        "the second window to show the moved pane with no replacements of its own",
+        || restarts_in("window-2", &pane) == Some(0),
+        || format!("window-2 counts {:?}", restarts_in("window-2", &pane)),
+    );
+
+    assert_ok(&answer(&in_window("window-2", reattach(&pane))));
+    until(
+        "a replacement in the second window to count from there",
+        || restarts_in("window-2", &pane) == Some(1),
+        || format!("window-2 counts {:?}", restarts_in("window-2", &pane)),
+    );
 }
 
 /// Seen means on screen in the window in front. An agent finishing in the window behind is `done`
@@ -829,6 +876,36 @@ fn keyboard_in(window: &str) -> Option<String> {
     })?;
     let region = view.regions.iter().find(|region| region.region_id == view.focused_region)?;
     Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
+}
+
+/// Asks for a new bridge for a pane on the test's one machine, as a problem's Reattach does.
+fn reattach(pane: &str) -> request::Payload {
+    request::Payload::ReattachPane(ReattachPane {
+        daemon_id: String::new(),
+        pane_id: pane.to_string(),
+    })
+}
+
+/// How many bridges the last view sent to a window says it has replaced for a pane, or `None`
+/// while that view does not draw the pane.
+fn restarts_in(window: &str, pane: &str) -> Option<u32> {
+    fn find(node: &ViewNode, pane: &str) -> Option<u32> {
+        match &node.node {
+            Some(view_node::Node::Pane(drawn)) => {
+                (drawn.pane_id == pane).then_some(drawn.bridge_restarts)
+            }
+            Some(view_node::Node::Split(split)) => {
+                split.first.iter().chain(split.second.iter()).find_map(|child| find(child, pane))
+            }
+            None => None,
+        }
+    }
+    let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let view = events.iter().rev().find_map(|event| match &event.payload {
+        Some(event::Payload::ViewChanged(view)) if event.window == window => Some(view),
+        _ => None,
+    })?;
+    view.regions.iter().filter_map(|region| region.root.as_ref()).find_map(|root| find(root, pane))
 }
 
 /// Every pane a window lists.
