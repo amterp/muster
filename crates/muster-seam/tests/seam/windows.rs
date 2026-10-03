@@ -10,8 +10,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use muster::proto::{
-    ClosePane, CreateTab, Event, FocusAsking, FocusPane, MoveTab, OpenWindow, Quitting, ReadWindow,
-    Request, Response, SplitPane, Startup, ToggleSidebar, WindowFocus, event, request, response,
+    ClosePane, CreateTab, Event, FocusAsking, FocusHistory, FocusPane, MoveTab, OpenWindow,
+    Quitting, ReadWindow, Request, Response, SplitPane, Startup, ToggleSidebar, WindowFocus, event,
+    request, response,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::AgentState;
@@ -365,6 +366,44 @@ fn going_to_an_agent_asking_goes_to_the_window_holding_it() {
         windows_sent(|payload| matches!(payload, event::Payload::RaiseWindow(_))),
         vec!["window-2".to_string()],
         "the window holding the agent was not brought forward, or another one was"
+    );
+}
+
+/// Back in one window goes to the pane that window's keyboard was on before, whatever was done in
+/// the other window in between.
+#[test]
+fn each_window_walks_back_through_its_own_panes() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    let ours = keyboard_in("window-1").expect("the first window opened onto a pane");
+    split_in("window-1");
+    focus_window("window-2");
+    let theirs = split_in("window-2");
+    focus_window("window-1");
+
+    match answer(&in_window(
+        "window-1",
+        request::Payload::FocusHistory(FocusHistory { forward: false }),
+    ))
+    .payload
+    {
+        Some(response::Payload::Went(went)) => assert_eq!(
+            went.pane_id, ours,
+            "back in the first window went somewhere other than the pane it was on before"
+        ),
+        other => panic!("going back answered {other:?}"),
+    }
+    until(
+        "the first window's keyboard to go back",
+        || keyboard_in("window-1").as_deref() == Some(ours.as_str()),
+        || format!("window-1's keyboard is on {:?}", keyboard_in("window-1")),
+    );
+    assert_eq!(
+        keyboard_in("window-2").as_deref(),
+        Some(theirs.as_str()),
+        "going back in the first window moved the second window's keyboard"
     );
 }
 

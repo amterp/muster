@@ -1120,10 +1120,6 @@ pub(crate) struct Session {
     /// to hear it. Spans the daemons for the reason attention does.
     pane_focus: PaneFocus,
 
-    /// The panes the keyboard has been on, for the mouse's back and forward buttons. Spans the
-    /// daemons, because a step back from a devenv pane can land on a laptop one.
-    focus_history: FocusHistory,
-
     /// When each pane's agent last changed state, in milliseconds since the epoch.
     ///
     /// Stamped here rather than in the mirror, which is a pure fold over what a daemon said -
@@ -1200,6 +1196,13 @@ pub(crate) struct Window {
     /// as disarmed rather than wedging the chords.
     armed: Option<TabId>,
 
+    /// The panes this window's keyboard has been on, for the mouse's back and forward buttons.
+    ///
+    /// A window's own, because back means the pane somebody was in before in the window they are
+    /// looking at: one history for every window would walk into whichever window was used last.
+    /// Spans the daemons, because a step back from a devenv pane can land on a laptop one.
+    focus_history: FocusHistory,
+
     /// The last view and roster the shell was sent, so one it already has is not sent again.
     ///
     /// Each costs the shell main-thread work - a forced layout per region, two sidebar diffs,
@@ -1266,6 +1269,7 @@ impl Default for Window {
             awaiting: BTreeSet::new(),
             presentation: Presentation::default(),
             armed: None,
+            focus_history: FocusHistory::new(),
             sent: Sent::default(),
             arrangement: None,
             opened: false,
@@ -2833,7 +2837,8 @@ pub(crate) fn walk_focus(window: WindowId, forward: bool) -> Result<Option<PaneK
         let mut session = poison::lock(&SESSION, "session");
         let session = &mut *session;
         let live = |pane: &PaneKey| mirrored(&session.backends, pane);
-        if forward { session.focus_history.forward(live) } else { session.focus_history.back(live) }
+        let history = &mut session.windows[window].focus_history;
+        if forward { history.forward(live) } else { history.back(live) }
     };
     let Some(pane) = went else { return Ok(None) };
     focus(window, &pane.daemon, &pane.pane)?;
@@ -5189,12 +5194,14 @@ fn publish(cause: &str) {
             .unwrap_or_default();
         let noticed = session.attention.showing(in_front);
         session.report_seen(&noticed.reported);
-        let keyboard = session.keyboard_key(front);
         // Here rather than in `focus`, because a split, a new tab, a tab step and a closed pane
         // all move the keyboard without going through it - and every one of them ends here.
-        if let Some(pane) = &keyboard {
-            session.focus_history.visited(pane.clone());
+        for (window, ..) in &built {
+            if let Some(pane) = session.keyboard_key(*window) {
+                session.windows[*window].focus_history.visited(pane);
+            }
         }
+        let keyboard = session.keyboard_key(front);
         let told = session.pane_focus.keyboard(keyboard);
         let focus = session.focus_reports(told);
         // The typeable watch is settled against what any window shows, and for a reason of its
@@ -5653,7 +5660,9 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
             let mut session = poison::lock(&SESSION, "session");
             session.state_since.remove(&key);
             session.pane_focus.forget(&key);
-            session.focus_history.forget(&key);
+            for window in session.windows.values_mut() {
+                window.focus_history.forget(&key);
+            }
             let attended = session.attention.forget(&key);
             attended.map(|attend| (key, attend))
         }
