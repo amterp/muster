@@ -51,3 +51,12 @@ Return while it worked, then Esc:
 The doorbell's line written at an empty composer, one bracketed paste and a Return in one write,
 "[muster] review: 1 new (#4), 1 to you, from @human. Read: muster msg read --group review":
     UserPromptSubmit  the line, sent as a prompt; "@human" opened nothing
+
+The same line and Return in one write, at an empty composer, timed from the first frame that
+drew "Ask Codex", one fresh session each:
+    0 s     the line stays in the composer, the file search opens on "@human+worker" ("no
+            matches ... enter insert · esc close"); no UserPromptSubmit
+    0.3 s   UserPromptSubmit
+    1 s     UserPromptSubmit
+Written as keys instead of a paste, at an idle composer long drawn, four times: never sent; the
+file search opened on the last word each time but the first.

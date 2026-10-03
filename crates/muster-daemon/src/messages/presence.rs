@@ -33,6 +33,11 @@ impl Seen {
     pub(crate) fn input_at(&self) -> Option<Instant> {
         self.io.input_at()
     }
+
+    /// When the pane's program last drew anything.
+    pub(crate) fn drawn_at(&self) -> Option<Instant> {
+        self.io.drawn_at()
+    }
 }
 
 /// How long after a pane is made an agent is still expected in it: `muster pane new --run

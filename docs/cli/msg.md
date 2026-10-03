@@ -113,9 +113,9 @@ message:
 
 **An agent in a pane is woken by the doorbell**: the wake is typed into its pane as one line and
 a Return, and only into a prompt the daemon has just read as empty. Just before it types, the
-agent has to be idle or waiting, nothing may have been typed into the pane for three seconds,
-the agent must still be running there, and its screen must be its prompt with nothing typed in
-it. So a dialog, a menu, a prompt holding a draft, or a screen detection does not recognize is
+agent has to be idle or waiting, nothing may have been typed into the pane for three seconds
+nor drawn there for half a second, the agent must still be running there, and its screen must be
+its prompt with nothing typed in it. So a dialog, a menu, a prompt holding a draft, or a screen detection does not recognize is
 never rung. Until then the wake waits in the daemon, and is rung as soon as the pane
 allows.
 

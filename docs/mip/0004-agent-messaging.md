@@ -433,6 +433,10 @@ starts. Immediately before each write the doorbell checks, in order:
 
 - the agent is idle or waiting, and nothing has been typed or sent into the pane for three
   seconds, since a keystroke may not have reached the screen yet;
+- the agent has drawn nothing for half a second, since a harness that has only just drawn its
+  prompt may not read input yet as it will: Codex 0.154 takes a paste the moment its composer
+  first appears as typed keys (`docs/observations/codex-0.154.0.md`). An urgent ring at work
+  skips this, since a working agent animates;
 - the agent is still the pane's foreground program, not the shell it exited to, whose screen
   still shows the agent's last frame;
 - the agent's manifest has a prompt rule;
@@ -472,8 +476,9 @@ read as empty just before the write. It repeats nothing but Return, and only whi
 shows that line unsent and nothing has been typed into the pane since, so a repeated Return can
 send nothing but the wake. It never rings a
 blocked agent, a working one but for an urgent wake (below), a menu or dialog detection
-recognizes, a prompt holding a draft, a pane typed into in the last three seconds, the shell an
-agent exited to, or an agent whose manifest has no prompt rule.
+recognizes, a prompt holding a draft, a pane typed into in the last three seconds, an idle agent
+that drew something in the last half second, the shell an agent exited to, or an agent whose
+manifest has no prompt rule.
 
 **What it does not guarantee.** The check and the write are close but not simultaneous: a dialog
 drawn, or a key pressed, between them gets the wake and its Return. A screen that a prompt rule

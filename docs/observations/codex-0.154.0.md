@@ -47,6 +47,12 @@ the same caret, `› 1. Yes, proceed (y)`, and its title says "Action Required",
 waits. In the raw output Codex places each word with a cursor movement, so a phrase is not a run
 of bytes.
 
+A paste arriving the moment the composer first appears is taken as typed keys: the doorbell's
+line, written as one bracketed paste and a Return 0 s after "Ask Codex" was drawn, left the line
+in the composer with Codex's file search open on its last word, `@human+worker`, and was never
+sent; every Return after it went to the file search. 0.3 s and 1 s later the same write was sent
+as a prompt (`hooks.txt`). Typed as keys rather than pasted, the line is never sent, `@` or not.
+
 ## 3. Its sandbox refuses a Unix socket
 
 In the `workspace-write` sandbox, a command connecting to a Unix socket outside the workspace is
@@ -75,7 +81,8 @@ Claude Code's it offers Claude Code's plugin.
   `Interrupt` idle, `Interrupt` because nothing else ends a turn Esc ended (section 1).
 - The doorbell reads Codex's composer in a region of its own, the last caret down to the blank
   line above the footer, and nothing else on screen (section 2). A ring, one paste and a Return,
-  is sent as a prompt (`hooks.txt`).
+  is sent as a prompt (`hooks.txt`), once Codex has finished drawing: the doorbell rings an idle
+  agent only after half a second with nothing drawn (section 2).
 - A sandboxed Codex cannot run `muster` without the sandbox's network; its hooks can (section 3).
   `extras/codex/README.md` says so.
 - `extras/` carries Codex's marketplace beside Claude Code's, so each harness is offered only its

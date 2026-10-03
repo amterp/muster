@@ -164,11 +164,21 @@ struct Typed {
 }
 
 /// The process a pane runs, usually a shell - an agent in its place in the foreground is still
-/// there, and the shell there instead means it has left - and when this daemon took it on.
+/// there, and the shell there instead means it has left - when this daemon took it on, and when
+/// it last drew anything.
 #[derive(Debug)]
 struct Begun {
     shell: Option<i32>,
     at: Instant,
+    /// When the program last wrote output, in milliseconds after `at`, plus one; zero before it
+    /// has written any. Stored per chunk, so atomic rather than behind a lock.
+    drawn: AtomicU64,
+}
+
+impl Begun {
+    fn new(shell: Option<i32>) -> Begun {
+        Begun { shell, at: Instant::now(), drawn: AtomicU64::new(0) }
+    }
 }
 
 /// A count of changes to a pane's bridge - attached, detached, credited, closed - that a reader
@@ -245,6 +255,20 @@ impl PaneIo {
 
     pub(crate) fn input_at(&self) -> Option<Instant> {
         poison::lock(&self.typed, "daemon.pane.typed").input
+    }
+
+    fn drew(&self, at: Instant) {
+        let since = u64::try_from(at.saturating_duration_since(self.begun.at).as_millis())
+            .unwrap_or(u64::MAX - 1);
+        self.begun.drawn.store(since + 1, Ordering::Relaxed);
+    }
+
+    /// When the program last wrote output.
+    pub(crate) fn drawn_at(&self) -> Option<Instant> {
+        match self.begun.drawn.load(Ordering::Relaxed) {
+            0 => None,
+            since => Some(self.begun.at + Duration::from_millis(since - 1)),
+        }
     }
 
     pub(crate) fn someone_typed_at(&self) -> Option<Instant> {
@@ -700,7 +724,7 @@ impl Pane {
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
             typed: Mutex::default(),
-            begun: Begun { shell: process, at: Instant::now() },
+            begun: Begun::new(process),
         });
         let pane = record.pane.clone();
 
@@ -946,6 +970,7 @@ impl Reader {
             let read = unsafe { libc::read(master, buffer.as_mut_ptr().cast(), buffer.len()) };
             if read > 0 {
                 let chunk = &buffer[..read.cast_unsigned()];
+                self.io.drew(Instant::now());
                 self.io.wait_for_room(stream::GRACE);
                 self.detection.observe(chunk);
                 let happened = self.io.output(chunk);
@@ -1101,7 +1126,7 @@ impl PaneIo {
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
             typed: Mutex::default(),
-            begun: Begun { shell: None, at: Instant::now() },
+            begun: Begun::new(None),
         })
     }
 

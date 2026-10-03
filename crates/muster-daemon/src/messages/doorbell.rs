@@ -48,6 +48,13 @@ use crate::writer::Input;
 /// who is typing into it has paused, not left.
 pub(crate) const QUIET: Duration = Duration::from_secs(3);
 
+/// How long an idle agent's screen must have been still before it is rung. A harness that has
+/// just drawn its prompt may not yet read what is typed as it will: Codex 0.154 takes a ring
+/// pasted the moment its composer first appears as keys, opens its file search on the wake's
+/// `@`, and never submits it (docs/observations/codex-0.154.0.md). An agent at work animates, so
+/// a ring at work does not wait for this.
+const STILL: Duration = Duration::from_millis(500);
+
 /// How long the thread sleeps while something is pending that no change will announce - a
 /// pane whose agent is not yet found, or whose prompt holds a draft.
 const LOOK_AGAIN: Duration = Duration::from_secs(5);
@@ -106,8 +113,12 @@ pub(crate) fn may_ring(seen: &Seen, now: Instant, urgent: bool) -> Now {
     if let Some(until) = waits_for(seen.activity, urgent) {
         return until;
     }
-    match seen.input_at().map(|at| at + QUIET) {
-        Some(quiet) if quiet > now => Now::At(quiet),
+    let typed = seen.input_at().map(|at| at + QUIET);
+    let drawn = (seen.activity != Some(Activity::Working))
+        .then(|| seen.drawn_at().map(|at| at + STILL))
+        .flatten();
+    match typed.into_iter().chain(drawn).max() {
+        Some(settled) if settled > now => Now::At(settled),
         _ => Now::Ring,
     }
 }
