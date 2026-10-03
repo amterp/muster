@@ -59,9 +59,10 @@ copy the ID `muster` takes for it.
 
 **More than one window, and `cmd+n` to make one.** Each is its own process, so quitting one leaves
 the others alone, and each has its own address for the CLI - `muster window list` says which are
-open. Every tab belongs to one window, and each window lists only its own; drag a tab's row into
-another window, or use Move Tab to Window, and its agents go with it still running. A closed
-window keeps its tabs, and any `muster` command reaches any tab from any window.
+open. Every tab belongs to one window, and each window lists only its own; drag a tab's row, or
+any row of a window holding one tab, into another window, or use Move Tab to Window, and its
+agents go with it still running. A closed window keeps its tabs, and any `muster` command reaches
+any tab from any window.
 
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
 same list as the ones on your laptop. `cmd+shift+]` and `cmd+shift+[` step between a laptop tab and a

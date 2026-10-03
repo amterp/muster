@@ -868,6 +868,39 @@ struct SidebarTests {
     #expect(sidebar.drawnRows.allSatisfy { $0.width == SidebarModel.width })
   }
 
+  @Test("every row of a window holding one tab takes that tab along when dragged")
+  func aLoneTabIsDraggedByAnyRow() {
+    let rows = SidebarModel.rows(
+      roster: roster([
+        tab("local", "w1:t1", panes: [pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)])
+      ]), agents: [:])
+
+    #expect(rows.allSatisfy { $0.isPane })
+    #expect(rows.map { SidebarModel.draggedTab(of: $0, in: rows) } == ["w1:t1", "w1:t1"])
+  }
+
+  @Test("under a caption, only the caption takes a tab along")
+  func aCaptionIsWhatMovesATab() {
+    let rows = SidebarModel.rows(
+      roster: roster([
+        tab("local", "w1:t1", panes: [pane("local", "w1:p1")]),
+        tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p2", place: 2)]),
+      ]), agents: [:])
+
+    #expect(
+      rows.map { SidebarModel.draggedTab(of: $0, in: rows) } == ["w1:t1", nil, "w1:t2", nil])
+  }
+
+  @Test("a row carrying a pane and its tab is a pane at home and the tab elsewhere")
+  func whereADragCameFromDecidesWhatItIs() {
+    let key = PaneKey(daemon: "local", pane: "w1:p1")
+
+    #expect(SidebarModel.drop(tab: "w1:t1", pane: key, fromThisWindow: true) == .pane(key))
+    #expect(SidebarModel.drop(tab: "w1:t1", pane: key, fromThisWindow: false) == .tab("w1:t1"))
+    #expect(SidebarModel.drop(tab: "w1:t1", pane: nil, fromThisWindow: true) == nil)
+    #expect(SidebarModel.drop(tab: nil, pane: key, fromThisWindow: false) == nil)
+  }
+
   @Test("a focus change moves the marker in the rows already drawn, rather than rebuilding them")
   @MainActor func aFocusChangeReusesTheRows() {
     let sidebar = SidebarView(

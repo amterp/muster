@@ -560,6 +560,41 @@ public enum SidebarModel {
     fromThisWindow
   }
 
+  /// The tab a dragged row takes with it into another window, or nil for none.
+  ///
+  /// A caption takes its own tab. So does every pane row of a list with no caption at all,
+  /// which is a window holding one tab: there the list *is* the tab, and with no caption to grab
+  /// it by, the only tab of a window could not be dragged anywhere (kan a_2WEHsAdQb). Drawing a
+  /// caption whenever a second window is open was the other way to give it a handle, and it
+  /// would have been a boundary that comes and goes with windows opened somewhere else - the
+  /// thing `rows` keeps captions from being.
+  ///
+  /// Under a caption a pane row takes no tab, because there the caption is how to move one.
+  public static func draggedTab(of row: Row, in rows: [Row]) -> String? {
+    if row.isTab { return row.tab }
+    guard row.isPane, !rows.contains(where: \.isTab) else { return nil }
+    return row.tab
+  }
+
+  /// What a drop onto this window's list is asking for.
+  public enum Drop: Equatable {
+    /// A tab from another window, to move here.
+    case tab(String)
+    /// A pane from this window, to arrange onto the row it was dropped on.
+    case pane(PaneKey)
+  }
+
+  /// Which of the things a drag carries a drop means, or nil for nothing.
+  ///
+  /// A pane row of a window holding one tab carries both its pane and its tab, so where the
+  /// drag came from decides: within its own list it is a pane being arranged, and in another
+  /// window's list it is that window's tab arriving.
+  public static func drop(tab: String?, pane: PaneKey?, fromThisWindow: Bool) -> Drop? {
+    if let pane, acceptsPane(fromThisWindow: fromThisWindow) { return .pane(pane) }
+    if let tab, acceptsTab(fromThisWindow: fromThisWindow) { return .tab(tab) }
+    return nil
+  }
+
   /// The dot beside a row, and whether to draw one at all.
   ///
   /// The same colors the pane borders use, because they are the same five states and a
@@ -970,67 +1005,76 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
   /// every agent state rebuilds the whole list, and one of those arriving mid-drag would leave
   /// the index pointing at a different agent by the time the drop lands. A key survives that,
   /// because it names the pane rather than its position.
+  ///
+  /// A row can carry a tab too (`SidebarModel.draggedTab`), and a pane row in a window holding
+  /// one tab carries both.
   public func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int)
     -> NSPasteboardWriting?
   {
     guard rows.indices.contains(row) else { return nil }
     let item = NSPasteboardItem()
-    if rows[row].isTab {
-      item.setString(rows[row].tab, forType: SidebarView.draggedTab)
-      return item
+    if let tab = SidebarModel.draggedTab(of: rows[row], in: rows) {
+      item.setString(tab, forType: SidebarView.draggedTab)
     }
-    guard let pane = rows[row].pane else { return nil }
-    item.setString(PaneDrop.payload(pane), forType: SidebarView.draggedPane)
-    return item
+    if let pane = rows[row].pane {
+      item.setString(PaneDrop.payload(pane), forType: SidebarView.draggedPane)
+    }
+    return item.types.isEmpty ? nil : item
   }
 
   public func tableView(
     _ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
     proposedDropOperation operation: NSTableView.DropOperation
   ) -> NSDragOperation {
-    // On a row rather than between two. The card's rule is that a drag exchanges two panes,
-    // and an arrangement has no "between" to insert into - so the row you drop on is the place
-    // you are asking for, and retargeting an above-row drop keeps the highlight honest.
-    // A drag from another window has no source this process can see, which is what tells the
-    // two kinds of drop apart.
-    let fromThisWindow = info.draggingSource != nil
-    if draggedTab(info) != nil {
-      guard SidebarModel.acceptsTab(fromThisWindow: fromThisWindow) else { return [] }
+    switch drop(info) {
+    case .tab:
       // Onto the list as a whole: a tab joins the end of this window's list, whichever row the
       // pointer happens to be over.
       tableView.setDropRow(-1, dropOperation: .on)
       return .move
+    case .pane(let pane):
+      // On a row rather than between two. The card's rule is that a drag exchanges two panes,
+      // and an arrangement has no "between" to insert into - so the row you drop on is the
+      // place you are asking for, and retargeting an above-row drop keeps the highlight honest.
+      guard rows.indices.contains(row) else { return [] }
+      if operation == .above {
+        tableView.setDropRow(row, dropOperation: .on)
+      }
+      return SidebarModel.canArrange(pane, onto: rows[row]) ? .move : []
+    case nil:
+      return []
     }
-    guard let pane = dragged(info), rows.indices.contains(row),
-      SidebarModel.acceptsPane(fromThisWindow: fromThisWindow)
-    else { return [] }
-    if operation == .above {
-      tableView.setDropRow(row, dropOperation: .on)
-    }
-    return SidebarModel.canArrange(pane, onto: rows[row]) ? .move : []
   }
 
   public func tableView(
     _ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
     dropOperation operation: NSTableView.DropOperation
   ) -> Bool {
-    let fromThisWindow = info.draggingSource != nil
-    if let tab = draggedTab(info) {
-      guard SidebarModel.acceptsTab(fromThisWindow: fromThisWindow) else { return false }
+    switch drop(info) {
+    case .tab(let tab):
       onTabReceived?(tab)
       return true
-    }
-    guard let pane = dragged(info), rows.indices.contains(row),
-      SidebarModel.acceptsPane(fromThisWindow: fromThisWindow),
-      SidebarModel.canArrange(pane, onto: rows[row])
-    else { return false }
-    if rows[row].isTab {
-      onPaneGrouped?(pane, rows[row].tab)
+    case .pane(let pane):
+      guard rows.indices.contains(row), SidebarModel.canArrange(pane, onto: rows[row]) else {
+        return false
+      }
+      if rows[row].isTab {
+        onPaneGrouped?(pane, rows[row].tab)
+        return true
+      }
+      guard let onto = rows[row].pane else { return false }
+      onPaneArranged?(pane, onto)
       return true
+    case nil:
+      return false
     }
-    guard let onto = rows[row].pane else { return false }
-    onPaneArranged?(pane, onto)
-    return true
+  }
+
+  /// What a drag means here, from what it carries and where it came from. A drag from another
+  /// window has no source this process can see, which is what tells the two apart.
+  private func drop(_ info: NSDraggingInfo) -> SidebarModel.Drop? {
+    SidebarModel.drop(
+      tab: draggedTab(info), pane: dragged(info), fromThisWindow: info.draggingSource != nil)
   }
 
   /// The tab a drag is carrying, or nil when it is carrying something else.
