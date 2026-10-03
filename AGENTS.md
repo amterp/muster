@@ -247,6 +247,11 @@ Code treats a message from outside the session to the newest recording in `corpu
 `ANTHROPIC_API_KEY` or `claude`'s own login, and fails saying which is missing when it has neither, since a tier
 that checked nothing has not passed.
 
+`./dev --codex` is the same for the Codex installed here, and reaches OpenAI: a pane with `extras/codex`'s hooks and
+one without read working and then idle, Esc mid-turn reads idle from Codex's own report, and a message posted to an
+idle Codex rings it in its pane and is answered. Each harness with an adapter gets a tier of its own (MIP-5), since
+each reaches a different vendor with a different login.
+
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
 against a checked-in baseline and fails on regression, the second times input-to-glyph with `crates/muster-latency`:
 a keystroke through muster-daemon, read off the pane's stream directly and through the real bridge drawing from it,
@@ -326,8 +331,9 @@ regenerates on demand; a normal build does it only when the schema's hash change
   rationale lives in commit messages; open questions live in the kan board's `uncommitted` column. `docs/cli/` is
   the reference `muster docs` ships inside the CLI binary, so a file there is prose the gate checks is reachable.
 - `extras/` holds things that are Muster-adjacent rather than Muster: a Claude Code skill pointing an agent at
-  `muster docs`, and the Claude Code statusline and hooks that report a session's context, cost and sub-agents to
-  the daemon that owns its pane.
+  `muster docs`, and each harness's wiring that reports a session's state, sub-agents and, for Claude Code, its
+  context and cost to the daemon that owns its pane - `extras/claude-code` and `extras/codex`, plugins each harness
+  installs from this directory (MIP-5).
 - `packaging/` is everything that exists only so that Muster can leave this machine: the icon and its source, the
   entitlements a release is signed with, the Homebrew cask - which lives here rather than only in the tap because
   it changes when the app does, and should be reviewed beside it - and `release-notes/<version>.md`, what somebody

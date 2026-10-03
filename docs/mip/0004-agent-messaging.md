@@ -441,9 +441,9 @@ starts. Immediately before each write the doorbell checks, in order:
 Claude Code 2.1.283 draws a suggestion nobody typed, `Try "..."`, faint in an empty prompt, and
 draws what somebody typed at normal weight. So the faint cells are left out, and what remains
 is what the prompt holds. A dialog, a menu opened from the prompt, working, and a screen no rule
-recognizes are each decided by a rule with no `prompt`, so none of them is rung. Only Claude
-Code's manifest has a prompt rule, since its empty prompt is the only one recorded here, so an
-agent of any other harness in a pane is never rung. The post's answer says so.
+recognizes are each decided by a rule with no `prompt`, so none of them is rung. Claude Code's
+manifest has a prompt rule, and since MIP-5 Codex's does, read in a region of its own; an agent
+of any other harness in a pane is never rung. The post's answer says so.
 
 What cannot be rung at once waits in the daemon, and one thread rings it when the pane allows.
 That thread wakes when a post arrives and when an agent's state changes, and otherwise sleeps
@@ -1043,8 +1043,8 @@ session's suggestion is drawn faint. A dialog or menu that draws above an unchan
 and that no rule recognizes, would read as an empty prompt and be rung. Each release that adds
 one needs a rule for it, the same as for its state.
 
-**How other harnesses draw an empty prompt.** No other harness has a prompt rule, so none is
-rung (Future Directions).
+**How other harnesses draw an empty prompt.** Codex's was recorded for MIP-5; no other harness
+has a prompt rule, so none is rung (Future Directions).
 
 **Claude Code's limits** come from its documentation: about a million characters per message, at
 most 50 accepted messages queued and 100 held. Only the notice crosses the socket, so none should
@@ -1052,8 +1052,8 @@ bind.
 
 ## Future Directions
 
-- **Prompt rules for other harnesses**, Codex first, recorded from each harness's empty prompt,
-  so the doorbell can ring them.
+- **Prompt rules for other harnesses**, recorded from each harness's empty prompt, so the
+  doorbell can ring them. Codex's came with MIP-5, which says how a harness gets one.
 - **Presence from `claude agents --json`** for Claude sessions outside a pane; it reports working,
   blocked and done per session (kan `a_2XMXOShAA`).
 - **The daemon holding cross-machine links**, if Decision 4 is revisited.

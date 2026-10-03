@@ -50,7 +50,8 @@ its prompt for the turn it is running: keep it for what should change what the a
 now, since it interrupts.
 
 Who you are: `--as NAME` if given, else the Claude Code session you run in (from \
-$CLAUDE_CODE_MESSAGING_SOCKET), else you are the human. A session that never joined under a \
+$CLAUDE_CODE_MESSAGING_SOCKET), else the agent in the pane you run in (from $MUSTER_PANE), else \
+you are the human. A session that never joined under a \
 name is named after its working directory.
 
 A message to @human notifies the person at the Muster window, and choosing the notification \

@@ -163,7 +163,11 @@ Muster's principles, adapted to that evidence:
   settings, so nobody's own hooks take part; with neither it fails and says which is missing. It also has two
   sessions message each other through the daemon, the second woken from idle by its inbox socket, and holds how
   Claude Code treats a wake from outside the session to the newest recording under `corpus/claude-code-*/`, which
-  `MUSTER_RECORD_CLAUDE_INBOX=1` rewrites (`docs/observations/claude-code-2.1.283.md`). The gate still
+  `MUSTER_RECORD_CLAUDE_INBOX=1` rewrites (`docs/observations/claude-code-2.1.283.md`). `--codex` does the same
+  for the Codex installed here: a pane with `extras/codex`'s hooks and one without read working and then idle,
+  Esc mid-turn reads idle from Codex's own report, and a message posted to an idle Codex rings it and is answered.
+  It runs with `codex`'s own login or `OPENAI_API_KEY`, trusts its scratch folders for the run only, and fails
+  saying which is missing when it has neither (`docs/observations/codex-0.154.0.md`). The gate still
   compiles the Linux daemons and lints their Linux code,
   so what `--linux` alone catches is behavior: dash as `/bin/sh`, `/proc`, `close_range`. That is the real line, and it is
   narrower than the one drawn when the backend was going to be faked.

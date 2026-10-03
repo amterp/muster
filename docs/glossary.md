@@ -26,6 +26,9 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **doorbell** - a wake typed into the pane an agent runs in, one line and a Return, only into a prompt it has
   just read as empty, and only for a harness whose manifest can read its prompt (MIP-4, section 6). The prompt is
   an idle agent's, or for an urgent post a working one's too.
+- **capability** - one thing Muster can use from a harness: its state read off its screen, its own report of it,
+  a prompt the doorbell can read, hooks that fetch its messages (MIP-5, section 2). Muster checks a capability,
+  never a harness's name.
 - **focus history** - the panes a window's keyboard has been on, oldest first, with a cursor at the current one:
   `focus_back`, `focus_forward`, `muster focus --back|--forward` and the mouse's back and forward buttons walk it.
   One per window, at most 50 panes, and not kept across a relaunch. A pane that closed or that another window holds
@@ -36,6 +39,11 @@ One name per concept; docs and code use these terms. Alphabetical.
   holds a replica, named `review@machine` there (MIP-4, section 11).
 - **guard** - the daemon refusing a post while its author has unread messages from others in that group. There is
   no override: read, then post.
+- **harness** - the program an agent runs in: Claude Code, Codex, Gemini. Named by its detection manifest's id
+  (`claude`, `codex`).
+- **harness adapter** - everything that supplies a harness's capabilities: its detection manifest, its hooks and
+  plugin files in `extras/<harness>/`, its recordings and observations, and its live tier (MIP-5). Data and files,
+  not daemon code; not the backend's **adapter** above.
 - **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
   lists only the tabs it holds; the record is `~/.muster/state/holding/tabs.toml`, shared by every window.
 - **intent** - a requested mutation sent to a daemon (split, close, resize, zoom, input, spawn). Muster never

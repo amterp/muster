@@ -42,6 +42,11 @@ pub const TOPICS: &[Topic] = &[
         text: include_str!("../../../docs/cli/msg.md"),
     },
     Topic {
+        name: "harnesses",
+        about: "what Muster gets from Claude Code, Codex and every other harness",
+        text: include_str!("../../../docs/cli/harnesses.md"),
+    },
+    Topic {
         name: "limits",
         about: "what this surface cannot do, and what to do instead",
         text: include_str!("../../../docs/cli/limits.md"),

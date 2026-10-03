@@ -906,8 +906,9 @@ reads every pane's agent and state with the session held, lets it go, and only t
 two are never held together. The wake is typed in only when, just before the write, the
 pane's screen reads as its agent at an empty prompt: detection's winning rule for the screen carries a `prompt`
 pattern, and only text drawn faint follows it. So only a harness whose manifest has such a rule is ever rung, which
-today is Claude Code alone. A wake for an urgent post may also be typed into a working agent's prompt box, read the
-same way by a working rule, since Claude Code takes a line queued there into the turn it is running. A wake that
+today is Claude Code and Codex. A wake for an urgent post may also be typed into a working agent's prompt box, read the
+same way by a working rule, since Claude Code takes a line queued there into the turn it is running; Codex has no
+such rule yet. A wake that
 cannot be rung yet waits in the daemon for a thread of its own, woken by posts and agent state changes and otherwise
 by the next deadline - a quiet period ending, a Return due again, or five seconds while a prompt holds a draft (MIP-4,
 section 6).
