@@ -707,7 +707,8 @@ is drawn in without being configured. The pane outlives that process, so a pane 
 beside its own that share its name up to the process - the other windows of the same Muster on that machine - and a
 change names its pane, so whichever answers carries it to the window holding the pane's tab. A name kept per
 arrangement was the other way, and would have left every pane already running unreachable after the relaunch that
-brought it in.
+brought it in. Every request the CLI sends from a pane also says which pane it came from, so a process holding several
+windows answers one that names nothing from the window holding that pane's tab (MIP-6).
 
 **A devenv pane is told a path on the devenv, which the window's ssh master carries back.** A unix socket path means
 nothing on another machine, so the window asks the master it already holds for that daemon to forward its socket to

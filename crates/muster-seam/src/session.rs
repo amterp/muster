@@ -1558,7 +1558,8 @@ impl Session {
     ///
     /// A tab a closed window holds may still be closed from here, with no region: the daemon does
     /// the closing and the closed window only remembers the tab. A tab an open window holds never
-    /// reaches here from a caller, because it is carried to that window first (`forward`).
+    /// reaches here from a caller, because that window answers it: one in this process by
+    /// [`resolve`], one in another by carrying (`forward`).
     fn region_for_tab(
         &self,
         window: WindowId,
@@ -3365,9 +3366,9 @@ fn taken_elsewhere(pane: &PaneId, tab: &TabId, window: &WindowName) -> Refusal {
 ///
 /// A closed window keeps its tabs and their agents keep running, so a notification about one of
 /// them, or `muster tab focus` naming one, is somebody going to that window. Says whether it
-/// asked. An open window's tab never reaches here from a caller - it is carried to that window
-/// (`forward`) - and one that does is refused further on, since showing it here would take its
-/// terminals.
+/// asked. An open window's tab never reaches here from a caller - that window answers it, by
+/// [`resolve`] or by carrying (`forward`) - and one that does is refused further on, since showing
+/// it here would take its terminals.
 fn reopened_for(window: WindowId, tab: &TabId, show: &str) -> bool {
     let (open_here, holder) = {
         let session = poison::lock(&SESSION, "session");

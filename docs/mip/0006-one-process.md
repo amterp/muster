@@ -174,6 +174,11 @@ The core resolves a request's window in this order:
 3. Otherwise the window holding the tab of `from_pane`.
 4. Otherwise the front window.
 
+A `Request.window` naming no window this process has is refused, even when rule 1 decides: the
+caller meant some window and was wrong about which. Going to a pane or tab in a window other than
+the one the request came from brings that window forward, as carrying a focus to another process
+does today. A request from a pane moving its own window's keyboard raises nothing.
+
 `OpenWindow` gains the arrangement to open and what to show, so the shell can open a second
 window in the same session. `Startup` keeps opening the first.
 
@@ -379,7 +384,10 @@ Each stage leaves `main` working.
    2026-10-03.
 2. **Requests find their window.** Rules 1 and 3 of section 2, so a request about another
    window's tab in the same process is answered by that window rather than refused by the one it
-   reached, and the CLI sending `from_pane`. Still one window per process in use.
+   reached, and the CLI sending `from_pane`. ⌘⇧A and a group's transcript, which pick a pane
+   rather than naming one, go to it in the window holding it. Each window keeps its own history
+   of where its keyboard has been, and back and forward step over a pane whose tab another
+   window holds. Still one window per process in use. Built 2026-10-03.
 3. **The shell opens every window.** Many NSWindows, with menus aimed through the responder chain
    rather than at one window, and events routed by `Event.window`. Close Window apart from quit,
    relaunch reopening every window open at quit, the app lock, one socket, arrangements under
@@ -418,4 +426,4 @@ Each stage leaves `main` working.
 ---
 
 ## History
-- 2026-10-03 Draft. Stage 1 built the same day.
+- 2026-10-03 Draft. Stages 1 and 2 built the same day.
