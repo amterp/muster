@@ -2,7 +2,8 @@
 //! turn: the pane with Muster's hooks reads working and then idle from Claude Code's own
 //! reports, and the pane without them reads the same off its screen. This is what says whether
 //! a Claude Code update has broken either path. The same two panes, narrow and in plan mode,
-//! read blocked at the dialog asking to go ahead with a plan.
+//! read blocked at the dialog asking to go ahead with a plan. A pane of its own checks that the
+//! pane's name and the session's follow each other.
 //!
 //! Out of the gate, because it reaches the network and spends a turn of a real model. It runs
 //! with `ANTHROPIC_API_KEY` if that is set, and otherwise with the login `claude` already has;
@@ -230,4 +231,74 @@ fn claude_code_at_its_plan_approval_dialog_reads_blocked_through_both_paths() {
         assert_eq!(record.agent_state(), proto::AgentState::Blocked, "{}: {screen}", record.pane);
         assert_eq!(record.state_reported, record.pane == "hooked", "{}", record.pane);
     }
+}
+
+/// A pane named when it is made names the session started in it, and a session renamed in
+/// Claude Code renames the pane, through the statusline in `extras/claude-code`. No turn is
+/// taken: `/rename` is Claude Code's own.
+#[test]
+#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
+fn a_pane_and_its_claude_code_session_take_each_others_names() {
+    if std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none() {
+        eprintln!(
+            "claude-code: skipped, MUSTER_CLAUDE_CODE_TESTS is not set; ./dev --claude-code sets it"
+        );
+        return;
+    }
+    let arguments = how_to_run().unwrap_or_else(|why| panic!("claude-code: {why}"));
+    let home = std::env::var("HOME").expect("HOME is set");
+    let daemon = daemon_with(&[("HOME", &home)]);
+    let project = daemon.root().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let statusline = format!("{PLUGIN}/statusline.sh");
+    let settings = serde_json::json!({
+        "statusLine": { "type": "command", "refreshInterval": 1, "command": statusline }
+    })
+    .to_string();
+    let arguments: Vec<String> = arguments.iter().map(|argument| quoted(argument)).collect();
+    let command = format!("claude {} --settings {}", arguments.join(" "), quoted(&settings));
+    let mut control = daemon.connect();
+    make(
+        &mut control,
+        proto::pane_request::Create {
+            command: Some(command),
+            cwd: Some(project.display().to_string()),
+            label: Some("🤖 live".to_string()),
+            ..create("named", in_new_tab("t1"))
+        },
+    );
+    let mut input = Input::connect(daemon.socket_path());
+    until_ready(&mut control, &mut input, "named");
+
+    let label = |control: &mut Control| {
+        snapshot(control).panes.into_iter().find(|record| record.pane == "named")?.label
+    };
+    let deadline = Instant::now() + TURN;
+    // Claude Code draws a session's name at the right end of the rule above its prompt box.
+    loop {
+        let screen = read_text(&mut control, "named", 0, 0).text;
+        if screen.lines().any(|line| line.contains("─ 🤖 live ─")) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the session never took the pane's name: {screen}");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+
+    std::thread::sleep(Duration::from_secs(4));
+    let text = "/rename named in claude".to_string();
+    input.send("named", Event::Send(input_event::Send { text, enter: true }));
+    loop {
+        if label(&mut control).as_deref() == Some("named in claude") {
+            break;
+        }
+        let screen = read_text(&mut control, "named", 0, 0).text;
+        assert!(Instant::now() < deadline, "the pane never took the session's name: {screen}");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    // Nothing typed back: the name stays, and Claude Code's transcript holds the two renames.
+    std::thread::sleep(Duration::from_secs(8));
+    assert_eq!(label(&mut control).as_deref(), Some("named in claude"));
+    let screen = read_text(&mut control, "named", 0, 0).text;
+    let renames: Vec<&str> = screen.lines().filter(|line| line.starts_with("❯ /rename")).collect();
+    assert_eq!(renames, ["❯ /rename 🤖 live", "❯ /rename named in claude"], "{screen}");
 }

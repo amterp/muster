@@ -167,7 +167,9 @@ alias of it (`claude-code` for `claude`), and `<id>` for the manifest id itself.
 | Prompt at work | An urgent post rings the agent while it works | An urgent post waits for idle | A working rule carrying `prompt` (detection engine 6 and later) |
 | Messages fetched by hooks | The agent reads its messages between tool calls and is woken at a turn's end | It is rung instead | Hooks calling `msg read --if-unread` and `msg wait --due` |
 | Inbox | A wake written to the harness's own socket, for a session the doorbell cannot ring | A session outside a pane is not woken | Rust: Claude Code's wire format |
-| Session reference, resume, session name, compaction reported | Not yet used | - | To come (section 10) |
+| Session named after the pane | Naming a pane types the harness's rename at the agent's idle, empty prompt | The session keeps its own name | A manifest's `[session] rename` (detection engine 8) |
+| Pane named after the session | A session renamed in its harness renames the pane | The pane keeps the name it has | A statusline or hook calling `report --agent <id> --session-name` |
+| Session reference, resume, compaction reported | Not yet used | - | To come (section 10) |
 
 The table in `muster docs harnesses` (section 5) says which harness has which.
 
@@ -178,7 +180,8 @@ The table in `muster docs harnesses` (section 5) says which harness has which.
   overridden in `~/.muster/agent-detection/<id>.toml` without a rebuild. Each rule reads a named
   region of the screen, and the regions and gates a rule can use are detection's engine, which
   grows when a harness draws something no region reads: engine 7 adds `current_prompt` for
-  Codex's composer. So "data, not code" means data in a
+  Codex's composer. A manifest can also say what to type to rename the session, a `[session]`
+  table that engine 8 adds. So "data, not code" means data in a
   vocabulary the engine extends, with each extension behind an engine version.
 - **`extras/<harness>/`**: what runs inside the harness - hooks, a statusline, the plugin and
   marketplace files that install them. Everything there calls only Muster's own verbs,
@@ -216,9 +219,9 @@ the inbox, and the prose around the table, are kept by hand.
 
 ### 6. Claude Code's adapter, as it stands
 
-`claude.toml` reads its states, its prompt idle and at work, and its dialogs; `extras/claude-code`
-is a plugin reporting its state and sub-agents, a statusline reporting context, model and cost,
-and messaging hooks; `messages/inbox.rs` writes to its inbox; `./dev --claude-code` and
+`claude.toml` reads its states, its prompt idle and at work, and its dialogs, and says how to
+rename its session; `extras/claude-code` is a plugin reporting its state and sub-agents, a
+statusline reporting context, model, cost and the session's name, and messaging hooks; `messages/inbox.rs` writes to its inbox; `./dev --claude-code` and
 `corpus/claude-code-*` check it against the installed version. Nothing moved: it already was an adapter
 in this sense, and this MIP names it one.
 
@@ -285,21 +288,46 @@ into Codex's config.
 4. If it has hooks, an `extras/<harness>/` whose hooks call `report --agent <id>`, and a row for
    it in `harness_hooks.rs`, which pins what each event reports and that every turn end reports
    idle.
-5. An observation file and its transcripts.
-6. A live tier.
-7. Regenerate the table in `muster docs harnesses`.
+5. If a session can be renamed by typing at its prompt, a `[session] rename` in its manifest; if
+   its hooks or statusline can say the session's name, and only for names a person gave, a
+   `--session-name` in its report.
+6. An observation file and its transcripts.
+7. A live tier.
+8. Regenerate the table in `muster docs harnesses`.
 
 Only an engine extension, when one is needed, touches Rust outside the tests.
 
 ### 10. Capabilities still to come
 
-Four capabilities are named here so that work on them follows this MIP's structure: a session
-reference (the harness's id for the session), resuming that session after a daemon restart, a
-session name kept in step with the pane's, and compaction reported. Each is a capability an
-adapter supplies: a report field its hooks fill (both harnesses' hooks are handed the session's
-id), or a manifest table the daemon reads - how to resume, how to rename - behind an engine
-version. The daemon code that acts on the answer will be generic, and a new protocol field is
-added as a minor version, per `proto/muster_daemon.proto`'s rules.
+Three capabilities are named here so that work on them follows this MIP's structure: a session
+reference (the harness's id for the session), resuming that session after a daemon restart, and
+compaction reported. Each is a capability an adapter supplies: a report field its hooks fill
+(both harnesses' hooks are handed the session's id), or a manifest table the daemon reads - how
+to resume - behind an engine version. The daemon code that acts on the answer will be generic,
+and a new protocol field is added as a minor version, per `proto/muster_daemon.proto`'s rules.
+
+The fourth, a session name kept in step with the pane's, is built, both ways, in exactly those
+two forms:
+
+- **Pane to session**: a manifest's `[session] rename`, `"/rename {name}"` for Claude Code and
+  Codex, which the doorbell's thread types at the agent's idle, empty prompt under an idle ring's
+  rules, and never while it works, since a Return typed at work can answer a dialog. It is taken
+  once the prompt is empty again; one that is not is given up and not retyped until the pane is
+  renamed.
+- **Session to pane**: `report --agent <id> --session-name <name>`, empty for no name, which
+  Claude Code's statusline sends on every run. Claude Code does not run its statusline on a
+  rename, so its `refreshInterval` decides how soon the pane follows. Codex has no statusline, and
+  names every session itself after its first request in the one place a rename also goes
+  (`docs/observations/codex-0.154.0.md`, section 5), so Codex's pane does not follow it: taking
+  Codex's names would rename every pane after its first request.
+- **No loop**: a name the pane took from the harness is never typed back, a name the harness says
+  again is not news, and a reported name the pane already has ends any typing still to come
+  (`crates/muster-daemon/src/session_name.rs`). The first name a session reports is the one it
+  started with, so a pane with a name keeps it and gives it to the session, and an unnamed pane
+  takes it.
+- **Not carried through a handoff**: the daemon taking a pane over hears the session's name again
+  from its next report, as a first report; a harness without a statusline has the pane's name
+  typed once more, which `/rename` takes as it took it the first time.
 
 ## Delivery
 
@@ -308,7 +336,10 @@ added as a minor version, per `proto/muster_daemon.proto`'s rules.
   transcripts; `./dev --codex`; `muster docs harnesses`.
 - **Stage two**: Codex's prompt at work, its messaging hooks, its context used, and `codex queue`,
   each measured first (section 7).
-- **Later**: the capabilities of section 10, starting with session names.
+- **Session names**, built 2026-10-03 (section 10): detection engine 8 and `[session]` in both
+  manifests, the daemon typing a pane's name and taking a session's, and Claude Code's statusline
+  reporting it.
+- **Later**: the rest of section 10.
 
 ## Rationale
 
@@ -340,8 +371,10 @@ harness that allows less must not break anything.
 
 ## Consequences & Trade-offs
 
-- Codex's manifest needs engine 7. An older daemon, one a newer app adopted, refuses it and keeps
-  its own Codex rules, so Codex is not rung there until a daemon of this version takes over.
+- Codex's manifest needs engine 7, and both Claude Code's and Codex's need engine 8 once they say
+  how to rename a session. An older daemon, one a newer app adopted, refuses them and keeps its
+  own rules, so it neither rings Codex nor renames sessions until a daemon of this version takes
+  over.
 - A harness that one agent runs as a command from its shell - `codex exec`, `claude -p` - inherits
   `$MUSTER_PANE`, and its hooks report into the pane it was started from. Both READMEs say how to
   stop that.
@@ -372,3 +405,5 @@ harness that allows less must not break anything.
 ## History
 - 2026-10-03 Draft, from kan `a_2b6rCBx88` (folding `a_2AJS0Xz7I` and `a_2YACckiKU`). Stage one
   built the same day.
+- 2026-10-03 Session names kept in step with pane names, both ways (kan `a_2b6Wx8Sox`), as section
+  10 described: a manifest table behind engine 8, and a report field.

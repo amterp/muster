@@ -70,6 +70,9 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **seen-ness** - whether anybody has looked at a pane since its agent finished; distinguishes idle from done. A pane
   is seen when it is on screen in a window holding the OS's focus. No daemon can see a window, so the window decides
   it and reports it to the daemon, which clears the finish for every window.
+- **session name** - what a harness calls an agent's session: what Claude Code's and Codex's `/rename` set and
+  `/resume` lists. Kept in step with what the pane is called (its label, set by `pane rename` or `--name`), both
+  ways, as far as the harness allows (MIP-5, section 10).
 - **shell** - the per-OS native layer: windows, chrome, key capture, surfaces. Owns nothing.
 - **surface** - one libghostty terminal view rendering one pane channel; disposable.
 - **tab** - a named set of panes a window shows together. Muster's own unit, and the one thing here that is not a

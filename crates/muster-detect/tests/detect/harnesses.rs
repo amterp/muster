@@ -1,6 +1,6 @@
 //! The table in `docs/cli/harnesses.md` (MIP-5, section 5): which harness has which capability,
-//! for the capabilities Muster can tell from its own files - a manifest reading a prompt, and what
-//! the hooks in `extras/<harness>/` call. The table is generated here and the test fails when the
+//! for the capabilities Muster can tell from its own files - what a manifest reads and types, and
+//! what the hooks and statusline in `extras/<harness>/` call. The table is generated here and the test fails when the
 //! page says otherwise; `MUSTER_WRITE_HARNESSES=1` rewrites it.
 
 use std::path::{Path, PathBuf};
@@ -20,18 +20,22 @@ struct Supplied {
     context: bool,
     subagents: bool,
     fetches_messages: bool,
+    takes_pane_name: bool,
+    names_pane: bool,
 }
 
 /// A capability's row: its name on the page, and how it is read off what a harness supplies.
 type Row = (&'static str, fn(&Supplied) -> bool);
 
-const ROWS: [Row; 6] = [
+const ROWS: [Row; 8] = [
     ("Its own report of its state", |supplied| supplied.reported_state),
     ("Context used, model and cost", |supplied| supplied.context),
     ("Sub-agents counted", |supplied| supplied.subagents),
     ("Rung at an empty prompt", |supplied| supplied.prompt),
     ("Rung while it works, for an urgent post", |supplied| supplied.prompt_at_work),
     ("Messages fetched by its hooks", |supplied| supplied.fetches_messages),
+    ("Its session named after the pane", |supplied| supplied.takes_pane_name),
+    ("The pane named after its session", |supplied| supplied.names_pane),
 ];
 
 fn page() -> PathBuf {
@@ -80,6 +84,8 @@ fn supplied(manifests: &Manifests, extras: &[(Agent, String)], agent: &Agent) ->
         context: wiring.contains("--context-used"),
         subagents: wiring.contains("--subagent-started"),
         fetches_messages: wiring.contains("msg read --if-unread"),
+        takes_pane_name: manifests.session_rename(agent, "name").is_some(),
+        names_pane: wiring.contains("--session-name"),
     }
 }
 

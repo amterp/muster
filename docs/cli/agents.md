@@ -8,6 +8,10 @@ Make a pane below this one, running an agent, called something a person can pick
 
     A=$(muster pane new --down --run claude --name '🤖 A')
 
+The agent's session is called what the pane is called, too, where its harness allows it - Claude
+Code and Codex do, through `/rename` - and a session renamed in its harness renames the pane
+(`muster docs harnesses`).
+
 `pane new` prints the name of the pane it made - `p1w3r0ab2n` - once the window has heard of it,
 which is what makes the next line possible:
 

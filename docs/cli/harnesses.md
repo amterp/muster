@@ -14,6 +14,8 @@ small adapter Muster ships for it (`extras/` in Muster's source).
 | Rung at an empty prompt | yes | yes | no |
 | Rung while it works, for an urgent post | yes | no | no |
 | Messages fetched by its hooks | yes | no | no |
+| Its session named after the pane | yes | yes | no |
+| The pane named after its session | yes | no | no |
 
 Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
 kimi, kiro, maki, opencode, pi, qodercli.
@@ -34,6 +36,19 @@ kimi, kiro, maki, opencode, pi, qodercli.
   prompt of an agent at work, which takes it into the turn it is running.
 - **Messages fetched by its hooks**: the session reads what arrived after each tool call and is
   woken when its turn ends, with nothing typed into its pane. Needs the adapter's messaging hooks.
+- **Its session named after the pane**: naming a pane - the chord, the menu, `muster pane rename`,
+  or `pane new --name` once its agent starts - types `/rename <name>` into the agent's prompt once
+  it is idle at an empty prompt, as a ring is typed, so the session goes by the pane's name in
+  `/resume` and wherever else the harness shows it. Needs no adapter.
+- **The pane named after its session**: renaming the session in the harness renames the pane.
+  Claude Code hands its statusline the session's name, so this needs the adapter's statusline,
+  and its `refreshInterval` for the pane to follow within seconds rather than at the next message.
+  Codex names every session itself after its first request, where a rename goes too, so Muster
+  cannot tell a name you gave from one Codex chose, and takes neither.
+
+The first name a session reports is the one it started with, not a rename: a pane with a name
+keeps it and gives it to the session, and a pane without one takes the session's. Neither
+direction sets off the other.
 
 Claude Code can also be reached through its own inbox socket, when it has one
 (`muster docs msg`). A harness Muster cannot ring, and that has no hooks fetching, is not woken by

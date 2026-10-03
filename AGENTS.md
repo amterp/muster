@@ -11,7 +11,8 @@ if your harness wants one.
 **Early, and specific about which parts.** Built, and covered by the suite: splits and tabs, a rebindable keymap that
 ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each of the
 first nine and one to whichever is asking for you, states an agent reports itself where the screen cannot say them -
-`waiting` on its own build among them - renaming, trading two agents' places by dragging a row, dragging a pane by its
+`waiting` on its own build among them - renaming, which names the agent's session in its harness too
+and follows a session renamed there, trading two agents' places by dragging a row, dragging a pane by its
 handle onto another pane's edge, right-click menus on a pane, a tab and an agent row, including a split onto any
 attached machine, a focus history the mouse's back and forward buttons walk across tabs, configuration that reloads when
 you save it, a CLI that drives the window from inside a pane on either machine, a notification when an agent needs you
@@ -242,7 +243,7 @@ daemon rather than inside it, because the bash and zsh scripts are GPLv3 (`packa
 `./dev --claude-code` reaches a model, where `--notarize` reaches only Apple and `--ssh` only what Docker fetches: it
 drives the Claude Code installed here for one turn, in a pane with `extras/claude-code`'s hooks and one without, and
 checks that both the hooks and the screen rules read it working and then idle - which is what says a Claude Code
-update has broken neither. It also has two sessions message each other through the daemon, and holds how Claude
+update has broken neither - and that a pane's name and its session's follow each other. It also has two sessions message each other through the daemon, and holds how Claude
 Code treats a message from outside the session to the newest recording in `corpus/claude-code-*/`. It needs
 `ANTHROPIC_API_KEY` or `claude`'s own login, and fails saying which is missing when it has neither, since a tier
 that checked nothing has not passed.

@@ -61,20 +61,27 @@ Start it as `env -u MUSTER_DAEMON claude -p
 
 A plugin cannot set a statusline, so that is a step of its own either way.
 
-## The statusline: context, model and cost
+## The statusline: context, model, cost and the session's name
 
 Claude Code runs its statusline command after every message, with the session's state as JSON on
-stdin. `statusline.sh` reads the context used, the model and the cost from that JSON, reports
-them in the background, and then draws your statusline. Put your own command after it:
+stdin. `statusline.sh` reads the context used, the model, the cost and the session's name from
+that JSON, reports them in the background, and then draws your statusline. Put your own command
+after it:
 
 ```json
 {
   "statusLine": {
     "type": "command",
+    "refreshInterval": 2,
     "command": "/path/to/muster/extras/claude-code/statusline.sh ~/.claude/statusline.sh"
   }
 }
 ```
+
+The session's name is what renames the pane when you `/rename` the session. A rename does not run
+the statusline, so `refreshInterval` is what brings the new name to the pane within seconds;
+without it, the pane takes it at the session's next message. Renaming the pane renames the
+session either way (`muster docs harnesses`).
 
 Your command gets the same JSON on stdin it always did. With nothing after it, `statusline.sh`
 draws the model and how full the context is. It needs `jq`, which macOS ships in `/usr/bin` and a
