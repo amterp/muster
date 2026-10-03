@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-setting-to-turn",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791049415388,
+  "creator": "Alexander Terp",
+  "description": "Since 2026-10-03, renaming a pane types /rename \u003cname\u003e into its agent at an idle prompt (Claude Code, Codex). Some people may not want that typed into their agents. Not built; nobody asked.",
+  "id": "a_2bEEGdG8p",
+  "position": "b0P",
+  "title": "A setting to turn off typing session names into agents",
+  "type": "enhancement",
+  "updated_at_millis": 1791049415388,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791049415388}
+  ]
+}

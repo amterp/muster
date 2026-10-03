@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791031067423,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-10-01: \"naming pane syncs into agent harness task name?\" Clarified 2026-10-03: both ways.\n\nWhen a pane is renamed (chord, menu, `muster pane rename`, `pane new --name`), the agent running in it takes the same name as its session name - for Claude Code, what `/rename` sets and `/resume` lists. And when the harness names or renames its session, the pane takes that name. Open: how to deliver a rename into a harness without typing into a busy prompt (the msg doorbell rules are the precedent), how to learn of a harness-side rename (hooks, statusline, transcript), and loop prevention. Harness-agnostic per the desiderata: a per-harness adapter, Claude Code first.",
   "id": "a_2b6Wx8Sox",
-  "position": "!!!!!!7",
+  "position": "Yyy",
   "title": "🏷️ Naming a pane names the agent's session in its harness",
   "type": "feature",
-  "updated_at_millis": 1791031406319,
+  "updated_at_millis": 1791049415495,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791031067423}
+    {"field":"column","value":"backlog-hi","at":1791031067423},
+    {"field":"column","value":"done","at":1791049415495}
   ]
 }

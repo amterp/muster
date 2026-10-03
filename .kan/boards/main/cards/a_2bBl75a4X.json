@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791043528175,
   "creator": "Alexander Terp",
   "description": "MIP-5 section 7, stage two of Codex as a full harness (stage one landed 2026-10-03: screen rules, the doorbell reading its prompt, hooks reporting state, extras/codex, ./dev --codex).\n- Prompt at work (urgent rings into a working Codex, which steers) with its live check - measure the two-step ring (paste, look, Return) at Codex's approval prompt first.\n- Messages fetched by Codex hooks: measure whether PostToolUse output reaches the model, and how Stop waits.\n- Context used, from the rollout transcript's token_count, read from its tail only (bounded per hook).\n- `codex queue --thread \u003cid\u003e` as a route that types nothing.\nOpen: whether an API error ends a Codex turn with Stop, Interrupt or nothing (a declared wait would stand until the next turn end); SubagentStart/Stop were not seen firing.\nKnow before relying on Codex in councils: a sandboxed Codex (workspace-write/read-only) cannot reach the daemon's Unix socket, so it cannot run muster msg read when rung unless sandbox_workspace_write.network_access = true (extras/codex/README.md).",
   "id": "a_2bBl75a4X",
-  "position": "b0N",
+  "position": "Yyx",
   "title": "🧩 Codex stage two: urgent rings, messages by hooks, context, queue, resume",
   "type": "feature",
-  "updated_at_millis": 1791043528175,
+  "updated_at_millis": 1791049415650,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791043528175}
+    {"field":"column","value":"backlog-hi","at":1791043528175},
+    {"field":"column","value":"done","at":1791049415650}
   ]
 }
