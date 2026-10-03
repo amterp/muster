@@ -12,13 +12,15 @@ use std::time::Duration;
 
 use muster_core::Key;
 use muster_core::input::{InputEvent, InputSink, NotSent};
-use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal, Side};
+use muster_core::intent::{
+    BackendChannel, BackendIntent, Grid, MoveDestination, Outcome, Refusal, Side,
+};
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::names::Minter;
 use muster_core::pane_text::PaneText;
 use muster_daemon_proto::{
-    self as proto, answer, pane_request, placement, request::Service, tab_request,
+    self as proto, answer, pane_request, placement, request::Service, session_request, tab_request,
 };
 
 use crate::control::Unanswered;
@@ -291,6 +293,24 @@ impl BackendChannel for DaemonBackend {
             self.read_page(pane, first_row, last)
         })?;
         Ok(PaneText { text: newest.text, truncated: newest.truncated })
+    }
+
+    fn grids(&self) -> Result<BTreeMap<PaneId, Grid>, Refusal> {
+        let answer = self.ask(Service::Session(proto::SessionRequest {
+            request: Some(session_request::Request::ReadGrids(session_request::ReadGrids {})),
+        }))?;
+        let Some(answer::Detail::Grids(grids)) = answer.detail else {
+            return Err(Refusal::Declined(format!(
+                "{} answered a read of its panes' sizes with none; this is likely a bug in the \
+                 daemon",
+                self.description
+            )));
+        };
+        Ok(grids
+            .panes
+            .into_iter()
+            .map(|(pane, grid)| (PaneId::new(pane), Grid { cols: grid.cols, rows: grid.rows }))
+            .collect())
     }
 
     fn description(&self) -> &str {

@@ -157,6 +157,8 @@ message SessionRequest {
     // serving as before. While it runs, a request that changes anything is refused.
     Replace replace = 11;
     SetScrollMultiplier set_scroll_multiplier = 12;
+    // How big every pane's terminal is. A read: it changes nothing and produces no event.
+    ReadGrids read_grids = 13;
   }
 
   message Snapshot {}
@@ -175,6 +177,13 @@ message SessionRequest {
     // The new daemon's `--data`. Absent: the directory it finds for itself.
     optional string data = 2;
   }
+
+  // Answered with Grids. A pane's size is the one its program last saw: what the last bridge to
+  // draw it asked for, or the size it was made at. A pane nothing is drawing keeps that size,
+  // which is still what wraps its output, so it is answered rather than left out. Asked rather
+  // than carried on Pane, because a window being resized changes every size many times a second
+  // and nothing but somebody asking about the layout reads them.
+  message ReadGrids {}
 
   // Answered with LogFollowed. REFUSED when the daemon's log is off.
   message FollowLog {
@@ -863,7 +872,13 @@ message Answer {
     PaneText text = 11;
     LogFollowed followed = 12;
     MsgAnswer msg = 13;
+    Grids grids = 14;
   }
+}
+
+// Every pane's size, by the pane's name.
+message Grids {
+  map<string, Grid> panes = 1;
 }
 
 // What a FollowLog found. Records the client asked for that are older than `oldest` have left

@@ -10,6 +10,8 @@
 //! Muster owns: a window asks for a side, because that is the question a person answered when
 //! they pressed the key.
 
+use std::collections::BTreeMap;
+
 use crate::mirror::backend::{PaneId, TabId};
 use crate::pane_text::PaneText;
 
@@ -395,6 +397,13 @@ impl std::fmt::Display for Refusal {
     }
 }
 
+/// How big a pane's terminal is, in cells: the size its program last saw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Grid {
+    pub cols: u32,
+    pub rows: u32,
+}
+
 /// A way to ask one backend for a change.
 ///
 /// One per daemon rather than one per pane, unlike the input channels: these are about
@@ -415,6 +424,12 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// asks a daemon to *do*, and putting a question in it would make `Outcome` - a statement
     /// about a change just made - carry answers to things that changed nothing.
     fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal>;
+
+    /// How big every pane's terminal is, by pane. A read, for the reason [`Self::read`] is.
+    ///
+    /// Only the daemon can answer for a pane nobody is drawing: it holds each terminal at the
+    /// size the last bridge to draw it asked for, or the size it was made at.
+    fn grids(&self) -> Result<BTreeMap<PaneId, Grid>, Refusal>;
 
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;

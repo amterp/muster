@@ -37,6 +37,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(session_request::Request::SetScrollMultiplier(_)) => {
                 "session.set_scroll_multiplier"
             }
+            Some(session_request::Request::ReadGrids(_)) => "session.read_grids",
             None => "session",
         },
         Service::Tab(asked) => match &asked.request {

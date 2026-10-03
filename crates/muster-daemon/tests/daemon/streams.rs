@@ -191,6 +191,38 @@ fn a_bridge_sizes_its_pane_and_the_size_stays_when_it_goes() {
     }
 }
 
+/// What a layout reads for a pane's size: the size it was made at, then whatever the last bridge
+/// asked for. A read, so it produces no event a window would have to act on.
+#[test]
+fn every_panes_size_is_read_back_and_follows_the_bridge_that_sized_it() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, running("p1", "t1", "sleep 30"));
+    make(&mut control, create("p2", in_new_tab("t2")));
+    let sizes = |control: &mut Control| -> Vec<(String, u32, u32)> {
+        let asked = expect(control, read_grids_request(), proto::Outcome::Done);
+        assert!(asked.events.is_empty(), "reading sizes changed something: {:?}", asked.events);
+        let Some(proto::answer::Detail::Grids(grids)) = asked.answer.detail else {
+            panic!("a read of the sizes was answered with none: {:?}", asked.answer);
+        };
+        let mut sizes: Vec<(String, u32, u32)> =
+            grids.panes.into_iter().map(|(pane, grid)| (pane, grid.cols, grid.rows)).collect();
+        sizes.sort();
+        sizes
+    };
+    assert_eq!(
+        sizes(&mut control),
+        [("p1".to_string(), 80, 24), ("p2".to_string(), 80, 24)],
+        "p1 is the size it was made at, and p2 was made at none, so a terminal's traditional size"
+    );
+
+    let mut stream = attached(&daemon, "p1", false);
+    stream.resize(proto::Grid { cols: 100, rows: 30, width_px: 1000, height_px: 600 });
+    until_some("the read to say the size the bridge asked for", || {
+        sizes(&mut control).contains(&("p1".to_string(), 100, 30)).then_some(())
+    });
+}
+
 #[test]
 fn a_bridge_that_stops_acknowledging_falls_behind_and_is_caught_up_with_the_screen() {
     let daemon = daemon();

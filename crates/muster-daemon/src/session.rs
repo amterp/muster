@@ -505,7 +505,7 @@ fn changes_anything(service: &Service) -> bool {
     !matches!(
         service,
         Service::Session(proto::SessionRequest {
-            request: Some(S::Snapshot(_) | S::Subscribe(_) | S::FollowLog(_))
+            request: Some(S::Snapshot(_) | S::Subscribe(_) | S::FollowLog(_) | S::ReadGrids(_))
         }) | Service::Pane(proto::PaneRequest { request: Some(P::Read(_)) })
     )
 }
@@ -926,6 +926,7 @@ impl Session {
                 S::SetClipboardWrite(set) => self.set_clipboard_write(set),
                 S::SetCursor(set) => self.set_cursor(set),
                 S::SetScrollMultiplier(set) => self.set_scroll_multiplier(set.multiplier),
+                S::ReadGrids(_) => self.grids(),
                 S::FollowLog(follow) => self.follow_log(asker, follow.after),
                 S::Replace(replace) => return self.replace(replace),
                 S::Stop(_) => {
@@ -972,6 +973,25 @@ impl Session {
         if let Some(log) = &self.log {
             log.unfollow(connection);
         }
+    }
+
+    /// How big every pane's terminal is now, by name.
+    fn grids(&self) -> Reply {
+        let panes = self
+            .panes
+            .iter()
+            .map(|pane| {
+                let grid = pane.io.grid();
+                let size = proto::Grid {
+                    cols: u32::from(grid.cols),
+                    rows: u32::from(grid.rows),
+                    width_px: u32::from(grid.width_px),
+                    height_px: u32::from(grid.height_px),
+                };
+                (pane.record.pane.clone(), size)
+            })
+            .collect();
+        Reply { detail: Some(Box::new(Detail::Grids(proto::Grids { panes }))), ..Reply::done() }
     }
 
     /// Hands a connection the daemon's recent log, and every record after it.

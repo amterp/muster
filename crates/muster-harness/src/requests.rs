@@ -61,6 +61,11 @@ pub fn create(name: &str, placement: proto::Placement) -> pane_request::Create {
     }
 }
 
+/// How big every pane's terminal is.
+pub fn read_grids_request() -> Service {
+    session(session_request::Request::ReadGrids(session_request::ReadGrids {}))
+}
+
 pub fn create_request(create: pane_request::Create) -> Service {
     pane(pane_request::Request::Create(create))
 }
