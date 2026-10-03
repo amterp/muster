@@ -1,5 +1,5 @@
 id = "claude"
-version = "2026.10.03.1"
+version = "2026.10.03.2"
 min_engine_version = 6
 updated_at = "2026-10-03T00:00:00Z"
 aliases = ["claude-code"]
@@ -222,6 +222,19 @@ all = [
     { line_regex = ['(?i)^\s*3\.\s*no\b'] },
   ] },
 ]
+
+[[rules]]
+id = "plan_approval_prompt"
+state = "blocked"
+# Plan mode's ExitPlanMode dialog, which asks with "would you like" where a permission prompt asks
+# "do you want". Above every working rule, for live_blocked_form's reason. Its question wraps in a
+# pane narrower than itself, so the words are matched across lines: wrapped, nothing else on
+# screen said blocked, and the idle title decided.
+priority = 1150
+region = "after_last_horizontal_rule"
+visible_blocker = true
+regex = ['(?i)would\s+you\s+like\s+to\s+proceed\?']
+line_regex = ['(?i)^\s*❯?\s*1\.\s*yes\b']
 
 [[rules]]
 id = "legacy_no_prompt_blocker"

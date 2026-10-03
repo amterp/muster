@@ -2,7 +2,8 @@
 //! bytes through the terminal the daemon runs, then read the way the daemon reads a pane, and
 //! as the doorbell reads it, faint cells blanked, where that differs. The
 //! expected state is the one the capture script knew the agent to be in, never this engine's
-//! verdict - which is printed beside it, to stderr, for whoever is reviewing.
+//! verdict - which is printed beside it, to stderr, for whoever is reviewing. Each case is named
+//! for the harness and version the capture says it recorded.
 
 use std::path::PathBuf;
 
@@ -20,7 +21,12 @@ fn main() {
     let size = |key: &str| u16::try_from(marks[key].as_u64().expect("a size")).expect("a size");
     let (columns, rows) = (size("columns"), size("rows"));
     let manifests = Manifests::built_in();
-    let claude = Agent::new("claude");
+    let id = marks["agent"].as_str().unwrap_or("claude");
+    let agent = Agent::new(id);
+    let named = |name: &str| match marks["version"].as_str() {
+        Some(version) => format!("{id} {version}: {name}"),
+        None => name.to_string(),
+    };
 
     let mut cases = Vec::new();
     for mark in marks["marks"].as_array().expect("marks") {
@@ -37,18 +43,18 @@ fn main() {
         let title = title(&terminal.title());
         let progress = progress.get().to_string();
         let detection = manifests
-            .detect(Some(&claude), Input { screen: &screen, title: &title, progress: &progress });
+            .detect(Some(&agent), Input { screen: &screen, title: &title, progress: &progress });
         eprintln!(
             "{}: expected {}, the engine says {} by {:?}",
             mark["name"], mark["expect"], detection.state, detection.rule
         );
         let mut given =
-            json!({ "agent": "claude", "screen": screen, "title": title, "progress": progress });
+            json!({ "agent": id, "screen": screen, "title": title, "progress": progress });
         if typed != screen {
             given["typed"] = json!(typed);
         }
         cases.push(json!({
-            "name": mark["name"],
+            "name": named(mark["name"].as_str().expect("a name")),
             "why": mark["note"],
             "given": given,
             "expect": if mark["skip"] == true {

@@ -1,7 +1,8 @@
 # Claude Code 2.1.288
 
 What Claude Code does with a line typed into its prompt box while it works, which is how an
-urgent post reaches an agent in a pane mid-turn (MIP-4, section 6).
+urgent post reaches an agent in a pane mid-turn (MIP-4, section 6), and what its dialogs do
+with what is typed at them.
 
 Measured 2026-10-03 on macOS 26.4.1 / arm64, with Claude Code 2.1.288 logged in to a Claude Max
 account, by `crates/muster-daemon/tests/daemon/claude_code_doorbell.rs`
@@ -9,8 +10,8 @@ account, by `crates/muster-daemon/tests/daemon/claude_code_doorbell.rs`
 in a pane of a daemon the test started, bypassing permission prompts, and is given a command
 that runs for forty seconds; ten seconds in, the test posts to it with `--urgent`. The
 transcripts are `corpus/claude-code-2.1.288/urgent-ring-*.txt`, condensed from the session's own
-log under `~/.claude/projects`. Section 3 was measured the same day in a pseudo-terminal instead
-(`dialog-input.txt`). The screens of an agent at work are in
+log under `~/.claude/projects`. Sections 3 and 4 were measured the same day in a pseudo-terminal instead
+(`dialog-input.txt`, `plan-dialog.txt`). The screens of an agent at work are in
 `corpus/conformance/agent-prompt.json`, recorded by `tools/detection-capture.py`.
 
 ## 1. A line typed while it works is taken into the running turn
@@ -43,12 +44,24 @@ picks an option, though the line holds digits, nor opens the amend field or leav
 (`dialog-input.txt`). Return at the dialog takes the selected option, which is "Yes". The
 dialog fires `PreToolUse` and then `PermissionRequest` for the tool.
 
+## 4. Plan mode's dialog asks "would you like to proceed?", and fires the permission hooks
+
+Plan mode ends in a dialog asking whether to go ahead with the plan: "Claude has written up a plan
+and is ready to execute. Would you like to proceed?", over numbered options whose first is a
+"Yes" (`plan-dialog.txt`). It is a permission prompt for the `ExitPlanMode` tool: `PreToolUse`,
+then `PermissionRequest`, then a `Notification` of type `permission_prompt` fire as it opens, so
+Muster's hooks report the session blocked. Its question is not the "Do you want to proceed?" of a
+tool's permission prompt, and in a pane narrower than it the question wraps inside its last
+words.
+
 ## What this decides for Muster
 
 An urgent ring is typed into a working Claude Code's prompt box, under the doorbell's usual
 guards, and counts as taken once the box is empty again (section 1). Its line is harmless at a
 dialog that opens before it arrives, and its Return is not (section 3), so the Return is pressed
-only once a second look finds the box holding the ring alone. It is the transport, not a
+only once a second look finds the box holding the ring alone. Detection reads plan mode's
+dialog as blocked by its own rule, matching its question across a wrap (section 4); before, a
+narrow pane without the hooks read it idle. It is the transport, not a
 promise that the agent stops: the wake line asks the model to read now, and Claude Code's
 reminder asks it to address the line, but a small model may finish first. The `./dev
 --claude-code` check holds the transport to this version and prints which the model did.

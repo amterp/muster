@@ -1,7 +1,8 @@
 //! The Claude Code installed on this machine, in two panes of a daemon, driven for one short
 //! turn: the pane with Muster's hooks reads working and then idle from Claude Code's own
 //! reports, and the pane without them reads the same off its screen. This is what says whether
-//! a Claude Code update has broken either path.
+//! a Claude Code update has broken either path. The same two panes, narrow and in plan mode,
+//! read blocked at the dialog asking to go ahead with a plan.
 //!
 //! Out of the gate, because it reaches the network and spends a turn of a real model. It runs
 //! with `ANTHROPIC_API_KEY` if that is set, and otherwise with the login `claude` already has;
@@ -106,21 +107,20 @@ fn prompt(control: &mut Control, input: &mut Input, pane: &str) {
     input.send(pane, Event::Send(input_event::Send { text, enter: true }));
 }
 
-#[test]
-#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
-fn claude_code_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
+/// The two panes, `hooked` with Muster's hooks and `screen` without, side by side, each running
+/// Claude Code with `extra` arguments in a pane `grid` large; None when the tier is not asked for.
+fn two_panes(extra: &str, grid: proto::Grid) -> Option<(Daemon, Control, Input)> {
     if std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none() {
         eprintln!(
             "claude-code: skipped, MUSTER_CLAUDE_CODE_TESTS is not set; ./dev --claude-code sets it"
         );
-        return;
+        return None;
     }
     let arguments = how_to_run().unwrap_or_else(|why| {
         panic!(
             "claude-code: could not run Claude Code: {why}.\n  Impact: nothing checked that \
-             Claude Code's hooks and screen still read working and idle, so this tier did not \
-             pass.\n  Fix: install claude and log in (`claude auth login`), or set \
-             ANTHROPIC_API_KEY."
+             Claude Code's hooks and screen still read its states, so this tier did not pass.\n  \
+             Fix: install claude and log in (`claude auth login`), or set ANTHROPIC_API_KEY."
         )
     });
     let home = std::env::var("HOME").expect("HOME is set");
@@ -138,8 +138,8 @@ fn claude_code_reads_working_then_idle_through_its_hooks_and_through_its_screen(
     control.ask(subscribe_request());
     let arguments: Vec<String> = arguments.iter().map(|argument| quoted(argument)).collect();
     let panes = [("hooked", format!("--plugin-dir {}", quoted(PLUGIN))), ("screen", String::new())];
-    for (index, (name, extra)) in panes.iter().enumerate() {
-        let command = format!("claude {} {extra}", arguments.join(" "));
+    for (index, (name, hooks)) in panes.iter().enumerate() {
+        let command = format!("claude {} {hooks} {extra}", arguments.join(" "));
         let placement =
             if index == 0 { in_new_tab("t1") } else { beside("hooked", proto::Side::Right) };
         make(
@@ -147,29 +147,85 @@ fn claude_code_reads_working_then_idle_through_its_hooks_and_through_its_screen(
             proto::pane_request::Create {
                 command: Some(command),
                 cwd: Some(project.display().to_string()),
-                grid: Some(proto::Grid { cols: 100, rows: 30, width_px: 1000, height_px: 600 }),
+                grid: Some(grid),
                 ..create(name, placement)
             },
         );
     }
+    let input = Input::connect(daemon.socket_path());
+    Some((daemon, control, input))
+}
 
-    let mut input = Input::connect(daemon.socket_path());
-    for (name, _) in &panes {
+const PANES: [&str; 2] = ["hooked", "screen"];
+
+#[test]
+#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
+fn claude_code_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
+    let grid = proto::Grid { cols: 100, rows: 30, width_px: 1000, height_px: 600 };
+    let Some((_daemon, mut control, mut input)) = two_panes("", grid) else { return };
+    for name in PANES {
         prompt(&mut control, &mut input, name);
     }
-    let settled = until_both_settle(&mut control, ["hooked", "screen"]);
-    for ((name, _), seen) in panes.iter().zip(settled) {
+    let settled = until_both_settle(&mut control, PANES);
+    for (name, seen) in PANES.into_iter().zip(settled) {
         let summary: Vec<_> = seen
             .iter()
             .map(|record| (record.agent_state(), record.state_reported, record.screen_unreadable))
             .collect();
         eprintln!("claude-code: {name}: {summary:?}");
-        let hooked = *name == "hooked";
+        let hooked = name == "hooked";
         let working = seen.iter().find(|record| record.agent_state() == proto::AgentState::Working);
         let idle = seen.iter().rev().find(|record| record.agent_state() == proto::AgentState::Idle);
         assert_eq!(working.map(|record| record.state_reported), Some(hooked), "{name}: working");
         assert_eq!(idle.map(|record| record.state_reported), Some(hooked), "{name}: idle");
         assert!(seen.iter().all(|record| !record.screen_unreadable), "{name}: {summary:?}");
         assert_eq!(seen.last().and_then(|record| record.agent.clone()).as_deref(), Some("claude"));
+    }
+}
+
+/// A session at plan mode's dialog asking whether to go ahead with its plan is waiting on a
+/// person. The panes are narrow, so the dialog's question wraps, which is where it was read idle.
+#[test]
+#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
+fn claude_code_at_its_plan_approval_dialog_reads_blocked_through_both_paths() {
+    let grid = proto::Grid { cols: 66, rows: 40, width_px: 660, height_px: 800 };
+    let Some((daemon, mut control, mut input)) = two_panes("--permission-mode plan", grid) else {
+        return;
+    };
+    for name in PANES {
+        until_ready(&mut control, &mut input, name);
+    }
+    std::thread::sleep(Duration::from_secs(4));
+    let text = "Plan to create a file named hello.txt holding the word hi. The plan is one line. \
+                Do not explore anything: call the ExitPlanMode tool with that plan right away."
+        .to_string();
+    for name in PANES {
+        input.send(name, Event::Send(input_event::Send { text: text.clone(), enter: true }));
+    }
+    let mut looking = daemon.connect();
+    let deadline = Instant::now() + TURN;
+    for name in PANES {
+        loop {
+            let screen = read_text(&mut looking, name, 0, 0).text;
+            if screen.contains("proceed?") {
+                break;
+            }
+            assert!(Instant::now() < deadline, "{name}: no plan dialog came: {screen}");
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+    // Long past a working report's ten quiet seconds, which is when a dialog the rules did not
+    // read gave way to the idle title.
+    std::thread::sleep(Duration::from_secs(12));
+    for record in snapshot(&mut looking).panes {
+        let screen = read_text(&mut looking, &record.pane, 0, 0).text;
+        eprintln!(
+            "claude-code: {}: {:?}, reported {}",
+            record.pane,
+            record.agent_state(),
+            record.state_reported
+        );
+        assert_eq!(record.agent_state(), proto::AgentState::Blocked, "{}: {screen}", record.pane);
+        assert_eq!(record.state_reported, record.pane == "hooked", "{}", record.pane);
     }
 }

@@ -1,8 +1,8 @@
 {
   "concept": "detection.recordedScreens",
   "source": "recorded",
-  "regenerate": "python3 tools/detection-capture.py <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
-  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal, rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
+  "regenerate": "python3 tools/detection-capture.py [--harness H] [--size COLUMNSxROWS] [--only PHASES] <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
   "cases": [
     {
       "expect": {
@@ -164,6 +164,62 @@
       "expect": {
         "state": "working"
       }
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "\n  ⎿  /plan to preview\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\n  ────────────────────────────────────────────────────────────────────────────────────────────────\n   Ready to code?\n\n   Here is Claude's plan:\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n   Create approved.txt in the working directory containing the word hi.\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\n\n\n\n\n\n\n\n\n\n  ────────────────────────────────────────────────────────────────────────────────────────────────\n   Claude has written up a plan and is ready to execute. Would you like to proceed?\n\n   ❯ 1. Yes, and use auto mode\n     2. Yes, manually approve edits\n     3. Tell Claude what to change\n        shift+tab to approve with this feedback\n\n   ctrl+g to edit in Vim · ~/.claude/plans/plan-to-create-a-jiggly-floyd.md\n",
+        "title": "✳ Create approved.txt",
+        "typed": "\n  ⎿  /plan to preview\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\n  ────────────────────────────────────────────────────────────────────────────────────────────────\n   Ready to code?\n\n   Here is Claude's plan:\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n   Create approved.txt in the working directory containing the word hi.\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\n\n\n\n\n\n\n\n\n\n  ────────────────────────────────────────────────────────────────────────────────────────────────\n   Claude has written up a plan and is ready to execute. Would you like to proceed?\n\n   ❯ 1. Yes, and use auto mode\n     2. Yes, manually approve edits\n     3. Tell Claude what to change\n        shift+tab to approve with this feedback\n\n   ctrl+g to edit in Vim · ~/.claude/plans/plan-to-create-a-jiggly-floyd.md"
+      },
+      "name": "claude 2.1.288: plan approval dialog",
+      "why": "Plan mode's ExitPlanMode dialog: the plan written up, and Claude Code asking whether to go ahead with it. Waiting on a person as surely as a permission prompt is."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.288\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /…/f543ff25-fafb-4636-9833-d43030e7529e/scratchpad/cap/plan-wide\n\n\n❯ Plan to create a file named approved.txt holding the word hi. The plan is one line. Do not\n  explore anything: call the ExitPlanMode tool with that plan right away.\n\n⏺ Updated plan\n  ⎿  /plan to preview\n\n⏺ User approved Claude's plan\n  ⎿  Plan saved to: ~/.claude/plans/plan-to-create-a-jiggly-floyd.md · /plan to edit\n     Create approved.txt in the working directory containing the word hi.\n\n\n\n\n\n\n\n\n· Calculating… (13s · ↓ 384 tokens)\n                                                                                  ● high · /effort\n───────────────────────────────────────────────────────────────────────── create-approved-txt-file ─\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [09:37:43] /tmp/capture\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents\n",
+        "title": "◐ create-approved-txt-file",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.288\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /…/f543ff25-fafb-4636-9833-d43030e7529e/scratchpad/cap/plan-wide\n\n\n❯ Plan to create a file named approved.txt holding the word hi. The plan is one line. Do not\n  explore anything: call the ExitPlanMode tool with that plan right away.\n\n⏺ Updated plan\n  ⎿  /plan to preview\n\n⏺ User approved Claude's plan\n  ⎿  Plan saved to: ~/.claude/plans/plan-to-create-a-jiggly-floyd.md · /plan to edit\n     Create approved.txt in the working directory containing the word hi.\n\n\n\n\n\n\n\n\n· Calculating… (13s · ↓ 384 tokens)\n                                                                                  ● high · /effort\n───────────────────────────────────────────────────────────────────────── create-approved-txt-file ─\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [09:37:43] /tmp/capture\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents"
+      },
+      "name": "claude 2.1.288: working right after approving the plan",
+      "why": "The plan approved with Return: Claude Code at work on it, the dialog's question gone from below the last rule."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;0;",
+        "screen": "\n  ⎿  /plan to preview\n\n⏺ User approved Claude's plan\n  ⎿  Plan saved to: ~/.claude/plans/plan-to-create-a-jiggly-floyd.md · /plan to edit\n     Create approved.txt in the working directory containing the word hi.\n\n  Read 1 file\n\n⏺ I created approved.txt in the working directory. It contains hi, and I read it back to confirm.\n\n✻ Worked for 21s · done 9:37 am\n\n❯ Plan to create a file named declined.txt holding the word hi. The plan is one line. Do not\n  explore anything: call the ExitPlanMode tool with that plan right away.\n\n⏺ Updated plan\n  ⎿  /plan to preview\n  ⎿  User rejected Claude's plan:\n     ╭──────────────────────────────────────────────────────────────────────╮\n     │ Create declined.txt in the working directory containing the word hi. │\n     ╰──────────────────────────────────────────────────────────────────────╯\n\n✻ Baked for 4s · done 9:38 am\n                                                                                  ● high · /effort\n───────────────────────────────────────────────────────────────────────── create-approved-txt-file ─\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [09:38:05] /tmp/capture\n  ⏸ plan mode on (shift+tab to cycle) · ← for agents\n",
+        "title": "✳ create-approved-txt-file",
+        "typed": "\n  ⎿  /plan to preview\n\n⏺ User approved Claude's plan\n  ⎿  Plan saved to: ~/.claude/plans/plan-to-create-a-jiggly-floyd.md · /plan to edit\n     Create approved.txt in the working directory containing the word hi.\n\n  Read 1 file\n\n⏺ I created approved.txt in the working directory. It contains hi, and I read it back to confirm.\n\n✻ Worked for 21s · done 9:37 am\n\n❯ Plan to create a file named declined.txt holding the word hi. The plan is one line. Do not\n  explore anything: call the ExitPlanMode tool with that plan right away.\n\n⏺ Updated plan\n  ⎿  /plan to preview\n  ⎿  User rejected Claude's plan:\n     ╭──────────────────────────────────────────────────────────────────────╮\n     │ Create declined.txt in the working directory containing the word hi. │\n     ╰──────────────────────────────────────────────────────────────────────╯\n\n✻ Baked for 4s · done 9:38 am\n                                                                                  ● high · /effort\n───────────────────────────────────────────────────────────────────────── create-approved-txt-file ─\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [09:38:05] /tmp/capture\n  ⏸ plan mode on (shift+tab to cycle) · ← for agents"
+      },
+      "name": "claude 2.1.288: idle after declining the plan",
+      "why": "The plan dialog left with Esc; Claude Code back at its prompt, still planning."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "\n  ⎿  /plan to preview\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\n  ──────────────────────────────────────────────────────────────\n   Ready to code?\n\n   Here is Claude's plan:\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n   Create approved.txt in the working directory containing the\n   word hi.\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ──────────────────────────────────────────────────────────────\n   Claude has written up a plan and is ready to execute. Would\n   you like to proceed?\n\n   ❯ 1. Yes, and use auto mode\n     2. Yes, manually approve edits\n     3. Tell Claude what to change\n        shift+tab to approve with this feedback\n\n   ctrl+g to edit in Vim ·\n   ~/.claude/plans/plan-to-create-a-swift-pizza.md\n",
+        "title": "✳ Create approved.txt",
+        "typed": "\n  ⎿  /plan to preview\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\n  ──────────────────────────────────────────────────────────────\n   Ready to code?\n\n   Here is Claude's plan:\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n   Create approved.txt in the working directory containing the\n   word hi.\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ──────────────────────────────────────────────────────────────\n   Claude has written up a plan and is ready to execute. Would\n   you like to proceed?\n\n   ❯ 1. Yes, and use auto mode\n     2. Yes, manually approve edits\n     3. Tell Claude what to change\n        shift+tab to approve with this feedback\n\n   ctrl+g to edit in Vim ·\n   ~/.claude/plans/plan-to-create-a-swift-pizza.md"
+      },
+      "name": "claude 2.1.288: plan approval dialog, its question wrapped in a narrow pane",
+      "why": "Plan mode's ExitPlanMode dialog in a pane 66 columns wide, where its question breaks between 'Would' and 'you like to proceed?': a session at this dialog in a narrow pane read idle, and finished once seen, since no rule knew the dialog and the only one that knew its words read them on one line."
     }
   ]
 }
