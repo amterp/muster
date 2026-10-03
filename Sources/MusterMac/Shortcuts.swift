@@ -92,6 +92,9 @@ public enum Shortcuts {
     Row(title: "Show a tab", chord: "", note: "click its caption in the list"),
     Row(title: "Resize panes", chord: "", note: "drag the divider between them"),
     Row(
+      title: "Move a pane", chord: "",
+      note: "drag the handle at its top onto another pane's edge"),
+    Row(
       title: "Split, rename, close, copy its ID", chord: "",
       note: "right-click a pane, a tab's caption or an agent's row"),
     Row(

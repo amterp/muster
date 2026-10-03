@@ -926,11 +926,6 @@ public enum Core {
     send(request)
   }
 
-  /// Puts one pane where another is, which is what dropping a row on a row means.
-  ///
-  /// Both ends are named because a drag names two panes by definition. Whether this becomes an
-  /// exchange or a move into another tab is the core's to decide from where they are - the
-  /// shell knows which rows were involved and nothing about the tree they sit in.
   /// Closes the tab the window's keyboard is in, and every pane in it.
   ///
   /// Naming no tab means the keyboard's, which is what a menu item means. Unlike going to a tab,
@@ -961,11 +956,18 @@ public enum Core {
     send(request)
   }
 
-  public static func arrange(pane: PaneKey, onto: PaneKey) {
+  /// Puts one pane where another is: dropping a row on a row, or a pane on a pane's side.
+  ///
+  /// Both ends are named because a drag names two panes by definition. With no side, whether
+  /// this becomes an exchange or a move into another tab is the core's to decide from where they
+  /// are - the shell knows which rows were involved and nothing about the tree they sit in. A
+  /// side is a drop on a pane's edge, which says exactly where.
+  public static func arrange(pane: PaneKey, onto: PaneKey, side: DropSide? = nil) {
     var arrange = Muster_ArrangePane()
     arrange.daemonID = pane.daemon
     arrange.paneID = pane.pane
     arrange.ontoPaneID = onto.pane
+    arrange.side = side?.rawValue ?? ""
     var request = Muster_Request()
     request.arrangePane = arrange
     send(request)

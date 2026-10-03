@@ -342,6 +342,11 @@ between "bytes" and "control":
   unless the program has captured the mouse. That is Ghostty's rule. A menu on a pane, a tab caption or an agent row
   sends the requests the keyboard sends, naming the pane or tab that was right-clicked rather than the one with the
   keyboard (`ContextMenus.swift`).
+- **A pane is dragged only by its handle.** A small view at the top middle of each pane, Ghostty's, takes the press
+  there before the terminal sees it, and nowhere else in a pane starts a move - a modifier that did would be one more
+  key no program in a pane could have, and a plain drag is a selection or a report to a program tracking the mouse.
+  Dropped on another pane's side it sends `ArrangePane` with that side, the request `muster pane move --onto X
+  --down` sends (`PaneDrag.swift`).
 - **The mouse's back and forward buttons are the window's, never the program's.** The window takes them before
   any view sees them, wherever the pointer is, and walks the core's focus history with them, the same walk as
   `focus_back` and `focus_forward`. No program in a pane would hear them anyway, because a terminal reports only

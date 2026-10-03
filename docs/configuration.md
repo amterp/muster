@@ -272,6 +272,20 @@ two, so the list you arrange is the window you get - and the numbers move with t
 chord reaches whatever sits at its place now. Drop a row on one in a different tab and the agent
 joins that tab, landing directly behind the row you dropped it on.
 
+**Grab a pane by its handle and drop it on another pane's edge.** The handle is at the top
+middle of every pane, a small ellipsis that shows when the pointer is near the top, and it is
+Ghostty's, in the same place and the same size. Drag it over another pane and the half nearest
+the pointer lights up: drop there and the pane goes to that side, the two sharing the space
+half each - which is how a side by side pair becomes one above the other. The handle is the
+only way to start one, so a drag anywhere else in a pane is still a selection, or the program's
+when it uses the mouse. A pane dropped on a row or a tab caption in the agent list does what a
+row does there, and a row dragged out of the list onto a pane's edge goes to that side too.
+
+A pane on another machine lights nothing, because a pane cannot change machines; drop it on that
+tab's caption instead and it joins the tab as its own machine's part. Dropping on itself, outside
+the window, on a divider or on empty space does nothing, and `Escape` cancels. Ghostty opens a new
+window for a pane dropped outside one; Muster does not yet.
+
 An exchange rather than an insertion, because an arrangement has no "between": two panes side
 by side can trade places, and there is no other reading of dragging one onto the other. Nothing
 is stored to make this work - the daemon rearranges its own tree and the list is a view of it,

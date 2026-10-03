@@ -254,7 +254,20 @@ public final class PaneChrome: NSView {
   /// another.
   public var onPointerRequested: ((_ paneID: String, _ pointer: Core.Pointer) -> Void)?
 
+  /// The pane this view is showing, with its machine: what a drag of it carries, and what a
+  /// drop on it names. Nil for the renderer check, which has no pane to drag.
+  public var key: PaneKey? {
+    didSet { handle.pane = key }
+  }
+
+  /// Called when a pane is dropped on one of this pane's sides, meaning it should go there.
+  public var onPaneDropped: ((_ dragged: PaneKey, _ side: DropSide) -> Void)?
+
   private let focusRing = CALayer()
+
+  /// What this pane is dragged by, and what lights the side a dragged pane would land on.
+  private let handle = PaneGrabHandle(frame: .zero)
+  private let dropOverlay = PaneDropOverlay(frame: .zero)
 
   /// The number a numbered chord would reach this pane by, drawn over it while one is being
   /// typed. Added over the surface rather than beside it, the way the find bar is.
@@ -281,6 +294,14 @@ public final class PaneChrome: NSView {
     // After the surface, so it composites over libghostty's own layer rather than under it.
     addSubview(badge)
     badge.isHidden = true
+    addSubview(dropOverlay)
+    // Last, so a press on it is the handle's and never the terminal's underneath.
+    addSubview(handle)
+    handle.onPressed = { [weak self] in
+      guard let self, let paneID = self.paneID else { return }
+      self.onFocusRequested?(paneID)
+    }
+    registerForDraggedTypes([PaneDrop.type])
     applyAppearance()
   }
 
@@ -335,6 +356,91 @@ public final class PaneChrome: NSView {
   /// The badge itself, so a test can check that a click did not land on it.
   var badgeView: NSView { badge }
 
+  /// The handle, so a test can find where it is and what it shows.
+  var grabHandle: PaneGrabHandle { handle }
+
+  /// The overlay's rect while a dragged pane is over this one, or nil when it is not.
+  var dropHighlight: CGRect? { dropOverlay.isHidden ? nil : dropOverlay.frame }
+
+  // A pane dropped on a pane. Thin, because the decisions are `PaneDrop`'s and the two methods
+  // below them are what a test drives without a real drag.
+
+  public override func draggingEntered(_ info: NSDraggingInfo) -> NSDragOperation {
+    hover(info)
+  }
+
+  public override func draggingUpdated(_ info: NSDraggingInfo) -> NSDragOperation {
+    hover(info)
+  }
+
+  public override func draggingExited(_ info: NSDraggingInfo?) {
+    dropOverlay.hide()
+  }
+
+  public override func draggingEnded(_ info: NSDraggingInfo) {
+    dropOverlay.hide()
+  }
+
+  public override func performDragOperation(_ info: NSDraggingInfo) -> Bool {
+    dropOverlay.hide()
+    guard let dragged = Self.dragged(info) else { return false }
+    return drop(
+      dragged, at: convert(info.draggingLocation, from: nil),
+      fromThisWindow: info.draggingSource != nil)
+  }
+
+  private func hover(_ info: NSDraggingInfo) -> NSDragOperation {
+    let point = convert(info.draggingLocation, from: nil)
+    guard let dragged = Self.dragged(info),
+      let landing = side(for: dragged, at: point, fromThisWindow: info.draggingSource != nil)
+    else {
+      dropOverlay.hide()
+      return []
+    }
+    dropOverlay.show(PaneDrop.overlay(for: landing, in: bounds))
+    return .move
+  }
+
+  /// The side a pane dropped at this point would go to, or nil when it may not be dropped here.
+  func side(for dragged: PaneKey, at point: NSPoint, fromThisWindow: Bool) -> DropSide? {
+    guard let key, PaneDrop.accepts(dragged, onto: key, fromThisWindow: fromThisWindow) else {
+      return nil
+    }
+    return PaneDrop.zone(at: point, in: bounds.size)
+  }
+
+  /// Drops a pane here, and says whether this pane took it.
+  @discardableResult
+  func drop(_ dragged: PaneKey, at point: NSPoint, fromThisWindow: Bool) -> Bool {
+    guard let side = side(for: dragged, at: point, fromThisWindow: fromThisWindow) else {
+      return false
+    }
+    onPaneDropped?(dragged, side)
+    return true
+  }
+
+  private static func dragged(_ info: NSDraggingInfo) -> PaneKey? {
+    info.draggingPasteboard.string(forType: PaneDrop.type).flatMap(PaneDrop.pane(fromPayload:))
+  }
+
+  /// Draws the handle's symbol while the pointer is across the top of the pane.
+  public override func updateTrackingAreas() {
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(
+      NSTrackingArea(
+        rect: PaneDrop.handleBand(in: bounds),
+        options: [.mouseEnteredAndExited, .activeAlways], owner: self))
+    super.updateTrackingAreas()
+  }
+
+  public override func mouseEntered(with event: NSEvent) {
+    handle.pointerInBand = true
+  }
+
+  public override func mouseExited(with event: NSEvent) {
+    handle.pointerInBand = false
+  }
+
   public override func layout() {
     super.layout()
     surface.frame = bounds.insetBy(dx: PaneAppearance.inset, dy: PaneAppearance.inset)
@@ -344,6 +450,8 @@ public final class PaneChrome: NSView {
     let focusInset = PaneAppearance.stateWidth + PaneAppearance.focusGap
     focusRing.frame = bounds.insetBy(dx: focusInset, dy: focusInset)
     badge.frame = bounds
+    handle.frame = PaneDrop.handleFrame(in: bounds)
+    window?.invalidateCursorRects(for: handle)
   }
 
   private func applyAppearance() {

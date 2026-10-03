@@ -144,6 +144,8 @@ public final class PaneSurfaces {
     chrome.onFocusRequested = focus
     chrome.onPointerRequested = pointer
     chrome.surface.onMenu = { [weak self] in self?.menu?(key) }
+    chrome.key = key
+    chrome.onPaneDropped = { dragged, side in Core.arrange(pane: dragged, onto: key, side: side) }
     held[key] = Held(
       chrome: chrome, linkSocketPath: leaf.linkSocketPath, daemonSocket: daemonSocket,
       bridgeRestarts: leaf.bridgeRestarts)

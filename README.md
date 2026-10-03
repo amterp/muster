@@ -52,8 +52,10 @@ line in your config mutes the lot, which silences the notifications and leaves `
 the daemon writes it down rather than the app. An agent that sets a terminal title gets a second
 line under that, so a row reads `payments spike` over `chasing a flaky test`. Drag one row onto
 another and the two panes trade places; drop it on a row in a different tab and the agent moves
-there. Right-click a pane, a tab's caption or an agent's row to split, rename, move or close it,
-or to copy the ID `muster` takes for it.
+there. Grab a pane by the handle at the top of it and drop it on another pane's edge to put it
+on that side, as in Ghostty, which is also how a side by side pair becomes one above the other.
+Right-click a pane, a tab's caption or an agent's row to split, rename, move or close it, or to
+copy the ID `muster` takes for it.
 
 **More than one window, and `cmd+n` to make one.** Each is its own process, so quitting one leaves
 the others alone, and each has its own address for the CLI - `muster window list` says which are
@@ -115,9 +117,9 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- A split keeps the direction it was made in. Its size can be dragged and evened out, but a side by
-  side pair cannot be turned into one above the other, and a pane moved into a tab lands where Muster
-  puts it.
+- A pane sits beside another machine's panes only as that machine's part of the tab, at its end: a
+  laptop pane cannot go above a devenv one. And a pane dropped on a tab's caption lands where Muster
+  puts it; to choose, drop it on a pane's edge once that tab is on screen.
 - Reopen Closed Window brings back the most recent closed window. An older one comes back when you
   go to one of its tabs - `muster window` lists them under the closed window's name.
 - Two windows cannot show the same tab. Muster's daemon draws each pane in one window at a time, so a

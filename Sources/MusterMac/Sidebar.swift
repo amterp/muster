@@ -738,7 +738,7 @@ public final class SidebarView: NSView {
 
   /// Muster's own pasteboard type, so nothing outside this window can offer a drop this
   /// accepts and nothing here accepts a file somebody dragged in from the Finder.
-  static let draggedPane = NSPasteboard.PasteboardType("dev.muster.pane")
+  static let draggedPane = PaneDrop.type
 
   /// A tab row, which is dragged between windows rather than within one: dropped into another
   /// window's list, it moves the tab there.
@@ -965,7 +965,7 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
       return item
     }
     guard let pane = rows[row].pane else { return nil }
-    item.setString("\(pane.daemon)\t\(pane.pane)", forType: SidebarView.draggedPane)
+    item.setString(PaneDrop.payload(pane), forType: SidebarView.draggedPane)
     return item
   }
 
@@ -1027,12 +1027,8 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
 
   /// The pane a drag is carrying, or nil when it is carrying something else.
   private func dragged(_ info: NSDraggingInfo) -> PaneKey? {
-    guard let carried = info.draggingPasteboard.string(forType: SidebarView.draggedPane) else {
-      return nil
-    }
-    let parts = carried.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
-    guard parts.count == 2 else { return nil }
-    return PaneKey(daemon: String(parts[0]), pane: String(parts[1]))
+    info.draggingPasteboard.string(forType: SidebarView.draggedPane)
+      .flatMap(PaneDrop.pane(fromPayload:))
   }
 }
 
