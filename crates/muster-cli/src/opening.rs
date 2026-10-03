@@ -7,9 +7,10 @@
 //! oversight: a request has to reach a running core, and the whole point of this is that there
 //! may not be one.
 //!
-//! **A window is a process.** Muster holds one window per process by construction - the core's
-//! session is a global - so a second window is a second copy of the app, which is also why the
-//! endpoint socket carries a pid. Nothing here is a workaround for that; it is the shape.
+//! **A window is a process**, for now. The core can hold several windows in one session, but the
+//! shell opens one per process, so a second window is a second copy of the app, which is also why
+//! the endpoint socket carries a pid. MIP-6 is the change that makes a window something the
+//! running app opens.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

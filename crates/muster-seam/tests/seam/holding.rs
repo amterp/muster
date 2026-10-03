@@ -5,9 +5,10 @@
 //! that a tab made outside Muster goes where the rule says, and that a tab another window takes
 //! leaves this one.
 //!
-//! The seam holds one session per process, so the other window is a stand-in: a socket this test
-//! listens on, named in the shared record the way a real window names itself. Dialing it is what
-//! tells this window it is open, which is the same question a real window answers.
+//! The other window is a stand-in for a window in another process: a socket this test listens on,
+//! named in the shared record the way a real window names itself. Dialing it is what tells this
+//! window it is open, which is the same question a real window answers. Two windows in one process
+//! are `windows.rs`.
 
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};

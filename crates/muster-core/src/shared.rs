@@ -1,14 +1,16 @@
 //! Files more than one Muster writes, as far as the core is concerned.
 //!
-//! A window is a process, so two windows are two writers. Two records are shared that way: the
-//! names Muster gives panes and tabs (`crate::names`), and which window holds each tab
-//! (`crate::composition::holding`). Both are read, changed and written inside one hold, and
-//! this trait is the whole of what the core asks for to do that. Where a record lives and how it
+//! Two Musters are two writers: two windows each in a process of its own, or a release and a
+//! development build sharing a home. One record is shared that way, which window holds each tab
+//! (`crate::composition::holding`); the names Muster gives panes and tabs used to be the other,
+//! until they were minted unique across machines (`crate::names`). The record is read, changed
+//! and written inside one hold, and this trait is the whole of what the core asks for to do
+//! that. Where a record lives and how it
 //! is locked are OS questions, answered in the seam.
 
 /// A written record another Muster may be holding open too.
 ///
-/// **The reason this exists is that a window is a process.** Two Musters attached to one daemon
+/// **The reason this exists is that a window was a process.** Two Musters attached to one daemon
 /// both see every pane it holds, and both would name one nobody had named yet - so the same
 /// pane ends up called two things, each window's `muster window` disagrees with the other's,
 /// and the one that writes the file last takes the other's bindings with it. Measured, not

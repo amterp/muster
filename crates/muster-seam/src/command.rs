@@ -45,7 +45,8 @@ use crate::{dispatch, forward, handler, session};
 
 /// The endpoint this process is listening on, held so that it stays open.
 ///
-/// A static because there is one window per process and it listens for the whole run. Replaced
+/// A static because a process listens on one socket for every window it shows, for the whole
+/// run. Replaced
 /// rather than added to: a second startup in one process is a test reusing it, and the old
 /// socket has to be given up before the new one can be bound.
 static LISTENING: Mutex<Option<CommandEndpoint>> = Mutex::new(None);

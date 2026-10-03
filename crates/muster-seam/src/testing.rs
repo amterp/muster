@@ -1,8 +1,9 @@
 //! One test's turn with the seam.
 //!
-//! There is one window per process, so the seam holds its session in a global - which is the
-//! honest expression of the arrangement and was also, for a while, a rule about tests: a test
-//! binary is a process too, so a second test in one could not have a session of its own. Every
+//! There is one session per process, holding every window the process shows, so the seam keeps it
+//! in a global - which is the honest expression of the arrangement and was also, for a while, a
+//! rule about tests: a test binary is a process too, so a second test in one could not have a
+//! session of its own. Every
 //! file under `tests/` held exactly one `#[test]`, and adding a gesture cost a new file and a
 //! new daemon.
 //!

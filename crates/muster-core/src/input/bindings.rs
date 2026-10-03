@@ -30,9 +30,9 @@ use super::{Key, Modifiers};
 pub enum Action {
     /// Opens another window, which means another Muster.
     ///
-    /// The one action here the core does not carry out. A window is a process - the session is
-    /// a global, one per process - so making one is starting an app, which is an OS act the
-    /// shell performs itself. It is an action rather than a plain menu item so that it can be
+    /// The one action here the core does not carry out. The shell opens one window per process
+    /// today, so making one is starting an app, which is an OS act the shell performs itself
+    /// (MIP-6 is the change that ends that). It is an action rather than a plain menu item so that it can be
     /// rebound and unbound like everything else, on the same terms as `show_shortcuts`, which
     /// the shell also answers alone.
     NewWindow,

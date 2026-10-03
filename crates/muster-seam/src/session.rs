@@ -1390,9 +1390,9 @@ static PUBLISHING: Mutex<()> = Mutex::new(());
 
 /// Puts this process back where it was before any of it started.
 ///
-/// One window per process is the arrangement everything above is written against, and a global
-/// is the honest expression of it - but a test binary is a process too, and one that could not
-/// start over was a binary that could hold one test. That is what this is for and the only
+/// One session per process, whatever number of windows it shows, is the arrangement everything
+/// above is written against, and a global is the honest expression of it - but a test binary is
+/// a process too, and one that could not start over was a binary that could hold one test. That is what this is for and the only
 /// thing that calls it (`crate::testing`).
 ///
 /// **Every process-wide thing this crate holds belongs here.** The statics above are settings a

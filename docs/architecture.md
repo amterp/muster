@@ -404,6 +404,12 @@ codegen - a surface that cannot express an action is a missing message, visible 
   side. One region for every tab until somebody groups two. Muster does not own an outer split tree over panes - that
   would make it a multiplexer (non-goal) - and a pane can never move between daemons: the process lives where it
   lives, and grouping moves which tab it is in rather than the process.
+- **One session per process, and a composition per window.** The core follows each daemon once - one mirror, one
+  ssh master - and keeps a composition, chrome and arrangement for every window the process shows. A request names
+  its window in `Request.window` and an event names the window it is for in `Event.window`, both empty where the
+  answer is the window in front (MIP-6). Which agents have been seen and which pane has the keyboard stay one answer
+  for the process, fed from the window in front, because only one window is. The shell still opens one window per
+  process, so today every session holds one.
 - **Composition is resolved against the mirror, never patched by events.** It names daemon things - a tab, a
   pane - and those go away without asking: a tab closed from another client, a pane whose program exited. Every
   such way ends in a window that ignores the keyboard and cannot say why, so composition is brought back into line

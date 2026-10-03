@@ -371,12 +371,15 @@ record.
 Each stage leaves `main` working.
 
 1. **The core holds a map of windows.** One session holding what windows share, and state per
-   window. The protobuf fields from section 2. `OpenWindow` can open a second window in the same
-   session, which only the tests use. The shell still opens one window per process and sets no
-   window, so nothing a person sees changes. Seam tests with two windows against a real daemon.
-2. **Requests find their window.** The four resolution rules, Move Tab and a request about
-   another window's tab handled inside the session when both windows are in it, and the CLI
-   sending `from_pane`. Still one window per process in use.
+   window. The protobuf fields from section 2, with a request resolved to the window it names or
+   else the window in front. `OpenWindow` can open a second window in the same session, answered
+   with an `Opened` naming it, which only the tests use. Move Tab between two windows here
+   changes both at once. The shell still opens one window per process and sets no window, so
+   nothing a person sees changes. Seam tests with two windows against a real daemon. Built
+   2026-10-03.
+2. **Requests find their window.** Rules 1 and 3 of section 2, so a request about another
+   window's tab in the same process is answered by that window rather than refused by the one it
+   reached, and the CLI sending `from_pane`. Still one window per process in use.
 3. **The shell opens every window.** Many NSWindows, with menus aimed through the responder chain
    rather than at one window, and events routed by `Event.window`. Close Window apart from quit,
    relaunch reopening every window open at quit, the app lock, one socket, arrangements under
@@ -415,4 +418,4 @@ Each stage leaves `main` working.
 ---
 
 ## History
-- 2026-10-03 Draft
+- 2026-10-03 Draft. Stage 1 built the same day.
