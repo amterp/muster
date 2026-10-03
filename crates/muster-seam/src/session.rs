@@ -416,7 +416,11 @@ pub(crate) fn problems() -> Vec<Problem> {
 /// borrowed where it was closed, and given back only where it was borrowed.
 fn reconcile_sidebar_with_problems(window: WindowId) -> bool {
     let error = poison::lock(&PROBLEMS, "problems").as_ref().is_some_and(Problems::has_error);
-    let shown = poison::lock(&SESSION, "session").windows[window].presentation.sidebar;
+    let (shown, name) = {
+        let session = poison::lock(&SESSION, "session");
+        let held = &session.windows[window];
+        (held.presentation.sidebar, held.name.to_string())
+    };
 
     if error {
         if shown {
@@ -426,6 +430,7 @@ fn reconcile_sidebar_with_problems(window: WindowId) -> bool {
         log::info(
             "problems.sidebar.opened",
             fields! {
+                "window" => name,
                 "impact" => "the roster was closed and an error would have had nowhere to \
                              appear, so Muster opened it",
                 "check" => "it closes again on its own when the last error clears, unless you \
@@ -445,6 +450,7 @@ fn reconcile_sidebar_with_problems(window: WindowId) -> bool {
         log::info(
             "problems.sidebar.closed",
             fields! {
+                "window" => name,
                 "impact" => "the last error cleared, so the roster Muster opened to show it \
                              has been put back the way it was found",
             },
