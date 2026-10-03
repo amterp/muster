@@ -455,9 +455,9 @@ fn reconcile_sidebar_with_problems(window: WindowId) -> bool {
     false
 }
 
-/// [`reconcile_sidebar_with_problems`] for every window, after a problem came or went.
+/// [`reconcile_sidebar_with_problems`] for every open window, after a problem came or went.
 fn reconcile_sidebars_with_problems() {
-    let windows = poison::lock(&SESSION, "session").windows.ids();
+    let windows = poison::lock(&SESSION, "session").windows.opened();
     for window in windows {
         reconcile_sidebar_with_problems(window);
     }
@@ -1276,6 +1276,14 @@ pub(crate) struct Window {
     /// window it deliberately opens.
     opened: bool,
 
+    /// Whether somebody closed this window, and it has not been opened again since.
+    ///
+    /// Not the same as `opened` being false, which is also every window between being taken on
+    /// and opening. A closed window holds its tabs in the record only, as a closed window in
+    /// another process does, so nothing here may give it a tab or a region: it would be bound
+    /// sockets and a composition for a window nobody can see.
+    closed: bool,
+
     /// What this launch was asked to go to, if anything: a closed window reopened onto one of its
     /// tabs, because somebody went to it from another window.
     ///
@@ -1306,9 +1314,31 @@ impl Default for Window {
             sent: Sent::default(),
             arrangement: None,
             opened: false,
+            closed: false,
             show: None,
             opened_sidebar: false,
         }
+    }
+}
+
+impl Window {
+    /// What a window is once somebody has closed it: its name and its arrangement, attached to
+    /// the machines it was, and nothing else.
+    ///
+    /// Everything it was showing is dropped rather than kept for a reopen, because a reopen
+    /// restores from the arrangement and the record - the same path a closed window in another
+    /// process comes back by. The machines stay, because restoring a tab onto one needs it.
+    fn closed(&self) -> Window {
+        let mut closed = Window {
+            name: self.name.clone(),
+            arrangement: self.arrangement.clone(),
+            closed: true,
+            ..Window::default()
+        };
+        for daemon in self.composition.daemons().cloned() {
+            closed.composition.attach_daemon(daemon);
+        }
+        closed
     }
 }
 
@@ -1344,6 +1374,11 @@ impl Windows {
 
     fn ids(&self) -> Vec<WindowId> {
         self.0.keys().copied().collect()
+    }
+
+    /// The windows that are open, which are the ones a shell is drawing.
+    fn opened(&self) -> Vec<WindowId> {
+        self.iter().filter(|(_, window)| window.opened).map(|(id, _)| id).collect()
     }
 
     fn iter(&self) -> impl Iterator<Item = (WindowId, &Window)> {
@@ -1641,7 +1676,7 @@ impl Session {
             self.holding.follow(followed);
         }
         let taken = self.holding.take_unheld(daemon, &described);
-        for window in self.windows.values_mut() {
+        for window in self.windows.values_mut().filter(|window| !window.closed) {
             for tab in &described {
                 if self.holding.holds(&window.name, tab) {
                     window.composition.hold(tab.clone());
@@ -1728,7 +1763,7 @@ impl Session {
 
             // Every window's, since a pane is drawn by whichever window holds its tab.
             let mut wanted: Vec<PaneId> = Vec::new();
-            for window in self.windows.values() {
+            for window in self.windows.values().filter(|window| !window.closed) {
                 let showing = window.composition.showing().cloned();
                 wanted.extend(
                     window
@@ -2272,6 +2307,20 @@ impl Session {
         self.holding.elsewhere(&self.windows[window].name, &tab).is_none()
     }
 
+    /// The window to treat as in front once `closing` has closed: the open one that came to the
+    /// front most recently, as the record says. The shell says which is key a moment later; this
+    /// is what a request naming no window means until it does.
+    fn front_after_closing(&self, closing: WindowId) -> WindowId {
+        let focused = |window: &Window| {
+            self.holding.holders().window(&window.name).map_or(0, |held| held.focused)
+        };
+        self.windows
+            .iter()
+            .filter(|(id, window)| *id != closing && window.opened)
+            .max_by_key(|(_, window)| focused(window))
+            .map_or(closing, |(id, _)| id)
+    }
+
     /// The open window here holding a tab, if one does.
     ///
     /// Open meaning it has said so and not since closed: a closed window's tab is asked about by
@@ -2318,7 +2367,7 @@ pub(crate) fn resolve(request: &Request) -> Result<Resolved, String> {
     let named = if request.window.is_empty() {
         None
     } else {
-        Some(session.windows.named(&request.window).ok_or_else(|| {
+        let named = session.windows.named(&request.window).ok_or_else(|| {
             let here: Vec<String> =
                 session.windows.values().map(|window| window.name.to_string()).collect();
             format!(
@@ -2327,7 +2376,17 @@ pub(crate) fn resolve(request: &Request) -> Result<Resolved, String> {
                 request.window,
                 here.join(", ")
             )
-        })?)
+        })?;
+        if session.windows[named].closed
+            && !request.payload.as_ref().is_some_and(asks_a_closed_window)
+        {
+            return Err(format!(
+                "the window {} is closed, so nothing was done in it. Its tabs are still its own: \
+                 `muster window reopen {}` opens it again, and going to one of its tabs does too.",
+                request.window, request.window
+            ));
+        }
+        Some(named)
     };
     let tab_of = |pane: &str| session.locate(&PaneId::new(pane)).map(|(_, tab)| tab);
     let from = named
@@ -2343,6 +2402,18 @@ pub(crate) fn resolve(request: &Request) -> Result<Resolved, String> {
         });
     let to = about.and_then(|tab| session.window_holding(&tab)).unwrap_or(from);
     Ok(Resolved { from, to })
+}
+
+/// Whether a request may name a window somebody has closed: opening it again, closing it once
+/// more, asking about it, and the shell saying it lost the keyboard on the way out.
+fn asks_a_closed_window(payload: &request::Payload) -> bool {
+    matches!(
+        payload,
+        request::Payload::OpenWindow(_)
+            | request::Payload::CloseWindow(_)
+            | request::Payload::ReadWindow(_)
+            | request::Payload::WindowFocus(_)
+    )
 }
 
 /// The pane a window's keyboard feeds, if it has one.
@@ -3399,7 +3470,7 @@ pub(crate) fn move_tab(window: WindowId, tab: Option<TabId>, to: &str) -> Result
         );
         // Every window here acts on its own half at once, since either end may be one of them.
         for held in session.windows.values_mut() {
-            if held.name == to {
+            if held.name == to && !held.closed {
                 held.composition.hold(tab.clone());
             } else {
                 held.composition.let_go(&tab);
@@ -3421,6 +3492,20 @@ fn taken_elsewhere(pane: &PaneId, tab: &TabId, window: &WindowName) -> Refusal {
         "{pane} is in {tab}, which is in another window ({window}), so the keyboard stayed where \
          it was. Showing it here would take its terminals from that window."
     ))
+}
+
+/// Asks the shell for a window on behalf of somebody outside the app: a new one, or a closed one
+/// by name, or the most recently closed when the name is empty.
+pub(crate) fn ask_for_window(name: &str, show: &str, fresh: bool) {
+    log::info(
+        "window.asked_for",
+        fields! { "window" => name, "show" => show, "fresh" => fresh.to_string() },
+    );
+    ffi::emit(&Event::new(event::Payload::ReopenWindow(ReopenWindow {
+        name: name.to_string(),
+        show: show.to_string(),
+        fresh,
+    })));
 }
 
 /// Asks for a closed window to be opened again when going somewhere means going into it.
@@ -3456,6 +3541,7 @@ fn reopened_for(window: WindowId, tab: &TabId, show: &str) -> bool {
     ffi::emit(&Event::new(event::Payload::ReopenWindow(ReopenWindow {
         name: holder.name.to_string(),
         show: show.to_string(),
+        fresh: false,
     })));
     true
 }
@@ -3597,9 +3683,9 @@ pub(crate) fn disarm(window: WindowId) {
     }
 }
 
-/// [`announce_roster`] for every window, after something changed what every roster says.
+/// [`announce_roster`] for every open window, after something changed what every roster says.
 pub(crate) fn announce_rosters() {
-    let windows = poison::lock(&SESSION, "session").windows.ids();
+    let windows = poison::lock(&SESSION, "session").windows.opened();
     for window in windows {
         announce_roster(window);
     }
@@ -4424,6 +4510,8 @@ pub(crate) enum AttachError {
 /// for a tab. That last one is what a fresh machine needs, where Muster has just started a
 /// daemon that has not answered anything yet.
 pub(crate) fn open(window: WindowId) -> Result<(), String> {
+    // First, so the window takes its tabs back as the rest of this restores them.
+    poison::lock(&SESSION, "session").windows[window].closed = false;
     follow_implicitly_if_nothing_else(Implicitly::InBackground)?;
     restore_presentation(window);
     restore_font_sizes(window);
@@ -4441,10 +4529,46 @@ pub(crate) fn open(window: WindowId) -> Result<(), String> {
     }
     settle_what_the_window_shows(window);
     // A window just opened has been sent nothing, whatever an earlier one was.
-    poison::lock(&SESSION, "session").windows[window].sent = Sent::default();
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        let window = &mut session.windows[window];
+        window.sent = Sent::default();
+        log::info(
+            "window.opened",
+            fields! {
+                "window" => window.name.to_string(),
+                "arrangement" => arrangement_path(window).unwrap_or_default(),
+            },
+        );
+    }
     publish("open");
     show_what_was_asked_for(window);
     Ok(())
+}
+
+/// Closes one window, leaving the others and the app running.
+///
+/// It keeps its tabs: the record still names it as their holder, so going to one asks for it back
+/// (`reopened_for`), and the next launch leaves it closed. Saved once more first, so a reopen
+/// comes back to what was on screen when it closed rather than the last arrangement that happened
+/// to differ.
+pub(crate) fn close_window(window: WindowId) {
+    {
+        let mut guard = poison::lock(&SESSION, "session");
+        let session = &mut *guard;
+        if !session.windows[window].opened {
+            return;
+        }
+        save(session, window);
+        let name = session.windows[window].name.clone();
+        session.holding.close(&name);
+        session.windows[window] = session.windows[window].closed();
+        if session.front == window {
+            session.front = session.front_after_closing(window);
+        }
+        log::info("window.closed", fields! { "window" => name.to_string() });
+    }
+    publish("window_closed");
 }
 
 /// Which window an `OpenWindow` means, and whether it is one this process has just taken on.
@@ -5028,7 +5152,19 @@ pub(crate) fn attach(window: WindowId, pane_id: &str) -> Result<Arc<AttachedPane
 
     // What the tabs are is settled by the reconcile above; this is only about which of them
     // this window may show, and about a window somebody asked for that has none.
-    poison::lock(&SESSION, "session").windows[window].opened = true;
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        let opening = &mut session.windows[window];
+        opening.opened = true;
+        opening.closed = false;
+        log::info(
+            "window.opened",
+            fields! {
+                "window" => opening.name.to_string(),
+                "arrangement" => arrangement_path(opening).unwrap_or_default(),
+            },
+        );
+    }
     settle_what_the_window_shows(window);
     // Outside the lock, because emitting reaches the shell and a shell reacting to an event
     // by dispatching a request is ordinary.
@@ -5124,10 +5260,7 @@ fn settle_what_the_window_shows(window: WindowId) {
 /// something any of them may need to act on.
 fn settle_what_every_window_shows() {
     reconcile_every_daemon();
-    let opened: Vec<WindowId> = {
-        let session = poison::lock(&SESSION, "session");
-        session.windows.iter().filter(|(_, window)| window.opened).map(|(id, _)| id).collect()
-    };
+    let opened = poison::lock(&SESSION, "session").windows.opened();
     for window in opened {
         open_a_tab_if_the_window_is_empty(window);
     }
@@ -5306,12 +5439,15 @@ fn publish(cause: &str) {
         for daemon in &daemons {
             session.reconcile(daemon);
         }
+        // Only the windows that have opened: one not yet open has no shell window to draw in,
+        // and a view sent there would be lost while `sent` recorded it as delivered.
         let built: Vec<(WindowId, View, Roster, Numbering)> = {
             let mirrors = session.mirrors();
             session
                 .windows
                 .ids()
                 .into_iter()
+                .filter(|window| session.windows[*window].opened)
                 .map(|window| {
                     let view = session.view_with(window, &mirrors);
                     let roster = session.roster_with(window, &view, &mirrors);
@@ -6072,8 +6208,10 @@ fn speaks_for(pane: &PaneKey) -> bool {
     let Some(tab) = tab_of_pane(&pane.pane) else { return true };
     let (open_here, holders) = {
         let session = poison::lock(&SESSION, "session");
-        let held_here =
-            session.windows.values().any(|window| session.holding.holds(&window.name, &tab));
+        let held_here = session
+            .windows
+            .values()
+            .any(|window| window.opened && session.holding.holds(&window.name, &tab));
         if held_here || !session.holding.is_shared() {
             return true;
         }
@@ -6319,10 +6457,16 @@ fn no_pane_to_size() -> String {
 pub(crate) fn quitting(close_sessions: bool) {
     {
         let mut session = poison::lock(&SESSION, "session");
-        let names: Vec<WindowName> =
-            session.windows.values().map(|window| window.name.clone()).collect();
-        for name in &names {
-            session.holding.close(name);
+        // Quitting is not closing: every window stays open in the record, which is what the next
+        // launch reopens (mip/0006-one-process.md, section 4). Ending the sessions is the
+        // exception, because the tabs go with them, and a window brought back onto tabs that are
+        // gone is an empty window asking for a fresh one.
+        if close_sessions {
+            let names: Vec<WindowName> =
+                session.windows.values().map(|window| window.name.clone()).collect();
+            for name in &names {
+                session.holding.close(name);
+            }
         }
         session.quitting = true;
     }

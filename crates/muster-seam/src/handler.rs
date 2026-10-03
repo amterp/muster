@@ -153,6 +153,8 @@ fn about_the_whole_app(payload: &request::Payload) -> bool {
             | request::Payload::Quitting(_)
             | request::Payload::BridgeExited(_)
             | request::Payload::BridgeStarted(_)
+            | request::Payload::ReadReopening(_)
+            | request::Payload::AskForWindow(_)
     )
 }
 
@@ -169,6 +171,16 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::LogRecord(record) => write(record),
         request::Payload::AttachPane(attach) => attach_pane(window, &attach.pane_id),
         request::Payload::OpenWindow(open) => open_window(window, &open),
+        request::Payload::CloseWindow(_) => {
+            session::close_window(window);
+            Response::ok()
+        }
+        request::Payload::ReadReopening(read) => Response {
+            payload: Some(response::Payload::Reopening(proto::Reopening {
+                arrangements: crate::holding::reopening(&read.tab_holders_path),
+            })),
+        },
+        request::Payload::AskForWindow(ask) => ask_for_window(&ask),
         request::Payload::CreateTab(create) => create_tab(window, &create),
         request::Payload::BridgeExited(exited) => bridge_exited(&exited),
         request::Payload::BridgeStarted(started) => bridge_started(&started),
@@ -1669,17 +1681,14 @@ fn unanswered(detail: &str) -> Response {
 
 /// Opens the window onto whatever the daemons hold, which is what a bare `muster` asks for.
 fn open_window(window: WindowId, open: &proto::OpenWindow) -> Response {
-    let (opening, added) = match session::window_to_open(window, &open.state_path, &open.show) {
-        // The first window opened twice answers as it always did. One named by its arrangement
-        // answers with its name, whether this opened it or something before did.
-        session::Opening::AlreadyOpen(_) if open.state_path.is_empty() => return Response::ok(),
+    // Answered with the window's name however it came to be open, because that name is how the
+    // shell tells this window's events from another's.
+    let opening = match session::window_to_open(window, &open.state_path, &open.show) {
         session::Opening::AlreadyOpen(open) => return opened(open),
-        session::Opening::Unopened(opening) => (opening, false),
-        session::Opening::Added(opening) => (opening, true),
+        session::Opening::Unopened(opening) | session::Opening::Added(opening) => opening,
     };
     match session::open(opening) {
-        Ok(()) if added => opened(opening),
-        Ok(()) => Response::ok(),
+        Ok(()) => opened(opening),
         Err(detail) => Response::failure(format!(
             "{detail} This window has no session behind it, so it renders nothing and \
              ignores the keyboard."
@@ -1687,13 +1696,33 @@ fn open_window(window: WindowId, open: &proto::OpenWindow) -> Response {
     }
 }
 
-/// The answer naming a window an `OpenWindow` opened beside the others.
+/// The answer naming the window an `OpenWindow` opened.
 fn opened(window: WindowId) -> Response {
     Response {
         payload: Some(response::Payload::Opened(proto::Opened {
             window: session::window_name(window),
         })),
     }
+}
+
+/// Asks the shell for a window, for somebody outside the app: `muster window new` and `reopen`.
+///
+/// The shell makes windows, so this only asks; the caller watches `ReadWindow` for the window to
+/// appear. Another install's app is refused, because its windows follow another daemon and a tab
+/// from this install's could never be shown in one.
+fn ask_for_window(ask: &proto::AskForWindow) -> Response {
+    if ask.install != muster_daemon_proto::install::INSTALL {
+        return Response::failure(format!(
+            "this Muster is the install {}, and the request came from the install {}, so no \
+             window was opened: a window of this app follows this install's daemon, and could \
+             show none of the other one's tabs. Run the `muster` that belongs to the app you \
+             mean, or let it start its own.",
+            muster_daemon_proto::install::INSTALL,
+            if ask.install.is_empty() { "(unnamed)" } else { &ask.install }
+        ));
+    }
+    session::ask_for_window(&ask.name, &ask.show, ask.fresh);
+    Response::ok()
 }
 
 /// Every action and the chord asking for it, for a shell to build a menu from.
@@ -2092,6 +2121,7 @@ fn attach_pane(window: WindowId, pane_id: &str) -> Response {
         Ok(pane) => Response {
             payload: Some(response::Payload::Attached(proto::Attached {
                 link_socket_path: pane.link_path().to_string(),
+                window: session::window_name(window),
             })),
         },
         Err(AttachError::Unreachable(detail)) => Response::failure(format!(

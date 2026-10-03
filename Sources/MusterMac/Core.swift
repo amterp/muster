@@ -227,7 +227,7 @@ public enum Core {
   public static func open() -> Bool {
     var request = Muster_Request()
     request.openWindow = Muster_OpenWindow()
-    guard case .ok = send(request) else { return false }
+    guard case .opened = send(request) else { return false }
     return true
   }
 
@@ -1172,6 +1172,9 @@ public enum Core {
     case .focusPane: return "focus_pane"
     case .focusAsking: return "focus_asking"
     case .readAsking: return "read_asking"
+    case .closeWindow: return "close_window"
+    case .readReopening: return "read_reopening"
+    case .askForWindow: return "ask_for_window"
     case .focusHistory: return "focus_history"
     case .openTranscript: return "open_transcript"
     case .focusRelative: return "focus_relative"

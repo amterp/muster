@@ -21,6 +21,7 @@ use muster_core::fields;
 use muster_core::intent::Refusal;
 use muster_core::mirror::backend::TabId;
 use muster_core::shared::SharedRecord;
+use muster_daemon_proto::install;
 
 use crate::shared_file::{HOLDERS, SharedFile};
 
@@ -180,6 +181,9 @@ impl Holding {
             here.open = true;
             here.closed = false;
         }
+        // It is open, so a request to reopen it has been answered: the next one, after it closes
+        // again, is a new request rather than the same one repeated.
+        self.reopening.remove(me);
     }
 
     /// A window's row in the record.
@@ -189,6 +193,7 @@ impl Holding {
             arrangement: self.here.get(me).map(|here| here.arrangement.clone()).unwrap_or_default(),
             socket: self.socket.clone(),
             pid: std::process::id(),
+            install: install::INSTALL.to_string(),
             focused,
             daemons: self.daemons.clone(),
         }
@@ -292,6 +297,18 @@ impl Holding {
         }
         if let Ok(pid) = said.parse::<u32>() {
             if pid == std::process::id() {
+                // This process's pid names one window only while it has one open. With several,
+                // which of them is a guess, and a tab moved on a guess lands where nobody asked.
+                let here = self.said_open();
+                if here.len() > 1 {
+                    let names: Vec<String> = here.iter().map(ToString::to_string).collect();
+                    return Err(Refusal::Declined(format!(
+                        "pid {pid} is a Muster with {} windows open, so it does not say which one, \
+                         and nothing was moved. Name the window instead: {}.",
+                        here.len(),
+                        names.join(", ")
+                    )));
+                }
                 return Ok(me.clone());
             }
             let open_here = self.open_here();
@@ -525,6 +542,35 @@ fn rejoin(holders: &mut Holders, remembered: &Holders, window: HeldWindow) {
 /// A connect and nothing else. The window at the other end reads no request and logs that at
 /// debug, which is the cost of asking; a socket file left behind by a window that crashed
 /// refuses, which is the answer.
+/// The arrangements of this install's windows that were open when Muster last ended, for the
+/// launch to open again, focused longest ago first.
+///
+/// Read before any session exists, which is why it takes the record's path rather than a
+/// `Holding`: the answer decides what the launch tells the core about its first window. A record
+/// that cannot be read is nothing to reopen, and the launch opens one window as it always did.
+pub(crate) fn reopening(record: &str) -> Vec<String> {
+    if record.is_empty() {
+        return Vec::new();
+    }
+    let mut read = None;
+    SharedFile::at(record, &HOLDERS).exclusively(&mut |text| {
+        read = Some(text.to_string());
+        None
+    });
+    let holders = match from_toml(&read.unwrap_or_default()) {
+        Ok(holders) => holders,
+        Err(detail) => {
+            unreadable(&detail);
+            return Vec::new();
+        }
+    };
+    holders.open_when_last_ended(
+        install::INSTALL,
+        |window| is_open(&BTreeSet::new(), window),
+        |arrangement| Path::new(arrangement).exists(),
+    )
+}
+
 pub(crate) fn is_open(open_here: &BTreeSet<WindowName>, window: &HeldWindow) -> bool {
     open_here.contains(&window.name)
         || (!window.socket.is_empty() && UnixStream::connect(&window.socket).is_ok())

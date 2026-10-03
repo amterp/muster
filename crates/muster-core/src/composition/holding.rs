@@ -13,7 +13,10 @@
 //!
 //! A window here is its arrangement record rather than its process (MIP-2): `window-2` holds
 //! its tabs across a quit, which is what lets `muster window reopen` come back onto them and
-//! stops two windows reopening onto one tab. The pid and socket are only while it is open.
+//! stops two windows reopening onto one tab. The pid and socket are written when it opens and
+//! cleared when somebody closes it, and a quit or a crash leaves them: a row whose socket no
+//! longer answers is a window that was open when Muster last ended, which the next launch opens
+//! again (mip/0006-one-process.md, section 4).
 //!
 //! Pure: no clock, no socket, no file. Whether a window is open is asked of the caller, which
 //! dials its socket, and so is the time.
@@ -35,11 +38,16 @@ pub struct HeldWindow {
     /// Where its arrangement is written. Empty for a window told to remember nothing, which
     /// cannot be reopened and so holds its tabs only while it is open.
     pub arrangement: String,
-    /// The command socket it answers on. Empty once it has closed.
+    /// The command socket it answers on. Empty once somebody has closed it.
     pub socket: String,
-    /// Its process, while it is open, and zero once it has closed. What `muster window` prints
-    /// and what `muster tab move --window` accepts, so a person can copy one into the other.
+    /// Its process, while it is open, and zero once somebody has closed it. What `muster window`
+    /// prints and what `muster tab move --window` accepts, so a person can copy one into the
+    /// other.
     pub pid: u32,
+    /// Which install of Muster wrote the row (`muster_daemon_proto::install`). A development
+    /// build and the release share this record but not a daemon, so a launch reopens only its
+    /// own install's windows. Empty for a row written before rows said.
+    pub install: String,
     /// When it last came to the front, in milliseconds since the epoch. Decides which window a
     /// tab nobody holds joins.
     pub focused: i64,
@@ -98,6 +106,7 @@ impl Holders {
             arrangement: String::new(),
             socket: String::new(),
             pid: 0,
+            install: String::new(),
             focused: 0,
             daemons: BTreeSet::new(),
         });
@@ -112,7 +121,7 @@ impl Holders {
         self.windows.insert(window.name.clone(), window);
     }
 
-    /// Says a window has closed. It keeps its tabs.
+    /// Says somebody closed a window. It keeps its tabs, and the next launch leaves it closed.
     pub fn closed(&mut self, name: &WindowName) {
         if let Some(window) = self.windows.get_mut(name) {
             window.socket.clear();
@@ -125,6 +134,33 @@ impl Holders {
         if let Some(window) = self.windows.get_mut(name) {
             window.daemons = daemons;
         }
+    }
+
+    /// The arrangements of `install`'s windows that were open when Muster last ended, focused
+    /// longest ago first.
+    ///
+    /// Open when it ended means a row with a pid, which a close would have cleared, whose process
+    /// is gone: `answers` dials its socket, and a window that still answers is open in a process
+    /// that is still running. Its arrangement has to still be there to be reopened (`exists`).
+    pub fn open_when_last_ended(
+        &self,
+        install: &str,
+        answers: impl Fn(&HeldWindow) -> bool,
+        exists: impl Fn(&str) -> bool,
+    ) -> Vec<String> {
+        let mut ended: Vec<&HeldWindow> = self
+            .windows
+            .values()
+            .filter(|window| {
+                window.install == install
+                    && window.pid != 0
+                    && !window.arrangement.is_empty()
+                    && exists(&window.arrangement)
+                    && !answers(window)
+            })
+            .collect();
+        ended.sort_by_key(|window| (window.focused, window.name.clone()));
+        ended.into_iter().map(|window| window.arrangement.clone()).collect()
     }
 
     pub fn focused(&mut self, name: &WindowName, at: i64) {
@@ -218,6 +254,7 @@ pub fn to_toml(holders: &Holders) -> String {
                 .insert("arrangement".to_string(), toml::Value::String(window.arrangement.clone()));
             table.insert("socket".to_string(), toml::Value::String(window.socket.clone()));
             table.insert("pid".to_string(), toml::Value::Integer(i64::from(window.pid)));
+            table.insert("install".to_string(), toml::Value::String(window.install.clone()));
             table.insert("focused".to_string(), toml::Value::Integer(window.focused));
             table.insert(
                 "daemons".to_string(),
@@ -297,6 +334,7 @@ pub fn from_toml(text: &str) -> Result<Holders, String> {
                     .and_then(toml::Value::as_integer)
                     .and_then(|pid| u32::try_from(pid).ok())
                     .unwrap_or(0),
+                install: text_at(table, "install").unwrap_or_default(),
                 focused: table.get("focused").and_then(toml::Value::as_integer).unwrap_or(0),
                 daemons: table
                     .get("daemons")

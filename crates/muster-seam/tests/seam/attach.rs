@@ -20,9 +20,9 @@ use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use muster::proto::{
-    AttachPane, ClosePane, CreateTab, Event, FocusPane, OpenWindow, Paste, Request, Response,
-    RosterChanged, SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, ZoomPane, event,
-    request, response, view_node,
+    AttachPane, ClosePane, CreateTab, Event, FocusPane, OpenWindow, Paste, ReadWindow, Request,
+    Response, RosterChanged, SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, ZoomPane,
+    event, request, response, view_node,
 };
 use muster_daemon_proto::{AgentState, Side};
 use muster_harness::requests::{
@@ -82,12 +82,13 @@ fn a_window_onto(before: impl FnOnce(&Daemon)) -> Open {
         ..Startup::default()
     })));
     // Attaching finds a pane in what the window has heard from its daemons, so every test starts
-    // once the window has heard of both.
+    // once the window has heard of both. Asked rather than waited for in a roster, because a
+    // window sends none until it has opened, and attaching is what opens it here.
     for pane in [FIRST, SECOND] {
         until(
-            &format!("the core to list {pane}"),
-            || listed(pane).is_some(),
-            || format!("the core listed {:?}", listed_panes()),
+            &format!("the core to know of {pane}"),
+            || known_panes().iter().any(|known| known == pane),
+            || format!("the core knows of {:?}", known_panes()),
         );
     }
 
@@ -694,6 +695,16 @@ fn hidden_pane() -> Option<String> {
 }
 
 /// Every listed pane, as Muster's name for it and whether a region is showing it.
+/// Every pane the core has heard of, on screen or not, asked of it rather than read off a roster.
+fn known_panes() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
+        Some(response::Payload::Window(window)) => {
+            window.panes.into_iter().map(|pane| pane.pane_id).collect()
+        }
+        other => panic!("asking the core what it holds answered {other:?}"),
+    }
+}
+
 fn listed_panes() -> Vec<(String, bool)> {
     ROSTER
         .lock()

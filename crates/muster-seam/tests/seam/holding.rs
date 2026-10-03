@@ -219,9 +219,11 @@ fn a_tab_another_window_takes_leaves_this_one() {
     );
 }
 
-/// A window somebody closed keeps its tabs, and a window opened beside it does not take them.
+/// A window that has gone keeps its tabs, and a window opened beside it does not take them. Gone by
+/// quitting here, which leaves its row naming a process that is not there - the state a window in
+/// another process is in once it has ended, and one somebody closed is in too.
 #[test]
-fn a_closed_window_keeps_its_tabs() {
+fn a_window_that_has_gone_keeps_its_tabs() {
     let turn = muster::testing::fresh_session();
     let daemon = Daemon::start_built();
     open_a_window(&daemon, "window-1");
@@ -418,6 +420,7 @@ fn a_tab_on_a_daemon_still_attaching_stays_this_windows() {
         arrangement: daemon.root().join("window-1.toml").to_string_lossy().into_owned(),
         socket: String::new(),
         pid: 1,
+        install: String::new(),
         focused: 0,
         daemons: std::iter::once(DaemonId::new("local")).collect(),
     });
@@ -467,6 +470,7 @@ fn another_window(daemon: &Daemon, name: &str, focused: i64) -> UnixListener {
         arrangement: arrangement.to_string_lossy().into_owned(),
         socket: socket.to_string_lossy().into_owned(),
         pid: 1,
+        install: String::new(),
         focused,
         daemons: std::iter::once(DaemonId::new("local")).collect(),
     });
@@ -640,7 +644,9 @@ fn answer(payload: request::Payload) -> Response {
 
 fn assert_ok(response: &Response) {
     match &response.payload {
-        Some(response::Payload::Ok(_) | response::Payload::Made(_)) => {}
+        Some(
+            response::Payload::Ok(_) | response::Payload::Made(_) | response::Payload::Opened(_),
+        ) => {}
         other => panic!("expected the core to accept this, and it answered {other:?}"),
     }
 }

@@ -427,7 +427,7 @@ fn answer(payload: request::Payload) -> Response {
 
 fn assert_ok(response: &Response) {
     match &response.payload {
-        Some(response::Payload::Ok(_)) => {}
+        Some(response::Payload::Ok(_) | response::Payload::Opened(_)) => {}
         other => panic!("expected the core to accept this, and it answered {other:?}"),
     }
 }

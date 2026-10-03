@@ -557,6 +557,7 @@ impl Stand {
             arrangement: arrangement.to_string_lossy().into_owned(),
             socket: socket.to_string_lossy().into_owned(),
             pid: 1,
+            install: String::new(),
             focused: 0,
             daemons: std::iter::once(DaemonId::new("local")).collect(),
         });
@@ -707,7 +708,9 @@ fn answer(payload: request::Payload) -> Response {
 
 fn assert_ok(response: &Response) {
     match &response.payload {
-        Some(response::Payload::Ok(_) | response::Payload::Made(_)) => {}
+        Some(
+            response::Payload::Ok(_) | response::Payload::Made(_) | response::Payload::Opened(_),
+        ) => {}
         other => panic!("expected the core to accept this, and it answered {other:?}"),
     }
 }

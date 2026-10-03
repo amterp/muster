@@ -112,6 +112,7 @@ fn a_tab_on_a_daemon_still_starting_stays_this_windows() {
         arrangement: arrangement.to_string_lossy().into_owned(),
         socket: String::new(),
         pid: 1,
+        install: String::new(),
         focused: 0,
         daemons: std::iter::once(DaemonId::new("local")).collect(),
     });

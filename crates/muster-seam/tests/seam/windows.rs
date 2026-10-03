@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use muster::proto::{
-    ClosePane, CreateTab, Event, FocusAsking, FocusHistory, FocusPane, MoveTab, OpenWindow,
-    Quitting, ReadWindow, Request, Response, SplitPane, Startup, ToggleSidebar, WindowFocus, event,
-    request, response,
+    AskForWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking, FocusHistory, FocusPane,
+    FocusTab, MoveTab, OpenWindow, Quitting, ReadReopening, ReadTabHolders, ReadWindow, Request,
+    Response, SplitPane, Startup, ToggleSidebar, WindowFocus, event, request, response,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::AgentState;
@@ -445,9 +445,10 @@ fn back_steps_over_a_pane_moved_to_the_other_window() {
     assert_eq!(keyboard_in("window-2"), theirs, "going back moved the other window's keyboard");
 }
 
-/// Quitting the process closes every window in it, each keeping its tabs for when it reopens.
+/// Quitting is not closing: every window here stays open in the record, keeping its tabs, and the
+/// next launch is told to open them all.
 #[test]
-fn quitting_closes_every_window_here() {
+fn quitting_leaves_every_window_here_for_the_next_launch() {
     let _turn = muster::testing::fresh_session();
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     let daemon = Daemon::start_built();
@@ -462,26 +463,185 @@ fn quitting_closes_every_window_here() {
             .windows()
             .find(|window| window.name.as_str() == name)
             .unwrap_or_else(|| panic!("the record lost {name} on the way out"));
-        assert_eq!(row.pid, 0, "{name} is still recorded as open after quitting: {row:?}");
+        assert_ne!(row.pid, 0, "quitting closed {name}, so the next launch would not open it");
     }
     let kept = holders(&daemon);
+    assert_eq!(kept.get(&first).map(String::as_str), Some("window-1"), "{kept:?}");
+    assert_eq!(kept.get(&second).map(String::as_str), Some("window-2"), "{kept:?}");
+    // Both, in whatever order: two focuses a moment apart can share a millisecond here, and which
+    // order a launch opens them in is the record's to say (`corpus/conformance/tab-holding.json`).
+    let mut reopened = reopening(&daemon);
+    reopened.sort();
     assert_eq!(
-        kept.get(&first).map(String::as_str),
-        Some("window-1"),
-        "window-1 lost its tab: {kept:?}"
+        reopened,
+        vec![arrangement_text(&daemon, "window-1"), arrangement_text(&daemon, "window-2")],
+        "the next launch is not told to open both windows"
     );
+}
+
+/// Ending the sessions on the way out ends every tab, so it closes the windows too: bringing them
+/// back would be windows onto tabs that are gone.
+#[test]
+fn quitting_and_ending_the_sessions_closes_every_window() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+
+    assert_ok(&answer(&Request::new(request::Payload::Quitting(Quitting {
+        close_sessions: true,
+    }))));
+
+    assert!(reopening(&daemon).is_empty(), "the next launch would reopen windows onto ended tabs");
+}
+
+/// Closing one window leaves the other open and the closed one holding its tabs, which the open
+/// one does not take.
+#[test]
+fn closing_one_window_leaves_the_other_and_keeps_its_tabs() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, second) = two_windows(&daemon);
+
+    assert_ok(&answer(&in_window("window-2", request::Payload::CloseWindow(CloseWindow {}))));
+
+    let kept = holders(&daemon);
+    assert_eq!(kept.get(&second).map(String::as_str), Some("window-2"), "{kept:?}");
+    assert_eq!(listed("window-1"), vec![first], "the open window took the closed one's tab");
+    // Only the closed window is asked about: this test listens on no socket, so the window still
+    // open here cannot be told from one that ended.
+    assert!(
+        !reopening(&daemon).contains(&arrangement_text(&daemon, "window-2")),
+        "a window somebody closed would be reopened by the next launch"
+    );
+    match answer(&in_window("window-2", request::Payload::ToggleSidebar(ToggleSidebar {}))).payload
+    {
+        Some(response::Payload::Failure(failure)) => assert!(
+            failure.reason.contains("muster window reopen window-2"),
+            "the refusal does not say how to open the window again: {}",
+            failure.reason
+        ),
+        other => panic!("a request for a closed window was carried out: {other:?}"),
+    }
+}
+
+/// A closed window is sent nothing: reading the record again neither gives it its tabs back nor
+/// draws them anywhere.
+#[test]
+fn a_closed_window_is_sent_nothing() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    assert_ok(&answer(&in_window("window-2", request::Payload::CloseWindow(CloseWindow {}))));
+    let sent = sent_to("window-2");
+
+    assert_ok(&answer(&Request::new(request::Payload::ReadTabHolders(ReadTabHolders {}))));
+    make(&mut daemon.connect(), create("p-outside", in_new_tab("t-outside")));
+    until(
+        "the open window to take the tab nobody asked for",
+        || listed("window-1").contains(&"t-outside".to_string()),
+        || format!("window-1 lists {:?}", listed("window-1")),
+    );
+
+    assert_eq!(sent_to("window-2"), sent, "a closed window was sent a view or a roster");
+}
+
+/// The window in front closing leaves a request that names no window to the window still open.
+#[test]
+fn the_window_in_front_closing_leaves_the_other_in_front() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    focus_window("window-1");
+    focus_window("window-2");
+
+    assert_ok(&answer(&in_window("window-2", request::Payload::CloseWindow(CloseWindow {}))));
+
+    match answer(&Request::new(request::Payload::ReadWindow(ReadWindow::default()))).payload {
+        Some(response::Payload::Window(window)) => assert_eq!(window.name, "window-1"),
+        other => panic!("reading the window answered {other:?}"),
+    }
+}
+
+/// Going to a closed window's tab asks for that window back, and opening its arrangement again
+/// brings it back onto that tab.
+#[test]
+fn a_closed_window_comes_back_onto_its_tabs() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (_, second) = two_windows(&daemon);
+    assert_ok(&answer(&in_window("window-2", request::Payload::CloseWindow(CloseWindow {}))));
+
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::FocusTab(FocusTab { tab_id: second.clone(), ..FocusTab::default() }),
+    )));
     assert_eq!(
-        kept.get(&second).map(String::as_str),
-        Some("window-2"),
-        "window-2 lost its tab: {kept:?}"
+        asked_for(),
+        vec![("window-2".to_string(), second.clone(), false)],
+        "going to the closed window's tab did not ask for that window back"
     );
+
+    let opened = answer(&Request::new(request::Payload::OpenWindow(OpenWindow {
+        state_path: arrangement_text(&daemon, "window-2"),
+        show: second.clone(),
+    })));
+    match opened.payload {
+        Some(response::Payload::Opened(opened)) => assert_eq!(opened.window, "window-2"),
+        other => panic!("opening the closed window again answered {other:?}"),
+    }
+    until(
+        "the window to come back onto its tab",
+        || showing_in("window-2").as_deref() == Some(second.as_str()),
+        || {
+            format!(
+                "window-2 shows {:?} and lists {:?}",
+                showing_in("window-2"),
+                listed("window-2")
+            )
+        },
+    );
+}
+
+/// Somebody outside the app asking for a window is passed to the shell, which makes windows - and
+/// refused when it comes from another install, whose windows follow another daemon.
+#[test]
+fn asking_for_a_window_asks_the_shell() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+
+    assert_ok(&answer(&Request::new(request::Payload::AskForWindow(AskForWindow {
+        install: muster_daemon_proto::install::INSTALL.to_string(),
+        fresh: true,
+        ..AskForWindow::default()
+    }))));
+    assert_eq!(asked_for(), vec![(String::new(), String::new(), true)]);
+
+    let refused = answer(&Request::new(request::Payload::AskForWindow(AskForWindow {
+        install: "someone-else".to_string(),
+        fresh: true,
+        ..AskForWindow::default()
+    })));
+    assert!(
+        matches!(refused.payload, Some(response::Payload::Failure(_))),
+        "another install's request for a window was passed on: {refused:?}"
+    );
+    assert_eq!(asked_for().len(), 1, "another install's request reached the shell");
 }
 
 /// The first window open onto the daemon's one tab, and a second opened beside it onto a tab it
 /// asked for. Answers the two tabs, first window's first.
 fn two_windows(daemon: &Daemon) -> (String, String) {
     start(daemon, "window-1");
-    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow::default()))));
+    match answer(&Request::new(request::Payload::OpenWindow(OpenWindow::default()))).payload {
+        Some(response::Payload::Opened(opened)) => assert_eq!(opened.window, "window-1"),
+        other => panic!("opening the first window answered {other:?}"),
+    }
     until(
         "the first window to open onto a tab",
         || showing_in("window-1").is_some(),
@@ -690,6 +850,50 @@ fn split_in(window: &str) -> String {
     made
 }
 
+/// What the next launch would be told to reopen, asked as a launch asks.
+fn reopening(daemon: &Daemon) -> Vec<String> {
+    let asked = Request::new(request::Payload::ReadReopening(ReadReopening {
+        tab_holders_path: record(daemon).to_string_lossy().into_owned(),
+    }));
+    match answer(&asked).payload {
+        Some(response::Payload::Reopening(reopening)) => reopening.arrangements,
+        other => panic!("asking what to reopen answered {other:?}"),
+    }
+}
+
+fn arrangement_text(daemon: &Daemon, window: &str) -> String {
+    arrangement(daemon, window).to_string_lossy().into_owned()
+}
+
+/// How many views and rosters a window has been sent.
+fn sent_to(window: &str) -> usize {
+    let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    events
+        .iter()
+        .filter(|event| event.window == window)
+        .filter(|event| {
+            matches!(
+                event.payload,
+                Some(event::Payload::ViewChanged(_) | event::Payload::RosterChanged(_))
+            )
+        })
+        .count()
+}
+
+/// Every window the shell has been asked to open: its name, what to show, and whether fresh.
+fn asked_for() -> Vec<(String, String, bool)> {
+    let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    events
+        .iter()
+        .filter_map(|event| match &event.payload {
+            Some(event::Payload::ReopenWindow(reopen)) => {
+                Some((reopen.name.clone(), reopen.show.clone(), reopen.fresh))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 fn in_window(window: &str, payload: request::Payload) -> Request {
     Request::new(payload).for_window(window)
 }
@@ -701,7 +905,9 @@ fn answer(request: &Request) -> Response {
 
 fn assert_ok(response: &Response) {
     match &response.payload {
-        Some(response::Payload::Ok(_) | response::Payload::Made(_)) => {}
+        Some(
+            response::Payload::Ok(_) | response::Payload::Made(_) | response::Payload::Opened(_),
+        ) => {}
         other => panic!("expected the core to accept this, and it answered {other:?}"),
     }
 }

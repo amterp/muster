@@ -81,6 +81,9 @@ message Request {
     SetSidebarWidth set_sidebar_width = 59;
     FocusHistory focus_history = 60;
     ReadAsking read_asking = 61;
+    CloseWindow close_window = 62;
+    ReadReopening read_reopening = 63;
+    AskForWindow ask_for_window = 64;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -127,8 +130,10 @@ message Carried {
 // window's bridges are killed - so the shell says, synchronously, and the core answers when
 // it has finished.
 //
-// What it does is tell the other windows this one has closed, so it keeps its tabs for a
-// reopen, and end the sessions when asked to. It used to put each pane's grid back as well,
+// What it does is stop replacing bridges, and end the sessions when asked to. It no longer
+// closes the windows: quitting is not closing, and every window open now is open in the record
+// for the next launch to bring back (mip/0006-one-process.md, section 4). Ending the sessions
+// does close them, since their tabs end too. It used to put each pane's grid back as well,
 // because herdr held a pane's terminal at whatever size the last controlling client set
 // (`observations/herdr-0.8.0.md` section 4); that went with herdr.
 //
@@ -613,13 +618,13 @@ message BridgeStarted {
 // schema an empty pane means "the one this window's keyboard is on", and at open there is no
 // keyboard yet - so the same spelling would mean two different things one message apart.
 //
-// Nothing comes back but Ok. What the window ends up showing arrives as a ViewChanged, like
-// every other answer about what is on screen, and a first tab lands there a moment later when
-// the daemon has made it.
+// Answered with the window's name (Opened). What the window ends up showing arrives as a
+// ViewChanged, like every other answer about what is on screen, and a first tab lands there a
+// moment later when the daemon has made it.
 //
 // The first window is the one Startup described, and opening it needs nothing more. Another
 // window in the same process names its own arrangement and what to show, the two things Startup
-// says about the first, and is answered with its name (Opened).
+// says about the first. A window here that closed is opened again by naming its arrangement.
 message OpenWindow {
   // Where this window's arrangement is written, as Startup's `state_path` is for the first. A
   // window here already writing there is the one opened, and a window is taken on only for an
@@ -629,6 +634,45 @@ message OpenWindow {
 
   // A pane or a tab to go to once the window is open, as Startup's `show`.
   string show = 2;
+}
+
+// Closes one window, and leaves the others and the app running (mip/0006-one-process.md,
+// section 4).
+//
+// A closed window keeps its tabs, and their agents keep running: the record of which window holds
+// each tab still names it, so going to one of them asks for it back (ReopenWindow), and the next
+// launch leaves it closed. Quitting is not this - a quit leaves every window open for the next
+// launch to bring back.
+message CloseWindow {}
+
+// Which windows the next launch should open: the arrangements of this install's windows that were
+// open when Muster last quit or was killed.
+//
+// Asked before Startup, because it decides what Startup is told: the first of them becomes the
+// first window, and the rest are opened beside it. Needs no session, only the record.
+message ReadReopening {
+  // The record of which window holds each tab, as Startup's `tab_holders_path`.
+  string tab_holders_path = 1;
+}
+
+// Asks the running app for a window, from outside it: what `muster window new` and `muster window
+// reopen` send. The app is asked rather than another one started, because every window of an
+// install belongs to one process (mip/0006-one-process.md).
+//
+// Answered Ok once the shell has been asked (ReopenWindow), not once the window is open - the
+// window is the shell's to make. A caller that needs to know when watches `ReadWindow`.
+message AskForWindow {
+  // The install the caller belongs to (`muster_daemon_proto::install::INSTALL`). Another install's
+  // app is refused rather than asked: its windows follow another daemon.
+  string install = 1;
+
+  // A window of its own, onto tabs of its own. False means a closed window: `name`, or the most
+  // recently closed when it is empty.
+  bool fresh = 2;
+  string name = 3;
+
+  // What to show once it is open, as OpenWindow's.
+  string show = 4;
 }
 
 // Moves the line between two regions of the window.
@@ -1228,19 +1272,23 @@ message Response {
     Asking asking = 18;
     Went went = 19;
     Opened opened = 20;
+    Reopening reopening = 21;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.
   reserved 6, 11;
 }
 
-// The window an OpenWindow opened beside the ones already open, by the name every event for it
-// carries and every request for it gives (Request.window).
-//
-// Opening the window Startup described still answers Ok, which is all a shell holding one window
-// has ever been told.
+// The window an OpenWindow opened, by the name every event for it carries and every request for
+// it gives (Request.window).
 message Opened {
   string window = 1;
+}
+
+// The arrangements to open at launch, the window focused longest ago first - so the one focused
+// last opens last, and is in front.
+message Reopening {
+  repeated string arrangements = 1;
 }
 
 // The pane a request made.
@@ -1717,6 +1765,9 @@ message Attached {
   // Was the daemon's own id for the pane, which is now the name Muster gave it.
   reserved 2;
   reserved "backend_pane_id";
+
+  // The window the pane was attached in, by name, as Opened says it.
+  string window = 3;
 }
 
 // A keystroke, with the fidelity a terminal encoder needs and nothing else.
@@ -1916,17 +1967,22 @@ message ClipboardWrite {
   string text = 3;
 }
 
-// Open a closed window again, onto one of its tabs.
+// Open a window: a closed one again, onto one of its tabs, or a new one.
 //
 // A closed window keeps its tabs and its agents keep running (kan a_2Mhi0EZlv), so going to one
 // of them - a notification about a blocked agent there, or `muster tab focus` naming its tab - is
-// going to that window. Opening one is starting an app, which is the shell's to do.
+// going to that window. Opening one is making an NSWindow, which is the shell's to do. Also sent
+// when somebody outside the app asks for a window (AskForWindow).
 message ReopenWindow {
   // The window, by name: `window-2`. Its arrangement is the record the shell reopens it from.
+  // Empty means the most recently closed window, unless `fresh`.
   string name = 1;
 
   // What to show once it is open: a pane's name, or a tab's. Muster's names say which is which.
   string show = 2;
+
+  // A new window onto tabs of its own, rather than a closed one.
+  bool fresh = 3;
 }
 
 // Bring a window to the front.
