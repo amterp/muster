@@ -96,6 +96,51 @@ struct WindowsTests {
     #expect(only.applied.isEmpty, "another window's view was drawn in this one")
   }
 
+  /// Going to an agent in another window - a notification's click, `muster tab focus` - brings
+  /// that window forward and leaves the one in front where it is.
+  @Test("a raise reaches the window it names and no other")
+  func aRaiseReachesItsWindow() {
+    Windows.forgetAll()
+    defer { Windows.forgetAll() }
+    // The raise activates the app as well, which needs one.
+    _ = NSApplication.shared
+    let first = StandIn("window-1")
+    let second = StandIn("window-2")
+    Windows.register(first)
+    Windows.register(second)
+
+    var raise = Muster_Event()
+    raise.raiseWindow = Muster_RaiseWindow()
+    raise.window = "window-2"
+    Core.deliver(raise)
+
+    #expect(first.applied.isEmpty, "the window in front was raised instead")
+    #expect(second.applied == ["raise"])
+  }
+
+  /// A second launch and the Dock's reopen ask for any window, which the app answers by bringing
+  /// one forward rather than opening one; what reaches the app says so.
+  @Test("a request for any window says so to the app")
+  func anyWindowReachesTheApp() {
+    let before = Core.openWindowAsked
+    defer { Core.openWindowAsked = before }
+    var asked: [Core.WindowAsked] = []
+    Core.openWindowAsked = { asked.append($0) }
+
+    var reopen = Muster_Event()
+    reopen.reopenWindow.any = true
+    Core.deliver(reopen)
+    var named = Muster_Event()
+    named.reopenWindow.name = "window-3"
+    Core.deliver(named)
+
+    #expect(
+      asked == [
+        Core.WindowAsked(name: "", show: "", fresh: false, any: true),
+        Core.WindowAsked(name: "window-3", show: "", fresh: false),
+      ])
+  }
+
   /// The menu bar is built once and aimed at whichever window is in front when an item is used,
   /// and an item with no window to act on is off rather than sent to nobody.
   @Test("the menu bar's target answers for the window in front")
