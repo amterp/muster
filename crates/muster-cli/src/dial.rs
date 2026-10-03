@@ -5,6 +5,7 @@
 //! them. Nothing here retries. A request that made a pane and then failed to be read back would
 //! otherwise be sent twice, and a caller cannot tell the two cases apart from out here.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
@@ -44,7 +45,7 @@ pub fn ask_within(
 ) -> Result<Response, Trouble> {
     let any_will_do = request.payload.as_ref().is_some_and(muster_proto::any_window_will_do);
     let (path, stream) = reach(socket, environment, any_will_do)?;
-    exchange(&path, stream, request, patience)
+    exchange(&path, stream, &from_here(request, environment), patience)
 }
 
 /// A watch that has been sent, and the answers still to come on its connection.
@@ -74,12 +75,14 @@ pub fn follow(
 ) -> Result<Answers, Trouble> {
     let (path, mut stream) = reach(socket, environment, false)?;
     let _ = stream.set_write_timeout(Some(PATIENCE));
-    write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| {
-        Trouble::Unreachable(format!(
-            "the window at {path} accepted a connection and then would not take the watch \
+    write_frame(&mut stream, &from_here(request, environment).encode_to_vec()).map_err(
+        |error| {
+            Trouble::Unreachable(format!(
+                "the window at {path} accepted a connection and then would not take the watch \
              ({error}). Either it is shutting down, or something else is listening on that path."
-        ))
-    })?;
+            ))
+        },
+    )?;
     Ok(Answers { path, stream })
 }
 
@@ -128,7 +131,7 @@ pub fn survey(
     environment: &BTreeMap<String, String>,
     request: &Request,
 ) -> Vec<(String, Result<Response, Trouble>)> {
-    survey_of(candidates(environment), request)
+    survey_of(candidates(environment), &from_here(request, environment))
 }
 
 /// [`survey`], of these windows.
@@ -145,6 +148,23 @@ pub fn survey_of(
             Err(_) => None,
         })
         .collect()
+}
+
+/// The request, saying which pane it was sent from when this runs in one.
+///
+/// So that the app answers from the window holding that pane's tab, which is not always the window
+/// the pane's socket reaches: a tab moved to another window keeps the socket it was started with,
+/// and one app can hold several windows (MIP-6). Left as it is when the request already says, or
+/// when this runs outside a pane.
+fn from_here<'a>(request: &'a Request, environment: &BTreeMap<String, String>) -> Cow<'a, Request> {
+    match environment.get(environment::PANE_NAME).filter(|pane| !pane.is_empty()) {
+        Some(pane) if request.from_pane.is_empty() => {
+            let mut sent = request.clone();
+            sent.from_pane.clone_from(pane);
+            Cow::Owned(sent)
+        }
+        _ => Cow::Borrowed(request),
+    }
 }
 
 /// One request down a connection already made, and the answer back.
@@ -380,4 +400,37 @@ pub fn candidates(environment: &BTreeMap<String, String>) -> Vec<String> {
 /// Where the app puts its endpoint sockets, by the rule `CommandSocketLocation.swift` follows.
 fn state_directory(environment: &BTreeMap<String, String>) -> Option<String> {
     environment::muster_home(environment).map(|home| format!("{home}/state"))
+}
+
+#[cfg(test)]
+mod tests {
+    use muster_proto::{ReadWindow, request};
+
+    use super::*;
+
+    fn read_window() -> Request {
+        Request::new(request::Payload::ReadWindow(ReadWindow {}))
+    }
+
+    fn running_in(pane: &str) -> BTreeMap<String, String> {
+        BTreeMap::from([(environment::PANE_NAME.to_string(), pane.to_string())])
+    }
+
+    #[test]
+    fn a_request_from_a_pane_says_which() {
+        assert_eq!(from_here(&read_window(), &running_in("p1w3r07bsd")).from_pane, "p1w3r07bsd");
+    }
+
+    #[test]
+    fn a_request_from_outside_a_pane_names_none() {
+        assert_eq!(from_here(&read_window(), &BTreeMap::new()).from_pane, "");
+        assert_eq!(from_here(&read_window(), &running_in("")).from_pane, "");
+    }
+
+    #[test]
+    fn a_pane_the_request_already_names_is_kept() {
+        let mut asked = read_window();
+        asked.from_pane = "p2".to_string();
+        assert_eq!(from_here(&asked, &running_in("p1")).from_pane, "p2");
+    }
 }
