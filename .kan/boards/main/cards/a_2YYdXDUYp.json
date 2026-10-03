@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790654762182,
   "creator": "Alexander Terp",
   "description": "Cmd-click opens links now, but libghostty's mouse-shape and mouse-over-link actions are still dropped by the shell, so nothing shows a link is clickable before you click it.",
   "id": "a_2YYdXDUYp",
-  "position": "b0E",
+  "position": "Yz8",
   "title": "🔗 The pointer does not become a hand over a link",
   "type": "enhancement",
-  "updated_at_millis": 1790654762182,
+  "updated_at_millis": 1791038440023,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790654762182}
+    {"field":"column","value":"backlog-lo","at":1790654762182},
+    {"field":"column","value":"done","at":1791038440023}
   ]
 }

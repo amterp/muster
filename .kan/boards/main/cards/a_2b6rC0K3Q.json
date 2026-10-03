@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1791031845429,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-10-03: \"I think we wanna make all Windows part of one muster process\".\n\nToday each window is its own process (3ca8e4bb, 2026-08-30: \"Each is its own process, so quitting one leaves the others working\"), with its own command socket (`$MUSTER_SOCKET`), its own core, and a shared record of names held under a file lock so two processes agree on what a pane is called. amterp reverses that: one app process, many NSWindows - which is how a Mac app is expected to behave (one Dock icon, cmd+q quits the app, the Window menu lists every window).\n\nWhat it costs and why that is acceptable now: quitting ends every window at once, but no agent - the daemon owns the PTYs, so a quit costs nothing that a relaunch does not bring back, provided relaunch reopens every window that was open (a_2KAFWbZBa, which this subsumes: quit is not close).\n\nQuestions the design has to answer: whether the core holds one view per window or the shell keeps a core per window; one command socket for the app or one per window (every pane already carries `$MUSTER_SOCKET`, and `--socket` is public CLI surface); what becomes of the cross-window machinery (carrying a request to another window, handing a pane over, the names record and its lock) once windows share memory; `muster window new`/`list`/`reopen`; what a running pre-change window process does when a new build launches. Large enough for a MIP (docs/mip/).",
   "id": "a_2b6rC0K3Q",
-  "position": "!!!!!!!F",
+  "position": "Zx",
   "title": "🪟 Every window is a window of one Muster process",
   "type": "feature",
-  "updated_at_millis": 1791032049801,
+  "updated_at_millis": 1791036712367,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791031845429}
+    {"field":"column","value":"backlog-hi","at":1791031845429},
+    {"field":"column","value":"next","at":1791036712367}
   ]
 }

@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790654762076,
   "creator": "Alexander Terp",
   "description": "With tab_then_pane the only scheme, the nine focus_pane_1..9 actions and the menu's Pane N titles name the Nth numbered chord, which is a tab first. Renaming them means refusing configs that name the old actions, as the focus_tab_N removal did.",
   "id": "a_2YYdX2UPR",
-  "position": "b0D",
+  "position": "YzB",
   "title": "🎹 focus_pane_N and the Pane N menu titles misdescribe the chord",
   "type": "chore",
-  "updated_at_millis": 1790654762076,
+  "updated_at_millis": 1791038439809,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790654762076}
+    {"field":"column","value":"backlog-lo","at":1790654762076},
+    {"field":"column","value":"done","at":1791038439809}
   ]
 }
