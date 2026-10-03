@@ -152,10 +152,10 @@ pub fn run(
             let answers = follow(&request, named.as_deref(), no_window, environment);
             return watch(&request, timeout, answers, json, out, errors);
         }
-        args::Asking::Survey => {
+        args::Asking::Survey { closed } => {
             let answers = dial::survey(environment, &read_window());
             let here = environment.get(environment::WINDOW_SOCKET).filter(|path| !path.is_empty());
-            let text = render::windows(&answers, here.map(String::as_str), json);
+            let text = render::windows(&answers, here.map(String::as_str), closed, json);
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }

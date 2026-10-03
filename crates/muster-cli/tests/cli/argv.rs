@@ -73,7 +73,12 @@ fn cli_conformance() {
                     match &invocation.asking {
                         Asking::Send(_) | Asking::SendFrom { .. } | Asking::Watch { .. } => None,
                         Asking::Print(_) => Some(json!("printing something this binary holds")),
-                        Asking::Survey => Some(json!("asking every window on this machine")),
+                        Asking::Survey { closed: false } => {
+                            Some(json!("listing every open window under this home"))
+                        }
+                        Asking::Survey { closed: true } => {
+                            Some(json!("listing every closed window under this home"))
+                        }
                         Asking::MakeWindow => Some(json!("asking the running app for a window")),
                         Asking::ReopenWindow(None) => {
                             Some(json!("asking the running app for the window closed last"))

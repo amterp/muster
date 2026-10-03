@@ -1,10 +1,12 @@
-//! What `muster` does when nobody said which window, and more than one is listening.
+//! What `muster` does when nobody said which Muster, and more than one is listening.
+//!
+//! Every window of an app answers on one socket, so two sockets answering are two apps: two
+//! installs under one home, such as a development build beside the release. And `muster window
+//! list` turns one app's answer into a row per window.
 //!
 //! No daemon and no app here, deliberately. The decision under test is the CLI's own and is made
-//! before anything is dialled - is this a question, and did the caller name a window - and the
-//! only thing it needs from the other end is that something answers on two sockets. Standing up
-//! two real windows would need two processes, because the seam holds one session each, and would
-//! test the same branch through a great deal more machinery.
+//! before anything is dialled - is this a question, and did the caller name an app - and the only
+//! thing it needs from the other end is that something answers on two sockets.
 //!
 //! So the far end here is two listeners answering a canned `Window`. That is not a stand-in for a
 //! daemon, which this repo does not have: it is a stand-in for a peer *client of this CLI's own
@@ -22,7 +24,7 @@ use muster_proto::{
 use prost::Message;
 
 #[test]
-fn a_question_nobody_narrowed_is_answered_by_every_window() {
+fn a_question_nobody_narrowed_is_answered_by_every_app() {
     let scratch = Scratch::new("every");
     let home = scratch.home();
     let first = window(home, 111, "first-pane");
@@ -30,12 +32,12 @@ fn a_question_nobody_narrowed_is_answered_by_every_window() {
 
     let (code, out, errors) = run(&["window"], home, None);
 
-    assert_eq!(code, 0, "muster window refused with two windows open: {errors}");
-    for expected in [&first, &second, "window 111", "window 222"] {
+    assert_eq!(code, 0, "muster window refused with two apps open: {errors}");
+    for expected in [&first, &second, &first_socket(home, 111), &first_socket(home, 222)] {
         assert!(
-            out.contains(expected),
-            "the answer does not mention {expected}, so one of the two windows is missing \
-             from it:\n{out}"
+            out.contains(expected.as_str()),
+            "the answer does not mention {expected}, so one of the two apps is missing from \
+             it:\n{out}"
         );
     }
 }
@@ -53,9 +55,9 @@ fn one_window_answers_exactly_as_it_did_before() {
     // No heading, because there is nothing to tell apart. A script reading one window's output
     // is the case that must not move, and this is the shape of that promise.
     assert!(
-        !out.contains("window 333"),
-        "one window's answer grew a heading, so every caller reading it has to learn about \
-         windows in the plural:\n{out}"
+        !out.contains(&first_socket(home, 333)),
+        "one app's answer grew a heading, so every caller reading it has to learn about apps in \
+         the plural:\n{out}"
     );
 }
 
@@ -181,7 +183,7 @@ fn a_tab_move_naming_where_it_goes_reaches_a_window_with_two_open() {
 }
 
 #[test]
-fn a_program_reading_two_windows_gets_one_object_per_window() {
+fn a_program_reading_two_apps_gets_one_object_per_app() {
     let scratch = Scratch::new("json");
     let home = scratch.home();
     window(home, 888, "first-pane");
@@ -198,20 +200,61 @@ fn a_program_reading_two_windows_gets_one_object_per_window() {
     // several: `.windows[].panes[] | select(...)`.
     for window in windows {
         assert!(window["panes"].is_array(), "a window's row carries no panes: {window}");
-        assert!(window["window"].is_string(), "a window's row does not say which window: {window}");
+        assert!(window["socket"].is_string(), "an app's row does not say which socket: {window}");
     }
 }
 
-/// A closed window's tabs are listed under its name, once, however many windows answer.
+/// The other windows of an app are listed under their names, and a closed one says so.
 ///
-/// A closed window keeps its tabs and its agents keep running (kan a_2Mhi0EZlv), and it has no
-/// socket of its own to answer for them - so every open window lists it, and when they all
-/// answer at once it is printed once rather than once per window.
+/// A closed window keeps its tabs and its agents keep running (kan a_2Mhi0EZlv), and the app is
+/// what answers for them - so the window that answered lists every other window of its app.
 #[test]
-fn a_closed_windows_tabs_are_listed_under_its_name_once() {
+fn the_other_windows_are_listed_under_their_names() {
     let scratch = Scratch::new("closed");
     let home = scratch.home();
-    let closed = OtherWindow {
+    answering(home, 631, "window-1", vec![closed_window(), open_window()]);
+
+    let (code, out, errors) = run(&["window"], home, None);
+    assert_eq!(code, 0, "{errors}");
+    assert!(out.contains("window-3 (closed)"), "the closed window is not named:\n{out}");
+    assert!(out.contains("left running"), "the closed window's tab is not listed:\n{out}");
+    assert!(
+        out.contains("window-2") && !out.contains("632"),
+        "an open window is not headed by the name `--window` takes, and only that:\n{out}"
+    );
+}
+
+/// `window list` is a row per window, not per app: the one that answered and the other open
+/// ones, and with `--closed` the closed ones instead.
+#[test]
+fn window_list_lists_windows_and_closed_ones_on_their_own() {
+    let scratch = Scratch::new("list");
+    let home = scratch.home();
+    answering(home, 641, "window-1", vec![closed_window(), open_window()]);
+
+    let (code, out, errors) = run(&["window", "list", "--json"], home, None);
+    assert_eq!(code, 0, "{errors}");
+    let listed: serde_json::Value =
+        serde_json::from_str(&out).unwrap_or_else(|error| panic!("not JSON ({error}): {out}"));
+    let names: Vec<&str> = listed["windows"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|row| row["window"].as_str())
+        .collect();
+    assert_eq!(names, vec!["window-1", "window-2"], "{out}");
+
+    let (code, out, errors) = run(&["window", "list", "--closed"], home, None);
+    assert_eq!(code, 0, "{errors}");
+    assert!(out.contains("window-3"), "the closed window is not listed:\n{out}");
+    assert!(
+        !out.contains("window-1") && !out.contains("window-2"),
+        "--closed listed an open window:\n{out}"
+    );
+}
+
+fn closed_window() -> OtherWindow {
+    OtherWindow {
         name: "window-3".to_string(),
         pid: 0,
         tabs: vec![RosterTab {
@@ -219,27 +262,11 @@ fn a_closed_windows_tabs_are_listed_under_its_name_once() {
             label: "left running".to_string(),
             ..RosterTab::default()
         }],
-    };
-    let open = OtherWindow { name: "window-2".to_string(), pid: 632, tabs: Vec::new() };
-    answering(home, 631, "window-1", vec![closed.clone(), open]);
+    }
+}
 
-    let (code, out, errors) = run(&["window"], home, None);
-    assert_eq!(code, 0, "{errors}");
-    assert!(out.contains("window-3 (closed)"), "the closed window is not named:\n{out}");
-    assert!(out.contains("left running"), "the closed window's tab is not listed:\n{out}");
-    assert!(
-        out.contains("window 632 (window-2)"),
-        "an open window is not headed the way `tab move --window` takes it:\n{out}"
-    );
-
-    answering(home, 633, "window-2", vec![closed]);
-    let (code, out, errors) = run(&["window"], home, None);
-    assert_eq!(code, 0, "{errors}");
-    assert_eq!(
-        out.matches("window-3 (closed)").count(),
-        1,
-        "the closed window is listed once per open window rather than once:\n{out}"
-    );
+fn open_window() -> OtherWindow {
+    OtherWindow { name: "window-2".to_string(), pid: 632, tabs: Vec::new() }
 }
 
 /// A listener answering as a window with other windows beside it.

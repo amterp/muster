@@ -37,7 +37,7 @@ pub struct Invocation {
     /// Answer for a program rather than for a person.
     pub json: bool,
 
-    /// The window to talk to, when the caller named one.
+    /// The Muster to talk to, when the caller named one: its command socket.
     pub socket: Option<String>,
 
     /// Ask this machine's daemon rather than any window.
@@ -66,7 +66,9 @@ pub enum Asking {
     },
     Print(String),
     /// Every window on this machine, asked the same thing and answered together.
-    Survey,
+    Survey {
+        closed: bool,
+    },
     /// Another window, asked of the running app or, with none running, by starting it.
     MakeWindow,
     /// A closed window by name, or the one closed last, asked for the same way.
@@ -180,7 +182,7 @@ struct Cli {
     #[arg(long, global = true, display_order = 100)]
     json: bool,
 
-    /// The window to talk to, instead of looking for one
+    /// The Muster to talk to, by its command socket, instead of looking for one
     #[arg(long, global = true, value_name = "PATH", display_order = 101)]
     socket: Option<String>,
 
@@ -336,13 +338,17 @@ enum What {
 /// the plural, which is a different question and the only one `--socket` cannot narrow.
 #[derive(Debug, Subcommand)]
 enum AboutWindows {
-    /// List the windows under this MUSTER_HOME, and how many panes and tabs each holds
+    /// List the open windows under this MUSTER_HOME, and how many panes and tabs each holds
     //
     // "Under this MUSTER_HOME" rather than "on this machine", which is what this said and did not
-    // keep: the sockets are looked for in one state directory, so a window launched with a home of
-    // its own is invisible here and cannot be reached without spelling out its socket. That a
+    // keep: the app is looked for in one state directory, so a Muster launched with a home of its
+    // own is invisible here and cannot be reached without spelling out its socket. That a
     // separate home is separate is deliberate; claiming otherwise in the help was not.
-    List,
+    List {
+        /// List the closed windows instead, which `muster window reopen NAME` brings back
+        #[arg(long)]
+        closed: bool,
+    },
 
     /// Open another window, and print its name
     //
@@ -728,15 +734,16 @@ enum WithTab {
 
     /// Hand a tab to another window, with every pane in it still running
     //
-    // `--window` takes what `muster window` prints for an open window, its pid, or a window's
-    // name, which is the only handle a closed one has. Without it the tab comes here - into the
-    // window this command reaches - and comes on screen.
+    // `--window` takes a window's name, as `muster window` prints it, open or closed. The app's pid
+    // is still taken, from when each window was a process of its own, and means the window in
+    // front. Without it the tab comes here - into the window this command reaches - and comes on
+    // screen.
     Move {
         /// The tab to move, or the one the window is showing
         #[arg(long, value_name = "REF")]
         tab: Option<String>,
 
-        /// Where it goes: a window's pid, or a name like window-2. This window if not given
+        /// Where it goes: a window's name, like window-2. This window if not given
         #[arg(long, value_name = "WINDOW")]
         window: Option<String>,
     },
@@ -783,7 +790,9 @@ pub fn parse(
         }
         // Asked of every window rather than of one, which is why it is not a `Send`: `--socket`
         // and $MUSTER_SOCKET both narrow to one window, and the question here is which there are.
-        What::Window { doing: Some(AboutWindows::List), .. } => Asking::Survey,
+        What::Window { doing: Some(AboutWindows::List { closed }), .. } => {
+            Asking::Survey { closed: *closed }
+        }
         What::Window { doing: Some(AboutWindows::New), .. } => Asking::MakeWindow,
         What::Window { doing: Some(AboutWindows::Reopen { name }), .. } => {
             Asking::ReopenWindow(name.clone())

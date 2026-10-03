@@ -17,8 +17,8 @@ use muster_proto::{Response, Window, response};
 use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
+use crate::Trouble;
 use crate::diagram::{self, Lines, Part};
-use crate::{Trouble, dial};
 
 /// How a refusal is marked, here so that `report` and this file agree on it.
 pub const ERROR: Style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Red))).bold();
@@ -163,33 +163,38 @@ fn named(payload: &response::Payload) -> &'static str {
     }
 }
 
-/// Every window on this machine, one row each.
+/// Every window under this home, one row each: the open ones, or with `closed` the closed ones.
 ///
 /// A summary rather than each window's whole answer: what somebody running this wants is which
-/// window is which, and the `--socket` to reach it with. `muster window --socket <path>` is the
-/// whole of it after that.
+/// window is which, and the name to reach it by. Every window of an app answers on one socket, so
+/// each answer is the window that answered and the others it describes. More than one answer is
+/// more than one app - two installs, or a development build beside the release - and each row
+/// then says which socket reaches it.
 pub fn windows(
     answers: &[(String, Result<Response, Trouble>)],
     here: Option<&str>,
+    closed: bool,
     json: bool,
 ) -> String {
+    let rows = window_rows(answers, here, closed);
     if json {
-        let listed: Vec<Value> = answers
+        let listed: Vec<Value> = rows
             .iter()
-            .map(|(path, answer)| {
-                let mut row = json!({ "socket": path, "here": here == Some(path.as_str()) });
-                match answer.as_ref().map(|response| response.payload.as_ref()) {
-                    Ok(Some(response::Payload::Window(window))) => {
-                        row["panes"] = json!(counted_panes(window));
-                        row["tabs"] = json!(counted_tabs(window));
-                        row["keyboard"] = json!(keyboard_pane(window));
-                    }
-                    // Listed with its reason rather than dropped: a window that is there and
-                    // will not answer is the case somebody running this is looking for.
-                    Ok(_) => row["unreadable"] = json!("the window answered with something else"),
-                    Err(trouble) => row["unreadable"] = json!(trouble.detail()),
+            .map(|row| match &row.unreadable {
+                // Listed with its reason rather than dropped: an app that is there and will not
+                // answer is the case somebody running this is looking for.
+                Some(detail) => {
+                    json!({ "socket": row.socket, "here": false, "unreadable": detail })
                 }
-                row
+                None => json!({
+                    "window": row.name,
+                    "open": !closed,
+                    "here": row.here,
+                    "socket": row.socket,
+                    "panes": row.panes,
+                    "tabs": row.tabs,
+                    "keyboard": row.keyboard,
+                }),
             })
             .collect();
         return json!({ "windows": listed }).to_string();
@@ -198,41 +203,110 @@ pub fn windows(
     if answers.is_empty() {
         return styled("no Muster window is listening", QUIET);
     }
-    answers
-        .iter()
-        .map(|(path, answer)| {
-            // The pane the keyboard is on, because a person picking between two windows knows
-            // them by what they were doing in one - not by a pid.
-            let summary = match answer.as_ref().map(|response| response.payload.as_ref()) {
-                Ok(Some(response::Payload::Window(window))) => {
-                    format!("{} panes, {} tabs", counted_panes(window), counted_tabs(window))
-                }
-                Ok(_) => "answered with something else".to_string(),
-                Err(trouble) => trouble.detail().to_string(),
-            };
-            let mark = if here == Some(path.as_str()) { "▸" } else { " " };
-            format!("{mark} {} {}", styled(path, NAME), styled(&summary, QUIET))
+    if rows.is_empty() {
+        return styled(if closed { "no window is closed" } else { "no window is open" }, QUIET);
+    }
+    let apps = answers.len() > 1;
+    let width = rows.iter().map(|row| row.name.chars().count()).max().unwrap_or(0);
+    rows.iter()
+        .map(|row| {
+            if let Some(detail) = &row.unreadable {
+                return format!("  {} {}", styled(&row.socket, NAME), styled(detail, QUIET));
+            }
+            let mark = if row.here { "▸" } else { " " };
+            let mut line = format!(
+                "{mark} {}  {}",
+                styled(&format!("{:width$}", row.name), NAME),
+                styled(&format!("{} panes, {} tabs", row.panes, row.tabs), QUIET)
+            );
+            if apps {
+                line.push_str("  ");
+                line.push_str(&styled(&row.socket, QUIET));
+            }
+            line
         })
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-/// Every window's whole answer, one after another, when the caller narrowed to none of them.
+/// One row of `muster window list`.
+struct WindowRow {
+    name: String,
+    socket: String,
+    here: bool,
+    panes: usize,
+    tabs: usize,
+    /// The pane the keyboard is on, which only the window that answered can say.
+    keyboard: Option<String>,
+    unreadable: Option<String>,
+}
+
+fn window_rows(
+    answers: &[(String, Result<Response, Trouble>)],
+    here: Option<&str>,
+    closed: bool,
+) -> Vec<WindowRow> {
+    let mut rows = Vec::new();
+    for (socket, answer) in answers {
+        let Ok(Some(response::Payload::Window(window))) =
+            answer.as_ref().map(|response| response.payload.as_ref())
+        else {
+            let detail = match answer {
+                Err(trouble) => trouble.detail().to_string(),
+                Ok(_) => "the app answered with something else".to_string(),
+            };
+            rows.push(WindowRow {
+                name: String::new(),
+                socket: socket.clone(),
+                here: false,
+                panes: 0,
+                tabs: 0,
+                keyboard: None,
+                unreadable: Some(detail),
+            });
+            continue;
+        };
+        if !closed {
+            rows.push(WindowRow {
+                name: window.name.clone(),
+                socket: socket.clone(),
+                // The window that answered is the one a command here would reach: the window
+                // holding this pane's tab, from inside one.
+                here: here == Some(socket.as_str()),
+                panes: counted_panes(window),
+                tabs: counted_tabs(window),
+                keyboard: keyboard_pane(window),
+                unreadable: None,
+            });
+        }
+        for other in window.windows.iter().filter(|other| (other.pid == 0) == closed) {
+            rows.push(WindowRow {
+                name: other.name.clone(),
+                socket: socket.clone(),
+                here: false,
+                panes: other.tabs.iter().map(|tab| tab.panes.len()).sum(),
+                tabs: other.tabs.len(),
+                keyboard: None,
+                unreadable: None,
+            });
+        }
+    }
+    rows
+}
+
+/// Every app's whole answer, one after another, when the caller narrowed to none of them.
 ///
 /// Distinct from [`windows`] above, which is `window list` and is a summary: this is what
-/// `muster window` prints, asked of each window that answered. So the two surfaces stay what they
-/// were - one says which windows there are, the other says what they are showing - and neither
-/// grew the other's job.
-///
-/// Headed by the pid, because a window has no name a person chose and a socket path is a
-/// temporary directory with a pid at the end of it. The path is beside it in both shapes, since
-/// that is what `--socket` takes and what the next command needs.
+/// `muster window` prints, asked of each app that answered. Every window of an app answers on one
+/// socket, so more than one answer is more than one app - two installs, or two homes - and each
+/// answer covers all of that app's windows. Headed by the window that answered, with the socket
+/// beside it in both shapes, since that is what `--socket` takes and what the next command needs.
 pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> String {
     if json {
         let listed: Vec<Value> = answers
             .iter()
             .map(|(path, answer)| {
-                let mut row = json!({ "socket": path, "window": dial::named_window(path) });
+                let mut row = json!({ "socket": path });
                 match answer {
                     Ok(response) => match &response.payload {
                         Some(response::Payload::Window(window)) => {
@@ -240,7 +314,7 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
                             // window's answer is the same object here as it is on its own and a
                             // filter written for one reads across all of them:
                             // `.windows[].panes[] | select(.state == "blocked")`.
-                            if let Value::Object(fields) = window_json(window, Others::Closed) {
+                            if let Value::Object(fields) = window_json(window, Others::All) {
                                 for (key, value) in fields {
                                     row[key] = value;
                                 }
@@ -263,19 +337,15 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
                 Ok(Response { payload: Some(response::Payload::Window(window)) })
                     if !window.name.is_empty() =>
                 {
-                    format!(" ({})", window.name)
+                    window.name.clone()
                 }
-                _ => String::new(),
+                _ => "a Muster".to_string(),
             };
-            let heading = format!(
-                "{} {}",
-                styled(&format!("window {}{name}", dial::named_window(path).unwrap_or(path)), NAME),
-                styled(path, QUIET)
-            );
+            let heading = format!("{} {}", styled(&name, NAME), styled(path, QUIET));
             let body = match answer {
                 Ok(response) => match &response.payload {
                     Some(response::Payload::Window(window)) => {
-                        window_text(window, now_ms(), Others::None, true)
+                        window_text(window, now_ms(), Others::All, true)
                     }
                     _ => styled(named_or_empty(response), QUIET),
                 },
@@ -283,38 +353,8 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
             };
             format!("{heading}\n{}", body.trim_end())
         })
-        .chain(closed_windows(answers))
         .collect::<Vec<_>>()
         .join("\n\n")
-}
-
-/// The closed windows every open window lists, once each rather than once per window.
-///
-/// Described by whichever answer names one first. Each open window describes it from its own copy
-/// of the daemons, and they agree.
-fn closed_windows(answers: &[(String, Result<Response, Trouble>)]) -> Vec<String> {
-    let mut seen: Vec<&str> = Vec::new();
-    let mut sections = Vec::new();
-    for window in answers.iter().filter_map(|(_, answer)| match answer {
-        Ok(Response { payload: Some(response::Payload::Window(window)) }) => Some(window),
-        _ => None,
-    }) {
-        let states = states(window);
-        let widths = Widths::across(window, &states, now_ms());
-        for other in window.windows.iter().filter(|other| other.pid == 0) {
-            if seen.contains(&other.name.as_str()) {
-                continue;
-            }
-            seen.push(&other.name);
-            let mut lines = vec![styled(&other_heading(other), NAME)];
-            for tab in &other.tabs {
-                let say_machine = window.daemons.len() > 1;
-                lines.extend(tab_lines(&widths, tab, &states, None, now_ms(), say_machine, true));
-            }
-            sections.push(lines.join("\n"));
-        }
-    }
-    sections
 }
 
 /// What a window answered with, when it was not what was asked for.
@@ -350,36 +390,24 @@ fn tabs(window: &Window) -> impl Iterator<Item = &muster_proto::RosterTab> {
 ///
 /// Which machine holds a pane is on the pane's own row, and only while more than one is
 /// attached. On one machine the answer is on every row and says nothing.
-/// Which other windows a window's answer lists.
-///
-/// All of them when it is the only answer. When every open window is answering for itself, only
-/// the closed ones: an open window's tabs are already under its own heading, and a closed
-/// window has nobody else to speak for it.
+/// Which other windows a window's answer lists: all of them, or none for an answer that has no
+/// windows to speak of, such as the daemon's own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Others {
     All,
-    Closed,
     None,
 }
 
 impl Others {
-    fn include(self, other: &muster_proto::OtherWindow) -> bool {
-        match self {
-            Others::All => true,
-            Others::Closed => other.pid == 0,
-            Others::None => false,
-        }
+    fn include(self, _other: &muster_proto::OtherWindow) -> bool {
+        self == Others::All
     }
 }
 
-/// How another window is headed: by the pid `muster window` heads an open one with, or by name
-/// once it has closed - the two things `muster tab move --window` takes.
+/// How another window is headed: by its name, which is what `muster tab move --window` and
+/// `--window` take, and whether it is closed.
 fn other_heading(other: &muster_proto::OtherWindow) -> String {
-    if other.pid == 0 {
-        format!("{} (closed)", other.name)
-    } else {
-        format!("window {} ({})", other.pid, other.name)
-    }
+    if other.pid == 0 { format!("{} (closed)", other.name) } else { other.name.clone() }
 }
 
 fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> String {

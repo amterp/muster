@@ -215,6 +215,28 @@ fn a_tab_moved_to_a_window_by_name_joins_its_list_without_coming_on_screen() {
     );
 }
 
+/// A tab moved to this app's pid goes to the window in front: what a pid meant when each window
+/// was a process of its own, and the only window a pid can still name.
+#[test]
+fn a_tab_moved_to_the_apps_pid_goes_to_the_window_in_front() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, _) = two_windows(&daemon);
+    focus_window("window-2");
+
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab {
+            tab_id: first.clone(),
+            window: std::process::id().to_string(),
+        }),
+    )));
+
+    assert!(listed("window-2").contains(&first), "the tab did not go to the window in front");
+    assert!(!listed("window-1").contains(&first), "the tab stayed where it was");
+}
+
 /// Asked what it holds, a window describes the other one in the same process with its tabs, the
 /// way it describes a window in another process.
 #[test]

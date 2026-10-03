@@ -283,7 +283,7 @@ fn reach(
         count if count > 1 && any_will_do => Ok(answered.remove(0)),
         0 => Err(Trouble::Unreachable(nobody)),
         count => Err(Trouble::Unreachable(format!(
-            "{count} Muster windows are listening and nothing says which one this is about: {}. \
+            "{count} Muster apps are listening and nothing says which one this is about: {}. \
              Run this inside one of their panes, where ${} names it, or pick one with --socket.",
             answered.iter().map(|(path, _)| path.as_str()).collect::<Vec<_>>().join(", "),
             environment::WINDOW_SOCKET
@@ -359,25 +359,13 @@ fn dial(path: &str) -> std::io::Result<UnixStream> {
     UnixStream::connect(path)
 }
 
-/// Every endpoint socket in Muster's state directory, in a settled order.
+/// Every endpoint socket in Muster's state directory, in a settled order: one per app, which is
+/// one per install running under this home.
 ///
 /// Public so that making a window can wait for one to appear that was not here before.
 ///
 /// Sorted so that a refusal naming several of them reads the same twice in a row - a directory
 /// hands them back in whatever order it likes.
-/// The window a socket path names, as a person would say it.
-///
-/// The pid, because that is what the name carries and it is the only handle a window has that is
-/// shorter than a path. Not a name somebody chose - nothing gives a window one - so this is the
-/// most readable true thing there is to head an answer with.
-///
-/// Beside [`candidates`] because the two read the same convention, and a heading that disagreed
-/// with what `--socket` takes would be worse than no heading.
-pub fn named_window(path: &str) -> Option<&str> {
-    let file = path.rsplit('/').next()?;
-    file.strip_prefix("command-")?.strip_suffix(".sock")
-}
-
 pub fn candidates(environment: &BTreeMap<String, String>) -> Vec<String> {
     let Some(state) = state_directory(environment) else { return Vec::new() };
     let Ok(entries) = std::fs::read_dir(&state) else { return Vec::new() };

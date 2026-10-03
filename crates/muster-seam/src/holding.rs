@@ -267,31 +267,25 @@ impl Holding {
         self.change(|holders| holders.take(tab.clone(), window));
     }
 
-    /// The window a caller means: `me` for nothing, an open window for a pid, or a window by
-    /// name, open or closed.
+    /// The window a caller means: `me` for nothing, the window in front for this app's pid, or a
+    /// window by name, open or closed.
     ///
     /// A pid names only an open window, because a closed window has no process - and a pid whose
     /// window has gone is a number the next process may already have. Every open window is this
-    /// process's, so only this process's own pid names any of them.
-    pub(crate) fn destination(&self, me: &WindowName, said: &str) -> Result<WindowName, Refusal> {
+    /// process's, so only this process's own pid names any of them, and it means the one in front
+    /// (mip/0006-one-process.md, Compatibility): what a pid meant when each window was a process.
+    pub(crate) fn destination(
+        &self,
+        me: &WindowName,
+        front: &WindowName,
+        said: &str,
+    ) -> Result<WindowName, Refusal> {
         if said.is_empty() {
             return Ok(me.clone());
         }
         if let Ok(pid) = said.parse::<u32>() {
             if pid == std::process::id() {
-                // This process's pid names one window only while it has one open. With several,
-                // which of them is a guess, and a tab moved on a guess lands where nobody asked.
-                let here = self.said_open();
-                if here.len() > 1 {
-                    let names: Vec<String> = here.iter().map(ToString::to_string).collect();
-                    return Err(Refusal::Declined(format!(
-                        "pid {pid} is a Muster with {} windows open, so it does not say which one, \
-                         and nothing was moved. Name the window instead: {}.",
-                        here.len(),
-                        names.join(", ")
-                    )));
-                }
-                return Ok(me.clone());
+                return Ok(front.clone());
             }
             return Err(Refusal::NotThere(format!(
                 "no open window has pid {pid}, so nothing was moved. `muster window list` shows \

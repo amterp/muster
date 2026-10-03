@@ -2030,7 +2030,7 @@
     },
     {
       "name": "windows are listed without naming one",
-      "why": "The one read that cannot be narrowed. `--socket` and $MUSTER_SOCKET both mean `this window`, and the question here is which windows there are - so this dials every endpoint rather than the one a caller is standing in, and sends no request that any single window could answer.",
+      "why": "The one read that cannot be narrowed to a window: the question is which windows there are. Every window of an app answers on one socket, so this asks every app under this home - one, unless two installs are running - and lists each window it describes.",
       "given": {
         "argv": [
           "window",
@@ -2038,7 +2038,21 @@
         ]
       },
       "expect": {
-        "answers_here": "asking every window on this machine"
+        "answers_here": "listing every open window under this home"
+      }
+    },
+    {
+      "name": "closed windows are listed on their own",
+      "why": "A window somebody closed stays closed, keeps its tabs, and comes back by name with `muster window reopen NAME` (mip/0006-one-process.md, section 4). This is where the name is found.",
+      "given": {
+        "argv": [
+          "window",
+          "list",
+          "--closed"
+        ]
+      },
+      "expect": {
+        "answers_here": "listing every closed window under this home"
       }
     },
     {

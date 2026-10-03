@@ -134,8 +134,9 @@ fn apps(environment: &BTreeMap<String, String>) -> Vec<String> {
     apps
 }
 
-/// The window answering at `socket`, and every window open in its process: the one answering,
-/// and the others it lists with its own pid.
+/// The window answering at `socket`, and every window open in its app: the one answering, and
+/// the others it lists as open. Every window of an app is a window of one process, so the names
+/// are enough, whatever the socket is called - a devenv pane's is not named for a pid.
 fn windows_open(
     socket: &str,
     environment: &BTreeMap<String, String>,
@@ -144,11 +145,10 @@ fn windows_open(
     let Some(response::Payload::Window(window)) = answer.payload else {
         return Err(Trouble::Refused(format!("the Muster at {socket} did not say what it holds")));
     };
-    let pid: Option<u32> = dial::named_window(socket).and_then(|pid| pid.parse().ok());
     let mut open: BTreeSet<String> = window
         .windows
         .iter()
-        .filter(|other| Some(other.pid) == pid && other.pid != 0)
+        .filter(|other| other.pid != 0)
         .map(|other| other.name.clone())
         .collect();
     let answering = (!window.name.is_empty()).then(|| window.name.clone());

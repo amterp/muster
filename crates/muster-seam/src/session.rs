@@ -3527,7 +3527,11 @@ pub(crate) fn move_tab(window: WindowId, tab: Option<TabId>, to: &str) -> Result
                  the tabs there are."
             )));
         }
-        let to = session.holding.destination(&session.windows[window].name, to)?;
+        let to = session.holding.destination(
+            &session.windows[window].name,
+            &session.windows[session.front].name,
+            to,
+        )?;
         let from = session.holding.holders().holder(&tab).map(ToString::to_string);
         session.holding.give(&tab, &to);
         log::info(
