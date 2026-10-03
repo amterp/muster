@@ -112,6 +112,9 @@ public enum AppMenu {
       let groupMenu = LoggedMenu(title: group.rawValue)
       for item in inGroup {
         groupMenu.addItem(entry(for: item, target: target))
+        if item.name == "reopen_window" {
+          groupMenu.addItem(ReopenWindowMenu.shared.item())
+        }
       }
       if group == .tab {
         groupMenu.addItem(MoveTabMenu.shared.item())
@@ -310,5 +313,53 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
     guard let destination = sender.representedObject as? Destination else { return }
     Core.info("tab.move.picked", ["window": destination.window, "tab": destination.tab])
     Core.speaking(for: destination.from) { Core.moveTab(destination.tab, to: destination.window) }
+  }
+}
+
+/// Reopen, which lists each closed window by name as it is when the menu opens
+/// (mip/0006-one-process.md, section 4).
+///
+/// Reopen Closed Window brings back the one closed last; this reaches any of them, as `muster
+/// window reopen NAME` does. A closed window keeps its tabs and its agents keep running, so each
+/// is listed with how many tabs it holds.
+@MainActor
+public final class ReopenWindowMenu: NSObject, NSMenuDelegate {
+  public static let shared = ReopenWindowMenu()
+
+  func item() -> NSMenuItem {
+    let item = NSMenuItem(title: "Reopen", action: nil, keyEquivalent: "")
+    let submenu = NSMenu(title: "Reopen")
+    submenu.delegate = self
+    item.submenu = submenu
+    return item
+  }
+
+  /// The windows the submenu lists: the closed ones, in the order the core names them.
+  nonisolated static func listed(_ windows: [Core.OtherWindow]) -> [Core.OtherWindow] {
+    windows.filter { $0.pid == 0 }
+  }
+
+  /// Asked of the core each time, because windows close and reopen between one look and the next.
+  public func menuNeedsUpdate(_ menu: NSMenu) {
+    menu.removeAllItems()
+    let closed = Self.listed(Core.otherWindows())
+    if closed.isEmpty {
+      let none = NSMenuItem(title: "No Closed Windows", action: nil, keyEquivalent: "")
+      none.isEnabled = false
+      menu.addItem(none)
+      return
+    }
+    for window in closed {
+      let item = NSMenuItem(title: window.title, action: #selector(reopen(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = window.name
+      menu.addItem(item)
+    }
+  }
+
+  @objc private func reopen(_ sender: NSMenuItem) {
+    guard let name = sender.representedObject as? String else { return }
+    Core.info("window.reopen.picked", ["window": name])
+    Core.openWindowAsked?(Core.WindowAsked(name: name, show: "", fresh: false))
   }
 }

@@ -141,10 +141,7 @@ pub fn survey_around(
 }
 
 /// [`survey`], of these windows.
-fn survey_of(
-    windows: Vec<String>,
-    request: &Request,
-) -> Vec<(String, Result<Response, Trouble>)> {
+fn survey_of(windows: Vec<String>, request: &Request) -> Vec<(String, Result<Response, Trouble>)> {
     windows
         .into_iter()
         .filter_map(|path| match dial(&path) {

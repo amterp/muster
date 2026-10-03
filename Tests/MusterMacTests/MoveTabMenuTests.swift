@@ -16,6 +16,18 @@ struct MoveTabMenuTests {
     #expect(closed.title == "window-3 (closed, 1 tab)")
   }
 
+  /// Reopen lists the closed windows only, each by the name `muster window reopen` takes: an open
+  /// window is not somewhere to go back to.
+  @Test("reopen lists the closed windows by name")
+  func reopenListsTheClosedWindows() {
+    let windows = [
+      Core.OtherWindow(name: "window-2", pid: 4321, tabs: 3),
+      Core.OtherWindow(name: "window-3", pid: 0, tabs: 1),
+    ]
+
+    #expect(ReopenWindowMenu.listed(windows).map(\.title) == ["window-3 (closed, 1 tab)"])
+  }
+
   /// A tab row goes between windows and a pane row stays within one. A tab dropped into its own
   /// window's list is going nowhere, and a pane dragged in from another window would need that
   /// window to let go of it, which moving a pane between windows does not do yet.
