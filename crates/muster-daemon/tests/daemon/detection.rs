@@ -85,26 +85,51 @@ fn type_line(input: &mut Input, pane: &str, text: &str) {
     input.send(pane, Event::Send(input_event::Send { text: text.to_string(), enter: true }));
 }
 
-/// The pane's agent and state, as the daemon publishes them.
-fn detected(control: &mut Control, pane: &str) -> (Option<String>, proto::AgentState) {
-    let record = snapshot(control)
+fn record(control: &mut Control, pane: &str) -> proto::Pane {
+    snapshot(control)
         .panes
         .into_iter()
         .find(|record| record.pane == pane)
-        .unwrap_or_else(|| panic!("no pane {pane}"));
+        .unwrap_or_else(|| panic!("no pane {pane}"))
+}
+
+/// The pane's agent and state, as the daemon publishes them.
+fn detected(control: &mut Control, pane: &str) -> (Option<String>, proto::AgentState) {
+    let record = record(control, pane);
     let state = record.agent_state();
     (record.agent, state)
 }
 
+/// Fails saying what the pane was instead, whether that came from a report, and its facts: a
+/// test waits for the same state several times, and a pending wait in the facts or a report
+/// still counting is what tells those apart.
 fn until_detected(
     control: &mut Control,
     pane: &str,
     agent: Option<&str>,
     state: proto::AgentState,
 ) {
-    until_some(&format!("{pane} to be {agent:?} {state:?}"), || {
-        (detected(control, pane) == (agent.map(str::to_string), state)).then_some(())
-    });
+    let want = (agent.map(str::to_string), state);
+    let last = std::cell::RefCell::new(None);
+    until(
+        &format!("{pane} to be {agent:?} {state:?}"),
+        || {
+            let record = record(control, pane);
+            let reached = (record.agent.clone(), record.agent_state()) == want;
+            *last.borrow_mut() = Some(record);
+            reached
+        },
+        || match last.borrow().as_ref() {
+            Some(record) => format!(
+                "it was {:?} {:?}, reported: {}, facts: {:?}",
+                record.agent,
+                record.agent_state(),
+                record.state_reported,
+                record.facts
+            ),
+            None => "the daemon was never asked".to_string(),
+        },
+    );
 }
 
 /// Types a command to the fake agent and times how long the daemon takes to agree.
