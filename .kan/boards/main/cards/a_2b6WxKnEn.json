@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "mouse-back-and",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791031067533,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-10-01: \"forward back button\". Clarified 2026-10-03: \"my main use is on mouse going back and forth on pane focuses\".\n\nA focus history like a browser's: the mouse's back button returns to the pane that had focus before, forward goes again, across tabs. Today those buttons go to the program in the pane as buttons 8 and 9 (Sources/MusterRenderer/Renderer.swift). Back them with keymap actions (`focus_back` / `focus_forward`) so a chord and the CLI reach the same history, which lives in the core. Decide what a closed pane in the history does, and whether a pane whose program asked for mouse reporting still gets the buttons.",
+  "id": "a_2b6WxKnEn",
+  "position": "!!!!!!3",
+  "title": "↩️ Mouse back and forward walk the panes you were on",
+  "type": "feature",
+  "updated_at_millis": 1791031406391,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791031067533}
+  ]
+}

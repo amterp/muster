@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "customize-the-color",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "done",
+  "created_at_millis": 1791031066961,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-09-30: \"customize daemon dots color\". Already supported: `color` in a `[[daemon]]` block (6e7e4ea2). amterp, 2026-10-03: \"didn't realize already supported, done\".",
+  "id": "a_2b6WwPy98",
+  "position": "YzM",
+  "title": "🎨 Customize the color of a machine's dot",
+  "type": "feature",
+  "updated_at_millis": 1791031406458,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791031066961},
+    {"field":"column","value":"done","at":1791031406457}
+  ]
+}

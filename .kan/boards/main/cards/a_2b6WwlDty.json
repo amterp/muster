@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-message-reaches-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1791031067183,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-09-30: \"msg should be instant? not just when idle?\" Clarified 2026-10-03: \"sometimes messages are just more urgent and you want agents to be able to message each other mid work\".\n\nToday (docs/cli/msg.md) an agent in a pane is rung only when it is idle or waiting with an empty prompt, so a post to a busy agent sits in the daemon until its turn ends. The opt-in hooks in extras/claude-code/messaging-hooks.json already hand a message over after every tool call, but nothing installs them by default.\n\nThe ask is an urgent post: the sender can say a message should not wait, and it then reaches a working agent mid-turn (Claude Code queues typed input and folds it into the running turn; the PostToolUse hook is the other route). Ordinary posts keep today's behavior. Must keep the existing guarantees: never type into a draft, a dialog, or over a person typing. Decide how urgency is spelled (a post flag, and whether a group policy can limit who may use it).",
+  "id": "a_2b6WwlDty",
+  "position": "Zz",
+  "title": "📨 A message reaches a working agent, not only once it goes idle",
+  "type": "feature",
+  "updated_at_millis": 1791031474068,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791031067183},
+    {"field":"column","value":"next","at":1791031474068}
+  ]
+}
