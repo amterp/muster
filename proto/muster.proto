@@ -1166,8 +1166,8 @@ message SetSplitRatio {
 // would have to hold the tree, count what hangs off each side and divide, and what it did
 // instead was guess and ask a person to look (kan a_2KIH8WAnU).
 //
-// A request rather than a chord. Muster has no keybinding that moves a divider either - that is
-// the drag - so nothing here is a second way to say something the keyboard already says.
+// Also `equalize_panes`, on Ghostty's cmd+ctrl+= - the one divider move with a chord, since moving
+// a single divider is the drag and evening five panes is a dozen of them.
 message EqualizePanes {
   string daemon_id = 1;
 

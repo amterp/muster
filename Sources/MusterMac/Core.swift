@@ -519,6 +519,16 @@ public enum Core {
     send(request)
   }
 
+  /// Gives every pane in the keyboard's tab the same area, the request `muster pane resize
+  /// --equalize` sends. Says whether the core did it.
+  @discardableResult
+  public static func equalizePanes() -> Bool {
+    var request = Muster_Request()
+    request.equalizePanes = Muster_EqualizePanes()
+    if case .failure = send(request) { return false }
+    return true
+  }
+
   /// What Muster should look like, as the config file decided.
   ///
   /// A value of the shell's own rather than the generated message, on the same terms as

@@ -140,6 +140,8 @@ public enum MenuActions {
       title: "Resize Pane Down", selector: #selector(MusterWindow.resizePaneDown(_:)), group: .pane),
     "zoom": Described(
       title: "Zoom Pane", selector: #selector(MusterWindow.zoomPane(_:)), group: .pane),
+    "equalize_panes": Described(
+      title: "Equalize Panes", selector: #selector(MusterWindow.equalizePanes(_:)), group: .pane),
     // The ellipsis for the same reason as the two renames: picking it asks something before
     // anything happens. The two steps carry none - they act on what is already being asked.
     "find": Described(

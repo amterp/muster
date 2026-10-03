@@ -1011,6 +1011,12 @@ extension MusterWindow {
     Core.zoom()
   }
 
+  @objc public func equalizePanes(_ sender: Any?) {
+    if !Core.equalizePanes() {
+      NSSound.beep()
+    }
+  }
+
   // Ghostty's surface-local binding actions, carried out on the surface with the keyboard.
   @objc public func scrollToTop(_ sender: Any?) { performOnSurface(.scrollToTop) }
   @objc public func scrollToBottom(_ sender: Any?) { performOnSurface(.scrollToBottom) }

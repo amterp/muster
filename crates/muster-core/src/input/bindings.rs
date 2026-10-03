@@ -136,6 +136,10 @@ pub enum Action {
     FindNext,
     FindPrevious,
     Zoom,
+    /// Gives every pane in the tab the same area, Ghostty's `equalize_splits`. The divider-moving
+    /// verb that earns a chord where a single divider does not: evening five panes by dragging is
+    /// a dozen drags, and it is a thing somebody reaches for with their hands on the keys.
+    EqualizePanes,
     // Ghostty's own binding actions, each on its macOS chord. The first seven are the surface's
     // alone: it holds the pane's scrollback and selection, so moving through them writes
     // nothing to the program and the shell performs them on the surface with the keyboard.
@@ -168,7 +172,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 56] = [
+    pub const ALL: [Action; 57] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::NewTab,
@@ -209,6 +213,7 @@ impl Action {
         Action::FindNext,
         Action::FindPrevious,
         Action::Zoom,
+        Action::EqualizePanes,
         Action::ScrollToTop,
         Action::ScrollToBottom,
         Action::ScrollPageUp,
@@ -268,6 +273,7 @@ impl Action {
             Action::FindNext => "find_next",
             Action::FindPrevious => "find_previous",
             Action::Zoom => "zoom",
+            Action::EqualizePanes => "equalize_panes",
             Action::ScrollToTop => "scroll_to_top",
             Action::ScrollToBottom => "scroll_to_bottom",
             Action::ScrollPageUp => "scroll_page_up",
@@ -382,6 +388,11 @@ impl Action {
             Action::FindNext => Some(Chord::new(Key::KeyG, command)),
             Action::FindPrevious => Some(Chord::new(Key::KeyG, shifted)),
             Action::Zoom => Some(Chord::new(Key::Enter, shifted)),
+            // Ghostty's macOS chord, beside its resize chords on ⌘⌃.
+            Action::EqualizePanes => Some(Chord::new(
+                Key::Equal,
+                Modifiers(Modifiers::SUPER.0 | Modifiers::CONTROL.0),
+            )),
             // Ghostty's macOS chords for its own binding actions, so somebody arriving from it
             // keeps them.
             Action::ScrollToTop => Some(Chord::new(Key::Home, command)),
@@ -428,6 +439,7 @@ pub fn ghostty_equivalent(name: &str) -> Option<&'static str> {
         }
         "resize_split" => "`resize_left`, `resize_right`, `resize_up` and `resize_down`",
         "toggle_split_zoom" => "`zoom`",
+        "equalize_splits" => "`equalize_panes`",
         "prompt_surface_title" => "`rename_pane`",
         "prompt_tab_title" => "`rename_tab`",
         "close_surface" => "`close_pane`",

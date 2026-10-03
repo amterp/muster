@@ -40,6 +40,22 @@ struct PaneActionTests {
   }
 
   @MainActor
+  @Test("evening out a tab names no pane, so it means the keyboard's tab")
+  func equalizeMeansHere() {
+    let recorder = recorder()
+
+    Core.equalizePanes()
+
+    guard case .equalizePanes(let even) = recorder.requests.last?.payload else {
+      Issue.record("expected an EqualizePanes, got \(recorder.requests.map(\.payload))")
+      return
+    }
+    #expect(even.daemonID.isEmpty)
+    #expect(even.paneID.isEmpty)
+    #expect(even.scope.isEmpty)
+  }
+
+  @MainActor
   @Test("clicking a pane asks for the keyboard rather than taking it")
   func aClickIsARequest() {
     // Which pane the keyboard feeds is the core's answer, so a click asks and the view that

@@ -92,7 +92,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
 `numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
-`find_next`, `find_previous`, `zoom`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
+`find_next`, `find_previous`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
 `reload_config`, `show_shortcuts`, and `quit_and_close_sessions`. On macOS these become menu items, which is where the
@@ -106,7 +106,9 @@ to know where prompts are) and `select_all` (`cmd+a`) happen in the pane's surfa
 its history. `clear_screen` (`cmd+k`) and `reset_terminal` (unbound, as in Ghostty) are carried
 out by the pane's daemon, which holds its terminal: clear_screen drops the history and has a
 shell at its prompt draw it again, and on the alternate screen it does what Ghostty does - hands
-the key to the program. Ghostty's `text:`, `csi:` and `esc:` are `[text]` here. The rest of
+the key to the program. `equalize_panes` (`cmd+ctrl+=`) is Ghostty's `equalize_splits`: every pane
+in the tab comes out the same size, which is what `muster pane resize --equalize` does. Ghostty's
+`text:`, `csi:` and `esc:` are `[text]` here. The rest of
 Ghostty's actions are about its own windows, tabs and clipboard, and are not offered; a
 `[keymap]` line naming one is refused, and names Muster's equivalent where there is one.
 

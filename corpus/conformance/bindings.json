@@ -251,9 +251,9 @@
         ]
       },
       "expect": {
-        "actions": 56,
-        "bound": 49,
-        "distinct_chords": 49
+        "actions": 57,
+        "bound": 50,
+        "distinct_chords": 50
       }
     },
     {
@@ -317,6 +317,20 @@
       "expect": {
         "chords": [
           "rename_tab=shift+super+KeyR"
+        ]
+      }
+    },
+    {
+      "name": "evening out a tab is on Ghostty's chord",
+      "why": "Ghostty binds equalize_splits to cmd+ctrl+=, beside its resize chords, so somebody arriving from it already has the chord. No other divider move has a chord, since moving one divider is the drag; evening five panes is a dozen drags, and the request it sends is the one muster pane resize --equalize sends.",
+      "given": {
+        "actions": [
+          "equalize_panes"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "equalize_panes=control+super+Equal"
         ]
       }
     }
