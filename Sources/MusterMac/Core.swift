@@ -69,6 +69,61 @@ public enum Core {
     return reopening.arrangements
   }
 
+  /// What claiming the app came to (mip/0006-one-process.md, section 5).
+  public enum AppClaim: Equatable {
+    /// This process is the app of its install, and keeps its state in this directory - or
+    /// nowhere, when there is no Muster home.
+    case claimed(stateDirectory: String?)
+    /// Another process of this install already is, and was handed what this launch was asked to
+    /// do. Nothing is left for this one.
+    case handedOver
+    /// Another process is the app and could not be handed anything; the reason says why and what
+    /// to do.
+    case refused(String)
+  }
+
+  /// Makes this process the one app of its install under `home`, or hands `asking` to the app
+  /// that already is.
+  ///
+  /// Asked before `start`, like `reopening`: the answer decides whether this launch runs at all,
+  /// and where its windows' state is kept.
+  public static func claimApp(
+    home: String?, commandSocketPath: String?, asking: WindowAsked
+  ) -> AppClaim {
+    var ask = Muster_AskForWindow()
+    ask.fresh = asking.fresh
+    ask.name = asking.name
+    ask.show = asking.show
+    ask.any = asking.any
+    var claim = Muster_ClaimApp()
+    claim.home = home ?? ""
+    claim.commandSocketPath = commandSocketPath ?? ""
+    claim.ask = ask
+    var request = Muster_Request()
+    request.claimApp = claim
+    switch send(request) {
+    case .appClaim(let answer) where answer.claimed:
+      return .claimed(stateDirectory: answer.stateDirectory.isEmpty ? nil : answer.stateDirectory)
+    case .appClaim:
+      return .handedOver
+    case .failure(let failure):
+      return .refused(failure.reason)
+    default:
+      return .refused("the core answered a claim on the app with something it should not have")
+    }
+  }
+
+  /// Moves the arrangements and the record every install shared into this install's own state
+  /// directory, when this is the release and nothing has been moved yet.
+  public static func adoptOldState(home: String?) {
+    guard let home else { return }
+    var adopt = Muster_AdoptOldState()
+    adopt.home = home
+    var request = Muster_Request()
+    request.adoptOldState = adopt
+    send(request)
+  }
+
   /// Keeps macOS from napping this process for as long as it runs.
   ///
   /// A window nobody can see, which includes every window while the screen is locked, is
@@ -1272,11 +1327,14 @@ public enum Core {
     public let show: String
     /// A new window onto tabs of its own.
     public let fresh: Bool
+    /// Any window will do: the one in front comes forward, and one opens only when none is open.
+    public let any: Bool
 
-    public init(name: String, show: String, fresh: Bool) {
+    public init(name: String, show: String, fresh: Bool, any: Bool = false) {
       self.name = name
       self.show = show
       self.fresh = fresh
+      self.any = any
     }
   }
 
@@ -1464,7 +1522,8 @@ public enum Core {
       // Going to a tab a closed window holds is going to that window, and opening one is
       // starting an app.
       info("window.reopen", ["window": reopen.name, "show": reopen.show])
-      openWindowAsked?(WindowAsked(name: reopen.name, show: reopen.show, fresh: reopen.fresh))
+      openWindowAsked?(
+        WindowAsked(name: reopen.name, show: reopen.show, fresh: reopen.fresh, any: reopen.any))
     case .raiseWindow(let raise) where raise.pid != 0:
       // This window is carrying somebody to another window's tab. Since macOS 14 an app comes
       // forward only when the active one hands over, and if anything is active here it is this

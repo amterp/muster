@@ -19,20 +19,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var holdingWatcher: ConfigWatcher?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    // Before anything asks where Muster's files are, because everything below reads it through
-    // the environment and this is the one moment it can still be answered. A window opened by
-    // `muster window new` is started through LaunchServices, which hands over no environment,
-    // so the home it was told about arrives on the command line instead - and is put back into
-    // the environment here rather than threaded through the eight places that ask.
-    //
-    // The environment wins where this process already has one, which is somebody who set it up
-    // deliberately: a test, or a second Muster launched by hand.
-    if ProcessInfo.processInfo.environment["MUSTER_HOME"] == nil,
-      let home = launchHome(arguments: Array(CommandLine.arguments.dropFirst()))
-    {
-      setenv("MUSTER_HOME", home, 1)
-    }
-
     // Before anything is started, so that from here a SIGTERM is a quit rather than a death.
     TerminationSignal.quitsTheApp()
 
@@ -293,10 +279,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         """.utf8))
   }
 
+  /// A click on the Dock icon while the app runs: AppKit restores a minimised window itself, and
+  /// with none open at all the app opens one (mip/0006-one-process.md, section 5).
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+    guard Windows.all.isEmpty else { return true }
+    windows?.comeForward()
+    return false
+  }
+
   /// No: the last window's close is turned into a quit before it happens
   /// (`MusterWindow.windowShouldClose`), and a window closing for any other reason - a minimised
   /// one among them - is not the app ending.
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+}
+
+// Before anything asks where Muster's files are, because everything reads it through the
+// environment and this is the one moment it can still be answered. A window opened by an older
+// `muster window new` is started through LaunchServices, which hands over no environment, so the
+// home it was told about arrives on the command line instead - and is put back into the
+// environment here rather than threaded through the places that ask.
+//
+// The environment wins where this process already has one, which is somebody who set it up
+// deliberately: a test, or a Muster launched by hand.
+let launched = Array(CommandLine.arguments.dropFirst())
+if ProcessInfo.processInfo.environment["MUSTER_HOME"] == nil,
+  let home = launchHome(arguments: launched)
+{
+  setenv("MUSTER_HOME", home, 1)
+}
+
+// Before the app runs, so a launch that is not the app never shows a Dock icon: one process is
+// the app of its install, and a second launch hands what it was asked to do to that one and exits
+// (mip/0006-one-process.md, section 5).
+if let asking = handOver(arguments: launched) {
+  switch Core.claimApp(
+    home: musterHome()?.path, commandSocketPath: commandSocketPath(), asking: asking)
+  {
+  case .claimed(let state):
+    InstallState.directory = state.map { URL(fileURLWithPath: $0, isDirectory: true) }
+  case .handedOver:
+    FileHandle.standardError.write(Data("muster: handed to the Muster already running\n".utf8))
+    exit(0)
+  case .refused(let reason):
+    FileHandle.standardError.write(Data("muster: \(reason)\n".utf8))
+    exit(1)
+  }
 }
 
 let app = NSApplication.shared

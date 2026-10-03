@@ -30,6 +30,10 @@ public final class WindowOpening {
 
   /// What the core, the menu or a chord asked for.
   public func open(_ asked: Core.WindowAsked) {
+    if asked.any {
+      comeForward()
+      return
+    }
     if !asked.name.isEmpty, let open = Windows.named(asked.name) {
       // Already open here: a second notification click, or a reopen racing the first.
       Core.info("window.reopen.already_open", ["window": asked.name])
@@ -59,6 +63,22 @@ public final class WindowOpening {
       return
     }
     open(arrangement: arrangement, show: asked.show)
+  }
+
+  /// Brings the app forward onto the window in front, or opens one when none is open: what a
+  /// second launch asking for nothing in particular, and a click on the Dock icon, both mean.
+  ///
+  /// One that opens is the most recently closed window, as Reopen Closed Window is, so a Dock click
+  /// after closing the last window but one brings that window back rather than an empty one.
+  public func comeForward() {
+    guard let window = Windows.inFront ?? Windows.all.last else {
+      Core.info("app.forward.opening", [:])
+      open(Core.WindowAsked(name: "", show: "", fresh: false))
+      return
+    }
+    Core.info("app.forward", ["window": window.name])
+    NSApp.activate(ignoringOtherApps: true)
+    window.raise()
   }
 
   /// Opens a window onto an arrangement this launch has already claimed: one of the windows open

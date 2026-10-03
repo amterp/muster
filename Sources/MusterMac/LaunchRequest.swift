@@ -106,6 +106,30 @@ public func launchReopensEveryWindow(arguments: [String], environment: [String: 
     && launchWindow(arguments: arguments) == nil && environment["MUSTER_STATE"] == nil
 }
 
+/// What this launch asks of the app when another process of its install already is the app, or
+/// nil for a launch that claims no app at all (mip/0006-one-process.md, section 5).
+///
+/// A launch asking for nothing in particular - the Dock, Finder, a second `open` - means any
+/// window will do, which brings the one in front forward. `--renderer-check` runs no daemon and is
+/// a diagnostic, and an unknown flag opens nothing, so neither claims anything.
+public func handOver(arguments: [String]) -> Core.WindowAsked? {
+  let show = launchShow(arguments: arguments) ?? ""
+  switch launchRequest(arguments: arguments) {
+  case .rendererCheck, .unknown:
+    return nil
+  case .pane(let pane):
+    return Core.WindowAsked(name: "", show: pane, fresh: false, any: true)
+  case .open:
+    if launchIsFresh(arguments: arguments) {
+      return Core.WindowAsked(name: "", show: show, fresh: true)
+    }
+    if let window = launchWindow(arguments: arguments) {
+      return Core.WindowAsked(name: window, show: show, fresh: false)
+    }
+    return Core.WindowAsked(name: "", show: show, fresh: false, any: true)
+  }
+}
+
 /// What `launchIsFresh` looks for, here so that the reader and the stripper cannot disagree.
 public let freshFlag = "--fresh"
 public let windowFlag = "--window"

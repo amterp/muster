@@ -615,7 +615,8 @@ fn a_refused_config_opens_the_roster_it_would_have_had_nowhere_to_appear_in() {
     // run asserting nothing.
     let closed =
         Saved { presentation: Presentation::default().with_sidebar(false), ..Saved::default() };
-    let windows = scratch.muster_home().join("state/windows");
+    // In this install's own state directory, which is where the app looks for its windows.
+    let windows = scratch.muster_home().join("state").join(proto::install::INSTALL).join("windows");
     std::fs::create_dir_all(&windows).expect("the check can make its arrangements directory");
     std::fs::write(windows.join("window-1.toml"), saved::to_toml(&closed))
         .expect("the check can write the arrangement it stages");

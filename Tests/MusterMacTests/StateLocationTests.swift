@@ -19,9 +19,14 @@ private func scratch(_ named: String) -> String {
   return home
 }
 
+/// The install's own state directory under a scratch home, as a claim on the app answers it.
+private func state(_ home: String) -> URL {
+  URL(fileURLWithPath: home).appendingPathComponent("state/i", isDirectory: true)
+}
+
 /// The slots the directory holds, by name.
 private func slots(_ home: String) -> [String] {
-  let directory = URL(fileURLWithPath: home).appendingPathComponent("state/windows")
+  let directory = state(home).appendingPathComponent("windows")
   return Arrangements.slots(in: directory).map { $0.stem }.sorted()
 }
 
@@ -32,9 +37,10 @@ private func publish(_ path: String?) {
 
 @Test func aFirstLaunchTakesARecordOfItsOwn() {
   let home = scratch("first")
-  let taken = Arrangements.open(fresh: false, environment: ["MUSTER_HOME": home], pid: 4001)
+  let taken = Arrangements.open(
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home), pid: 4001)
 
-  #expect(taken == "\(home)/state/windows/window-1.toml")
+  #expect(taken == "\(home)/state/i/windows/window-1.toml")
   #expect(slots(home) == ["window-1"])
 }
 
@@ -45,8 +51,10 @@ private func publish(_ path: String?) {
   // This process's own pid for both, which is what two windows running at once looks like from
   // here: a claim naming a pid that is gone is swept before the next launch chooses.
   let live = ProcessInfo.processInfo.processIdentifier
-  let first = Arrangements.open(fresh: false, environment: ["MUSTER_HOME": home], pid: live)
-  let second = Arrangements.open(fresh: true, environment: ["MUSTER_HOME": home], pid: live)
+  let first = Arrangements.open(
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home), pid: live)
+  let second = Arrangements.open(
+    fresh: true, environment: ["MUSTER_HOME": home], state: state(home), pid: live)
 
   #expect(first != second)
   #expect(slots(home) == ["window-1", "window-2"])
@@ -57,9 +65,11 @@ private func publish(_ path: String?) {
   // running, and taking its record would put both of them back where the two-windows bug was.
   let home = scratch("held")
   let held = Arrangements.open(
-    fresh: false, environment: ["MUSTER_HOME": home], pid: ProcessInfo.processInfo.processIdentifier
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home),
+    pid: ProcessInfo.processInfo.processIdentifier
   )
-  let next = Arrangements.open(fresh: false, environment: ["MUSTER_HOME": home], pid: 4004)
+  let next = Arrangements.open(
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home), pid: 4004)
 
   #expect(held != next)
 }
@@ -68,10 +78,12 @@ private func publish(_ path: String?) {
   // The gap this closes: nothing brought back a window you had closed. A record whose window is
   // no longer running is exactly what "the window I just closed" means.
   let home = scratch("reopened")
-  let closed = Arrangements.open(fresh: false, environment: ["MUSTER_HOME": home], pid: 4005)
+  let closed = Arrangements.open(
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home), pid: 4005)
   publish(closed)
   // 4005 is not running, so the claim it left is stale and the next launch takes the record.
-  let reopened = Arrangements.open(fresh: false, environment: ["MUSTER_HOME": home], pid: 4006)
+  let reopened = Arrangements.open(
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home), pid: 4006)
 
   #expect(reopened == closed)
 }
@@ -80,10 +92,12 @@ private func publish(_ path: String?) {
   // Quitting and reopening inside the same second, before anything has swept a dead claim.
   let home = scratch("released")
   let live = ProcessInfo.processInfo.processIdentifier
-  let closed = Arrangements.open(fresh: false, environment: ["MUSTER_HOME": home], pid: live)
+  let closed = Arrangements.open(
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home), pid: live)
   publish(closed)
   Arrangements.release(closed!)
-  let reopened = Arrangements.open(fresh: false, environment: ["MUSTER_HOME": home], pid: live)
+  let reopened = Arrangements.open(
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home), pid: live)
 
   #expect(reopened == closed)
 }
@@ -97,9 +111,10 @@ private func publish(_ path: String?) {
   try? "version = 3\n".write(
     toFile: "\(home)/state/window.toml", atomically: true, encoding: .utf8)
 
-  let taken = Arrangements.open(fresh: false, environment: ["MUSTER_HOME": home], pid: 4007)
+  let taken = Arrangements.open(
+    fresh: false, environment: ["MUSTER_HOME": home], state: state(home), pid: 4007)
 
-  #expect(taken?.hasSuffix("/state/windows/window-1.toml") == true)
+  #expect(taken?.hasSuffix("/state/i/windows/window-1.toml") == true)
   #expect((try? String(contentsOfFile: taken!, encoding: .utf8)) == "version = 3\n")
   #expect(!FileManager.default.fileExists(atPath: "\(home)/state/window.toml"))
 }
@@ -108,7 +123,8 @@ private func publish(_ path: String?) {
   // What a test and a script want: one named file, and no directory of records beside it.
   let home = scratch("explicit")
   let taken = Arrangements.open(
-    fresh: false, environment: ["MUSTER_STATE": "/tmp/one.toml", "MUSTER_HOME": home], pid: 4008)
+    fresh: false, environment: ["MUSTER_STATE": "/tmp/one.toml", "MUSTER_HOME": home],
+    state: state(home), pid: 4008)
 
   #expect(taken == "/tmp/one.toml")
   #expect(slots(home).isEmpty)
@@ -120,30 +136,27 @@ private func publish(_ path: String?) {
   let home = scratch("nothing")
   #expect(
     Arrangements.open(
-      fresh: false, environment: ["MUSTER_STATE": "", "MUSTER_HOME": home], pid: 4009) == nil)
+      fresh: false, environment: ["MUSTER_STATE": "", "MUSTER_HOME": home], state: state(home),
+      pid: 4009) == nil)
 }
 
 @Test func nowhereToWriteIsAnAnswer() {
   // A window that opens fresh every time, which is what it did before any of this existed -
   // rather than a path built from an empty base, which would name something in the
   // filesystem root.
-  #expect(Arrangements.open(fresh: false, environment: [:], pid: 4010) == nil)
+  #expect(Arrangements.open(fresh: false, environment: [:], state: nil, pid: 4010) == nil)
 }
 
-@Test func recordsSitWhereRegeneratedFilesBelong() {
-  // Not beside the config file. That one is written by a person and would be surprising to
-  // find rewritten; these are written by Muster on every change.
+@Test func recordsSitInTheInstallsOwnStateDirectory() {
+  // Not beside the config file, which a person writes, and not beside another install's: a
+  // development build and the release each keep their own windows (mip/0006-one-process.md,
+  // section 5).
+  let release = URL(fileURLWithPath: "/home/a/.muster/state/release", isDirectory: true)
+  #expect(Arrangements.directory(state: release)?.path == "/home/a/.muster/state/release/windows")
+  #expect(Arrangements.directory(state: nil) == nil)
   #expect(
-    Arrangements.directory(environment: ["HOME": "/home/a"])?.path
-      == "/home/a/.muster/state/windows")
-}
-
-@Test func xdgDoesNotMoveTheRecords() {
-  // It did until Muster's files moved into one home, so a reader could reasonably expect it to
-  // move these too. Pinned rather than assumed.
-  #expect(
-    Arrangements.directory(environment: ["XDG_STATE_HOME": "/xdg", "HOME": "/home/a"])?.path
-      == "/home/a/.muster/state/windows")
+    tabHoldersPath(environment: [:], state: release)
+      == "/home/a/.muster/state/release/holding/tabs.toml")
 }
 
 @Test func aClosedWindowIsReopenedFromItsOwnRecord() {
@@ -151,15 +164,17 @@ private func publish(_ path: String?) {
   // a_2Mhi0EZlv) - so the launch takes the record it was told, not the newest free one.
   let home = scratch("named")
   let environment = ["MUSTER_HOME": home]
-  let first = Arrangements.open(fresh: false, environment: environment, pid: 4101)
+  let first = Arrangements.open(
+    fresh: false, environment: environment, state: state(home), pid: 4101)
   publish(first)
-  let second = Arrangements.open(fresh: true, environment: environment, pid: 4102)
+  let second = Arrangements.open(
+    fresh: true, environment: environment, state: state(home), pid: 4102)
   publish(second)
   Arrangements.release(first!)
   Arrangements.release(second!)
 
   let reopened = Arrangements.open(
-    fresh: false, named: "window-1", environment: environment, pid: 4103)
+    fresh: false, named: "window-1", environment: environment, state: state(home), pid: 4103)
 
   #expect(reopened == first)
 }
@@ -170,11 +185,12 @@ private func publish(_ path: String?) {
   let home = scratch("named-held")
   let environment = ["MUSTER_HOME": home]
   let live = ProcessInfo.processInfo.processIdentifier
-  let held = Arrangements.open(fresh: false, environment: environment, pid: live)
+  let held = Arrangements.open(
+    fresh: false, environment: environment, state: state(home), pid: live)
   publish(held)
 
   let reopened = Arrangements.open(
-    fresh: false, named: "window-1", environment: environment, pid: 4104)
+    fresh: false, named: "window-1", environment: environment, state: state(home), pid: 4104)
 
   #expect(reopened != held)
 }
@@ -185,7 +201,8 @@ private func publish(_ path: String?) {
   // reopened - so every reopen opened a different closed window instead.
   let home = scratch("reused")
   let environment = ["MUSTER_HOME": home]
-  let crashed = Arrangements.open(fresh: false, environment: environment, pid: 4201)
+  let crashed = Arrangements.open(
+    fresh: false, environment: environment, state: state(home), pid: 4201)
   publish(crashed)
   let claim = URL(fileURLWithPath: crashed!).deletingPathExtension().appendingPathExtension("held")
   // This process's pid, which is alive, on a claim written long before this process started.
@@ -195,7 +212,7 @@ private func publish(_ path: String?) {
     [.modificationDate: Date(timeIntervalSince1970: 946_684_800)], ofItemAtPath: claim.path)
 
   let reopened = Arrangements.open(
-    fresh: false, named: "window-1", environment: environment, pid: 4202)
+    fresh: false, named: "window-1", environment: environment, state: state(home), pid: 4202)
 
   #expect(reopened == crashed)
 }
@@ -220,7 +237,8 @@ private func publish(_ path: String?) {
   let home = scratch("coarse")
   let environment = ["MUSTER_HOME": home]
   let live = ProcessInfo.processInfo.processIdentifier
-  let held = Arrangements.open(fresh: false, environment: environment, pid: live)
+  let held = Arrangements.open(
+    fresh: false, environment: environment, state: state(home), pid: live)
   publish(held)
   let claim = URL(fileURLWithPath: held!).deletingPathExtension().appendingPathExtension("held")
   let started = Arrangements.started(live)!
@@ -228,7 +246,7 @@ private func publish(_ path: String?) {
     [.modificationDate: started.addingTimeInterval(-0.9)], ofItemAtPath: claim.path)
 
   let reopened = Arrangements.open(
-    fresh: false, named: "window-1", environment: environment, pid: 4401)
+    fresh: false, named: "window-1", environment: environment, state: state(home), pid: 4401)
 
   #expect(reopened != held)
 }
@@ -253,8 +271,9 @@ private func publish(_ path: String?) {
   // that window's own record, and leaves one a live window still holds to that window.
   let home = scratch("take")
   let live = ProcessInfo.processInfo.processIdentifier
-  let held = Arrangements.open(fresh: true, environment: ["MUSTER_HOME": home], pid: live)!
-  let ended = "\(home)/state/windows/window-7.toml"
+  let held = Arrangements.open(
+    fresh: true, environment: ["MUSTER_HOME": home], state: state(home), pid: live)!
+  let ended = "\(home)/state/i/windows/window-7.toml"
   publish(ended)
 
   #expect(Arrangements.take(ended, pid: live))

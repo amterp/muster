@@ -16,9 +16,10 @@ import Foundation
 /// in turn and whichever published last decided what came back; a window that closed left nothing
 /// behind that named it.
 public enum Arrangements {
-  /// The directory the records live in.
-  public static func directory(environment: [String: String]) -> URL? {
-    musterHome(environment: environment)?.appendingPathComponent("state/windows", isDirectory: true)
+  /// The directory the records live in: `windows/` in this install's own state directory, which
+  /// the claim on the app answered (`InstallState`).
+  public static func directory(state: URL?) -> URL? {
+    state?.appendingPathComponent("windows", isDirectory: true)
   }
 
   /// The arrangement this launch adopts, and the claim it leaves on it while it runs.
@@ -35,6 +36,7 @@ public enum Arrangements {
     fresh: Bool,
     named: String? = nil,
     environment: [String: String] = ProcessInfo.processInfo.environment,
+    state: URL? = InstallState.directory,
     pid: Int32 = ProcessInfo.processInfo.processIdentifier
   ) -> String? {
     if let explicit = environment["MUSTER_STATE"] {
@@ -42,7 +44,7 @@ public enum Arrangements {
       // rather than "look in the usual place".
       return explicit.isEmpty ? nil : explicit
     }
-    guard let directory = directory(environment: environment) else { return nil }
+    guard let directory = directory(state: state) else { return nil }
     try? FileManager.default.createDirectory(
       at: directory, withIntermediateDirectories: true)
 
@@ -291,12 +293,22 @@ public enum Arrangements {
 ///
 /// Nowhere to write is a real answer - the window then holds every tab, as a single window always
 /// did.
-public func tabHoldersPath(environment: [String: String] = ProcessInfo.processInfo.environment)
-  -> String?
-{
+public func tabHoldersPath(
+  environment: [String: String] = ProcessInfo.processInfo.environment,
+  state: URL? = InstallState.directory
+) -> String? {
   if let explicit = environment["MUSTER_TAB_HOLDERS"] {
     return explicit.isEmpty ? nil : explicit
   }
-  guard let home = musterHome(environment: environment) else { return nil }
-  return home.appendingPathComponent("state/holding/tabs.toml").path
+  return state?.appendingPathComponent("holding/tabs.toml").path
+}
+
+/// This install's own state directory under the Muster home: `state/<install>/`, where its window
+/// arrangements and its record of which window holds each tab are kept (mip/0006-one-process.md,
+/// section 5).
+///
+/// Set once, from the claim on the app, before anything asks. The shell cannot name it itself,
+/// because the install is the core's to know.
+public enum InstallState {
+  nonisolated(unsafe) public static var directory: URL?
 }

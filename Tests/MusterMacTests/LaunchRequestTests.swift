@@ -71,3 +71,22 @@ func onlyAPlainLaunchReopensEveryWindow() {
   #expect(!launchReopensEveryWindow(arguments: ["--renderer-check"], environment: [:]))
   #expect(!launchReopensEveryWindow(arguments: [], environment: ["MUSTER_STATE": ""]))
 }
+
+@Test("a second launch asks the running app for what it was launched to be")
+func aSecondLaunchHandsOverWhatItWasLaunchedToBe() {
+  // mip/0006-one-process.md, section 5: with the app already running, a launch opens nothing of
+  // its own. One that asked for nothing in particular means any window will do.
+  #expect(
+    handOver(arguments: []) == Core.WindowAsked(name: "", show: "", fresh: false, any: true))
+  #expect(
+    handOver(arguments: [freshFlag, "--home", "/tmp/somewhere"])
+      == Core.WindowAsked(name: "", show: "", fresh: true))
+  #expect(
+    handOver(arguments: ["--window", "window-2", "--show", "t1w3r07bsd"])
+      == Core.WindowAsked(name: "window-2", show: "t1w3r07bsd", fresh: false))
+  #expect(
+    handOver(arguments: ["p1w3r07bsd"])
+      == Core.WindowAsked(name: "", show: "p1w3r07bsd", fresh: false, any: true))
+  #expect(handOver(arguments: ["--renderer-check"]) == nil)
+  #expect(handOver(arguments: ["--nonsense"]) == nil)
+}
