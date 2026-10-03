@@ -1187,6 +1187,20 @@ extension MusterWindow {
     }
   }
 
+  // A beep at either end of the history, for the same reason. The mouse buttons skip these and
+  // stay silent there, as a browser's do.
+  @objc public func focusBack(_ sender: Any?) {
+    if !Core.focusHistory(forward: false) {
+      NSSound.beep()
+    }
+  }
+
+  @objc public func focusForward(_ sender: Any?) {
+    if !Core.focusHistory(forward: true) {
+      NSSound.beep()
+    }
+  }
+
   @objc public func focusNextPane(_ sender: Any?) {
     Core.focus(step: "next")
   }

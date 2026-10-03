@@ -204,6 +204,7 @@ fn route(payload: request::Payload) -> Response {
         request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
         request::Payload::PressNumberedChord(chord) => press_numbered_chord(chord.press),
         request::Payload::FocusAsking(_) => focus_asking(),
+        request::Payload::FocusHistory(walk) => focus_history(walk.forward),
         request::Payload::OpenTranscript(open) if open.group.is_empty() => Response::failure(
             "a request to open a transcript named no group, so nothing opened. A banner for a \
              message always carries its group, so the shell building this has a bug.",
@@ -1420,6 +1421,21 @@ fn focus_asking() -> Response {
         None => proto::Asking::default(),
     };
     Response { payload: Some(response::Payload::Asking(went)) }
+}
+
+fn focus_history(forward: bool) -> Response {
+    match session::walk_focus(forward) {
+        Ok(went) => Response {
+            payload: Some(response::Payload::Went(went.map_or_else(
+                proto::Went::default,
+                |pane| proto::Went {
+                    daemon_id: pane.daemon.to_string(),
+                    pane_id: pane.pane.to_string(),
+                },
+            ))),
+        },
+        Err(refusal) => relayed(Err(refusal)),
+    }
 }
 
 /// Goes to a group's transcript on a daemon: the pane there that runs it, or a new tab running

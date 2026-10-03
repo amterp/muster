@@ -213,6 +213,22 @@
       }
     },
     {
+      "name": "walking the focus history is the third walk on the bracket keys",
+      "why": "Cmd+[ and cmd+] step through panes and cmd+shift+[ and cmd+shift+] through tabs, so cmd+opt+[ and cmd+opt+] step through where the keyboard has been - the mouse's back and forward buttons, from the keyboard. Ghostty keeps no focus history and binds neither chord on macOS. Xcode's ctrl+cmd+left and right were the other candidate, and those are Ghostty's resize.",
+      "given": {
+        "actions": [
+          "focus_back",
+          "focus_forward"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "focus_back=alt+super+BracketLeft",
+          "focus_forward=alt+super+BracketRight"
+        ]
+      }
+    },
+    {
       "name": "the tab numbers are gone rather than moved beside the pane numbers",
       "why": "Two numberings in one sidebar is worse than either: a row reading 3 beside a caption reading 2 is two chords that look alike and mean different things. The old names are refused rather than aliased, so a config file carrying `focus_tab_3` is told so - silently binding ⌘3 to a different thing than it used to reach is the one outcome worse than the refusal.",
       "given": {
@@ -235,9 +251,9 @@
         ]
       },
       "expect": {
-        "actions": 54,
-        "bound": 46,
-        "distinct_chords": 46
+        "actions": 56,
+        "bound": 48,
+        "distinct_chords": 48
       }
     },
     {

@@ -110,6 +110,11 @@ pub enum Action {
     /// brings its tab on screen, as clicking its banner does. Ghostty has no equivalent: it
     /// has no idea of an agent waiting.
     FocusAsking,
+    /// Puts the keyboard back on the pane it was on before, across tabs and machines, as a
+    /// browser's back button goes to the page before. The mouse's back and forward buttons are
+    /// these two, wherever the pointer is in the window (`muster_core::focus_history`).
+    FocusBack,
+    FocusForward,
     ResizeLeft,
     ResizeRight,
     ResizeUp,
@@ -161,7 +166,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 54] = [
+    pub const ALL: [Action; 56] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::NewTab,
@@ -192,6 +197,8 @@ impl Action {
         Action::FocusPane(8),
         Action::FocusPane(9),
         Action::FocusAsking,
+        Action::FocusBack,
+        Action::FocusForward,
         Action::ResizeLeft,
         Action::ResizeRight,
         Action::ResizeUp,
@@ -248,6 +255,8 @@ impl Action {
                 PANE_PLACES.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or("focus_pane")
             }
             Action::FocusAsking => "focus_asking",
+            Action::FocusBack => "focus_back",
+            Action::FocusForward => "focus_forward",
             Action::ResizeLeft => "resize_left",
             Action::ResizeRight => "resize_right",
             Action::ResizeUp => "resize_up",
@@ -351,6 +360,11 @@ impl Action {
             // Ghostty's ⌘⇧ chords leave A alone on macOS. A for asking, and the chord Slack puts
             // the same jump on, All Unreads, so a hand that has done this before already knows.
             Action::FocusAsking => Some(Chord::new(Key::KeyA, shifted)),
+            // Muster's own, since Ghostty keeps no history. The third walk on the bracket keys:
+            // ⌘[ and ⌘] step through panes, ⌘⇧ through tabs, and ⌘⌥ through where you have
+            // been. Not Xcode's ⌃⌘← and ⌃⌘→, which are Ghostty's resize.
+            Action::FocusBack => Some(Chord::new(Key::BracketLeft, optioned)),
+            Action::FocusForward => Some(Chord::new(Key::BracketRight, optioned)),
             Action::ResizeLeft => Some(Chord::new(Key::ArrowLeft, resizing)),
             Action::ResizeRight => Some(Chord::new(Key::ArrowRight, resizing)),
             Action::ResizeUp => Some(Chord::new(Key::ArrowUp, resizing)),

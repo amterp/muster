@@ -122,6 +122,11 @@ public enum MenuActions {
     "focus_asking": Described(
       title: "Select Pane Asking", selector: #selector(MusterWindow.focusPaneAsking(_:)),
       group: .pane),
+    // Xcode's words for walking back through where you have been.
+    "focus_back": Described(
+      title: "Go Back", selector: #selector(MusterWindow.focusBack(_:)), group: .pane),
+    "focus_forward": Described(
+      title: "Go Forward", selector: #selector(MusterWindow.focusForward(_:)), group: .pane),
     "resize_left": Described(
       title: "Resize Pane Left", selector: #selector(MusterWindow.resizePaneLeft(_:)), group: .pane),
     "resize_right": Described(

@@ -54,6 +54,12 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             (true, false) => json!({ "pane": went.pane_id, "daemon": went.daemon_id }).to_string(),
             (false, _) => went.pane_id.clone(),
         }),
+        // The same shape as `Asking`: the pane, or nothing at either end of the history.
+        Some(response::Payload::Went(went)) => Ok(match (json, went.pane_id.is_empty()) {
+            (true, true) => json!({ "pane": null }).to_string(),
+            (true, false) => json!({ "pane": went.pane_id, "daemon": went.daemon_id }).to_string(),
+            (false, _) => went.pane_id.clone(),
+        }),
         Some(response::Payload::Window(window)) => Ok(if json {
             window_json(window, Others::All).to_string()
         } else {
@@ -149,6 +155,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::BackendHealth(_) => "a daemon's health",
         response::Payload::KeyHandled(_) => "a keystroke's outcome",
         response::Payload::Asking(_) => "the pane that asked",
+        response::Payload::Went(_) => "where the focus history went",
     }
 }
 

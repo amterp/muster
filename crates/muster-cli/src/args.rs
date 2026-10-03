@@ -22,9 +22,9 @@ use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusAsking,
-    FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, MoveTab, ReadDaemons,
-    ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane,
-    SendToPane, SplitPane, ToggleSidebar, WatchPanes, ZoomPane, request,
+    FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, MoveTab,
+    ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, Request,
+    ResizePane, SendToPane, SplitPane, ToggleSidebar, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -241,9 +241,9 @@ enum What {
 
     /// Put the window's keyboard on a pane, or step it somewhere
     //
-    // A name, a direction, a place and the pane asking are four ways of saying where, and clap
-    // holds them in one group so that two at once is refused before this is read. None of them
-    // is the fifth way, which is the pane this is running in.
+    // A name, a direction, a place, the pane asking and a step through the history are five ways
+    // of saying where, and clap holds them in one group so that two at once is refused before
+    // this is read. None of them is the sixth way, which is the pane this is running in.
     Focus {
         /// The pane to go to, or the one this is running in
         #[arg(value_name = "REF", group = "somewhere")]
@@ -275,6 +275,13 @@ enum What {
         /// Go to the pane most urgently asking for somebody, and print it; nothing if none is
         #[arg(long, group = "somewhere")]
         asking: bool,
+
+        /// Go back to the pane the keyboard was on before, and print it; nothing if there is none
+        #[arg(long, group = "somewhere")]
+        back: bool,
+        /// Go forward again after going back, and print the pane; nothing if there is none
+        #[arg(long, group = "somewhere")]
+        forward: bool,
     },
 
     /// Fill the region with one pane, or put the others back
@@ -750,6 +757,12 @@ pub fn parse(
         What::Pane { doing } => pane(doing, environment, here)?,
         What::Tab { doing } => tab(doing, environment, here)?,
         What::Focus { asking: true, .. } => send(request::Payload::FocusAsking(FocusAsking {})),
+        What::Focus { back: true, .. } => {
+            send(request::Payload::FocusHistory(FocusHistory { forward: false }))
+        }
+        What::Focus { forward: true, .. } => {
+            send(request::Payload::FocusHistory(FocusHistory { forward: true }))
+        }
         What::Focus { pane, next, previous, left, right, up, down, place, .. } => {
             // A direction and a place are answers on their own, so they are read before the
             // pane is - and clap has already refused any two of the three together.

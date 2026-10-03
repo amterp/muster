@@ -906,6 +906,16 @@ public enum Core {
     return !went.paneID.isEmpty || !went.group.isEmpty
   }
 
+  /// Puts the keyboard back on the pane it was on before, or forward again. False only when
+  /// there was nowhere to go, as for `focusAsking`.
+  @discardableResult
+  public static func focusHistory(forward: Bool) -> Bool {
+    var request = Muster_Request()
+    request.focusHistory.forward = forward
+    guard case .went(let went) = send(request) else { return true }
+    return !went.paneID.isEmpty
+  }
+
   /// Takes back a numbered chord that named a tab, because the gesture is over.
   ///
   /// What letting go of the modifier means. The core decides what that costs; this side only
@@ -1127,6 +1137,7 @@ public enum Core {
     case .reattachPane: return "reattach_pane"
     case .focusPane: return "focus_pane"
     case .focusAsking: return "focus_asking"
+    case .focusHistory: return "focus_history"
     case .openTranscript: return "open_transcript"
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"

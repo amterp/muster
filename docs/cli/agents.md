@@ -226,6 +226,7 @@ fresh surface and the pane repaints.
     muster focus --left
     muster focus --place 3
     muster focus --asking
+    muster focus --back
 
 `--next` and `--previous` walk every pane the window is showing and wrap, so between them they
 reach all of it. The four directions are geometric and do not wrap. `--place` takes the number
@@ -241,6 +242,12 @@ It reaches the panes this window would post a notification for: its own tabs, an
 window that is closed. A pane in another open window is that window's to go to, from there.
 Going to a pane counts as looking at it only while the window is in front, so run it again for
 the next one there; with another app in front, it goes back to the same pane.
+
+`--back` goes to the pane the keyboard was on before and `--forward` goes again, through the same
+history the mouse's back and forward buttons and `cmd+opt+[` and `cmd+opt+]` walk. Every pane the
+keyboard lands on is in it, however it got there, so a step back can change tabs or machines, and
+a pane that has closed is stepped over. Like `--asking`, it prints the pane it went to, and nothing
+at either end of the history, which still exits 0.
 
 Tabs step too, on their own axis - `muster tab focus --next` reaches the tabs behind whatever is on
 screen.

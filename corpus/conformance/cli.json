@@ -1780,6 +1780,52 @@
       }
     },
     {
+      "name": "going back is the mouse's back button from a script",
+      "why": "The focus history lives in the window, so a script walks the same one the mouse buttons and cmd+opt+[ do rather than keeping its own. It names no pane because the window is the only thing that knows where the keyboard has been.",
+      "given": {
+        "argv": [
+          "focus",
+          "--back"
+        ]
+      },
+      "expect": {
+        "request": {
+          "focus_history": {}
+        }
+      }
+    },
+    {
+      "name": "going forward again is the same request the other way",
+      "why": "One request with a direction rather than two, because back and forward are one history walked two ways, and the window answers both with where it went.",
+      "given": {
+        "argv": [
+          "focus",
+          "--forward"
+        ]
+      },
+      "expect": {
+        "request": {
+          "focus_history": {
+            "forward": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a step back and a pane are two answers to one question",
+      "why": "Going back names its own destination, so a pane beside it is a caller who has not decided where the keyboard goes.",
+      "given": {
+        "argv": [
+          "focus",
+          "p1w3r07bsd",
+          "--back"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
       "name": "a pane and a direction are two answers to one question",
       "why": "Where to put the keyboard has one answer. A name, a direction and a place are three ways of giving it, and two at once is a caller who has not decided.",
       "given": {

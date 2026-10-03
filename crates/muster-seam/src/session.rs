@@ -27,6 +27,7 @@ use muster_core::daemon_settings::DaemonSettings;
 use muster_core::diagnostics::{clock, log, poison};
 use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
+use muster_core::focus_history::FocusHistory;
 use muster_core::input::{Bindings, InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal};
 use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
@@ -1179,6 +1180,10 @@ pub(crate) struct Session {
     /// to hear it. Spans the daemons for the reason attention does.
     pane_focus: PaneFocus,
 
+    /// The panes the keyboard has been on, for the mouse's back and forward buttons. Spans the
+    /// daemons, because a step back from a devenv pane can land on a laptop one.
+    focus_history: FocusHistory,
+
     /// When each pane's agent last changed state, in milliseconds since the epoch.
     ///
     /// Stamped here rather than in the mirror, which is a pure fold over what a daemon said -
@@ -1425,9 +1430,7 @@ impl Session {
     /// Asked of the mirror, which is a daemon's own answer as of the last thing it said, and
     /// so the only place "did this pane close, or did its connection die" is written down.
     fn holds(&self, pane: &PaneKey) -> bool {
-        self.backends.get(&pane.daemon).is_some_and(|backend| {
-            poison::lock(&backend.mirror, "mirror").pane(&pane.pane).is_some()
-        })
+        mirrored(&self.backends, pane)
     }
 
     /// The region a request about a whole tab acts through, or why there is none.
@@ -2465,6 +2468,14 @@ pub(crate) fn bridge_stalled(pane: &PaneKey, deadline: u64) {
     publish("bridge_stalled");
 }
 
+/// Whether a mirror in this window holds the pane. [`Session::holds`], for a caller already
+/// borrowing another part of the session.
+fn mirrored(backends: &BTreeMap<DaemonId, Backend>, pane: &PaneKey) -> bool {
+    backends
+        .get(&pane.daemon)
+        .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").pane(&pane.pane).is_some())
+}
+
 /// Why an intent about something on screen could not be sent.
 fn not_showing(daemon: &DaemonId) -> String {
     format!(
@@ -2498,6 +2509,24 @@ pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
     }
     publish("focus");
     Ok(())
+}
+
+/// Puts the keyboard back on the pane it was on before, or forward again after going back.
+///
+/// `None` is nowhere to go, which is no failure: the first pane a window showed has nothing
+/// before it. A pane that has gone since is passed over. One whose tab another window holds
+/// now is refused by `focus`, and the history has already moved past it, so asking again goes
+/// on to the pane before that.
+pub(crate) fn walk_focus(forward: bool) -> Result<Option<PaneKey>, Refusal> {
+    let went = {
+        let mut session = poison::lock(&SESSION, "session");
+        let session = &mut *session;
+        let live = |pane: &PaneKey| mirrored(&session.backends, pane);
+        if forward { session.focus_history.forward(live) } else { session.focus_history.back(live) }
+    };
+    let Some(pane) = went else { return Ok(None) };
+    focus(&pane.daemon, &pane.pane)?;
+    Ok(Some(pane))
 }
 
 /// Moves the line between two regions, and republishes what that made.
@@ -4674,6 +4703,11 @@ fn publish(cause: &str) {
             .composition
             .focused_region()
             .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?)));
+        // Here rather than in `focus`, because a split, a new tab, a tab step and a closed pane
+        // all move the keyboard without going through it - and every one of them ends here.
+        if let Some(pane) = &keyboard {
+            session.focus_history.visited(pane.clone());
+        }
         let told = session.pane_focus.keyboard(keyboard);
         let focus = session.focus_reports(told);
         // The typeable watch is settled against the same set, and for a reason of its own: what
@@ -5086,6 +5120,7 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
             let mut session = poison::lock(&SESSION, "session");
             session.state_since.remove(&key);
             session.pane_focus.forget(&key);
+            session.focus_history.forget(&key);
             let attended = session.attention.forget(&key);
             attended.map(|attend| (key, attend))
         }

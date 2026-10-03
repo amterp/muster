@@ -91,7 +91,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `focus_pane_1` to
-`focus_pane_9`, `focus_asking`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
+`focus_pane_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
 `find_next`, `find_previous`, `zoom`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,

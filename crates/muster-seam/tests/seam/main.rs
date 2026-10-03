@@ -13,6 +13,7 @@ mod confirmed_send;
 mod daemon_census;
 mod dispatch;
 mod effects;
+mod focus_history;
 mod handing_over;
 mod holding;
 mod inherited;
