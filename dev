@@ -383,7 +383,9 @@ fn doctor_devenv():
     stdout, stderr, code = quiet $`docker ps --filter 'name=^muster-devenv' --format '\{\{.Names\}\}\t\{\{.Ports\}\}\t\{\{.Label "muster.checkout"\}\}'` catch:
         print(dim("  docker is not answering, so nothing this repo starts in it is up"))
         return
-    rows = stdout.trim().split_lines().filter(fn(row) row.trim() != "")
+    // Not trimmed as a whole: the shared container's row ends in the tab before its empty
+    // label, and trimming the last row would take that field away.
+    rows = stdout.split_lines().filter(fn(row) row.trim() != "")
     if len(rows) == 0:
         print(dim("  not running"))
         return
