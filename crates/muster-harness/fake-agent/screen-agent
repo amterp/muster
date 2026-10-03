@@ -19,8 +19,10 @@
 # was typed into it (a daemon's doorbell, say) after the screen has been painted over.
 #
 # SIGUSR1 blocks it at once, without a line read, as an agent at work opens a dialog in the
-# middle of a turn while something typed sits unsent in its prompt; its process id is in
-# $HOME/fake-agent-pid.
+# middle of a turn while something typed sits unsent in its prompt, and SIGUSR2 puts it back to
+# work, as the dialog answered; its process id is in $HOME/fake-agent-pid. Both redraw only the
+# state's line, so what sits unsent in the prompt still shows there, as Claude Code redraws its
+# prompt box with it once a dialog closes.
 #
 # The first argument, if any, is how it starts:
 # - `starting`: it treats the first line it reads as Claude Code treats what is typed while it
@@ -62,8 +64,15 @@ if [ "$2" = unechoed ]; then
     stty -echo
 fi
 
+# The state's line alone, the cursor put back where typing goes on.
+restate() {
+    state=$1
+    printf '\0337\033[4;1HPROBE-STATE:%s\033[K\0338' "$(echo "$state" | tr '[:lower:]' '[:upper:]')"
+}
+
 printf '%s\n' $$ > "$HOME/fake-agent-pid"
-trap 'signalled=yes; state=blocked; paint' USR1
+trap 'signalled=yes; restate blocked' USR1
+trap 'signalled=yes; restate working' USR2
 
 paint
 

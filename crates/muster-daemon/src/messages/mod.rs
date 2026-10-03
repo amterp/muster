@@ -60,6 +60,9 @@ pub(crate) struct Messages {
     /// Agents whose hooks fetch their messages, seen idle with none fetching, and when the
     /// doorbell may ring them: a `Stop` hook's wait may connect just after its turn ends.
     hook_grace: HashMap<String, Instant>,
+    /// Rings given up with their text possibly left unsent in a prompt, by pane: the text, and
+    /// when it was typed. A later ring finding exactly that in the prompt sends it.
+    left: HashMap<String, (String, Instant)>,
     /// What waits for the human, changed by the request being handled, for the windows to be
     /// told once this lock is let go.
     told: Vec<msg_answer::Notice>,
@@ -93,6 +96,7 @@ impl Messages {
             pending: service.outstanding(),
             rung: Vec::new(),
             hook_grace: HashMap::new(),
+            left: HashMap::new(),
             service,
             handing_over: false,
             waits: HashMap::new(),

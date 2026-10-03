@@ -105,10 +105,21 @@ impl Daemon {
     /// of a turn, over whatever sits unsent in its prompt. The daemon has one fake agent's
     /// process id written down, the last started.
     pub fn block_agent_unasked(&self) {
+        self.signal_agent("-USR1");
+    }
+
+    /// Puts the fake agent back to work, with nothing typed into it: the dialog
+    /// [`Daemon::block_agent_unasked`] opened, answered, and what sat unsent in its prompt still
+    /// there.
+    pub fn unblock_agent_unasked(&self) {
+        self.signal_agent("-USR2");
+    }
+
+    fn signal_agent(&self, signal: &str) {
         let pid = std::fs::read_to_string(self.root().join("home/fake-agent-pid"))
             .expect("the fake agent wrote down its process id");
         let status = std::process::Command::new("kill")
-            .args(["-USR1", pid.trim()])
+            .args([signal, pid.trim()])
             .status()
             .expect("kill runs");
         assert!(status.success(), "the fake agent could not be signalled");

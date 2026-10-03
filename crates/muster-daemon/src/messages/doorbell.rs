@@ -19,14 +19,17 @@
 //! as its highlighted option, "Yes", while it ignores the line itself, pasted or typed
 //! (docs/observations/claude-code-2.1.288.md). So a ring at work is typed without its Return,
 //! and the Return follows only once a second look finds the prompt holding the ring and nothing
-//! else. What is left is a dialog drawn between that look and the Return, which this daemon's
-//! copy of the screen shows a moment late.
+//! else. A dialog covering it is waited out however long it stays open, since the ring sits in
+//! the prompt meanwhile and nothing else would send it. What is left is a dialog drawn between
+//! that look and the Return, which this daemon's copy of the screen shows a moment late.
 //!
 //! Claude Code keeps what is typed while it starts as its prompt and drops the Return, so a
 //! ring can sit unsent. Return is pressed again for it, a few times, but only while nobody has
 //! typed into the pane since and the prompt holds the ring's own text and nothing else: that
 //! Return can send nothing but the ring. The first is what the daemon saw written, since the
-//! screen can lag it.
+//! screen can lag it. A ring given up with its text still in the prompt is sent by the next ring
+//! that finds exactly that text there, so a prompt the doorbell filled never reads as somebody's
+//! draft for good.
 
 use std::collections::HashMap;
 use std::sync::{OnceLock, Weak};
@@ -86,7 +89,9 @@ pub(crate) const SETTLE: Duration = Duration::from_secs(1);
 #[derive(Debug)]
 pub(crate) struct Rung {
     wake: Wake,
-    /// When it was rung, or Return last pressed for it.
+    /// When its text was typed, after which anything else typed into the pane sits beside it.
+    typed: Instant,
+    /// When it was rung, or Return last pressed for it, or its prompt last looked at.
     at: Instant,
     presses: u8,
     /// Typed while its agent worked, which takes what it is typed as part of the running turn
@@ -94,6 +99,13 @@ pub(crate) struct Rung {
     at_work: bool,
     /// Whether its Return has been pressed. A ring typed at work waits for a second look first.
     returned: bool,
+    /// A ring typed at work and not yet returned, whose prompt something covered when it was
+    /// looked at again: looked at every few seconds rather than every second, for as long as its
+    /// agent stays in the pane, since a dialog can stay open for as long as its person is away.
+    covered: bool,
+    /// How many times a ring typed at work and not yet returned found its prompt empty: a screen
+    /// that has not shown what was typed yet, until it has been looked at too often for that.
+    blank: u8,
 }
 
 /// Whether a pane may be rung now.
@@ -166,13 +178,24 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                 rang(&wake, took);
                 if took {
                     let at = Instant::now();
-                    rung.push(Rung { wake, at, presses: 0, at_work, returned: !at_work });
+                    shared.messages().left.remove(pane_of(&wake));
+                    rung.push(Rung {
+                        wake,
+                        typed: at,
+                        at,
+                        presses: 0,
+                        at_work,
+                        returned: !at_work,
+                        covered: false,
+                        blank: 0,
+                    });
                     came.push(Came::Rang);
                 } else {
                     came.push(Came::Refused);
                 }
             }
-            AtPrompt::Holds(_) => {
+            AtPrompt::Holds(held) => {
+                send_left(shared, &wake, &seen, &held);
                 waits(&wake, "its prompt is not empty");
                 waiting.push(wake);
                 came.push(Came::Waits);
@@ -200,6 +223,21 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
         messages.pending.extend(waiting);
     }
     came
+}
+
+/// Sends a ring an earlier one gave up and left in the prompt, when the prompt holds exactly that
+/// and nobody has typed into the pane since: otherwise the prompt reads as a draft for good, and
+/// nothing is rung there again. The wake waiting meanwhile is rung once the prompt is empty.
+fn send_left(shared: &Shared, wake: &Wake, seen: &Seen, held: &str) {
+    let Via::Pane(pane) = &wake.via else { return };
+    let Some((text, at)) = shared.messages().left.get(pane).cloned() else { return };
+    if !prompt::is_only(held, &text) || seen.io.someone_typed_at().is_some_and(|typed| typed > at) {
+        return;
+    }
+    if seen.io.queue(Input::Ring { text: String::new(), enter: true }) {
+        shared.messages().left.remove(pane);
+        log::info("msg.ring.left_sent", fields! { "name" => wake.name, "pane" => pane });
+    }
 }
 
 fn waits(wake: &Wake, why: &str) {
@@ -288,6 +326,7 @@ fn look(
         if messages.handing_over {
             return LOOK_AGAIN;
         }
+        messages.left.retain(|pane, _| panes.exists(pane));
         went_idle(&mut messages, before, &panes, now, &mut next);
         for wake in std::mem::take(&mut messages.pending) {
             let Via::Pane(pane) = &wake.via else { continue };
@@ -440,8 +479,8 @@ fn unanswered_rings(
         if taken {
             continue;
         }
-        let due = rung.at + if rung.returned { ANSWER } else { SETTLE };
-        if rung.presses >= PRESSES && due <= now {
+        let due = rung.at + if rung.returned || rung.covered { ANSWER } else { SETTLE };
+        if rung.returned && rung.presses >= PRESSES && due <= now {
             ended(messages, &rung, "Return was pressed for it as often as it may be");
             continue;
         }
@@ -471,7 +510,7 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
     for (mut rung, seen) in pressing {
         // Before the screen, which can lag what was typed: an agent slow to paint, or this
         // daemon's copy behind, shows the ring alone over words that a Return would send.
-        if seen.io.someone_typed_at().is_some_and(|typed| typed > rung.at) {
+        if seen.io.someone_typed_at().is_some_and(|typed| typed > rung.typed) {
             ending.push((rung, "something was typed into its pane after it was rung"));
             continue;
         }
@@ -500,10 +539,18 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
                 );
                 pressed.push(rung);
             }
+            AtPrompt::Empty { .. } if !rung.returned && rung.blank < PRESSES => {
+                rung.blank += 1;
+                rung.at = Instant::now();
+                pressed.push(rung);
+            }
+            AtPrompt::Empty { .. } if !rung.returned => {
+                ending.push((rung, "its prompt stayed empty, and its Return was never pressed"));
+            }
             AtPrompt::Empty { .. } => {}
             AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring")),
             AtPrompt::Not(_) if !rung.returned => {
-                rung.presses += 1;
+                rung.covered = true;
                 rung.at = Instant::now();
                 pressed.push(rung);
             }
@@ -528,6 +575,10 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
 /// pushed aside - came while the agent works, and it is woken once more as it goes idle with the
 /// message unread, which forgetting would lose.
 fn ended(messages: &mut Messages, rung: &Rung, why: &str) {
+    if let Via::Pane(pane) = &rung.wake.via {
+        let text = messaging::wake_text(&notice_of(&rung.wake.notice));
+        messages.left.insert(pane.clone(), (text, rung.typed));
+    }
     if rung.at_work {
         log::info(
             "msg.ring.left",
@@ -562,13 +613,17 @@ pub(crate) fn sooner(next: &mut Option<Instant>, at: Instant) {
     *next = Some(next.map_or(at, |next| next.min(at)));
 }
 
-/// Says what came of a ring.
-pub(crate) fn rang(wake: &Wake, took: bool) {
-    let pane = match &wake.via {
+fn pane_of(wake: &Wake) -> &str {
+    match &wake.via {
         Via::Pane(pane) => pane.as_str(),
         Via::Inbox(inbox) => inbox.socket.as_str(),
         Via::Human => muster_msg::HUMAN,
-    };
+    }
+}
+
+/// Says what came of a ring.
+pub(crate) fn rang(wake: &Wake, took: bool) {
+    let pane = pane_of(wake);
     if took {
         log::info(
             "msg.rang",

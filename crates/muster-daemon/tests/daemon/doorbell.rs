@@ -566,6 +566,28 @@ fn a_dialog_opened_over_an_urgent_ring_before_its_return_is_never_answered() {
     assert_eq!(agent.heard(), ["working"], "a Return reached the dialog");
 }
 
+/// A dialog that stays open over an urgent ring past the doorbell's patience for Returns, and then
+/// closes with the ring still unsent in the prompt: the ring is sent then, not left there for good,
+/// which would leave the agent counted woken and never rung for the message again.
+#[test]
+fn an_urgent_ring_a_long_dialog_covered_is_sent_once_the_dialog_closes() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    std::thread::sleep(QUIET);
+
+    agent.post_urgently("p1", "now");
+    agent.until_shows("PROBE-PROMPT> [muster] integrator+p1");
+    agent.daemon.block_agent_unasked();
+    agent.daemon.until_agent("p1", proto::AgentState::Blocked);
+    // Past six Returns' worth of looks, five seconds apart.
+    std::thread::sleep(ANSWER * 7);
+    assert_eq!(agent.heard(), ["working"], "a Return reached the dialog");
+
+    agent.daemon.unblock_agent_unasked();
+    let rung = agent.until_rung(1);
+    assert!(rung[0].contains("1 urgent"), "{rung:?}");
+}
+
 /// A ring typed at work, then something typed into the pane before it was seen taken: the ring
 /// is left alone, and the agent still counts as woken, so it is rung once more as it goes idle
 /// with the message unread.
