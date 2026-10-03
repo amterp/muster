@@ -531,7 +531,7 @@ fn remedy_message(remedy: &Remedy) -> problem::Remedy {
     };
     problem::Remedy {
         title: remedy.title().to_string(),
-        request: Some(Request { payload: Some(payload), ..Request::default() }),
+        request: Some(Request::new(payload)),
     }
 }
 
