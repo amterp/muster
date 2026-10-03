@@ -12,6 +12,7 @@ const MODEL_BYTES: usize = 128;
 const OTHER_KEYS: usize = 16;
 const KEY_BYTES: usize = 64;
 const VALUE_BYTES: usize = 256;
+const SESSION_NAME_BYTES: usize = 128;
 
 /// The pane's facts after `report`, or why the report is refused. None when nothing is known.
 pub(crate) fn apply(
@@ -69,6 +70,12 @@ pub(crate) fn apply(
         ));
     }
     Ok((facts != proto::AgentFacts::default()).then_some(facts))
+}
+
+/// Why a session's name, as an agent reports it, is refused, if it is: it is held to a fact's
+/// bounds, though the pane's name carries it rather than its facts.
+pub(crate) fn session_name(name: &str) -> Result<(), String> {
+    text("session_name", name, SESSION_NAME_BYTES)
 }
 
 fn text(what: &str, text: &str, most: usize) -> Result<(), String> {

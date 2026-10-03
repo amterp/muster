@@ -40,6 +40,7 @@ use muster_msg::{Activity, Presence, Ringable, Via, Wake};
 
 use super::presence::{Panes, Seen};
 use super::prompt::{self, AtPrompt};
+use super::renames::{self, Typing};
 use super::{Messages, notice_of};
 use crate::session::Shared;
 use crate::writer::Input;
@@ -57,7 +58,7 @@ const STILL: Duration = Duration::from_millis(500);
 
 /// How long the thread sleeps while something is pending that no change will announce - a
 /// pane whose agent is not yet found, or whose prompt holds a draft.
-const LOOK_AGAIN: Duration = Duration::from_secs(5);
+pub(crate) const LOOK_AGAIN: Duration = Duration::from_secs(5);
 
 /// How long the thread sleeps with nothing to ring, where only a post or a change in a pane,
 /// which wake it, can make a difference. Bounded only so that a daemon that is stopping ends the
@@ -66,7 +67,7 @@ const IDLE: Duration = Duration::from_mins(1);
 
 /// How long a rung agent has to take the ring - go to work, or read what it was rung for -
 /// before Return is pressed again.
-const ANSWER: Duration = Duration::from_secs(5);
+pub(crate) const ANSWER: Duration = Duration::from_secs(5);
 
 /// How long an agent whose hooks fetch its messages is left once it is seen idle with nothing
 /// fetching, before it is rung: its `Stop` hook starts as the turn ends, and its wait may connect
@@ -75,11 +76,11 @@ const HOOK_GRACE: Duration = Duration::from_secs(2);
 
 /// How many times Return is pressed again for one ring: enough to outlast Claude Code's start,
 /// which reads what is typed only once its prompt is up.
-const PRESSES: u8 = 6;
+pub(crate) const PRESSES: u8 = 6;
 
 /// How long after a ring is typed into the prompt of an agent at work its prompt is looked at
 /// again, before its Return: long enough for the screen to show what was typed.
-const SETTLE: Duration = Duration::from_secs(1);
+pub(crate) const SETTLE: Duration = Duration::from_secs(1);
 
 /// A ring its agent has not yet taken.
 #[derive(Debug)]
@@ -245,32 +246,42 @@ impl Doorbell {
 fn run(shared: &Weak<Shared>) {
     // What each watched pane's agent was doing when last looked at, to see it go idle.
     let mut before: HashMap<String, Option<Activity>> = HashMap::new();
+    let mut typing = Typing::new();
     // The first look is at once: a daemon that starts may already hold wakes to ring again.
     let mut sleep = Duration::ZERO;
     loop {
         std::thread::park_timeout(sleep);
         let Some(shared) = shared.upgrade() else { return };
-        sleep = look(&shared, &mut before);
+        sleep = look(&shared, &mut before, &mut typing);
     }
 }
 
-/// Rings what may be rung, and says how long to sleep before looking again.
-fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Duration {
-    {
-        let messages = shared.messages();
-        if messages.pending.is_empty()
-            && messages.rung.is_empty()
-            && messages.service.watched().is_empty()
-        {
-            before.clear();
-            return IDLE;
-        }
+/// Types the panes' names wanted in their agents' sessions, rings what may be rung, and says how
+/// long to sleep before looking again.
+fn look(
+    shared: &Shared,
+    before: &mut HashMap<String, Option<Activity>>,
+    typing: &mut Typing,
+) -> Duration {
+    let (quiet, handing_over) = standing(shared);
+    if quiet && typing.is_empty() && !shared.lock().wants_session_names() {
+        before.clear();
+        return IDLE;
+    }
+    if handing_over {
+        return LOOK_AGAIN;
     }
     let panes = Panes::of(shared);
+    let mut next: Option<Instant> = None;
+    // First, so that a ring looking at the same pane sees the rename's write and waits it out.
+    renames::look(shared, &panes, Instant::now(), typing, &mut next);
+    if quiet {
+        before.clear();
+        return until(next, false);
+    }
     let now = Instant::now();
     let mut ringing: Vec<(Wake, Seen)> = Vec::new();
     let pressing;
-    let mut next: Option<Instant> = None;
     let mut unfound = false;
     {
         let mut messages = shared.messages();
@@ -342,15 +353,30 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Dura
     let came = ring_all(shared, ringing);
     // A ring is looked at again once it is due its Return, or a Return pressed again; nothing
     // announces a draft being cleared, so a prompt that held one is looked at again too.
-    if came.contains(&Came::Rang) {
-        sooner(&mut next, Instant::now() + SETTLE);
-    }
-    if came.contains(&Came::Waits) {
-        sooner(&mut next, Instant::now() + LOOK_AGAIN);
+    for (what, after) in [(Came::Rang, SETTLE), (Came::Waits, LOOK_AGAIN)] {
+        if came.contains(&what) {
+            sooner(&mut next, Instant::now() + after);
+        }
     }
     if press_again(shared, pressing) {
         sooner(&mut next, Instant::now() + ANSWER);
     }
+    until(next, unfound)
+}
+
+/// Whether no wake is waiting to be rung, pressed again or woken once more, and whether a handoff
+/// is under way.
+fn standing(shared: &Shared) -> (bool, bool) {
+    let messages = shared.messages();
+    let quiet = messages.pending.is_empty()
+        && messages.rung.is_empty()
+        && messages.service.watched().is_empty();
+    (quiet, messages.handing_over)
+}
+
+/// How long to sleep before looking again at `next`, or with nothing due, at an agent
+/// `unfound` that may yet come to a pane.
+fn until(next: Option<Instant>, unfound: bool) -> Duration {
     match next {
         Some(next) => next.saturating_duration_since(Instant::now()).min(LOOK_AGAIN),
         None if unfound => LOOK_AGAIN,
@@ -532,7 +558,7 @@ fn ended(messages: &mut Messages, rung: &Rung, why: &str) {
     }
 }
 
-fn sooner(next: &mut Option<Instant>, at: Instant) {
+pub(crate) fn sooner(next: &mut Option<Instant>, at: Instant) {
     *next = Some(next.map_or(at, |next| next.min(at)));
 }
 

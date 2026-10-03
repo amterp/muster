@@ -32,6 +32,7 @@ use crate::process;
 use crate::pty;
 use crate::pty::Grid;
 use crate::screen::{Cleared, Screen, Settled};
+use crate::session_name::SessionName;
 use crate::stream::{self, Bridge, Refusal, Written};
 use crate::writer::{self, Encoding, Input, OwnedKey, Writer};
 
@@ -610,6 +611,9 @@ pub(crate) struct Pane {
     /// Whether that process is another daemon's child, which this one never reaps.
     adopted: bool,
     pub(crate) turns: Turns,
+    /// The pane's name and its agent's session name, kept in step. Not handed over: a daemon
+    /// that took the pane over hears the session's name again from its next report.
+    pub(crate) session_name: SessionName,
 }
 
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
@@ -664,6 +668,17 @@ pub(crate) struct Watching<'a> {
     pub(crate) detection: Option<&'a proto::handoff::Detection>,
     /// Where a pane handed over had got to in its agent's turns.
     pub(crate) turns: Turns,
+}
+
+/// Starts the thread that waits for a pane's child to end, and says how it ended.
+fn reap(pid: i32, pane: String, serial: u64, ended: Ended) -> io::Result<()> {
+    std::thread::Builder::new()
+        .name(format!("wait {pane}"))
+        .spawn(move || {
+            let status = wait(pid, &pane);
+            ended(serial, status);
+        })
+        .map(drop)
 }
 
 impl Pane {
@@ -769,14 +784,7 @@ impl Pane {
             .map_err(failed)?;
 
         if let Some(pid) = process.filter(|_| child) {
-            let ended = Arc::clone(watching.ended);
-            std::thread::Builder::new()
-                .name(format!("wait {pane}"))
-                .spawn(move || {
-                    let status = wait(pid, &pane);
-                    ended(serial, status);
-                })
-                .map_err(failed)?;
+            reap(pid, pane, serial, Arc::clone(watching.ended)).map_err(failed)?;
         }
 
         Ok(Pane {
@@ -787,6 +795,7 @@ impl Pane {
             process,
             adopted: !child && process.is_some(),
             turns: watching.turns,
+            session_name: SessionName::default(),
         })
     }
 

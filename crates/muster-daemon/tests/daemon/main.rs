@@ -25,6 +25,7 @@ mod migration;
 mod panes;
 mod persistence;
 mod relay;
+mod session_names;
 mod ssh_terminfo;
 mod streams;
 mod subscribing;

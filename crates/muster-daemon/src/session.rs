@@ -1393,6 +1393,16 @@ impl Session {
             Some(_) => return Reply::refused("an agent reports itself working, blocked or idle"),
         };
         let agent = std::mem::take(&mut report.agent);
+        let session_name = report.session_name.take();
+        if let Some(name) = &session_name {
+            if agent.is_empty() {
+                return Reply::refused("a session's name needs the name of the agent reporting it");
+            }
+            if let Err(why) = facts::session_name(name) {
+                return Reply::refused(why);
+            }
+        }
+        let cleared = report.clear;
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
         let record = &mut self.panes[index].record;
         let facts = match facts::apply(record.facts.as_ref(), report) {
@@ -1421,6 +1431,7 @@ impl Session {
             let record = record.clone();
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
+        let renamed = self.session_named(index, cleared, &agent, session_name.as_deref());
         let pane = &mut self.panes[index];
         if says_waiting {
             pane.turns.wait_declared = true;
@@ -1449,7 +1460,34 @@ impl Session {
             return Reply::done();
         }
         // Said again, a wait outlasts one more turn, which is a change even in the same words.
-        if facts_changed || says_waiting { Reply::done() } else { Reply::already() }
+        if facts_changed || says_waiting || renamed { Reply::done() } else { Reply::already() }
+    }
+
+    /// What a report says of the session's name, kept in step with the pane's
+    /// ([`crate::session_name`]); true when the pane took the session's name. A name counts while
+    /// its agent is the pane's, or before detection has found one: a statusline can report before
+    /// the first probe lands.
+    fn session_named(&mut self, index: usize, cleared: bool, agent: &str, said: Option<&str>) -> bool {
+        let pane = &mut self.panes[index];
+        let label = pane.record.label.clone();
+        if cleared {
+            pane.session_name.cleared(&pane.record.pane, label.as_deref());
+        }
+        let Some(said) = said else { return false };
+        if pane.record.agent.as_deref().is_some_and(|found| found != agent) {
+            return false;
+        }
+        let Some(taken) = pane.session_name.heard(&pane.record.pane, said, label.as_deref()) else {
+            return false;
+        };
+        log::info(
+            "session.name.taken",
+            fields! { "pane" => pane.record.pane, "agent" => agent },
+        );
+        pane.record.label = Some(taken);
+        let record = pane.record.clone();
+        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        true
     }
 
     /// Clears the finish nobody had seen on each named pane there is. A pane named that is not
@@ -1537,9 +1575,13 @@ impl Session {
                 // What an agent said about itself leaves with it. Not when a pane with no agent
                 // is first recognised: its statusline can report before the first probe lands,
                 // and that report is the new agent's.
-                if record.agent.is_some() && record.agent != agent {
+                let replaced = record.agent.is_some() && record.agent != agent;
+                if replaced {
                     record.facts = None;
                     pane.turns.reports_turns = false;
+                }
+                if replaced || (record.agent.is_none() && agent.is_some()) {
+                    pane.session_name.agent_changed(&name, replaced, record.label.as_deref());
                 }
                 let turn = Turn::between(record.agent_state(), state);
                 // An agent that reports its own state ends its own turns: a sub-agent's tool
@@ -1704,6 +1746,8 @@ impl Session {
         }
         record.label = rename.label;
         let record = record.clone();
+        let pane = &mut self.panes[index];
+        pane.session_name.named(&record.pane, record.label.as_deref());
         self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         Reply::done()
     }
@@ -2300,8 +2344,20 @@ impl Session {
 
     /// Something of every pane, read with the session held, for work that goes on without it -
     /// the message service's presence (MIP-4, section 7).
-    pub(crate) fn each_pane<T>(&self, view: impl Fn(&proto::Pane, &Arc<PaneIo>) -> T) -> Vec<T> {
-        self.panes.iter().map(|pane| view(&pane.record, &pane.io)).collect()
+    pub(crate) fn each_pane<T>(&self, view: impl Fn(&Pane) -> T) -> Vec<T> {
+        self.panes.iter().map(view).collect()
+    }
+
+    /// Whether any pane's name is still to be typed into its agent's session.
+    pub(crate) fn wants_session_names(&self) -> bool {
+        self.panes.iter().any(|pane| pane.session_name.wanted().is_some())
+    }
+
+    /// `name` was typed into the session of the agent in `pane`, or typing it was given up.
+    pub(crate) fn session_name_typed(&mut self, pane: &str, name: &str) {
+        if let Some(index) = self.pane_index(pane) {
+            self.panes[index].session_name.typed(name);
+        }
     }
 
     fn pane_index(&self, pane: &str) -> Option<usize> {

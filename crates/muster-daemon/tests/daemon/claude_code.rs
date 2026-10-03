@@ -72,3 +72,40 @@ fn a_daemon_that_never_answers_never_holds_the_statusline_up() {
         || format!("{} was never touched", reported.display()),
     );
 }
+
+/// The session's name goes with every report, and so does its absence: a session that says it has
+/// no name is given the pane's.
+#[test]
+fn the_statusline_says_what_the_session_is_called_and_when_it_has_no_name() {
+    let scratch = Scratch::new("statusline-name");
+    let said = scratch.0.join("said");
+    let daemon = scratch.0.join("daemon");
+    std::fs::write(&daemon, format!("#!/bin/sh\nprintf '[%s]' \"$@\" > '{}'\n", said.display()))
+        .unwrap();
+    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let run = |status: &str| {
+        let _ = std::fs::remove_file(&said);
+        let mut statusline = Command::new("/bin/sh")
+            .arg(STATUSLINE)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("MUSTER_DAEMON", &daemon)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("sh runs the statusline");
+        statusline.stdin.take().unwrap().write_all(status.as_bytes()).unwrap();
+        assert!(statusline.wait().unwrap().success());
+        muster_harness::until_within(
+            "the report to run",
+            Duration::from_mins(1),
+            || std::fs::read_to_string(&said).is_ok_and(|said| said.contains("--agent")),
+            || format!("{} never held a report", said.display()),
+        );
+        std::fs::read_to_string(&said).unwrap()
+    };
+
+    let named = STATUS.replace("{\"model\"", "{\"session_name\":\"🤖 A\",\"model\"");
+    assert!(run(&named).ends_with("[--agent][claude][--session-name][🤖 A]"));
+    assert!(run(STATUS).ends_with("[--agent][claude][--session-name][]"));
+}

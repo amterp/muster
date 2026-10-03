@@ -25,7 +25,7 @@ const PATIENCE: Duration = Duration::from_secs(2);
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
     [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT] [--clear] \
-    [--agent NAME --state working|blocked|idle]\n\n\
+    [--agent NAME [--state working|blocked|idle] [--session-name NAME]]\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
@@ -36,11 +36,13 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     it is doing, \
     which outranks what detection reads off its screen while fresh; --agent names the agent, \
     as its detection manifest does (claude), and the state counts only while that agent is \
-    the pane's.";
+    the pane's. --session-name is what the agent's harness calls its session, empty for no \
+    name: the pane takes a name the session is given once it has started, and gives the \
+    session the pane's own name otherwise. It needs --agent, as --state does.";
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     let report = match parse(arguments, |name| std::env::var(name).ok()) {
-        Ok(Parsed::Report(report)) => report,
+        Ok(Parsed::Report(report)) => *report,
         Ok(Parsed::Help) => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
@@ -67,7 +69,7 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
 }
 
 enum Parsed {
-    Report(pane_request::Report),
+    Report(Box<pane_request::Report>),
     Help,
 }
 
@@ -124,6 +126,7 @@ fn parse(
             }
             "--waiting" => report.waiting = Some(value("--waiting")?),
             "--clear" => report.clear = true,
+            "--session-name" => report.session_name = Some(value("--session-name")?),
             "--agent" => report.agent = value("--agent")?,
             "--state" => {
                 let given = value("--state")?;
@@ -141,11 +144,14 @@ fn parse(
     if report.state.is_some() && report.agent.is_empty() {
         return Err("--state needs --agent, naming the agent that is reporting".to_string());
     }
+    if report.session_name.is_some() && report.agent.is_empty() {
+        return Err("--session-name needs --agent, naming the agent that is reporting".to_string());
+    }
     report.facts = facts;
     report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(
         "MUSTER_PANE is not set, so this is not running in a Muster pane; name one with --pane",
     )?;
-    Ok(Parsed::Report(report))
+    Ok(Parsed::Report(Box::new(report)))
 }
 
 /// Sends the report, giving up once `patience` has passed since it started.
@@ -215,7 +221,7 @@ mod tests {
     fn parsed(arguments: &[&str], pane: Option<&str>) -> Result<pane_request::Report, String> {
         let arguments = arguments.iter().map(|argument| (*argument).to_string());
         match parse(arguments, |name| (name == "MUSTER_PANE").then(|| pane.map(str::to_string))?)? {
-            Parsed::Report(report) => Ok(report),
+            Parsed::Report(report) => Ok(*report),
             Parsed::Help => Err("help".to_string()),
         }
     }
@@ -251,6 +257,16 @@ mod tests {
         assert!(
             parsed(&["--agent", "x", "--state", "done"], Some("p1")).unwrap_err().contains("done")
         );
+    }
+
+    #[test]
+    fn a_session_name_is_reported_with_the_agent_reporting_it() {
+        let named = parsed(&["--agent", "claude", "--session-name", "🤖 A"], Some("p1")).unwrap();
+        assert_eq!(named.session_name.as_deref(), Some("🤖 A"));
+        let unnamed = parsed(&["--agent", "claude", "--session-name", ""], Some("p1")).unwrap();
+        assert_eq!(unnamed.session_name.as_deref(), Some(""), "no name is said, not left out");
+        let alone = parsed(&["--session-name", "A"], Some("p1"));
+        assert!(alone.unwrap_err().contains("--agent"));
     }
 
     #[test]

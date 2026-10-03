@@ -25,7 +25,17 @@ pub(crate) struct Seen {
     pub(crate) agent: String,
     /// Whether its agent's manifest can read its prompt, without which it is never rung.
     pub(crate) rings: bool,
+    /// The pane's name, still to be given to its agent's session, and the line its manifest
+    /// says to type for it.
+    pub(crate) rename: Option<Rename>,
     pub(crate) io: Arc<PaneIo>,
+}
+
+/// A pane's name to be typed into its agent's session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Rename {
+    pub(crate) name: String,
+    pub(crate) line: String,
 }
 
 impl Seen {
@@ -61,15 +71,22 @@ impl Panes {
         // agent is found yet and one may still come to any pane.
         let manifests = shared.detecting.manifests();
         let loaded = manifests.is_some();
-        let read = shared.lock().each_pane(|record, io| {
+        let read = shared.lock().each_pane(|pane| {
+            let (record, io) = (&pane.record, &pane.io);
             let agent = record.agent.clone().filter(|_| loaded && !io.is_closed());
-            let seen = agent.map(|agent| Seen {
-                activity: activity(record),
-                rings: manifests
-                    .as_ref()
-                    .is_some_and(|manifests| manifests.reads_prompt(&Agent::new(&agent))),
-                agent,
-                io: io.clone(),
+            let seen = agent.map(|agent| {
+                let found = Agent::new(&agent);
+                let rename = pane.session_name.wanted().and_then(|name| {
+                    let line = manifests.as_ref()?.session_rename(&found, name)?;
+                    Some(Rename { name: name.to_string(), line })
+                });
+                Seen {
+                    activity: activity(record),
+                    rings: manifests.as_ref().is_some_and(|manifests| manifests.reads_prompt(&found)),
+                    rename,
+                    agent,
+                    io: io.clone(),
+                }
             });
             (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME)
         });
@@ -85,6 +102,11 @@ impl Panes {
 
     pub(crate) fn get(&self, pane: &str) -> Option<&Seen> {
         self.agents.get(pane)
+    }
+
+    /// Every pane with an agent in it.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&String, &Seen)> {
+        self.agents.iter()
     }
 
     /// Whether the pane is open, agent or not.

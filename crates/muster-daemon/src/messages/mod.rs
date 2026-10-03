@@ -11,6 +11,7 @@ mod inbox;
 pub(crate) mod peer;
 mod presence;
 mod prompt;
+mod renames;
 mod store;
 mod wire;
 

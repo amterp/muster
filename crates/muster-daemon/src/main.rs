@@ -26,6 +26,7 @@ mod report;
 mod screen;
 mod server;
 mod session;
+mod session_name;
 mod shell_integration;
 mod spawn;
 mod ssh;

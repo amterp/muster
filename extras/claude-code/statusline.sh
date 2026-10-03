@@ -1,9 +1,13 @@
 #!/bin/sh
 # A Claude Code statusline command that tells Muster how full this session's context is,
-# which model it is running and what it has cost, then draws your statusline.
+# which model it is running, what it has cost and what the session is called, then draws your
+# statusline.
 #
-#   "statusLine": { "type": "command",
+#   "statusLine": { "type": "command", "refreshInterval": 2,
 #                   "command": "/path/to/statusline.sh ~/.claude/your-statusline.sh" }
+#
+# Claude Code runs it on every message, and every refreshInterval seconds: a /rename does not run
+# it, so without the interval the pane takes a session's new name at its next message.
 #
 # A command after it gets Claude Code's JSON on stdin, as it would have, and draws the line.
 # With none, this draws the model and how full the context is.
@@ -25,7 +29,8 @@ if [ -n "$MUSTER_DAEMON" ] && command -v jq >/dev/null 2>&1; then
     facts=$(printf '%s' "$input" | jq -r '[
         (.context_window.used_percentage // empty | "--context-used", tostring),
         (.model.display_name // empty | "--model", .),
-        (.cost.total_cost_usd // empty | "--cost-usd", tostring)
+        (.cost.total_cost_usd // empty | "--cost-usd", tostring),
+        "--agent", "claude", "--session-name", (.session_name // "")
     ] | @sh' 2>/dev/null)
     # Claude Code reads the line until every writer has closed it, so the background job's own
     # output goes nowhere. Redirecting only the call inside it would leave the job holding the

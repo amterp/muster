@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto::connection;
-use muster_daemon_proto::{self as proto, request::Service, session_request};
+use muster_daemon_proto::{self as proto, pane_request, request::Service, session_request};
 use prost::Message;
 
 use crate::session::{Handled, Replacement, Reply, Session, Shared, Stop};
@@ -231,7 +231,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             }
             Some(service) => {
                 let mut session = locked();
-                match session.handle(service, &outbox) {
+                match handle(&mut session, service, &outbox, shared) {
                     Handled::Snapshot(reply) => {
                         let timing = Answered::after(request.id, name, received, lock);
                         answer(&session, &outbox, reply, timing);
@@ -276,6 +276,23 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
     shared.lock().unsubscribe(outbox.id);
     let _ = stream.shutdown(Shutdown::Both);
     log::info("daemon.connection.closed", fields! { "connection" => outbox.id });
+}
+
+/// Handles a request under the session's lock. One that renames a pane, or reports a session's
+/// name, may leave a pane's name to type into its agent's session, which the doorbell's thread
+/// does.
+fn handle(session: &mut Session, service: Service, outbox: &Outbox, shared: &Shared) -> Handled {
+    let names = matches!(
+        &service,
+        Service::Pane(proto::PaneRequest {
+            request: Some(pane_request::Request::Rename(_) | pane_request::Request::Report(_))
+        })
+    );
+    let handled = session.handle(service, outbox);
+    if names {
+        shared.doorbell.nudge();
+    }
+    handled
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is
