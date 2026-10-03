@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "one-process-windows",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791044243018,
+  "creator": "Alexander Terp",
+  "description": "MIP-6 stage 3b (docs/mip/0006-one-process.md, How it lands). Stage 3a landed 2026-10-03: every window of an app opens in one process, quitting is not closing, a relaunch reopens every window open at quit, Close Window on cmd+shift+w, muster window new / reopen [NAME] open in the running app. What 3b adds, so that two processes can no longer happen: the app lock with one command socket per install per home (state/app-\u003cinstall\u003e.lock), a second launch (Dock, Finder, open -n, an older CLI) handing its request to the running app and exiting, the Dock's reopen, state/\u003cinstall\u003e/, and pre-change window processes asked to quit (NSRunningApplication.terminate, matched by bundle path) before their arrangements are opened here. Then stage 4: the removals (carrying, .held claims, the holders flock, the CLI's socket fan-out), the Reopen submenu and muster window list --closed.\n\nKnown from 3a (slot report, 2026-10-03): after muster window new from a terminal, macOS 14 may not make the new window key while another app is active, so a following muster pane new from outside every pane can reach the window in front - the global --window flag is MIP-6's open question. muster window list shows one row per process until stage 4. Not yet checked by a person: cmd+shift+w and the red button, Reopen Closed Window, dragging a tab row between two windows, menu items acting on the key window, a notification raising the window holding the agent.",
+  "id": "a_2bC3i7zux",
+  "position": "!!!!!!1",
+  "title": "🪟 One-process windows, stage 3b: one app per install, and older window processes retire",
+  "type": "feature",
+  "updated_at_millis": 1791044243018,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791044243018}
+  ]
+}
