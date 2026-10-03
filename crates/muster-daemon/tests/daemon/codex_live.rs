@@ -154,7 +154,7 @@ fn codex_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
         type_line(
             &mut input,
             name,
-            "Write the numbers from 1 to 80, one per line, and nothing else.",
+            "Without using any tools, write the numbers from 1 to 80, one per line, and nothing else.",
         );
     }
     let settled = until_both_settle(&mut control, PANES);

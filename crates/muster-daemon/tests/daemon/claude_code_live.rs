@@ -103,7 +103,9 @@ fn prompt(control: &mut Control, input: &mut Input, pane: &str) {
     // Past the grace a newly found agent is held idle through, which Claude Code's start can
     // outlast by less than a short turn takes.
     std::thread::sleep(Duration::from_secs(4));
-    let text = "Write the numbers from 1 to 80, one per line, and nothing else.".to_string();
+    let text =
+        "Without using any tools, write the numbers from 1 to 80, one per line, and nothing else."
+            .to_string();
     input.send(pane, Event::Send(input_event::Send { text, enter: true }));
 }
 
