@@ -494,7 +494,10 @@ pub(crate) fn set_state_path(path: &str) {
 /// On the session rather than in a static, because it describes this launch: a test that reset
 /// the statics and not this would open its window as the last test's.
 pub(crate) fn set_tab_holders(record: &str, arrangement: &str, socket: &str) {
-    poison::lock(&SESSION, "session").holding = Holding::new(record, arrangement, socket);
+    let mut session = poison::lock(&SESSION, "session");
+    let mut holding = Holding::new(record, socket);
+    session.window.name = holding.register(arrangement);
+    session.holding = holding;
 }
 
 /// A daemon found or started, and how it is reached.
@@ -1132,8 +1135,12 @@ pub(crate) struct Session {
 }
 
 /// One window's own state: what it holds and shows, beside the daemons every window shares.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Window {
+    /// What the record of which window holds each tab calls it, after its arrangement:
+    /// `window-2`.
+    name: WindowName,
+
     composition: Composition,
 
     /// Machines this window has asked for a first tab, once each.
@@ -1222,6 +1229,27 @@ pub(crate) struct Window {
     /// Kept so that clearing the last error can put it back the way somebody left it -
     /// borrowing the roster is defensible, keeping it is not.
     opened_sidebar: bool,
+}
+
+impl Default for Window {
+    /// The window of a session nobody has started, named as the holders record names a window
+    /// that remembers nothing, so the two agree before startup says otherwise.
+    fn default() -> Window {
+        Window {
+            name: crate::holding::first_unnamed(),
+            composition: Composition::default(),
+            tabs_asked_of: BTreeSet::new(),
+            left: None,
+            awaiting: BTreeSet::new(),
+            presentation: Presentation::default(),
+            armed: None,
+            sent: Sent::default(),
+            arrangement: None,
+            opened: false,
+            show: None,
+            opened_sidebar: false,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1440,7 +1468,7 @@ impl Session {
             .backends
             .get(daemon)
             .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").tab(tab).is_some());
-        if closing && described && self.holding.elsewhere(tab).is_some() {
+        if closing && described && self.holding.elsewhere(&self.window.name, tab).is_some() {
             return Ok(None);
         }
         Err(Refusal::Declined(not_showing(daemon)))
@@ -1474,7 +1502,7 @@ impl Session {
         }
         let taken = self.holding.take_unheld(daemon, &described);
         for tab in described {
-            if self.holding.holds(&tab) {
+            if self.holding.holds(&self.window.name, &tab) {
                 self.window.composition.hold(tab);
             }
         }
@@ -1829,14 +1857,14 @@ impl Session {
         };
         // Another window's tab stays in that window. Surfacing it here would take its terminals
         // from the window showing them, which is the failure kan a_2Mhi0EZlv was raised for.
-        if !self.holding.holds(&tab) {
-            if let Some(window) = self.holding.elsewhere(&tab) {
+        if !self.holding.holds(&self.window.name, &tab) {
+            if let Some(window) = self.holding.elsewhere(&self.window.name, &tab) {
                 return Err(taken_elsewhere(pane, &tab, &window.name));
             }
             // Kept under the hold, which reads the record afresh: this window's copy may be a
             // moment behind another window taking the tab.
-            self.holding.keep(std::slice::from_ref(&tab));
-            if let Some(window) = self.holding.elsewhere(&tab) {
+            self.holding.keep(&self.window.name, std::slice::from_ref(&tab));
+            if let Some(window) = self.holding.elsewhere(&self.window.name, &tab) {
                 return Err(taken_elsewhere(pane, &tab, &window.name));
             }
         }
@@ -1912,7 +1940,7 @@ impl Session {
         let holders = self.holding.holders();
         holders
             .windows()
-            .filter(|window| &window.name != self.holding.me())
+            .filter(|window| window.name != self.window.name)
             .map(|window| {
                 let mut theirs = Composition::new();
                 for daemon in self.window.composition.daemons() {
@@ -2113,7 +2141,8 @@ pub(crate) fn submit(
         // came to the front last (kan a_2Mhi0EZlv). One the request then fails to make is a
         // row for a name nothing will ever use, which the next window to open prunes.
         if let Some(tab) = made_tab(intent) {
-            session.holding.making(tab);
+            let me = session.window.name.clone();
+            session.holding.making(&me, tab);
         }
         (region, source, channel)
     };
@@ -2952,8 +2981,8 @@ pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> 
                  the tabs there are."
             )));
         }
-        let to = session.holding.destination(window)?;
-        let to_me = &to == session.holding.me();
+        let to = session.holding.destination(&session.window.name, window)?;
+        let to_me = to == session.window.name;
         let from = session.holding.holders().holder(&tab).map(ToString::to_string);
         session.holding.give(&tab, &to);
         log::info(
@@ -2995,12 +3024,14 @@ fn taken_elsewhere(pane: &PaneId, tab: &TabId, window: &WindowName) -> Refusal {
 /// (`forward`) - and one that does is refused further on, since showing it here would take its
 /// terminals.
 fn reopened_for(tab: &TabId, show: &str) -> bool {
-    let (me, window) = {
+    let (open_here, window) = {
         let session = poison::lock(&SESSION, "session");
-        let Some(window) = session.holding.elsewhere(tab).cloned() else { return false };
-        (session.holding.me().clone(), window)
+        let Some(window) = session.holding.elsewhere(&session.window.name, tab).cloned() else {
+            return false;
+        };
+        (session.holding.open_here(), window)
     };
-    if crate::holding::is_open(&me, &window) {
+    if crate::holding::is_open(&open_here, &window) {
         return false;
     }
     if !poison::lock(&SESSION, "session").holding.ask_to_reopen(&window.name) {
@@ -3262,16 +3293,19 @@ pub(crate) fn tab_of_pane(pane: &PaneId) -> Option<TabId> {
 /// Dialed after the session is let go: the other window may be carrying a request to this one at
 /// the same moment, and answering it needs this lock.
 pub(crate) fn open_window_holding(tab: &TabId) -> Option<HeldWindow> {
-    let (me, window) = {
+    let (open_here, window) = {
         let session = poison::lock(&SESSION, "session");
-        (session.holding.me().clone(), session.holding.elsewhere(tab).cloned()?)
+        (
+            session.holding.open_here(),
+            session.holding.elsewhere(&session.window.name, tab).cloned()?,
+        )
     };
-    crate::holding::is_open(&me, &window).then_some(window)
+    crate::holding::is_open(&open_here, &window).then_some(window)
 }
 
 /// This window's name, as the record of which window holds each tab spells it.
 pub(crate) fn window_name() -> String {
-    poison::lock(&SESSION, "session").holding.me().to_string()
+    poison::lock(&SESSION, "session").window.name.to_string()
 }
 
 /// Brings a window to the front, because somebody went to one of its tabs from another window:
@@ -3511,8 +3545,8 @@ pub(crate) fn window() -> WindowNow {
         });
     }
 
-    let name = session.holding.me().to_string();
-    let me = session.holding.me().clone();
+    let name = session.window.name.to_string();
+    let open_here = session.holding.open_here();
     let others = session.other_windows();
     drop(session);
     // Dialed with the session let go, for the reason `open_window_holding` gives.
@@ -3520,7 +3554,7 @@ pub(crate) fn window() -> WindowNow {
         .into_iter()
         .map(|(window, roster)| OtherWindow {
             name: window.name.to_string(),
-            pid: if crate::holding::is_open(&me, &window) { window.pid } else { 0 },
+            pid: if crate::holding::is_open(&open_here, &window) { window.pid } else { 0 },
             roster,
         })
         .collect();
@@ -3745,7 +3779,8 @@ fn restore_late(daemon: &DaemonId) {
             });
         let mut regions = 0usize;
         for tab in &left.tabs {
-            if !session.holding.holds(&tab.id) || !described.contains(&tab.id) {
+            if !session.holding.holds(&session.window.name, &tab.id) || !described.contains(&tab.id)
+            {
                 continue;
             }
             for region in tab.regions.iter().filter(|region| &region.daemon == daemon) {
@@ -4028,7 +4063,7 @@ fn restore_font_sizes() {
 fn say_this_window_is_open() {
     {
         let mut session = poison::lock(&SESSION, "session");
-        if session.holding.has_opened() {
+        if session.holding.has_opened(&session.window.name) {
             return;
         }
         // A daemon still restoring has not described every tab it will hold.
@@ -4043,7 +4078,8 @@ fn say_this_window_is_open() {
         }
         let followed = session.followed_or_attaching();
         session.holding.follow(followed);
-        session.holding.open(&answered, |tab| described.contains(tab));
+        let me = session.window.name.clone();
+        session.holding.open(&me, &answered, |tab| described.contains(tab));
     }
     // The daemons described their tabs before this window had said it was open, when it could
     // not be the one to take them. On a first launch that is every tab there is.
@@ -4086,12 +4122,14 @@ fn reopen_what_was_left() {
     // Tabs given to this window while it was closed are its own as much as the ones it was left
     // on, and come after them.
     let given: Vec<TabId> =
-        session.holding.holders().held_by(session.holding.me()).cloned().collect();
+        session.holding.holders().held_by(&session.window.name).cloned().collect();
     for tab in given {
         session.window.composition.hold(tab);
     }
     // Read under the lock this already holds, which `saved_arrangement` would take again.
-    let Some(saved) = arrangement_path(&session.window).and_then(|path| saved_arrangement_at(&path)) else {
+    let Some(saved) =
+        arrangement_path(&session.window).and_then(|path| saved_arrangement_at(&path))
+    else {
         return;
     };
 
@@ -4099,7 +4137,8 @@ fn reopen_what_was_left() {
     // window's now, and one nobody holds - every tab, the first launch after holding was written
     // down - is taken here, which is how a window that was alone comes back exactly as it was.
     let listed: Vec<TabId> = saved.tabs.iter().map(|tab| tab.id.clone()).collect();
-    session.holding.keep(&listed);
+    let me = session.window.name.clone();
+    session.holding.keep(&me, &listed);
     // A daemon whose attach finished while this waited for the session has been restored here
     // already, and one still restoring has more tabs to describe than it has so far.
     let attaching = poison::lock(&ATTACHES, "attaches").under_way.clone();
@@ -4121,7 +4160,7 @@ fn reopen_what_was_left() {
         session.window.left = Some(saved.clone());
     }
     let restorable = saved.restorable(|daemon, tab| {
-        session.holding.holds(tab)
+        session.holding.holds(&session.window.name, tab)
             && session
                 .backends
                 .get(daemon)
@@ -5395,27 +5434,35 @@ fn announce_message(group: &GroupKey, attend: Attend) {
 /// Whether this window is the one to tell somebody what a daemon says, where no tab decides:
 /// the one that came to the front most recently among those open, as for a tab nobody holds.
 fn speaks_for_daemon(daemon: &DaemonId) -> bool {
-    let (me, holders) = {
+    let (me, open_here, holders) = {
         let session = poison::lock(&SESSION, "session");
         if !session.holding.is_shared() {
             return true;
         }
-        (session.holding.me().clone(), session.holding.holders().clone())
+        (
+            session.window.name.clone(),
+            session.holding.open_here(),
+            session.holding.holders().clone(),
+        )
     };
-    let open = |window: &HeldWindow| crate::holding::is_open(&me, window);
+    let open = |window: &HeldWindow| crate::holding::is_open(&open_here, window);
     holders.in_front(daemon, open) == Some(&me)
 }
 
 fn speaks_for(pane: &PaneKey) -> bool {
     let Some(tab) = tab_of_pane(&pane.pane) else { return true };
-    let (me, holders) = {
+    let (me, open_here, holders) = {
         let session = poison::lock(&SESSION, "session");
-        if session.holding.holds(&tab) || !session.holding.is_shared() {
+        if session.holding.holds(&session.window.name, &tab) || !session.holding.is_shared() {
             return true;
         }
-        (session.holding.me().clone(), session.holding.holders().clone())
+        (
+            session.window.name.clone(),
+            session.holding.open_here(),
+            session.holding.holders().clone(),
+        )
     };
-    let open = |window: &HeldWindow| crate::holding::is_open(&me, window);
+    let open = |window: &HeldWindow| crate::holding::is_open(&open_here, window);
     if let Some(holder) = holders.holder(&tab).and_then(|name| holders.window(name))
         && open(holder)
     {
@@ -5655,7 +5702,8 @@ fn no_pane_to_size() -> String {
 pub(crate) fn quitting(close_sessions: bool) {
     {
         let mut session = poison::lock(&SESSION, "session");
-        session.holding.close();
+        let me = session.window.name.clone();
+        session.holding.close(&me);
         session.quitting = true;
     }
     if close_sessions {
@@ -5771,7 +5819,7 @@ pub(crate) fn follow_the_record() {
             .window
             .composition
             .held()
-            .filter(|tab| !session.holding.holds(tab))
+            .filter(|tab| !session.holding.holds(&session.window.name, tab))
             .cloned()
             .collect();
         for tab in &lost {
@@ -5802,7 +5850,8 @@ pub(crate) fn window_focused(focused: bool) {
         let mut session = poison::lock(&SESSION, "session");
         // Coming to the front is what makes this the window a tab nobody holds joins.
         if focused {
-            session.holding.focused();
+            let me = session.window.name.clone();
+            session.holding.focused(&me);
         }
         let noticed = session.attention.window_focused(focused);
         session.report_seen(&noticed.reported);
