@@ -2,7 +2,7 @@
   "concept": "detection.recordedScreens",
   "source": "recorded",
   "regenerate": "python3 tools/detection-capture.py [--harness H] [--size COLUMNSxROWS] [--only PHASES] <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
-  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
   "cases": [
     {
       "expect": {
@@ -220,6 +220,146 @@
       },
       "name": "claude 2.1.288: plan approval dialog, its question wrapped in a narrow pane",
       "why": "Plan mode's ExitPlanMode dialog in a pane 66 columns wide, where its question breaks between 'Would' and 'you like to proceed?': a session at this dialog in a narrow pane read idle, and finished once seen, since no rule knew the dialog and the only one that knew its words read them on one line."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "╭────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.154.0)                     │\n│                                                │\n│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "codex",
+        "typed": "\n     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "name": "codex 0.154.0: idle at a fresh prompt",
+      "why": "Codex at its composer for the first time, a suggestion drawn faint in it."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "╭────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.154.0)                     │\n│                                                │\n│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› half typed\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "codex",
+        "typed": "\n     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› half typed\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "name": "codex 0.154.0: a draft at the prompt",
+      "why": "Words typed into Codex's composer and not sent: a draft, which the doorbell waits out."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "╭────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.154.0)                     │\n│                                                │\n│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• Working (2s • esc to interrupt)\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "⠸ renaming... ⠸ | codex",
+        "typed": "\n     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• Working\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "name": "codex 0.154.0: working on a request",
+      "why": "Codex working on the request, its spinner in the title."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "│ >_ OpenAI Codex (v0.154.0)                     │\n│                                                │\n│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• I’ll run the requested shell command in the current workspace.\n\n• Running echo hi > made.txt\n\n\n  Would you like to run the following command?\n\n  Environment: local\n\n  Reason: May I create made.txt with the requested command?\n\n  $ echo hi > made.txt\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `echo hi > made.txt` (p)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel\n",
+        "title": "[ ! ] Action Required | Create made.txt | codex",
+        "typed": "     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n  I’ll run the requested shell command in the current workspace.\n\n• Running echo hi > made.txt\n\n\n  Would you like to run the following command?\n\n  Environment: local\n\n  Reason: May I create made.txt with the requested command?\n\n  $ echo hi > made.txt\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `echo hi > made.txt` ( )\n  3. No, and tell Codex what to do differently (   )\n\n"
+      },
+      "name": "codex 0.154.0: approval prompt",
+      "why": "Codex asking whether it may run a command its sandbox does not allow."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "│ >_ OpenAI Codex (v0.154.0)                     │\n│                                                │\n│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "Create made.txt | codex",
+        "typed": "     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n  I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "name": "codex 0.154.0: idle after declining the command",
+      "why": "The command declined with Esc: the turn interrupted, Codex back at its composer."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Reply with the single word hi.\n\n\n• hi\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "Create made.txt | codex",
+        "typed": "             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n  I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Reply with the single word hi.\n\n\n  hi\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "name": "codex 0.154.0: idle after a turn",
+      "why": "A turn finished: the answer above, Codex at its composer again, the earlier request drawn above with the composer's caret."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n\n• I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Reply with the single word hi.\n\n\n• hi\n\n\n› Run the shell command sleep 20, and then say done.\n\n\n• I’ll run sleep 20 now.\n\n• Working (5s • esc to interrupt)\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "⠴ Create made.txt | codex",
+        "typed": "\n\n  I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Reply with the single word hi.\n\n\n  hi\n\n\n  Run the shell command sleep 20, and then say done.\n\n\n  I’ll run sleep 20 now.\n\n• Working\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "name": "codex 0.154.0: working with an empty composer",
+      "why": "Codex running a command, its composer empty below the spinner."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n\n• I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Reply with the single word hi.\n\n\n• hi\n\n\n› Run the shell command sleep 20, and then say done.\n\n\n• I’ll run sleep 20 now.\n\n• Working (7s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close\n\n\n› also say the time\n\n  tab to queue message                                                            97% context left\n",
+        "title": "⠋ Create made.txt | codex",
+        "typed": "\n\n  I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Reply with the single word hi.\n\n\n  hi\n\n\n  Run the shell command sleep 20, and then say done.\n\n\n  I’ll run sleep 20 now.\n\n• Working\n\n\n› also say the time\n\n"
+      },
+      "name": "codex 0.154.0: working with a draft in the composer",
+      "why": "Words typed into the composer while Codex works, not yet sent."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "• I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Reply with the single word hi.\n\n\n• hi\n\n\n› Run the shell command sleep 20, and then say done.\n\n\n• I’ll run sleep 20 now.\n\n• Working (8s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close\n\n• Messages to be submitted after next tool call (press esc to interrupt and send immediately)\n  ↳ also say the time\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "⠴ Create made.txt | codex",
+        "typed": "  I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Reply with the single word hi.\n\n\n  hi\n\n\n  Run the shell command sleep 20, and then say done.\n\n\n  I’ll run sleep 20 now.\n\n• Working\n\n  Messages to be submitted after next tool call\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "name": "codex 0.154.0: working with a message queued",
+      "why": "The words sent with Return while Codex works: held for after its next tool call."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n• I’ll run sleep 20 now.\n\n• Ran sleep 20\n  └ (no output)\n\n\n› also say the time\n\n\n• Ran date '+%Y-%m-%d %H:%M:%S %Z'\n  └ 2026-10-03 10:00:23 CDT\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n\n• done - 2026-10-03 10:00:23 CDT\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n› Run the shell command sleep 20, and then say done.\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "Create made.txt | codex",
+        "typed": "\n  I’ll run sleep 20 now.\n\n• Ran sleep 20\n\n\n\n  also say the time\n\n\n• Ran date '+%Y-%m-%d %H:%M:%S %Z'\n\n\n\n\n  done - 2026-10-03 10:00:23 CDT\n\n\n\n\n  Run the shell command sleep 20, and then say done.\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "name": "codex 0.154.0: idle after interrupting",
+      "why": "The turn interrupted with Esc: Codex says so above its composer."
     }
   ]
 }

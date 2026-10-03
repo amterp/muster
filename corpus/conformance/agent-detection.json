@@ -1,7 +1,7 @@
 {
   "concept": "detection.bundledManifests",
   "source": "ported",
-  "citation": "herdr v0.8.0 src/detect/manifest/tests.rs, the tests of herdr's bundled manifests; each case names the test it came from. Codex cases follow the catalog manifest Muster vendors (2026.09.23.1), and Claude cases Muster's own change to that manifest (2026.09.27.1), where either deliberately changed v0.8.0's verdict; each such case says so.",
+  "citation": "herdr v0.8.0 src/detect/manifest/tests.rs, the tests of herdr's bundled manifests; each case names the test it came from. Codex cases follow the catalog manifest Muster vendors (2026.09.23.1), and Muster's own change to it (2026.10.03.1), and Claude cases Muster's own change to that manifest (2026.09.27.1), where either deliberately changed v0.8.0's verdict; each such case says so.",
   "why": "herdr's manifests are data written against herdr's engine, so the only evidence that this engine reads them the same way is herdr's own verdicts on the screens its authors wrote them for. Each case is a screen, a title and an OSC 9 payload in, and the state, deciding rule, visibility and skip flag out - the whole of what the publish loop acts on. `screen` is the region input as herdr's test passed it, not wrapped by screen_text. Where herdr's test asserted a state but not the deciding rule (the Devin idle, working and blocked screens other than the live footer and narrow welcome), the rule is this engine's reading of herdr's manifest, and a re-pin that moves it is worth a look rather than a rewrite.",
   "cases": [
     {
@@ -324,49 +324,53 @@
     },
     {
       "name": "codex: an interrupted Working line is stale",
-      "why": "A Working line followed by 'Conversation interrupted' belongs to a turn that is over. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
+      "why": "A Working line followed by 'Conversation interrupted' belongs to a turn that is over. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged. Muster's codex 2026.10.03.1 adds live_prompt, which reads Codex's composer for the doorbell, so the idle is now that rule's; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "◦ Working (1m 16s • esc to interrupt)\n■ Conversation interrupted\n› Use /skills to list available skills\ngpt-5.6-sol default · /work\n",
         "title": "project"
       },
       "expect": {
+        "rule": "live_prompt",
         "state": "idle"
       }
     },
     {
       "name": "codex: Working typed into the prompt is not working",
-      "why": "Text a person typed at the prompt is not the agent's chrome. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
+      "why": "Text a person typed at the prompt is not the agent's chrome. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged. Muster's codex 2026.10.03.1 adds live_prompt, which reads Codex's composer for the doorbell, so the idle is now that rule's; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "› Explain the text ◦ Working (1m 16s • esc to interrupt)\ngpt-5.6-sol default · /work\n",
         "title": "project"
       },
       "expect": {
+        "rule": "live_prompt",
         "state": "idle"
       }
     },
     {
       "name": "codex: an indented Working line is not the live one",
-      "why": "Codex draws the live Working line at column zero; an indented one is quoted output. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
+      "why": "Codex draws the live Working line at column zero; an indented one is quoted output. (codex_screen_working_fallback_ignores_stale_and_prompt_text) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged. Muster's codex 2026.10.03.1 adds live_prompt, which reads Codex's composer for the doorbell, so the idle is now that rule's; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "  ◦ Working (1m 16s • esc to interrupt)\n› Use /skills to list available skills\ngpt-5.6-sol default · /work\n",
         "title": "project"
       },
       "expect": {
+        "rule": "live_prompt",
         "state": "idle"
       }
     },
     {
       "name": "codex: an interrupted turn on a short terminal is idle",
-      "why": "On a short terminal the prompt is a bare ›, and the turn above it is still over. (codex_screen_working_fallback_ignores_interrupted_short_terminal) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged.",
+      "why": "On a short terminal the prompt is a bare ›, and the turn above it is still over. (codex_screen_working_fallback_ignores_interrupted_short_terminal) herdr's catalog manifest codex 2026.09.23.1, which Muster vendors, dropped the osc_title_idle rule, so a plain title is now the idle fallback rather than visible idle; the state is unchanged. Muster's codex 2026.10.03.1 adds live_prompt, which reads Codex's composer for the doorbell, so the idle is now that rule's; the state is unchanged.",
       "given": {
         "agent": "codex",
         "screen": "◦ Working (1m 16s • esc to interrupt)\n■ Conversation interrupted\n›\n",
         "title": "project"
       },
       "expect": {
+        "rule": "live_prompt",
         "state": "idle"
       }
     },

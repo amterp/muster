@@ -18,6 +18,7 @@ pub(super) enum Region {
     WholeRecentWithoutCurrentPromptMarker,
     CurrentPromptBlockMarker,
     AfterCurrentPromptBlockMarker,
+    CurrentPrompt,
     PromptBoxBody,
     AbovePromptBox,
     LastNonEmptyAbovePromptBox,
@@ -41,6 +42,7 @@ impl Region {
             }
             "current_prompt_block_marker" => Region::CurrentPromptBlockMarker,
             "after_current_prompt_block_marker" => Region::AfterCurrentPromptBlockMarker,
+            "current_prompt" => Region::CurrentPrompt,
             "prompt_box_body" => Region::PromptBoxBody,
             "above_prompt_box" => Region::AbovePromptBox,
             "last_non_empty_above_prompt_box" => Region::LastNonEmptyAbovePromptBox,
@@ -74,6 +76,7 @@ impl Region {
             Region::AfterCurrentPromptBlockMarker => {
                 after_current_prompt_block_marker(content).unwrap_or("")
             }
+            Region::CurrentPrompt => current_prompt(content),
             Region::PromptBoxBody => prompt_box_body(content).unwrap_or(""),
             Region::AbovePromptBox => above_prompt_box(content),
             Region::LastNonEmptyAbovePromptBox => last_non_empty_line(above_prompt_box(content)),
@@ -170,6 +173,22 @@ fn after_current_prompt_block_marker(content: &str) -> Option<&str> {
     let block_index =
         lines[..prompt_index].iter().rposition(|line| codex_block_marker_line(line))?;
     Some(slice_from_line_index(content, &lines, block_index))
+}
+
+/// Muster's, not herdr's: Codex's prompt line and the lines that continue it, down to the blank
+/// line above the footer Codex draws under its composer - what is typed into Codex and nothing
+/// else, where `after_last_prompt_marker` runs on into the footer.
+fn current_prompt(content: &str) -> &str {
+    let lines: Vec<&str> = content.lines().collect();
+    let Some(index) = current_codex_prompt_index(&lines) else {
+        return "";
+    };
+    let end = lines[index..]
+        .iter()
+        .position(|line| line.trim().is_empty())
+        .map_or(lines.len(), |relative| index + relative);
+    let start = line_start_offset(content, &lines, index);
+    &content[start..line_start_offset(content, &lines, end).max(start)]
 }
 
 /// Codex's prompt line, unless a block started after it - then the prompt on screen is an old

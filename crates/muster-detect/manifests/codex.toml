@@ -1,7 +1,7 @@
 id = "codex"
-version = "2026.09.23.1"
-min_engine_version = 3
-updated_at = "2026-09-23T22:12:00Z"
+version = "2026.10.03.1"
+min_engine_version = 7
+updated_at = "2026-10-03T00:00:00Z"
 
 [[rules]]
 id = "osc_title_blocked"
@@ -92,3 +92,15 @@ any = [{ contains = [" to interrupt)"] }, { contains = ["s)"] }]
 regex = ['(?m)^(?:[•◦][ \t]+)?[^\s›•◦■✗✓─][^\r\n]* \((?:[0-9]+[hm] )*[0-9]+s(?: • [^\r\n]+? to interrupt)?\)(?: · [^\r\n]*)?(?:\r?\n(?:[^•◦›■✗✓─\r\n][^\r\n]*|•[ \t]+(?:Queued\s+follow-up\s+inputs|Messages\s+to\s+be\s+submitted\s+after\s+next\s+tool\s+call(?:\s+\(press\s+[^\r\n]+?\s+to\s+interrupt\s+and\s+send\s+immediately\))?|Messages\s+to\s+be\s+submitted\s+at\s+end\s+of\s+turn)|›[⠁⠂⠄⠈⠐⠠⡀⢀][^\r\n]*)?)*\s*\z']
 # A failed reconnect keeps its final elapsed timer but is no longer working.
 not = [{ line_regex = ['^(?:[•◦][ \t]+)?Reconnect failed — check the endpoint, then relaunch \([0-9hms ]+\)$'] }]
+
+# Codex at its composer, which the doorbell reads before typing: the composer alone, down to the
+# blank line above its footer, since earlier requests are drawn above it with the same caret and
+# the footer below would read as typed. Below screen_working_fallback, because a working screen
+# shows the composer too. Not a visible idle: whatever else is on screen decides first.
+[[rules]]
+id = "live_prompt"
+state = "idle"
+priority = 400
+region = "current_prompt"
+line_regex = ['^›(?: |$)']
+prompt = '^›\s?'

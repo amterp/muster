@@ -316,6 +316,33 @@ fn codex_prompt_regions_ignore_a_prompt_a_block_has_started_after() {
 }
 
 #[test]
+fn current_prompt_is_codexs_composer_down_to_the_blank_line_above_its_footer() {
+    let screen = "› fix the bug\n\n• done\n\n› half\n  typed\n\n  gpt-5 · /work\n";
+    assert_eq!(region(screen, "current_prompt"), "› half\n  typed\n");
+    assert_eq!(region("› just this\n", "current_prompt"), "› just this\n");
+    assert_eq!(region("› old prompt\n• working on it\n", "current_prompt"), "");
+}
+
+#[test]
+fn only_a_working_rule_with_a_prompt_reads_the_prompt_at_work() {
+    let at_work = Manifest::parse(&with_prompt(6, "working", "whole_recent")).unwrap();
+    let idle = Manifest::parse(&with_prompt(6, "idle", "whole_recent")).unwrap();
+    assert!(at_work.reads_prompt_at_work());
+    assert!(!idle.reads_prompt_at_work());
+    assert!(idle.reads_prompt());
+}
+
+#[test]
+fn current_prompt_needs_engine_seven() {
+    let reading = |engine: u32| with_prompt(engine, "idle", "current_prompt");
+    assert!(Manifest::parse(&reading(7)).is_ok());
+    assert!(Manifest::parse(&reading(6)).is_err(), "as a rule's region");
+    let read_in = with_prompt(6, "idle", "whole_recent")
+        .replace("prompt = '^> ?'", "prompt = '^> ?'\nprompt_region = \"current_prompt\"");
+    assert!(Manifest::parse(&read_in).is_err(), "as where a prompt is read");
+}
+
+#[test]
 fn versions_compare_numerically_with_trailing_zeros_insignificant() {
     let v = |text| Version::parse(text).unwrap();
     assert!(v("2026.06.10.1") < v("2026.07.1"));

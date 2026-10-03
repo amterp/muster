@@ -56,6 +56,8 @@ class Capture:
             for name in [name for name in os.environ if name.startswith(strip)]:
                 del os.environ[name]
             os.environ["TERM"] = "xterm-256color"
+            # Codex reads where it is from PWD, which a fork leaves as the parent's.
+            os.environ["PWD"] = str(out)
             os.execvp(argv[0], argv)
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
         self.pid, self.fd = pid, fd
@@ -84,6 +86,22 @@ class Capture:
     def send(self, text: str) -> None:
         os.write(self.fd, text.encode())
 
+    def title(self) -> str:
+        """The last window title the harness set."""
+        at = self.raw.rfind(b"\x1b]0;")
+        if at < 0:
+            return ""
+        end = min((i for i in (self.raw.find(b"\x07", at), self.raw.find(b"\x1b\\", at)) if i >= 0), default=len(self.raw))
+        return bytes(self.raw[at + 4 : end]).decode(errors="replace")
+
+    def until_title(self, seconds: float, done: Callable[[str], bool]) -> bool:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            self.pump(0.5)
+            if done(self.title()):
+                return True
+        return False
+
     def end(self) -> None:
         os.kill(self.pid, signal.SIGTERM)
         self.pump(1)
@@ -93,7 +111,8 @@ class Capture:
 
 @dataclass
 class Harness:
-    argv: list[str]
+    # The command, given the folder it runs in.
+    argv: Callable[[Path], list[str]]
     # Environment variables a parent agent leaves behind, by prefix.
     strip: tuple[str, ...]
     start: Callable[[Capture], None]
@@ -224,13 +243,101 @@ def claude_plan(capture: Capture) -> None:
 
 
 CLAUDE = Harness(
-    argv=["claude", "--permission-mode", "default"],
+    argv=lambda out: ["claude", "--permission-mode", "default"],
     strip=("CLAUDE", "MUSTER_"),
     start=claude_start,
     phases={"menus": claude_menus, "permission": claude_permission, "queue": claude_queue, "plan": claude_plan},
 )
 
-HARNESSES = {"claude": CLAUDE}
+# --- Codex -------------------------------------------------------------------------------------
+
+
+def spinning(title: str) -> bool:
+    return bool(title) and "\u2800" <= title[0] <= "\u28ff"
+
+
+def codex_start(capture: Capture) -> None:
+    capture.pump(15, b"Ask Codex")
+    capture.pump(3)
+    capture.mark("idle at a fresh prompt", "idle", "Codex at its composer for the first time, a suggestion drawn faint in it.")
+
+
+def codex_draft(capture: Capture) -> None:
+    capture.send("half typed")
+    capture.pump(1.5)
+    capture.mark("a draft at the prompt", "idle", "Words typed into Codex's composer and not sent: a draft, which the doorbell waits out.")
+    capture.send("\x15")
+    capture.pump(1.5)
+
+
+def codex_approval(capture: Capture) -> None:
+    # Read-only, so writing the file needs a person's approval; harmless if it is given.
+    capture.send("Create a file named made.txt containing hi, with the shell command: echo hi > made.txt")
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(2.5)
+    capture.mark("working on a request", "working", "Codex working on the request, its spinner in the title.")
+    if capture.until_title(90, lambda title: "Action Required" in title):
+        capture.pump(2)
+        capture.mark("approval prompt", "blocked", "Codex asking whether it may run a command its sandbox does not allow.")
+        capture.send("\x1b")
+        capture.pump(4)
+        capture.mark("idle after declining the command", "idle", "The command declined with Esc: the turn interrupted, Codex back at its composer.")
+
+
+def codex_turn(capture: Capture) -> None:
+    capture.send("Reply with the single word hi.")
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(1)
+    capture.until_title(90, lambda title: not spinning(title))
+    capture.pump(2)
+    capture.mark("idle after a turn", "idle", "A turn finished: the answer above, Codex at its composer again, the earlier request drawn above with the composer's caret.")
+
+
+def codex_steer(capture: Capture) -> None:
+    # A command that runs long enough to type into; read-only allows it.
+    capture.send("Run the shell command sleep 20, and then say done.")
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(6)
+    capture.mark("working with an empty composer", "working", "Codex running a command, its composer empty below the spinner.")
+    capture.send("also say the time")
+    capture.pump(1.5)
+    capture.mark("working with a draft in the composer", "working", "Words typed into the composer while Codex works, not yet sent.")
+    capture.send("\r")
+    capture.pump(1.5)
+    capture.mark("working with a message queued", "working", "The words sent with Return while Codex works: held for after its next tool call.")
+    capture.until_title(90, lambda title: not spinning(title))
+    capture.pump(2)
+    # Esc interrupts a turn with nothing queued.
+    capture.send("Run the shell command sleep 20, and then say done.")
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(6)
+    capture.send("\x1b")
+    capture.pump(4)
+    capture.mark("idle after interrupting", "idle", "The turn interrupted with Esc: Codex says so above its composer.")
+
+
+CODEX = Harness(
+    argv=lambda out: [
+        "codex",
+        "-c", "check_for_update_on_startup=false",
+        "-c", "notify=[]",
+        # Trusted for this run only: answering the trust question writes it into ~/.codex.
+        "-c", f'projects={{"{out}"={{trust_level="trusted"}}}}',
+        "-m", "gpt-5.6-luna",
+        "-c", 'model_reasoning_effort="low"',
+        "-a", "on-request",
+        "-s", "read-only",
+    ],
+    strip=("CODEX_", "MUSTER_"),
+    start=codex_start,
+    phases={"draft": codex_draft, "approval": codex_approval, "turn": codex_turn, "steer": codex_steer},
+)
+
+HARNESSES = {"claude": CLAUDE, "codex": CODEX}
 
 
 def main() -> int:
@@ -248,11 +355,12 @@ def main() -> int:
         sys.exit(f"{arguments.harness} has no phase {', '.join(unknown)}; it has {', '.join(harness.phases)}")
     out = arguments.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    said = subprocess.run([harness.argv[0], "--version"], capture_output=True, text=True).stdout
+    argv = harness.argv(out)
+    said = subprocess.run([argv[0], "--version"], capture_output=True, text=True).stdout
     version = re.search(r"\d+(?:\.\d+)+", said)
     version = version.group(0) if version else said.strip()
 
-    capture = Capture(out, harness.argv, harness.strip, columns, rows)
+    capture = Capture(out, argv, harness.strip, columns, rows)
     try:
         harness.start(capture)
         for phase in phases:

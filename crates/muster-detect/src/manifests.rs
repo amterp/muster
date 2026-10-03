@@ -270,6 +270,11 @@ impl Manifests {
         self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt())
     }
 
+    /// Whether the agent's manifest can read its prompt while it works.
+    pub fn reads_prompt_at_work(&self, agent: &Agent) -> bool {
+        self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt_at_work())
+    }
+
     fn entry(&self, agent: &Agent) -> Option<&Entry> {
         self.entries.iter().find(|entry| &entry.agent == agent)
     }

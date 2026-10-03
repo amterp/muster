@@ -23,14 +23,18 @@ use region::Region;
 
 /// The manifest engine this crate implements. 1 to 3 are herdr's, so herdr's manifests keep
 /// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`, 5 adds a
-/// rule's `prompt`, and 6 lets a working rule carry one, read where its `prompt_region` says.
-pub const ENGINE_VERSION: u32 = 6;
+/// rule's `prompt`, 6 lets a working rule carry one, read where its `prompt_region` says, and
+/// 7 adds the `current_prompt` region, Codex's composer alone.
+pub const ENGINE_VERSION: u32 = 7;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
 
 /// The engine version that introduced a working rule's `prompt`, and `prompt_region`.
 const PROMPT_AT_WORK_ENGINE_VERSION: u32 = 6;
+
+/// The engine version that introduced the `current_prompt` region.
+const CURRENT_PROMPT_ENGINE_VERSION: u32 = 7;
 
 /// The engine version that introduced the `top_non_empty_lines` region, in herdr.
 const TOP_NON_EMPTY_LINES_ENGINE_VERSION: u32 = 3;
@@ -180,6 +184,12 @@ impl Manifest {
     /// has none is never read as at an empty prompt.
     pub fn reads_prompt(&self) -> bool {
         self.rules.iter().any(|rule| rule.prompt.is_some())
+    }
+
+    /// Whether a rule can read the prompt of the agent at work, which takes what is typed there
+    /// into its running turn: what an urgent ring needs.
+    pub fn reads_prompt_at_work(&self) -> bool {
+        self.rules.iter().any(|rule| rule.prompt.is_some() && rule.state == State::Working)
     }
 
     /// What the agent's prompt holds, when the rule that decides the screen is one that says
@@ -492,11 +502,26 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
                 rule.id
             ));
         }
+        reads_current_prompt(manifest, rule, region)?;
         if rule.prompt.is_some() || rule.prompt_region.is_some() {
             validate_prompt(manifest, rule, region)?;
         }
         validate_gate(&rule.gate(), "rule", 0, &mut complexity)
             .map_err(|error| format!("rule {} has invalid matcher gates: {error}", rule.id))?;
+    }
+    Ok(())
+}
+
+/// An engine before 7 does not know `current_prompt`, so a manifest using it says it needs 7.
+fn reads_current_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Result<(), String> {
+    if region == Region::CurrentPrompt
+        && manifest.min_engine_version.unwrap_or(0) < CURRENT_PROMPT_ENGINE_VERSION
+    {
+        return Err(format!(
+            "rule {} uses current_prompt but min_engine_version is below \
+             {CURRENT_PROMPT_ENGINE_VERSION}",
+            rule.id
+        ));
     }
     Ok(())
 }
@@ -534,6 +559,7 @@ fn validate_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Re
         })?,
         None => region,
     };
+    reads_current_prompt(manifest, rule, read_in)?;
     if matches!(read_in, Region::OscTitle | Region::OscProgress) {
         return Err(format!(
             "rule {} reads its prompt from a region that is not the screen",

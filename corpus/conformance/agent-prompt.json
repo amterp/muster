@@ -1,7 +1,7 @@
 {
   "concept": "detection.prompt",
   "source": "authored",
-  "citation": "MIP-4, section 6: the doorbell rings only an empty prompt. The 2.1.283 screens are corpus/conformance/agent-detection-recorded.json's, recorded from Claude Code 2.1.283; the 2.1.288 screens of an agent at work were recorded the same way, by tools/detection-capture.py, with the capture's folder renamed /tmp/capture; how it draws a suggestion nobody typed, every cell faint, is held to the installed Claude Code by claude_code_doorbell's live check.",
+  "citation": "MIP-4, section 6: the doorbell rings only an empty prompt. The 2.1.283 screens are corpus/conformance/agent-detection-recorded.json's, recorded from Claude Code 2.1.283; the 2.1.288 screens of an agent at work were recorded the same way, by tools/detection-capture.py, with the capture's folder renamed /tmp/capture, as were Codex 0.154.0's; how it draws a suggestion nobody typed, every cell faint, is held to the installed Claude Code by claude_code_doorbell's live check.",
   "why": "The doorbell types into a pane only when its agent's screen reads as that agent at an empty prompt. Each case is a screen as drawn, its title and progress, and the same screen as typed - every faint cell blank - and says whether the rule deciding the screen shows the prompt, and what the prompt holds. A case with no `typed` reads the screen as typed whole.",
   "cases": [
     {
@@ -199,11 +199,11 @@
       }
     },
     {
-      "name": "codex: a harness whose manifest reads no prompt is never at one",
+      "name": "gemini: a harness whose manifest reads no prompt is never at one",
       "why": "Only a manifest rule with a `prompt` can say a screen is an agent at its prompt, so an agent without one is never rung.",
       "given": {
-        "agent": "codex",
-        "screen": "› \n",
+        "agent": "gemini",
+        "screen": "> \n",
         "title": "",
         "progress": ""
       },
@@ -220,6 +220,91 @@
         "screen": "\n  ⎿  /plan to preview\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\n  ──────────────────────────────────────────────────────────────\n   Ready to code?\n\n   Here is Claude's plan:\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n   Create approved.txt in the working directory containing the\n   word hi.\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ──────────────────────────────────────────────────────────────\n   Claude has written up a plan and is ready to execute. Would\n   you like to proceed?\n\n   ❯ 1. Yes, and use auto mode\n     2. Yes, manually approve edits\n     3. Tell Claude what to change\n        shift+tab to approve with this feedback\n\n   ctrl+g to edit in Vim ·\n   ~/.claude/plans/plan-to-create-a-swift-pizza.md\n",
         "title": "✳ Create approved.txt",
         "typed": "\n  ⎿  /plan to preview\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\n  ──────────────────────────────────────────────────────────────\n   Ready to code?\n\n   Here is Claude's plan:\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n   Create approved.txt in the working directory containing the\n   word hi.\n  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ──────────────────────────────────────────────────────────────\n   Claude has written up a plan and is ready to execute. Would\n   you like to proceed?\n\n   ❯ 1. Yes, and use auto mode\n     2. Yes, manually approve edits\n     3. Tell Claude what to change\n        shift+tab to approve with this feedback\n\n   ctrl+g to edit in Vim ·\n   ~/.claude/plans/plan-to-create-a-swift-pizza.md"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "codex 0.154.0: a fresh composer showing a suggestion is empty",
+      "why": "Codex draws a suggestion faint in its empty composer; nobody typed it, so the composer is empty and the doorbell may ring.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "╭────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.154.0)                     │\n│                                                │\n│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "codex",
+        "typed": "\n     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "expect": {
+        "atPrompt": true
+      }
+    },
+    {
+      "name": "codex 0.154.0: a composer with words typed into it holds them",
+      "why": "Words somebody typed and did not send: a draft the doorbell waits out rather than typing beside.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "╭────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.154.0)                     │\n│                                                │\n│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› half typed\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "codex",
+        "typed": "\n     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› half typed\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "expect": {
+        "atPrompt": true,
+        "holds": "half typed"
+      }
+    },
+    {
+      "name": "codex 0.154.0: after a turn the composer is read, not the request above it",
+      "why": "The request that started the turn is drawn above the composer with the same caret, and the footer below it; only the composer is the prompt, and it is empty.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Reply with the single word hi.\n\n\n• hi\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "Create made.txt | codex",
+        "typed": "             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n  I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Reply with the single word hi.\n\n\n  hi\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "expect": {
+        "atPrompt": true
+      }
+    },
+    {
+      "name": "codex 0.154.0: an approval prompt is not the prompt",
+      "why": "Its selected option starts with the composer's caret, and a Return there would approve the command.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "│ >_ OpenAI Codex (v0.154.0)                     │\n│                                                │\n│ model:     gpt-5.6-luna low   /model to change │\n│ directory: /tmp/capture │\n╰────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• I’ll run the requested shell command in the current workspace.\n\n• Running echo hi > made.txt\n\n\n  Would you like to run the following command?\n\n  Environment: local\n\n  Reason: May I create made.txt with the requested command?\n\n  $ echo hi > made.txt\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `echo hi > made.txt` (p)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel\n",
+        "title": "[ ! ] Action Required | Create made.txt | codex",
+        "typed": "     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n  I’ll run the requested shell command in the current workspace.\n\n• Running echo hi > made.txt\n\n\n  Would you like to run the following command?\n\n  Environment: local\n\n  Reason: May I create made.txt with the requested command?\n\n  $ echo hi > made.txt\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `echo hi > made.txt` ( )\n  3. No, and tell Codex what to do differently (   )\n\n"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "codex 0.154.0: the composer after an interrupted turn is empty",
+      "why": "Esc ends the turn with a line saying so; Codex is back at an empty composer.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n• I’ll run sleep 20 now.\n\n• Ran sleep 20\n  └ (no output)\n\n\n› also say the time\n\n\n• Ran date '+%Y-%m-%d %H:%M:%S %Z'\n  └ 2026-10-03 10:00:23 CDT\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n\n• done - 2026-10-03 10:00:23 CDT\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n› Run the shell command sleep 20, and then say done.\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "Create made.txt | codex",
+        "typed": "\n  I’ll run sleep 20 now.\n\n• Ran sleep 20\n\n\n\n  also say the time\n\n\n• Ran date '+%Y-%m-%d %H:%M:%S %Z'\n\n\n\n\n  done - 2026-10-03 10:00:23 CDT\n\n\n\n\n  Run the shell command sleep 20, and then say done.\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "expect": {
+        "atPrompt": true
+      }
+    },
+    {
+      "name": "codex 0.154.0: at work, no prompt is read",
+      "why": "Codex takes what is typed while it works into the running turn, but its manifest reads no prompt at work yet, so an urgent post waits for it to be idle.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n\n• I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Reply with the single word hi.\n\n\n• hi\n\n\n› Run the shell command sleep 20, and then say done.\n\n\n• I’ll run sleep 20 now.\n\n• Working (5s • esc to interrupt)\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "⠴ Create made.txt | codex",
+        "typed": "\n\n  I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Reply with the single word hi.\n\n\n  hi\n\n\n  Run the shell command sleep 20, and then say done.\n\n\n  I’ll run sleep 20 now.\n\n• Working\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
       },
       "expect": {
         "atPrompt": false
