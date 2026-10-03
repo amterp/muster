@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       setenv("MUSTER_HOME", home, 1)
     }
 
+    // Before anything is started, so that from here a SIGTERM is a quit rather than a death.
+    TerminationSignal.quitsTheApp()
+
     // Before the core, because the core attaches daemons as it starts and every one of those
     // opens sockets. Reported a few lines further down, once there is somewhere to report to.
     let descriptors = DescriptorLimit.raise()
