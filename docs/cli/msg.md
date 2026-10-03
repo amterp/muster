@@ -115,7 +115,8 @@ message:
 a Return, and only into a prompt the daemon has just read as empty. Just before it types, the
 agent has to be idle or waiting, nothing may have been typed into the pane for three seconds
 nor drawn there for half a second, the agent must still be running there, and its screen must be
-its prompt with nothing typed in it. So a dialog, a menu, a prompt holding a draft, or a screen detection does not recognize is
+its prompt with nothing typed in it. A screen that never stops moving, such as an animated
+statusline, is rung five seconds after the pane was first found otherwise ready. So a dialog, a menu, a prompt holding a draft, or a screen detection does not recognize is
 never rung. Until then the wake waits in the daemon, and is rung as soon as the pane
 allows.
 
@@ -144,14 +145,22 @@ during a turn, and hands it to the model once the tool call it is in returns, wi
 address it before going on (`docs/observations/claude-code-2.1.288.md`). Everything else above
 still holds: nothing typed into the pane for three seconds, the agent still running there, and
 its prompt box read as empty just before the ring. So a draft in the box, a dialog, a menu, or
-a blocked agent is never rung; the post waits, and says what for. The wake counts what is
-urgent and says to read now:
+a blocked agent is never rung; the post waits, and says what for.
+
+An agent at work can open a dialog at any moment, and a Return there answers it: Claude Code's
+permission dialog takes Return as "Yes". So a ring at work is typed without its Return. About a
+second later, a second look presses Return only if the prompt box holds the ring and nothing
+else; while a dialog covers the box, the Return waits until the box shows again, however long
+that takes. A dialog drawn in the instant between that second look and the Return is the one
+case left unguarded (MIP-4, section 6). The wake counts what is urgent and says to read now:
 
     [muster] review: 2 new (#41-42), 1 urgent, 1 to you, from director. Read it now, before you go on: muster msg read --group review
 
 An urgent post wakes even an agent already woken for the group and not yet read, so each one
 rings: once per batch is the rule for what can wait until a turn ends. A ring rung at work counts
-as taken once the prompt box is empty again, which is how Claude Code shows a queued line. Whether
+as taken once the prompt box is empty again, which is how Claude Code shows a queued line. One
+not seen taken - somebody typed into the pane, or its screen could not be read - still counts the
+agent as woken, so it is rung `still unread` as it goes idle. Whether
 the model stops to read is its call: Claude Code's reminder asks it to, Sonnet does, and Haiku
 4.5 has been seen finishing its task first.
 
@@ -356,9 +365,11 @@ where.
 ## Not yet
 
 An urgent post needs this machine's daemon, and the daemon of the machine its group is kept on,
-to be from a Muster that knows it; either being older refuses it, saying which. A member on a
-machine whose daemon is older is rung for it as for an ordinary post. A `group set` from an older
-Muster, which knows nothing of `urgent`, leaves the group's list as it was.
+to be from a Muster that knows it; either being older refuses it, saying which, as
+`urgent_unsupported` in `--json`: updating Muster there is the answer, not asking whoever may post
+urgently, which is `not_urgent`. A member on a machine whose daemon is older is rung for it as for
+an ordinary post. A `group set` from an older Muster, which knows nothing of `urgent`, leaves the
+group's list as it was.
 
 A daemon links only to the machines a window attaches it to, so an agent on one devenv cannot
 reach an agent or a group on another: messages cross from the laptop to each devenv and back,

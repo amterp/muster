@@ -436,7 +436,9 @@ starts. Immediately before each write the doorbell checks, in order:
 - the agent has drawn nothing for half a second, since a harness that has only just drawn its
   prompt may not read input yet as it will: Codex 0.154 takes a paste the moment its composer
   first appears as typed keys (`docs/observations/codex-0.154.0.md`). An urgent ring at work
-  skips this, since a working agent animates;
+  skips this, since a working agent animates, and so does an idle agent whose screen has kept
+  moving for five seconds since the doorbell first found it otherwise ready - an animated
+  statusline, a clock - which would otherwise never be rung;
 - the agent is still the pane's foreground program, not the shell it exited to, whose screen
   still shows the agent's last frame;
 - the agent's manifest has a prompt rule;
@@ -515,7 +517,8 @@ Claude Code's permission dialog takes its highlighted option, "Yes", while the r
 itself, pasted or typed, does nothing there (`docs/observations/claude-code-2.1.288.md`, section
 3). So a ring at work is typed without its Return. A second look, a second later, presses Return
 only if the prompt box holds the ring and nothing else; a dialog over it keeps the Return back
-until the box shows again, for half a minute at most. What remains unguarded is a dialog drawn
+until the box shows again, however long it stays open, since nothing else would send the ring
+sitting in the box. What remains unguarded is a dialog drawn
 in the milliseconds between that second look and the Return reaching the agent: the Return would
 answer it. Anything else that ends a ring at work - a person typing, a screen the doorbell cannot
 read - leaves the agent counted as woken, so it is rung "still unread" as it goes idle.
