@@ -101,18 +101,19 @@ names one outright.
 
 `muster window list` says which windows are listening under this `MUSTER_HOME`, marking the one
 this command is running in. A window launched with a home of its own is not in that list and is
-reached by spelling out its socket. `muster window new` opens another and prints the socket that
-reaches it, so the next line of a script is `muster --socket "$W" pane new --run claude`.
+reached by spelling out its socket. `muster window new` asks the running app for another window,
+waits for it to open, and prints its name: `window-3`.
 
-`muster window reopen` brings back the window you closed, and prints its socket the same way.
-The two differ in one thing: a window you ask for holds nothing until it makes a tab of its own,
-and remembers it under an arrangement nothing has ever held; this one takes the most recent
-arrangement no live window is holding, and comes back to that window's tabs. A particular closed
-window comes back when you go to one of its tabs - `muster tab focus <TAB>`.
+`muster window reopen` brings back the window you closed last, and `muster window reopen
+window-2` a particular one, each printing the name the same way. The two verbs differ in one
+thing: a window you ask for holds nothing until it makes a tab of its own, and remembers it under
+an arrangement nothing has ever held; a reopened window comes back to its own arrangement and the
+tabs it kept. Going to one of its tabs, `muster tab focus <TAB>`, reopens a closed window too.
 
-A window is a process. That is why each one has its own socket named after its pid, and why
-making one starts an app rather than asking a running one for it - the case `window new` exists
-for includes there being no window to ask.
+Every window of an app is a window of one process, so its socket reaches all of them, and with no
+app running `window new` and `window reopen` start one. Quitting is not closing: every window open
+when Muster quits, or crashes, opens again at the next launch, and only a window you close stays
+closed.
 
 Names are not a window's: two windows on one machine call the same pane the same thing, because
 a name is the daemon's and both windows ask the same daemon. Tabs are a window's, and that

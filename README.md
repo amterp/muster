@@ -57,12 +57,13 @@ on that side, as in Ghostty, which is also how a side by side pair becomes one a
 Right-click a pane, a tab's caption or an agent's row to split, rename, move or close it, or to
 copy the ID `muster` takes for it.
 
-**More than one window, and `cmd+n` to make one.** Each is its own process, so quitting one leaves
-the others alone, and each has its own address for the CLI - `muster window list` says which are
-open. Every tab belongs to one window, and each window lists only its own; drag a tab's row, or
-any row of a window holding one tab, into another window, or use Move Tab to Window, and its
-agents go with it still running. A closed window keeps its tabs, and any `muster` command reaches
-any tab from any window.
+**More than one window, and `cmd+n` to make one.** Every window is a window of one app, so
+`cmd+q` quits them all - and the next launch brings every one of them back onto its own tabs,
+after a crash as well as a quit. `cmd+shift+w` closes one window, which keeps its tabs: Reopen
+Closed Window or `muster window reopen <name>` brings it back. Every tab belongs to one window,
+and each window lists only its own; drag a tab's row, or any row of a window holding one tab,
+into another window, or use Move Tab to Window, and its agents go with it still running. Any
+`muster` command reaches any tab from any window.
 
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
 same list as the ones on your laptop. `cmd+shift+]` and `cmd+shift+[` step between a laptop tab and a
@@ -122,8 +123,9 @@ after:
 - A pane sits beside another machine's panes only as that machine's part of the tab, to their left
   or right: a laptop pane cannot go above a devenv one. And a pane dropped on a tab's caption lands where Muster
   puts it; to choose, drop it on a pane's edge once that tab is on screen.
-- Reopen Closed Window brings back the most recent closed window. An older one comes back when you
-  go to one of its tabs - `muster window` lists them under the closed window's name.
+- Reopen Closed Window in the menu brings back the most recent closed window. An older one comes
+  back by name, `muster window reopen window-2`, or when you go to one of its tabs - `muster
+  window` lists them under the closed window's name.
 - Two windows cannot show the same tab. Muster's daemon draws each pane in one window at a time, so a
   tab is in exactly one window and moves between them rather than being shown in both.
 - A pane on its own cannot be dragged to another window; it goes with its tab.

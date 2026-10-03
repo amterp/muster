@@ -409,8 +409,9 @@ codegen - a surface that cannot express an action is a missing message, visible 
   ssh master - and keeps a composition, chrome and arrangement for every window the process shows. A request names
   its window in `Request.window` and an event names the window it is for in `Event.window`, both empty where the
   answer is the window in front (MIP-6). Which agents have been seen and which pane has the keyboard stay one answer
-  for the process, fed from the window in front, because only one window is. The shell still opens one window per
-  process, so today every session holds one.
+  for the process, fed from the window in front, because only one window is. The shell opens every window of the app
+  in this one process, so a quit ends them all - which is why quitting is not closing: every window open at a quit or a
+  crash is opened again by the next launch, and only a window somebody closes stays closed.
 - **Composition is resolved against the mirror, never patched by events.** It names daemon things - a tab, a
   pane - and those go away without asking: a tab closed from another client, a pane whose program exited. Every
   such way ends in a window that ignores the keyboard and cannot say why, so composition is brought back into line
@@ -699,8 +700,9 @@ the schema; and not in `dispatch`, because the shell calls that on its main thre
 carried request is answered where it lands and never carried again. Questions are answered wherever they arrive,
 since every window follows the same daemons.
 
-**A pid in the socket name, because two Musters are two windows.** A caller has to be able to reach the one it means,
-and a single fixed path would mean the second window to open silently took the first one's callers. Which window a
+**A pid in the socket name, because two Musters are two processes.** A caller has to be able to reach the one it
+means, and a single fixed path would mean the second Muster to open silently took the first one's callers. One process
+holds every window it opens, so its socket reaches all of them, and a request says which window it is about. Which window a
 pane belongs to is settled when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that request,
 beside the `MUSTER_PANE` that says which pane it is, and between them a program inside a pane can drive the window it
 is drawn in without being configured. The pane outlives that process, so a pane whose window has quit asks the sockets

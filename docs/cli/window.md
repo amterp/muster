@@ -66,8 +66,9 @@ are that window's.
             p1w3r0pq7r  blocked  2h  🤖 C  (hidden)
 
 The tab names there work from here: a request naming one is carried to the window that holds it,
-and `muster tab focus` on a closed window's tab reopens that window onto it. `muster tab move
---window` takes either handle, the pid of an open window or the name of any.
+and `muster tab focus` on a closed window's tab reopens that window onto it, as `muster window reopen
+window-2` does. `muster tab move --window` takes a window's name, or the pid of a Muster with one
+window open.
 
 Under `--json`, `name` is this window's own name, and `other_windows[]` carries `window` (its
 name), `pid` (null once it has closed) and its `tabs[]`, each with `tab`, `daemons`, `label`,

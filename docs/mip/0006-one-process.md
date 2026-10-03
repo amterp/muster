@@ -209,7 +209,7 @@ the PTYs, but it costs the windows unless relaunch brings each of them back. So:
 - **Relaunch reopens every window that was open when Muster quit**, each holding the tabs it
   held and showing the one it showed.
 - **A window somebody closed stays closed**: the red button, or a new Close Window menu item
-  whose default chord is settled in stage 3. It keeps its tabs and its agents keep running, as a
+  on ⌘⇧W, Ghostty's chord for it. It keeps its tabs and its agents keep running, as a
   closed window does today.
 - **Closing the last window is a quit.** The app quits, as it does today, and that window comes
   back on relaunch. Otherwise closing the only window would leave a relaunch with nothing to
@@ -221,10 +221,20 @@ and it is written as windows open and close rather than on the way out. Quitting
 a window closed; only closing it does. A launch then opens every window whose row says open. A
 crash and `kill -9` need nothing extra, because nothing had marked those windows closed.
 
+Concretely, a row a quit or a crash leaves keeps its pid, and the socket it names no longer
+answers: that is "open when Muster last ended". A launch asks the core for those windows before
+`Startup` (`ReadReopening`), because the answer decides what `Startup` is told: the first becomes
+the first window and the rest open beside it, focused longest ago first, so the window in front
+at the end is in front again. Each row records the install that wrote it, so a development build
+and the release, which share the record until section 5 moves it, never reopen each other's
+windows. Quit and Close Sessions is the one quit that closes every window, because the tabs end
+with it.
+
 **A closed window is reachable by name.** The Window menu gains a Reopen submenu listing each
 closed window by name, with its tabs. `muster window list --closed` lists them, and `muster
 window reopen NAME` brings one back. A bare `muster window reopen` keeps today's meaning, the
-most recently closed.
+most recently closed. Both ask the running app (`AskForWindow`), which opens the window
+itself, and start the app only when none of this install answers.
 
 ### 5. One process per install per home
 
@@ -388,13 +398,23 @@ Each stage leaves `main` working.
    rather than naming one, go to it in the window holding it. Each window keeps its own history
    of where its keyboard has been, and back and forward step over a pane whose tab another
    window holds. Still one window per process in use. Built 2026-10-03.
-3. **The shell opens every window.** Many NSWindows, with menus aimed through the responder chain
-   rather than at one window, and events routed by `Event.window`. Close Window apart from quit,
-   relaunch reopening every window open at quit, the app lock, one socket, arrangements under
-   `state/<install>/`, pre-change processes asked to quit, and ⌘N, `muster window new` and
-   `reopen` opening windows in the running app. This is the stage a person notices, and the
-   largest. If it has to split, it splits after the windows and the menus, with relaunch and the
-   app lock second.
+3. **The shell opens every window**, in two halves.
+   - **3a: the windows, the menus, closing and relaunch.** Many NSWindows in one process, events
+     routed by `Event.window`, and requests naming the window they come from. The menu bar is aimed
+     at whichever window is in front, through one forwarding target. Close Window apart from quit,
+     with the last window's close a quit. Relaunch reopens every window open at a quit or a crash.
+     ⌘N, Reopen Closed Window, going to a closed window's tab, and `muster window new` /
+     `reopen [NAME]` all open windows in the running app. SIGTERM quits as ⌘Q does, which is what
+     lets a launch check quit and relaunch the app. Relaunch moved into this half, from the second
+     as first planned: once ⌘N stays in one process, ⌘Q ends both windows, and stopping before
+     relaunch would bring back only one where a second process used to survive. Built
+     2026-10-03.
+   - **3b: the app lock, and the rest of sections 5 and 6.** `state/app-<install>.lock`, a second
+     launch handing its request to the running app, the Dock's reopen, arrangements and the
+     record under `state/<install>/`, and pre-change processes asked to quit. Until then a second
+     process can still start, from the Dock with the app already running or from a CLI facing an
+     app from before this change, and carrying and `.held` claims keep two processes apart as they
+     always have.
 4. **Removals, and the rest of the CLI and docs.** Section 7, the Reopen submenu, `muster window
    list --closed`, and the docs: README "More than one window", `docs/cli/window.md`,
    `docs/cli/overview.md` "Which window", architecture.md "One action path" and "Durability".
@@ -426,4 +446,4 @@ Each stage leaves `main` working.
 ---
 
 ## History
-- 2026-10-03 Draft. Stages 1 and 2 built the same day.
+- 2026-10-03 Draft. Stages 1, 2 and 3a built the same day.

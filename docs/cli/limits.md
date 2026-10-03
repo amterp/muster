@@ -209,20 +209,24 @@ process, not a dead bridge, and a fresh bridge draws exactly the same thing.
 A pane no machine this window follows holds is refused rather than counted, because there is no
 request on its way that could make the name right a moment later.
 
-## A closed window comes back as the latest, or through one of its tabs
+## A closed window comes back by name, as the latest, or through one of its tabs
 
 `muster window reopen`, and Reopen Closed Window in the menu, bring back the most recent window
-no live window is holding. A window keeps its tabs while it is closed - its agents are still
-running - so whichever window comes back, it comes back to its own tabs.
+no live window is holding, and `muster window reopen window-2` brings back that one. A window
+keeps its tabs while it is closed - its agents are still running - so whichever window comes
+back, it comes back to its own tabs.
 
-To bring back a particular one, go to one of its tabs. `muster window` lists a closed window's
-tabs under its name, `window-2 (closed)`, and `muster tab focus <TAB>` naming one of them reopens
-that window onto it; so does clicking a notification about an agent there. A blocked agent in a
+A window is closed only when somebody closes it: Close Window, `cmd+shift+w`, or its close button.
+Closing the last one quits instead, and quitting closes nothing - every window open at a quit, or
+a crash, opens again at the next launch.
+
+A particular closed window also comes back when you go to one of its tabs. `muster window` lists
+a closed window's tabs under its name, `window-2 (closed)`, and `muster tab focus <TAB>` naming
+one of them reopens that window onto it; so does clicking a notification about an agent there. A blocked agent in a
 closed window's tab is announced by the window that was in front most recently.
 
 Arrangements are kept for the last twenty windows. A tab whose window's arrangement has gone joins
-the window in front, because nothing could reopen onto it any more. A window that crashed is
-treated as closed the next time anything needs to know - it keeps its tabs the same way.
+the window in front, because nothing could reopen onto it any more.
 
 ## Every tab is in exactly one window
 
