@@ -38,7 +38,8 @@ says what it would end before it ends it.
 
 **A chord to every agent.** `cmd+2` goes to the second tab, and `3` pressed with `cmd` still down
 goes on to that tab's third pane. Every row in the list shows the chord that reaches it, so an agent
-is a glance and two keystrokes away whether or not a split is showing it.
+is a glance and two keystrokes away whether or not a split is showing it. The mouse's back button
+takes you to the pane you were on before, in whatever tab, and forward takes you back.
 
 **A notification when an agent needs you, and one click back to it.** An agent that starts waiting
 on you, or that finishes while nobody is looking, says so - and activating the notification takes

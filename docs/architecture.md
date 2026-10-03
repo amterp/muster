@@ -342,6 +342,10 @@ between "bytes" and "control":
   unless the program has captured the mouse. That is Ghostty's rule. A menu on a pane, a tab caption or an agent row
   sends the requests the keyboard sends, naming the pane or tab that was right-clicked rather than the one with the
   keyboard (`ContextMenus.swift`).
+- **The mouse's back and forward buttons are the window's, never the program's.** The window takes them before
+  any view sees them, wherever the pointer is, and walks the core's focus history with them, the same walk as
+  `focus_back` and `focus_forward`. No program in a pane would hear them anyway, because a terminal reports only
+  three buttons, so taking them even from a program that tracks the mouse costs that program nothing.
 
 ## The shell/core seam
 

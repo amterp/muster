@@ -144,6 +144,13 @@ know that everything else here is undone by doing it again and this is not.
 `reset_terminal` is the eighth, as it is in Ghostty: it throws away the pane's screen and modes,
 and a chord for that is one somebody finds by losing their screen.
 
+**The mouse's back and forward buttons go back to the pane you were on, and forward again.**
+Every pane the keyboard lands on is recorded, however it got there, so a step back can change
+tabs or machines, and a pane that has closed is stepped over. The buttons work wherever the
+pointer is in the window, and they go to Muster even over a program that uses the mouse.
+`focus_back` and `focus_forward` are the same walk on `cmd+opt+[` and `cmd+opt+]`, beside
+`cmd+[` for panes and `cmd+shift+[` for tabs.
+
 **`cmd+1` to `cmd+9` go to a tab, and the press after one goes to a pane inside it.** `cmd+2`
 moves you to the second tab the moment you press it. Keep `cmd` down and press `3`, and you land
 on that tab's third pane. A tab's number is its place in the window's tab order, counted across

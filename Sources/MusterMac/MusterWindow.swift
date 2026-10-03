@@ -173,6 +173,13 @@ public final class MusterWindow: NSObject {
     window = keyboard
     super.init()
     keyboard.onModifiersChanged = { [weak self] held in self?.apply(held: held) }
+    // Not through `focusBack` and `focusForward`, which beep at either end of the history: a
+    // mouse button there does nothing, as a browser's does.
+    keyboard.onHistoryButton = { forward in
+      Core.debug(
+        BoundAction.event, BoundAction.record(mouse: forward ? "focus_forward" : "focus_back"))
+      Core.focusHistory(forward: forward)
+    }
     split.attach(sidebar: sidebar, strip: strip)
     // A window narrowed until the roster will not fit takes the problems area with it, so the
     // title has to pick them up at exactly that moment.

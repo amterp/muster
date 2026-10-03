@@ -54,13 +54,16 @@ public enum NumberedChord {
   private static let place = "focus_pane_"
 }
 
-/// The window, with the modifiers it is being held with reported as they move.
+/// The window, with the modifiers it is being held with reported as they move, and the mouse's
+/// back and forward buttons taken before any view sees them.
 ///
-/// A subclass for one override. Modifier events are not key equivalents and no menu item can
-/// carry one, so the only way to see ⌘ come up is to sit in the responder chain - and the
-/// window is the end of every chain in it, which a view is not: the first responder here is a
-/// pane's surface, the agent list, or a find field depending on where you last clicked, and
-/// three overrides that had to agree would be three chances to disagree.
+/// A subclass for what only the window can see whole. Modifier events are not key equivalents
+/// and no menu item can carry one, so the only way to see ⌘ come up is to sit in the responder
+/// chain - and the window is the end of every chain in it, which a view is not: the first
+/// responder here is a pane's surface, the agent list, or a find field depending on where you
+/// last clicked, and three overrides that had to agree would be three chances to disagree. The
+/// two buttons are the same shape: they mean the same thing over a pane, the agent list or a
+/// divider, and every event passes through here first.
 ///
 /// Deliberately *not* gated on a pane being typeable, unlike `SurfaceView`'s key handling. A
 /// gesture begun in a pane that never came up still has to be able to end.
@@ -68,8 +71,38 @@ public final class KeyboardWindow: NSWindow {
   /// Called with the modifiers still held, every time the set of them changes.
   public var onModifiersChanged: ((NSEvent.ModifierFlags) -> Void)?
 
+  /// Called with `true` for the forward button and `false` for back, as each is pressed.
+  public var onHistoryButton: ((Bool) -> Void)?
+
   public override func flagsChanged(with event: NSEvent) {
     super.flagsChanged(with: event)
     onModifiersChanged?(event.modifierFlags)
+  }
+
+  /// Takes the two buttons even over a program that asked for the mouse. No program in a pane
+  /// hears them anyway - a pane's daemon is told only about the first three, which is all a
+  /// terminal reports - so the history costs nothing, and no program can take it from you.
+  ///
+  /// On the press, and the release is swallowed with it, so no view sees half a click.
+  public override func sendEvent(_ event: NSEvent) {
+    guard let forward = Self.historyDirection(for: event) else {
+      super.sendEvent(event)
+      return
+    }
+    if event.type == .otherMouseDown {
+      onHistoryButton?(forward)
+    }
+  }
+
+  /// Whether this event is the mouse's back or forward button, and which: `true` for forward.
+  ///
+  /// AppKit numbers them 3 and 4, as Ghostty's app does (`MouseButton(fromNSEventButtonNumber:)`).
+  public static func historyDirection(for event: NSEvent) -> Bool? {
+    guard event.type == .otherMouseDown || event.type == .otherMouseUp else { return nil }
+    switch event.buttonNumber {
+    case 3: return false
+    case 4: return true
+    default: return nil
+    }
   }
 }

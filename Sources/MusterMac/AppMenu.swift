@@ -199,6 +199,12 @@ enum BoundAction {
     ]
   }
 
+  /// The fields for an action a mouse button asked for, in the shape a menu pick writes: no
+  /// key and no modifiers, since a button is neither.
+  static func record(mouse action: String) -> [String: String] {
+    ["action": action, "key": "", "mods": "", "repeat": "false", "source": "mouse"]
+  }
+
   /// The keystroke that chose this item, if a keystroke did.
   ///
   /// Matched against the item's own key equivalent rather than assumed from the event's type,

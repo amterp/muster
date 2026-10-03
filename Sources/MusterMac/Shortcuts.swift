@@ -94,6 +94,9 @@ public enum Shortcuts {
     Row(
       title: "Split, rename, close, copy its ID", chord: "",
       note: "right-click a pane, a tab's caption or an agent's row"),
+    Row(
+      title: "Go back to the pane before, or forward again", chord: "",
+      note: "the mouse's back and forward buttons"),
     Row(title: "Scroll back", chord: "", note: "the wheel, over the pane"),
   ]
 
