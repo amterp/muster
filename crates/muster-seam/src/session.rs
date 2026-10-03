@@ -3934,7 +3934,8 @@ pub(crate) struct WindowNow {
     pub name: String,
     /// Every other window, open or closed, with the tabs it holds.
     pub others: Vec<OtherWindow>,
-    /// How every tab this window holds is arranged, when the caller asked for the layout.
+    /// How every tab an open window holds is arranged, this window's first, when the caller
+    /// asked for the layout.
     pub layouts: Vec<View>,
     /// How big each pane's terminal is, when the caller asked for the layout.
     pub grids: Vec<(DaemonId, PaneId, Grid)>,
@@ -4101,7 +4102,16 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
             .keys()
             .filter_map(|daemon| Some((daemon.clone(), session.channel_of(daemon)?)))
             .collect();
-        (session.arranged(window), channels)
+        // Every open window's tabs, not only this one's: `panes` lists every pane wherever it
+        // is, and a pane in the window beside this one has a frame in its own tab as much as
+        // one here does. A closed window draws nothing, so its panes have none.
+        let mut layouts = session.arranged(window);
+        for (other, held) in session.windows.iter() {
+            if other != window && held.opened {
+                layouts.extend(session.arranged(other));
+            }
+        }
+        (layouts, channels)
     } else {
         (Vec::new(), Vec::new())
     };

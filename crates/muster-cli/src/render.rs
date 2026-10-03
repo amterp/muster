@@ -393,12 +393,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
     for tab in tabs(window) {
         match drawing.as_ref().and_then(|drawing| drawing.layout(&tab.tab_id)) {
             Some(layout) => {
-                let mut heading = tab_line(&widths, tab);
-                if let Some(zoomed) = layout.regions.iter().find(|region| region.zoomed) {
-                    heading.push_str("  ");
-                    heading.push_str(&styled(&format!("zoomed on {}", zoomed.pane_id), QUIET));
-                }
-                lines.push(heading);
+                lines.push(drawn_tab_line(&widths, tab, layout));
                 if let Some(drawing) = &drawing {
                     lines.extend(drawing.tab(layout, tab, &states, terminal_width()));
                 }
@@ -424,7 +419,25 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
         }
         lines.push(styled(&other_heading(other), NAME));
         for tab in &other.tabs {
-            lines.extend(tab_lines(&widths, tab, &states, None, now_ms, say_machine, drawn));
+            // Drawn when its window is open and so has a layout; a closed window's tabs are
+            // listed, since nothing is drawing them.
+            match drawing.as_ref().zip(drawing.as_ref().and_then(|d| d.layout(&tab.tab_id))) {
+                Some((drawing, layout)) => {
+                    lines.push(drawn_tab_line(&widths, tab, layout));
+                    lines.extend(drawing.tab(layout, tab, &states, terminal_width()));
+                }
+                None => {
+                    lines.extend(tab_lines(
+                        &widths,
+                        tab,
+                        &states,
+                        None,
+                        now_ms,
+                        say_machine,
+                        drawn,
+                    ));
+                }
+            }
         }
     }
 
@@ -442,6 +455,20 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
         return "no daemon is attached, so this window is showing nothing".to_string();
     }
     lines.join("\n")
+}
+
+/// A drawn tab's heading: its row, and which pane it is zoomed on when it is.
+fn drawn_tab_line(
+    widths: &Widths,
+    tab: &muster_proto::RosterTab,
+    layout: &muster_proto::TabLayout,
+) -> String {
+    let mut heading = tab_line(widths, tab);
+    if let Some(zoomed) = layout.regions.iter().find(|region| region.zoomed) {
+        heading.push_str("  ");
+        heading.push_str(&styled(&format!("zoomed on {}", zoomed.pane_id), QUIET));
+    }
+    heading
 }
 
 /// What `--layout` draws from: every tab's arrangement and every pane's size, from an answer
@@ -961,8 +988,6 @@ fn window_json(window: &Window, others: Others) -> Value {
         }
     }
 
-    add_layout(window, &mut tabs_out, &mut panes);
-
     let daemons: Vec<Value> = window
         .daemons
         .iter()
@@ -986,7 +1011,7 @@ fn window_json(window: &Window, others: Others) -> Value {
     // anyone who wants it.
     // Named so as not to read as the list `{"windows": [...]}` a caller outside any pane gets:
     // these are the windows other than this one, as this one knows them.
-    let other_windows: Vec<Value> = window
+    let mut other_windows: Vec<Value> = window
         .windows
         .iter()
         .filter(|other| others.include(other))
@@ -1010,6 +1035,7 @@ fn window_json(window: &Window, others: Others) -> Value {
             })
         })
         .collect();
+    add_layout(window, &mut tabs_out, &mut panes, &mut other_windows);
 
     json!({
         "name": window.name,
@@ -1032,7 +1058,11 @@ fn rect_json(place: &muster_proto::PanePlace) -> Value {
 /// What `--layout` adds to `tabs[]` and `panes[]`: each tab's regions, and each pane's frame and
 /// size. Only when the layout was asked for, and absent rather than null otherwise, so a size
 /// nobody asked for is never read as a size nobody knows.
-fn add_layout(window: &Window, tabs: &mut [Value], panes: &mut [Value]) {
+///
+/// The other windows' panes get a frame and a size too. A frame is a place in the pane's own tab,
+/// so it means the same whichever window holds that tab; a closed window draws nothing, and its
+/// panes' frames are null.
+fn add_layout(window: &Window, tabs: &mut [Value], panes: &mut [Value], others: &mut [Value]) {
     if window.layouts.is_empty() {
         return;
     }
@@ -1045,6 +1075,18 @@ fn add_layout(window: &Window, tabs: &mut [Value], panes: &mut [Value]) {
         .map(|place| (place.pane_id.as_str(), place))
         .collect();
     let grids = grids(window);
+    let size = |pane: &mut Value| {
+        let Value::Object(fields) = pane else { return };
+        let name = fields.get("pane").and_then(Value::as_str).unwrap_or_default().to_string();
+        // Where it sits in its tab's arrangement, shown or not, in `rect`'s terms.
+        let frame = frames.get(name.as_str()).copied().map_or(Value::Null, rect_json);
+        // Null when its daemon could not say, which is not the same as no size.
+        let cells = grids
+            .get(name.as_str())
+            .map_or(Value::Null, |grid| json!({ "cols": grid.cols, "rows": grid.rows }));
+        fields.insert("frame".to_string(), frame);
+        fields.insert("cells".to_string(), cells);
+    };
     for tab in tabs.iter_mut() {
         let Value::Object(fields) = tab else { continue };
         let regions = fields
@@ -1055,17 +1097,11 @@ fn add_layout(window: &Window, tabs: &mut [Value], panes: &mut [Value]) {
             .unwrap_or_default();
         fields.insert("regions".to_string(), Value::Array(regions));
     }
-    for pane in panes.iter_mut() {
-        let Value::Object(fields) = pane else { continue };
-        let name = fields.get("pane").and_then(Value::as_str).unwrap_or_default().to_string();
-        // Where it sits in its tab's arrangement, shown or not, in `rect`'s terms.
-        let frame = frames.get(name.as_str()).copied().map_or(Value::Null, rect_json);
-        // Null when its daemon could not say, which is not the same as no size.
-        let cells = grids
-            .get(name.as_str())
-            .map_or(Value::Null, |grid| json!({ "cols": grid.cols, "rows": grid.rows }));
-        fields.insert("frame".to_string(), frame);
-        fields.insert("cells".to_string(), cells);
+    panes.iter_mut().for_each(size);
+    for other in others.iter_mut() {
+        for tab in other["tabs"].as_array_mut().into_iter().flatten() {
+            tab["panes"].as_array_mut().into_iter().flatten().for_each(size);
+        }
     }
 }
 
@@ -1269,7 +1305,7 @@ fn shell_word(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{QUIET, agent_style, daemons_text, held_for};
+    use super::{Others, QUIET, agent_style, daemons_text, held_for, window_json};
     use anstyle::{AnsiColor, Color, Style};
 
     fn hue(color: AnsiColor) -> Style {
@@ -1331,6 +1367,46 @@ mod tests {
             "the window paints blocked orange, and yellow is the nearest of the sixteen"
         );
         assert_eq!(agent_style("done"), hue(AnsiColor::Green), "the window paints done green");
+    }
+
+    /// Under `--layout`, a pane in another open window has a frame in its own tab like a pane
+    /// here, and a closed window's pane, which nothing draws, has none.
+    #[test]
+    fn every_open_windows_panes_are_laid_out() {
+        use muster_proto::{
+            OtherWindow, PanePlace, RosterChanged, RosterPane, RosterTab, TabLayout, Window,
+        };
+        let tab = |tab: &str, pane: &str| RosterTab {
+            tab_id: tab.to_string(),
+            panes: vec![RosterPane { pane_id: pane.to_string(), ..RosterPane::default() }],
+            ..RosterTab::default()
+        };
+        let laid_out = |tab: &str, pane: &str| TabLayout {
+            tab_id: tab.to_string(),
+            places: vec![PanePlace {
+                pane_id: pane.to_string(),
+                width: 1.0,
+                height: 1.0,
+                ..PanePlace::default()
+            }],
+            ..TabLayout::default()
+        };
+        let window = Window {
+            name: "window-1".to_string(),
+            roster: Some(RosterChanged { tabs: vec![tab("t1", "p1")], ..RosterChanged::default() }),
+            windows: vec![
+                OtherWindow { name: "window-2".to_string(), pid: 7, tabs: vec![tab("t2", "p2")] },
+                OtherWindow { name: "window-3".to_string(), pid: 0, tabs: vec![tab("t3", "p3")] },
+            ],
+            layouts: vec![laid_out("t1", "p1"), laid_out("t2", "p2")],
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert_eq!(json["panes"][0]["frame"]["width"], 1.0, "{json}");
+        let other = &json["other_windows"][0]["tabs"][0]["panes"][0];
+        assert_eq!(other["frame"]["height"], 1.0, "another open window's pane: {json}");
+        let closed = &json["other_windows"][1]["tabs"][0]["panes"][0];
+        assert!(closed["frame"].is_null(), "a closed window's pane: {json}");
     }
 
     /// Idle and unknown are the resting answer and the row already prints the word, so neither

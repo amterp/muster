@@ -204,6 +204,34 @@ fn a_window_describes_the_other_one_beside_it() {
     assert_eq!(other.pid, std::process::id(), "an open window here is described as closed");
 }
 
+/// Asked for its layout, a window lays out the other open window's tabs too, so every pane it
+/// lists has a frame in its own tab, whichever window holds that tab.
+#[test]
+fn a_windows_layout_covers_the_tabs_of_the_window_beside_it() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, second) = two_windows(&daemon);
+
+    let window = match answer(&in_window(
+        "window-1",
+        request::Payload::ReadWindow(ReadWindow { layout: true }),
+    ))
+    .payload
+    {
+        Some(response::Payload::Window(window)) => window,
+        other => panic!("reading the layout answered {other:?}"),
+    };
+    let laid_out: Vec<&str> = window.layouts.iter().map(|layout| layout.tab_id.as_str()).collect();
+    assert_eq!(laid_out.first(), Some(&first.as_str()), "this window's own tab comes first");
+    let other = window
+        .layouts
+        .iter()
+        .find(|layout| layout.tab_id == second)
+        .unwrap_or_else(|| panic!("the other window's tab is not laid out: {laid_out:?}"));
+    assert!(!other.places.is_empty(), "the other window's tab is laid out with no panes: {other:?}");
+}
+
 /// Seen means on screen in the window in front. An agent finishing in the window behind is `done`
 /// until that window comes forward, and then it has been seen.
 #[test]

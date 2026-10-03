@@ -239,9 +239,13 @@ flag rather than the default. With `--json` it adds three keys, and nothing else
   `rect`'s terms, whether or not the tab is on screen.
 - `panes[].cells` - `{"cols", "rows"}`, or `null` when its daemon could not say.
 
+Another open window's tabs are drawn too, under its heading, and its panes in
+`other_windows[].tabs[].panes[]` carry `frame` and `cells` the same way: a frame is a place in
+the pane's own tab, whichever window holds it.
+
 Without `--layout` these keys are absent rather than null, so a size nobody asked for is never
-read as one nobody knows. A closed window's tabs are listed and not drawn: how their machines'
-parts sit side by side is that window's to say. With no window answering, the daemon's tabs are
+read as one nobody knows. A closed window's tabs are listed and not drawn, and its panes' `frame`
+is null: how their machines' parts sit side by side is that window's to say, once it is open. With no window answering, the daemon's tabs are
 drawn from its own trees, one part each, and `frame` is null.
 
     muster window --layout --json | jq -r '.panes[] | "\(.pane) \(.cells.cols)x\(.cells.rows)"'
