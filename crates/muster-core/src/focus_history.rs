@@ -15,7 +15,7 @@ use crate::composition::PaneKey;
 /// laps of all of them.
 const LIMIT: usize = 50;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FocusHistory {
     entries: Vec<PaneKey>,
     /// The entry the keyboard is on. Meaningless while `entries` is empty.

@@ -5,12 +5,18 @@
 //! needs a window is that every way the keyboard moves is recorded, that a step back brings the
 //! pane's tab on screen, and that a pane which closed is not somewhere to go back to.
 
+use std::os::unix::net::UnixListener;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use muster::proto::{
-    ClosePane, CreateTab, Event, FocusHistory, OpenWindow, Request, Response, RosterChanged,
-    SplitPane, Startup, ViewChanged, Went, event, request, response,
+    ClosePane, CreateTab, Event, FocusHistory, FocusPane, OpenWindow, ReadTabHolders, Request,
+    Response, RosterChanged, SplitPane, Startup, ViewChanged, Went, event, request, response,
 };
+use muster_core::composition::holding::{from_toml, to_toml};
+use muster_core::composition::{DaemonId, HeldWindow, Holders, WindowName};
+use muster_core::mirror::backend::TabId;
 use muster_harness::{Daemon, until};
 use prost::Message;
 
@@ -77,6 +83,84 @@ fn a_pane_that_closed_is_stepped_over() {
     assert_eq!(walk(false).pane_id, first, "back went somewhere other than the pane before");
 }
 
+/// A pane whose tab a closed window holds now is stepped over, rather than gone to by asking for
+/// that window back: back means somewhere this window can go.
+#[test]
+fn a_pane_a_closed_window_holds_now_is_stepped_over() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = a_window();
+    let (first, middle, _) = three_tabs();
+    let given = tab_of(&middle).expect("the middle pane is in a tab");
+
+    let path = record(&daemon);
+    let mut holders = read_record(&path);
+    let closed = a_window_named(&daemon, "window-9", "", 0);
+    let name = closed.name.clone();
+    holders.opened(closed);
+    holders.closed(&name);
+    holders.take(TabId::new(&given), &name);
+    write_record(&path, &holders);
+    assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
+    until(
+        "the tab given to the closed window to leave this one",
+        || !panes().contains(&middle),
+        || format!("this window still holds {:?}", panes()),
+    );
+    let asked = REOPENS.load(Ordering::SeqCst);
+
+    assert_eq!(walk(false).pane_id, first, "back did not step over the closed window's pane");
+    assert_eq!(keyboard().as_deref(), Some(first.as_str()));
+    assert_eq!(
+        REOPENS.load(Ordering::SeqCst),
+        asked,
+        "going back asked for a closed window to be opened again"
+    );
+}
+
+/// A step back that is refused leaves the history where it was, without the pane it could not go
+/// to: the next press goes on to the pane before, rather than trying the same one forever.
+#[test]
+fn a_step_back_refused_leaves_the_history_where_it_was() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = a_window();
+    let (first, middle, last) = three_tabs();
+    let given = tab_of(&middle).expect("the middle pane is in a tab");
+    let path = record(&daemon);
+    let _other = another_window(&path, &daemon, "window-9");
+
+    // Nobody holds the middle tab and the other window is in front, so this window lets it go and
+    // still counts its pane as somewhere it can go back to.
+    let mut holders = read_record(&path);
+    let answered = std::iter::once(DaemonId::new("local")).collect();
+    holders.prune(&answered, |tab| tab.as_str() != given);
+    holders.focused(&WindowName::new("window-9"), i64::MAX / 2);
+    write_record(&path, &holders);
+    assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
+    until(
+        "the middle tab to leave this window",
+        || !panes().contains(&middle),
+        || format!("this window still holds {:?}", panes()),
+    );
+    // Then the other window takes it, and this window has not read that yet.
+    let mut holders = read_record(&path);
+    holders.take(TabId::new(&given), &WindowName::new("window-9"));
+    write_record(&path, &holders);
+
+    let refused = answer(request::Payload::FocusHistory(FocusHistory { forward: false }));
+    assert!(
+        matches!(refused.payload, Some(response::Payload::Failure(_))),
+        "a step back onto a tab another window holds was carried out: {refused:?}"
+    );
+    assert_eq!(keyboard().as_deref(), Some(last.as_str()), "a refused step moved the keyboard");
+    // A republish, which records where the keyboard is.
+    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+        pane_id: last.clone(),
+        ..FocusPane::default()
+    })));
+
+    assert_eq!(walk(false).pane_id, first, "back tried the refused pane again");
+}
+
 /// A daemon, and a window open onto its one pane with the keyboard on it.
 fn a_window() -> Daemon {
     let daemon = Daemon::start_built();
@@ -86,6 +170,7 @@ fn a_window() -> Daemon {
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        tab_holders_path: record(&daemon).to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
@@ -148,7 +233,68 @@ fn keyboard() -> Option<String> {
     Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
 }
 
+/// Three tabs, each with the keyboard on its one pane in turn, and the three panes in that order.
+fn three_tabs() -> (String, String, String) {
+    let first = keyboard().expect("the window opened with the keyboard on a pane");
+    let mut made = Vec::new();
+    for _ in 0..2 {
+        assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+        let before = made.last().cloned().unwrap_or_else(|| first.clone());
+        until(
+            "the new tab to take the keyboard",
+            || keyboard().is_some_and(|pane| pane != before),
+            || format!("the keyboard is on {:?}", keyboard()),
+        );
+        made.push(keyboard().expect("just waited for it"));
+    }
+    let last = made.pop().expect("two tabs were made");
+    let middle = made.pop().expect("two tabs were made");
+    (first, middle, last)
+}
+
+fn record(daemon: &Daemon) -> PathBuf {
+    daemon.root().join("holding/tabs.toml")
+}
+
+fn read_record(path: &Path) -> Holders {
+    from_toml(&std::fs::read_to_string(path).unwrap_or_default())
+        .expect("the record this window writes reads back")
+}
+
+fn write_record(path: &Path, holders: &Holders) {
+    std::fs::create_dir_all(path.parent().expect("the record is in a directory"))
+        .expect("the record's directory can be made");
+    std::fs::write(path, to_toml(holders)).expect("the record can be written");
+}
+
+/// A row for another window, with an arrangement that exists so the record keeps it.
+fn a_window_named(daemon: &Daemon, name: &str, socket: &str, pid: u32) -> HeldWindow {
+    let arrangement = daemon.root().join(format!("{name}.toml"));
+    std::fs::write(&arrangement, "").expect("a stand-in arrangement can be written");
+    HeldWindow {
+        name: WindowName::new(name),
+        arrangement: arrangement.to_string_lossy().into_owned(),
+        socket: socket.to_string(),
+        pid,
+        focused: 0,
+        daemons: std::iter::once(DaemonId::new("local")).collect(),
+    }
+}
+
+/// Stands in for a window that is open: a socket that answers, named in the record.
+fn another_window(path: &Path, daemon: &Daemon, name: &str) -> UnixListener {
+    let socket = daemon.root().join(format!("{name}.sock"));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).expect("a socket can be bound in the scratch root");
+    let mut holders = read_record(path);
+    holders.opened(a_window_named(daemon, name, &socket.to_string_lossy(), 1));
+    write_record(path, &holders);
+    listener
+}
+
 static ROSTER: Mutex<Option<RosterChanged>> = Mutex::new(None);
+/// How many times the core has asked for a closed window to be opened again.
+static REOPENS: AtomicUsize = AtomicUsize::new(0);
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);
 
 extern "C" fn note(bytes: *const u8, len: usize) {
@@ -162,6 +308,9 @@ extern "C" fn note(bytes: *const u8, len: usize) {
         }
         Some(event::Payload::ViewChanged(view)) => {
             *VIEW.lock().expect("a panicking test poisoned the view") = Some(view);
+        }
+        Some(event::Payload::ReopenWindow(_)) => {
+            REOPENS.fetch_add(1, Ordering::SeqCst);
         }
         _ => {}
     }

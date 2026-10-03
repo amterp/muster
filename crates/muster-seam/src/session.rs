@@ -2179,6 +2179,37 @@ impl Session {
         found
     }
 
+    /// Puts a window's keyboard on a pane, bringing the pane's tab on screen when it is not.
+    fn point_keyboard_at(
+        &mut self,
+        window: WindowId,
+        daemon: &DaemonId,
+        pane: &PaneId,
+    ) -> Result<(), Refusal> {
+        let region = match self.region_holding(window, daemon, pane) {
+            Some(region) => region,
+            // Not on screen, which is the interesting half. An agent that finished or is
+            // waiting for somebody is most often in a tab no region is showing, so a focus
+            // request that refused there would leave the sidebar listing panes nobody can
+            // reach - a display, not attention routing.
+            None => self.surface(window, daemon, pane)?,
+        };
+        self.windows[window].composition.focus_pane(region, pane.clone());
+        Ok(())
+    }
+
+    /// Whether a window's keyboard can go to a pane by itself: a daemon here still holds the pane,
+    /// and no other window holds its tab, as this process last heard.
+    fn reachable(&self, window: WindowId, pane: &PaneKey) -> bool {
+        let Some(backend) = self.backends.get(&pane.daemon) else { return false };
+        let Some(tab) =
+            poison::lock(&backend.mirror, "mirror").pane(&pane.pane).map(|held| held.tab.clone())
+        else {
+            return false;
+        };
+        self.holding.elsewhere(&self.windows[window].name, &tab).is_none()
+    }
+
     /// The open window here holding a tab, if one does.
     ///
     /// Open meaning it has said so and not since closed: a closed window's tab is asked about by
@@ -2807,18 +2838,7 @@ pub(crate) fn focus(asked: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result
     {
         return Ok(());
     }
-    {
-        let mut session = poison::lock(&SESSION, "session");
-        let region = match session.region_holding(window, daemon, pane) {
-            Some(region) => region,
-            // Not on screen, which is the interesting half. An agent that finished or is
-            // waiting for somebody is most often in a tab no region is showing, so a focus
-            // request that refused there would leave the sidebar listing panes nobody can
-            // reach - a display, not attention routing.
-            None => session.surface(window, daemon, pane)?,
-        };
-        session.windows[window].composition.focus_pane(region, pane.clone());
-    }
+    poison::lock(&SESSION, "session").point_keyboard_at(window, daemon, pane)?;
     publish("focus");
     if window != asked {
         raise(window);
@@ -2829,20 +2849,38 @@ pub(crate) fn focus(asked: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result
 /// Puts the keyboard back on the pane it was on before, or forward again after going back.
 ///
 /// `None` is nowhere to go, which is no failure: the first pane a window showed has nothing
-/// before it. A pane that has gone since is passed over. One whose tab another window holds
-/// now is refused by `focus`, and the history has already moved past it, so asking again goes
-/// on to the pane before that.
+/// before it. A pane that has gone since is passed over, and so is one whose tab another window
+/// holds now, open or closed: back is somewhere this window can go, not a reason to take a tab
+/// from another window or ask for a closed one back.
+///
+/// The step and the keyboard's move are one, under one hold of the session. Let go between them,
+/// a publish could record the pane the keyboard was still on as somewhere it went, and a refusal
+/// would leave the history on a pane the keyboard never reached - so the next publish would cut
+/// the history there, and every press after would try the same pane again. A refusal, from a
+/// record changed under this window, leaves the history as it was and without that pane.
 pub(crate) fn walk_focus(window: WindowId, forward: bool) -> Result<Option<PaneKey>, Refusal> {
     let went = {
-        let mut session = poison::lock(&SESSION, "session");
-        let session = &mut *session;
-        let live = |pane: &PaneKey| mirrored(&session.backends, pane);
-        let history = &mut session.windows[window].focus_history;
-        if forward { history.forward(live) } else { history.back(live) }
-    };
-    let Some(pane) = went else { return Ok(None) };
-    focus(window, &pane.daemon, &pane.pane)?;
-    Ok(Some(pane))
+        let mut guard = poison::lock(&SESSION, "session");
+        let session = &mut *guard;
+        let mut history = std::mem::take(&mut session.windows[window].focus_history);
+        let before = history.clone();
+        let reachable = |pane: &PaneKey| session.reachable(window, pane);
+        let went = if forward { history.forward(reachable) } else { history.back(reachable) };
+        let pointed = match &went {
+            Some(pane) => session.point_keyboard_at(window, &pane.daemon, &pane.pane),
+            None => Ok(()),
+        };
+        if let (Err(_), Some(pane)) = (&pointed, &went) {
+            history = before;
+            history.forget(pane);
+        }
+        session.windows[window].focus_history = history;
+        pointed.map(|()| went)
+    }?;
+    if went.is_some() {
+        publish("focus");
+    }
+    Ok(went)
 }
 
 /// Moves the line between two regions, and republishes what that made.

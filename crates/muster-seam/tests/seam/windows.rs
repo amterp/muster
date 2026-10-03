@@ -407,6 +407,44 @@ fn each_window_walks_back_through_its_own_panes() {
     );
 }
 
+/// Back steps over a pane whose tab has moved to the other window, rather than going to it there.
+#[test]
+fn back_steps_over_a_pane_moved_to_the_other_window() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    let ours = keyboard_in("window-1").expect("the first window opened onto a pane");
+    let moved = new_tab_in("window-1");
+    new_tab_in("window-1");
+    let theirs = keyboard_in("window-2");
+    let tab = read_window("window-1")
+        .roster
+        .iter()
+        .flat_map(|roster| roster.tabs.iter())
+        .find(|tab| tab.panes.iter().any(|pane| pane.pane_id == moved))
+        .map(|tab| tab.tab_id.clone())
+        .expect("the pane is in one of the first window's tabs");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab { tab_id: tab, window: "window-2".to_string() }),
+    )));
+
+    match answer(&in_window(
+        "window-1",
+        request::Payload::FocusHistory(FocusHistory { forward: false }),
+    ))
+    .payload
+    {
+        Some(response::Payload::Went(went)) => assert_eq!(
+            went.pane_id, ours,
+            "back did not step over the pane whose tab went to the other window"
+        ),
+        other => panic!("going back answered {other:?}"),
+    }
+    assert_eq!(keyboard_in("window-2"), theirs, "going back moved the other window's keyboard");
+}
+
 /// Quitting the process closes every window in it, each keeping its tabs for when it reopens.
 #[test]
 fn quitting_closes_every_window_here() {
@@ -613,6 +651,21 @@ fn panes_in(window: &str) -> Vec<String> {
         .flat_map(|roster| roster.tabs.iter())
         .flat_map(|tab| tab.panes.iter().map(|pane| pane.pane_id.clone()))
         .collect()
+}
+
+/// Makes a tab from a window, which takes its keyboard, and names the pane in it.
+fn new_tab_in(window: &str) -> String {
+    let before = keyboard_in(window);
+    assert_ok(&answer(&in_window(
+        window,
+        request::Payload::CreateTab(CreateTab { take_focus: true, ..CreateTab::default() }),
+    )));
+    until(
+        &format!("{window}'s keyboard to move into the new tab"),
+        || keyboard_in(window).is_some_and(|pane| Some(&pane) != before.as_ref()),
+        || format!("{window}'s keyboard is on {:?}", keyboard_in(window)),
+    );
+    keyboard_in(window).expect("just waited for it")
 }
 
 /// Splits the pane a window's keyboard is on, moves the keyboard into the new one, and names it.

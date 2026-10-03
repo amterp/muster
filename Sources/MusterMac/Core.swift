@@ -926,13 +926,13 @@ public enum Core {
     return !would.paneID.isEmpty || !would.group.isEmpty
   }
 
-  /// Puts the keyboard back on the pane it was on before, or forward again. False only when
-  /// there was nowhere to go, as for `focusAsking`.
+  /// Puts the keyboard back on the pane it was on before, or forward again. False when the
+  /// keyboard did not move: there was nowhere to go, or the core refused the step.
   @discardableResult
   public static func focusHistory(forward: Bool) -> Bool {
     var request = Muster_Request()
     request.focusHistory.forward = forward
-    guard case .went(let went) = send(request) else { return true }
+    guard case .went(let went) = send(request) else { return false }
     return !went.paneID.isEmpty
   }
 
