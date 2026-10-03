@@ -260,3 +260,15 @@ final class PaneDropOverlay: NSView {
     isHidden = true
   }
 }
+
+extension NSView {
+  /// Whether a drag started in this view's window.
+  ///
+  /// Its source's window, not merely whether it has a source: a drag from another process has
+  /// none this one can see, and a drag from another window of this process has one - so a source
+  /// alone stopped telling the two apart once every window shared a process.
+  func cameFromThisWindow(_ info: NSDraggingInfo) -> Bool {
+    guard let source = info.draggingSource as? NSView else { return false }
+    return source.window === window
+  }
+}

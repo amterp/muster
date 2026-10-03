@@ -147,9 +147,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self.renderer = renderer
 
       let muster = MusterWindow(renderer: renderer, executable: CommandLine.arguments[0])
-      Core.window = muster
       self.muster = muster
-      AppMenu.install(target: muster, bindings: Core.bindings())
+      AppMenu.install(target: KeyWindowActions.shared, bindings: Core.bindings())
+      Core.openWindowAsked = { [weak muster] asked in
+        muster?.reopen(named: asked.name, showing: asked.show)
+      }
       muster.show()
 
       // After the window is up, because nothing about it is needed to draw one and asking
@@ -163,12 +165,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let attached: Bool
       switch launchRequest(arguments: Array(CommandLine.arguments.dropFirst())) {
       case .open:
-        attached = Core.open()
+        let opened = Core.open()
+        attached = muster.opened(as: opened)
         if !attached {
           muster.report(problem: "no session could be opened (see stderr)")
         }
       case .pane(let paneID):
-        attached = Core.attach(paneID: paneID)
+        attached = muster.opened(as: Core.attach(paneID: paneID))
         if !attached {
           muster.report(problem: "\(paneID) could not be attached (see stderr)")
         }

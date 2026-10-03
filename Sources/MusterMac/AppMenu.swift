@@ -263,18 +263,23 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
   /// moves the one on screen.
   private final class Submenu: NSMenu {
     var tab = ""
+    /// The window whose tab it moves, or empty for the menu bar's, which is the window in front.
+    var window = ""
   }
 
-  /// Which tab a pick moves, and where to. An empty tab is the one this window is showing.
+  /// Which tab a pick moves, where to, and from which window. An empty tab is the one the window
+  /// is showing.
   private struct Destination {
     let tab: String
     let window: String
+    let from: String
   }
 
-  func item(tab: String = "") -> NSMenuItem {
+  func item(tab: String = "", window: String = "") -> NSMenuItem {
     let item = NSMenuItem(title: "Move Tab to Window", action: nil, keyEquivalent: "")
     let submenu = Submenu(title: "Move Tab to Window")
     submenu.tab = tab
+    submenu.window = window
     submenu.delegate = self
     item.submenu = submenu
     return item
@@ -283,8 +288,9 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
   /// Asked of the core each time, because windows open and close between one look and the next.
   public func menuNeedsUpdate(_ menu: NSMenu) {
     let tab = (menu as? Submenu)?.tab ?? ""
+    let from = (menu as? Submenu)?.window ?? ""
     menu.removeAllItems()
-    let windows = Core.otherWindows()
+    let windows = Core.speaking(for: from) { Core.otherWindows() }
     if windows.isEmpty {
       let none = NSMenuItem(title: "No Other Windows", action: nil, keyEquivalent: "")
       none.isEnabled = false
@@ -295,7 +301,7 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
       let item = NSMenuItem(
         title: window.title, action: #selector(move(_:)), keyEquivalent: "")
       item.target = self
-      item.representedObject = Destination(tab: tab, window: window.name)
+      item.representedObject = Destination(tab: tab, window: window.name, from: from)
       menu.addItem(item)
     }
   }
@@ -303,6 +309,6 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
   @objc private func move(_ sender: NSMenuItem) {
     guard let destination = sender.representedObject as? Destination else { return }
     Core.info("tab.move.picked", ["window": destination.window, "tab": destination.tab])
-    Core.moveTab(destination.tab, to: destination.window)
+    Core.speaking(for: destination.from) { Core.moveTab(destination.tab, to: destination.window) }
   }
 }

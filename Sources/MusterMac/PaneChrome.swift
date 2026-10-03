@@ -401,13 +401,13 @@ public final class PaneChrome: NSView {
     guard let dragged = Self.dragged(info) else { return false }
     return drop(
       dragged, at: convert(info.draggingLocation, from: nil),
-      fromThisWindow: info.draggingSource != nil)
+      fromThisWindow: cameFromThisWindow(info))
   }
 
   private func hover(_ info: NSDraggingInfo) -> NSDragOperation {
     let point = convert(info.draggingLocation, from: nil)
     guard let dragged = Self.dragged(info),
-      let landing = side(for: dragged, at: point, fromThisWindow: info.draggingSource != nil)
+      let landing = side(for: dragged, at: point, fromThisWindow: cameFromThisWindow(info))
     else {
       dropOverlay.hide()
       return []

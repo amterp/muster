@@ -106,6 +106,9 @@ final class ContextMenu: NSMenu {
   private var targets: [ContextMenuTarget] = []
   /// What was right-clicked, as the run log names it.
   private var subject: [String: String] = [:]
+  /// The window it was opened in, which is the one its items act for: a right-click does not
+  /// bring a window to the front, so the window in front may be another.
+  private var window = ""
 
   /// Titles come from `MenuActions`, so an item reads as its menu bar twin does. An action this
   /// shell has no title for is left out, as the menu bar leaves it out.
@@ -115,11 +118,12 @@ final class ContextMenu: NSMenu {
   /// row would say it closes that agent when it closes the one you are typing in. Finder and
   /// Xcode leave chords off their context menus for the same reason.
   static func build(
-    _ entries: [ContextEntry], subject: [String: String], tab: String = "",
+    _ entries: [ContextEntry], subject: [String: String], tab: String = "", window: String = "",
     perform: @escaping @MainActor (ContextChoice) -> Void
   ) -> ContextMenu {
     let menu = ContextMenu()
     menu.subject = subject
+    menu.window = window
     // The model says what is enabled. Left on, AppKit would enable every item whose target
     // answers its selector, which is all of them.
     menu.autoenablesItems = false
@@ -131,10 +135,10 @@ final class ContextMenu: NSMenu {
         menu.addItem(item)
       case .submenu(let title, let inner):
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.submenu = build(inner, subject: subject, perform: perform)
+        item.submenu = build(inner, subject: subject, window: window, perform: perform)
         menu.addItem(item)
       case .moveTabToWindow:
-        menu.addItem(MoveTabMenu.shared.item(tab: tab))
+        menu.addItem(MoveTabMenu.shared.item(tab: tab, window: window))
       case .separator:
         menu.addItem(.separator())
       }
@@ -150,7 +154,7 @@ final class ContextMenu: NSMenu {
     {
       Core.debug(BoundAction.event, fields)
     }
-    super.performActionForItem(at: index)
+    Core.speaking(for: window) { super.performActionForItem(at: index) }
   }
 
   private func item(
@@ -202,14 +206,14 @@ public enum ContextMenus {
   /// A pane's menu. `surface` is the one that was right-clicked, for Copy and Paste, and is nil
   /// only in a test that has none.
   public static func pane(
-    _ pane: PaneKey, surface: SurfaceView?, machines: [String],
+    _ pane: PaneKey, surface: SurfaceView?, machines: [String], window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void
   ) -> NSMenu {
     let pasteboard = surface?.pasteboard ?? .general
     let entries = ContextMenuModel.pane(
       machines: machines, hasSelection: surface?.hasSelection ?? false,
       canPaste: surface?.canPaste ?? false)
-    return ContextMenu.build(entries, subject: subject(pane)) { choice in
+    return ContextMenu.build(entries, subject: subject(pane), window: window) { choice in
       switch choice {
       case .copy: surface?.copy(nil)
       case .paste: surface?.paste(nil)
@@ -222,10 +226,12 @@ public enum ContextMenus {
   }
 
   public static func agentRow(
-    _ pane: PaneKey, onScreen: Bool, pasteboard: NSPasteboard = .general,
+    _ pane: PaneKey, onScreen: Bool, pasteboard: NSPasteboard = .general, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void
   ) -> NSMenu {
-    ContextMenu.build(ContextMenuModel.agentRow(onScreen: onScreen), subject: subject(pane)) {
+    ContextMenu.build(
+      ContextMenuModel.agentRow(onScreen: onScreen), subject: subject(pane), window: window
+    ) {
       perform($0, on: pane, pasteboard: pasteboard, rename: rename)
     }
   }
@@ -234,9 +240,11 @@ public enum ContextMenus {
   /// directory, as cmd+T from inside the tab would use.
   public static func tab(
     _ tab: String, firstPane: PaneKey?, machines: [String], pasteboard: NSPasteboard = .general,
-    rename: @escaping @MainActor (String) -> Void
+    window: String = "", rename: @escaping @MainActor (String) -> Void
   ) -> NSMenu {
-    ContextMenu.build(ContextMenuModel.tab(machines: machines), subject: ["tab": tab], tab: tab) {
+    ContextMenu.build(
+      ContextMenuModel.tab(machines: machines), subject: ["tab": tab], tab: tab, window: window
+    ) {
       choice in
       switch choice {
       case .action("new_tab"):

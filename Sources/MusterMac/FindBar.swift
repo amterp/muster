@@ -116,7 +116,8 @@ struct FindBarView: View {
       .clipShape(RoundedRectangle(cornerRadius: 8))
       .shadow(radius: 4)
       .onAppear { isFieldFocused = true }
-      .onReceive(NotificationCenter.default.publisher(for: .musterFindFocus)) { _ in
+      // Only this bar's own: every window has one, and another window's find is not this one's.
+      .onReceive(NotificationCenter.default.publisher(for: .musterFindFocus, object: state)) { _ in
         // Asking to find while the bar is already up means "let me type a new one", so the
         // field takes the keyboard and selects what is in it. Deferred because the request
         // arrives from a menu item, which is still unwinding its own event.

@@ -151,11 +151,11 @@ public enum Core {
     public let pid: UInt32
     public let tabs: Int
 
-    /// How a menu says it: the pid `muster window` prints for an open window, the name for a
-    /// closed one - the same handles `muster tab move --window` takes.
+    /// How a menu says it: by name, which `muster tab move --window` takes. Not by pid, which
+    /// windows in one process share.
     public var title: String {
       let held = tabs == 1 ? "1 tab" : "\(tabs) tabs"
-      return pid == 0 ? "\(name) (closed, \(held))" : "Window \(pid) (\(held))"
+      return pid == 0 ? "\(name) (closed, \(held))" : "\(name) (\(held))"
     }
   }
 
@@ -201,34 +201,39 @@ public enum Core {
   /// one lands in a file that gets attached to bug reports.
   public static let includesInput = ProcessInfo.processInfo.environment["MUSTER_LOG_INPUT"] == "1"
 
-  /// Points this window's keyboard at a daemon-owned pane.
+  /// Points this window's keyboard at a daemon-owned pane, and answers the window's name.
   ///
   /// Everything that follows is pushed rather than returned: the core opens a socket for
   /// every pane in that pane's tab and publishes the whole view, which is what builds the
-  /// surfaces. So the answer here is only whether there is anything to show at all - false
+  /// surfaces. So the answer here is only whether there is anything to show at all - nil
   /// means the window renders nothing and ignores the keyboard, and the core has already said
   /// why on stderr and in the log.
   @discardableResult
-  public static func attach(paneID: String) -> Bool {
+  public static func attach(paneID: String) -> String? {
     var attach = Muster_AttachPane()
     attach.paneID = paneID
     var request = Muster_Request()
     request.attachPane = attach
-    guard case .attached = send(request) else { return false }
-    return true
+    guard case .attached(let attached) = send(request) else { return nil }
+    return attached.window
   }
 
-  /// Opens the window onto whatever the daemons hold, which is what a bare `muster` means.
+  /// Opens a window onto whatever the daemons hold, and answers its name: the window `Startup`
+  /// described when `arrangement` is nil, which is what a bare `muster` means, or another one
+  /// remembered there.
   ///
   /// The same shape as `attach`: everything about what ends up on screen is pushed, so the
-  /// answer here is only whether there is a session behind this window at all. False means it
+  /// answer here is only whether there is a session behind this window at all. Nil means it
   /// renders nothing, and the core has already said why on stderr and in the log.
   @discardableResult
-  public static func open() -> Bool {
+  public static func open(arrangement: String? = nil, show: String? = nil) -> String? {
+    var open = Muster_OpenWindow()
+    open.statePath = arrangement ?? ""
+    open.show = show ?? ""
     var request = Muster_Request()
-    request.openWindow = Muster_OpenWindow()
-    guard case .opened = send(request) else { return false }
-    return true
+    request.openWindow = open
+    guard case .opened(let opened) = send(request) else { return nil }
+    return opened.window
   }
 
   /// A press, with everything the core needs to decide what it meant, and whether the pane's
@@ -1110,6 +1115,8 @@ public enum Core {
   private static func send(_ request: Muster_Request, through dispatcher: Dispatcher)
     -> Muster_Response.OneOf_Payload?
   {
+    var request = request
+    address(&request)
     guard let encoded = try? request.serializedBytes() as [UInt8] else {
       FileHandle.standardError.write(
         Data("muster: a request could not be encoded, so the core never saw it.\n".utf8))
@@ -1220,12 +1227,37 @@ public enum Core {
     }
   }
 
-  /// The window every event reaches, set once by the shell at launch.
-  ///
-  /// A single observer rather than a broadcast, because there is one window. A second one
-  /// makes this a list and changes nothing else: every event already names the pane or region
-  /// it is about, so a window that is not showing it drops it.
-  @MainActor public static weak var window: MusterWindow?
+  /// What the app does when the core asks for a window: one somebody closed, onto one of its
+  /// tabs, or a new one somebody outside the app asked for. Set by the app at launch.
+  @MainActor public static var openWindowAsked: ((WindowAsked) -> Void)?
+
+  /// A window the core asked for (`ReopenWindow`).
+  public struct WindowAsked: Equatable, Sendable {
+    /// The window by name, or empty for the most recently closed one - unless `fresh`.
+    public let name: String
+    /// A pane's name or a tab's, to go to once it is open.
+    public let show: String
+    /// A new window onto tabs of its own.
+    public let fresh: Bool
+
+    public init(name: String, show: String, fresh: Bool) {
+      self.name = name
+      self.show = show
+      self.fresh = fresh
+    }
+  }
+
+  /// The window an event about one window is for: the one it names, or the window in front when
+  /// it names none, which only a core that predates naming them sends.
+  @MainActor private static func window(for event: Muster_Event) -> ShellWindow? {
+    event.window.isEmpty ? Windows.inFront ?? Windows.all.last : Windows.named(event.window)
+  }
+
+  /// The windows an event is for: the one it names, or every window when it names none, which is
+  /// how the core sends what every window shows alike - an agent's state, the appearance.
+  @MainActor private static func windows(for event: Muster_Event) -> [ShellWindow] {
+    event.window.isEmpty ? Windows.all : Windows.named(event.window).map { [$0] } ?? []
+  }
 
   /// What applying one event cost the main thread, for the line that records it.
   ///
@@ -1259,12 +1291,16 @@ public enum Core {
       info("pane.typeable", ["daemon": typeable.daemonID, "pane": typeable.paneID])
     case .paneStateChanged(let changed):
       let cost = ApplyCost()
-      window?.apply(
-        pane: PaneKey(daemon: changed.daemonID, pane: changed.paneID), agent: PaneAgent(changed))
+      for window in windows(for: event) {
+        window.apply(
+          pane: PaneKey(daemon: changed.daemonID, pane: changed.paneID), agent: PaneAgent(changed))
+      }
       // Debug rather than info: one per agent transition, which is the busiest thing here.
       debug("pane_state.received", cost.fields.merging(["state": changed.state]) { $1 })
     case .backendHealth(let backend):
-      window?.apply(daemon: backend.daemonID, health: backend.state, detail: backend.detail)
+      for window in windows(for: event) {
+        window.apply(daemon: backend.daemonID, health: backend.state, detail: backend.detail)
+      }
     case .viewChanged(let changed):
       // The shape is already in the log beside this line, written by the core when it
       // published. What is recorded here is that it crossed, and how many surfaces the window
@@ -1274,7 +1310,7 @@ public enum Core {
       // main-thread time that input and drawing wait behind, once per publish.
       let contents = WindowContents(changed)
       let cost = ApplyCost()
-      window?.apply(contents)
+      window(for: event)?.apply(contents)
       info(
         "view.received",
         cost.fields.merging(
@@ -1294,18 +1330,28 @@ public enum Core {
           "agents": appearance.chrome.agents.described,
           "context": appearance.chrome.describedContext,
         ])
-      window?.apply(appearance: appearance)
+      // Once for the app, since the renderer and the chrome colours are the app's, then each
+      // window repaints what it draws with them.
+      Renderer.current?.apply(appearance: appearance.pane)
+      adoptChrome(appearance)
+      for window in windows(for: event) {
+        window.apply(appearance: appearance)
+      }
       // The family may have changed with everything else, and the answer to whether this
       // machine has it can only be looked up here.
       reportFontFamily(appearance.pane.fontFamily)
     case .bindingsChanged(let changed):
       let bindings = read(changed.bindings)
       info("bindings.received", ["actions": String(bindings.count)])
-      window?.apply(bindings: bindings)
+      // One menu bar for the app, aimed at whichever window is in front.
+      AppMenu.install(target: KeyWindowActions.shared, bindings: bindings)
+      for window in windows(for: event) {
+        window.apply(bindings: bindings)
+      }
     case .rosterChanged(let changed):
       let roster = Roster(changed)
       let cost = ApplyCost()
-      window?.apply(roster)
+      window(for: event)?.apply(roster)
       info(
         "roster.received",
         cost.fields.merging(
@@ -1330,7 +1376,9 @@ public enum Core {
           "count": String(problems.count),
           "errors": String(problems.filter { $0.severity == .error }.count),
         ])
-      window?.apply(problems: problems)
+      for window in windows(for: event) {
+        window.apply(problems: problems)
+      }
     case .attentionChanged(let changed):
       // Straight on, because the decision was made before it crossed: the core holds the
       // unread set, knows what this window is showing, and holds the file's answer about
@@ -1347,13 +1395,18 @@ public enum Core {
       info(
         "presentation.received",
         ["sidebar": String(presentation.sidebar), "width": String(changed.sidebarWidth)])
-      window?.apply(presentation: presentation)
+      window(for: event)?.apply(presentation: presentation)
     case .pasteHeld(let held):
       // The kind and the size, never the text: it is somebody's clipboard.
       info(
         "paste.held",
         ["daemon": held.daemonID, "pane": held.paneID, "bytes": String(held.text.utf8.count)])
-      guard let window else {
+      // Asked in the window listing the pane, which is the one it was pasted in.
+      let pane = PaneKey(daemon: held.daemonID, pane: held.paneID)
+      guard
+        let window = Windows.all.first(where: { $0.lists(pane) }) ?? Windows.inFront
+          ?? Windows.all.last
+      else {
         warn(
           "paste.held.unasked",
           [
@@ -1378,7 +1431,7 @@ public enum Core {
       // Going to a tab a closed window holds is going to that window, and opening one is
       // starting an app.
       info("window.reopen", ["window": reopen.name, "show": reopen.show])
-      window?.reopen(named: reopen.name, showing: reopen.show)
+      openWindowAsked?(WindowAsked(name: reopen.name, show: reopen.show, fresh: reopen.fresh))
     case .raiseWindow(let raise) where raise.pid != 0:
       // This window is carrying somebody to another window's tab. Since macOS 14 an app comes
       // forward only when the active one hands over, and if anything is active here it is this
@@ -1407,7 +1460,7 @@ public enum Core {
       // this window while it stayed behind. This one still forces it forward.
       info("window.raised", [:])
       NSApp.activate(ignoringOtherApps: true)
-      window?.raise()
+      window(for: event)?.raise()
     case nil:
       break
     }
@@ -1430,9 +1483,9 @@ private func coreEventArrived(_ bytes: UnsafePointer<UInt8>?, _ length: Int) {
   }
   // Skipped where it stands rather than moved up to the newest, so every other event keeps its
   // place between the views it arrived between.
-  let view = views.next()
+  let view = views.next(for: event.window)
   Task { @MainActor in
-    guard views.isLatest(view) else {
+    guard views.isLatest(view, for: event.window) else {
       Core.debug("view.skipped", ["why": "a newer view arrived before this one was applied"])
       return
     }
@@ -1440,5 +1493,6 @@ private func coreEventArrived(_ bytes: UnsafePointer<UInt8>?, _ length: Int) {
   }
 }
 
-/// Every view the core has sent, so a main thread that fell behind applies only the newest.
+/// Every view the core has sent, so a main thread that fell behind applies only each window's
+/// newest.
 private let views = ViewSequence()

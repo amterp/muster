@@ -97,6 +97,9 @@ final class LatestRequestSender<Answer: Sendable> {
 
   /// Asks for something, and returns without waiting for it.
   func send(_ request: Muster_Request) {
+    // Named now, on the main thread, while whatever window is sending is still the one speaking.
+    var request = request
+    Core.address(&request)
     pending = request
     sendPendingIfIdle()
   }

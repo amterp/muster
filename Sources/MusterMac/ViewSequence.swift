@@ -12,17 +12,23 @@ import os
 ///
 /// Numbered as they arrive, on the core's thread, and asked on the main actor, so a lock rather
 /// than either one's isolation.
+///
+/// Counted per window. A window's view says nothing about another's, so a view for one window
+/// arriving behind a view for another replaces nothing.
 final class ViewSequence: Sendable {
-  private let issued = OSAllocatedUnfairLock(initialState: UInt64(0))
+  private let issued = OSAllocatedUnfairLock(initialState: [String: UInt64]())
 
-  /// Numbers a view that has just arrived.
-  func next() -> UInt64 {
+  /// Numbers a view for `window` that has just arrived.
+  func next(for window: String) -> UInt64 {
     issued.withLock {
-      $0 += 1
-      return $0
+      let next = $0[window, default: 0] + 1
+      $0[window] = next
+      return next
     }
   }
 
-  /// Whether no view has arrived since this one.
-  func isLatest(_ view: UInt64) -> Bool { issued.withLock { $0 == view } }
+  /// Whether no view for the same window has arrived since this one.
+  func isLatest(_ view: UInt64, for window: String) -> Bool {
+    issued.withLock { $0[window] == view }
+  }
 }

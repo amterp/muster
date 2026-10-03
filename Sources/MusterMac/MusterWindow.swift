@@ -14,6 +14,9 @@ import MusterRenderer
 @MainActor
 public final class MusterWindow: NSObject {
   public let window: NSWindow
+  /// What the core calls this window (`window-2`), once it has opened it. Every event for it
+  /// carries the name, and everything it sends on its own account gives it (`speaking`).
+  public internal(set) var name = ""
   private let renderer: Renderer
   private let executable: String
   private let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
@@ -172,20 +175,22 @@ public final class MusterWindow: NSObject {
       defer: false)
     window = keyboard
     super.init()
-    keyboard.onModifiersChanged = { [weak self] held in self?.apply(held: held) }
+    keyboard.onModifiersChanged = { [weak self] held in
+      self?.speaking { self?.apply(held: held) }
+    }
     // Not through `focusBack` and `focusForward`, which beep at either end of the history: a
     // mouse button there does nothing, as a browser's does.
-    keyboard.onHistoryButton = { forward in
+    keyboard.onHistoryButton = { [weak self] forward in
       Core.debug(
         BoundAction.event, BoundAction.record(mouse: forward ? "focus_forward" : "focus_back"))
-      Core.focusHistory(forward: forward)
+      self?.speaking { Core.focusHistory(forward: forward) }
     }
     split.attach(sidebar: sidebar, strip: strip)
     // A window narrowed until the roster will not fit takes the problems area with it, so the
     // title has to pick them up at exactly that moment.
     split.onSidebarVisibilityChanged = { [weak self] in self?.applyTitle() }
     split.onSidebarDragged = { [weak self] width in
-      self?.sidebarWidths.send(Core.setSidebarWidth(width))
+      self?.speaking { self?.sidebarWidths.send(Core.setSidebarWidth(width)) }
     }
     strip.attach(empty: empty)
     let bindings = Core.bindings()
@@ -207,28 +212,32 @@ public final class MusterWindow: NSObject {
     // Where a window with nothing written down about it opens. `show` puts back a saved
     // rectangle over the top of this.
     window.center()
-    sidebar.onPanePicked = { pane in
-      Core.focus(daemonID: pane.daemon, paneID: pane.pane)
+    // Everything the list sends is about this window, which need not be the one in front: a
+    // click in a window's list is that window's, whichever window had the keyboard.
+    sidebar.onPanePicked = { [weak self] pane in
+      self?.speaking { Core.focus(daemonID: pane.daemon, paneID: pane.pane) }
     }
-    sidebar.onTabPicked = { tab in
-      Core.focus(tab: tab)
+    sidebar.onTabPicked = { [weak self] tab in
+      self?.speaking { Core.focus(tab: tab) }
     }
     // A machine's row is the way into one holding nothing: it asks for a tab there, which on a
     // machine with none is a workspace with a pane in it. The same request `muster tab new
     // --daemon <id>` sends.
-    sidebar.onMachinePicked = { daemon in
-      Core.createTab(daemonID: daemon)
+    sidebar.onMachinePicked = { [weak self] daemon in
+      self?.speaking { Core.createTab(daemonID: daemon) }
     }
-    sidebar.onPaneArranged = { pane, onto in
-      Core.arrange(pane: pane, onto: onto)
+    sidebar.onPaneArranged = { [weak self] pane, onto in
+      self?.speaking { Core.arrange(pane: pane, onto: onto) }
     }
-    sidebar.onPaneGrouped = { pane, tab in
-      Core.arrange(pane: pane, intoTab: tab)
+    sidebar.onPaneGrouped = { [weak self] pane, tab in
+      self?.speaking { Core.arrange(pane: pane, intoTab: tab) }
     }
-    // The same request `muster tab move` and the menu send, naming this window by naming none.
-    sidebar.onTabReceived = { tab in
+    // The same request `muster tab move` and the menu send, naming this window by naming none -
+    // and so naming it outright here, since during a drag the window in front is the one the tab
+    // is leaving.
+    sidebar.onTabReceived = { [weak self] tab in
       Core.info("tab.dropped", ["tab": tab])
-      Core.moveTab(tab, to: "")
+      self?.speaking { Core.moveTab(tab, to: "") }
     }
     // Both halves name their subject outright rather than leaving it to whatever has the
     // keyboard: the row somebody double-clicked is very often a pane no region is showing,
@@ -242,11 +251,22 @@ public final class MusterWindow: NSObject {
       }
     }
     sidebar.onRowMenu = { [weak self] row in self?.menu(for: row) }
-    sidebar.onProblemRemedied = { problem in
-      if !Core.remedy(of: problem) { NSSound.beep() }
+    sidebar.onProblemRemedied = { [weak self] problem in
+      if self?.speaking({ Core.remedy(of: problem) }) == false { NSSound.beep() }
     }
     surfaces.menu = { [weak self] pane in self?.menu(forPane: pane) }
     applyTitle()
+  }
+
+  /// Takes on the name the core opened this window as, and from then on receives the events
+  /// that carry it. Says whether there was one, which is whether a session is behind the window.
+  @discardableResult
+  public func opened(as name: String?) -> Bool {
+    guard let name, !name.isEmpty else { return false }
+    self.name = name
+    Windows.register(self)
+    if window.isKeyWindow { Windows.cameToTheFront(self) }
+    return true
   }
 
   /// Opens the window where it was left.
@@ -261,7 +281,7 @@ public final class MusterWindow: NSObject {
   /// comes back fitted to one that is here.
   public func show() {
     let screens = NSScreen.screens.map(\.visibleFrame)
-    let restoring = Core.windowFrame(screens: screens)
+    let restoring = speaking { Core.windowFrame(screens: screens) }
     if let rect = restoring.rect {
       window.setFrame(rect, display: false)
       settledFrame = rect
@@ -481,8 +501,6 @@ public final class MusterWindow: NSObject {
   /// draws it. `adoptChrome` is that launch path's own call, used here rather than repeated, so
   /// the two cannot end up applying different subsets of it.
   public func apply(appearance: Core.Appearance) {
-    renderer.apply(appearance: appearance.pane)
-    adoptChrome(appearance)
     for divider in dividers() {
       divider.recolor()
     }
@@ -495,13 +513,9 @@ public final class MusterWindow: NSObject {
     sidebar.reloadColors()
   }
 
-  /// Rebuilds the menu after the config file was read again.
-  ///
-  /// On macOS this is the whole of rebinding: a key equivalent on a menu item is where the
-  /// platform dispatches a chord from, so a menu that still carries the old ones is a config
-  /// that did not reload.
+  /// Takes the chords the config file now says, after it was read again. The menu bar, which is
+  /// where the platform dispatches a chord from, is the app's and is rebuilt once beside this.
   public func apply(bindings: [Core.Binding]) {
-    AppMenu.install(target: self, bindings: bindings)
     // The empty window names a chord, so a rebind has to reach it too. A window sitting empty
     // while somebody edits the config file is exactly when a stale hint would be read.
     self.bindings = bindings
@@ -754,14 +768,36 @@ extension MusterWindow: NSMenuItemValidation {
   }
 }
 
+extension MusterWindow: ShellWindow {
+  public var platformWindow: NSWindow { window }
+
+  public func lists(_ pane: PaneKey) -> Bool {
+    roster.panes.contains { $0.key == pane }
+  }
+
+  /// Runs `body` with what it sends naming this window, which need not be the one in front.
+  @discardableResult
+  func speaking<T>(_ body: () throws -> T) rethrows -> T {
+    try Core.speaking(for: name, body)
+  }
+}
+
+extension NSView {
+  /// The name of the window this view is drawn in, or empty before it has one.
+  var shellWindowName: String {
+    (window?.delegate as? ShellWindow)?.name ?? ""
+  }
+}
+
 extension MusterWindow: NSWindowDelegate {
   public func windowDidBecomeKey(_ notification: Notification) {
-    Core.windowFocused(true)
+    if !name.isEmpty { Windows.cameToTheFront(self) }
+    speaking { Core.windowFocused(true) }
     surfaces.window(key: true)
   }
 
   public func windowDidResignKey(_ notification: Notification) {
-    Core.windowFocused(false)
+    speaking { Core.windowFocused(false) }
     surfaces.window(key: false)
   }
 
@@ -808,7 +844,7 @@ extension MusterWindow {
     if !fullScreen {
       settledFrame = window.frame
     }
-    frames.send(rect: settledFrame, fullScreen: fullScreen)
+    speaking { frames.send(rect: settledFrame, fullScreen: fullScreen) }
   }
 }
 
@@ -895,7 +931,7 @@ extension MusterWindow {
     }
     let bar = findBar ?? makeFindBar()
     bar.show(over: chrome)
-    NotificationCenter.default.post(name: .musterFindFocus, object: nil)
+    NotificationCenter.default.post(name: .musterFindFocus, object: bar.state)
   }
 
   @objc public func findNext(_ sender: Any?) {
@@ -969,7 +1005,8 @@ extension MusterWindow {
   func menu(forPane pane: PaneKey) -> NSMenu? {
     ContextMenus.pane(
       pane, surface: surfaces.chrome(for: pane)?.surface,
-      machines: Core.machines().map(\.daemon), rename: { [weak self] in self?.rename(pane: $0) })
+      machines: speaking { Core.machines() }.map(\.daemon), window: name,
+      rename: { [weak self] in self?.rename(pane: $0) })
   }
 
   /// A right-clicked row's menu. A machine's row has none: clicking it already makes a tab
@@ -979,12 +1016,13 @@ extension MusterWindow {
     case .pane:
       guard let pane = row.pane else { return nil }
       return ContextMenus.agentRow(
-        pane, onScreen: row.onScreen, rename: { [weak self] in self?.rename(pane: $0) })
+        pane, onScreen: row.onScreen, window: name,
+        rename: { [weak self] in self?.rename(pane: $0) })
     case .tab:
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
       return ContextMenus.tab(
-        row.tab, firstPane: first, machines: Core.machines().map(\.daemon),
-        rename: { [weak self] in self?.rename(tab: $0) })
+        row.tab, firstPane: first, machines: speaking { Core.machines() }.map(\.daemon),
+        window: name, rename: { [weak self] in self?.rename(tab: $0) })
     case .machine:
       return nil
     }
@@ -1477,7 +1515,12 @@ final class RegionStrip: NSView {
       let divider = dividers[line]
       line += 1
       let region = identities[index]
-      divider.onDrag = { ratio in Core.setRegionBoundary(region: region, ratio: ratio) }
+      // A region's id is its window's own, so the boundary names the window it is in.
+      divider.onDrag = { [weak self] ratio in
+        Core.speaking(for: self?.shellWindowName ?? "") {
+          Core.setRegionBoundary(region: region, ratio: ratio)
+        }
+      }
       divider.axis = .columns
       divider.area = area
       divider.frame = frame

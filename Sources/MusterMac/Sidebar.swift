@@ -1076,11 +1076,11 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     }
   }
 
-  /// What a drag means here, from what it carries and where it came from. A drag from another
-  /// window has no source this process can see, which is what tells the two apart.
+  /// What a drag means here, from what it carries and where it came from: this window, or another
+  /// (`cameFromThisWindow`).
   private func drop(_ info: NSDraggingInfo) -> SidebarModel.Drop? {
     SidebarModel.drop(
-      tab: draggedTab(info), pane: dragged(info), fromThisWindow: info.draggingSource != nil)
+      tab: draggedTab(info), pane: dragged(info), fromThisWindow: cameFromThisWindow(info))
   }
 
   /// The tab a drag is carrying, or nil when it is carrying something else.
