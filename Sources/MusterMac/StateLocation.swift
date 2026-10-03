@@ -223,7 +223,7 @@ public enum Arrangements {
   /// that needs one, and a claim that looks alive forever is a window nobody can reopen. The
   /// process that wrote a claim started before it wrote it, so one that started after the claim
   /// was written is somebody else.
-  private static func releaseDeadClaims(in directory: URL) {
+  static func releaseDeadClaims(in directory: URL) {
     let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
     for name in names where name.hasSuffix(".held") {
       let claim = directory.appendingPathComponent(name)

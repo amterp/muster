@@ -12,6 +12,8 @@ import MusterRenderer
 final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Every window, from the first on.
   private var windows: WindowOpening?
+  /// What asking window processes from before to quit came to, before the app ran.
+  var retiring = Retiring.Outcome()
   private var renderer: Renderer?
   /// Held for the life of the app; dropping it stops the watch.
   private var watcher: ConfigWatcher?
@@ -68,12 +70,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let launched = Array(CommandLine.arguments.dropFirst())
     let fresh = launchIsFresh(arguments: launched)
     let holders = tabHoldersPath()
-    let reopened =
-      launchReopensEveryWindow(
-        arguments: launched, environment: ProcessInfo.processInfo.environment)
-      ? Core.reopening(tabHoldersPath: holders).filter { Arrangements.take($0) } : []
+    let reopensEvery = launchReopensEveryWindow(
+      arguments: launched, environment: ProcessInfo.processInfo.environment)
+    let restored = reopensEvery ? Core.reopening(tabHoldersPath: holders) : []
+    // The windows of processes from before that quit when asked come back here too, whatever this
+    // launch was asked to be: they were open, and a process from before marked them closed on the
+    // way out as every quit used to (mip/0006-one-process.md, section 6).
+    let retired = Retiring.arrangements(retiring, in: InstallState.directory)
+      .filter { !restored.contains($0) }
+    let reopening = (restored + retired).filter { Arrangements.take($0) }
+    // A launch told what to be opens that first, and the windows it comes back to beside it.
+    let first = reopensEvery ? reopening.first : nil
     let arrangement =
-      reopened.first ?? Arrangements.open(fresh: fresh, named: launchWindow(arguments: launched))
+      first ?? Arrangements.open(fresh: fresh, named: launchWindow(arguments: launched))
+    let reopened = first == nil ? reopening : Array(reopening.dropFirst())
     Core.start(
       logPath: logPath, configPath: config, daemon: daemon, statePath: arrangement,
       commandSocketPath: commandSocketPath(), commandsPath: commands,
@@ -108,6 +118,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "config": config ?? "(none)",
         "input_recorded": String(Core.includesInput),
       ])
+    if !retiring.quit.isEmpty {
+      Core.info("app.retired", ["windows": retiring.quit.joined(separator: " ")])
+    }
+    if !retiring.stayed.isEmpty {
+      Core.warn(
+        "app.retire.refused",
+        [
+          "pids": retiring.stayed.map(String.init).joined(separator: " "),
+          "impact": "a Muster window from before every window shared one app is still running "
+            + "beside this one, and the two can show the same tabs and fight over their "
+            + "terminals",
+          "check": "quit that window yourself (it is its own Dock icon), or `kill` the pid",
+        ])
+    }
     if let stranded = strandedConfigPath() {
       Core.warn(
         "config.moved",
@@ -173,7 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // In the order they were focused, so the window somebody last looked at opens last and
         // is in front.
-        for arrangement in reopened.dropFirst() {
+        for arrangement in reopened {
           windows.reopen(claimed: arrangement)
         }
       case .pane(let paneID):
@@ -311,12 +335,18 @@ if ProcessInfo.processInfo.environment["MUSTER_HOME"] == nil,
 // Before the app runs, so a launch that is not the app never shows a Dock icon: one process is
 // the app of its install, and a second launch hands what it was asked to do to that one and exits
 // (mip/0006-one-process.md, section 5).
+var retiredAtLaunch = Retiring.Outcome()
 if let asking = handOver(arguments: launched) {
   switch Core.claimApp(
     home: musterHome()?.path, commandSocketPath: commandSocketPath(), asking: asking)
   {
   case .claimed(let state):
     InstallState.directory = state.map { URL(fileURLWithPath: $0, isDirectory: true) }
+    // Once this is the app, and before anything reads its state: a process from before writes
+    // the old shared directory until it has quit, and adopting that directory first would take it
+    // from under a window still writing it.
+    retiredAtLaunch = Retiring.olderWindowProcesses(home: musterHome())
+    Core.adoptOldState(home: musterHome()?.path)
   case .handedOver:
     FileHandle.standardError.write(Data("muster: handed to the Muster already running\n".utf8))
     exit(0)
@@ -328,6 +358,7 @@ if let asking = handOver(arguments: launched) {
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
+delegate.retiring = retiredAtLaunch
 app.delegate = delegate
 app.setActivationPolicy(.regular)
 app.run()
