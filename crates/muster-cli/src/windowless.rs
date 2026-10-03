@@ -55,12 +55,13 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
     let socket = daemon::socket_or_refusal(environment)?;
     let respond = |response| Ok(Answered::Response(Box::new(response)));
     match &request.payload {
-        Some(request::Payload::ReadWindow(_)) => {
+        Some(request::Payload::ReadWindow(read)) => {
             let snapshot = snapshot(&socket)?;
-            Ok(Answered::Window {
-                window: Box::new(window_of(&snapshot, &socket)),
-                socket: socket.display().to_string(),
-            })
+            let mut window = window_of(&snapshot, &socket);
+            if read.layout {
+                lay_out(&mut window, &snapshot, &socket);
+            }
+            Ok(Answered::Window { window: Box::new(window), socket: socket.display().to_string() })
         }
         Some(request::Payload::ReadPane(read)) => {
             let pane = named(&read.pane_id, "read")?;
@@ -347,6 +348,83 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
             ..muster_proto::Machine::default()
         }],
         ..muster_proto::Window::default()
+    }
+}
+
+/// Every tab's tree and every pane's size, for a layout asked of the daemon with no window.
+///
+/// Each tab is one part the whole width, because with no window there is no second machine's
+/// part beside it, and no places: where a pane sits as a fraction of the tab is a window's
+/// arithmetic, and the tree beside it says the same thing. A daemon too old to say its panes'
+/// sizes leaves them unknown.
+fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot, socket: &Path) {
+    let machine = window.daemons.first().map(|daemon| daemon.daemon_id.clone()).unwrap_or_default();
+    window.layouts = snapshot
+        .tabs
+        .iter()
+        .map(|tab| muster_proto::TabLayout {
+            tab_id: tab.tab.clone(),
+            regions: vec![muster_proto::ViewRegion {
+                daemon_id: machine.clone(),
+                tab_id: tab.tab.clone(),
+                pane_id: tab.zoomed.clone().unwrap_or_default(),
+                weight: 1.0,
+                root: tab.root.as_ref().and_then(view_node),
+                zoomed: tab.zoomed.is_some(),
+                ..muster_proto::ViewRegion::default()
+            }],
+            ..muster_proto::TabLayout::default()
+        })
+        .collect();
+    window.grids = grids(socket)
+        .into_iter()
+        .map(|(pane, grid)| muster_proto::PaneGrid {
+            daemon_id: machine.clone(),
+            pane_id: pane,
+            cols: grid.cols,
+            rows: grid.rows,
+        })
+        .collect();
+}
+
+/// A daemon's tree in a window's vocabulary.
+fn view_node(node: &daemon_proto::Node) -> Option<muster_proto::ViewNode> {
+    let node = match node.node.as_ref()? {
+        daemon_proto::node::Node::Pane(pane) => {
+            muster_proto::view_node::Node::Pane(muster_proto::ViewPane {
+                pane_id: pane.clone(),
+                ..muster_proto::ViewPane::default()
+            })
+        }
+        daemon_proto::node::Node::Split(split) => {
+            muster_proto::view_node::Node::Split(Box::new(muster_proto::ViewSplit {
+                axis: match split.axis() {
+                    daemon_proto::Axis::Rows => "rows",
+                    daemon_proto::Axis::Columns | daemon_proto::Axis::Unspecified => "columns",
+                }
+                .to_string(),
+                ratio: split.ratio,
+                first: split.first.as_deref().and_then(view_node).map(Box::new),
+                second: split.second.as_deref().and_then(view_node).map(Box::new),
+            }))
+        }
+    };
+    Some(muster_proto::ViewNode { node: Some(node) })
+}
+
+/// Every pane's size, or none from a daemon that cannot say.
+fn grids(socket: &Path) -> BTreeMap<String, daemon_proto::Grid> {
+    let asked = asked(
+        socket,
+        daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
+            request: Some(daemon_proto::session_request::Request::ReadGrids(
+                daemon_proto::session_request::ReadGrids {},
+            )),
+        }),
+    );
+    match asked.ok().and_then(|answer| answer.detail) {
+        Some(daemon_proto::answer::Detail::Grids(grids)) => grids.panes.into_iter().collect(),
+        _ => BTreeMap::new(),
     }
 }
 

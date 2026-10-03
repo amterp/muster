@@ -207,6 +207,16 @@ enum What {
         #[arg(long)]
         watch: bool,
 
+        /// Draw every tab's panes where they sit, with each pane's size in cells, rather than
+        /// listing them; with --json, add each tab's arrangement and each pane's place and size
+        //
+        // A flag on the read rather than a verb of its own, because the arrangement is part of
+        // what a window is showing and composes with everything `muster window` already does:
+        // --json, --socket, and answering for every window at once. Off by default because the
+        // sizes are a question to every daemon, where the ordinary read asks none.
+        #[arg(long, conflicts_with = "watch")]
+        layout: bool,
+
         #[command(subcommand)]
         doing: Option<AboutWindows>,
     },
@@ -762,8 +772,8 @@ pub fn parse(
             request: Box::new(Request::new(request::Payload::WatchPanes(WatchPanes::default()))),
             timeout: None,
         },
-        What::Window { doing: None, .. } => {
-            send(request::Payload::ReadWindow(ReadWindow::default()))
+        What::Window { doing: None, layout, .. } => {
+            send(request::Payload::ReadWindow(ReadWindow { layout: *layout }))
         }
         What::Daemons => send(request::Payload::ReadDaemons(ReadDaemons {})),
         What::Msg { identity, verb } => {

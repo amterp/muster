@@ -21,6 +21,7 @@ use std::path::Path;
 
 pub mod args;
 pub mod daemon;
+pub mod diagram;
 pub mod dial;
 pub mod docs;
 pub mod environment;

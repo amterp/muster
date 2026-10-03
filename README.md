@@ -70,13 +70,14 @@ devenv tab the way they do in Ghostty, and one tab can hold both at once - drag 
 row onto a laptop tab's caption and they sit side by side, or right-click a laptop pane and split
 it onto the devenv.
 
-**A CLI that drives the window.** `muster` reports what every agent is doing, waits for one to
-finish, reads back what any pane has printed, makes panes and tabs, moves and resizes them, names
-them, types into them, moves the keyboard and zooms. Every pane Muster opens on your laptop can reach
+**A CLI that drives the window.** `muster` reports what every agent is doing, draws where every
+pane sits and how big it is, waits for one to finish, reads back what any pane has printed, makes
+panes and tabs, moves and resizes them, names them, types into them, moves the keyboard and zooms. Every pane Muster opens on your laptop can reach
 it, and it talks to the window that pane is drawn in - the address is in the pane's environment, so nothing
 has to be told which window it belongs to.
 
     muster window
+    muster window --layout
     muster pane new --down --run claude --name "🤖 reviewer"
     muster pane send --pane p1w3r07bsd "read AGENTS.md and wait" --enter
     muster pane wait --pane p1w3r07bsd --until idle,blocked

@@ -17,6 +17,7 @@ use muster_proto::{Response, Window, response};
 use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
+use crate::diagram::{self, Lines, Part};
 use crate::{Trouble, dial};
 
 /// How a refusal is marked, here so that `report` and this file agree on it.
@@ -387,16 +388,30 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
     let say_machine = machines.len() > 1;
 
     let mut lines: Vec<String> = Vec::new();
+    let drawing = Drawing::of(window, keyboard.as_deref(), say_machine);
     for tab in tabs(window) {
-        lines.extend(tab_lines(
-            &widths,
-            tab,
-            &states,
-            keyboard.as_deref(),
-            now_ms,
-            say_machine,
-            drawn,
-        ));
+        match drawing.as_ref().and_then(|drawing| drawing.layout(&tab.tab_id)) {
+            Some(layout) => {
+                let mut heading = tab_line(&widths, tab);
+                if let Some(zoomed) = layout.regions.iter().find(|region| region.zoomed) {
+                    heading.push_str("  ");
+                    heading.push_str(&styled(&format!("zoomed on {}", zoomed.pane_id), QUIET));
+                }
+                lines.push(heading);
+                if let Some(drawing) = &drawing {
+                    lines.extend(drawing.tab(layout, tab, &states, terminal_width()));
+                }
+            }
+            None => lines.extend(tab_lines(
+                &widths,
+                tab,
+                &states,
+                keyboard.as_deref(),
+                now_ms,
+                say_machine,
+                drawn,
+            )),
+        }
     }
 
     // Other windows' tabs, after this window's own. A tab belongs to exactly one window, so
@@ -426,6 +441,141 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
         return "no daemon is attached, so this window is showing nothing".to_string();
     }
     lines.join("\n")
+}
+
+/// What `--layout` draws from: every tab's arrangement and every pane's size, from an answer
+/// that asked for them. `None` from one that did not, which is drawn as the list it always was.
+struct Drawing<'a> {
+    layouts: BTreeMap<&'a str, &'a muster_proto::TabLayout>,
+    grids: BTreeMap<&'a str, &'a muster_proto::PaneGrid>,
+    keyboard: Option<&'a str>,
+    say_machine: bool,
+}
+
+impl<'a> Drawing<'a> {
+    fn of(window: &'a Window, keyboard: Option<&'a str>, say_machine: bool) -> Option<Drawing<'a>> {
+        if window.layouts.is_empty() {
+            return None;
+        }
+        Some(Drawing {
+            layouts: window.layouts.iter().map(|layout| (layout.tab_id.as_str(), layout)).collect(),
+            grids: grids(window),
+            keyboard,
+            say_machine,
+        })
+    }
+
+    fn layout(&self, tab: &str) -> Option<&'a muster_proto::TabLayout> {
+        self.layouts.get(tab).copied()
+    }
+
+    /// One tab's boxes, `width` columns wide.
+    fn tab(
+        &self,
+        layout: &muster_proto::TabLayout,
+        tab: &muster_proto::RosterTab,
+        states: &BTreeMap<&str, &muster_proto::PaneStateChanged>,
+        width: usize,
+    ) -> Vec<String> {
+        let mut order: Vec<&str> = Vec::new();
+        let parts: Vec<Part> = layout
+            .regions
+            .iter()
+            .map(|region| Part {
+                weight: region.weight,
+                root: region.root.as_ref().and_then(|root| tree(root, &mut order)),
+            })
+            .collect();
+        let shares: BTreeMap<&str, &muster_proto::PanePlace> =
+            layout.places.iter().map(|place| (place.pane_id.as_str(), place)).collect();
+        let boxes: Vec<Lines> = order
+            .iter()
+            .map(|pane| {
+                let row = tab.panes.iter().find(|row| row.pane_id == *pane);
+                let agent = states.get(pane).copied();
+                let size = match (self.grids.get(pane), shares.get(pane)) {
+                    (Some(grid), _) => format!("{}x{}", grid.cols, grid.rows),
+                    (None, Some(share)) => format!(
+                        "{}% x {}%",
+                        (share.width * 100.0).round(),
+                        (share.height * 100.0).round()
+                    ),
+                    (None, None) => String::new(),
+                };
+                pane_box(pane, row, agent, &size, self.keyboard == Some(*pane), self.say_machine)
+            })
+            .collect();
+        diagram::draw(&parts, &boxes, width)
+    }
+}
+
+/// What one pane's box says: its name, its label, what its agent is doing and how big it is, and
+/// which machine it is on when more than one is attached.
+fn pane_box(
+    pane: &str,
+    row: Option<&muster_proto::RosterPane>,
+    agent: Option<&muster_proto::PaneStateChanged>,
+    size: &str,
+    keyboard: bool,
+    say_machine: bool,
+) -> Lines {
+    let mut name = Vec::new();
+    if keyboard {
+        name.push(("▸ ".to_string(), NAME));
+    }
+    name.push((pane.to_string(), NAME));
+    let mut lines = vec![name];
+    if let Some(row) = row.filter(|row| !row.label.is_empty()) {
+        lines.push(vec![(row.label.clone(), PLAIN)]);
+    }
+    let state = agent.map_or("unknown", |agent| agent.state.as_str());
+    let mut doing = vec![(state.to_string(), agent_style(state))];
+    if !size.is_empty() {
+        doing.push((format!(" · {size}"), PLAIN));
+    }
+    lines.push(doing);
+    if say_machine && let Some(row) = row {
+        lines.push(vec![(format!("on {}", row.daemon_id), QUIET)]);
+    }
+    lines
+}
+
+/// A region's tree as the diagram draws it, naming its panes in `order` as they are met.
+fn tree<'a>(node: &'a muster_proto::ViewNode, order: &mut Vec<&'a str>) -> Option<diagram::Node> {
+    match node.node.as_ref()? {
+        muster_proto::view_node::Node::Pane(pane) => {
+            order.push(pane.pane_id.as_str());
+            Some(diagram::Node::Pane(order.len() - 1))
+        }
+        muster_proto::view_node::Node::Split(split) => Some(diagram::Node::Split {
+            columns: split.axis != "rows",
+            ratio: split.ratio,
+            first: Box::new(tree(split.first.as_deref()?, order)?),
+            second: Box::new(tree(split.second.as_deref()?, order)?),
+        }),
+    }
+}
+
+/// How wide to draw: the terminal's width when this is one, `COLUMNS` when that says, and 80
+/// otherwise - kept between 40, below which no box holds a name, and 160, past which a diagram
+/// is harder to read than it is accurate.
+fn terminal_width() -> usize {
+    let columns = terminal_columns()
+        .or_else(|| std::env::var("COLUMNS").ok().and_then(|columns| columns.parse().ok()))
+        .unwrap_or(80);
+    columns.clamp(40, 160)
+}
+
+fn terminal_columns() -> Option<usize> {
+    let mut size = libc::winsize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
+    // SAFETY: TIOCGWINSZ writes one winsize into the struct handed to it and reads nothing else.
+    let read = unsafe { libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &raw mut size) };
+    (read == 0 && size.ws_col > 0).then_some(usize::from(size.ws_col))
+}
+
+/// Each pane's size in cells, by pane, from an answer that asked for the layout.
+fn grids(window: &Window) -> BTreeMap<&str, &muster_proto::PaneGrid> {
+    window.grids.iter().map(|grid| (grid.pane_id.as_str(), grid)).collect()
 }
 
 /// A tab's line, and a line for each pane in it.
@@ -805,15 +955,12 @@ fn window_json(window: &Window, others: Others) -> Value {
                 // Null rather than zeroes for a pane the window is not drawing, so this and
                 // `on_screen` above cannot say different things: a rectangle of no size is a
                 // place, and a pane behind a zoom or in a background tab has none.
-                "rect": places.get(pane.pane_id.as_str()).map_or(Value::Null, |place| {
-                    json!({
-                        "x": place.x, "y": place.y,
-                        "width": place.width, "height": place.height,
-                    })
-                }),
+                "rect": places.get(pane.pane_id.as_str()).copied().map_or(Value::Null, rect_json),
             }));
         }
     }
+
+    add_layout(window, &mut tabs_out, &mut panes);
 
     let daemons: Vec<Value> = window
         .daemons
@@ -877,6 +1024,50 @@ fn window_json(window: &Window, others: Others) -> Value {
     })
 }
 
+fn rect_json(place: &muster_proto::PanePlace) -> Value {
+    json!({ "x": place.x, "y": place.y, "width": place.width, "height": place.height })
+}
+
+/// What `--layout` adds to `tabs[]` and `panes[]`: each tab's regions, and each pane's frame and
+/// size. Only when the layout was asked for, and absent rather than null otherwise, so a size
+/// nobody asked for is never read as a size nobody knows.
+fn add_layout(window: &Window, tabs: &mut [Value], panes: &mut [Value]) {
+    if window.layouts.is_empty() {
+        return;
+    }
+    let layouts: BTreeMap<&str, &muster_proto::TabLayout> =
+        window.layouts.iter().map(|layout| (layout.tab_id.as_str(), layout)).collect();
+    let frames: BTreeMap<&str, &muster_proto::PanePlace> = window
+        .layouts
+        .iter()
+        .flat_map(|layout| &layout.places)
+        .map(|place| (place.pane_id.as_str(), place))
+        .collect();
+    let grids = grids(window);
+    for tab in tabs.iter_mut() {
+        let Value::Object(fields) = tab else { continue };
+        let regions = fields
+            .get("tab")
+            .and_then(Value::as_str)
+            .and_then(|name| layouts.get(name))
+            .map(|layout| regions_json(&layout.regions, &layout.focused_region))
+            .unwrap_or_default();
+        fields.insert("regions".to_string(), Value::Array(regions));
+    }
+    for pane in panes.iter_mut() {
+        let Value::Object(fields) = pane else { continue };
+        let name = fields.get("pane").and_then(Value::as_str).unwrap_or_default().to_string();
+        // Where it sits in its tab's arrangement, shown or not, in `rect`'s terms.
+        let frame = frames.get(name.as_str()).copied().map_or(Value::Null, rect_json);
+        // Null when its daemon could not say, which is not the same as no size.
+        let cells = grids
+            .get(name.as_str())
+            .map_or(Value::Null, |grid| json!({ "cols": grid.cols, "rows": grid.rows }));
+        fields.insert("frame".to_string(), frame);
+        fields.insert("cells".to_string(), cells);
+    }
+}
+
 /// Where each pane on screen sits, by pane.
 ///
 /// Keyed by pane alone, like [`states`] and for the same reason: a pane name is Muster's own and
@@ -902,7 +1093,12 @@ fn showing(window: &Window) -> Option<&str> {
 /// show the same one.
 fn regions(window: &Window) -> Vec<Value> {
     let Some(view) = window.view.as_ref() else { return Vec::new() };
-    view.regions
+    regions_json(&view.regions, &view.focused_region)
+}
+
+/// Regions as `regions[]` spells them, for the tab on screen and, under `--layout`, every tab.
+fn regions_json(regions: &[muster_proto::ViewRegion], focused: &str) -> Vec<Value> {
+    regions
         .iter()
         .map(|region| {
             json!({
@@ -913,7 +1109,7 @@ fn regions(window: &Window) -> Vec<Value> {
                 // core holds it: every region starts at 1, so three untouched regions read as
                 // 1, 1, 1 rather than as three thirds that have to add up.
                 "weight": region.weight,
-                "keyboard": region.region_id == view.focused_region,
+                "keyboard": !focused.is_empty() && region.region_id == focused,
                 // Whether this region is filled by one pane rather than by its tab's whole
                 // tree. Reported because it is the difference between a tab holding one pane
                 // and a tab whose others are hidden, and nothing else in this answer implies
@@ -926,8 +1122,9 @@ fn regions(window: &Window) -> Vec<Value> {
                 // not said how the tab is arranged - an ordinary moment, not a failure, and a
                 // different answer from a part holding no panes.
                 //
-                // Resolved for a zoom, like `zoomed` beside it: a zoomed part is one pane here,
-                // because that is what is drawn.
+                // Resolved for a zoom on screen, like `zoomed` beside it: a zoomed part is one
+                // pane there, because that is what is drawn. Under `tabs[].regions` it is the
+                // whole tree, because that says how the tab is laid out.
                 "layout": region.root.as_ref().map_or(Value::Null, layout_json),
             })
         })

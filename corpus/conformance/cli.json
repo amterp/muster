@@ -469,6 +469,18 @@
       }
     },
     {
+      "name": "the layout is the same read, asking for the arrangement and the sizes too",
+      "why": "Where every tab's panes sit and how big each is, for a person reading the terminal and an agent reading JSON. A flag on the one read rather than a verb, so it composes with --json, --socket and the answer for every window; and asked for rather than always answered, because the sizes are a question to every daemon where the ordinary read asks none.",
+      "given": { "argv": ["window", "--layout"] },
+      "expect": { "request": { "read_window": { "layout": true } } }
+    },
+    {
+      "name": "a layout is a moment and a watch is a stream, so the two are not asked together",
+      "why": "A watch prints a line per change in an agent's state, and nothing about a layout fits on one of those lines.",
+      "given": { "argv": ["window", "--watch", "--layout"] },
+      "expect": { "usage": "ArgumentConflict" }
+    },
+    {
       "name": "watching a window is one request that asks for everything",
       "why": "The shape an integrator waiting on several agents wants: one connection, and a line each time any of them changes (kan a_2M9T8O6dL). It names no pane and no state, which is what the window reads as every pane, for good.",
       "given": {

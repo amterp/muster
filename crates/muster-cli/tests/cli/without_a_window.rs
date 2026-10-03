@@ -117,6 +117,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     let p2 = listed["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!("p2"));
     let p2 = p2.unwrap_or_else(|| panic!("p2 is listed: {listed}"));
     assert_eq!((&p2["tab"], &p2["state"]), (&json!("t1"), &json!("idle")), "{listed}");
+    the_layout_is_the_daemons_trees(&here);
 
     ok(&here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm", "echo typed-in"]));
     let mut control = here.daemon.connect();
@@ -138,6 +139,21 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     assert!(refused.contains("--pane"), "with no window there is no keyboard's pane:\n{refused}");
     let refused = refused_with(&here.muster(&["pane", "read", "--pane", "p9nobody"]), 1);
     assert!(refused.contains("no pane called p9nobody"), "{refused}");
+}
+
+/// With no window, `--layout` draws each tab from the daemon's own tree and asks it for the
+/// sizes, so the shape and the sizes are there and only a window's arithmetic is not.
+fn the_layout_is_the_daemons_trees(here: &Here) {
+    let laid: Value =
+        serde_json::from_str(&ok(&here.muster(&["--json", "window", "--layout"]))).unwrap();
+    let layout = &laid["tabs"][0]["regions"][0]["layout"];
+    assert_eq!(layout["axis"], json!("columns"), "p2 and p3 went to p1's right: {laid}");
+    for pane in laid["panes"].as_array().into_iter().flatten() {
+        assert!(pane["cells"]["cols"].as_u64().is_some_and(|cols| cols > 0), "{pane}");
+        assert!(pane["frame"].is_null(), "where a pane sits is a window's to work out: {pane}");
+    }
+    let drawn = ok(&here.muster(&["window", "--layout"]));
+    assert!(drawn.contains('┬') && drawn.contains("p3"), "three panes side by side:\n{drawn}");
 }
 
 /// A wait for a state the pane is already in ends at once; one for a state it reaches later ends

@@ -227,7 +227,9 @@ fn described_split(split: &muster_proto::SplitPane) -> Value {
 
 fn described_pane_or_window(payload: &request::Payload) -> Value {
     match payload {
-        request::Payload::ReadWindow(_) => json!({ "read_window": {} }),
+        request::Payload::ReadWindow(read) => json!({
+            "read_window": fields([("layout", read.layout.then_some(json!(true)))])
+        }),
         request::Payload::ReadDaemons(_) => json!({ "read_daemons": {} }),
         request::Payload::SplitPane(split) => described_split(split),
         request::Payload::RenamePane(rename) => json!({

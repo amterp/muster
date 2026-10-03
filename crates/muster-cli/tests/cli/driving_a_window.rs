@@ -18,6 +18,7 @@ use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
 use muster_harness::{Daemon, until, until_file, until_some};
 use prost::Message;
 use serde_json::{Value, json};
+use unicode_width::UnicodeWidthStr;
 
 #[test]
 fn a_pane_can_drive_the_window_it_is_drawn_in() {
@@ -138,6 +139,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     what_an_agent_says_and_a_bell_are_in_the_window(&daemon, &made_pane, &inside(&first));
     the_columns_are_described(&inside(&first));
     the_arrangement_is_readable(&first, &made_pane, &inside(&first));
+    the_layout_is_drawn_and_sized(&first, &made_pane, &inside(&first));
     an_uneven_tab_is_evened_out(&first, &made_pane, &inside(&first));
     the_machines_are_named_well_enough_to_end_one(&inside(&first));
     // While both panes are still in one tab and on screen, which is what stepping walks.
@@ -516,6 +518,64 @@ fn the_arrangement_is_readable(first: &str, made: &str, environment: &[(&str, St
             "`rect` and `on_screen` disagree about whether this pane is being drawn: {row}"
         );
     }
+}
+
+/// Where every pane sits and how big it is, drawn for a person and spelled out for an agent.
+///
+/// The tab here is one column of two, the second made below the first, so the drawing is two
+/// boxes stacked with a tee between them, and the two frames tile the tab top to bottom. The
+/// sizes are the daemon's: nothing is drawing these panes, so each is the size it was made at,
+/// which is a size rather than an unknown.
+fn the_layout_is_drawn_and_sized(first: &str, made: &str, environment: &[(&str, String)]) {
+    let window = json_from(&run(&["window", "--layout", "--json"], environment));
+    let tab = &window["tabs"][0];
+    assert_eq!(
+        tab["regions"][0]["layout"]["axis"],
+        json!("rows"),
+        "every tab carries its arrangement under --layout: {tab}"
+    );
+    let row = |pane: &str| -> Value {
+        window["panes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|row| row["pane"] == json!(pane))
+            .cloned()
+            .unwrap_or_else(|| panic!("the window lists no pane called {pane}: {window}"))
+    };
+    let (top, below) = (row(first), row(made));
+    for pane in [&top, &below] {
+        assert!(
+            pane["cells"]["cols"].as_u64().is_some_and(|cols| cols > 0)
+                && pane["cells"]["rows"].as_u64().is_some_and(|rows| rows > 0),
+            "every pane says how big its terminal is: {pane}"
+        );
+    }
+    let height = |pane: &Value| pane["frame"]["height"].as_f64().unwrap_or_default();
+    assert!(
+        (height(&top) + height(&below) - 1.0).abs() < 0.001
+            && (below["frame"]["y"].as_f64().unwrap_or_default() - height(&top)).abs() < 0.001,
+        "two stacked panes' frames tile their tab top to bottom: {top} {below}"
+    );
+
+    let plain = json_from(&run(&["window", "--json"], environment));
+    assert!(
+        plain["panes"][0].get("cells").is_none() && plain["tabs"][0].get("regions").is_none(),
+        "without --layout nothing was asked of the daemons, so nothing is said: {plain}"
+    );
+
+    let drawn =
+        run(&["window", "--layout"], &[environment, &[("COLUMNS", "72".to_string())]].concat());
+    assert_eq!(drawn.code, 0, "`muster window --layout` failed: {}", drawn.errors);
+    assert!(
+        drawn.out.contains(first) && drawn.out.contains(made) && drawn.out.contains('├'),
+        "the drawing names both panes and divides them:\n{}",
+        drawn.out
+    );
+    let widest =
+        drawn.out.lines().filter(|line| line.contains('│')).map(UnicodeWidthStr::width).max();
+    assert_eq!(widest, Some(72), "the drawing is as wide as COLUMNS says:\n{}", drawn.out);
+    eprintln!("{}", drawn.out);
 }
 
 /// Making a tab uneven, and putting it back in one command.

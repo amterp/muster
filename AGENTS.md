@@ -118,6 +118,7 @@ core and this is the other door into it.
     muster pane wait --pane p1w3r07bsd --until idle,blocked
     muster tab focus t1w3r07bsd
     muster window --json
+    muster window --layout
 
 **Tabs are named too, and for a narrower reason than panes.** `t1w3r07bsd`, minted by Muster and
 unique across every machine a window shows, so `muster tab focus` and `muster tab rename` reach one

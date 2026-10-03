@@ -197,6 +197,54 @@ Which tab they divide is `showing` above rather than a key on every row, because
 same one. This is the one part of the arrangement Muster owns outright rather than mirrors from a
 daemon: no daemon knows the other one exists, so nothing else in this answer implies it.
 
+## The layout
+
+`muster window --layout` draws every tab this window holds as boxes, one per pane, where the
+window puts them and in proportion, whether or not the tab is on screen:
+
+    tab 1  t1w3r07bsd  ~/src/muster  on screen
+    ┌───────────────────────────────────┬──────────────────────────────────┐
+    │ ▸ p1w3r07bsd                      │ p1w3r0ab2n                       │
+    │ ~/src/muster                      │ 🤖 A                             │
+    │ unknown · 118x40                  │ working · 119x19                 │
+    │                                   │                                  │
+    │                                   │                                  │
+    │                                   ├──────────────────────────────────┤
+    │                                   │ p1w3r0cd4x                       │
+    │                                   │ 🤖 B                             │
+    │                                   │ blocked · 119x20                 │
+    │                                   │                                  │
+    └───────────────────────────────────┴──────────────────────────────────┘
+
+Each box names its pane and says its label, what its agent is doing and how big its terminal is,
+in columns by rows; with more than one machine attached, which one it is on. `▸` is the pane the
+keyboard is on, and a zoomed tab says `zoomed on` the pane filling it while the drawing keeps the
+whole arrangement. The drawing is as wide as the terminal, and boxes too small for their text
+are cut rather than dropped, so every pane is named even where a ratio cannot be drawn exactly.
+
+A pane's size is the one its program last saw, as its daemon holds it: what it is drawn at, or
+for a pane in a tab behind the one on screen, the size it was last drawn at, which is still what
+wraps its output. A daemon too old to say leaves the size out, and the box gives the pane's
+share of the tab instead, `50% x 70%`. Sizes in points are not offered, because only the app
+knows them and they would change with the font.
+
+`--layout` asks every daemon for its panes' sizes, which the ordinary read does not, so it is a
+flag rather than the default. With `--json` it adds three keys, and nothing else changes:
+
+- `tabs[].regions` - each tab's parts, in the shape `regions[]` below has, with one difference:
+  `layout` is the tab's whole tree even when it is zoomed, because this says how the tab is
+  laid out and a zoom covers that without changing it. `zoomed` and `pane` say which pane fills it.
+- `panes[].frame` - where the pane sits in its tab's arrangement, as fractions of the tab, in
+  `rect`'s terms, whether or not the tab is on screen.
+- `panes[].cells` - `{"cols", "rows"}`, or `null` when its daemon could not say.
+
+Without `--layout` these keys are absent rather than null, so a size nobody asked for is never
+read as one nobody knows. A closed window's tabs are listed and not drawn: how their machines'
+parts sit side by side is that window's to say. With no window answering, the daemon's tabs are
+drawn from its own trees, one part each, and `frame` is null.
+
+    muster window --layout --json | jq -r '.panes[] | "\(.pane) \(.cells.cols)x\(.cells.rows)"'
+
 ## Agent states
 
 `working`, `blocked`, `idle` and `done` come from the harness running in the pane. `waiting` is an
