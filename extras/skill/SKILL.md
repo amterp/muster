@@ -16,6 +16,7 @@ muster docs            # the topics
 muster docs agents     # making panes, running agents in them, waiting on them, reading them
 muster docs msg        # messaging other agents, and being woken by them
 muster docs window     # every field of muster window --json, and --layout for where panes sit
+muster docs harnesses  # what Muster gets from each harness: Claude Code, Codex, the rest
 muster docs limits     # what this cannot do
 muster --help
 ```

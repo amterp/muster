@@ -10,6 +10,12 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **backend** - the daemon system that owns sessions: `muster-daemon`, Muster's own since it replaced herdr (MIP-3).
 - **backend session** - one live connection to one daemon.
 - **bridge** - the subprocess a surface runs to deliver a pane channel; output only.
+- **capability** - one thing Muster can use from a harness: its state read off its screen, its own report of it,
+  a prompt the doorbell can read, hooks that fetch its messages (MIP-5, section 2). Muster checks a capability,
+  never a harness's name.
+- **command endpoint** - the unix socket a window answers requests on, at
+  `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
+  which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
 - **composition** - the Muster-owned arrangement: which daemons are attached, which tabs the window holds and in
   what order, which of them is on screen, and how each divides between the machines holding panes in it. Not an
   input method's composition, which is a different thing with the same name and lives under `input::` wherever it
@@ -20,15 +26,9 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **data plane** - output only: pane channels, adapter to surface, bypassing the core.
 - **devenv container** - the repo's Linux container, running sshd and no daemon until a remote test or an attach
   installs this build's; dev sandbox and remote-path test fixture in one.
-- **command endpoint** - the unix socket a window answers requests on, at
-  `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
-  which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
 - **doorbell** - a wake typed into the pane an agent runs in, one line and a Return, only into a prompt it has
   just read as empty, and only for a harness whose manifest can read its prompt (MIP-4, section 6). The prompt is
   an idle agent's, or for an urgent post a working one's too.
-- **capability** - one thing Muster can use from a harness: its state read off its screen, its own report of it,
-  a prompt the doorbell can read, hooks that fetch its messages (MIP-5, section 2). Muster checks a capability,
-  never a harness's name.
 - **focus history** - the panes a window's keyboard has been on, oldest first, with a cursor at the current one:
   `focus_back`, `focus_forward`, `muster focus --back|--forward` and the mouse's back and forward buttons walk it.
   One per window, at most 50 panes, and not kept across a relaunch. A pane that closed or that another window holds
@@ -50,14 +50,14 @@ One name per concept; docs and code use these terms. Alphabetical.
   mutates; it requests.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
   authoritative.
-- **participant** - an agent, or the human as `@human`, known by name to one daemon's messaging, with a place in
-  the log of every group it has joined. Another machine's participant is `name@machine` there.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.
+- **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
 - **pane name** - what Muster calls a pane: `p1w3r07bsd`, minted by Muster rather than borrowed from the backend,
   unique across every attached machine, and never reused. What every message and every CLI argument means by a pane.
   A pane reads its own from `MUSTER_PANE`.
-- **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
 - **pane tree** - the split layout inside one tab; daemon truth.
+- **participant** - an agent, or the human as `@human`, known by name to one daemon's messaging, with a place in
+  the log of every group it has joined. Another machine's participant is `name@machine` there.
 - **policy** - a group's four rules, enforced by the group's home daemon: whom an unaddressed post wakes (`ring`), whom each
   author may address (`allow`), who may change the group (`membership`), and whether it is `paused`, holding every
   wake but the human's (MIP-4, section 8).
