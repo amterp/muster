@@ -18,7 +18,14 @@ pub struct Policy {
     pub allow: BTreeMap<String, Vec<String>>,
     /// Who may add or remove members and change the policy.
     pub membership: Vec<String>,
+    /// Who may post urgently, which reaches an agent mid-turn.
+    #[serde(default = "everyone")]
+    pub urgent: Vec<String>,
     pub paused: bool,
+}
+
+fn everyone() -> Vec<String> {
+    vec!["*".to_string()]
 }
 
 impl Default for Policy {
@@ -28,6 +35,7 @@ impl Default for Policy {
             ring: BTreeMap::from([("*".to_string(), vec!["*".to_string(), HUMAN.to_string()])]),
             allow: everyone(),
             membership: vec!["*".to_string()],
+            urgent: vec!["*".to_string()],
             paused: false,
         }
     }
@@ -58,12 +66,17 @@ impl Policy {
         names(&self.membership, role(name))
     }
 
+    /// Whether `author` may post urgently.
+    pub(crate) fn urges(&self, author: &str) -> bool {
+        names(&self.urgent, role(author))
+    }
+
     /// Every name the policy holds, which must each be a participant's name, here or on
     /// another machine, `*`, or `@human`.
     pub(crate) fn check(&self) -> Result<(), Refusal> {
         let keys = self.ring.keys().chain(self.allow.keys());
         let sets = self.ring.values().chain(self.allow.values()).flatten();
-        for name in keys.chain(sets).chain(&self.membership) {
+        for name in keys.chain(sets).chain(&self.membership).chain(&self.urgent) {
             if name != "*" {
                 check_addressee(name)?;
             }
@@ -134,6 +147,7 @@ mod tests {
                 ("*".to_string(), set(&["director", "@human"])),
             ]),
             membership: set(&["director", "@human"]),
+            urgent: set(&["director", "@human"]),
             paused: false,
         }
     }
@@ -165,6 +179,16 @@ mod tests {
         assert!(policy.permits("@human"));
         assert!(!policy.permits("builder"));
         assert!(Policy::default().permits("builder"));
+    }
+
+    #[test]
+    fn only_those_named_in_urgent_may_post_urgently() {
+        let policy = directed();
+        assert!(policy.urges("director"));
+        assert!(policy.urges("@human@laptop"));
+        assert!(!policy.urges("builder"));
+        assert!(Policy::default().urges("builder"));
+        assert!(Policy::default().urges("@human"));
     }
 
     #[test]

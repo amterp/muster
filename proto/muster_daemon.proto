@@ -533,6 +533,10 @@ message MsgRequest {
     optional string group = 1;
     repeated string to = 2;
     string body = 3;
+    // Since 1.3. Rings an agent in a pane while it works, at a prompt read as empty, rather
+    // than once it is idle, and wakes an addressee woken already. Refused as `not_urgent` when
+    // the group's policy does not let the author.
+    bool urgent = 4;
   }
 
   // The caller's unread entries, moving its cursor past them.
@@ -562,6 +566,8 @@ message MsgRequest {
     repeated string membership = 3;
     // Read when a group is made; `group set` leaves it as it is, and pause and resume change it.
     bool paused = 4;
+    // Since 1.3. Who may post urgently; none is anyone.
+    optional Names urgent = 5;
   }
 
   message Names {
@@ -698,6 +704,8 @@ message MsgAnswer {
     UNTIL_PROMPT = 2;
     // An agent to be found in the pane, which was made moments ago.
     UNTIL_AGENT = 3;
+    // Since 1.3. For an urgent post: its agent to be out of a dialog, working or idle.
+    UNTIL_UNBLOCKED = 4;
   }
 
   enum Reach {
@@ -778,6 +786,8 @@ message MsgAnswer {
     string author = 1;
     repeated string to = 2;
     string body = 3;
+    // Since 1.3.
+    bool urgent = 4;
   }
 
   message Members {
@@ -817,6 +827,8 @@ message MsgAnswer {
     repeated string from = 6;
     // Woken for these once already, and gone idle without reading them.
     bool again = 7;
+    // Since 1.3. How many of them were posted urgently.
+    uint64 urgent = 8;
   }
 }
 
@@ -1618,6 +1630,8 @@ message PeerCall {
     string body = 4;
     uint64 cursor = 5;
     uint64 head = 6;
+    // Since 1.3.
+    bool urgent = 7;
   }
 
   message Since {

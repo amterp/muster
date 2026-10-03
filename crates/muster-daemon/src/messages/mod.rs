@@ -28,9 +28,9 @@ use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
 use muster_msg::{
-    Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Entry, Inbox, LARGEST_BODY,
-    LONGEST_GROUP, Liveness, Messaging, Policy, Presence, Reach, Refusal, Route, Settled, Tell,
-    Via, Wake, What,
+    Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Draft, Entry, Inbox,
+    LARGEST_BODY, LONGEST_GROUP, Liveness, Messaging, Policy, Presence, Reach, Refusal, Route,
+    Settled, Tell, Via, Wake, What,
 };
 use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
@@ -461,13 +461,21 @@ impl Messages {
                     continue;
                 }
             };
+            // A later wake for a group stands for any earlier one still waiting to ring: its
+            // notice covers everything unread there. Only an urgent post makes a second.
+            self.pending.retain(|earlier| {
+                earlier.name != wake.name || earlier.notice.group != wake.notice.group
+            });
             // A pane whose agent has not been found yet waits for it like a busy one.
-            let until = match panes.get(pane).map(|seen| (doorbell::may_ring(seen, now), seen)) {
+            let urgent = doorbell::is_urgent(wake);
+            let ringing = panes.get(pane).map(|seen| (doorbell::may_ring(seen, now, urgent), seen));
+            let until = match ringing {
                 Some((Now::Ring, seen)) => {
                     holding.ringing.push((wake.clone(), seen.clone()));
                     continue;
                 }
                 Some((Now::AtIdle, _)) => msg_answer::Until::Idle,
+                Some((Now::Unblocked, _)) => msg_answer::Until::Unblocked,
                 Some((Now::At(_), _)) => msg_answer::Until::Prompt,
                 None => msg_answer::Until::Agent,
             };
@@ -750,8 +758,7 @@ fn posting(
         if messages.handing_over {
             return Ok(None);
         }
-        let group = post.group.as_deref();
-        messages.service.route_post(caller, group, &post.to, found, &post.body, panes).map(Some)
+        messages.service.route_post(caller, &draft_of(post, found), panes).map(Some)
     });
     let (route, found) = match routed {
         Err(refusal) => return refused("", &refusal),
@@ -759,6 +766,9 @@ fn posting(
         Ok((Some(route), found)) => (route, found),
     };
     let delivered = if let Route::Away(away) = route {
+        if let Some(refusal) = urgent_unknown_at(shared, post, &away) {
+            return refusal;
+        }
         let (settle, holding) = peer::call_away(shared, &away);
         let rang = ring(shared, holding);
         match settle.result {
@@ -771,8 +781,7 @@ fn posting(
         }
     } else {
         let delivered = delivering(shared, panes, |service| {
-            let group = post.group.as_deref();
-            service.post_found(caller, group, &post.to, &found, &post.body, panes, now_ms())
+            service.post_draft(caller, &draft_of(post, &found), panes, now_ms())
         });
         match delivered {
             Ok(delivered) => delivered,
@@ -781,6 +790,41 @@ fn posting(
     };
     let posted = told("msg.posted", Some(post.body.len()), &delivered);
     answered(delivered.posted.author.clone(), Answer::Posted(posted))
+}
+
+/// The first protocol whose daemons post urgently. An older one ignores the field it does not
+/// know, so an urgent post sent to it would ring as an ordinary one.
+const URGENT_SINCE: u32 = 3;
+
+/// A refusal for an urgent post bound for a machine whose daemon cannot post one.
+fn urgent_unknown_at(
+    shared: &Shared,
+    post: &proto::msg_request::Post,
+    away: &Away,
+) -> Option<Reply> {
+    let speaks = shared.peers.to(&away.machine)?.speaks;
+    (post.urgent && speaks.minor < URGENT_SINCE).then(|| {
+        refused_as(
+            "",
+            "not_urgent",
+            &format!(
+                "{} is kept on {}, whose muster-daemon speaks protocol {speaks}, which cannot post \
+                 urgently. Update Muster there, or post without --urgent",
+                away.call.group(),
+                away.machine
+            ),
+        )
+    })
+}
+
+fn draft_of<'a>(post: &'a proto::msg_request::Post, found: &'a [String]) -> Draft<'a> {
+    Draft {
+        group: post.group.as_deref(),
+        to: &post.to,
+        found,
+        body: &post.body,
+        urgent: post.urgent,
+    }
 }
 
 /// Adds and removes a group's members, finding a name added that means nobody here on the
@@ -1262,6 +1306,11 @@ pub(super) fn words(refusal: &Refusal) -> String {
              without --to to wake whom the policy rings for you",
             names(allowed)
         ),
+        Refusal::NotUrgent { group, urgent } => format!(
+            "{group}'s policy does not let you post urgently; only {} may. Post without \
+             --urgent, and whom it is for are woken once they are idle",
+            names(urgent)
+        ),
         Refusal::NotPermitted { name, group, action, permitted } => format!(
             "{group}'s policy does not let {name} {}; only {} may",
             action_words(*action, group),
@@ -1319,10 +1368,11 @@ fn caller_of(caller: proto::msg_request::Caller) -> Caller {
 pub(super) fn entry_of(entry: &Entry) -> msg_answer::Entry {
     use msg_answer::entry::What as Said;
     let what = match &entry.what {
-        What::Message { author, to, body } => Said::Message(msg_answer::Message {
+        What::Message { author, to, body, urgent } => Said::Message(msg_answer::Message {
             author: author.clone(),
             to: to.clone(),
             body: body.clone(),
+            urgent: *urgent,
         }),
         What::Created { by } => Said::Created(by.clone()),
         What::Joined { who } => Said::Joined(who.clone()),
@@ -1347,6 +1397,7 @@ pub(crate) fn notice_of(notice: &muster_msg::Notice) -> msg_answer::Notice {
         last: notice.last,
         count: notice.count,
         to_you: notice.to_you,
+        urgent: notice.urgent,
         from: notice.from.clone(),
         again: notice.again,
     }
@@ -1396,6 +1447,7 @@ pub(super) fn policy_of(policy: &Policy) -> proto::msg_request::Policy {
         allow: map(&policy.allow),
         membership: policy.membership.clone(),
         paused: policy.paused,
+        urgent: Some(proto::msg_request::Names { names: policy.urgent.clone() }),
     }
 }
 
@@ -1407,6 +1459,8 @@ pub(super) fn policy_from(policy: proto::msg_request::Policy) -> Policy {
         ring: map(policy.ring),
         allow: map(policy.allow),
         membership: policy.membership,
+        // A policy from before 1.3 says nothing about it, which is the default.
+        urgent: policy.urgent.map_or_else(|| Policy::default().urgent, |names| names.names),
         paused: policy.paused,
     }
 }

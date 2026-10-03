@@ -11,7 +11,7 @@ use crate::Version;
 /// Bump `minor` with any change to the schema once a release has shipped the daemon, and `major`
 /// when a message stops meaning what it meant. `proto/muster_daemon.proto`'s header says how the
 /// baseline follows, and the `compatible` test holds the two together.
-pub const PROTOCOL: Version = Version { major: 1, minor: 2 };
+pub const PROTOCOL: Version = Version { major: 1, minor: 3 };
 
 /// Whether two ends speaking these versions can talk.
 pub fn compatible(ours: &Version, theirs: &Version) -> bool {

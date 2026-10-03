@@ -689,6 +689,7 @@ fn a_window_hears_of_the_human_only_from_its_own_machine() {
             group: Some("g".to_string()),
             to: vec!["@human".to_string()],
             body: body.to_string(),
+            urgent: false,
         })
     };
     ask(&mut control, named("a"), post("before"));

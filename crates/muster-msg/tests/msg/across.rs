@@ -6,7 +6,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use muster_msg::{
-    Action, Call, Caller, Caught, Entry, HUMAN, Inbox, Liveness, Member, Memory, Messaging,
+    Action, Call, Caller, Caught, Draft, Entry, HUMAN, Inbox, Liveness, Member, Memory, Messaging,
     Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply, Route, Settled, Tell, Via,
     Wake, What,
 };
@@ -248,18 +248,30 @@ impl Wire {
         to: &[&str],
         body: &str,
     ) -> Result<Posted, Refusal> {
+        self.post_urgently(side, caller, group, to, body, false)
+    }
+
+    fn post_urgently(
+        &mut self,
+        side: Side,
+        caller: &Caller,
+        group: Option<&str>,
+        to: &[&str],
+        body: &str,
+        urgent: bool,
+    ) -> Result<Posted, Refusal> {
         let now = self.tick();
         let to: Vec<String> = to.iter().map(|name| (*name).to_string()).collect();
         let found = self.found(side, &to);
         let (service, sessions) = self.split(side);
-        match service.route_post(caller, group, &to, &found, body, sessions)? {
+        let draft = Draft { group, to: &to, found: &found, body, urgent };
+        match service.route_post(caller, &draft, sessions)? {
             Route::Away(away) => match self.send(side, &away.call)? {
                 Settled::Posted(posted) => Ok(posted),
                 other => panic!("a post settles as posted: {other:?}"),
             },
             Route::Here => {
-                let mut posted =
-                    service.post_found(caller, group, &to, &found, body, sessions, now)?;
+                let mut posted = service.post_draft(caller, &draft, sessions, now)?;
                 self.wakes.extend(posted.wakes.iter().map(|wake| (side, wake.clone())));
                 let reached = self.tell(side, &posted.tell);
                 posted.reached.extend(reached);
@@ -349,6 +361,35 @@ fn a_devenv_agent_joins_a_laptop_group_and_they_wake_each_other() {
     let answered = wire.post(Side::Laptop, &builder, None, &["critic"], "thanks").unwrap();
     assert_eq!(woke(&answered), [("critic@devenv", Reach::Woken)]);
     assert_eq!(wire.read(Side::Devenv, &critic, None), ["review@lap builder@lap: thanks"]);
+}
+
+/// An urgent post stays urgent across the link both ways: replicated, it wakes a member on the
+/// far machine woken already, and forwarded to the group's home, one there.
+#[test]
+fn an_urgent_post_wakes_members_woken_already_on_either_machine() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+
+    let first = wire.post(Side::Laptop, &builder, Some("review"), &[], "one").unwrap();
+    assert_eq!(woke(&first), [("critic@devenv", Reach::Woken)]);
+    let second = wire.post(Side::Laptop, &builder, Some("review"), &[], "two").unwrap();
+    assert_eq!(woke(&second), [("critic@devenv", Reach::AlreadyWoken)]);
+    let urgent =
+        wire.post_urgently(Side::Laptop, &builder, Some("review"), &[], "now", true).unwrap();
+    assert_eq!(woke(&urgent), [("critic@devenv", Reach::Woken)], "replicated urgent");
+
+    wire.read(Side::Devenv, &critic, None);
+    wire.post(Side::Devenv, &critic, None, &[], "three").unwrap();
+    let again = wire.post(Side::Devenv, &critic, None, &[], "four").unwrap();
+    assert_eq!(woke(&again), [("builder@lap", Reach::AlreadyWoken)]);
+    let urgent = wire.post_urgently(Side::Devenv, &critic, None, &[], "now", true).unwrap();
+    assert_eq!(woke(&urgent), [("builder@lap", Reach::Woken)], "forwarded urgent");
+    assert_eq!(
+        wire.read(Side::Laptop, &builder, None).last().map(String::as_str),
+        Some("review critic@devenv: now")
+    );
 }
 
 /// The wake for a devenv member is made on the devenv, where its inbox is, and the laptop's
@@ -673,6 +714,7 @@ fn directed(membership: &[&str]) -> Policy {
             ("*".to_string(), set(&["director", HUMAN])),
         ]),
         membership: set(membership),
+        urgent: set(&["*"]),
         paused: false,
     }
 }
@@ -980,6 +1022,7 @@ fn a_call_acting_as_this_machines_own_or_naming_no_name_is_refused() {
         group: "review".to_string(),
         to: to.iter().map(ToString::to_string).collect(),
         body: "done".to_string(),
+        urgent: false,
         cursor: 99,
         head: 0,
     };
@@ -1015,7 +1058,12 @@ fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
     let entry = |author: &str| Entry {
         seq: 1,
         at_ms: 1,
-        what: What::Message { author: author.to_string(), to: Vec::new(), body: "x".to_string() },
+        what: What::Message {
+            author: author.to_string(),
+            to: Vec::new(),
+            body: "x".to_string(),
+            urgent: false,
+        },
     };
     let caught = |group: &str, author: &str| Caught {
         group: group.to_string(),
@@ -1503,6 +1551,7 @@ fn a_policy_names_a_member_on_another_machine() {
             ("*".to_string(), set(&["director@devenv", HUMAN])),
         ]),
         membership: set(&["director@devenv", "builder"]),
+        urgent: set(&["*"]),
         paused: false,
     };
     let mut wire = Wire::new();

@@ -1157,6 +1157,74 @@
         "a posted #5 to g; woke b, c [g #5-5 x1 to-you:0 from a]",
         "b read g: #3 c joined | #4 a joined | #5 a: the lexer drops a token"
       ] }
+    },
+    {
+      "name": "an urgent post wakes an agent woken already, and an ordinary post after it does not",
+      "why": "Once per batch is the rule for what can wait until a turn ends; an urgent post cannot, so it wakes its addressee again, with how many of the unread messages were urgent. The doorbell then rings it while it works (MIP-4, sections 5 and 6). Ordinary posts keep the rule.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "a", "do": "post", "body": "stop: the schema changed", "urgent": true},
+        {"session": "a", "do": "post", "body": "three"},
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"do": "idle", "name": "b"},
+        {"session": "s1", "do": "read", "pane": "p1"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "b joined g (created)",
+        "a joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a] rung p1",
+        "a posted #5 to g; woke b [g #4-5 x2 to-you:0 urgent:1 from a] rung p1",
+        "a posted #6 to g; already woken b",
+        "p1 idle",
+        "rewoke b [g #4-6 x3 to-you:0 urgent:1 from a again] rung p1",
+        "b read g: #3 a joined | #4 a: one | #5 a (urgent): stop: the schema changed | #6 a: three"
+      ] }
+    },
+    {
+      "name": "a group's policy says who may post urgently",
+      "why": "An urgent post interrupts an agent mid-turn, so a directed council can keep that to its director and the human. A post the policy does not let be urgent is refused rather than sent as an ordinary one, which would arrive later than its author was told (MIP-4, section 8).",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"*": ["*", "@human"]}, "allow": {"*": ["*"]}, "membership": ["*"], "urgent": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"session": "sb", "do": "join", "name": "builder", "group": "council"},
+        {"session": "sb", "do": "post", "body": "look now", "urgent": true},
+        {"session": "sb", "do": "post", "body": "look when you can"},
+        {"session": "sd", "do": "read"},
+        {"session": "sd", "do": "post", "body": "stop", "urgent": true},
+        {"do": "post", "group": "council", "body": "me too", "urgent": true}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "director joined council",
+        "builder joined council",
+        "refused not_urgent council (only director,@human)",
+        "builder posted #6 to council; woke director [council #6-6 x1 to-you:0 from builder]; waiting @human [council #6-6 x1 to-you:0 from builder] for the windows",
+        "director read council: #5 builder joined | #6 builder: look when you can",
+        "director posted #7 to council; woke builder [council #7-7 x1 to-you:0 urgent:1 from director]; waiting @human [council #6-7 x2 to-you:0 urgent:1 from builder,director] for the windows",
+        "@human posted #8 to council; woke builder [council #7-8 x2 to-you:0 urgent:2 from director,@human], director [council #8-8 x1 to-you:0 urgent:1 from @human]"
+      ] }
+    },
+    {
+      "name": "an urgent post to an agent whose hooks fetch its messages is left to them",
+      "why": "Its PostToolUse hook reads at its next tool call, which is as soon as typing into its pane would reach it, so its pane is not rung (MIP-4, section 6).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1", "pull": true},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "a", "do": "post", "body": "now", "urgent": true}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "b joined g (created)",
+        "a joined g",
+        "a posted #4 to g; woke b",
+        "a posted #5 to g; already woken b"
+      ] }
     }
   ]
 }

@@ -173,6 +173,21 @@ pub struct Member {
     pub pane: Option<String>,
 }
 
+/// A message as its author sends it: what `post` is asked.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Draft<'a> {
+    /// The group to post to; none for the one its author and addressees share.
+    pub group: Option<&'a str>,
+    pub to: &'a [String],
+    /// `name@machine` for each name in `to` that means nobody here and another machine said it
+    /// has (MIP-4, section 11).
+    pub found: &'a [String],
+    pub body: &'a str,
+    /// To reach its addressees mid-turn, even those woken already, rather than once they are
+    /// idle.
+    pub urgent: bool,
+}
+
 /// What a woken participant is told: never a body, since only its own `read` moves its cursor
 /// (MIP-4, section 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -182,6 +197,8 @@ pub struct Notice {
     pub last: u64,
     pub count: u64,
     pub to_you: u64,
+    /// How many of them were posted urgently.
+    pub urgent: u64,
     pub from: Vec<String>,
     /// Woken for these once already, and gone idle without reading them.
     pub again: bool,
@@ -601,30 +618,29 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
-        self.post_found(caller, group, to, &[], body, presence, now_ms)
+        let draft = Draft { group, to, body, ..Draft::default() };
+        self.post_draft(caller, &draft, presence, now_ms)
     }
 
-    /// [`Self::post`], with names other machines said they have: `found` holds each as
-    /// `name@machine`, for a `--to` name that means nobody here (MIP-4, section 11).
-    #[allow(clippy::too_many_arguments)]
-    pub fn post_found(
+    /// [`Self::post`], urgent or not, and with names other machines said they have.
+    pub fn post_draft(
         &mut self,
         caller: &Caller,
-        group: Option<&str>,
-        to: &[String],
-        found: &[String],
-        body: &str,
+        draft: &Draft<'_>,
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
-        check_body(body)?;
+        check_body(draft.body)?;
         let author = self.acting(caller, presence)?;
-        let group = group.map(|group| self.locate(group)).transpose()?;
-        let addressees = self.addressees(&author, to, found, group.as_deref(), presence)?;
+        let group = draft.group.map(|group| self.locate(group)).transpose()?;
+        let addressees =
+            self.addressees(&author, draft.to, draft.found, group.as_deref(), presence)?;
         let group = self.resolve_group(&author, &addressees, group.as_deref(), now_ms)?;
         self.here(&group)?;
         let cursor = self.cursor(&author, &group);
-        self.post_as(&author, &group, addressees, body, cursor, None, presence, now_ms)
+        let body = draft.body;
+        let urgent = draft.urgent;
+        self.post_as(&author, &group, addressees, body, urgent, cursor, None, presence, now_ms)
     }
 
     /// Appends a post by `author`, who had read `group` up to `cursor`, and reaches whoever it
@@ -639,12 +655,19 @@ impl<S: Store> Messaging<S> {
         group: &str,
         addressees: Vec<String>,
         body: &str,
+        urgent: bool,
         cursor: u64,
         from: Option<&str>,
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
         let policy = &self.groups[group].policy;
+        if urgent && !policy.urges(author) {
+            return Err(Refusal::NotUrgent {
+                group: group.to_string(),
+                urgent: policy.urgent.clone(),
+            });
+        }
         if let Some(addressee) = addressees.iter().find(|name| !policy.allows(author, name)) {
             return Err(Refusal::NotAllowed {
                 addressee: addressee.clone(),
@@ -663,6 +686,7 @@ impl<S: Store> Messaging<S> {
             author: author.to_string(),
             to: addressees.clone(),
             body: body.to_string(),
+            urgent,
         };
         let seq = self.append(group, message, now_ms)?;
         let targets = self.targets(group, &self.groups[group].policy, author, addressees);
@@ -690,7 +714,7 @@ impl<S: Store> Messaging<S> {
             if split_machine(&target).is_some() {
                 continue;
             }
-            let reach = self.reach_member(&target, group, &mut posted, presence, now_ms);
+            let reach = self.reach_member(&target, group, urgent, &mut posted, presence, now_ms);
             posted.reached.push((target, reach));
         }
         if let Err(Refusal::Store { error }) = self.save() {
@@ -1860,7 +1884,7 @@ impl<S: Store> Messaging<S> {
         }
         let mut notice: Option<Notice> = None;
         for entry in kept.log.iter().filter(|entry| entry.seq > cursor) {
-            let What::Message { author, to, .. } = &entry.what else { continue };
+            let What::Message { author, to, urgent, .. } = &entry.what else { continue };
             let addressed = to.iter().any(|addressee| addressee == name);
             let wakes = if to.is_empty() { policy.rings(author, name) } else { addressed };
             if author == name || !wakes {
@@ -1872,12 +1896,14 @@ impl<S: Store> Messaging<S> {
                 last: entry.seq,
                 count: 0,
                 to_you: 0,
+                urgent: 0,
                 from: Vec::new(),
                 again: false,
             });
             notice.last = entry.seq;
             notice.count += 1;
             notice.to_you += u64::from(addressed);
+            notice.urgent += u64::from(*urgent);
             if !notice.from.contains(author) {
                 notice.from.push(author.clone());
             }
@@ -1891,6 +1917,7 @@ impl<S: Store> Messaging<S> {
         &mut self,
         name: &str,
         group: &str,
+        urgent: bool,
         posted: &mut Posted,
         presence: &dyn Presence,
         now_ms: u64,
@@ -1898,7 +1925,8 @@ impl<S: Store> Messaging<S> {
         if self.groups[group].policy.paused && name != HUMAN {
             return Reach::Paused;
         }
-        self.reach(name, group, posted, presence, now_ms)
+        let policy = self.groups[group].policy.clone();
+        self.reach_under(name, group, &policy, urgent, posted, presence, now_ms)
     }
 
     /// Wakes `name` for `group` if nothing has since the last time it read.
@@ -1911,15 +1939,19 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Reach {
         let policy = self.groups[group].policy.clone();
-        self.reach_under(name, group, &policy, posted, presence, now_ms)
+        self.reach_under(name, group, &policy, false, posted, presence, now_ms)
     }
 
     /// [`Self::reach`], for messages posted under `policy` rather than the group's policy now.
+    /// An `urgent` post wakes even a participant woken already and not since read: once per
+    /// batch is the rule for what can wait until a turn ends, and an urgent post cannot.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn reach_under(
         &mut self,
         name: &str,
         group: &str,
         policy: &Policy,
+        urgent: bool,
         posted: &mut Posted,
         presence: &dyn Presence,
         now_ms: u64,
@@ -1936,7 +1968,7 @@ impl<S: Store> Messaging<S> {
         let woken_before = participant.woken.contains(group);
         let waiting = self.waiters.get(name).is_some_and(|waiter| {
             waiter.group.as_deref().is_none_or(|filter| filter == group)
-                && !(waiter.due && woken_before)
+                && !(waiter.due && woken_before && !urgent)
         });
         let hooked = self.hooked(name, now_ms, presence);
         if name == HUMAN {
@@ -1972,6 +2004,7 @@ impl<S: Store> Messaging<S> {
             .as_ref()
             .is_some_and(|pane| presence.doorbell(pane) == Ringable::AgentToCome);
         if participant.woken.contains(group)
+            && !urgent
             && via.is_ok()
             && (to_come || presence.alive(participant))
         {
@@ -2031,6 +2064,7 @@ impl<S: Store> Messaging<S> {
             last: 0,
             count: 0,
             to_you: 0,
+            urgent: 0,
             from: Vec::new(),
             again: false,
         })

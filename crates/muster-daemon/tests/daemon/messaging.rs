@@ -317,7 +317,10 @@ fn the_human() -> msg_request::Caller {
 
 fn post_to(caller: &msg_request::Caller, to: &str, body: &str) -> Service {
     let to = vec![to.to_string()];
-    msg(caller, Asked::Post(msg_request::Post { to, body: body.to_string(), group: None }))
+    msg(
+        caller,
+        Asked::Post(msg_request::Post { to, body: body.to_string(), group: None, urgent: false }),
+    )
 }
 
 /// What the next event says waits for the human.
@@ -429,6 +432,7 @@ fn default_policy() -> msg_request::Policy {
         allow: HashMap::from([("*".to_string(), names(&["*"]))]),
         membership: vec!["*".to_string()],
         paused: false,
+        urgent: None,
     }
 }
 

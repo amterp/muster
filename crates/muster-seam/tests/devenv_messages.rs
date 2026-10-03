@@ -195,6 +195,7 @@ fn post(author: &str, group: Option<&str>, to: &[&str], body: &str) -> Service {
         group: group.map(str::to_string),
         to: to.iter().map(|name| (*name).to_string()).collect(),
         body: body.to_string(),
+        urgent: false,
     });
     msg(author, asked)
 }

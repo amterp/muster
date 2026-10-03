@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::names::{
     check_addressee, check_group, check_participant, is_human, is_machine, split_machine,
 };
-use crate::service::{Group, check_body};
+use crate::service::{Draft, Group, check_body};
 use crate::{
     Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, Member, Messaging,
     Policy, Posted, Presence, Reach, Refusal, Store, Via, Wake, What,
@@ -63,10 +63,11 @@ impl Peer {
 
     fn entry(&self, entry: Entry) -> Entry {
         let what = match entry.what {
-            What::Message { author, to, body } => What::Message {
+            What::Message { author, to, body, urgent } => What::Message {
                 author: self.inward(&author),
                 to: to.iter().map(|name| self.inward(name)).collect(),
                 body,
+                urgent,
             },
             What::Created { by } => What::Created { by: self.inward(&by) },
             What::Joined { who } => What::Joined { who: self.inward(&who) },
@@ -89,6 +90,7 @@ impl Peer {
             ring: table(policy.ring),
             allow: table(policy.allow),
             membership: names(policy.membership),
+            urgent: names(policy.urgent),
             paused: policy.paused,
         }
     }
@@ -116,6 +118,10 @@ impl Peer {
                 addressee: name(addressee),
                 group: group(g),
                 allowed: allowed.into_iter().map(role).collect(),
+            },
+            Refusal::NotUrgent { group: g, urgent } => Refusal::NotUrgent {
+                group: group(g),
+                urgent: urgent.into_iter().map(role).collect(),
             },
             Refusal::NotPermitted { name: n, group: g, action, permitted } => {
                 Refusal::NotPermitted {
@@ -164,6 +170,7 @@ pub enum Call {
         group: String,
         to: Vec<String>,
         body: String,
+        urgent: bool,
         cursor: u64,
         head: u64,
     },
@@ -502,16 +509,14 @@ impl<S: Store> Messaging<S> {
     pub fn route_post(
         &mut self,
         caller: &Caller,
-        group: Option<&str>,
-        to: &[String],
-        found: &[String],
-        body: &str,
+        draft: &Draft<'_>,
         presence: &dyn Presence,
     ) -> Result<Route, Refusal> {
-        check_body(body)?;
+        check_body(draft.body)?;
         let author = self.acting(caller, presence)?;
-        let group = group.map(|group| self.locate(group)).transpose()?;
-        let addressees = self.addressees(&author, to, found, group.as_deref(), presence)?;
+        let group = draft.group.map(|group| self.locate(group)).transpose()?;
+        let addressees =
+            self.addressees(&author, draft.to, draft.found, group.as_deref(), presence)?;
         let key = match group {
             Some(key) => key,
             None => match self.shared_group(&author, &addressees)? {
@@ -540,7 +545,8 @@ impl<S: Store> Messaging<S> {
             group: base(&key),
             author,
             to: addressees,
-            body: body.to_string(),
+            body: draft.body.to_string(),
+            urgent: draft.urgent,
         };
         Ok(Route::Away(Away { machine, call }))
     }
@@ -784,7 +790,7 @@ impl<S: Store> Messaging<S> {
         // from nothing replays its whole log, and a member who left since was woken for it
         // already, before it left. Each is woken under the policy of its last message posted
         // while the group was not paused, and held if every one came while it was.
-        let mut targets: Vec<(String, Option<Policy>)> = Vec::new();
+        let mut targets: Vec<Target> = Vec::new();
         let mut human_left = false;
         let mut forgotten = false;
         for entry in fresh {
@@ -816,17 +822,16 @@ impl<S: Store> Messaging<S> {
             }
             let group = self.groups.get_mut(&key).expect("made above");
             let message = match &entry.what {
-                What::Message { author, to, .. } => Some((author.clone(), to.clone())),
+                What::Message { author, to, urgent, .. } => {
+                    Some((author.clone(), to.clone(), *urgent))
+                }
                 _ => None,
             };
             group.log.push(entry);
-            let Some((author, to)) = message else { continue };
+            let Some((author, to, urgent)) = message else { continue };
             let live = (!paused).then(|| Policy { paused: false, ..ringing.clone() });
             for target in self.targets(&key, &ringing, &author, to) {
-                match targets.iter_mut().find(|(held, _)| *held == target) {
-                    Some((_, under)) => *under = live.clone().or(under.take()),
-                    None => targets.push((target, live.clone())),
-                }
+                Target::add(&mut targets, target, live.as_ref(), urgent);
             }
         }
         self.reach_batch(&key, targets, forgotten, &mut posted, presence, now_ms);
@@ -869,23 +874,25 @@ impl<S: Store> Messaging<S> {
     fn reach_batch(
         &mut self,
         key: &str,
-        targets: Vec<(String, Option<Policy>)>,
+        targets: Vec<Target>,
         forgotten: bool,
         posted: &mut Posted,
         presence: &dyn Presence,
         now_ms: u64,
     ) {
-        for (target, under) in targets {
-            let member = self.groups[key].members.contains(&target);
-            if !member || !self.participants.contains_key(&target) {
+        for Target { name, under, urgent } in targets {
+            let member = self.groups[key].members.contains(&name);
+            if !member || !self.participants.contains_key(&name) {
                 continue;
             }
             let reach = match under {
-                Some(policy) => self.reach_under(&target, key, &policy, posted, presence, now_ms),
-                None if target == HUMAN => self.reach(&target, key, posted, presence, now_ms),
+                Some(policy) => {
+                    self.reach_under(&name, key, &policy, urgent, posted, presence, now_ms)
+                }
+                None if name == HUMAN => self.reach(&name, key, posted, presence, now_ms),
                 None => Reach::Paused,
             };
-            posted.reached.push((target, reach));
+            posted.reached.push((name, reach));
         }
         // Woken for a message from before a pause the batch also holds, as the home woke its own
         // members when it was posted; the pause then forgot that, as it did at the home.
@@ -966,6 +973,7 @@ impl<S: Store> Messaging<S> {
             ring: table(policy.ring),
             allow: table(policy.allow),
             membership: names(policy.membership),
+            urgent: names(policy.urgent),
             paused: policy.paused,
         }
     }
@@ -1014,8 +1022,8 @@ impl<S: Store> Messaging<S> {
             Call::Leave { name, group, head } => self
                 .leave_from(peer, &name, &group, head, now_ms, &mut answered)
                 .unwrap_or_else(refused),
-            Call::Post { author, group, to, body, cursor, head } => {
-                let post = Forwarded { author, group, to, body, cursor, head };
+            Call::Post { author, group, to, body, urgent, cursor, head } => {
+                let post = Forwarded { author, group, to, body, urgent, cursor, head };
                 self.post_from(peer, post, presence, now_ms, &mut answered)
             }
         };
@@ -1159,7 +1167,7 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
         answered: &mut Answered,
     ) -> Reply {
-        let Forwarded { author, group, to, body, cursor, head } = post;
+        let Forwarded { author, group, to, body, urgent, cursor, head } = post;
         let refused = |refusal| Reply::Refused { refusal, caught: None };
         if !self.kept_here(&group) {
             return refused(Refusal::NoSuchGroup { group });
@@ -1174,7 +1182,9 @@ impl<S: Store> Messaging<S> {
         }
         let caught = |service: &Self| service.since(&group, head).ok();
         let from = Some(peer.name.as_str());
-        match self.post_as(&author, &group, addressees, &body, cursor, from, presence, now_ms) {
+        let posting = self
+            .post_as(&author, &group, addressees, &body, urgent, cursor, from, presence, now_ms);
+        match posting {
             Ok(posted) => {
                 answered.wakes = posted.wakes;
                 answered.answered = posted.answered;
@@ -1274,8 +1284,32 @@ struct Forwarded {
     group: String,
     to: Vec<String>,
     body: String,
+    urgent: bool,
     cursor: u64,
     head: u64,
+}
+
+/// A member a replica's new messages are for: the policy it is reached under, none when every
+/// one of them came while the group was paused, and whether any that came unpaused was urgent.
+struct Target {
+    name: String,
+    under: Option<Policy>,
+    urgent: bool,
+}
+
+impl Target {
+    /// Adds a message for `name`, posted under `live`, none while the group was paused: a later
+    /// policy stands for an earlier one, and a paused message wakes nobody, urgent or not.
+    fn add(targets: &mut Vec<Target>, name: String, live: Option<&Policy>, urgent: bool) {
+        let urgent = urgent && live.is_some();
+        match targets.iter_mut().find(|known| known.name == name) {
+            Some(known) => {
+                known.under = live.cloned().or(known.under.take());
+                known.urgent |= urgent;
+            }
+            None => targets.push(Target { name, under: live.cloned(), urgent }),
+        }
+    }
 }
 
 /// A replica's key without its machine: the name its home keeps it under.

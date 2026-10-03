@@ -236,7 +236,12 @@ mod tests {
         Entry {
             seq,
             at_ms: seq,
-            what: What::Message { author: "a".to_string(), to: Vec::new(), body: body.to_string() },
+            what: What::Message {
+                author: "a".to_string(),
+                to: Vec::new(),
+                body: body.to_string(),
+                urgent: false,
+            },
         }
     }
 

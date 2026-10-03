@@ -15,8 +15,8 @@ pub(super) fn call_to(call: &Call) -> Called {
         Call::Find { group } => Called::Find(peer_call::Find { group }),
         Call::Join { name, group, head } => Called::Join(peer_call::Join { name, group, head }),
         Call::Leave { name, group, head } => Called::Leave(peer_call::Leave { name, group, head }),
-        Call::Post { author, group, to, body, cursor, head } => {
-            Called::Post(peer_call::Post { author, group, to, body, cursor, head })
+        Call::Post { author, group, to, body, urgent, cursor, head } => {
+            Called::Post(peer_call::Post { author, group, to, body, cursor, head, urgent })
         }
         Call::Since { group, after } => Called::Since(peer_call::Since { group, after }),
         Call::Who { group } => Called::Who(peer_call::Who { group }),
@@ -38,6 +38,7 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
             group: post.group,
             to: post.to,
             body: post.body,
+            urgent: post.urgent,
             cursor: post.cursor,
             head: post.head,
         },
@@ -69,9 +70,12 @@ pub(super) fn caught_from(caught: proto::Caught) -> Caught {
 fn entry_from(entry: msg_answer::Entry) -> Option<Entry> {
     use msg_answer::entry::What as Said;
     let what = match entry.what? {
-        Said::Message(message) => {
-            What::Message { author: message.author, to: message.to, body: message.body }
-        }
+        Said::Message(message) => What::Message {
+            author: message.author,
+            to: message.to,
+            body: message.body,
+            urgent: message.urgent,
+        },
         Said::Created(by) => What::Created { by },
         Said::Joined(who) => What::Joined { who },
         Said::Left(who) => What::Left { who },
@@ -239,6 +243,10 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.group = group;
             refused.candidates = allowed;
         }
+        Refusal::NotUrgent { group, urgent } => {
+            refused.group = group;
+            refused.candidates = urgent;
+        }
         Refusal::NotPermitted { name, group, action, permitted } => {
             refused.name = name;
             refused.group = group;
@@ -300,6 +308,7 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "kept_elsewhere" => Refusal::KeptElsewhere { group, machine },
         "human_elsewhere" => Refusal::HumanElsewhere { machine, calls_us: name },
         "not_allowed" => Refusal::NotAllowed { addressee: name, group, allowed: candidates },
+        "not_urgent" => Refusal::NotUrgent { group, urgent: candidates },
         "not_permitted" if let Some(action) = action_from(&action) => {
             Refusal::NotPermitted { name, group, action, permitted: candidates }
         }
@@ -371,6 +380,7 @@ mod tests {
                 group: "g".into(),
                 allowed: vec!["director".into(), "@human".into()],
             },
+            Refusal::NotUrgent { group: "g".into(), urgent: vec!["director".into()] },
             Refusal::NotPermitted {
                 name: "b".into(),
                 group: "g".into(),
@@ -408,6 +418,7 @@ mod tests {
                         author: "a".into(),
                         to: vec!["b".into()],
                         body: "x".into(),
+                        urgent: true,
                     },
                 },
                 Entry {

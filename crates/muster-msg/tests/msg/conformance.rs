@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 
 use conformance::{Conformance, fields};
 use muster_msg::{
-    Action, Activity, Caller, Change, Changed, Inbox, Liveness, Memory, Messaging, Notice,
+    Action, Activity, Caller, Change, Changed, Draft, Inbox, Liveness, Memory, Messaging, Notice,
     Participant, Policy, Posted, Presence, Reach, Refusal, Ringable, Via, What,
 };
 use serde_json::{Value, json};
@@ -93,12 +93,13 @@ fn caller(step: &Value) -> Caller {
 
 fn notice(notice: &Notice) -> String {
     format!(
-        "{} #{}-{} x{} to-you:{} from {}{}",
+        "{} #{}-{} x{} to-you:{}{} from {}{}",
         notice.group,
         notice.first,
         notice.last,
         notice.count,
         notice.to_you,
+        if notice.urgent > 0 { format!(" urgent:{}", notice.urgent) } else { String::new() },
         notice.from.join(","),
         if notice.again { " again" } else { "" }
     )
@@ -154,6 +155,7 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::NotAllowed { addressee, group, allowed } => {
             format!("{addressee} {group} (may address {})", allowed.join(","))
         }
+        Refusal::NotUrgent { group, urgent } => format!("{group} (only {})", urgent.join(",")),
         Refusal::NotPermitted { name, group, action, permitted } => {
             format!("{name} {} {group} (only {})", action_word(*action), permitted.join(","))
         }
@@ -177,11 +179,10 @@ fn action_word(action: Action) -> &'static str {
 
 fn entry(entry: &muster_msg::Entry) -> String {
     match &entry.what {
-        What::Message { author, to, body } if to.is_empty() => {
-            format!("#{} {author}: {body}", entry.seq)
-        }
-        What::Message { author, to, body } => {
-            format!("#{} {author}->{}: {body}", entry.seq, to.join(","))
+        What::Message { author, to, body, urgent } => {
+            let to = if to.is_empty() { String::new() } else { format!("->{}", to.join(",")) };
+            let urgent = if *urgent { " (urgent)" } else { "" };
+            format!("#{} {author}{to}{urgent}: {body}", entry.seq)
         }
         What::Created { by } => format!("#{} created by {by}", entry.seq),
         What::Joined { who } => format!("#{} {who} joined", entry.seq),
@@ -501,8 +502,10 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
         "post" => {
             let to = strings(step.get("to"));
             let body = text("body").unwrap_or_default();
+            let urgent = step.get("urgent").and_then(Value::as_bool).unwrap_or(false);
+            let draft = Draft { group: text("group"), to: &to, body, urgent, ..Draft::default() };
             service
-                .post(&who, text("group"), &to, body, sessions, now)
+                .post_draft(&who, &draft, sessions, now)
                 .map(|posted| delivered(service, sessions, &posted))
         }
         "read" => service.read(&who, text("group"), sessions).map(|read| {

@@ -72,6 +72,7 @@ fn post(caller: &msg_request::Caller, group: Option<&str>, to: &[&str], body: &s
         group: group.map(str::to_string),
         to: to.iter().map(|name| (*name).to_string()).collect(),
         body: body.to_string(),
+        urgent: false,
     });
     msg(caller, asked)
 }

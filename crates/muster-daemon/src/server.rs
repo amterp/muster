@@ -167,7 +167,9 @@ fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
     match ConnectionKind::try_from(hello.kind) {
         Ok(ConnectionKind::Stream) => stream::serve(stream, shared),
         Ok(ConnectionKind::Input) => input::serve(stream, shared, &hello.client),
-        Ok(ConnectionKind::Peer) => crate::messages::peer::serve(stream, shared),
+        Ok(ConnectionKind::Peer) => {
+            crate::messages::peer::serve(stream, shared, hello.protocol.unwrap_or_default());
+        }
         _ => control::serve(stream, shared, &hello.client),
     }
 }

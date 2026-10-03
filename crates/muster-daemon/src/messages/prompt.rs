@@ -1,6 +1,7 @@
 //! What the doorbell reads before it types into a pane (MIP-4, section 6): whether the agent it
 //! is ringing is still the pane's foreground, and whether the screen, read now rather than as
-//! detection last published it, is that agent at its prompt, and what the prompt holds.
+//! detection last published it, is that agent at its prompt - idle, or for an urgent wake at
+//! work too - and what the prompt holds.
 //!
 //! Read with no lock held but the pane's own, just before each write, so what is typed answers
 //! to the screen as it is, not as it was when a post came in.
@@ -21,7 +22,9 @@ pub(crate) enum AtPrompt {
     Not(&'static str),
 }
 
-pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting) -> AtPrompt {
+/// `at_work` also takes the prompt of an agent at work, which takes what is typed there into
+/// the turn it is running.
+pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: bool) -> AtPrompt {
     let Some(manifests) = detecting.manifests() else {
         return AtPrompt::Not("detection has not loaded its manifests");
     };
@@ -46,7 +49,13 @@ pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting) -> AtPrompt 
     let (drawn, typed) = views(&grid);
     let title = muster_detect::title(&title);
     let input = Input { screen: &drawn, title: &title, progress: "" };
-    match manifests.prompt(&agent, input, &typed) {
+    let read = manifests.prompt(&agent, input, &typed);
+    let read = if at_work && read.is_none() {
+        manifests.prompt_at_work(&agent, input, &typed)
+    } else {
+        read
+    };
+    match read {
         Some(Prompt::Empty) => AtPrompt::Empty,
         Some(Prompt::Holds(held)) => AtPrompt::Holds(held),
         None => AtPrompt::Not("its screen is not its prompt"),

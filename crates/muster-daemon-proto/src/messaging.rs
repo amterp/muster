@@ -45,6 +45,9 @@ pub fn wake_text(notice: &crate::msg_answer::Notice) -> String {
         format!("#{}-{}", notice.first, notice.last)
     };
     let mut parts = vec![format!("{} new ({range})", notice.count)];
+    if notice.urgent > 0 {
+        parts.push(format!("{} urgent", notice.urgent));
+    }
     if notice.to_you > 0 {
         parts.push(format!("{} to you", notice.to_you));
     }
@@ -71,6 +74,7 @@ mod tests {
             last: 42,
             count: 3,
             to_you: 1,
+            urgent: 0,
             from: vec!["director".to_string(), "critic".to_string()],
             again: false,
         };
@@ -79,7 +83,7 @@ mod tests {
             "[muster] review: 3 new (#40-42), 1 to you, from director, critic. \
              Read: muster msg read --group review"
         );
-        let one = Notice { first: 7, last: 7, count: 1, to_you: 0, ..notice };
+        let one = Notice { first: 7, last: 7, count: 1, to_you: 0, ..notice.clone() };
         assert_eq!(
             wake_text(&one),
             "[muster] review: 1 new (#7), from director, critic. \
@@ -91,6 +95,12 @@ mod tests {
         assert_eq!(
             wake_text(&again),
             "[muster] review: 1 new (#7), from director, critic, still unread. \
+             Read: muster msg read --group review"
+        );
+        let urgent = Notice { urgent: 2, ..notice };
+        assert_eq!(
+            wake_text(&urgent),
+            "[muster] review: 3 new (#40-42), 2 urgent, 1 to you, from director, critic. \
              Read: muster msg read --group review"
         );
     }

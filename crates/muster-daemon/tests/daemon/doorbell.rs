@@ -113,9 +113,18 @@ impl Agent {
     }
 
     fn post(&mut self, to: &str, body: &str) -> msg_answer::Posted {
+        self.posting(to, body, false)
+    }
+
+    fn post_urgently(&mut self, to: &str, body: &str) -> msg_answer::Posted {
+        self.posting(to, body, true)
+    }
+
+    fn posting(&mut self, to: &str, body: &str, urgent: bool) -> msg_answer::Posted {
         let asked = Asked::Post(msg_request::Post {
             body: body.to_string(),
             to: vec![to.to_string()],
+            urgent,
             ..Default::default()
         });
         let caller = msg_request::Caller {
@@ -468,4 +477,91 @@ fn an_agent_whose_stop_hook_waits_is_told_there_and_not_rung() {
     }
     std::thread::sleep(QUIET + Duration::from_secs(2));
     assert!(agent.rung().is_empty(), "rung as well: {:?}", agent.rung());
+}
+
+/// An urgent post rings an agent at work, at its prompt, where Claude Code queues what is typed
+/// for the turn it is running; an ordinary post to the same agent still waits for it to be idle.
+/// The urgent ring stands for the ordinary one waiting, so the agent is rung once.
+#[test]
+fn an_urgent_post_rings_an_agent_at_work_and_an_ordinary_one_waits_for_idle() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    std::thread::sleep(QUIET);
+
+    let posted = agent.post("p1", "when you are done");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Deferred);
+    assert_eq!(posted.reached[0].until(), msg_answer::Until::Idle);
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rung(), Vec::<String>::new(), "an ordinary post rang an agent at work");
+
+    let posted = agent.post_urgently("p1", "stop: the schema changed");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Woken);
+    assert_eq!(posted.reached[0].activity(), msg_answer::Activity::Working);
+    let rung = agent.until_rung(1);
+    assert_eq!(
+        rung,
+        [
+            "[muster] integrator+p1: 2 new (#4-5), 1 urgent, 2 to you, from integrator. Read: muster msg read --group integrator+p1"
+        ]
+    );
+    std::thread::sleep(ANSWER + QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rung().len(), 1, "rung again: {:?}", agent.heard());
+    assert_eq!(agent.pressed(), 0, "Return pressed again over a ring taken: {:?}", agent.heard());
+}
+
+/// Words somebody typed into the prompt of an agent at work are a draft: an urgent ring waits
+/// until it is sent or cleared, as it would at an idle prompt.
+#[test]
+fn an_urgent_post_waits_out_a_draft_typed_while_the_agent_works() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.type_in("half typed", false);
+    agent.until_shows("PROBE-PROMPT> half typed");
+    std::thread::sleep(QUIET);
+
+    let posted = agent.post_urgently("p1", "now");
+    assert_eq!(posted.reached[0].until(), msg_answer::Until::Prompt);
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung into a draft");
+
+    agent.type_in("", true);
+    let rung = agent.until_rung(1);
+    assert!(rung[0].contains("1 urgent"), "{rung:?}");
+    assert!(agent.heard().contains(&"half typed".to_string()), "{:?}", agent.heard());
+}
+
+/// An urgent post never answers a dialog: it waits until its agent is out of it, and rings it
+/// at work if that is where the dialog left it.
+#[test]
+fn an_urgent_post_waits_out_a_dialog() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+    std::thread::sleep(QUIET);
+
+    let posted = agent.post_urgently("p1", "now");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Deferred);
+    assert_eq!(posted.reached[0].until(), msg_answer::Until::Unblocked);
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung at a dialog");
+
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    let rung = agent.until_rung(1);
+    assert!(rung[0].contains("1 urgent"), "{rung:?}");
+}
+
+/// Nor a menu opened over the prompt of an agent at work.
+#[test]
+fn an_urgent_post_waits_out_a_menu_opened_while_the_agent_works() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.type_in("menu", true);
+    agent.until_shows("PROBE-MENU");
+    std::thread::sleep(QUIET);
+
+    agent.post_urgently("p1", "now");
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung over a menu");
+
+    agent.type_in("nomenu", true);
+    agent.until_rung(1);
 }

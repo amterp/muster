@@ -11,6 +11,10 @@
 //! waits here, and this thread rings it when the pane allows. The same thread wakes an agent
 //! once more when it goes idle with what it was woken for still unread (section 5).
 //!
+//! A wake for messages any of which was posted urgently may also ring an agent at work, at a
+//! prompt read as empty while it works ([`super::prompt`]): Claude Code queues what is typed
+//! there and takes it into the turn it is running. Everything else above holds for it.
+//!
 //! Claude Code keeps what is typed while it starts as its prompt and drops the Return, so a
 //! ring can sit unsent. Return is pressed again for it, a few times, but only while nobody has
 //! typed into the pane since and the prompt holds the ring's own text and nothing else: that
@@ -74,18 +78,35 @@ pub(crate) enum Now {
     Ring,
     /// Not until its agent is idle.
     AtIdle,
+    /// Not until its agent is out of the dialog it is at: an urgent wake, which may ring an
+    /// agent at work.
+    Unblocked,
     /// Not until this moment, when nothing will have been typed into it for [`QUIET`].
     At(Instant),
 }
 
-pub(crate) fn may_ring(seen: &Seen, now: Instant) -> Now {
-    if !matches!(seen.activity, Some(Activity::Idle | Activity::Waiting)) {
-        return Now::AtIdle;
+/// Whether a pane may be rung now; `urgent` for a wake that may ring its agent at work.
+pub(crate) fn may_ring(seen: &Seen, now: Instant, urgent: bool) -> Now {
+    if !may_ring_while(seen.activity, urgent) {
+        return if urgent { Now::Unblocked } else { Now::AtIdle };
     }
     match seen.input_at().map(|at| at + QUIET) {
         Some(quiet) if quiet > now => Now::At(quiet),
         _ => Now::Ring,
     }
+}
+
+fn may_ring_while(activity: Option<Activity>, urgent: bool) -> bool {
+    match activity {
+        Some(Activity::Idle | Activity::Waiting) => true,
+        Some(Activity::Working) => urgent,
+        Some(Activity::Blocked) | None => false,
+    }
+}
+
+/// Whether a wake is for messages any of which was posted urgently.
+pub(crate) fn is_urgent(wake: &Wake) -> bool {
+    wake.notice.urgent > 0
 }
 
 /// What came of ringing one pane.
@@ -107,7 +128,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
     let mut waiting = Vec::new();
     let mut came = Vec::new();
     for (wake, seen) in ringing {
-        match prompt::look(&seen.io, &seen.agent, &shared.detecting) {
+        match prompt::look(&seen.io, &seen.agent, &shared.detecting, is_urgent(&wake)) {
             AtPrompt::Empty => {
                 let text = messaging::wake_text(&notice_of(&wake.notice));
                 let took = seen.io.queue(Input::Ring { text, enter: true });
@@ -259,13 +280,13 @@ fn look(shared: &Shared, before: &mut HashMap<String, Option<Activity>>) -> Dura
             }
             let dropped = match (panes.get(pane), panes.doorbell(pane)) {
                 (Some(seen), Ringable::Rings) => {
-                    match may_ring(seen, now) {
+                    match may_ring(seen, now, is_urgent(&wake)) {
                         Now::Ring => ringing.push((wake, seen.clone())),
                         Now::At(at) => {
                             sooner(&mut next, at);
                             messages.pending.push(wake);
                         }
-                        Now::AtIdle => messages.pending.push(wake),
+                        Now::AtIdle | Now::Unblocked => messages.pending.push(wake),
                     }
                     continue;
                 }
@@ -341,7 +362,9 @@ fn went_idle(
 }
 
 /// Keeps the rings not yet taken, and takes out those due a Return pressed again. A ring whose
-/// agent went to work, or read, was taken; one pressed as often as it may be ends.
+/// agent went to work, or read, was taken; one pressed as often as it may be ends. An urgent
+/// ring may have been typed at work, so going to work says nothing about it: its agent's prompt
+/// is looked at once it is due, and an empty one means it was taken.
 fn unanswered_rings(
     messages: &mut Messages,
     panes: &Panes,
@@ -352,7 +375,8 @@ fn unanswered_rings(
     for rung in std::mem::take(&mut messages.rung) {
         let Via::Pane(pane) = &rung.wake.via else { continue };
         let Some(seen) = panes.get(pane) else { continue };
-        let taken = !matches!(seen.activity, Some(Activity::Idle | Activity::Waiting))
+        let urgent = is_urgent(&rung.wake);
+        let taken = !may_ring_while(seen.activity, urgent)
             || !messages.service.woken_for(&rung.wake.name, &rung.wake.notice.group);
         if taken {
             continue;
@@ -364,7 +388,7 @@ fn unanswered_rings(
         }
         let at = if due > now {
             due
-        } else if let Now::At(quiet) = may_ring(seen, now) {
+        } else if let Now::At(quiet) = may_ring(seen, now, urgent) {
             quiet
         } else {
             pressing.push((rung, seen.clone()));
@@ -391,7 +415,7 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
             continue;
         }
         let text = messaging::wake_text(&notice_of(&rung.wake.notice));
-        match prompt::look(&seen.io, &seen.agent, &shared.detecting) {
+        match prompt::look(&seen.io, &seen.agent, &shared.detecting, is_urgent(&rung.wake)) {
             AtPrompt::Holds(held) if prompt::is_only(&held, &text) => {
                 if !seen.io.queue(Input::Ring { text: String::new(), enter: true }) {
                     ending.push((rung, "its pane would not take the Return"));

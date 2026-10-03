@@ -98,6 +98,12 @@ pub enum Refusal {
         /// Whom the author may address there.
         allowed: Vec<String>,
     },
+    /// The group's policy does not let the author post urgently there (MIP-4, section 8).
+    NotUrgent {
+        group: String,
+        /// Who may.
+        urgent: Vec<String>,
+    },
     /// The group's policy does not let `name` do this: join or leave it, add or remove a
     /// member, or change its policy.
     NotPermitted {
@@ -142,6 +148,7 @@ impl Refusal {
             Refusal::EmptyBody => "empty_body",
             Refusal::BodyTooLarge { .. } => "body_too_large",
             Refusal::NotAllowed { .. } => "not_allowed",
+            Refusal::NotUrgent { .. } => "not_urgent",
             Refusal::NotPermitted { .. } => "not_permitted",
             Refusal::GroupExists { .. } => "group_exists",
             Refusal::Store { .. } => "store",

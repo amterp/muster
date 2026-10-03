@@ -45,6 +45,10 @@ An unaddressed post wakes every member of its group but you; `--to NAME` wakes o
 though every member can still read it. With no --group, a post goes to the one group you share \
 with the people you address, or to a new group of exactly you and them.
 
+An agent in a pane is woken once it is idle. `--urgent` reaches it while it works, typed into \
+its prompt for the turn it is running: keep it for what should change what the agent is doing \
+now, since it interrupts.
+
 Who you are: `--as NAME` if given, else the Claude Code session you run in (from \
 $CLAUDE_CODE_MESSAGING_SOCKET), else you are the human. A session that never joined under a \
 name is named after its working directory.
@@ -56,8 +60,9 @@ reaches over ssh, @human is the same person, whose messages are kept where the a
 A Claude Code session started with --dangerously-skip-permissions holds a wake for approval \
 unless it was also started with --settings '{\"crossSessionInbound\":\"accept\"}'.
 
-A group convened with a policy decides whom an unaddressed post wakes, whom you may address, and \
-who may add or remove members, you included; a refusal says what it allows. `muster msg groups` \
+A group convened with a policy decides whom an unaddressed post wakes, whom you may address, \
+who may post urgently, and who may add or remove members, you included; a refusal says what it \
+allows. `muster msg groups` \
 shows each group's policy.
 
 Do not run `muster msg wait` in the foreground: it blocks until a message arrives, which is the \
@@ -116,6 +121,9 @@ pub enum Verb {
         /// Post this file's contents
         #[arg(long, value_name = "PATH", conflicts_with = "text")]
         file: Option<String>,
+        /// Reach agents in panes while they work, not once they are idle
+        #[arg(long)]
+        urgent: bool,
         /// The message, or `-` to read it from stdin
         #[arg(value_name = "TEXT", num_args = 0.., trailing_var_arg = true)]
         text: Vec<String>,
@@ -187,11 +195,11 @@ pub enum GroupVerb {
     New {
         #[arg(value_name = "GROUP")]
         group: String,
-        /// A policy file (TOML: ring, allow, membership, paused); the default lets anyone do anything
+        /// A policy file (TOML: ring, allow, membership, urgent, paused); the default lets anyone do anything
         #[arg(long, value_name = "PATH")]
         policy: Option<String>,
     },
-    /// Replace a group's ring, allow and membership with a file's; `pause` and `resume` change
+    /// Replace a group's ring, allow, membership and urgent with a file's; `pause` and `resume` change
     /// whether it is paused
     Set {
         #[arg(value_name = "GROUP")]
@@ -255,7 +263,7 @@ pub fn parse(
         }
         Verb::Leave { group } => Asked::Leave(msg_request::Leave { group: group.clone() }),
         Verb::Who { group } => Asked::Who(msg_request::Who { group: group.clone() }),
-        Verb::Post { group, to, file, text } => {
+        Verb::Post { group, to, file, urgent, text } => {
             let body = if let Some(file) = file {
                 body_from = Some(TextSource::File(crate::args::file_to_read(file, here)?));
                 String::new()
@@ -270,7 +278,12 @@ pub fn parse(
             } else {
                 text.join(" ")
             };
-            Asked::Post(msg_request::Post { group: group.clone(), to: to.clone(), body })
+            Asked::Post(msg_request::Post {
+                group: group.clone(),
+                to: to.clone(),
+                body,
+                urgent: *urgent,
+            })
         }
         Verb::Read { group, if_unread: quiet } => {
             if_unread = *quiet;
@@ -453,6 +466,8 @@ struct PolicyFile {
     allow: BTreeMap<String, Vec<String>>,
     #[serde(default = "everyone")]
     membership: Vec<String>,
+    /// Left out, the daemon's default: anyone.
+    urgent: Option<Vec<String>>,
     #[serde(default)]
     paused: bool,
 }
@@ -478,7 +493,8 @@ fn read_policy(path: &str) -> Result<(msg_request::Policy, bool), Trouble> {
     let file: PolicyFile = toml::from_str(&text).map_err(|error| {
         Trouble::Refused(format!(
             "{path} is not a policy: {error}\nA policy has `ring` and `allow` (tables of author \
-             to names), `membership` (names) and `paused`; `muster docs msg` has an example."
+             to names), `membership` and `urgent` (names) and `paused`; `muster docs msg` has an \
+             example."
         ))
     })?;
     let names = |map: BTreeMap<String, Vec<String>>| {
@@ -488,6 +504,7 @@ fn read_policy(path: &str) -> Result<(msg_request::Policy, bool), Trouble> {
         ring: names(file.ring),
         allow: names(file.allow),
         membership: file.membership,
+        urgent: file.urgent.map(|names| msg_request::Names { names }),
         paused: file.paused,
     };
     Ok((policy, file.paused))
@@ -575,9 +592,23 @@ fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
             | Asked::GroupMembers(_)
             | Asked::Pause(_)
             | Asked::Resume(_),
-        ) => Some(("keep groups with a policy", 1)),
+        ) if !says_who_may_urge(request) => Some(("keep groups with a policy", 1)),
+        Some(Asked::Post(post)) if post.urgent => Some(("post urgently", 3)),
+        Some(Asked::GroupNew(_) | Asked::GroupSet(_)) => {
+            Some(("keep a policy saying who may post urgently", 3))
+        }
         _ => None,
     }
+}
+
+/// Whether the request sets a policy that says who may post urgently.
+fn says_who_may_urge(request: &proto::MsgRequest) -> bool {
+    let policy = match &request.request {
+        Some(Asked::GroupNew(new)) => new.policy.as_ref(),
+        Some(Asked::GroupSet(set)) => set.policy.as_ref(),
+        _ => None,
+    };
+    policy.is_some_and(|policy| policy.urgent.is_some())
 }
 
 fn ask_once(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trouble> {
@@ -659,7 +690,10 @@ fn render(
     Ok(match said {
         Answer::Joined(joined) => joined_text(joined, json),
         Answer::Left(left) => left_text(left, json),
-        Answer::Posted(posted) => return posted_text(posted, json),
+        Answer::Posted(posted) => {
+            let urgent = matches!(&request.request, Some(Asked::Post(post)) if post.urgent);
+            return posted_text(posted, urgent, json);
+        }
         Answer::Entries(entries) => {
             let reading = matches!(request.request, Some(Asked::Read(_)));
             // A hook hands this to the model after every tool call; joins and leaves alone
@@ -678,7 +712,7 @@ fn render(
         Answer::Changed(changed) => changed_text(request, changed, json),
         Answer::Resumed(resumed) => {
             // Resuming is heard or not by the members, not by whoever resumed it.
-            let text = match posted_text(resumed, json) {
+            let text = match posted_text(resumed, false, json) {
                 Ok(text) | Err(Trouble::Unheard(text)) => text,
                 Err(other) => return Err(other),
             };
@@ -747,6 +781,7 @@ fn groups_text(groups: &msg_answer::Groups, json: bool) -> String {
             "ring": map(&policy.ring),
             "allow": map(&policy.allow),
             "membership": policy.membership,
+            "urgent": policy.urgent.map_or_else(|| vec!["*".to_string()], |names| names.names),
             "paused": policy.paused,
         })
     };
@@ -822,7 +857,7 @@ fn is_human(name: &str) -> bool {
 /// What a post did for each participant it was for. Nobody live heard it - nobody woken, to be
 /// rung, already woken, held for a resume or a link, or the human - is [`Trouble::Unheard`],
 /// printed the same way.
-fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Trouble> {
+fn posted_text(posted: &msg_answer::Posted, urgent: bool, json: bool) -> Result<String, Trouble> {
     use msg_answer::Reach;
     let named = |wanted: Reach| -> Vec<&msg_answer::Reached> {
         posted.reached.iter().filter(|reached| reached.reach() == wanted).collect()
@@ -857,6 +892,7 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
         serde_json::json!({
             "group": posted.group,
             "seq": posted.seq,
+            "urgent": urgent,
             "woke": listed(&woke),
             "deferred": listed(&deferred),
             "already_woken": listed(&already),
@@ -879,13 +915,14 @@ fn posted_text(posted: &msg_answer::Posted, json: bool) -> Result<String, Troubl
                 format!("{} ({})", reached.name, said.join(", "))
             }
         };
-        let mut lines = vec![format!("posted #{} to {}", posted.seq, posted.group)];
+        let urgently = if urgent { ", urgent" } else { "" };
+        let mut lines = vec![format!("posted #{} to {}{urgently}", posted.seq, posted.group)];
         let mut woken: Vec<String> = woke.iter().map(|reached| with(reached, None)).collect();
         woken.extend(already.iter().map(|reached| with(reached, Some("already woken"))));
         if !woken.is_empty() {
             lines.push(format!("woke: {}", woken.join(", ")));
         }
-        for until in [Until::Idle, Until::Prompt, Until::Agent] {
+        for until in [Until::Idle, Until::Unblocked, Until::Prompt, Until::Agent] {
             let later: Vec<String> = deferred
                 .iter()
                 .filter(|reached| reached.until() == until)
@@ -932,6 +969,7 @@ fn unless_human(reached: &msg_answer::Reached, why: &'static str) -> &'static st
 fn until_text(until: Until) -> &'static str {
     match until {
         Until::Idle | Until::Unspecified => "idle",
+        Until::Unblocked => "it is not blocked",
         Until::Prompt => "its prompt is empty",
         Until::Agent => "an agent is found",
     }
@@ -940,6 +978,7 @@ fn until_text(until: Until) -> &'static str {
 fn until_key(until: Until) -> &'static str {
     match until {
         Until::Idle | Until::Unspecified => "idle",
+        Until::Unblocked => "unblocked",
         Until::Prompt => "prompt",
         Until::Agent => "agent",
     }
@@ -981,15 +1020,13 @@ fn entries_text(entries: &msg_answer::Entries, say_when_empty: bool, json: bool)
             let seq = entry.seq;
             blocks.push(match &entry.what {
                 Some(What::Message(message)) => {
-                    let head = if message.to.is_empty() {
-                        format!("--- {name} #{seq} | {} ---", message.author)
+                    let to = if message.to.is_empty() {
+                        String::new()
                     } else {
-                        format!(
-                            "--- {name} #{seq} | {} -> {} ---",
-                            message.author,
-                            message.to.join(", ")
-                        )
+                        format!(" -> {}", message.to.join(", "))
                     };
+                    let urgent = if message.urgent { ", urgent" } else { "" };
+                    let head = format!("--- {name} #{seq} | {}{to}{urgent} ---", message.author);
                     format!(
                         "{head}\n{}\n--- end {name} #{seq} | {} ---",
                         message.body.trim_end_matches('\n'),
@@ -1038,6 +1075,9 @@ fn entry_json(entry: &msg_answer::Entry) -> serde_json::Value {
             value["author"] = message.author.clone().into();
             value["to"] = message.to.clone().into();
             value["body"] = message.body.clone().into();
+            if message.urgent {
+                value["urgent"] = true.into();
+            }
         }
         Some(What::Created(by)) => value["created"] = by.clone().into(),
         Some(What::Joined(who)) => value["joined"] = who.clone().into(),
@@ -1111,6 +1151,7 @@ fn notice_json(notice: &msg_answer::Notice) -> serde_json::Value {
         "last": notice.last,
         "count": notice.count,
         "to_you": notice.to_you,
+        "urgent": notice.urgent,
         "from": notice.from,
         "text": spelling::wake_text(notice),
     })
@@ -1131,6 +1172,77 @@ mod tests {
         assert_eq!(needs_minor(&wait(true)).map(|(_, minor)| minor), Some(1));
         assert_eq!(needs_minor(&join(true)).map(|(_, minor)| minor), Some(1));
         assert_eq!(needs_minor(&pause).map(|(_, minor)| minor), Some(1));
+    }
+
+    /// A daemon before 1.3 ignores what it does not know: an urgent post would ring as an
+    /// ordinary one, and a policy saying who may post urgently would let anyone.
+    #[test]
+    fn what_protocol_1_2_does_not_know_is_asked_of_1_3_or_later_only() {
+        let asked = |request| proto::MsgRequest { caller: None, request: Some(request) };
+        let post = |urgent| {
+            asked(Asked::Post(msg_request::Post { urgent, ..msg_request::Post::default() }))
+        };
+        let new = |urgent: Option<Vec<String>>| {
+            let policy = msg_request::Policy {
+                urgent: urgent.map(|names| msg_request::Names { names }),
+                ..msg_request::Policy::default()
+            };
+            asked(Asked::GroupNew(msg_request::GroupNew {
+                group: "g".to_string(),
+                policy: Some(policy),
+            }))
+        };
+        assert_eq!(needs_minor(&post(false)), None);
+        assert_eq!(needs_minor(&post(true)).map(|(_, minor)| minor), Some(3));
+        assert_eq!(needs_minor(&new(None)).map(|(_, minor)| minor), Some(1));
+        assert_eq!(needs_minor(&new(Some(vec![]))).map(|(_, minor)| minor), Some(3));
+    }
+
+    #[test]
+    fn an_urgent_post_says_so_and_a_ring_at_a_dialog_says_what_it_waits_for() {
+        let posted = msg_answer::Posted {
+            group: "review".to_string(),
+            seq: 9,
+            reached: vec![msg_answer::Reached {
+                name: "critic".to_string(),
+                reach: msg_answer::Reach::Deferred.into(),
+                activity: msg_answer::Activity::Blocked.into(),
+                until: Until::Unblocked.into(),
+            }],
+        };
+        assert_eq!(
+            posted_text(&posted, true, false).unwrap(),
+            "posted #9 to review, urgent\nrung once it is not blocked: critic (blocked)"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&posted_text(&posted, true, true).unwrap()).unwrap();
+        assert_eq!(json["urgent"], true);
+        assert_eq!(json["until"]["critic"], "unblocked");
+    }
+
+    #[test]
+    fn an_urgent_message_says_so_where_it_is_read() {
+        let message = msg_answer::Message {
+            author: "director".to_string(),
+            to: vec!["builder".to_string()],
+            body: "stop".to_string(),
+            urgent: true,
+        };
+        let entries = msg_answer::Entries {
+            groups: vec![msg_answer::GroupEntries {
+                group: "review".to_string(),
+                entries: vec![msg_answer::Entry {
+                    seq: 4,
+                    at_ms: 0,
+                    what: Some(What::Message(message)),
+                }],
+                behind: None,
+            }],
+        };
+        assert_eq!(
+            entries_text(&entries, true, false),
+            "--- review #4 | director -> builder, urgent ---\nstop\n--- end review #4 | director ---"
+        );
     }
 
     #[test]
@@ -1213,7 +1325,7 @@ mod tests {
             seq: 7,
             reached: vec![unreachable("critic@devenv"), unreachable("@human@lap")],
         };
-        let text = posted_text(&posted, false).expect("heard once the link returns");
+        let text = posted_text(&posted, false, false).expect("heard once the link returns");
         assert_eq!(
             text,
             "posted #7 to review\nnot woken: critic@devenv (its machine cannot be reached; it \

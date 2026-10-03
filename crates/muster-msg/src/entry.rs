@@ -20,6 +20,10 @@ pub enum What {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         to: Vec<String>,
         body: String,
+        /// Its author asked for it to reach its addressees mid-turn, rather than once they are
+        /// idle.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        urgent: bool,
     },
     Created {
         by: String,

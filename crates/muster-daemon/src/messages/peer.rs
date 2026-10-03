@@ -54,6 +54,9 @@ const REDIAL_AT_MOST: Duration = Duration::from_secs(5);
 #[derive(Debug)]
 pub(crate) struct Link {
     pub(crate) peer: Peer,
+    /// The protocol the other daemon said it speaks when the connection opened, which says
+    /// which calls it knows.
+    pub(crate) speaks: proto::Version,
     writer: Mutex<UnixStream>,
     pending: Mutex<HashMap<u64, Sender<proto::PeerReply>>>,
     next: AtomicU64,
@@ -64,9 +67,10 @@ pub(crate) struct Link {
 }
 
 impl Link {
-    fn new(peer: Peer, stream: &UnixStream) -> std::io::Result<Arc<Link>> {
+    fn new(peer: Peer, speaks: proto::Version, stream: &UnixStream) -> std::io::Result<Arc<Link>> {
         Ok(Arc::new(Link {
             peer,
+            speaks,
             writer: Mutex::new(stream.try_clone()?),
             pending: Mutex::new(HashMap::new()),
             next: AtomicU64::new(1),
@@ -302,10 +306,10 @@ pub(crate) fn hold(
             continue;
         }
         match dial(shared.peers.us(), name, socket) {
-            Ok((stream, peer)) => {
+            Ok((stream, peer, speaks)) => {
                 said = false;
                 let since = std::time::Instant::now();
-                let Some(link) = serve_in_background(shared, stream, peer) else { break };
+                let Some(link) = serve_in_background(shared, stream, peer, speaks) else { break };
                 while !link.closed.load(Ordering::Acquire) && !hung_up() {
                     std::thread::sleep(LOOK_UP);
                 }
@@ -361,16 +365,18 @@ fn pause(wait: Duration, hung_up: &dyn Fn() -> bool) {
 }
 
 /// Dials the daemon at `socket` and introduces this one to it.
-fn dial(us: &str, name: &str, socket: &str) -> Result<(UnixStream, Peer), String> {
+fn dial(us: &str, name: &str, socket: &str) -> Result<(UnixStream, Peer, proto::Version), String> {
     let client = format!("muster-daemon {} peer", env!("CARGO_PKG_VERSION"));
-    let (mut stream, _) = connection::connect(Path::new(socket), ConnectionKind::Peer, &client)
-        .map_err(|error| error.to_string())?;
+    let (mut stream, welcome) =
+        connection::connect(Path::new(socket), ConnectionKind::Peer, &client)
+            .map_err(|error| error.to_string())?;
     let introduce = proto::Introduce { name: us.to_string(), you: name.to_string() };
     connection::send(&mut stream, &PeerFrame { frame: Some(Frame::Introduce(introduce)) })
         .map_err(|error| format!("the introduction could not be sent: {error}"))?;
     let theirs = introduction(&mut stream)?;
     log::debug("msg.peer.introduced", fields! { "machine" => name, "calls_itself" => theirs.name });
-    Ok((stream, Peer { name: name.to_string(), calls_us: us.to_string() }))
+    let peer = Peer { name: name.to_string(), calls_us: us.to_string() };
+    Ok((stream, peer, welcome.protocol.unwrap_or_default()))
 }
 
 fn introduction(stream: &mut UnixStream) -> Result<proto::Introduce, String> {
@@ -386,8 +392,9 @@ fn introduction(stream: &mut UnixStream) -> Result<proto::Introduce, String> {
 // ---------------------------------------------------------------------------------------------
 // Serving a link
 
-/// Serves a peer connection this daemon was dialed on, until it ends.
-pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
+/// Serves a peer connection this daemon was dialed on, by a daemon speaking `speaks`, until it
+/// ends.
+pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, speaks: proto::Version) {
     let theirs = match introduction(&mut stream) {
         Ok(theirs) if is_machine(&theirs.name) && is_machine(&theirs.you) => theirs,
         Ok(theirs) => {
@@ -414,15 +421,20 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
         return;
     }
     let peer = Peer { name: theirs.name, calls_us: theirs.you };
-    let Ok(link) = Link::new(peer, &stream) else { return };
+    let Ok(link) = Link::new(peer, speaks, &stream) else { return };
     up(shared, &link, false);
     let why = read(shared, &link, stream);
     ended(shared, &link, &why);
 }
 
 /// Serves a link this daemon dialed on a thread of its own, returning it.
-fn serve_in_background(shared: &Arc<Shared>, stream: UnixStream, peer: Peer) -> Option<Arc<Link>> {
-    let link = Link::new(peer, &stream).ok()?;
+fn serve_in_background(
+    shared: &Arc<Shared>,
+    stream: UnixStream,
+    peer: Peer,
+    speaks: proto::Version,
+) -> Option<Arc<Link>> {
+    let link = Link::new(peer, speaks, &stream).ok()?;
     let (reading, serving) = (Arc::clone(&link), Arc::clone(shared));
     let started = std::thread::Builder::new().name("peer".to_string()).spawn(move || {
         let why = read(&serving, &reading, stream);
