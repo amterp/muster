@@ -651,6 +651,111 @@ fn a_refused_config_opens_the_roster_it_would_have_had_nowhere_to_appear_in() {
 /// two checkouts running the tier at once would otherwise delete each other's homes and stop
 /// each other's daemons. Short, because a socket path has to fit `sockaddr_un.sun_path` and the
 /// app binds its daemon's socket and every pane's link under here.
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn a_second_window_opens_in_the_same_app() {
+    // `muster window new` with the app running opens a window in that app rather than starting
+    // another one (mip/0006-one-process.md): one process, one command socket, two windows.
+    let scratch = Scratch::new("two-windows");
+    let daemon = holding_one_pane();
+    scratch.point_at(&daemon);
+
+    let mut app = Running::start(&built_app(), &scratch, &[], &[]);
+    app.until_settled();
+    let opened = muster(&scratch, &["window", "new"]);
+    app.until_windows_opened(2);
+    // Every pane painted before the quit, so a bridge still attaching is not ended mid-way.
+    app.until_settled();
+    let records = app.stop();
+
+    assert_eq!(opened, "window-2", "`muster window new` did not name the window it opened");
+    expect_nothing_wrong(&records, &[]);
+    let pids = values(&records, "window.opened", "pid");
+    assert_eq!(
+        pids.len(),
+        1,
+        "the two windows opened in different processes ({pids:?}), so a second window is still a \
+         second app"
+    );
+    let sockets: Vec<PathBuf> = std::fs::read_dir(scratch.muster_home().join("state"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "sock"))
+        .collect();
+    assert!(sockets.len() <= 1, "more than one app listened for commands: {sockets:?}");
+}
+
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn every_window_open_at_quit_comes_back() {
+    // Quitting is not closing (mip/0006-one-process.md, section 4, kan a_2KAFWbZBa): a quit ends
+    // every window at once, so the next launch opens every one of them again.
+    every_window_comes_back("quit-relaunch", Running::stop, &[]);
+}
+
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn every_window_open_when_the_app_was_killed_comes_back() {
+    // The same after `kill -9`, which writes nothing on the way out: a window is open in the
+    // record from the moment it opens until somebody closes it.
+    // A killed app's bridges find it gone, and say so into the next run's log.
+    every_window_comes_back(
+        "kill-relaunch",
+        Running::kill,
+        &["bridge.link.failed", "bridge.stream.failed"],
+    );
+}
+
+/// Opens a second window, ends the app with `ending`, launches it again, and checks both windows
+/// came back.
+fn every_window_comes_back(check: &str, ending: fn(Running) -> Vec<Value>, expected: &[&str]) {
+    let scratch = Scratch::new(check);
+    let daemon = holding_one_pane();
+    scratch.point_at(&daemon);
+
+    let mut app = Running::start(&built_app(), &scratch, &[], &[]);
+    app.until_settled();
+    muster(&scratch, &["window", "new"]);
+    app.until_windows_opened(2);
+    app.until_settled();
+    let before = ending(app);
+
+    let mut again = Running::start(&built_app(), &scratch, &[], &[]);
+    again.until_ready();
+    again.until_windows_opened(2);
+    let after = again.stop();
+
+    expect_nothing_wrong(&after, expected);
+    let wanted = values(&before, "window.opened", "window");
+    let back = values(&after, "window.opened", "window");
+    assert_eq!(
+        back, wanted,
+        "the relaunch opened {back:?}, and the windows open when the app ended were {wanted:?}"
+    );
+}
+
+/// Runs the `muster` the app put on every pane's PATH, against this check's home, and returns what
+/// it printed.
+fn muster(scratch: &Scratch, arguments: &[&str]) -> String {
+    let command = scratch.muster_home().join("bin/muster");
+    let output = Command::new(&command)
+        .args(arguments)
+        .env_clear()
+        .env("HOME", scratch.home())
+        .env("MUSTER_HOME", scratch.muster_home())
+        .output()
+        .unwrap_or_else(|error| panic!("could not run {}: {error}", command.display()));
+    assert!(
+        output.status.success(),
+        "`muster {}` failed: {}",
+        arguments.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
 fn root() -> PathBuf {
     let Some(root) = std::env::var_os("MUSTER_CONTRACT_ROOT").map(PathBuf::from) else {
         panic!(
@@ -913,6 +1018,26 @@ impl Running {
     fn stop(mut self) -> Vec<Value> {
         self.end();
         read_log(&self.log)
+    }
+
+    /// Kills the app outright, as a crash would, and returns everything the run logged.
+    fn kill(mut self) -> Vec<Value> {
+        let group = libc::pid_t::try_from(self.app.id()).expect("a pid fits a pid_t");
+        // SAFETY: as in `end`: the group is this child's own and the child is unreaped.
+        unsafe { libc::killpg(group, libc::SIGKILL) };
+        let _ = self.app.wait();
+        read_log(&self.log)
+    }
+
+    /// Waits until the app has opened `count` windows.
+    fn until_windows_opened(&mut self, count: usize) {
+        let log = self.log.clone();
+        until_within(
+            &format!("{count} windows to open"),
+            LAUNCH_PATIENCE,
+            || of(&read_log(&log), "window.opened").count() >= count,
+            || events_seen(&read_log(&log)),
+        );
     }
 
     /// Ends the app's whole process group: SIGTERM, then SIGKILL for an app still there.
