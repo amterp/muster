@@ -754,6 +754,9 @@ public final class SidebarView: NSView {
   /// tab in this window.
   public var onTabReceived: ((String) -> Void)?
 
+  /// Called when somebody clicks a problem's remedy, meaning they want it carried out.
+  public var onProblemRemedied: ((Problem) -> Void)?
+
   /// Builds the menu for a right-clicked row, or answers nil for none. The window's to answer,
   /// because what the menu offers depends on the bindings and the machines.
   public var onRowMenu: ((SidebarModel.Row) -> NSMenu?)?
@@ -833,6 +836,9 @@ public final class SidebarView: NSView {
       guard let self, case .raised(let showing) = self.problems else { return }
       self.dismissed.formUnion(showing.map(\.key))
       self.redrawProblems()
+    }
+    problemsView.onRemedy = { [weak self] problem in
+      self?.onProblemRemedied?(problem)
     }
     problemsView.onReveal = { [weak self] in
       self?.dismissed.removeAll()

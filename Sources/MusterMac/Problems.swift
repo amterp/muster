@@ -26,10 +26,27 @@ public struct Problem: Equatable {
   /// What to tell the person, in the words of whatever found it.
   public let detail: String
 
+  /// What Muster can do about it in one click, drawn as a button beside the detail.
+  public let remedy: Remedy?
+
+  /// A request the core named in full, and the words for the button that sends it.
+  ///
+  /// Sent back exactly as it arrived: which pane it is about and what it does were decided in
+  /// the core, and only offered where clicking it without reading the detail is safe.
+  public struct Remedy: Equatable {
+    public let title: String
+    let request: Muster_Request
+  }
+
   public init(key: String, severity: Severity, detail: String) {
+    self.init(key: key, severity: severity, detail: detail, remedy: nil)
+  }
+
+  init(key: String, severity: Severity, detail: String, remedy: Remedy?) {
     self.key = key
     self.severity = severity
     self.detail = detail
+    self.remedy = remedy
   }
 }
 
@@ -91,6 +108,9 @@ public enum ProblemsModel {
   /// Called when somebody clicks the collapsed count, wanting it back.
   public var onReveal: (() -> Void)?
 
+  /// Called when somebody clicks the button a problem's remedy draws, with that problem.
+  public var onRemedy: ((Problem) -> Void)?
+
   /// How many lines of a message this will draw before ending in an ellipsis.
   ///
   /// A limit rather than the whole text at any length, because the roster's job is listing
@@ -116,7 +136,11 @@ public enum ProblemsModel {
   private let message = NSTextField(wrappingLabelWithString: "")
   private let dismiss = NSButton()
   private let count = NSTextField(labelWithString: "")
+  private let remedy = NSButton()
   private var display: ProblemsModel.Display = .nothing
+
+  /// The button's title, or nil when the problem shown offers no remedy.
+  var remedyTitle: String? { remedy.isHidden ? nil : remedy.title }
 
   public override init(frame: NSRect) {
     super.init(frame: frame)
@@ -139,6 +163,14 @@ public enum ProblemsModel {
     dismiss.action = #selector(dismissClicked)
     dismiss.toolTip = "Hide this until it changes. It stays counted until the cause is fixed."
     addSubview(dismiss)
+
+    remedy.bezelStyle = .push
+    remedy.controlSize = .small
+    remedy.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    remedy.target = self
+    remedy.action = #selector(remedyClicked)
+    remedy.isHidden = true
+    addSubview(remedy)
   }
 
   required init?(coder: NSCoder) {
@@ -151,6 +183,7 @@ public enum ProblemsModel {
     switch display {
     case .nothing:
       isHidden = true
+      remedy.isHidden = true
     case .raised(let problems):
       isHidden = false
       // The worst one, whole. A stack of boxes would compete with the list for a window that
@@ -166,10 +199,16 @@ public enum ProblemsModel {
       // order somebody would work through them in anyway.
       count.stringValue = problems.count > 1 ? "+\(problems.count - 1) more" : ""
       count.isHidden = problems.count < 2
+      // Clicking it leaves the box as it is. The problem goes when its condition does, which is
+      // the confirmation the remedy worked - a box that vanished on the click would claim so
+      // before anything had happened.
+      remedy.title = worst.remedy?.title ?? ""
+      remedy.isHidden = worst.remedy == nil
     case .collapsed(let outstanding, let severity):
       isHidden = false
       message.isHidden = true
       dismiss.isHidden = true
+      remedy.isHidden = true
       dot.severity = severity
       count.stringValue = String(outstanding)
       count.isHidden = false
@@ -191,8 +230,13 @@ public enum ProblemsModel {
       let fits = message.sizeThatFits(
         NSSize(
           width: max(0, width - ProblemsView.inset * 2), height: .greatestFiniteMagnitude))
-      return fits.height + ProblemsView.headerHeight + ProblemsView.inset
+      return fits.height + ProblemsView.headerHeight + ProblemsView.inset + remedyRow
     }
+  }
+
+  /// The height the remedy's button takes under the message, none when there is no button.
+  private var remedyRow: CGFloat {
+    remedy.isHidden ? 0 : remedy.fittingSize.height + ProblemsView.inset / 2
   }
 
   public override func layout() {
@@ -225,9 +269,16 @@ public enum ProblemsModel {
         x: countLeft, y: top + (header - countSize.height) / 2,
         width: max(0, bounds.width - countLeft - closeSize.width - inset),
         height: countSize.height)
+      let row = remedyRow
+      if row > 0 {
+        let size = remedy.fittingSize
+        remedy.frame = CGRect(
+          x: inset, y: inset, width: min(size.width, max(0, bounds.width - inset * 2)),
+          height: size.height)
+      }
       message.frame = CGRect(
-        x: inset, y: inset, width: max(0, bounds.width - inset * 2),
-        height: max(0, bounds.height - header - inset))
+        x: inset, y: inset + row, width: max(0, bounds.width - inset * 2),
+        height: max(0, bounds.height - header - inset - row))
     }
   }
 
@@ -254,6 +305,11 @@ public enum ProblemsModel {
 
   @objc private func dismissClicked() {
     onDismiss?()
+  }
+
+  @objc func remedyClicked() {
+    guard case .raised(let problems) = display, problems[0].remedy != nil else { return }
+    onRemedy?(problems[0])
   }
 }
 

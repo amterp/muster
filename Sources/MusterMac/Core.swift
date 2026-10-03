@@ -529,6 +529,18 @@ public enum Core {
     return true
   }
 
+  /// Carries out a problem's remedy: the request it named, sent as it came. Says whether the
+  /// core did it.
+  @discardableResult
+  public static func remedy(of problem: Problem) -> Bool {
+    guard let remedy = problem.remedy else { return false }
+    info(
+      "problems.remedy",
+      ["key": problem.key, "remedy": remedy.title, "request": name(of: remedy.request)])
+    if case .failure = send(remedy.request) { return false }
+    return true
+  }
+
   /// What Muster should look like, as the config file decided.
   ///
   /// A value of the shell's own rather than the generated message, on the same terms as
@@ -1301,7 +1313,10 @@ public enum Core {
         ) { $1 })
     case .problemsChanged(let changed):
       let problems = changed.problems.map {
-        Problem(key: $0.key, severity: Problem.Severity($0.severity), detail: $0.detail)
+        Problem(
+          key: $0.key, severity: Problem.Severity($0.severity), detail: $0.detail,
+          remedy: $0.hasRemedy
+            ? Problem.Remedy(title: $0.remedy.title, request: $0.remedy.request) : nil)
       }
       // Counted rather than quoted. The detail is already in the core's own warning beside
       // this line, and a run log that repeated every refusal twice would be harder to read

@@ -242,6 +242,9 @@ public final class MusterWindow: NSObject {
       }
     }
     sidebar.onRowMenu = { [weak self] row in self?.menu(for: row) }
+    sidebar.onProblemRemedied = { problem in
+      if !Core.remedy(of: problem) { NSSound.beep() }
+    }
     surfaces.menu = { [weak self] pane in self?.menu(forPane: pane) }
     applyTitle()
   }

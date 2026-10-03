@@ -134,4 +134,46 @@ struct ProblemsTests {
     view.show(.raised([problem("config", .error, String(repeating: "wordy. ", count: 400))]))
     #expect(view.height(forWidth: 220) < 400)
   }
+
+  /// A dark pane's problem, offering what the core offers for one: a reattach naming it.
+  private func darkPane() -> Problem {
+    var request = Muster_Request()
+    request.reattachPane.daemonID = "local"
+    request.reattachPane.paneID = "p1w3r07bsd"
+    return Problem(
+      key: "pane:local/p1w3r07bsd", severity: .error, detail: "the pane is dark",
+      remedy: Problem.Remedy(title: "Reattach", request: request))
+  }
+
+  @MainActor
+  @Test("a problem offering a remedy draws its button, and one offering none draws no button")
+  func aRemedyIsAButton() {
+    let view = ProblemsView(frame: NSRect(x: 0, y: 0, width: 220, height: 300))
+    view.show(.raised([problem("config", .error, "the pane is dark")]))
+    let plain = view.height(forWidth: 220)
+    #expect(view.remedyTitle == nil)
+
+    view.show(.raised([darkPane()]))
+    #expect(view.remedyTitle == "Reattach")
+    #expect(view.height(forWidth: 220) > plain)
+
+    view.show(.collapsed(count: 1, severity: .error))
+    #expect(view.remedyTitle == nil)
+    view.show(.nothing)
+    #expect(view.remedyTitle == nil)
+  }
+
+  @MainActor
+  @Test("clicking the button hands back the problem it was drawn for, request and all")
+  func clickingARemedyNamesItsProblem() {
+    let view = ProblemsView(frame: NSRect(x: 0, y: 0, width: 220, height: 300))
+    var remedied: [Problem] = []
+    view.onRemedy = { remedied.append($0) }
+    view.show(.raised([darkPane(), problem("config")]))
+
+    view.remedyClicked()
+
+    #expect(remedied == [darkPane()])
+    #expect(remedied.first?.remedy?.request.reattachPane.paneID == "p1w3r07bsd")
+  }
 }
