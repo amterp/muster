@@ -20,7 +20,11 @@ use crate::support::*;
 use muster_harness::Input;
 use proto::input_event::{self, Input as Event};
 
-const HOOKS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/codex/hooks/hooks.json");
+const HOOKS: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/codex/hooks/hooks.json"));
+
+const MESSAGING_HOOKS: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/codex/messaging-hooks.json"));
 
 /// libghostty's number for the Escape key, as a window sends it.
 const KEY_ESCAPE: u32 = 120;
@@ -71,6 +75,11 @@ fn codex_daemon() -> Daemon {
 /// A scratch folder for one pane, with `extras/codex`'s hooks as its project hooks when
 /// `hooked`, and the command that runs Codex there with `extra` arguments.
 fn project(daemon: &Daemon, name: &str, hooked: bool, extra: &[&str]) -> (String, String) {
+    project_with(daemon, name, if hooked { &[HOOKS] } else { &[] }, extra)
+}
+
+/// [`project`], with each of `hooks` merged into the folder's project hooks.
+fn project_with(daemon: &Daemon, name: &str, hooks: &[&str], extra: &[&str]) -> (String, String) {
     let folder = daemon.root().join(name);
     std::fs::create_dir_all(folder.join(".codex")).unwrap();
     // Trust is keyed by the folder Codex resolves, through any symlink: /tmp is /private/tmp.
@@ -85,14 +94,68 @@ fn project(daemon: &Daemon, name: &str, hooked: bool, extra: &[&str]) -> (String
         "-c".to_string(),
         format!("projects={{\"{}\"={{trust_level=\"trusted\"}}}}", folder.display()),
     ];
-    if hooked {
-        std::fs::copy(HOOKS, folder.join(".codex/hooks.json")).unwrap();
+    if !hooks.is_empty() {
+        std::fs::write(folder.join(".codex/hooks.json"), merged(hooks)).unwrap();
         // Trusting a hook is a person's act in /hooks; a scratch folder's are trusted here.
         arguments.push("--dangerously-bypass-hook-trust".to_string());
     }
     arguments.extend(extra.iter().map(ToString::to_string));
     let quoted_arguments: Vec<String> = arguments.iter().map(|argument| quoted(argument)).collect();
     (folder.display().to_string(), format!("codex {}", quoted_arguments.join(" ")))
+}
+
+/// Hooks files as one, each event's groups one after the other, as a person merging them would.
+fn merged(files: &[&str]) -> String {
+    let mut events = serde_json::Map::new();
+    for file in files {
+        let hooks: serde_json::Value = serde_json::from_str(file).unwrap();
+        for (event, groups) in hooks["hooks"].as_object().unwrap() {
+            let into = events.entry(event.clone()).or_insert_with(|| serde_json::json!([]));
+            into.as_array_mut().unwrap().extend(groups.as_array().unwrap().iter().cloned());
+        }
+    }
+    serde_json::json!({ "hooks": events }).to_string()
+}
+
+/// The `muster` CLI built beside this commit's daemon.
+fn built_muster() -> std::path::PathBuf {
+    let muster = muster_harness::built_daemon().with_file_name("muster");
+    assert!(
+        muster.is_file(),
+        "no muster CLI at {}.\n  Impact: the agent would have no `muster msg` to run.\n  Fix: \
+         run ./dev -b, or cargo build -p muster-cli.",
+        muster.display()
+    );
+    muster
+}
+
+/// `command` with `muster` first on its PATH.
+fn with_muster_on_path(muster: &std::path::Path, command: &str) -> String {
+    let bin = muster.parent().unwrap().display().to_string();
+    format!("PATH={}:\"$PATH\" {command}", quoted(&bin))
+}
+
+/// Runs `muster` as the integrator, a participant outside any pane.
+fn as_integrator(
+    muster: &std::path::Path,
+    daemon: &Daemon,
+    arguments: &[&str],
+) -> std::process::Output {
+    let ran = Command::new(muster)
+        .args(arguments)
+        .env_clear()
+        .env("HOME", daemon.root())
+        .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+        .stdin(Stdio::null())
+        .output()
+        .expect("the muster binary runs");
+    eprintln!(
+        "codex: muster {}: {}{}",
+        arguments.first().copied().unwrap_or_default(),
+        String::from_utf8_lossy(&ran.stdout),
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    ran
 }
 
 fn make_pane(control: &mut Control, name: &str, folder: &str, command: String, first: bool) {
@@ -108,12 +171,14 @@ fn make_pane(control: &mut Control, name: &str, folder: &str, command: String, f
     );
 }
 
-/// Waits for Codex's composer.
+/// Waits for Codex's composer. Its folder trust question is asked before the composer, which a
+/// hooked pane's warning about `--dangerously-bypass-hook-trust` is not.
 fn until_ready(control: &mut Control, pane: &str) {
     let deadline = Instant::now() + TURN;
     loop {
         let screen = read_text(control, pane, 0, 0).text;
-        if screen.lines().any(|line| line.starts_with('›')) && !screen.contains("trust") {
+        let asking = screen.contains("Do you trust the contents of this directory?");
+        if screen.lines().any(|line| line.starts_with('›')) && !asking {
             break;
         }
         assert!(Instant::now() < deadline, "{pane}: Codex never showed its composer: {screen}");
@@ -173,6 +238,18 @@ fn codex_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
         assert_eq!(idle.map(|record| record.state_reported), Some(hooked), "{name}: idle");
         assert_eq!(seen.last().and_then(|record| record.agent.clone()).as_deref(), Some("codex"));
     }
+    // Codex has no statusline: its hooks read its context off its transcript, in the background.
+    let facts = |control: &mut Control, name: &str| {
+        snapshot(control).panes.into_iter().find(|pane| pane.pane == name)?.facts
+    };
+    let reported = until_turns(Duration::from_secs(20), "the hooked pane's context", || {
+        facts(&mut control, "hooked").is_some_and(|facts| facts.context_used.is_some())
+    });
+    let hooked = facts(&mut control, "hooked");
+    eprintln!("codex: hooked facts: {hooked:?}");
+    assert!(reported, "the hooked pane's context was never reported: {hooked:?}");
+    assert!(hooked.and_then(|facts| facts.model).is_some(), "nor its model");
+    assert!(facts(&mut control, "screen").is_none_or(|facts| facts.context_used.is_none()));
 }
 
 /// Esc ends a Codex turn with `Interrupt` and no `Stop`; the hooks report that idle, rather than
@@ -239,13 +316,7 @@ fn a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered() {
     if !asked_for("a Codex pane is rung, reads and answers") {
         return;
     }
-    let muster = muster_harness::built_daemon().with_file_name("muster");
-    assert!(
-        muster.is_file(),
-        "no muster CLI at {}.\n  Impact: the agent would have no `muster msg` to run.\n  Fix: \
-         run ./dev -b, or cargo build -p muster-cli.",
-        muster.display()
-    );
+    let muster = built_muster();
     let daemon = codex_daemon();
     let mut control = daemon.connect();
     let networked = [
@@ -257,22 +328,11 @@ fn a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered() {
         "sandbox_workspace_write.network_access=true",
     ];
     let (folder, command) = project(&daemon, "worker", false, &networked);
-    let bin = muster.parent().unwrap().display().to_string();
-    let command = format!("PATH={}:\"$PATH\" {command}", quoted(&bin));
-    make_pane(&mut control, "worker", &folder, command, true);
+    make_pane(&mut control, "worker", &folder, with_muster_on_path(&muster, &command), true);
     until_ready(&mut control, "worker");
 
     let nonce = format!("c{}", std::process::id());
-    let integrator = |arguments: &[&str]| {
-        Command::new(&muster)
-            .args(arguments)
-            .env_clear()
-            .env("HOME", daemon.root())
-            .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
-            .stdin(Stdio::null())
-            .output()
-            .expect("the muster binary runs")
-    };
+    let integrator = |arguments: &[&str]| as_integrator(&muster, &daemon, arguments);
     let joined = integrator(&["msg", "join", "--name", "integrator"]);
     assert!(joined.status.success(), "{}", String::from_utf8_lossy(&joined.stderr));
     let body = format!(
@@ -296,4 +356,104 @@ fn a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered() {
         eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
     }
     assert!(answered, "the worker never answered; the log holds {:?}", log_of(&mut control, group));
+}
+
+/// An urgent post reaches Codex at work: the ring is typed into its composer without its Return,
+/// returned once a second look sees it there alone, and held by Codex for after its running tool
+/// call, when the model reads the message and answers it.
+#[test]
+#[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
+fn an_urgent_post_reaches_codex_at_work_and_is_answered() {
+    if !asked_for("an urgent post reaches Codex at work") {
+        return;
+    }
+    let muster = built_muster();
+    let daemon = codex_daemon();
+    let mut control = daemon.connect();
+    let networked = [
+        "-a",
+        "never",
+        "-s",
+        "workspace-write",
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+    ];
+    let (folder, command) = project(&daemon, "worker", true, &networked);
+    make_pane(&mut control, "worker", &folder, with_muster_on_path(&muster, &command), true);
+    let mut input = Input::connect(daemon.socket_path());
+    until_ready(&mut control, "worker");
+    std::thread::sleep(Duration::from_secs(4));
+    type_line(&mut input, "worker", "Run the shell command sleep 30, and then say done.");
+    let working = until_turns(TURN, "the worker to be at work", || {
+        snapshot(&mut control)
+            .panes
+            .into_iter()
+            .any(|pane| pane.pane == "worker" && pane.agent_state() == proto::AgentState::Working)
+    });
+    assert!(working, "worker: {}", read_text(&mut control, "worker", 0, 0).text);
+    std::thread::sleep(Duration::from_secs(5));
+
+    let nonce = format!("u{}", std::process::id());
+    assert!(
+        as_integrator(&muster, &daemon, &["msg", "join", "--name", "integrator"]).status.success()
+    );
+    let body = format!(
+        "Answer this message by running exactly: muster msg post --to integrator 'got {nonce}'."
+    );
+    let posted =
+        as_integrator(&muster, &daemon, &["msg", "post", "--urgent", "--to", "worker", &body]);
+    let said = String::from_utf8_lossy(&posted.stdout).to_string();
+    assert!(posted.status.success(), "the post: {said}");
+    assert!(said.contains("worker (working)"), "rung at work: {said}");
+
+    let group = "integrator+worker";
+    let answered = until_turns(TURN, "the worker answering", || {
+        log_of(&mut control, group).iter().any(|line| line == &format!("worker: got {nonce}"))
+    });
+    eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
+    assert!(answered, "the worker never answered; the log holds {:?}", log_of(&mut control, group));
+}
+
+/// With `extras/codex/messaging-hooks.json`, the ring's turn starts with the message already in
+/// the model's context, handed over by a hook running outside Codex's sandbox: a Codex whose
+/// sandbox may not reach the daemon still reads what it was sent.
+#[test]
+#[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
+fn a_sandboxed_codex_with_messaging_hooks_is_handed_its_message() {
+    if !asked_for("Codex's messaging hooks hand it its messages") {
+        return;
+    }
+    let muster = built_muster();
+    let daemon = codex_daemon();
+    let mut control = daemon.connect();
+    let sandboxed = ["-a", "never", "-s", "workspace-write"];
+    let (folder, command) = project_with(&daemon, "worker", &[HOOKS, MESSAGING_HOOKS], &sandboxed);
+    make_pane(&mut control, "worker", &folder, with_muster_on_path(&muster, &command), true);
+    let mut input = Input::connect(daemon.socket_path());
+    until_ready(&mut control, "worker");
+    std::thread::sleep(Duration::from_secs(4));
+    // A first turn starts the session, which is when its hooks first run.
+    type_line(&mut input, "worker", "Reply with the single word ready.");
+    let settled = until_turns(TURN, "the first turn", || {
+        read_text(&mut control, "worker", 0, 0).text.contains("• ready")
+    });
+    assert!(settled, "worker: {}", read_text(&mut control, "worker", 0, 0).text);
+    std::thread::sleep(Duration::from_secs(4));
+
+    let nonce = format!("h{}", std::process::id());
+    assert!(
+        as_integrator(&muster, &daemon, &["msg", "join", "--name", "integrator"]).status.success()
+    );
+    let body = format!("The word for today is {nonce}. Reply with it, and do not run any command.");
+    let posted = as_integrator(&muster, &daemon, &["msg", "post", "--to", "worker", &body]);
+    assert!(posted.status.success());
+
+    let replied = until_turns(TURN, "the worker replying with the word", || {
+        read_text(&mut control, "worker", 0, 0)
+            .text
+            .lines()
+            .any(|line| line.starts_with('•') && line.contains(&nonce))
+    });
+    eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
+    assert!(replied, "the worker never replied with the word it was sent");
 }

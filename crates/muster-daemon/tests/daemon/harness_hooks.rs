@@ -3,8 +3,10 @@
 //! reaches Muster, so every event a file names is pinned here, and every event that ends a turn
 //! must report idle - an agent that declared a wait is moved on only by its own idle report.
 
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use super::claude_code::Scratch;
 
@@ -74,8 +76,29 @@ fn commands(harness: &Harness, event: &str) -> Vec<String> {
         .collect()
 }
 
-/// What `command` runs `$MUSTER_DAEMON` with, bracketed per argument; empty when it does not.
+/// The shells a harness may run a hook command in: `sh`, and the user's own, which on a Mac is
+/// zsh - where an unquoted expansion is not split into words, as it is in `sh`. Codex runs its
+/// hooks in the user's shell.
+fn shells() -> Vec<&'static str> {
+    ["/bin/sh", "/bin/zsh"]
+        .into_iter()
+        .filter(|shell| std::path::Path::new(shell).exists())
+        .collect()
+}
+
+/// What `command` runs `$MUSTER_DAEMON` with, bracketed per argument, in each of [`shells`],
+/// which must agree; empty when it does not run it.
 fn reported(command: &str, scratch: &Scratch) -> String {
+    let said: Vec<String> =
+        shells().iter().map(|shell| reported_in(shell, command, scratch)).collect();
+    assert!(
+        said.windows(2).all(|pair| pair[0] == pair[1]),
+        "the shells disagree on {command}: {said:?}"
+    );
+    said.into_iter().next().unwrap_or_default()
+}
+
+fn reported_in(shell: &str, command: &str, scratch: &Scratch) -> String {
     let arguments = scratch.0.join("arguments");
     let _ = std::fs::remove_file(&arguments);
     let daemon = scratch.0.join("daemon");
@@ -85,11 +108,12 @@ fn reported(command: &str, scratch: &Scratch) -> String {
     )
     .unwrap();
     std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let ran = Command::new("/bin/sh")
+    let ran = Command::new(shell)
         .args(["-c", command])
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("MUSTER_DAEMON", &daemon)
+        .stdin(Stdio::null())
         .status()
         .unwrap();
     assert!(ran.success(), "a hook never fails a session: {command}");
@@ -158,5 +182,95 @@ fn only_a_session_in_a_muster_pane_is_told_how_to_say_it_is_waiting() {
         assert!(told.contains("report --waiting"), "{}: {told}", harness.extras);
         assert_eq!(session_start_context(harness, &[("MUSTER_DAEMON", "/bin/true")]), "");
         assert_eq!(session_start_context(harness, &[]), "");
+    }
+}
+
+/// The tail of a Codex 0.154.0 rollout transcript: two token counts with an answer between them.
+const ROLLOUT_TAIL: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../corpus/codex-0.154.0/rollout-tail.jsonl");
+
+/// Codex has no statusline, so its hooks read how full its context is from the last token count
+/// in its transcript, as Codex's own "N% context left" counts it: past a baseline of 12,000
+/// tokens it does not count as used. The last of the tail's counts is 19,313 tokens of 258,400.
+#[test]
+fn codexs_hooks_report_its_context_from_its_transcripts_last_token_count() {
+    let scratch = Scratch::new("codex-context");
+    let arguments = scratch.0.join("arguments");
+    let daemon = scratch.0.join("daemon");
+    std::fs::write(
+        &daemon,
+        format!("#!/bin/sh\nprintf '[%s]' \"$@\" > '{}'\n", arguments.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let input = serde_json::json!({ "transcript_path": ROLLOUT_TAIL, "model": "gpt-5.6-luna" });
+    for (event, shell) in ["PostToolUse", "Stop"]
+        .into_iter()
+        .flat_map(|event| shells().into_iter().map(move |shell| (event, shell)))
+    {
+        let context = commands(&CODEX, event)
+            .into_iter()
+            .find(|command| command.contains("token_count"))
+            .unwrap_or_else(|| panic!("no {event} hook reads the context"));
+        let _ = std::fs::remove_file(&arguments);
+        let mut hook = Command::new(shell)
+            .args(["-c", &context])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("MUSTER_DAEMON", &daemon)
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        hook.stdin.take().unwrap().write_all(input.to_string().as_bytes()).unwrap();
+        assert!(hook.wait().unwrap().success(), "a hook never fails a session");
+        muster_harness::until_within(
+            "the context report, which runs in the background",
+            Duration::from_secs(20),
+            || arguments.exists(),
+            || format!("{event}: nothing reported"),
+        );
+        let said = std::fs::read_to_string(&arguments).unwrap();
+        assert!(said.starts_with("[report][--context-used][2.96"), "{event} in {shell}: {said}");
+        assert!(said.ends_with("[--model][gpt-5.6-luna]"), "{event} in {shell}: {said}");
+    }
+}
+
+const CODEX_MESSAGING: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/codex/messaging-hooks.json"));
+
+/// Codex hands the model a hook's `additionalContext`, where a `PostToolUse` hook's exit 2 would
+/// replace the tool's result (docs/observations/codex-0.154.0.md, section 7): what its messaging
+/// hooks fetch reaches it that way, and nothing at all when nothing is unread.
+#[test]
+fn codexs_messaging_hooks_hand_what_arrived_to_the_model_as_context() {
+    let scratch = Scratch::new("codex-messaging");
+    let hooks: serde_json::Value = serde_json::from_str(CODEX_MESSAGING).unwrap();
+    let unread = scratch.0.join("unread");
+    let muster = scratch.0.join("muster");
+    std::fs::write(&muster, format!("#!/bin/sh\ncat '{}' 2>/dev/null\n", unread.display()))
+        .unwrap();
+    std::fs::set_permissions(&muster, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let run = |command: &str| {
+        let ran = Command::new("/bin/sh")
+            .args(["-c", command])
+            .env_clear()
+            .env("PATH", format!("{}:/usr/bin:/bin", scratch.0.display()))
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(ran.status.success(), "a hook never fails a session: {command}");
+        String::from_utf8(ran.stdout).unwrap()
+    };
+    for event in ["UserPromptSubmit", "PostToolUse"] {
+        let command = hooks["hooks"][event][0]["hooks"][0]["command"].as_str().unwrap();
+        let _ = std::fs::remove_file(&unread);
+        assert_eq!(run(command), "", "{event}: something said with nothing unread");
+        std::fs::write(&unread, "#4 director: the schema changed\n").unwrap();
+        let said: serde_json::Value = serde_json::from_str(&run(command)).unwrap();
+        assert_eq!(said["hookSpecificOutput"]["hookEventName"], event);
+        assert_eq!(
+            said["hookSpecificOutput"]["additionalContext"],
+            "#4 director: the schema changed"
+        );
     }
 }

@@ -9,11 +9,11 @@ small adapter Muster ships for it (`extras/` in Muster's source).
 |---|---|---|---|
 | Its state read off the screen | yes | yes | yes |
 | Its own report of its state | yes | yes | no |
-| Context used, model and cost | yes | no | no |
+| Context used, model and cost | yes | yes | no |
 | Sub-agents counted | yes | yes | no |
 | Rung at an empty prompt | yes | yes | no |
-| Rung while it works, for an urgent post | yes | no | no |
-| Messages fetched by its hooks | yes | no | no |
+| Rung while it works, for an urgent post | yes | yes | no |
+| Messages fetched by its hooks | yes | yes | no |
 | Its session named after the pane | yes | yes | no |
 | The pane named after its session | yes | no | no |
 
@@ -25,17 +25,23 @@ kimi, kiro, maki, opencode, pi, qodercli.
 - **Its own report of its state**: the harness's hooks tell Muster, which outranks the screen, so
   a harness update that changes its screen does not change what Muster shows. Needs the
   adapter's hooks installed.
-- **Context used, model and cost**: shown on the pane's record. Claude Code reports them through
-  the statusline in its adapter; Codex has no statusline command to report them from.
+- **Context used, model and cost**: shown on the pane's record. Claude Code reports all three
+  through the statusline in its adapter. Codex has no statusline command, so its hooks report its
+  context, read off its transcript, and its model, but not its cost.
 - **Sub-agents counted**: how many sub-agents the session runs, from its hooks. Codex's are wired
   and have not yet been seen firing.
 - **Rung at an empty prompt**: `muster msg post` types a one-line wake into the agent's pane once
   it is idle at an empty prompt (`muster docs msg`). Muster can read the prompt from the screen
   alone, so this needs no adapter.
 - **Rung while it works, for an urgent post**: `muster msg post --urgent` types the wake into the
-  prompt of an agent at work, which takes it into the turn it is running.
-- **Messages fetched by its hooks**: the session reads what arrived after each tool call and is
-  woken when its turn ends, with nothing typed into its pane. Needs the adapter's messaging hooks.
+  prompt of an agent at work, which takes it into the turn it is running: Claude Code once the
+  tool call it is in returns, Codex as a message held for after its next tool call. Its Return is
+  pressed only once a second look sees the wake alone in the prompt, never at a dialog.
+- **Messages fetched by its hooks**: the session is handed what arrived after each tool call, with
+  nothing typed into its pane. Needs the adapter's messaging hooks. Claude Code's are also woken
+  when a turn ends, by a hook waiting in the background. Codex has no such hook, so between turns
+  it is rung, and its hooks hand it what it was rung for as the ring's turn starts - which reaches
+  a sandboxed Codex that cannot run `muster` itself.
 - **Its session named after the pane**: naming a pane - the chord, the menu, `muster pane rename`,
   or `pane new --name` once its agent starts - types `/rename <name>` into the agent's prompt once
   it is idle at an empty prompt, as a ring is typed, so the session goes by the pane's name in
@@ -63,13 +69,14 @@ a post: the post says its prompt cannot be read, and exits 6 when nobody else he
 
 `extras/claude-code/README.md` has the statusline and the messaging hooks.
 
-**Codex**: a plugin for its hooks.
+**Codex**: a plugin for its hooks, and optional messaging hooks.
 
     codex plugin marketplace add /path/to/muster/extras
     codex plugin add muster-codex@muster
 
 Codex runs a hook only once you trust it, in `/hooks`. Its sandbox refuses a command connecting to
-Muster's daemon, so a sandboxed Codex cannot run `muster msg read` when it is rung, unless its
-sandbox may use the network; `extras/codex/README.md` has the setting and what it costs.
+Muster's daemon, so a sandboxed Codex cannot run `muster msg read` or `post` itself unless its
+sandbox may use the network; the messaging hooks hand it what it is sent regardless.
+`extras/codex/README.md` has both, and the setting's cost.
 
 Every other harness has no adapter: Muster reads its state off its screen, and does not ring it.

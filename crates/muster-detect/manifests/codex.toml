@@ -1,5 +1,5 @@
 id = "codex"
-version = "2026.10.03.2"
+version = "2026.10.03.3"
 min_engine_version = 8
 updated_at = "2026-10-03T00:00:00Z"
 
@@ -97,6 +97,11 @@ any = [{ contains = [" to interrupt)"] }, { contains = ["s)"] }]
 regex = ['(?m)^(?:[•◦][ \t]+)?[^\s›•◦■✗✓─][^\r\n]* \((?:[0-9]+[hm] )*[0-9]+s(?: • [^\r\n]+? to interrupt)?\)(?: · [^\r\n]*)?(?:\r?\n(?:[^•◦›■✗✓─\r\n][^\r\n]*|•[ \t]+(?:Queued\s+follow-up\s+inputs|Messages\s+to\s+be\s+submitted\s+after\s+next\s+tool\s+call(?:\s+\(press\s+[^\r\n]+?\s+to\s+interrupt\s+and\s+send\s+immediately\))?|Messages\s+to\s+be\s+submitted\s+at\s+end\s+of\s+turn)|›[⠁⠂⠄⠈⠐⠠⡀⢀][^\r\n]*)?)*\s*\z']
 # A failed reconnect keeps its final elapsed timer but is no longer working.
 not = [{ line_regex = ['^(?:[•◦][ \t]+)?Reconnect failed — check the endpoint, then relaunch \([0-9hms ]+\)$'] }]
+# Codex's composer stays under its working line and takes what is typed; Return holds the line
+# "to be submitted after next tool call" and empties the composer (docs/observations/
+# codex-0.154.0.md, section 6). An urgent ring is typed here, read in the composer alone.
+prompt = '^›\s?'
+prompt_region = "current_prompt"
 
 # Codex at its composer, which the doorbell reads before typing: the composer alone, down to the
 # blank line above its footer, since earlier requests are drawn above it with the same caret and

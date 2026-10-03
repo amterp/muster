@@ -1,5 +1,5 @@
 {
-  "description": "Tells the Muster daemon that owns this pane what Codex is doing: working, waiting on you or idle, and how many sub-agents it runs.",
+  "description": "Tells the Muster daemon that owns this pane what Codex is doing: working, waiting on you or idle, how many sub-agents it runs, its model and how full its context is.",
   "hooks": {
     "SessionStart": [
       {
@@ -56,6 +56,10 @@
           {
             "type": "command",
             "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent codex --state working >/dev/null 2>&1 || true"
+          },
+          {
+            "type": "command",
+            "command": "[ -n \"$MUSTER_DAEMON\" ] && command -v jq >/dev/null 2>&1 || exit 0; input=$(cat); transcript=$(printf '%s' \"$input\" | jq -r '.transcript_path // empty' 2>/dev/null); model=$(printf '%s' \"$input\" | jq -r '.model // empty' 2>/dev/null); used=; [ -f \"$transcript\" ] && used=$(tail -c 65536 \"$transcript\" | grep '\"type\":\"token_count\"' | tail -n 1 | jq -r '.payload.info // empty | select(.model_context_window > 12000) | (.last_token_usage.total_tokens - 12000) * 100 / (.model_context_window - 12000) | if . < 0 then 0 elif . > 100 then 100 else . end' 2>/dev/null); set --; [ -n \"$used\" ] && set -- --context-used \"$used\"; [ -n \"$model\" ] && set -- \"$@\" --model \"$model\"; [ $# -gt 0 ] || exit 0; { \"$MUSTER_DAEMON\" report \"$@\"; } </dev/null >/dev/null 2>&1 & exit 0"
           }
         ]
       }
@@ -76,6 +80,10 @@
           {
             "type": "command",
             "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent codex --state idle >/dev/null 2>&1 || true"
+          },
+          {
+            "type": "command",
+            "command": "[ -n \"$MUSTER_DAEMON\" ] && command -v jq >/dev/null 2>&1 || exit 0; input=$(cat); transcript=$(printf '%s' \"$input\" | jq -r '.transcript_path // empty' 2>/dev/null); model=$(printf '%s' \"$input\" | jq -r '.model // empty' 2>/dev/null); used=; [ -f \"$transcript\" ] && used=$(tail -c 65536 \"$transcript\" | grep '\"type\":\"token_count\"' | tail -n 1 | jq -r '.payload.info // empty | select(.model_context_window > 12000) | (.last_token_usage.total_tokens - 12000) * 100 / (.model_context_window - 12000) | if . < 0 then 0 elif . > 100 then 100 else . end' 2>/dev/null); set --; [ -n \"$used\" ] && set -- --context-used \"$used\"; [ -n \"$model\" ] && set -- \"$@\" --model \"$model\"; [ $# -gt 0 ] || exit 0; { \"$MUSTER_DAEMON\" report \"$@\"; } </dev/null >/dev/null 2>&1 & exit 0"
           }
         ]
       }

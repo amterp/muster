@@ -312,14 +312,60 @@
       }
     },
     {
-      "name": "codex 0.154.0: at work, no prompt is read",
-      "why": "Codex takes what is typed while it works into the running turn, but its manifest reads no prompt at work yet, so an urgent post waits for it to be idle.",
+      "name": "codex 0.154.0: at work with its composer empty, it is at its prompt",
+      "why": "Codex takes what is typed while it works into the running turn: its composer, below the working line, is read, and empty, so an urgent ring may be typed there.",
       "given": {
         "agent": "codex",
         "progress": "",
         "screen": "\n\n• I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Reply with the single word hi.\n\n\n• hi\n\n\n› Run the shell command sleep 20, and then say done.\n\n\n• I’ll run sleep 20 now.\n\n• Working (5s • esc to interrupt)\n\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
         "title": "⠴ Create made.txt | codex",
         "typed": "\n\n  I’ll run the requested shell command in the current workspace.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Reply with the single word hi.\n\n\n  hi\n\n\n  Run the shell command sleep 20, and then say done.\n\n\n  I’ll run sleep 20 now.\n\n• Working\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "expect": {
+        "atPrompt": true,
+        "whileWorking": true
+      }
+    },
+    {
+      "name": "codex 0.154.0: at work with a ring typed into its composer, the composer holds it",
+      "why": "An urgent ring typed while Codex works, its Return not yet pressed: the composer holds it alone, which is what the second look must see before pressing Return.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "│ model:     gpt-5.6-luna low   /model to change          │\n│ directory: /tmp/capture │\n╰─────────────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• I’ll create made.txt in the current workspace with the requested command.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Run the shell command sleep 15, and then say done.\n\n\n• Working (5s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close\n\n\n› Before you go on, say the word PINEAPPLE.\n\n  tab to queue message                                                            97% context left\n",
+        "title": "⠙ Create made.txt",
+        "typed": "             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n  I’ll create made.txt in the current workspace with the requested command.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Run the shell command sleep 15, and then say done.\n\n\n• Working\n\n\n› Before you go on, say the word PINEAPPLE.\n\n"
+      },
+      "expect": {
+        "atPrompt": true,
+        "whileWorking": true,
+        "holds": "Before you go on, say the word PINEAPPLE."
+      }
+    },
+    {
+      "name": "codex 0.154.0: at work with a message held for after its next tool call, its composer is empty",
+      "why": "Return held the ring 'to be submitted after next tool call', drawn above the composer, and emptied the composer: an empty composer is how a ring at work counts as taken.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "╰─────────────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• I’ll create made.txt in the current workspace with the requested command.\n\n✗ You canceled the request to run echo hi > made.txt\n\n• Ran echo hi > made.txt\n  └ (no output)\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n› Run the shell command sleep 15, and then say done.\n\n\n• Working (7s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close\n\n• Messages to be submitted after next tool call (press esc to interrupt and send immediately)\n  ↳ Before you go on, say the word PINEAPPLE.\n\n› Ask Codex to do anything\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "⠦ Create made.txt",
+        "typed": "\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n  I’ll create made.txt in the current workspace with the requested command.\n\n✗ You canceled the request to run\n\n• Ran echo hi > made.txt\n\n\n■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/\nfeedback` to report the issue.\n\n\n  Run the shell command sleep 15, and then say done.\n\n\n• Working\n\n  Messages to be submitted after next tool call\n\n\n›\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "expect": {
+        "atPrompt": true,
+        "whileWorking": true
+      }
+    },
+    {
+      "name": "codex 0.154.0: at its approval prompt, with a ring pasted at it, no prompt is read",
+      "why": "A ring pasted at Codex's approval prompt changes nothing there, but a Return would take its highlighted option: the prompt is not read, so the ring's Return is held back.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "│ >_ OpenAI Codex (v0.154.0)                              │\n│                                                         │\n│ model:     gpt-5.6-luna low   /model to change          │\n│ directory: /tmp/capture │\n╰─────────────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n› Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n• I’ll create made.txt in the current workspace with the requested command.\n\n• Running echo hi > made.txt\n\n\n  Would you like to run the following command?\n\n  Environment: local\n\n  Reason: May I create made.txt in the current workspace with the requested shell command?\n\n  $ echo hi > made.txt\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `echo hi > made.txt` (p)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel\n",
+        "title": "[ ! ] Action Required | Create made.txt",
+        "typed": "     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n  Create a file named made.txt containing hi, with the shell command: echo hi > made.txt\n\n\n  I’ll create made.txt in the current workspace with the requested command.\n\n• Running echo hi > made.txt\n\n\n  Would you like to run the following command?\n\n  Environment: local\n\n  Reason: May I create made.txt in the current workspace with the requested shell command?\n\n  $ echo hi > made.txt\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `echo hi > made.txt` ( )\n  3. No, and tell Codex what to do differently (   )\n\n"
       },
       "expect": {
         "atPrompt": false

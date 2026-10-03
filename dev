@@ -456,7 +456,7 @@ SKIPPED_SUITES = [
       "note": "a measurement, not a property; cargo test --release -p muster-daemon --test daemon -- flood::echo_latency --ignored --nocapture prints it" },
     { "language": "Rust", "suite": "muster-daemon's live Claude Code checks", "skipped": 11,
       "note": "reach the network and spend model turns; ./dev --claude-code runs them" },
-    { "language": "Rust", "suite": "muster-daemon's live Codex checks", "skipped": 3,
+    { "language": "Rust", "suite": "muster-daemon's live Codex checks", "skipped": 5,
       "note": "reach the network and spend model turns; ./dev --codex runs them" },
     { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 13,
       "note": "need a logged-in session; ./dev --contract runs them" },
