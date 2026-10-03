@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use muster::proto::{
-    ClosePane, CreateTab, Event, FocusPane, MoveTab, OpenWindow, Quitting, ReadWindow, Request,
-    Response, SplitPane, Startup, ToggleSidebar, WindowFocus, event, request, response,
+    ClosePane, CreateTab, Event, FocusAsking, FocusPane, MoveTab, OpenWindow, Quitting, ReadWindow,
+    Request, Response, SplitPane, Startup, ToggleSidebar, WindowFocus, event, request, response,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::AgentState;
@@ -329,6 +329,43 @@ fn a_change_to_the_other_windows_pane_is_made_there() {
     );
     assert_eq!(listed("window-1"), vec![first], "the window asked took the other one's tab");
     assert_eq!(listed("window-2"), vec![second], "the window holding the pane lost its tab");
+}
+
+/// ⌘⇧A in one window goes to an agent waiting in the other window's tab, in that window, which
+/// comes forward.
+#[test]
+fn going_to_an_agent_asking_goes_to_the_window_holding_it() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_detecting();
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let (first, _) = two_windows(&daemon);
+    assert_eq!(first, "t1", "the first window did not open onto the agent's tab");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab { tab_id: first, window: "window-2".to_string() }),
+    )));
+    focus_window("window-1");
+    daemon.set_agent_state("p1", AgentState::Blocked);
+    until_state("p1", "blocked");
+
+    match answer(&in_window("window-1", request::Payload::FocusAsking(FocusAsking {}))).payload {
+        Some(response::Payload::Asking(went)) => {
+            assert_eq!(went.pane_id, "p1", "went somewhere other than the agent asking");
+        }
+        other => panic!("going to the agent asking answered {other:?}"),
+    }
+    until(
+        "the second window's keyboard to move onto the agent",
+        || keyboard_in("window-2").as_deref() == Some("p1"),
+        || format!("window-2's keyboard is on {:?}", keyboard_in("window-2")),
+    );
+    assert_eq!(
+        windows_sent(|payload| matches!(payload, event::Payload::RaiseWindow(_))),
+        vec!["window-2".to_string()],
+        "the window holding the agent was not brought forward, or another one was"
+    );
 }
 
 /// Quitting the process closes every window in it, each keeping its tabs for when it reopens.

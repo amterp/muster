@@ -2783,12 +2783,22 @@ fn not_showing(daemon: &DaemonId) -> String {
     )
 }
 
-/// Points this window's keyboard at a pane.
+/// Points a window's keyboard at a pane: this window's, or the window here holding the pane's tab.
 ///
 /// No daemon is told. Which pane has the keyboard is Muster's own cursor, and a daemon serving
 /// several windows has no single answer to hold (MIP-3, section 14).
-pub(crate) fn focus(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
-    if let Some(tab) = tab_of_pane(pane)
+///
+/// A pane in a tab another open window here holds is gone to in that window, which comes
+/// forward: ⌘⇧A and a group's transcript pick a pane wherever it is, and showing it here would
+/// take its terminals from the window showing them.
+pub(crate) fn focus(asked: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
+    let (tab, window) = {
+        let session = poison::lock(&SESSION, "session");
+        let tab = session.locate(pane).map(|(_, tab)| tab);
+        let holder = tab.as_ref().and_then(|tab| session.window_holding(tab));
+        (tab, holder.unwrap_or(asked))
+    };
+    if let Some(tab) = tab
         && reopened_for(window, &tab, pane.as_str())
     {
         return Ok(());
@@ -2806,6 +2816,9 @@ pub(crate) fn focus(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> Resul
         session.windows[window].composition.focus_pane(region, pane.clone());
     }
     publish("focus");
+    if window != asked {
+        raise(window);
+    }
     Ok(())
 }
 
