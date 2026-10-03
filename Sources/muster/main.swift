@@ -149,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let muster = MusterWindow(renderer: renderer, executable: CommandLine.arguments[0])
       Core.window = muster
       self.muster = muster
-      NSApp.mainMenu = AppMenu.build(target: muster, bindings: Core.bindings())
+      AppMenu.install(target: muster, bindings: Core.bindings())
       muster.show()
 
       // After the window is up, because nothing about it is needed to draw one and asking

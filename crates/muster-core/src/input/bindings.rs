@@ -319,18 +319,14 @@ impl Action {
             Action::SplitDown => Some(Chord::new(Key::KeyD, shifted)),
             // Unbound, each for its own reason. The two splits are Ghostty parity - it ships
             // `new_split:left` and `new_split:up` with no chord, so Muster invents none
-            // either. Renaming a tab has no Ghostty equivalent at all, and is something done
-            // once per tab where renaming a pane is done several times an hour: the chord
-            // goes to the common one and the menu carries this. Pulling a pane into a tab of
-            // its own is the same shape as renaming a tab and has the same answer, and it is
-            // also the newest of the three - a chord invented for it would be one nobody
-            // asked for. Ending the sessions is the odd one out and is unbound for safety
-            // rather than for parity: every other action here is undone by doing it again,
-            // and that one ends processes holding somebody's work. `[keymap]` is one line
-            // away for anybody who disagrees with any of them.
+            // either. Pulling a pane into a tab of its own is the newest of them, and a chord
+            // invented for it would be one nobody asked for. Ending the sessions is the odd
+            // one out and is unbound for safety rather than for parity: every other action
+            // here is undone by doing it again, and that one ends processes holding
+            // somebody's work. `[keymap]` is one line away for anybody who disagrees with any
+            // of them.
             Action::SplitLeft
             | Action::SplitUp
-            | Action::RenameTab
             | Action::MovePaneToNewTab
             | Action::CloseTab
             | Action::ReopenWindow
@@ -341,6 +337,10 @@ impl Action {
             // somebody does in a window of fifteen agents, which is the size this was built
             // for.
             Action::RenamePane => Some(Chord::new(Key::KeyN, shifted)),
+            // Muster's own too, and asked for: it shipped unbound on the theory that a tab is
+            // named once, and the person naming them wanted a chord. R for rename, beside N for
+            // name, and free in both keymaps - Ghostty's ⌘⇧ chords on macOS leave R alone.
+            Action::RenameTab => Some(Chord::new(Key::KeyR, shifted)),
             Action::ClosePane => Some(Chord::new(Key::KeyW, command)),
             Action::NextPane => Some(Chord::new(Key::BracketRight, command)),
             Action::PreviousPane => Some(Chord::new(Key::BracketLeft, command)),

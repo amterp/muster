@@ -498,7 +498,7 @@ public final class MusterWindow: NSObject {
   /// platform dispatches a chord from, so a menu that still carries the old ones is a config
   /// that did not reload.
   public func apply(bindings: [Core.Binding]) {
-    NSApp.mainMenu = AppMenu.build(target: self, bindings: bindings)
+    AppMenu.install(target: self, bindings: bindings)
     // The empty window names a chord, so a rebind has to reach it too. A window sitting empty
     // while somebody edits the config file is exactly when a stale hint would be read.
     self.bindings = bindings

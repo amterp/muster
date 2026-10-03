@@ -110,38 +110,39 @@ the key to the program. Ghostty's `text:`, `csi:` and `esc:` are `[text]` here. 
 Ghostty's actions are about its own windows, tabs and clipboard, and are not offered; a
 `[keymap]` line naming one is refused, and names Muster's equivalent where there is one.
 
-Eight of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+**Both renames have a chord.** `rename_pane` is `cmd+shift+n` and `rename_tab` is
+`cmd+shift+r`, R for rename. Neither is Ghostty's, and Ghostty's macOS chords leave both alone.
+`rename_tab` used to ship unbound, on the theory that a tab is named once and a pane several
+times an hour; tabs turned out to be renamed often enough to want one.
+
+Seven of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
 the menu, one click away and one `[keymap]` line from a chord.
 
-`rename_tab` is the third, and that one is Muster's own call rather than Ghostty's: you name a
-tab once and a pane several times an hour, so the chord goes to `rename_pane` (`cmd+shift+n`)
-and the tab keeps a menu item.
-
-`move_pane_to_new_tab` is the fourth, on the same reasoning and one more of its own: it is the
-newest of them, and a chord invented for an action nobody has asked to reach by keyboard is a
+`move_pane_to_new_tab` is the third, and that one is Muster's own call rather than Ghostty's: it
+is the newest of them, and a chord invented for an action nobody has asked to reach by keyboard is a
 chord taken away from whatever wants it later. It takes the pane the keyboard is on out of its
 split and gives it a tab of its own, in one request - the CLI's `pane move --new-tab` is the
 same act with a name for the tab.
 
-`close_tab` is the fifth, and that one is unbound because of what it does rather than because
+`close_tab` is the fourth, and that one is unbound because of what it does rather than because
 nobody has asked for it: it ends every pane in the tab, and a chord that destroys several panes
 is one somebody reaches by accident. `cmd+w` stays on `close_pane`, where the damage is one
 pane and the muscle memory is everybody's.
 
-`reopen_window` is the sixth. `cmd+shift+t` is what a browser puts on reopening a *tab*, and
+`reopen_window` is the fifth. `cmd+shift+t` is what a browser puts on reopening a *tab*, and
 Muster's tabs belong to the daemon and were never gone - so binding it to a window would make
 one keystroke mean two things across two apps. The menu carries it, and `muster window reopen`
 is the same act from a script.
 
-`quit_and_close_sessions` is the seventh, and it is the only one unbound for safety rather
+`quit_and_close_sessions` is the sixth, and it is the only one unbound for safety rather
 than for parity. Quitting Muster leaves every session running - that is the whole promise, and `cmd+q`
 does it - and this is the other answer, for when you are finished for the day and want the
 agents to stop too. It asks first, naming every machine and the directories its panes are in,
 because it is the one thing in Muster that ends somebody's work. Bind it if you want to, and
 know that everything else here is undone by doing it again and this is not.
 
-`reset_terminal` is the eighth, as it is in Ghostty: it throws away the pane's screen and modes,
+`reset_terminal` is the seventh, as it is in Ghostty: it throws away the pane's screen and modes,
 and a chord for that is one somebody finds by losing their screen.
 
 **The mouse's back and forward buttons go back to the pane you were on, and forward again.**

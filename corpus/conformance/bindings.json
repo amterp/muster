@@ -243,8 +243,8 @@
       }
     },
     {
-      "name": "no two actions share a chord, and the eight without one are named",
-      "why": "Two actions on the same chord is one of them silently never firing - which on macOS shows up as a menu item that looks bound and does nothing. So distinct chords has to equal bound actions exactly.\n\nBound is seven short of the whole table, and that is the deliberate part. Muster's chords are Ghostty's, and Ghostty has `new_split:left` and `new_split:up` as actions and ships neither on one - so shipping a chord for them would be Muster inventing a shortcut the terminal it embeds chose not to. `rename_tab` is the third and is Muster's own call: it has no Ghostty equivalent either way, and a tab is named once where a pane is named several times an hour, so the chord goes to `rename_pane` and the menu carries the tab. `move_pane_to_new_tab` is the fourth, on the same reasoning and one more of its own: it is the newest action here, and a chord invented for one nobody has asked to reach by keyboard is a chord taken from whatever wants it later. `close_tab` is the fifth and is unbound for what it does rather than for who asked: it ends every pane in the tab, and a chord that destroys several panes is one somebody reaches by accident - so cmd+w stays on `close_pane`, where the damage is one pane. `quit_and_close_sessions` is the seventh and is the only one unbound for safety rather than for parity: every other action here is undone by doing it again, and that one ends processes holding somebody's work. They are all still published, because a shell builds its menu from this list and on macOS an action with no menu item is one nothing can reach: what they ship without is the shortcut, not the action. `reopen_window` is the sixth: ⌘⇧T is what a browser puts on reopening a *tab*, and Muster's tabs are the daemon's and were never gone - so binding it to a window would make one keystroke mean two things across two apps. `reset_terminal` is the eighth, as it is in Ghostty: it throws away the pane's screen and modes, and a chord for that is one somebody finds by losing their screen. Anything else falling off the bound count is a chord lost by accident.",
+      "name": "no two actions share a chord, and the seven without one are named",
+      "why": "Two actions on the same chord is one of them silently never firing - which on macOS shows up as a menu item that looks bound and does nothing. So distinct chords has to equal bound actions exactly.\n\nBound is seven short of the whole table, and that is the deliberate part. Muster's chords are Ghostty's, and Ghostty has `new_split:left` and `new_split:up` as actions and ships neither on one - so shipping a chord for them would be Muster inventing a shortcut the terminal it embeds chose not to. `move_pane_to_new_tab` is the third and is Muster's own call: it is the newest action here, and a chord invented for one nobody has asked to reach by keyboard is a chord taken from whatever wants it later. `close_tab` is the fourth and is unbound for what it does rather than for who asked: it ends every pane in the tab, and a chord that destroys several panes is one somebody reaches by accident - so cmd+w stays on `close_pane`, where the damage is one pane. `reopen_window` is the fifth: ⌘⇧T is what a browser puts on reopening a *tab*, and Muster's tabs are the daemon's and were never gone - so binding it to a window would make one keystroke mean two things across two apps. `quit_and_close_sessions` is the sixth and is the only one unbound for safety rather than for parity: every other action here is undone by doing it again, and that one ends processes holding somebody's work. `reset_terminal` is the seventh, as it is in Ghostty: it throws away the pane's screen and modes, and a chord for that is one somebody finds by losing their screen. They are all still published, because a shell builds its menu from this list and on macOS an action with no menu item is one nothing can reach: what they ship without is the shortcut, not the action. Anything else falling off the bound count is a chord lost by accident.",
       "given": {
         "actions": [
           "*"
@@ -252,8 +252,8 @@
       },
       "expect": {
         "actions": 56,
-        "bound": 48,
-        "distinct_chords": 48
+        "bound": 49,
+        "distinct_chords": 49
       }
     },
     {
@@ -294,7 +294,7 @@
     },
     {
       "name": "naming a pane is on a chord of Musters own",
-      "why": "The one action here that has no Ghostty equivalent to copy, so the chord is a choice rather than parity. A command chord never reaches a pane, so nothing in a terminal wanted it, and naming panes is what somebody does in a window of fifteen agents.\n\nRenaming is also the first thing in Muster that asks a person for text before it can do anything, so what the action means is \"ask me\" rather than \"name it this\" - a CLI naming a pane outright sends the rename request and never this. Its sibling rename_tab ships with no chord at all and is counted among the unbound above.",
+      "why": "The one action here that has no Ghostty equivalent to copy, so the chord is a choice rather than parity. A command chord never reaches a pane, so nothing in a terminal wanted it, and naming panes is what somebody does in a window of fifteen agents.\n\nRenaming is also the first thing in Muster that asks a person for text before it can do anything, so what the action means is \"ask me\" rather than \"name it this\" - a CLI naming a pane outright sends the rename request and never this. Its sibling rename_tab is on cmd+shift+r, pinned below.",
       "given": {
         "actions": [
           "rename_pane"
@@ -303,6 +303,20 @@
       "expect": {
         "chords": [
           "rename_pane=shift+super+KeyN"
+        ]
+      }
+    },
+    {
+      "name": "renaming a tab is on the key beside naming a pane",
+      "why": "It shipped unbound, on the theory that a tab is named once where a pane is named several times an hour, and the person naming the tabs asked for a chord. R for rename, as N is for name: cmd+shift+r is free in Muster's defaults, in Ghostty's on macOS, and in macOS itself, and a command chord never reaches a pane.",
+      "given": {
+        "actions": [
+          "rename_tab"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "rename_tab=shift+super+KeyR"
         ]
       }
     }

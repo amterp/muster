@@ -123,6 +123,18 @@ public enum AppMenu {
     return menu
   }
 
+  /// Builds the menu bar and makes it this app's, with its Help menu named as the Help menu.
+  ///
+  /// Naming it is what puts macOS's menu search there: type "rename" and it points at both
+  /// rename items with the chords they are on, which is the platform's own answer to "what is
+  /// the shortcut for this" beside the list `show_shortcuts` opens.
+  public static func install(target: AnyObject, bindings: [Core.Binding]) {
+    let menu = build(target: target, bindings: bindings)
+    NSApp.mainMenu = menu
+    NSApp.helpMenu =
+      menu.items.first { $0.submenu?.title == MenuActions.Group.help.rawValue }?.submenu
+  }
+
   /// One of Muster's actions as a menu item.
   ///
   /// An explicit target rather than the responder chain, because the first responder is a

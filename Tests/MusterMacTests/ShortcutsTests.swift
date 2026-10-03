@@ -31,6 +31,23 @@ struct ShortcutsTests {
     }
   }
 
+  /// macOS puts its menu search in whichever menu the app names as Help, and that search is
+  /// the platform's way to find the chord for something by typing what it is called.
+  @MainActor
+  @Test("the menu bar's Help menu is the one macOS searches from")
+  func theHelpMenuIsNamed() {
+    let app = NSApplication.shared
+    let (menu, help) = (app.mainMenu, app.helpMenu)
+    defer { (app.mainMenu, app.helpMenu) = (menu, help) }
+
+    AppMenu.install(
+      target: NSObject(),
+      bindings: [Core.Binding(action: "show_shortcuts", key: "Slash", modifiers: ["super"])])
+
+    #expect(app.helpMenu?.title == "Help")
+    #expect(app.helpMenu?.items.contains { $0.title == "muster Shortcuts" } == true)
+  }
+
   @MainActor
   @Test("the platform's own chords are listed, though the core never names them")
   func theListCoversWhatTheCoreDoesNotOwn() {
