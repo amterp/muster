@@ -197,7 +197,7 @@ pub fn run(
     // through to `ask`, so the message about there being no window to talk to stays the one that
     // command already wrote.
     if asks_around(&request, named.as_deref(), environment) {
-        let answers = dial::survey_of(dial::around(environment), &request);
+        let answers = dial::survey_around(environment, &request);
         if answers.len() > 1 {
             let text = render::answers(&answers, json);
             let _ = writeln!(out, "{}", text.trim_end());

@@ -132,8 +132,16 @@ pub fn survey(
     survey_of(candidates(environment), &from_here(request, environment))
 }
 
+/// [`survey`], of the apps [`around`] finds: what a pane asks when its own app has gone.
+pub fn survey_around(
+    environment: &BTreeMap<String, String>,
+    request: &Request,
+) -> Vec<(String, Result<Response, Trouble>)> {
+    survey_of(around(environment), &from_here(request, environment))
+}
+
 /// [`survey`], of these windows.
-pub fn survey_of(
+fn survey_of(
     windows: Vec<String>,
     request: &Request,
 ) -> Vec<(String, Result<Response, Trouble>)> {
