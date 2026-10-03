@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use muster::proto::{
     AskForWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking, FocusHistory, FocusPane,
-    FocusTab, MoveTab, OpenWindow, Quitting, ReadReopening, ReadTabHolders, ReadWindow,
+    FocusTab, MoveTab, OpenWindow, Quitting, ReadAsking, ReadReopening, ReadTabHolders, ReadWindow,
     ReattachPane, Request, Response, SplitPane, Startup, ToggleSidebar, ViewNode, WindowFocus,
     event, request, response, view_node,
 };
@@ -441,6 +441,86 @@ fn going_to_an_agent_asking_goes_to_the_window_holding_it() {
         windows_sent(|payload| matches!(payload, event::Payload::RaiseWindow(_))),
         vec!["window-2".to_string()],
         "the window holding the agent was not brought forward, or another one was"
+    );
+}
+
+/// Asked what going to the agent asking would do, a window names the agent in the window beside
+/// it, the same one going there goes to, and moves nothing: the menu item that greys itself out
+/// on this answer is in every window.
+#[test]
+fn what_going_to_an_agent_asking_would_do_names_the_other_windows_agent() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_detecting();
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let (first, _) = two_windows(&daemon);
+    assert_eq!(first, "t1", "the first window did not open onto the agent's tab");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab { tab_id: first, window: "window-2".to_string() }),
+    )));
+    focus_window("window-1");
+    daemon.set_agent_state("p1", AgentState::Blocked);
+    until_state("p1", "blocked");
+    let keyboard = keyboard_in("window-2");
+
+    match answer(&in_window("window-1", request::Payload::ReadAsking(ReadAsking {}))).payload {
+        Some(response::Payload::Asking(asking)) => {
+            assert_eq!(asking.pane_id, "p1", "named somewhere other than the agent asking");
+        }
+        other => panic!("asking what going to the agent would do answered {other:?}"),
+    }
+    assert_eq!(keyboard_in("window-2"), keyboard, "asking moved the other window's keyboard");
+    assert!(
+        windows_sent(|payload| matches!(payload, event::Payload::RaiseWindow(_))).is_empty(),
+        "asking brought a window forward"
+    );
+}
+
+/// A problem's Reattach is listed in every window, so it can be clicked in a window that does
+/// not hold the pane. The bridge is replaced where the pane is drawn, and the window clicked in
+/// is left as it was.
+#[test]
+fn reattaching_the_other_windows_pane_reattaches_it_there() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, _) = two_windows(&daemon);
+    let pane = keyboard_in("window-1").expect("the first window opens with the keyboard on a pane");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab {
+            tab_id: first.clone(),
+            window: "window-2".to_string(),
+        }),
+    )));
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::FocusTab(FocusTab { tab_id: first.clone(), ..FocusTab::default() }),
+    )));
+    until(
+        "the second window to draw the moved pane",
+        || restarts_in("window-2", &pane) == Some(0),
+        || format!("window-2 counts {:?}", restarts_in("window-2", &pane)),
+    );
+    forget_events();
+
+    assert_ok(&answer(&in_window("window-1", reattach(&pane))));
+    until(
+        "the second window to be given a new bridge for its pane",
+        || restarts_in("window-2", &pane) == Some(1),
+        || format!("window-2 counts {:?}", restarts_in("window-2", &pane)),
+    );
+    assert_eq!(showing_in("window-2"), Some(first), "the second window changed tab");
+    assert!(
+        !windows_sent(|payload| matches!(payload, event::Payload::ViewChanged(_)))
+            .contains(&"window-1".to_string()),
+        "the window clicked in changed what it shows"
+    );
+    assert!(
+        windows_sent(|payload| matches!(payload, event::Payload::RaiseWindow(_))).is_empty(),
+        "reattaching brought a window forward"
     );
 }
 
