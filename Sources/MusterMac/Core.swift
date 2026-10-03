@@ -1042,6 +1042,20 @@ public enum Core {
   /// The one thing about attention that only the shell can see. `done` is `idle` on a pane
   /// nobody looked at, and no daemon can answer that for a window it has no view of - so the
   /// shell says what happened and the core decides what it means.
+  /// Says the window has closed, and keeps its tabs for a reopen. The shell has already decided
+  /// it is not the last window, which would be a quit instead.
+  public static func closeWindow() {
+    var request = Muster_Request()
+    request.closeWindow = Muster_CloseWindow()
+    send(request)
+  }
+
+  /// Says where the window is, and waits for the core to have it: what a window closing says
+  /// last, where the coalescing sender could still be holding a report.
+  static func setWindowFrameNow(rect: NSRect?, fullScreen: Bool) {
+    send(setWindowFrame(rect: rect, fullScreen: fullScreen))
+  }
+
   public static func windowFocused(_ focused: Bool) {
     var focus = Muster_WindowFocus()
     focus.focused = focused

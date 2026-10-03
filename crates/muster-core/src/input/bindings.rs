@@ -28,20 +28,18 @@ use super::{Key, Modifiers};
 /// which nothing does today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Action {
-    /// Opens another window, which means another Muster.
+    /// Opens another window, onto tabs of its own.
     ///
-    /// The one action here the core does not carry out. The shell opens one window per process
-    /// today, so making one is starting an app, which is an OS act the shell performs itself
-    /// (MIP-6 is the change that ends that). It is an action rather than a plain menu item so that it can be
-    /// rebound and unbound like everything else, on the same terms as `show_shortcuts`, which
-    /// the shell also answers alone.
+    /// An action the core does not carry out: the shell makes the platform's window
+    /// and then asks the core to open one onto a fresh arrangement (mip/0006-one-process.md). It
+    /// is an action rather than a plain menu item so that it can be rebound and unbound like
+    /// everything else, on the same terms as `show_shortcuts`, which the shell also answers alone.
     NewWindow,
-    /// Brings back the window that was closed, which is the same act with one flag off.
+    /// Brings back the window that was closed most recently, onto the tabs it kept.
     ///
-    /// The other action the core does not carry out, on the same terms as `NewWindow`: a window
-    /// is a process, so this is the shell starting an app. What it starts it with is the
-    /// difference - a window somebody asked for takes an arrangement nothing has ever held, and
-    /// this takes the most recent one no live window is holding.
+    /// Answered by the shell, on the same terms as `NewWindow`. The difference is the arrangement
+    /// the window opens onto: a new window takes one nothing has ever held, and this takes the
+    /// most recent one no open window is holding.
     ReopenWindow,
     /// Closes the window, which keeps its tabs: their agents keep running, and going to one of
     /// them brings the window back. Closing the last window quits instead, so the next launch has

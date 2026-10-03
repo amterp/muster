@@ -17,6 +17,10 @@ public final class MusterWindow: NSObject {
   /// What the core calls this window (`window-2`), once it has opened it. Every event for it
   /// carries the name, and everything it sends on its own account gives it (`speaking`).
   public internal(set) var name = ""
+
+  /// Told once this window has closed, so whatever opened it can let go of it and its
+  /// arrangement.
+  public var onClosed: ((MusterWindow) -> Void)?
   private let renderer: Renderer
   private let executable: String
   private let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
@@ -174,6 +178,10 @@ public final class MusterWindow: NSObject {
       backing: .buffered,
       defer: false)
     window = keyboard
+    // Kept by this object for as long as it lives, rather than released by AppKit on close as a
+    // window made in code is by default: this object outlives the close by a moment, tearing its
+    // surfaces down, and a released window it still points at would be freed twice.
+    keyboard.isReleasedWhenClosed = false
     super.init()
     keyboard.onModifiersChanged = { [weak self] held in
       self?.speaking { self?.apply(held: held) }
@@ -790,6 +798,36 @@ extension NSView {
 }
 
 extension MusterWindow: NSWindowDelegate {
+  /// Closes this window, or quits when it is the last one open.
+  ///
+  /// The last window closing is a quit (mip/0006-one-process.md, section 4): otherwise it would be
+  /// marked closed, and the next launch would have nothing to open. Any other window tells the
+  /// core it has closed, which keeps its tabs for a reopen, after saying once more where it was -
+  /// the frame sender answers on a queue of its own, and a report still on its way when the window
+  /// closed would land on a closed window and be refused.
+  public func windowShouldClose(_ sender: NSWindow) -> Bool {
+    let others = Windows.all.filter { $0 !== self }
+    guard !others.isEmpty else {
+      Core.info("window.close.quits", ["window": name])
+      NSApp.terminate(nil)
+      return false
+    }
+    if !fullScreen { settledFrame = window.frame }
+    speaking {
+      Core.setWindowFrameNow(rect: settledFrame, fullScreen: fullScreen)
+      Core.closeWindow()
+    }
+    Windows.remove(self)
+    return true
+  }
+
+  /// Lets go of every pane's surface, which ends its bridge: the panes stay in their tabs, and
+  /// the window that shows those tabs next starts bridges of its own.
+  public func windowWillClose(_ notification: Notification) {
+    surfaces.releaseAll()
+    onClosed?(self)
+  }
+
   public func windowDidBecomeKey(_ notification: Notification) {
     if !name.isEmpty { Windows.cameToTheFront(self) }
     speaking { Core.windowFocused(true) }
@@ -1136,70 +1174,17 @@ extension MusterWindow {
 
   /// Opens the list of what this window does. Answered here rather than by the core: the
   /// list is built from what the core already publishes, and a window is a shell's to open.
-  /// Opens another Muster, which is what another window is.
+  /// Opens another window in this app, onto tabs of its own.
   ///
-  /// Nothing is asked of the core, on the same terms as `showShortcuts` below: a window is a
-  /// process - the core holds one session per process - so making one is starting an app, and
-  /// starting an app is an OS act. There is no request that could carry it, and a core that
-  /// grew one would be a core that has to be running before a window can exist.
-  ///
-  /// Through Launch Services rather than by spawning the executable, because that is what makes
-  /// a GUI app: activation, the Dock, and which application macOS charges a permission prompt
-  /// to. A new app is given launchd's environment rather than this one's, so where Muster keeps
-  /// its files travels as an argument - the same thing `muster window new` does, which reaches
-  /// Launch Services through `open` and has to clear that command's own environment to get the
-  /// same answer. Read back by `launchHome`.
+  /// The app's to do rather than this window's (`WindowOpening`): a window does not make windows,
+  /// and the core's answer is a name only the app keeps track of.
   @objc public func newWindow(_ sender: Any?) {
-    openAnother(fresh: true)
+    Core.openWindowAsked?(Core.WindowAsked(name: "", show: "", fresh: true))
   }
 
-  /// Starts another Muster, and says whether it is a window somebody asked for.
-  ///
-  /// Fresh means it starts on tabs of its own rather than on the ones this window is showing -
-  /// which it could not render anyway, because a daemon lets one bridge draw a pane - and takes
-  /// an arrangement nothing has ever held. Not fresh means it takes the most recent arrangement
-  /// no live window is holding, which is the window that was closed.
-  /// Opens a closed window again, onto a pane or tab it holds.
-  ///
-  /// What going to that pane or tab from here comes to: the window is closed, its tabs are still
-  /// its own, and a window is a process - so this starts one, told which record to take and where
-  /// to go once it is open.
-  public func reopen(named name: String, showing show: String) {
-    openAnother(
-      fresh: false, reopening: [windowFlag, name] + (show.isEmpty ? [] : [showFlag, show]))
-  }
-
-  private func openAnother(fresh: Bool, reopening: [String] = []) {
-    let configuration = NSWorkspace.OpenConfiguration()
-    configuration.createsNewApplicationInstance = true
-    var arguments = (fresh ? [freshFlag] : []) + reopening
-    if let home = ProcessInfo.processInfo.environment["MUSTER_HOME"], !home.isEmpty {
-      arguments += ["--home", home]
-    }
-    configuration.arguments = arguments
-    NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) {
-      _, error in
-      guard let error else { return }
-      Core.warn(
-        "window.open.failed",
-        [
-          "detail": error.localizedDescription,
-          "bundle": Bundle.main.bundleURL.path,
-          "impact": "no second window opened, and the one you are looking at is unaffected",
-          "check":
-            "whether this build is a real bundle - a window opened from a build tree has no "
-            + "app to make a second copy of",
-        ])
-    }
-  }
-
-  /// Brings back the window that was closed, which is another Muster with one flag off.
-  ///
-  /// Nothing is asked of the core, on the same terms as `newWindow`. The difference between the
-  /// two is which arrangement the launched window takes, and the launched window works that out
-  /// for itself from the flag - so this is `newWindow` without it.
+  /// Opens the most recently closed window again, onto the tabs it kept.
   @objc public func reopenWindow(_ sender: Any?) {
-    openAnother(fresh: false)
+    Core.openWindowAsked?(Core.WindowAsked(name: "", show: "", fresh: false))
   }
 
   /// Closes this window as its close button does, so both go through the same check: the last

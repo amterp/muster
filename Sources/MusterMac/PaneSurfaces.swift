@@ -196,6 +196,13 @@ public final class PaneSurfaces {
     }
   }
 
+  /// Drops every pane's chrome, on screen or parked, when the window holding them closes.
+  public func releaseAll() {
+    for key in Array(held.keys) {
+      release(key)
+    }
+  }
+
   /// How many panes have a surface, for a test to price what this holds.
   public var count: Int { held.count }
 

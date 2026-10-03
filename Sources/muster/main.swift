@@ -10,7 +10,8 @@ import MusterRenderer
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-  private var muster: MusterWindow?
+  /// Every window, from the first on.
+  private var windows: WindowOpening?
   private var renderer: Renderer?
   /// Held for the life of the app; dropping it stops the watch.
   private var watcher: ConfigWatcher?
@@ -92,13 +93,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + "local APFS directory",
         ])
     }
-    // Given up on the way out so that a window closed and reopened in the same second finds its
-    // own record rather than the one before it. Not relied on: a window that is killed never
-    // gets here, and the claim carries a pid for exactly that.
-    if let arrangement {
-      NotificationCenter.default.addObserver(
-        forName: NSApplication.willTerminateNotification, object: nil, queue: .main
-      ) { _ in Arrangements.release(arrangement) }
+    // Every window's claim is given up on the way out, so a relaunch in the same second finds
+    // the records rather than the claims. Not relied on: a process that is killed never gets
+    // here, and a claim carries a pid for exactly that.
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.windows?.releaseEveryClaim() }
     }
     Core.info(
       "app.launch",
@@ -146,12 +147,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       Renderer.current = renderer
       self.renderer = renderer
 
+      let windows = WindowOpening(renderer: renderer, executable: CommandLine.arguments[0])
+      self.windows = windows
       let muster = MusterWindow(renderer: renderer, executable: CommandLine.arguments[0])
-      self.muster = muster
+      windows.adopt(muster, claimed: arrangement)
       AppMenu.install(target: KeyWindowActions.shared, bindings: Core.bindings())
-      Core.openWindowAsked = { [weak muster] asked in
-        muster?.reopen(named: asked.name, showing: asked.show)
-      }
+      Core.openWindowAsked = { [weak windows] asked in windows?.open(asked) }
       muster.show()
 
       // After the window is up, because nothing about it is needed to draw one and asking
@@ -273,7 +274,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         """.utf8))
   }
 
-  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+  /// No: the last window's close is turned into a quit before it happens
+  /// (`MusterWindow.windowShouldClose`), and a window closing for any other reason - a minimised
+  /// one among them - is not the app ending.
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
 let app = NSApplication.shared
