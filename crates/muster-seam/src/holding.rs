@@ -63,6 +63,10 @@ struct Here {
     /// Whether it has said it is open and not yet said it closed. While it is, a record that
     /// has lost its row is given it back.
     open: bool,
+    /// Whether it has said it closed. Until it does it counts as open to everything asking
+    /// whether a window is, as a window always has itself, including in the moment before it
+    /// has said so.
+    closed: bool,
 }
 
 impl Default for Holding {
@@ -98,7 +102,10 @@ impl Holding {
             .map(|stem| stem.to_string_lossy().into_owned())
             .filter(|stem| !stem.is_empty())
             .map_or_else(|| self.unnamed(), WindowName::new);
-        self.here.insert(name.clone(), Here { arrangement: arrangement.to_string(), open: false });
+        self.here.insert(
+            name.clone(),
+            Here { arrangement: arrangement.to_string(), open: false, closed: false },
+        );
         name
     }
 
@@ -108,8 +115,14 @@ impl Holding {
         unnamed(self.here.keys().filter(|name| name.as_str().starts_with("pid-")).count())
     }
 
-    /// This process's windows that are open, which are open without dialing anything.
+    /// This process's windows that are open, which are open without dialing anything: every one
+    /// that has not said it closed.
     pub(crate) fn open_here(&self) -> BTreeSet<WindowName> {
+        self.here.iter().filter(|(_, here)| !here.closed).map(|(name, _)| name.clone()).collect()
+    }
+
+    /// This process's windows that have said they are open, which are the rows it writes.
+    fn said_open(&self) -> BTreeSet<WindowName> {
         self.here.iter().filter(|(_, here)| here.open).map(|(name, _)| name.clone()).collect()
     }
 
@@ -144,8 +157,9 @@ impl Holding {
         answered: &BTreeSet<DaemonId>,
         described: impl Fn(&TabId) -> bool,
     ) {
-        let Some(here) = self.here.get_mut(me) else { return };
-        here.open = true;
+        if !self.here.contains_key(me) {
+            return;
+        }
         let window = self.row(me, now());
         let (mine, open_here) = (self.here.clone(), self.open_here());
         self.change(move |holders| {
@@ -160,6 +174,12 @@ impl Holding {
             holders.opened(window);
             holders.prune(answered, described);
         });
+        // After the write rather than before, because the write is what gives this window its row:
+        // marked open first, it would read as an open window the record had lost, and be put back.
+        if let Some(here) = self.here.get_mut(me) {
+            here.open = true;
+            here.closed = false;
+        }
     }
 
     /// A window's row in the record.
@@ -184,7 +204,7 @@ impl Holding {
     /// open yet writes it with the rest of its row.
     pub(crate) fn follow(&mut self, daemons: BTreeSet<DaemonId>) {
         self.daemons = daemons;
-        let open = self.open_here();
+        let open = self.said_open();
         if !open.is_empty() {
             let daemons = self.daemons.clone();
             self.change(|holders| {
@@ -204,6 +224,7 @@ impl Holding {
     pub(crate) fn close(&mut self, me: &WindowName) {
         if let Some(here) = self.here.get_mut(me) {
             here.open = false;
+            here.closed = true;
         }
         self.change(|holders| holders.closed(me));
     }
@@ -330,8 +351,8 @@ impl Holding {
             Taker::Window(taker) if self.here.contains_key(&taker) => taker,
             // With nowhere to share the record there is no other process to hand a tab to, so
             // one of this process's windows holds it whether or not any has said it is open: the
-            // one in front, or failing that the first. A single window holds every tab, as it
-            // always did.
+            // one in front, or failing that the first by name. A single window holds every tab, as
+            // it always did.
             _ if self.record.is_none() => match self.here.keys().next() {
                 Some(first) => first.clone(),
                 None => return Vec::new(),
@@ -390,7 +411,7 @@ impl Holding {
             }
         };
         let before = self.holders.clone();
-        if self.open_here().iter().any(|me| holders.window(me).is_none()) {
+        if self.said_open().iter().any(|me| holders.window(me).is_none()) {
             // A write rather than an edit of what was just read, so it happens under the hold and
             // `change` puts this process's windows back from the copy in memory.
             self.change(|_| {});
@@ -412,7 +433,7 @@ impl Holding {
         let mut changed = None;
         let fallback = self.holders.clone();
         let rows: Vec<HeldWindow> = self
-            .open_here()
+            .said_open()
             .iter()
             .map(|me| {
                 self.row(me, self.holders.window(me).map_or_else(now, |window| window.focused))

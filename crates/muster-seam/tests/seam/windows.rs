@@ -38,6 +38,11 @@ fn what_a_window_is_sent_names_it() {
          not tell which one to draw it in: {:?}",
         shown_windows()
     );
+    let rosters = windows_sent(|payload| matches!(payload, event::Payload::RosterChanged(_)));
+    assert!(
+        !rosters.is_empty() && rosters.iter().all(|window| window == "window-7"),
+        "a roster was sent without the name of the window it is for: {rosters:?}"
+    );
 }
 
 #[test]
@@ -392,10 +397,15 @@ fn showing_in(window: &str) -> Option<String> {
 
 /// Every window a view has been sent to.
 fn shown_windows() -> Vec<String> {
+    windows_sent(|payload| matches!(payload, event::Payload::ViewChanged(_)))
+}
+
+/// Every window an event of one kind has been sent to, in the order they were sent.
+fn windows_sent(kind: impl Fn(&event::Payload) -> bool) -> Vec<String> {
     let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut windows: Vec<String> = events
         .iter()
-        .filter(|event| matches!(event.payload, Some(event::Payload::ViewChanged(_))))
+        .filter(|event| event.payload.as_ref().is_some_and(&kind))
         .map(|event| event.window.clone())
         .collect();
     windows.dedup();

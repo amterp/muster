@@ -615,8 +615,9 @@ message BridgeStarted {
 // says about the first, and is answered with its name (Opened).
 message OpenWindow {
   // Where this window's arrangement is written, as Startup's `state_path` is for the first. A
-  // window here already writing there is the one opened. Empty opens the window the request is
-  // for if it has not opened yet, and otherwise another that remembers nothing.
+  // window here already writing there is the one opened, and a window is taken on only for an
+  // arrangement nobody here writes. Empty means the window the request is for, which is the
+  // first one when it names none.
   string state_path = 1;
 
   // A pane or a tab to go to once the window is open, as Startup's `show`.

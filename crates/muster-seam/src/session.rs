@@ -3390,10 +3390,11 @@ pub(crate) fn announce_roster(window: WindowId) {
         let roster = session.roster(window, &session.view(window));
         let numbering = session.numbering(window, &roster);
         let message = convert::roster(&roster, &numbering, &machine_colors());
-        let unseen = session.windows[window].sent.roster(&message);
-        (roster, numbering, unseen.then_some(message))
+        let announced = &mut session.windows[window];
+        let unseen = announced.sent.roster(&message);
+        (roster, numbering, unseen.then(|| (announced.name.clone(), message)))
     };
-    let Some(message) = message else { return };
+    let Some((name, message)) = message else { return };
     // The same line `publish` writes, because the question a run log has to answer about this
     // is "which rows carried numbers, and when" - and half the answers arriving on a line that
     // says nothing would make the log worse than no log for exactly the feature it is for.
@@ -3401,11 +3402,12 @@ pub(crate) fn announce_roster(window: WindowId) {
         "roster.numbering",
         fields! {
             "numbering" => describe_numbering(&numbering),
+            "window" => name.to_string(),
             "tabs" => roster.tabs().count().to_string(),
             "panes" => roster.panes().count().to_string(),
         },
     );
-    ffi::emit(&Event::new(event::Payload::RosterChanged(message)));
+    ffi::emit(&Event::new(event::Payload::RosterChanged(message)).for_window(name.as_str()));
 }
 
 /// One numbering, as a log line says it.
@@ -3963,20 +3965,25 @@ fn restore_late(daemon: &DaemonId) {
         if restoring {
             return;
         }
+        let mut restored = false;
         for window in session.windows.ids() {
-            restore_late_in(session, window, daemon);
+            restored |= restore_late_in(session, window, daemon);
+        }
+        if !restored {
+            return;
         }
     }
     publish("restored_late");
 }
 
-/// [`restore_late`] for one window, which may have been waiting on this daemon or not.
-fn restore_late_in(session: &mut Session, window: WindowId, daemon: &DaemonId) {
+/// [`restore_late`] for one window, which may have been waiting on this daemon or not. Says
+/// whether it was.
+fn restore_late_in(session: &mut Session, window: WindowId, daemon: &DaemonId) -> bool {
     let restored = &mut session.windows[window];
     if !restored.awaiting.remove(daemon) {
-        return;
+        return false;
     }
-    let Some(left) = restored.left.clone() else { return };
+    let Some(left) = restored.left.clone() else { return false };
     if restored.awaiting.is_empty() {
         restored.left = None;
     }
@@ -4012,6 +4019,7 @@ fn restore_late_in(session: &mut Session, window: WindowId, daemon: &DaemonId) {
             "regions" => regions.to_string(),
         },
     );
+    true
 }
 
 /// Tells the shell a daemon is being attached, so the title and an empty window can say what
@@ -4183,14 +4191,16 @@ pub(crate) enum Opening {
 /// process has not got.
 ///
 /// `arrangement` is the file the window remembers itself in: a window here already writing
-/// there is that window, and an empty one means `window` itself until it has opened, and a
-/// window that remembers nothing after. Every daemon this process follows is one the new window
+/// there is that window, and an empty one means `window` itself. Only a window that names an
+/// arrangement nobody here writes is taken on: one asked for with no arrangement could never be
+/// told apart from the first window opened twice, and a stray window holding tabs is a window that
+/// takes the next tab nobody asked for. Every daemon this process follows is one the new window
 /// follows too - there is one set of daemons for every window - so its composition starts
 /// attached to each of them, in the order the others have them.
 pub(crate) fn window_to_open(window: WindowId, arrangement: &str, show: &str) -> Opening {
     let mut session = poison::lock(&SESSION, "session");
     let existing = if arrangement.is_empty() {
-        (!session.windows[window].opened).then_some(window)
+        Some(window)
     } else {
         session
             .windows
@@ -4320,10 +4330,14 @@ fn restore_font_sizes(window: WindowId) {
         "state.font_size.restored",
         fields! { "panes" => saved.font_sizes.entries().count().to_string() },
     );
-    // Merged rather than replaced: another window here may already have sized panes of its own.
+    // Merged rather than replaced, and only where nothing here has sized the pane already: every
+    // window writes every size it knows, so this file may hold another window's pane as it was
+    // when this one last saved, and the size that pane has now is the one somebody chose.
     let mut session = poison::lock(&SESSION, "session");
     for (pane, offset) in saved.font_sizes.entries() {
-        session.font_sizes.set(pane, offset);
+        if !session.font_sizes.entries().any(|(sized, _)| sized == pane) {
+            session.font_sizes.set(pane, offset);
+        }
     }
 }
 

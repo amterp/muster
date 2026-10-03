@@ -77,10 +77,16 @@ fn handle(request: Request) -> Response {
         return nothing_was_asked();
     };
     // Which window this is about, before anything else: the chord below is that window's, and
-    // so is every answer that means "this window".
-    let window = match session::resolve(&request.window) {
-        Ok(window) => window,
-        Err(refusal) => return Response::failure(refusal),
+    // so is every answer that means "this window". A request about the whole app is about none,
+    // and is not held up behind the session's lock to find one: the shell logs through here from
+    // its main thread, and quitting must not be refused over a window name.
+    let window = if about_the_whole_app(&payload) {
+        WindowId::default()
+    } else {
+        match session::resolve(&request.window) {
+            Ok(window) => window,
+            Err(refusal) => return Response::failure(refusal),
+        }
     };
 
     // A numbered chord is armed by one request and spent by the next, so the rule that
@@ -106,6 +112,23 @@ fn handle(request: Request) -> Response {
         return handed_on;
     }
     route(window, payload)
+}
+
+/// Whether a request is about the app rather than any one window, so it names none.
+fn about_the_whole_app(payload: &request::Payload) -> bool {
+    matches!(
+        payload,
+        request::Payload::Startup(_)
+            | request::Payload::LogRecord(_)
+            | request::Payload::ReadBindings(_)
+            | request::Payload::ReadAppearance(_)
+            | request::Payload::ReportFontFamily(_)
+            | request::Payload::ReloadConfig(_)
+            | request::Payload::ReadDaemons(_)
+            | request::Payload::Quitting(_)
+            | request::Payload::BridgeExited(_)
+            | request::Payload::BridgeStarted(_)
+    )
 }
 
 /// Every request the core answers, one arm each.
@@ -1591,6 +1614,9 @@ fn unanswered(detail: &str) -> Response {
 /// Opens the window onto whatever the daemons hold, which is what a bare `muster` asks for.
 fn open_window(window: WindowId, open: &proto::OpenWindow) -> Response {
     let (opening, added) = match session::window_to_open(window, &open.state_path, &open.show) {
+        // The first window opened twice answers as it always did. One named by its arrangement
+        // answers with its name, whether this opened it or something before did.
+        session::Opening::AlreadyOpen(_) if open.state_path.is_empty() => return Response::ok(),
         session::Opening::AlreadyOpen(open) => return opened(open),
         session::Opening::Unopened(opening) => (opening, false),
         session::Opening::Added(opening) => (opening, true),
