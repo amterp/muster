@@ -18,7 +18,7 @@ import AppKit
 public enum NumberedChord {
   /// The modifiers every numbered chord shares, and so the ones whose release ends a sequence.
   ///
-  /// Read off the bindings rather than assumed to be ⌘, because `focus_pane_1 = "ctrl+1"` is a
+  /// Read off the bindings rather than assumed to be ⌘, because `numbered_chord_1 = "ctrl+1"` is a
   /// thing a config file may say. The intersection rather than the union: releasing ⇧ while
   /// still holding ⌘ has not ended anything, and only a modifier that every remaining press
   /// needs can be the one that says the hand is finished.
@@ -46,12 +46,9 @@ public enum NumberedChord {
     return !held.intersection(.deviceIndependentFlagsMask).contains(chord)
   }
 
-  /// What the nine actions are called, which is the one place this shell reads that name.
-  ///
-  /// `focus_pane_1` to `focus_pane_9`, although a press means the Nth numbered chord rather
-  /// than the Nth pane: the names come from before the chords named tabs, and a config file
-  /// binds them by name.
-  private static let place = "focus_pane_"
+  /// What the nine actions are called, `numbered_chord_1` to `numbered_chord_9`, which is the one
+  /// place this shell reads that name.
+  private static let place = "numbered_chord_"
 }
 
 /// The window, with the modifiers it is being held with reported as they move, and the mouse's

@@ -25,7 +25,7 @@ use toml::Value;
 
 use crate::input::{
     Action, Binding, Bindings, Chord, OptionAsAlt, PaneInputSettings, TEXT_EDITING,
-    ghostty_equivalent,
+    ghostty_equivalent, renamed_action,
 };
 
 use crate::attention::Notifications;
@@ -1155,6 +1155,12 @@ fn read_keymap(
         // over from a Ghostty config is answered by the action's name alone.
         let bare = name.split_once(':').map_or(name.as_str(), |(bare, _)| bare);
         let action = Action::parse(name).ok_or_else(|| match ghostty_equivalent(bare) {
+            _ if let Some(now) = renamed_action(name) => format!(
+                "`{name}` in the config file's [keymap] is the old name of `{now}`, which is the \
+                 same chord under a name that says what it does: the first press names a tab and \
+                 the press after it a pane inside that tab. None of the file was applied. Rename \
+                 it `{now}`."
+            ),
             _ if bare != name && Action::parse(bare).is_some() => format!(
                 "`{name}` in the config file's [keymap] gives `{bare}` an argument, and \
                  Muster's actions take none. None of the file was applied. Write it as \

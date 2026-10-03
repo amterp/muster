@@ -93,18 +93,20 @@ pub enum Action {
     FocusRight,
     FocusUp,
     FocusDown,
-    /// Puts the keyboard on the pane at this place in the window's pane order, counting from
-    /// one - the place the sidebar draws beside the row.
+    /// The Nth numbered chord, counting from one: ⌘N names the Nth tab, and the press after it
+    /// with the modifier still held names the Nth pane inside that tab. In a window holding one
+    /// tab the first press names a pane. Which of those a press means is the core's to decide
+    /// (`press_numbered_chord`), so this only says which number was pressed.
     ///
     /// One variant carrying a number rather than nine spelled out, because they differ only
     /// by the digit and a list of nine near-identical arms is a list nobody keeps in step.
     /// Nine names in the config file over one intent here is the general rule: the file names
     /// menu items and the core names intents (`architecture.md`, one action path).
     ///
-    /// Only 1 to 9 are ever built - [`Action::ALL`] is the whole vocabulary - so the places
-    /// beyond that have no name, no chord and no menu item. A tenth pane is reached by
-    /// `next_pane`, by a direction, or by clicking its row.
-    FocusPane(u8),
+    /// Only 1 to 9 are ever built - [`Action::ALL`] is the whole vocabulary - so the numbers
+    /// beyond that have no name, no chord and no menu item. A tenth tab is reached by
+    /// `next_tab`, and a tenth pane by `next_pane`, a direction, or clicking its row.
+    NumberedChord(u8),
     /// Puts the keyboard on the pane most urgently asking for somebody - blocked, then a
     /// program's notification, then done, and within each the one that asked first - and
     /// brings its tab on screen, as clicking its banner does. Ghostty has no equivalent: it
@@ -187,15 +189,15 @@ impl Action {
         Action::FocusRight,
         Action::FocusUp,
         Action::FocusDown,
-        Action::FocusPane(1),
-        Action::FocusPane(2),
-        Action::FocusPane(3),
-        Action::FocusPane(4),
-        Action::FocusPane(5),
-        Action::FocusPane(6),
-        Action::FocusPane(7),
-        Action::FocusPane(8),
-        Action::FocusPane(9),
+        Action::NumberedChord(1),
+        Action::NumberedChord(2),
+        Action::NumberedChord(3),
+        Action::NumberedChord(4),
+        Action::NumberedChord(5),
+        Action::NumberedChord(6),
+        Action::NumberedChord(7),
+        Action::NumberedChord(8),
+        Action::NumberedChord(9),
         Action::FocusAsking,
         Action::FocusBack,
         Action::FocusForward,
@@ -251,9 +253,10 @@ impl Action {
             // built at a call site cannot be one. A place outside it comes back unnameable
             // rather than borrowing another place's name, so `parse` refuses it and nothing
             // silently binds ⌘4 to the wrong pane.
-            Action::FocusPane(place) => {
-                PANE_PLACES.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or("focus_pane")
-            }
+            Action::NumberedChord(number) => NUMBERED_CHORDS
+                .get(usize::from(number).wrapping_sub(1))
+                .copied()
+                .unwrap_or("numbered_chord"),
             Action::FocusAsking => "focus_asking",
             Action::FocusBack => "focus_back",
             Action::FocusForward => "focus_forward",
@@ -348,12 +351,15 @@ impl Action {
             Action::FocusRight => Some(Chord::new(Key::ArrowRight, optioned)),
             Action::FocusUp => Some(Chord::new(Key::ArrowUp, optioned)),
             Action::FocusDown => Some(Chord::new(Key::ArrowDown, optioned)),
-            // ⌘1 to ⌘9, where every tabbed application on this platform puts them - pointed at
-            // panes rather than tabs, because an agent is a pane and the rows carrying the
-            // agent states are pane rows. The number counts across daemons the way the sidebar
-            // does rather than restarting at each machine.
-            Action::FocusPane(place) => Some(Chord::new(
-                PANE_DIGITS.get(usize::from(place).wrapping_sub(1)).copied().unwrap_or(Key::Digit1),
+            // ⌘1 to ⌘9, where every tabbed application on this platform puts them, naming a tab
+            // as they do there. The press after one names a pane inside that tab, which is the
+            // part no other application has: an agent is a pane, and two presses reach any of the
+            // first nine panes in any of the first nine tabs.
+            Action::NumberedChord(number) => Some(Chord::new(
+                NUMBERED_DIGITS
+                    .get(usize::from(number).wrapping_sub(1))
+                    .copied()
+                    .unwrap_or(Key::Digit1),
                 command,
             )),
             // Muster's own, since Ghostty has no equivalent, on a chord free in both keymaps:
@@ -425,7 +431,9 @@ pub fn ghostty_equivalent(name: &str) -> Option<&'static str> {
         "prompt_surface_title" => "`rename_pane`",
         "prompt_tab_title" => "`rename_tab`",
         "close_surface" => "`close_pane`",
-        "goto_tab" => "`focus_pane_1` to `focus_pane_9`, which go to a pane and bring its tab",
+        "goto_tab" => {
+            "`numbered_chord_1` to `numbered_chord_9`, which name a tab and then a pane inside it"
+        }
         "start_search" | "search" => "`find`",
         "navigate_search" => "`find_next` and `find_previous`",
         "jump_to_prompt" => "`jump_to_previous_prompt` and `jump_to_next_prompt`",
@@ -438,26 +446,27 @@ pub fn ghostty_equivalent(name: &str) -> Option<&'static str> {
     })
 }
 
-/// What each numbered pane action is called, in place order.
+/// What each numbered chord's action is called, in order.
 ///
-/// These used to be `focus_tab_1` through `focus_tab_9`, and the old names are gone rather
-/// than aliased: an action `[keymap]` does not know refuses the whole file and says so, which
-/// is what a config carried over from before should get. Silently binding ⌘3 to a different
-/// thing than it used to reach would be the one outcome worse than the refusal.
-const PANE_PLACES: [&str; 9] = [
-    "focus_pane_1",
-    "focus_pane_2",
-    "focus_pane_3",
-    "focus_pane_4",
-    "focus_pane_5",
-    "focus_pane_6",
-    "focus_pane_7",
-    "focus_pane_8",
-    "focus_pane_9",
+/// These were `focus_pane_1` to `focus_pane_9` while ⌘3 meant the third pane down the window,
+/// and `focus_tab_1` to `focus_tab_9` before that. Neither is aliased: a file naming one is
+/// refused with the name it now has ([`renamed_action`]), because it was written for a chord
+/// that meant something else at the time, and whoever wrote it should see the new name rather
+/// than have it applied for them.
+const NUMBERED_CHORDS: [&str; 9] = [
+    "numbered_chord_1",
+    "numbered_chord_2",
+    "numbered_chord_3",
+    "numbered_chord_4",
+    "numbered_chord_5",
+    "numbered_chord_6",
+    "numbered_chord_7",
+    "numbered_chord_8",
+    "numbered_chord_9",
 ];
 
-/// The digit key a numbered pane action sits on, in place order.
-const PANE_DIGITS: [Key; 9] = [
+/// The digit key each numbered chord sits on, in order.
+const NUMBERED_DIGITS: [Key; 9] = [
     Key::Digit1,
     Key::Digit2,
     Key::Digit3,
@@ -468,6 +477,16 @@ const PANE_DIGITS: [Key; 9] = [
     Key::Digit8,
     Key::Digit9,
 ];
+
+/// The name an action Muster renamed has now, for a `[keymap]` line still using the old one.
+///
+/// `focus_pane_3` and `focus_tab_3` both become `numbered_chord_3`: the same ⌘3, under the name
+/// that says what it does.
+pub fn renamed_action(name: &str) -> Option<&'static str> {
+    let number = name.strip_prefix("focus_pane_").or_else(|| name.strip_prefix("focus_tab_"))?;
+    let index = number.parse::<usize>().ok()?.checked_sub(1)?;
+    NUMBERED_CHORDS.get(index).copied()
+}
 
 /// A key under some modifiers, as a config file spells one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

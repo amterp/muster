@@ -791,8 +791,8 @@ menu can represent or the platform can rebind.
 
 What that costs is paid in the config file rather than in the vocabulary: an amount a chord would have carried
 becomes a root key, which is what `resize_step` and `scroll_multiplier` are. Where an action genuinely has a small
-closed set of arguments, it becomes that many actions - `focus_pane_1` through `focus_pane_9` are nine names the
-config file and the menu can both say, over one `Action::FocusPane(u8)` in the core. Nine menu items need nine
+closed set of arguments, it becomes that many actions - `numbered_chord_1` through `numbered_chord_9` are nine names
+the config file and the menu can both say, over one `Action::NumberedChord(u8)` in the core. Nine menu items need nine
 actions; the core still holds one intent.
 
 The CLI does not inherit any of this. It names intents directly and passes arguments, because nothing about it is a

@@ -1180,7 +1180,7 @@ extension MusterWindow {
   ///
   /// One method for all nine, reading the digit off the item's tag. Nine methods differing by
   /// a digit is nine places for one of them to drift, and the number is data anyway.
-  @objc public func focusPaneAtPlace(_ sender: Any?) {
+  @objc public func pressNumberedChord(_ sender: Any?) {
     guard let item = sender as? NSMenuItem, item.tag > 0 else { return }
     Core.pressNumberedChord(item.tag)
   }

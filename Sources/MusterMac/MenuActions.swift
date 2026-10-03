@@ -54,12 +54,14 @@ public enum MenuActions {
   /// Keyed by the core's own name for the action.
   public static let byName: [String: Described] = {
     var table = fixed
-    // The numbered pane actions, built rather than written out: they differ only by the digit,
-    // and nine hand-written entries are nine chances for one of them to drift.
-    for place in 1...9 {
-      table["focus_pane_\(place)"] = Described(
-        title: "Pane \(place)", selector: #selector(MusterWindow.focusPaneAtPlace(_:)),
-        group: .pane, tag: place)
+    // The numbered chords, built rather than written out: they differ only by the digit, and
+    // nine hand-written entries are nine chances for one of them to drift. In the Tab menu and
+    // titled for both answers, because a first press names a tab and the next names a pane in
+    // it - except in a window of one tab, where the first press names a pane.
+    for number in 1...9 {
+      table["numbered_chord_\(number)"] = Described(
+        title: "Tab or Pane \(number)", selector: #selector(MusterWindow.pressNumberedChord(_:)),
+        group: .tab, tag: number)
     }
     return table
   }()

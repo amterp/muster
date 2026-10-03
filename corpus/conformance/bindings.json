@@ -181,20 +181,20 @@
       }
     },
     {
-      "name": "the numbered panes, where every tabbed application on this platform puts them",
-      "why": "⌘1 to ⌘9 is not a Ghostty convention so much as a platform one - browsers, editors and terminals all have it - so a chord Muster invented instead would be the one thing in the window somebody had to look up. What they name is a pane rather than a tab, which is where Muster differs from all of them: the unit of this product is an agent, an agent is a pane, and the rows carrying the agent states are pane rows. The number is the place in the window's whole pane order, which is the number the sidebar draws beside the row, so a row's number and the chord that reaches it are the same number.\n\nThis does not cost the tab axis anything. Focusing a pane surfaces the tab holding it, so nine pane chords reach every tab too - through any pane in it - and next_tab and previous_tab still walk the tabs themselves.",
+      "name": "the numbered chords, where every tabbed application on this platform puts them",
+      "why": "⌘1 to ⌘9 is not a Ghostty convention so much as a platform one - browsers, editors and terminals all have it - so a chord Muster invented instead would be the one thing in the window somebody had to look up. As there, ⌘N names the Nth tab. Where Muster goes further is the press after it: with the modifier still held, a second digit names that pane inside the tab, because the unit of this product is an agent and an agent is a pane. The actions are called numbered_chord_N rather than after a tab or a pane, since which one a press names depends on the press before it.",
       "given": {
         "actions": [
-          "focus_pane_1",
-          "focus_pane_2",
-          "focus_pane_9"
+          "numbered_chord_1",
+          "numbered_chord_2",
+          "numbered_chord_9"
         ]
       },
       "expect": {
         "chords": [
-          "focus_pane_1=super+Digit1",
-          "focus_pane_2=super+Digit2",
-          "focus_pane_9=super+Digit9"
+          "numbered_chord_1=super+Digit1",
+          "numbered_chord_2=super+Digit2",
+          "numbered_chord_9=super+Digit9"
         ]
       }
     },

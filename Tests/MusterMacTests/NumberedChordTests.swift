@@ -35,7 +35,7 @@ struct NumberedChordTests {
   @Test("the modifier watched for is the one the nine are actually bound with")
   func reboundChordsMoveTheModifier() {
     let rebound = (1...9).map {
-      Core.Binding(action: "focus_pane_\($0)", key: "\($0)", modifiers: ["control"])
+      Core.Binding(action: "numbered_chord_\($0)", key: "\($0)", modifiers: ["control"])
     }
     #expect(NumberedChord.modifiers(rebound) == [.control])
     // And the gesture ends on that one rather than on ⌘, which is never held here at all.
@@ -49,9 +49,10 @@ struct NumberedChordTests {
     // A file that moved one of the nine onto ⌘⇧ and left the rest on ⌘. Releasing ⇧ has not
     // ended anything, because eight of the nine presses that could come next do not want it.
     var bindings = (1...8).map {
-      Core.Binding(action: "focus_pane_\($0)", key: "\($0)", modifiers: ["super"])
+      Core.Binding(action: "numbered_chord_\($0)", key: "\($0)", modifiers: ["super"])
     }
-    bindings.append(Core.Binding(action: "focus_pane_9", key: "9", modifiers: ["super", "shift"]))
+    bindings.append(
+      Core.Binding(action: "numbered_chord_9", key: "9", modifiers: ["super", "shift"]))
     #expect(NumberedChord.modifiers(bindings) == [.command])
   }
 
@@ -61,7 +62,9 @@ struct NumberedChordTests {
     #expect(NumberedChord.modifiers([]) == [])
     // Bound to bare digits. There is no modifier being held, so there is none to release, and
     // an empty mask must not read as "you are holding nothing, so you have let go".
-    let bare = (1...9).map { Core.Binding(action: "focus_pane_\($0)", key: "\($0)", modifiers: []) }
+    let bare = (1...9).map {
+      Core.Binding(action: "numbered_chord_\($0)", key: "\($0)", modifiers: [])
+    }
     #expect(NumberedChord.modifiers(bare) == [])
     #expect(NumberedChord.ends(numbering: .panesInTab, held: [], chord: []) == false)
   }
@@ -71,7 +74,7 @@ struct NumberedChordTests {
     let bindings = [
       Core.Binding(action: "split_right", key: "d", modifiers: ["super"]),
       Core.Binding(action: "zoom", key: "return", modifiers: ["super", "shift"]),
-      Core.Binding(action: "focus_pane_1", key: "1", modifiers: ["control", "alt"]),
+      Core.Binding(action: "numbered_chord_1", key: "1", modifiers: ["control", "alt"]),
     ]
     #expect(NumberedChord.modifiers(bindings) == [.control, .option])
   }
@@ -81,9 +84,9 @@ struct NumberedChordTests {
     // An empty key is how the core spells an action with no chord. Counted as a binding with
     // no modifiers, it would empty the intersection and quietly turn the whole feature off.
     var bindings = (1...8).map {
-      Core.Binding(action: "focus_pane_\($0)", key: "\($0)", modifiers: ["super"])
+      Core.Binding(action: "numbered_chord_\($0)", key: "\($0)", modifiers: ["super"])
     }
-    bindings.append(Core.Binding(action: "focus_pane_9", key: "", modifiers: []))
+    bindings.append(Core.Binding(action: "numbered_chord_9", key: "", modifiers: []))
     #expect(NumberedChord.modifiers(bindings) == [.command])
   }
 }

@@ -90,8 +90,8 @@ muted = false                  # silences all four, without forgetting which you
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
-`previous_pane`, `focus_*` and `resize_*` for each direction, `focus_pane_1` to
-`focus_pane_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
+`previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
+`numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
 `find_next`, `find_previous`, `zoom`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
@@ -215,8 +215,8 @@ The two ways of moving are still different axes. `next_pane` and the four direct
 every pane the window is **showing**; `next_tab` and `previous_tab` walk the tabs behind
 those, including ones no region has on screen.
 
-The nine actions are `focus_pane_1` to `focus_pane_9` in `[keymap]` and in the menu, and each
-is the Nth numbered chord rather than the Nth pane. `muster focus --place 3` is not one of them:
+The nine actions are `numbered_chord_1` to `numbered_chord_9` in `[keymap]`, and Tab or Pane 1
+to 9 in the Tab menu. `muster focus --place 3` is not one of them:
 it goes to the pane `muster window` prints at place 3, counted down the whole window, because a
 script reading that number has to be able to hand it back.
 
@@ -224,8 +224,9 @@ script reading that number has to be able to hand it back.
 third pane down the whole agent list. A file still saying `numbered_chords = "tab_then_pane"`
 loads, because that is what Muster now does, and the line can be deleted. One saying `"panes"`
 is refused, and the whole file with it: silently turning `cmd+3` from the third pane into the
-third tab is the one outcome worse than the refusal. `focus_tab_1` to `focus_tab_9`, the names
-from before either scheme, are refused the same way.
+third tab is the one outcome worse than the refusal. The actions' older names, `focus_pane_1` to
+`focus_pane_9` and before them `focus_tab_1` to `focus_tab_9`, are refused too, and the refusal
+gives the new name, so `focus_pane_3` is one rename away from `numbered_chord_3`.
 
 **Two things cannot hold one chord, and the file is refused rather than one of them losing.**
 Three ways that happens: two `[keymap]` actions on the same chord, a `[keymap]` action on a
