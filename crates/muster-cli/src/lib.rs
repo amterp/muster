@@ -119,27 +119,26 @@ pub fn run(
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
-        args::Asking::MakeWindow | args::Asking::ReopenWindow => {
-            // Two verbs and one act. Which arrangement the new window takes is the whole
-            // difference, and the window itself works that out from the flag it is launched
-            // with - so this picks the launch and nothing here decides anything else.
-            let opened = if matches!(invocation.asking, args::Asking::MakeWindow) {
-                opening::another_window(environment)
-            } else {
-                opening::the_closed_window(environment)
+        args::Asking::MakeWindow | args::Asking::ReopenWindow(_) => {
+            let opened = match &invocation.asking {
+                args::Asking::ReopenWindow(name) => {
+                    opening::the_closed_window(environment, name.as_deref())
+                }
+                _ => opening::another_window(environment),
             };
             return match opened {
-                Ok(socket) => {
-                    // The socket alone, with nothing around it, for the reason `pane new` prints
-                    // a bare pane name: the next line is
-                    // `muster --socket "$(muster window new)" pane new --run claude`.
+                Ok(opened) => {
+                    // The name alone, with nothing around it, for the reason `pane new` prints a
+                    // bare pane name: it is what the next command takes. The socket reaches the
+                    // app rather than one window, so it is in the JSON for a script that wants it.
                     let _ = writeln!(
                         out,
                         "{}",
                         if json {
-                            serde_json::json!({ "socket": socket }).to_string()
+                            serde_json::json!({ "window": opened.window, "socket": opened.socket })
+                                .to_string()
                         } else {
-                            socket
+                            opened.window
                         }
                     );
                     0

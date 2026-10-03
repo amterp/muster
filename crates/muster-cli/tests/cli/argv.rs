@@ -74,9 +74,12 @@ fn cli_conformance() {
                         Asking::Send(_) | Asking::SendFrom { .. } | Asking::Watch { .. } => None,
                         Asking::Print(_) => Some(json!("printing something this binary holds")),
                         Asking::Survey => Some(json!("asking every window on this machine")),
-                        Asking::MakeWindow => Some(json!("starting another Muster")),
-                        Asking::ReopenWindow => {
-                            Some(json!("starting the Muster whose window was closed"))
+                        Asking::MakeWindow => Some(json!("asking the running app for a window")),
+                        Asking::ReopenWindow(None) => {
+                            Some(json!("asking the running app for the window closed last"))
+                        }
+                        Asking::ReopenWindow(Some(name)) => {
+                            Some(json!(format!("asking the running app for {name}")))
                         }
                         Asking::Message(_) => Some(json!("asking this machine's daemon")),
                     },

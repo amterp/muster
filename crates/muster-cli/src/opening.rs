@@ -1,21 +1,19 @@
-//! Opening a second window, which is the one thing here that is not a request.
+//! Opening another window: asked of the app that is running, or, with none, by starting it.
 //!
-//! Every other command names a window and asks it something. This one has no window to name -
-//! it is asked when there are none, or when the ones there are will not do - so it starts an
-//! app rather than dialling one, and then waits for the endpoint that window binds. That is a
-//! deliberate exception to "every command is a request the keyboard also sends" rather than an
-//! oversight: a request has to reach a running core, and the whole point of this is that there
-//! may not be one.
-//!
-//! **A window is a process**, for now. The core can hold several windows in one session, but the
-//! shell opens one per process, so a second window is a second copy of the app, which is also why
-//! the endpoint socket carries a pid. MIP-6 is the change that makes a window something the
-//! running app opens.
+//! Every window of an install is a window of one process (mip/0006-one-process.md), so a running
+//! app is asked for a window (`AskForWindow`) and opens it beside the ones it has. Only when no
+//! app of this install answers - none is running, or the one running predates being asked - does
+//! this start one, and then wait for its endpoint. That half is a deliberate exception to "every
+//! command is a request the keyboard also sends" rather than an oversight: a request has to
+//! reach a running core, and the point of it is that there may not be one.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
+
+use muster_daemon_proto::install;
+use muster_proto::{AskForWindow, Request, Response, request, response};
 
 use crate::{Trouble, dial, environment};
 
@@ -40,28 +38,154 @@ pub const APP_PATH: &str = "MUSTER_APP";
 /// through Launch Services, which hands over launchd's.
 pub const FRESH: &str = "--fresh";
 
-/// Starts another Muster and hands back the socket its window binds.
+/// A window that opened: its name, and the socket of the app it is in.
 ///
-/// The socket rather than a pid, because the socket is what every other command takes: the next
-/// line of a script is `muster --socket "$W" pane new`. Waiting for it rather than answering
-/// immediately is the difference between a command a script can use and one it has to poll
-/// after.
-pub fn another_window(environment: &BTreeMap<String, String>) -> Result<String, Trouble> {
-    open_a_window(environment, true)
+/// The name is what says which window; the socket reaches the app, whichever of its windows is
+/// meant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Opened {
+    pub window: String,
+    pub socket: String,
 }
 
-/// Brings back the window that was closed, and hands back the socket it binds.
+/// Opens another window onto tabs of its own, and hands back what it is called once it is open.
 ///
-/// The same launch without `--fresh`, which is the whole difference: a window somebody asked for
-/// takes an arrangement nothing has ever held, and this takes the most recent one no live window
-/// is holding. While another window is running that is the one that was closed, and while none is
-/// it is the window Muster comes back to - which is also what double-clicking the app does, so
-/// this is the way to say it from a script or from inside a pane.
-pub fn the_closed_window(environment: &BTreeMap<String, String>) -> Result<String, Trouble> {
-    open_a_window(environment, false)
+/// Waiting for it rather than answering at once is the difference between a command a script can
+/// use and one it has to poll after.
+pub fn another_window(environment: &BTreeMap<String, String>) -> Result<Opened, Trouble> {
+    open_a_window(environment, true, None)
 }
 
-fn open_a_window(environment: &BTreeMap<String, String>, fresh: bool) -> Result<String, Trouble> {
+/// Brings back a closed window - `name`, or the one closed last - onto the tabs it kept.
+///
+/// The same act as [`another_window`] with the arrangement chosen differently: a window somebody
+/// asked for takes one nothing has ever held, and this takes the closed window's own.
+pub fn the_closed_window(
+    environment: &BTreeMap<String, String>,
+    name: Option<&str>,
+) -> Result<Opened, Trouble> {
+    open_a_window(environment, false, name)
+}
+
+fn open_a_window(
+    environment: &BTreeMap<String, String>,
+    fresh: bool,
+    name: Option<&str>,
+) -> Result<Opened, Trouble> {
+    if let Some(opened) = ask_a_running_app(environment, fresh, name)? {
+        return Ok(opened);
+    }
+    let socket = launch(environment, fresh, name)?;
+    let window = name.map(str::to_string).or_else(|| windows_open(&socket, environment).ok()?.0);
+    Ok(Opened { window: window.unwrap_or_default(), socket })
+}
+
+/// Asks a running app of this install for the window, and waits for it to open. Nothing when no
+/// app here takes the request: none answers, or every one belongs to another install or
+/// predates being asked.
+fn ask_a_running_app(
+    environment: &BTreeMap<String, String>,
+    fresh: bool,
+    name: Option<&str>,
+) -> Result<Option<Opened>, Trouble> {
+    for socket in apps(environment) {
+        let Ok((_, before)) = windows_open(&socket, environment) else { continue };
+        if let Some(name) = name
+            && before.contains(name)
+        {
+            return Ok(Some(Opened { window: name.to_string(), socket }));
+        }
+        let asked = Request::new(request::Payload::AskForWindow(AskForWindow {
+            install: install::INSTALL.to_string(),
+            fresh,
+            name: name.unwrap_or_default().to_string(),
+            show: String::new(),
+        }));
+        match dial::ask(&asked, Some(&socket), environment) {
+            Ok(Response { payload: Some(response::Payload::Ok(_)) }) => {}
+            // Another install's app, or one from before windows shared a process: it keeps its
+            // windows to itself, so the next is asked, and failing every one the app is started.
+            _ => continue,
+        }
+        return opened_in(&socket, environment, &before, name).map(Some).ok_or_else(|| {
+            Trouble::Unreachable(format!(
+                "the Muster at {socket} was asked for a window and none opened within \
+                 {PATIENCE:?}. It may still be opening - `muster window` lists the windows there \
+                 are - and if not, the app's run log says why."
+            ))
+        });
+    }
+    Ok(None)
+}
+
+/// The apps to ask, the one this command is running in first.
+fn apps(environment: &BTreeMap<String, String>) -> Vec<String> {
+    let mut apps: Vec<String> = environment
+        .get(environment::WINDOW_SOCKET)
+        .filter(|socket| !socket.is_empty())
+        .cloned()
+        .into_iter()
+        .collect();
+    for socket in dial::candidates(environment) {
+        if !apps.contains(&socket) {
+            apps.push(socket);
+        }
+    }
+    apps
+}
+
+/// The window answering at `socket`, and every window open in its process: the one answering,
+/// and the others it lists with its own pid.
+fn windows_open(
+    socket: &str,
+    environment: &BTreeMap<String, String>,
+) -> Result<(Option<String>, BTreeSet<String>), Trouble> {
+    let answer = dial::ask(&crate::read_window(), Some(socket), environment)?;
+    let Some(response::Payload::Window(window)) = answer.payload else {
+        return Err(Trouble::Refused(format!("the Muster at {socket} did not say what it holds")));
+    };
+    let pid: Option<u32> = dial::named_window(socket).and_then(|pid| pid.parse().ok());
+    let mut open: BTreeSet<String> = window
+        .windows
+        .iter()
+        .filter(|other| Some(other.pid) == pid && other.pid != 0)
+        .map(|other| other.name.clone())
+        .collect();
+    let answering = (!window.name.is_empty()).then(|| window.name.clone());
+    open.extend(answering.clone());
+    Ok((answering, open))
+}
+
+/// The window that opened in the app at `socket`: `name` once it is open, or the first window
+/// open there that was not before.
+fn opened_in(
+    socket: &str,
+    environment: &BTreeMap<String, String>,
+    before: &BTreeSet<String>,
+    name: Option<&str>,
+) -> Option<Opened> {
+    let deadline = Instant::now() + PATIENCE;
+    while Instant::now() < deadline {
+        if let Ok((_, open)) = windows_open(socket, environment) {
+            let found = match name {
+                Some(name) => open.contains(name).then(|| name.to_string()),
+                None => open.difference(before).next().cloned(),
+            };
+            if let Some(window) = found {
+                return Some(Opened { window, socket: socket.to_string() });
+            }
+        }
+        std::thread::sleep(INTERVAL);
+    }
+    None
+}
+
+/// Starts the app, and hands back the socket it binds.
+fn launch(
+    environment: &BTreeMap<String, String>,
+    fresh: bool,
+    name: Option<&str>,
+) -> Result<String, Trouble> {
     let app = bundle(environment)?;
 
     // Read before launching, so that the new one is the one that was not here. Comparing paths
@@ -97,6 +221,9 @@ fn open_a_window(environment: &BTreeMap<String, String>, fresh: bool) -> Result<
     // difference is whether that arrangement is one nothing has ever held.
     if fresh {
         opening.arg(FRESH);
+    }
+    if let Some(name) = name {
+        opening.arg("--window").arg(name);
     }
     if let Some(home) = environment::muster_home(environment) {
         opening.arg("--home").arg(home);

@@ -67,10 +67,10 @@ pub enum Asking {
     Print(String),
     /// Every window on this machine, asked the same thing and answered together.
     Survey,
-    /// Another window, which means another process - so this starts one rather than asking.
+    /// Another window, asked of the running app or, with none running, by starting it.
     MakeWindow,
-    /// The window that was closed, which is the same act with the arrangement it left behind.
-    ReopenWindow,
+    /// A closed window by name, or the one closed last, asked for the same way.
+    ReopenWindow(Option<String>),
     /// A message for this machine's daemon rather than a window.
     Message(Box<crate::messaging::Messaging>),
 }
@@ -344,19 +344,21 @@ enum AboutWindows {
     // separate home is separate is deliberate; claiming otherwise in the help was not.
     List,
 
-    /// Open another window, and print the socket that reaches it
+    /// Open another window, and print its name
     //
-    // The one command that dials no window, because it is the one asked when there may be none.
-    // A window is a process, so this starts one.
+    // Asked of the running app, which opens it beside the windows it has; with none running,
+    // this starts the app (mip/0006-one-process.md).
     New,
 
-    /// Bring back the last window that was closed, and print the socket that reaches it
+    /// Bring back a closed window, the last one closed unless NAME says which, and print its name
     //
-    // The same act as `new` minus one flag, which is the whole of the difference between them:
-    // a window somebody asked for takes an arrangement nothing has ever held, and this takes
-    // the most recent one no live window is holding - which, while another window is running,
-    // is the one that was closed.
-    Reopen,
+    // The same act as `new` with the arrangement chosen differently: a window somebody asked for
+    // takes one nothing has ever held, and this takes the closed window's own, so it comes back
+    // onto the tabs it kept.
+    Reopen {
+        /// The closed window, as `muster window` names it: window-2
+        name: Option<String>,
+    },
 }
 
 /// A state `muster pane wait --until` can name.
@@ -783,7 +785,9 @@ pub fn parse(
         // and $MUSTER_SOCKET both narrow to one window, and the question here is which there are.
         What::Window { doing: Some(AboutWindows::List), .. } => Asking::Survey,
         What::Window { doing: Some(AboutWindows::New), .. } => Asking::MakeWindow,
-        What::Window { doing: Some(AboutWindows::Reopen), .. } => Asking::ReopenWindow,
+        What::Window { doing: Some(AboutWindows::Reopen { name }), .. } => {
+            Asking::ReopenWindow(name.clone())
+        }
         What::Pane { doing } => pane(doing, environment, here)?,
         What::Tab { doing } => tab(doing, environment, here)?,
         What::Focus { asking: true, .. } => send(request::Payload::FocusAsking(FocusAsking {})),

@@ -2042,8 +2042,8 @@
       }
     },
     {
-      "name": "making a window asks no window for it",
-      "why": "A window is a process, so this starts one rather than sending a request - and it has to, because the case it exists for is having no window to ask. It is the only verb here that is not something the keyboard could send instead.",
+      "name": "making a window asks the running app for it",
+      "why": "Every window of an install is a window of one process (mip/0006-one-process.md), so a new window is asked of the app that is running, which opens it beside the windows it has. Only when none answers does the command start the app. It is the only verb here that is not something the keyboard could send instead, because the case it has to cover is having no app to ask.",
       "given": {
         "argv": [
           "window",
@@ -2051,7 +2051,7 @@
         ]
       },
       "expect": {
-        "answers_here": "starting another Muster"
+        "answers_here": "asking the running app for a window"
       }
     },
     {
@@ -2070,7 +2070,7 @@
     },
     {
       "name": "a window that was closed is brought back",
-      "why": "The gap this closes: New Window made a fresh one and nothing reopened the last, so the only way back to a window you had closed was to rebuild it by hand. Not a request, for the same reason `window new` is not one - a window is a process, so this starts an app rather than asking a running one.\n\nThe two differ in what the launched window is told, and the window works that out from the flag it was started with. Which arrangement it takes is not this CLI's decision to make twice.",
+      "why": "The gap this closes: New Window made a fresh one and nothing reopened the last, so the only way back to a window you had closed was to rebuild it by hand. Asked of the running app, as `window new` is, and the two differ only in which arrangement the window opens onto - the window closed last, which comes back onto the tabs it kept.",
       "given": {
         "argv": [
           "window",
@@ -2078,7 +2078,21 @@
         ]
       },
       "expect": {
-        "answers_here": "starting the Muster whose window was closed"
+        "answers_here": "asking the running app for the window closed last"
+      }
+    },
+    {
+      "name": "a closed window is brought back by name",
+      "why": "A window somebody closed stays closed, and the one closed last is not always the one wanted back: `muster window` lists closed windows under their names, and this takes one of those names (mip/0006-one-process.md, section 4).",
+      "given": {
+        "argv": [
+          "window",
+          "reopen",
+          "window-3"
+        ]
+      },
+      "expect": {
+        "answers_here": "asking the running app for window-3"
       }
     }
   ]
