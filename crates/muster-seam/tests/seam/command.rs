@@ -199,7 +199,7 @@ fn the_run_log_says_where_this_window_is_listening(
 /// than merely being slow.
 fn two_callers_are_both_answered(socket: &std::path::Path) {
     let (mut first, mut second) = (dial(socket), dial(socket));
-    let asking = Request::new(request::Payload::ReadWindow(ReadWindow {})).encode_to_vec();
+    let asking = Request::new(request::Payload::ReadWindow(ReadWindow::default())).encode_to_vec();
     write_frame(&mut first, &asking).expect("the endpoint takes a request");
     write_frame(&mut second, &asking).expect("the endpoint takes a second request");
     for (which, stream) in [("first", &mut first), ("second", &mut second)] {
@@ -254,7 +254,7 @@ fn named_panes(window: &Window) -> Vec<String> {
 }
 
 fn read_window(socket: &std::path::Path) -> Window {
-    let response = dialed(socket, request::Payload::ReadWindow(ReadWindow {}));
+    let response = dialed(socket, request::Payload::ReadWindow(ReadWindow::default()));
     match response.payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("the endpoint answered a ReadWindow with {other:?}"),

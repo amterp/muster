@@ -1176,7 +1176,7 @@ fn evening_out_a_grouped_tab_divides_it_by_what_each_machine_holds() {
 
 /// What each machine's part of the tab on screen is worth, left to right.
 fn weights() -> Vec<f32> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window
             .view
             .into_iter()

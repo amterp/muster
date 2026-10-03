@@ -99,7 +99,7 @@ fn open_a_window_through(relay: Relay) -> Relay {
 
 /// Every pane the window lists, by Muster's names for them.
 fn listed_panes() -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => {
             window.panes.into_iter().map(|pane| pane.pane_id).collect()
         }
@@ -139,7 +139,7 @@ fn the_only_pane() -> String {
         "the window to hold the daemon's pane",
         || {
             let Some(response::Payload::Window(window)) =
-                answer(request::Payload::ReadWindow(ReadWindow {})).payload
+                answer(request::Payload::ReadWindow(ReadWindow::default())).payload
             else {
                 return false;
             };

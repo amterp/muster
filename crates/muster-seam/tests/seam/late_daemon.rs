@@ -219,7 +219,7 @@ fn a_daemon_on_its_way_takes_neither_the_screen_nor_the_keyboard() {
 /// The tab on screen and the pane the keyboard is in.
 fn keyboard() -> (String, String) {
     let Some(response::Payload::Window(window)) =
-        answer(request::Payload::ReadWindow(ReadWindow {})).payload
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
     else {
         return (String::new(), String::new());
     };
@@ -243,7 +243,7 @@ fn start(config: &Path, arrangement: &Path) {
 
 /// The tabs the window lists, in order.
 fn listed_tabs() -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window
             .roster
             .iter()
@@ -323,7 +323,7 @@ fn subscribes(request: &daemon_proto::Request) -> bool {
 }
 
 fn listed_panes() -> usize {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window.panes.len(),
         _ => 0,
     }

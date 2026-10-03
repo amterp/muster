@@ -409,7 +409,7 @@ mod tests {
     use super::*;
 
     fn read_window() -> Request {
-        Request::new(request::Payload::ReadWindow(ReadWindow {}))
+        Request::new(request::Payload::ReadWindow(ReadWindow::default()))
     }
 
     fn running_in(pane: &str) -> BTreeMap<String, String> {

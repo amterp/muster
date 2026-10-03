@@ -222,7 +222,7 @@ fn given_name<'a>(window: &'a Window, pane: &str) -> Option<&'a str> {
 }
 
 fn read_window(socket: &std::path::Path) -> Window {
-    match dialed(socket, request::Payload::ReadWindow(ReadWindow {})).payload {
+    match dialed(socket, request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("the endpoint answered a ReadWindow with {other:?}"),
     }

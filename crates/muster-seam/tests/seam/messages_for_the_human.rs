@@ -201,7 +201,7 @@ fn focus_asking() -> muster::proto::Asking {
 /// The pane with the keyboard.
 fn keyboard_pane() -> String {
     let Some(response::Payload::Window(window)) =
-        answer(request::Payload::ReadWindow(ReadWindow {})).payload
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
     else {
         return String::new();
     };

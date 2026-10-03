@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::composition::record::{Composition, DaemonId, PaneKey, Region, RegionId};
+use crate::composition::record::{Composition, DaemonId, MusterTab, PaneKey, Region, RegionId};
 use crate::mirror::Mirror;
 use crate::mirror::backend::{LayoutNode, PaneId, SplitAxis, Tab, TabId};
 
@@ -148,11 +148,46 @@ impl View {
         remote: impl Fn(&DaemonId) -> bool,
         pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
     ) -> View {
+        match composition.showing().and_then(|tab| composition.tab(tab)) {
+            Some(tab) => View::built(tab, Zoom::Resolved, mirror, daemon_socket, remote, pane),
+            None => {
+                View { tab: None, regions: Vec::new(), focused: None, showing: BTreeSet::new() }
+            }
+        }
+    }
+
+    /// How any tab this window holds is arranged, whether or not it is on screen: what `of`
+    /// would answer once it was shown, except that a zoomed region keeps its whole tree.
+    ///
+    /// The tree rather than the zoomed pane, because this answers how the tab is laid out rather
+    /// than what is drawn, and a zoom covers that arrangement without changing it - unzooming
+    /// puts it back. `zoomed` and the region's `pane` still say which pane fills it.
+    ///
+    /// `None` for a tab this window does not hold. Built on request, for a caller describing the
+    /// layout, and never on the path that publishes a view.
+    pub fn arranged<'a>(
+        composition: &Composition,
+        tab: &TabId,
+        mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
+        daemon_socket: impl Fn(&DaemonId) -> Option<String>,
+        remote: impl Fn(&DaemonId) -> bool,
+        pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
+    ) -> Option<View> {
+        let tab = composition.tab(tab)?;
+        Some(View::built(tab, Zoom::Kept, mirror, daemon_socket, remote, pane))
+    }
+
+    fn built<'a>(
+        held: &MusterTab,
+        zoom: Zoom,
+        mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
+        daemon_socket: impl Fn(&DaemonId) -> Option<String>,
+        remote: impl Fn(&DaemonId) -> bool,
+        pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
+    ) -> View {
         let mut showing = BTreeSet::new();
-        let Some(tab) = composition.showing().cloned() else {
-            return View { tab: None, regions: Vec::new(), focused: None, showing };
-        };
-        let regions = composition
+        let tab = held.id.clone();
+        let regions = held
             .regions()
             .filter_map(|region| {
                 let held = mirror(&region.daemon)?;
@@ -180,7 +215,12 @@ impl View {
                         // Resolved here rather than flagged for the shell, so a renderer
                         // handed a zoomed tab paints the one pane that fills it. Which pane
                         // that is is `zoom_filling`'s answer.
-                        let zoomed = zoom_filling(region, Some(layout)).map(LayoutNode::Pane);
+                        let zoomed = match zoom {
+                            Zoom::Resolved => {
+                                zoom_filling(region, Some(layout)).map(LayoutNode::Pane)
+                            }
+                            Zoom::Kept => None,
+                        };
                         build(zoomed.as_ref().unwrap_or(&layout.root), &region.daemon, &pane)
                     }),
                     zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
@@ -192,7 +232,7 @@ impl View {
         View {
             tab: Some(tab),
             regions,
-            focused: composition.focused_region().map(|region| region.id),
+            focused: held.focused_region().map(|region| region.id),
             showing,
         }
     }
@@ -347,6 +387,13 @@ impl View {
         }
         found
     }
+}
+
+/// Whether a zoomed region is drawn as the one pane filling it, or kept as its whole tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Zoom {
+    Resolved,
+    Kept,
 }
 
 /// Which way a rectangle is being measured.

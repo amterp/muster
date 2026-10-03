@@ -194,7 +194,7 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             })
         }
         request::Payload::ReadBindings(_) => read_bindings(),
-        request::Payload::ReadWindow(_) => read_window(window),
+        request::Payload::ReadWindow(read) => read_window(window, read.layout),
         request::Payload::ReadPane(read) => read_pane(window, &read),
         request::Payload::SendToPane(send) => send_to_pane(window, &send),
         request::Payload::ReadDaemons(_) => read_daemons(),
@@ -1710,8 +1710,9 @@ fn read_bindings() -> Response {
 /// The read that makes the endpoint worth having. An agent driving a window has no eyes: it can
 /// split a pane and start something in it, and without this it can never learn whether either
 /// happened. The same four messages the shell is sent as events, from the same builders.
-fn read_window(window: WindowId) -> Response {
+fn read_window(window: WindowId, layout: bool) -> Response {
     let now = session::window(window);
+    let (layouts, grids) = if layout { laid_out(window) } else { (Vec::new(), Vec::new()) };
     Response {
         payload: Some(response::Payload::Window(proto::Window {
             view: Some(convert::view(&now.view)),
@@ -1749,8 +1750,37 @@ fn read_window(window: WindowId) -> Response {
                     ),
                 })
                 .collect(),
+            layouts,
+            grids,
         })),
     }
+}
+
+/// Every tab's arrangement and every pane's size, for a read that asked for the layout.
+fn laid_out(window: WindowId) -> (Vec<proto::TabLayout>, Vec<proto::PaneGrid>) {
+    let (views, grids) = session::layout(window);
+    let layouts = views
+        .iter()
+        .map(|view| {
+            let described = convert::view(view);
+            proto::TabLayout {
+                tab_id: described.tab_id,
+                regions: described.regions,
+                focused_region: described.focused_region,
+                places: places(view),
+            }
+        })
+        .collect();
+    let grids = grids
+        .into_iter()
+        .map(|(daemon, pane, grid)| proto::PaneGrid {
+            daemon_id: daemon.to_string(),
+            pane_id: pane.to_string(),
+            cols: grid.cols,
+            rows: grid.rows,
+        })
+        .collect();
+    (layouts, grids)
 }
 
 /// Another window's tabs, with what this window would have said about its own taken off: they are

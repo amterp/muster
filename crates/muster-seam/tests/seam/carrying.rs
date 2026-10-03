@@ -279,7 +279,7 @@ fn the_window_says_what_every_other_window_holds() {
     let ours = open_a_window(&daemon, "window-1");
     let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
 
-    let window = match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    let window = match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("asking what the window is showing answered {other:?}"),
     };
@@ -434,7 +434,7 @@ fn announced() -> Vec<String> {
 
 /// Every pane this window has heard of, in any tab.
 fn all_panes() -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => {
             window.panes.iter().map(|held| held.pane_id.clone()).collect()
         }
@@ -443,7 +443,7 @@ fn all_panes() -> Vec<String> {
 }
 
 fn panes_listed_in(tab: &str) -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window
             .roster
             .iter()
@@ -489,7 +489,7 @@ fn a_window_opened_to_show_a_tab_shows_it() {
 
 /// The first pane in a tab another window holds.
 fn pane_of(tab: &str) -> String {
-    let window = match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    let window = match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("asking what the window is showing answered {other:?}"),
     };
@@ -506,7 +506,7 @@ fn pane_of(tab: &str) -> String {
 }
 
 fn state_of(pane: &str) -> Option<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => {
             window.panes.iter().find(|held| held.pane_id == pane).map(|held| held.state.clone())
         }
@@ -530,7 +530,7 @@ fn daemon_panes(daemon: &Daemon) -> Vec<String> {
 }
 
 fn showing() -> Option<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => {
             window.view.and_then(|view| view.regions.first().map(|region| region.tab_id.clone()))
         }
@@ -664,7 +664,7 @@ fn write_record(path: &Path, holders: &Holders) {
 }
 
 fn listed() -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window
             .roster
             .iter()

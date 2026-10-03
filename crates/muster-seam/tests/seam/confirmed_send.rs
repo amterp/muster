@@ -210,7 +210,7 @@ fn the_only_pane() -> String {
         "the window to hold the daemon's pane",
         || {
             let Some(response::Payload::Window(window)) =
-                answer(request::Payload::ReadWindow(muster::proto::ReadWindow {})).payload
+                answer(request::Payload::ReadWindow(muster::proto::ReadWindow::default())).payload
             else {
                 return false;
             };

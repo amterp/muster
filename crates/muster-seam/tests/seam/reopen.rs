@@ -550,7 +550,7 @@ fn a_restored_window_says_which_panes_it_is_drawing() {
 
 /// What `muster window` would print at this moment.
 fn read_window() -> muster::proto::Window {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("asking what the window is showing answered {other:?}"),
     }

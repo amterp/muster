@@ -117,7 +117,7 @@ fn a_pane_blocked_before_the_window_opened_is_reached() {
 /// What the window paints for a pane.
 fn state_of(pane: &str) -> String {
     let Some(response::Payload::Window(window)) =
-        answer(request::Payload::ReadWindow(ReadWindow {})).payload
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
     else {
         return String::new();
     };
@@ -146,7 +146,7 @@ fn read_asking() -> muster::proto::Asking {
 /// The tab on screen and the pane with the keyboard.
 fn keyboard() -> (String, String) {
     let Some(response::Payload::Window(window)) =
-        answer(request::Payload::ReadWindow(ReadWindow {})).payload
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
     else {
         return (String::new(), String::new());
     };

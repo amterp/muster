@@ -61,7 +61,7 @@ fn clear_screen_on_the_alternate_screen_hands_the_program_its_key() {
 /// then is refused, since no pane has the keyboard.
 fn the_window_shows_the_pane() -> bool {
     matches!(
-        dispatch(request::Payload::ReadWindow(muster::proto::ReadWindow {})).payload,
+        dispatch(request::Payload::ReadWindow(muster::proto::ReadWindow::default())).payload,
         Some(response::Payload::Window(window)) if window.panes.iter().any(|pane| pane.pane_id == "p1")
     )
 }

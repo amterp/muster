@@ -14,8 +14,8 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    CloseTab, CreateTab, Event, OpenWindow, Request, Response, RosterChanged, SplitPane, Startup,
-    ViewChanged, event, request, response,
+    CloseTab, CreateTab, Event, OpenWindow, ReadWindow, Request, Response, RosterChanged,
+    SplitPane, Startup, ViewChanged, Window, event, request, response, view_node,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -74,6 +74,89 @@ fn a_pane_in_a_tab_nothing_is_showing_can_be_split() {
         keyboard_was,
         "splitting a pane in a background tab moved the keyboard out of the tab on screen"
     );
+}
+
+/// A tab nothing is showing is described as fully as the one on screen, when somebody asks for
+/// the layout: its tree, where each pane sits in it, and how big each pane's terminal is.
+///
+/// What `muster window --layout` stands on. Without it the arrangement of every tab but one is
+/// invisible until somebody looks at it, which an agent with no eyes cannot do.
+#[test]
+fn a_tab_nothing_is_showing_is_described_with_its_panes_sizes() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the window to open onto a tab",
+        || panes_of_tabs().len() == 1,
+        || format!("the last roster the core published: {:?}", tabs()),
+    );
+    let (background, first) = panes_of_tabs()[0].clone();
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        pane_id: first.clone(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    })));
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    until(
+        "the first tab to be behind a second, holding both its panes",
+        || tabs().len() == 2 && panes_in(&background) == 2,
+        || format!("the last roster the core published: {:?}", panes_of_tabs()),
+    );
+
+    let plain = read_window(false);
+    assert!(
+        plain.layouts.is_empty() && plain.grids.is_empty(),
+        "an ordinary read asks no daemon anything and describes only the tab on screen: {plain:?}"
+    );
+
+    let window = read_window(true);
+    let layout = window
+        .layouts
+        .iter()
+        .find(|layout| layout.tab_id == background)
+        .unwrap_or_else(|| panic!("the tab behind has no layout: {:?}", window.layouts));
+    assert_eq!(window.layouts.len(), 2, "every tab is described, the one on screen too");
+    let root = layout.regions[0].root.as_ref().and_then(|root| root.node.as_ref());
+    match root {
+        Some(view_node::Node::Split(split)) => assert_eq!(split.axis, "columns"),
+        other => panic!("the tab was split right, so its tree is a column split: {other:?}"),
+    }
+    let mut widths: Vec<f32> = layout.places.iter().map(|place| place.width).collect();
+    widths.sort_by(f32::total_cmp);
+    assert!(
+        layout.places.len() == 2
+            && (widths.iter().sum::<f32>() - 1.0).abs() < 0.001
+            && layout.places.iter().all(|place| (place.height - 1.0).abs() < 0.001),
+        "two panes side by side cover the tab between them: {:?}",
+        layout.places
+    );
+
+    let panes: Vec<String> = panes_of_tabs().into_iter().map(|(_, pane)| pane).collect();
+    for pane in &panes {
+        let grid = window
+            .grids
+            .iter()
+            .find(|grid| &grid.pane_id == pane)
+            .unwrap_or_else(|| panic!("{pane} has no size: {:?}", window.grids));
+        assert!(
+            grid.cols > 0 && grid.rows > 0,
+            "a pane's terminal has a size from birth, nobody having drawn it: {grid:?}"
+        );
+    }
+}
+
+fn read_window(layout: bool) -> Window {
+    match answer(request::Payload::ReadWindow(ReadWindow { layout })).payload {
+        Some(response::Payload::Window(window)) => window,
+        other => panic!("a window read answered {other:?}"),
+    }
 }
 
 /// That the pane a split names has to exist, which the change above must not have loosened.

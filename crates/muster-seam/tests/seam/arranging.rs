@@ -301,7 +301,7 @@ fn shape() -> String {
             None => String::new(),
         }
     }
-    match answer(request::Payload::ReadWindow(muster::proto::ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(muster::proto::ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window
             .view
             .and_then(|view| {
@@ -395,7 +395,7 @@ fn on_screen() -> Vec<String> {
 /// Read off the view rather than the roster: the roster says what exists and the view says
 /// where the keyboard is, and this test is about the second.
 fn keyboard() -> Option<String> {
-    match answer(request::Payload::ReadWindow(muster::proto::ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(muster::proto::ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => {
             let view = window.view?;
             let region =

@@ -324,7 +324,7 @@ fn read_pane(socket: &Path, pane: &str) -> String {
 }
 
 fn read_window(socket: &Path) -> Window {
-    match dialed(socket, request::Payload::ReadWindow(ReadWindow {})).payload {
+    match dialed(socket, request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("the window answered a ReadWindow with {other:?}"),
     }

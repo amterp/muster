@@ -108,7 +108,7 @@ fn problems() -> Vec<String> {
 
 /// The socket of every daemon the window has attached.
 fn attached_sockets() -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => {
             window.daemons.into_iter().map(|machine| machine.socket).collect()
         }

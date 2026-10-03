@@ -4528,6 +4528,200 @@
           "r0 tab=w1:t1 w1:p1"
         ]
       }
+    },
+    {
+      "name": "a tab in the background is arranged as it would be drawn",
+      "why": "What a layout answer is for: somebody asking where everything sits, about a tab that is not on screen. The window draws one tab, but it holds the arrangement of every tab - each machine's part and its width are this window's record, and each part's tree is its daemon's - so the shape of a tab in the background is known without showing it. The places are fractions of the tab, in the same terms as the panes on screen.",
+      "given": {
+        "attached": [],
+        "arranged": "w1:t2",
+        "worlds": {
+          "two tabs": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.3,
+                  "first": "w1:p2",
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p3",
+                    "second": "w1:p4"
+                  }
+                }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "two tabs"
+          }
+        ]
+      },
+      "expect": {
+        "arranged": [
+          "r1 tab=w1:t2 columns(w1:p2, rows(w1:p3, w1:p4@0.5)@0.3)",
+          "w1:p2 at 0.00,0.00 0.30x1.00",
+          "w1:p3 at 0.30,0.00 0.70x0.50",
+          "w1:p4 at 0.30,0.50 0.70x0.50"
+        ],
+        "daemons": [
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t2 pane=w1:p2"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a zoomed tab is arranged as its whole tree",
+      "why": "A zoom covers an arrangement without changing it, and unzooming puts it back - so the arrangement of a zoomed tab is its whole tree, where the view on screen is the one pane filling it. The flag and the region's pane still say which pane that is.",
+      "given": {
+        "attached": [
+          "w1:p1",
+          "w1:p2"
+        ],
+        "worlds": {
+          "zoomed on p2": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                },
+                "zoomed": "w1:p2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "zoomed on p2"
+          }
+        ],
+        "arranged": "w1:t1"
+      },
+      "expect": {
+        "arranged": [
+          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2*, w1:p3@0.5)@0.5) zoomed",
+          "w1:p1 at 0.00,0.00 0.50x1.00",
+          "w1:p2 at 0.50,0.00 0.25x1.00",
+          "w1:p3 at 0.75,0.00 0.25x1.00"
+        ],
+        "daemons": [
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1* zoomed"
+        ]
+      }
     }
   ]
 }

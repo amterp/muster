@@ -69,6 +69,21 @@ fn composition_conformance() {
                         .collect::<Vec<String>>()
                 )),
             ),
+            // Only where a case names a tab: how that tab is arranged whether or not it is on
+            // screen, and where each of its panes sits as fractions of the tab.
+            (
+                "arranged",
+                given.get("arranged").and_then(Value::as_str).map(|tab| {
+                    json!(describe_arranged(
+                        &composition,
+                        &TabId::new(tab),
+                        given,
+                        &worlds,
+                        &current,
+                        &sizes
+                    ))
+                }),
+            ),
         ]))
     });
 
@@ -287,6 +302,19 @@ fn view_of(
     current: &BTreeMap<DaemonId, String>,
     sizes: &FontSizes,
 ) -> View {
+    built(composition, None, given, worlds, current, sizes)
+        .expect("the view of what is on screen is always an answer")
+}
+
+/// The view on screen when `tab` is `None`, and otherwise how `tab` is arranged.
+fn built(
+    composition: &Composition,
+    tab: Option<&TabId>,
+    given: &Value,
+    worlds: &BTreeMap<String, Mirror>,
+    current: &BTreeMap<DaemonId, String>,
+    sizes: &FontSizes,
+) -> Option<View> {
     let attached: Vec<String> = given
         .get("attached")
         .and_then(Value::as_array)
@@ -296,31 +324,29 @@ fn view_of(
         .map(str::to_string)
         .collect();
 
-    View::of(
-        composition,
-        |daemon| worlds.get(current.get(daemon)?),
-        // How a daemon is reached is the runtime's answer, and a case has no runtime. What a
-        // case does say is how a daemon was asked for, so the socket a bridge dials is made up
-        // from its name, and a daemon asked for over ssh is remote.
-        |daemon| Some(format!("/tmp/{daemon}.sock")),
-        |daemon| {
-            matches!(
-                composition.daemon(daemon).map(|held| &held.endpoint),
-                Some(Endpoint::Ssh { .. })
-            )
-        },
-        |daemon, pane| ViewPane {
-            id: pane.clone(),
-            link_socket_path: attached
-                .contains(&pane.to_string())
-                .then(|| format!("/tmp/{daemon}-{pane}.sock")),
-            font_size_offset: sizes.offset(&PaneKey::new(daemon, pane)),
-            // Zero, because no case here is about a bridge that had to be replaced - what a
-            // replacement does to a window is `respawn.json`'s subject, and a number in this
-            // driver would only ever restate its own input.
-            bridge_restarts: 0,
-        },
-    )
+    let mirror = |daemon: &DaemonId| worlds.get(current.get(daemon)?);
+    // How a daemon is reached is the runtime's answer, and a case has no runtime. What a case
+    // does say is how a daemon was asked for, so the socket a bridge dials is made up from its
+    // name, and a daemon asked for over ssh is remote.
+    let socket = |daemon: &DaemonId| Some(format!("/tmp/{daemon}.sock"));
+    let remote = |daemon: &DaemonId| {
+        matches!(composition.daemon(daemon).map(|held| &held.endpoint), Some(Endpoint::Ssh { .. }))
+    };
+    let pane = |daemon: &DaemonId, pane: &PaneId| ViewPane {
+        id: pane.clone(),
+        link_socket_path: attached
+            .contains(&pane.to_string())
+            .then(|| format!("/tmp/{daemon}-{pane}.sock")),
+        font_size_offset: sizes.offset(&PaneKey::new(daemon, pane)),
+        // Zero, because no case here is about a bridge that had to be replaced - what a
+        // replacement does to a window is `respawn.json`'s subject, and a number in this
+        // driver would only ever restate its own input.
+        bridge_restarts: 0,
+    };
+    match tab {
+        Some(tab) => View::arranged(composition, tab, mirror, socket, remote, pane),
+        None => Some(View::of(composition, mirror, socket, remote, pane)),
+    }
 }
 
 fn describe_view(
@@ -330,8 +356,11 @@ fn describe_view(
     current: &BTreeMap<DaemonId, String>,
     sizes: &FontSizes,
 ) -> Vec<String> {
-    view_of(composition, given, worlds, current, sizes)
-        .regions
+    describe_regions_of(&view_of(composition, given, worlds, current, sizes))
+}
+
+fn describe_regions_of(view: &View) -> Vec<String> {
+    view.regions
         .iter()
         .map(|region| {
             let mut described = format!("{} tab={}", region.id, region.tab);
@@ -349,6 +378,26 @@ fn describe_view(
             described
         })
         .collect()
+}
+
+/// How a tab is arranged, as `view` describes regions, then where each of its panes sits as
+/// fractions of the tab: `w1:p2 at 0.50,0.00 0.50x1.00`.
+fn describe_arranged(
+    composition: &Composition,
+    tab: &TabId,
+    given: &Value,
+    worlds: &BTreeMap<String, Mirror>,
+    current: &BTreeMap<DaemonId, String>,
+    sizes: &FontSizes,
+) -> Vec<String> {
+    let Some(view) = built(composition, Some(tab), given, worlds, current, sizes) else {
+        return vec![format!("{tab} is not held")];
+    };
+    let mut lines = describe_regions_of(&view);
+    lines.extend(view.places().into_iter().map(|(_, pane, rect)| {
+        format!("{pane} at {:.2},{:.2} {:.2}x{:.2}", rect.x, rect.y, rect.width, rect.height)
+    }));
+    lines
 }
 
 fn describe_daemons(composition: &Composition) -> Vec<String> {

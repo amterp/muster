@@ -762,7 +762,9 @@ pub fn parse(
             request: Box::new(Request::new(request::Payload::WatchPanes(WatchPanes::default()))),
             timeout: None,
         },
-        What::Window { doing: None, .. } => send(request::Payload::ReadWindow(ReadWindow {})),
+        What::Window { doing: None, .. } => {
+            send(request::Payload::ReadWindow(ReadWindow::default()))
+        }
         What::Daemons => send(request::Payload::ReadDaemons(ReadDaemons {})),
         What::Msg { identity, verb } => {
             Asking::Message(Box::new(crate::messaging::parse(verb, identity, environment, here)?))

@@ -167,7 +167,7 @@ fn open_on(daemon: &Daemon, config: &str) -> String {
         "the window to hold the daemon's pane",
         || {
             let Some(response::Payload::Window(window)) =
-                answer(request::Payload::ReadWindow(ReadWindow {})).payload
+                answer(request::Payload::ReadWindow(ReadWindow::default())).payload
             else {
                 return false;
             };

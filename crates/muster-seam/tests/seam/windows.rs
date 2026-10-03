@@ -272,7 +272,7 @@ fn a_request_from_a_pane_is_about_that_panes_window() {
     let theirs = keyboard_in("window-2").expect("the second window opened onto a pane");
     focus_window("window-1");
 
-    let mut asked = Request::new(request::Payload::ReadWindow(ReadWindow {}));
+    let mut asked = Request::new(request::Payload::ReadWindow(ReadWindow::default()));
     asked.from_pane = theirs;
     match answer(&asked).payload {
         Some(response::Payload::Window(window)) => assert_eq!(
@@ -557,7 +557,7 @@ fn holders_in(path: &Path) -> BTreeMap<String, String> {
 }
 
 fn read_window(window: &str) -> muster::proto::Window {
-    match answer(&in_window(window, request::Payload::ReadWindow(ReadWindow {}))).payload {
+    match answer(&in_window(window, request::Payload::ReadWindow(ReadWindow::default()))).payload {
         Some(response::Payload::Window(answer)) => answer,
         other => panic!("asking {window} what it shows answered {other:?}"),
     }

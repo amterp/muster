@@ -584,7 +584,7 @@ fn until_state(open: &Open, state: &str) -> PaneStateChanged {
 }
 
 fn read_window(socket: &std::path::Path) -> Window {
-    match dialed(socket, request::Payload::ReadWindow(ReadWindow {})).payload {
+    match dialed(socket, request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("the endpoint answered a ReadWindow with {other:?}"),
     }

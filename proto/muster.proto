@@ -261,7 +261,13 @@ message SetSidebarWidth {
 //
 // Answered from the same builders the events come from, so there is one account of what a
 // window is rather than a read that can disagree with what is on screen.
-message ReadWindow {}
+message ReadWindow {
+  // Also describe how every tab is arranged, shown or not, and how big each pane's terminal is
+  // (Window.layouts and Window.grids). Asked for rather than always answered, because the sizes
+  // are a question to each daemon - one round trip apiece, over ssh for a remote one - where
+  // everything else here is answered from what the window already holds.
+  bool layout = 1;
+}
 
 // Calls a pane what somebody wants to call it.
 //
@@ -1378,6 +1384,43 @@ message Window {
   // window, a caller needs somewhere to find a tab name another window holds. A closed window is
   // listed too: it keeps its tabs, and its agents are still running.
   repeated OtherWindow windows = 7;
+
+  // How every tab this window holds is arranged, in tab order, whether or not it is on screen.
+  // Empty unless ReadWindow.layout asked.
+  repeated TabLayout layouts = 8;
+
+  // How big each pane's terminal is, for every pane whose daemon could say. Empty unless
+  // ReadWindow.layout asked. A pane missing here is one whose daemon did not answer, or is too
+  // old to be asked: its size is unknown rather than any number.
+  repeated PaneGrid grids = 9;
+}
+
+// One tab's arrangement, as it is drawn when the tab is on screen.
+//
+// The regions are ViewChanged's, reused so that a tab in the background and the tab on screen
+// are described in one vocabulary - with one difference: a zoomed region keeps its whole tree
+// here, because this says how the tab is laid out and a zoom covers that without changing it.
+// `zoomed` and the region's `pane_id` still say which pane fills it.
+message TabLayout {
+  string tab_id = 1;
+  repeated ViewRegion regions = 2;
+
+  // The region the keyboard is in while this tab is on screen.
+  string focused_region = 3;
+
+  // Where each pane sits, as fractions of the tab rather than of what the window is drawing -
+  // the same numbers Window.places gives the tab on screen, unzoomed.
+  repeated PanePlace places = 4;
+}
+
+// A pane's size in cells: the size its program last saw. For a pane on screen that is what it
+// is drawn at; for one in the background, the size it was last drawn at, which is still what
+// wraps its output.
+message PaneGrid {
+  string daemon_id = 1;
+  string pane_id = 2;
+  uint32 cols = 3;
+  uint32 rows = 4;
 }
 
 // Another window, as this one knows it.

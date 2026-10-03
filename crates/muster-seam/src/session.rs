@@ -28,7 +28,9 @@ use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::focus_history::FocusHistory;
 use muster_core::input::{Bindings, InputEvent, InputSink, PaneInput, PaneInputSettings};
-use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal, Side};
+use muster_core::intent::{
+    BackendChannel, BackendIntent, Grid, MoveDestination, Outcome, Refusal, Side,
+};
 use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restored};
 use muster_core::names::Minter;
@@ -2059,20 +2061,48 @@ impl Session {
         View::of(
             &self.windows[window].composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
-            |daemon| Some(self.backends.get(daemon)?.socket_path.clone()),
-            |daemon| self.backends.get(daemon).is_some_and(|backend| backend.tunnel.is_some()),
-            |daemon, pane| {
-                let key = PaneKey::new(daemon, pane);
-                ViewPane {
-                    id: pane.clone(),
-                    link_socket_path: self
-                        .channel(daemon, pane)
-                        .map(|held| held.link_path().to_string()),
-                    font_size_offset: self.font_sizes.offset(&key),
-                    bridge_restarts: self.respawns.restarts(&key),
-                }
-            },
+            |daemon| self.daemon_socket(daemon),
+            |daemon| self.remote(daemon),
+            |daemon, pane| self.view_pane(daemon, pane),
         )
+    }
+
+    /// How every tab this window holds is arranged, in tab order, shown or not
+    /// ([`View::arranged`]).
+    fn arranged(&self, window: WindowId) -> Vec<View> {
+        let mirrors = self.mirrors();
+        let composition = &self.windows[window].composition;
+        composition
+            .tabs()
+            .filter_map(|tab| {
+                View::arranged(
+                    composition,
+                    &tab.id,
+                    |daemon| mirrors.get(daemon).map(|held| &**held),
+                    |daemon| self.daemon_socket(daemon),
+                    |daemon| self.remote(daemon),
+                    |daemon, pane| self.view_pane(daemon, pane),
+                )
+            })
+            .collect()
+    }
+
+    fn daemon_socket(&self, daemon: &DaemonId) -> Option<String> {
+        Some(self.backends.get(daemon)?.socket_path.clone())
+    }
+
+    fn remote(&self, daemon: &DaemonId) -> bool {
+        self.backends.get(daemon).is_some_and(|backend| backend.tunnel.is_some())
+    }
+
+    fn view_pane(&self, daemon: &DaemonId, pane: &PaneId) -> ViewPane {
+        let key = PaneKey::new(daemon, pane);
+        ViewPane {
+            id: pane.clone(),
+            link_socket_path: self.channel(daemon, pane).map(|held| held.link_path().to_string()),
+            font_size_offset: self.font_sizes.offset(&key),
+            bridge_restarts: self.respawns.restarts(&key),
+        }
     }
 
     /// Everything the attached daemons hold, and which of it is on screen.
@@ -3909,6 +3939,43 @@ pub(crate) fn daemon_health() -> Vec<DaemonHealth> {
             }
         })
         .collect()
+}
+
+/// How every tab a window holds is arranged, and how big each pane's terminal is, for a caller
+/// describing the layout.
+///
+/// The sizes are asked of each daemon with the session let go, as `read_pane` asks for text: a
+/// daemon slow to answer must not hold up the window. One that cannot answer - not connected, or
+/// too old to know the question - is left out and logged, and its panes' sizes are then unknown
+/// rather than guessed.
+pub(crate) fn layout(window: WindowId) -> (Vec<View>, Vec<(DaemonId, PaneId, Grid)>) {
+    let (views, channels) = {
+        let session = poison::lock(&SESSION, "session");
+        let views = session.arranged(window);
+        let channels: Vec<(DaemonId, Arc<dyn BackendChannel>)> = session
+            .backends
+            .keys()
+            .filter_map(|daemon| Some((daemon.clone(), session.channel_of(daemon)?)))
+            .collect();
+        (views, channels)
+    };
+    let mut grids = Vec::new();
+    for (daemon, channel) in channels {
+        match channel.grids() {
+            Ok(found) => {
+                grids.extend(found.into_iter().map(|(pane, grid)| (daemon.clone(), pane, grid)));
+            }
+            Err(refusal) => log::info(
+                "window.grids.unread",
+                fields! {
+                    "daemon" => daemon.to_string(),
+                    "detail" => refusal.to_string(),
+                    "impact" => "the layout says this daemon's panes' sizes are unknown",
+                },
+            ),
+        }
+    }
+    (views, grids)
 }
 
 pub(crate) fn window(window: WindowId) -> WindowNow {

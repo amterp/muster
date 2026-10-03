@@ -285,7 +285,7 @@ fn ran(argv: &[&str]) -> Ran {
 /// Which request hardly matters: what a failure means is decided by how far the exchange got,
 /// not by what was being asked for.
 fn asked(socket: &Path) -> Result<Response, muster_cli::Trouble> {
-    let request = Request::new(request::Payload::ReadWindow(ReadWindow {}));
+    let request = Request::new(request::Payload::ReadWindow(ReadWindow::default()));
     dial::ask_within(&request, Some(&socket.to_string_lossy()), &BTreeMap::new(), BRIEFLY)
 }
 

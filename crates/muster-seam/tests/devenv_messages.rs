@@ -302,7 +302,7 @@ fn open_a_window(
 fn read_window(socket: &Path) -> Window {
     use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
     let mut stream = std::os::unix::net::UnixStream::connect(socket).expect("the window listens");
-    let asking = Request::new(request::Payload::ReadWindow(ReadWindow {}));
+    let asking = Request::new(request::Payload::ReadWindow(ReadWindow::default()));
     write_frame(&mut stream, &asking.encode_to_vec()).expect("the window takes a request");
     let reply = read_frame(&mut stream, LARGEST_MESSAGE).expect("the window answers it");
     match Response::decode(reply.as_slice()).expect("an answer this build knows").payload {

@@ -203,7 +203,7 @@ impl Drop for Stopped {
 /// The tab on screen and the pane with the keyboard.
 fn keyboard() -> (String, String) {
     let Some(response::Payload::Window(window)) =
-        answer(request::Payload::ReadWindow(ReadWindow {})).payload
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
     else {
         return (String::new(), String::new());
     };

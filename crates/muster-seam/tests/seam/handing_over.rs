@@ -43,7 +43,7 @@ fn an_older_daemon_at_a_socket_somebody_named_is_not_asked() {
 }
 
 fn listed_panes() -> usize {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window.panes.len(),
         _ => 0,
     }

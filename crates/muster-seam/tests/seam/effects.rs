@@ -144,7 +144,7 @@ fn typing(daemon: &Daemon) -> impl FnMut(&str) {
 }
 
 fn agent(socket: &std::path::Path) -> Option<PaneStateChanged> {
-    let bytes = Request::new(request::Payload::ReadWindow(ReadWindow {}));
+    let bytes = Request::new(request::Payload::ReadWindow(ReadWindow::default()));
     let window = match dialed(socket, &bytes).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("the endpoint answered a ReadWindow with {other:?}"),

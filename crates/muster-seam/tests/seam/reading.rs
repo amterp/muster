@@ -30,7 +30,7 @@ fn a_whole_history_larger_than_a_mebibyte_reaches_its_caller() {
         dispatch(payload);
     }
     until_some("the window to list the pane", || {
-        match dialed(&socket, request::Payload::ReadWindow(ReadWindow {})).payload {
+        match dialed(&socket, request::Payload::ReadWindow(ReadWindow::default())).payload {
             Some(response::Payload::Window(window)) => {
                 window.panes.iter().any(|pane| pane.pane_id == "p1").then_some(())
             }

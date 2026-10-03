@@ -568,7 +568,7 @@ fn showing() -> Option<String> {
 
 /// How many panes the daemon holds, as far as this window has heard.
 fn panes_on_the_daemon() -> u32 {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window.daemons.iter().map(|d| d.panes).sum(),
         other => panic!("asking what the window is showing answered {other:?}"),
     }
@@ -576,7 +576,7 @@ fn panes_on_the_daemon() -> u32 {
 
 /// The panes in the tabs this window lists.
 fn panes_in_this_window() -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window
             .roster
             .iter()
@@ -590,7 +590,7 @@ fn panes_in_this_window() -> Vec<String> {
 
 /// The panes in one tab this window lists.
 fn panes_in(tab: &str) -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window
             .roster
             .iter()
@@ -605,7 +605,7 @@ fn panes_in(tab: &str) -> Vec<String> {
 
 /// The tabs this window lists, in its order.
 fn listed() -> Vec<String> {
-    match answer(request::Payload::ReadWindow(ReadWindow {})).payload {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window
             .roster
             .iter()
