@@ -57,6 +57,10 @@ public protocol PaneSurface: AnyObject {
   /// Called with the link under the pointer as it arrives over one, and nil as it leaves.
   var onHoverLink: (@MainActor (String?) -> Void)? { get set }
 
+  /// Called with false when the pointer should hide because somebody typed, and true when it
+  /// should show again.
+  var onPointerVisibility: (@MainActor (Bool) -> Void)? { get set }
+
   /// Called when the command this surface is running exits, which for a pane means its
   /// bridge is gone. Settable rather than reported once, because whoever owns the surface is
   /// not who needs to know.

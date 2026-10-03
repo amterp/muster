@@ -25,6 +25,9 @@ fn feel(feel: &config::Feel) -> Vec<String> {
     if feel.scroll_multiplier != config::Feel::default().scroll_multiplier {
         set.push(format!("scroll_multiplier={}", feel.scroll_multiplier));
     }
+    if feel.hide_pointer_while_typing {
+        set.push("hide_pointer_while_typing=true".to_string());
+    }
     set
 }
 

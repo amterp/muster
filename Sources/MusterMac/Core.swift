@@ -670,7 +670,8 @@ public enum Core {
         cursorStyle: MusterRenderer.Appearance.CursorStyle(rawValue: answer.cursorStyle),
         cursorBlink: answer.hasCursorBlink ? answer.cursorBlink : nil,
         panePadding: answer.hasPanePadding ? answer.panePadding : nil,
-        scrollMultiplier: answer.scrollMultiplier
+        scrollMultiplier: answer.scrollMultiplier,
+        hidePointerWhileTyping: answer.hidePointerWhileTyping
       ),
       chrome: Chrome(
         divider: named(answer.dividerColor),

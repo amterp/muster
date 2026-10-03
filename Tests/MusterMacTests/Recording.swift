@@ -37,6 +37,7 @@ final class RecordingSurface: PaneSurface {
   var onOpenLink: (@MainActor (OpenedLink) -> Void)?
   var onPointerShape: (@MainActor (PointerShape) -> Void)?
   var onHoverLink: (@MainActor (String?) -> Void)?
+  var onPointerVisibility: (@MainActor (Bool) -> Void)?
   /// What this surface will not do, for the tests about a renderer that refuses.
   var refuses: [String] = []
   /// Every wheel it was handed, as the deltas and flags the surface was given.

@@ -36,6 +36,21 @@ struct LinkHoverTests {
     #expect(view.cursor == .iBeam)
   }
 
+  @Test("the pointer hides when the surface asks, and comes back when it asks again")
+  func thePointerHidesWhileTyping() {
+    _ = recorder()
+    let recording = RecordingSurface()
+    let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+    view.attach(recording, typeable: true)
+    #expect(!view.pointerHidden)
+
+    recording.onPointerVisibility?(false)
+    #expect(view.pointerHidden)
+
+    recording.onPointerVisibility?(true)
+    #expect(!view.pointerHidden)
+  }
+
   @Test("the link under the pointer shows at the pane's bottom left, and goes when it leaves")
   func theBanner() {
     _ = recorder()

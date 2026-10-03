@@ -275,11 +275,15 @@ pub struct Feel {
     /// size is the input device's business: a trackpad reports many small ones and a wheel
     /// mouse a few large ones, and only the person using them knows which needs adjusting.
     pub scroll_multiplier: f64,
+
+    /// Whether the pointer hides as soon as somebody types into a pane, until the mouse next
+    /// moves. Off by default because it is off in Ghostty, whose answer this is.
+    pub hide_pointer_while_typing: bool,
 }
 
 impl Default for Feel {
     fn default() -> Feel {
-        Feel { resize_step: None, scroll_multiplier: 1.0 }
+        Feel { resize_step: None, scroll_multiplier: 1.0, hide_pointer_while_typing: false }
     }
 }
 
@@ -531,13 +535,14 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 5] = ["id", "socket", "host", "ssh_options", "color"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 15] = [
+const ROOT_KEYS: [&str; 16] = [
     "daemon",
     "keymap",
     "text",
     "option_as_alt",
     "resize_step",
     "scroll_multiplier",
+    "hide_pointer_while_typing",
     "numbered_chords",
     "pane_padding",
     "scrollback_bytes",
@@ -796,6 +801,16 @@ fn read_feel(root: &toml::Table) -> Result<Feel, String> {
             ));
         }
         feel.scroll_multiplier = multiplier;
+    }
+
+    if let Some(value) = root.get("hide_pointer_while_typing") {
+        feel.hide_pointer_while_typing = value.as_bool().ok_or_else(|| {
+            format!(
+                "`hide_pointer_while_typing` in the config file is {}, and it has to be true or \
+                 false. None of the file was applied.",
+                described(value)
+            )
+        })?;
     }
 
     read_retired_numbered_chords(root)?;

@@ -93,6 +93,18 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// The cursor for the shape libghostty asked for.
   public var cursor: NSCursor { Self.cursor(for: pointerShape) }
 
+  /// Whether libghostty last asked for the pointer to be hidden, which it does as somebody types
+  /// with `hide_pointer_while_typing` on. AppKit shows it again on the next move by itself, as
+  /// Ghostty's app relies on (`SurfaceView_AppKit.swift`, `setCursorVisibility`).
+  public private(set) var pointerHidden = false {
+    didSet {
+      // Only in a window: hiding is global to the app, and a view in no window has nobody's
+      // pointer to hide - a test's least of all.
+      guard window != nil else { return }
+      NSCursor.setHiddenUntilMouseMoves(pointerHidden)
+    }
+  }
+
   /// Ghostty's choice of cursor for each shape (`SurfaceView_AppKit.swift`, `setCursorShape`).
   public static func cursor(for shape: PointerShape) -> NSCursor {
     switch shape {
@@ -160,6 +172,9 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     }
     surface.onHoverLink = { [weak self] url in
       self?.onHoverLink?(url)
+    }
+    surface.onPointerVisibility = { [weak self] visible in
+      self?.pointerHidden = !visible
     }
     attach(typeable: typeable)
     surface.setSize(

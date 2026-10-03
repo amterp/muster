@@ -832,6 +832,36 @@
       }
     },
     {
+      "name": "hiding the pointer while typing is asked for in one line",
+      "why": "Ghostty's `mouse-hide-while-typing`, under Muster's word for the mouse's arrow: `[cursor]` already means the text cursor. Off unless named, as it is in Ghostty, because whether a pointer vanishing under somebody's hand is a relief or a surprise is theirs to say.",
+      "given": {
+        "file": [
+          "hide_pointer_while_typing = true"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "feel": [
+          "hide_pointer_while_typing=true"
+        ]
+      }
+    },
+    {
+      "name": "hiding the pointer while typing takes true or false and nothing else",
+      "why": "A string `\"yes\"` read as true would make the file mean what its author hoped rather than what it says, and one read as false would be a setting that silently does not apply.",
+      "given": {
+        "file": [
+          "hide_pointer_while_typing = \"yes\""
+        ]
+      },
+      "expect": {
+        "refused": "`hide_pointer_while_typing` in the config file is a string, and it has to be true or false. None of the file was applied."
+      }
+    },
+    {
       "name": "a colour that is not six hex digits is refused where it was written",
       "why": "The alternative is a shell handed `#gg0000`, which can only fail silently or invent something - both a long way from the person who typed it. Reading the file is where the line number is, so it is where the refusal belongs. The key is named as well as the value, because a file setting eight colours has eight places this could be.",
       "given": {
@@ -1009,7 +1039,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, font, colors, cursor, shell, notifications."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, font, colors, cursor, shell, notifications."
       }
     },
     {

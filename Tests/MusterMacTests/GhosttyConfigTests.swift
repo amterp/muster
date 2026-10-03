@@ -213,6 +213,16 @@ import Testing
       !ghosttyConfiguration(Appearance()).contains { $0.hasPrefix("mouse-scroll-multiplier") })
   }
 
+  @Test func hidingThePointerWhileTypingIsHandedOnOnlyWhenAskedFor() throws {
+    let asked = try loaded(ghosttyConfiguration(Appearance(hidePointerWhileTyping: true)))
+    defer { ghostty_config_free(asked) }
+    #expect(flag(asked, "mouse-hide-while-typing") == true)
+
+    // Ghostty's own default, which is off, rather than Muster writing one down.
+    #expect(
+      !ghosttyConfiguration(Appearance()).contains { $0.hasPrefix("mouse-hide-while-typing") })
+  }
+
   @Test func aSizeSomebodyWroteAsAWholeNumberStaysOne() {
     // Cosmetic, and worth a line anyway: this file is what somebody reads when a colour does not
     // take, and `font-size = 13.0` beside a config that says `size = 13` is one more thing to

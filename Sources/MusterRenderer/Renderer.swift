@@ -32,7 +32,8 @@ private func rendererWakeup(_ userdata: UnsafeMutableRawPointer?) {
 /// anything, because Muster's own bar is what starts and ends one - a surface never opens
 /// Ghostty's. A link is claimed and handed to the surface it was clicked in, which is the one
 /// place that knows which machine the pane is on. The pointer's shape and the link under it are
-/// handed to their surface too, which is how a link shows it can be clicked before it is.
+/// handed to their surface too, which is how a link shows it can be clicked before it is, and so
+/// is whether to hide the pointer, which libghostty asks for while somebody types.
 /// Everything else arrives with the feature that consumes it.
 private func rendererAction(
   _ app: ghostty_app_t?, _ target: ghostty_target_s, _ action: ghostty_action_s
@@ -78,6 +79,14 @@ private func rendererAction(
       } ?? ""
     guard let token = token(of: target) else { return false }
     Task { @MainActor in Surface.reportHover(url.isEmpty ? nil : url, token: token) }
+    return true
+  case GHOSTTY_ACTION_MOUSE_VISIBILITY:
+    let visibility = action.action.mouse_visibility
+    guard visibility == GHOSTTY_MOUSE_VISIBLE || visibility == GHOSTTY_MOUSE_HIDDEN,
+      let token = token(of: target)
+    else { return false }
+    let visible = visibility == GHOSTTY_MOUSE_VISIBLE
+    Task { @MainActor in Surface.reportPointerVisibility(visible, token: token) }
     return true
   default:
     return false
@@ -373,6 +382,10 @@ public final class Surface {
   /// Called with the link under the pointer as it arrives over one, and nil as it leaves.
   public var onHoverLink: (@MainActor (String?) -> Void)?
 
+  /// Called with false when the pointer should hide because somebody typed, and true when it
+  /// should show again. Only sent with `hidePointerWhileTyping` on.
+  public var onPointerVisibility: (@MainActor (Bool) -> Void)?
+
   /// The offset this surface is already drawn at.
   ///
   /// Not a second home for the answer - the core owns it - but a memo of what was last pushed
@@ -441,6 +454,10 @@ public final class Surface {
 
   static func reportHover(_ url: String?, token: UInt) {
     living[token]?.surface?.onHoverLink?(url)
+  }
+
+  static func reportPointerVisibility(_ visible: Bool, token: UInt) {
+    living[token]?.surface?.onPointerVisibility?(visible)
   }
 
   public func setSize(width: UInt32, height: UInt32) {

@@ -45,6 +45,9 @@ public struct Appearance: Equatable, Sendable {
   /// ignored it would scroll its own history a different distance from the program's.
   public var scrollMultiplier: Double?
 
+  /// Whether the pointer hides as soon as somebody types, until the mouse next moves.
+  public var hidePointerWhileTyping: Bool
+
   public init(
     fontFamily: String? = nil, fontSize: Float? = nil,
     background: String? = nil, foreground: String? = nil,
@@ -53,7 +56,8 @@ public struct Appearance: Equatable, Sendable {
     bold: String? = nil,
     palette: [String] = [],
     cursorStyle: CursorStyle? = nil, cursorBlink: Bool? = nil,
-    panePadding: UInt32? = nil, scrollMultiplier: Double? = nil
+    panePadding: UInt32? = nil, scrollMultiplier: Double? = nil,
+    hidePointerWhileTyping: Bool = false
   ) {
     self.fontFamily = fontFamily
     self.fontSize = fontSize
@@ -69,6 +73,7 @@ public struct Appearance: Equatable, Sendable {
     self.cursorBlink = cursorBlink
     self.panePadding = panePadding
     self.scrollMultiplier = scrollMultiplier
+    self.hidePointerWhileTyping = hidePointerWhileTyping
   }
 
   /// The shapes a cursor comes in, in Muster's spelling.
@@ -151,6 +156,10 @@ public func ghosttyConfiguration(_ appearance: Appearance) -> [String] {
   set(
     "mouse-scroll-multiplier",
     appearance.scrollMultiplier.map { "precision:\(decimal($0)),discrete:\(decimal($0 * 3))" })
+
+  if appearance.hidePointerWhileTyping {
+    lines.append("mouse-hide-while-typing = true")
+  }
 
   return lines
 }

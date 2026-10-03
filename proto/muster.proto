@@ -448,6 +448,11 @@ message Appearance {
   // wrote.
   string context_empty_color = 18;
   string context_full_color = 19;
+
+  // Whether the pointer hides while somebody types into a pane, until the mouse moves. Not
+  // appearance, but carried here as `scroll_multiplier` is: this message is what the shell hands
+  // the renderer, and the renderer does the hiding.
+  bool hide_pointer_while_typing = 20;
 }
 
 // The five agent states, as a person coloured them.

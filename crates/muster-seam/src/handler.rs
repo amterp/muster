@@ -1226,6 +1226,7 @@ fn appearance_message() -> proto::Appearance {
         divider_color: color(appearance.colors.divider),
         focus_ring_color: color(appearance.colors.focus_ring),
         scroll_multiplier: session::feel().scroll_multiplier,
+        hide_pointer_while_typing: session::feel().hide_pointer_while_typing,
         agent_colors: Some(proto::AgentColors {
             working: color(appearance.colors.agents.working),
             blocked: color(appearance.colors.agents.blocked),

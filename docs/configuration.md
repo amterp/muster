@@ -20,6 +20,7 @@ option_as_alt = "left"         # never (the default) | always | left | right
 resize_step = "20c"            # per resize chord: cells (c) or points (px). Omit for the
                                # daemon's own step. The unit is required.
 scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
+hide_pointer_while_typing = true  # until the mouse moves; off by default, as in Ghostty
 clipboard_write = "deny"       # allow (the default) | deny: may a program set the clipboard
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
@@ -328,6 +329,10 @@ is what fits the most rows into a window of fifteen agents. `clipboard_write` de
 a program may set your clipboard, which is how `tmux`, `vim` and an agent over ssh copy (OSC
 52); `deny` drops those writes. Reading the clipboard is never offered to a program, since
 that would hand any process in a pane whatever you copied last.
+`hide_pointer_while_typing` hides the pointer as soon as you type into a pane and shows it again
+when the mouse moves. It is Ghostty's `mouse-hide-while-typing` under Muster's word for the
+mouse's arrow, since `[cursor]` is the text cursor, and it is off unless you turn it on, as it
+is in Ghostty.
 
 **`resize_step` takes a unit, and it is required**: `"20c"` is twenty cells, `"150px"` is a
 hundred and fifty points. Two units because neither one is right for everybody. A cell is
@@ -541,7 +546,7 @@ drawn when it is unreachable or holds no panes, carries the same swatch.
 **Saving the file is enough.** Muster watches it and reads it again, and `cmd+shift+,` or
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
-the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `clipboard_write`,
+the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `hide_pointer_while_typing`, `clipboard_write`,
 `[notifications]` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
