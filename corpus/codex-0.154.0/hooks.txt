@@ -1,0 +1,53 @@
+Which hooks Codex 0.154.0 fires, in what order, for a turn, a tool call, an approval, Esc and a message queued while it works.
+
+Recorded 2026-10-03 on macOS 26.4.1 / arm64, codex-cli 0.154.0 (Homebrew cask) running
+gpt-5.6-luna at low reasoning effort, in a 100x30 pseudo-terminal driven by scratch scripts built
+on tools/detection-capture.py. Every event had a hook writing its JSON input and the value of an
+environment variable set only on the codex process. The hooks were a project's .codex/hooks.json
+in a trusted folder, or the same groups passed as -c hooks.<Event>=[...], with
+--dangerously-bypass-hook-trust. Session ids are shortened to <session>, paths to <folder>.
+
+Starting, then "Reply with the single word hi.":
+    (nothing at launch)
+    SessionStart      source "startup", permission_mode "default", model "gpt-5.6-luna",
+                      transcript_path "~/.codex/sessions/2026/10/03/rollout-2026-10-03T09-44-16-<session>.jsonl"
+    UserPromptSubmit  prompt "Reply with the single word hi.", turn_id
+    Stop              last_assistant_message "hi", stop_hook_active false
+Every hook's environment held the variable set on the codex process.
+
+A SessionStart group with matcher "startup|clear", one with "resume" and one with none: the first
+and the last ran.
+
+A SessionStart hook printing "The first secret word is PINEAPPLE." and another printing
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"The second secret word is MANGO."}},
+then "What secret words were you told, if any?": the model answered "PINEAPPLE MANGO".
+
+A command run in the workspace-write sandbox, asking nothing:
+    UserPromptSubmit
+    PreToolUse        tool_name "Bash", tool_input {"command": "python3 -c ..."}
+    PostToolUse       tool_name "Bash", tool_response with the command's output
+    Stop
+
+A command the read-only sandbox does not allow, "echo hi > made.txt", declined with Esc:
+    UserPromptSubmit
+    PreToolUse        Bash "echo hi > made.txt"
+    PermissionRequest Bash, tool_input.description "Do you want to allow creating made.txt with the requested command?"
+    (the approval prompt is up; its title animates, 275 bytes in five seconds)
+    Esc
+    Interrupt
+    (no Stop; the screen says "■ Conversation interrupted")
+
+"Run the shell command sleep 30 and then say done.", then "also say the time" typed and sent with
+Return while it worked, then Esc:
+    UserPromptSubmit
+    PreToolUse        Bash "sleep 30"
+    (the composer showed "tab to queue message"; after Return, "Messages to be submitted after
+     next tool call (press esc to interrupt and send immediately) ↳ also say the time")
+    Esc
+    Interrupt
+    UserPromptSubmit  a new turn_id: the queued message, sent at once
+    PreToolUse        Bash "sleep 30 && date"
+
+The doorbell's line written at an empty composer, one bracketed paste and a Return in one write,
+"[muster] review: 1 new (#4), 1 to you, from @human. Read: muster msg read --group review":
+    UserPromptSubmit  the line, sent as a prompt; "@human" opened nothing

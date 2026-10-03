@@ -15,6 +15,7 @@ mod facts;
 mod flood;
 mod handoff;
 mod handshake;
+mod harness_hooks;
 mod lifecycle;
 mod linked;
 mod log;

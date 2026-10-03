@@ -513,7 +513,11 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
 }
 
 /// An engine before 7 does not know `current_prompt`, so a manifest using it says it needs 7.
-fn reads_current_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Result<(), String> {
+fn reads_current_prompt(
+    manifest: &RawManifest,
+    rule: &RawRule,
+    region: Region,
+) -> Result<(), String> {
     if region == Region::CurrentPrompt
         && manifest.min_engine_version.unwrap_or(0) < CURRENT_PROMPT_ENGINE_VERSION
     {

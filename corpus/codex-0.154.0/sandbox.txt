@@ -1,0 +1,23 @@
+Whether a command Codex 0.154.0 runs in its sandbox can connect to a Unix socket outside the workspace, which is how `muster` reaches its daemon.
+
+Recorded 2026-10-03 on macOS 26.4.1 / arm64, codex-cli 0.154.0 running gpt-5.6-luna, -a never,
+-s workspace-write, in a pseudo-terminal. A listener held a Unix socket under the system's
+temporary folder, outside the session's workspace, and the session was asked to run:
+    python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('<socket>'); print('CONNECTED')"; env | grep -E '^CODEX' | sort
+
+As it is:
+    PermissionError: [Errno 1] Operation not permitted
+    CODEX_CI=1
+    CODEX_SANDBOX=seatbelt
+    CODEX_SANDBOX_NETWORK_DISABLED=1
+    CODEX_SESSION_ID=<session>
+    CODEX_THREAD_ID=<session>
+    CODEX_VERSION=0.154.0
+    the listener took no connection
+
+With -c sandbox_workspace_write.network_access=true:
+    CONNECTED
+    the listener took one connection
+
+In a session with the same sandbox and no network, hooks writing to a file outside the workspace
+wrote it: they do not run in the sandbox.

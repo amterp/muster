@@ -1,0 +1,94 @@
+{
+  "description": "Tells the Muster daemon that owns this pane what Codex is doing: working, waiting on you or idle, and how many sub-agents it runs.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --clear >/dev/null 2>&1 || true"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_PANE\" ] || [ -z \"$MUSTER_DAEMON\" ] || echo 'In Muster: if you end a turn to wait on work you started, first run \"$MUSTER_DAEMON\" report --waiting \"<what>\".'"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --subagent-started >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --subagent-stopped >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent codex --state working --waiting '' >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent codex --state working >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent codex --state blocked >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent codex --state idle >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent codex --state idle >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}

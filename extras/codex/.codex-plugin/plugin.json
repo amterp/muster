@@ -1,0 +1,7 @@
+{
+  "name": "muster-codex",
+  "description": "Reports Codex's state and sub-agents to the Muster daemon that owns its pane.",
+  "homepage": "https://github.com/amterp/muster",
+  "license": "Apache-2.0",
+  "hooks": "./hooks/hooks.json"
+}

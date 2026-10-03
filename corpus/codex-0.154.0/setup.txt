@@ -1,0 +1,26 @@
+What Codex 0.154.0 asks before a session starts, and which plugin marketplace it reads in a folder holding Claude Code's too.
+
+Recorded 2026-10-03 on macOS 26.4.1 / arm64, codex-cli 0.154.0, in a pseudo-terminal, and with
+CODEX_HOME set to an empty scratch folder for the plugin commands.
+
+A new folder, nothing passed: "Do you trust the contents of this directory? ... Trusting the
+directory allows project-local config, hooks, and exec policies to load. › 1. Yes, continue
+2. No, quit". Answering yes wrote [projects."<folder>"] trust_level = "trusted" into
+~/.codex/config.toml.
+    -c 'projects."<folder>".trust_level="trusted"'          asked all the same
+    -c 'projects={"<folder>"={trust_level="trusted"}}'      did not ask, and wrote nothing
+Both were run with PWD set to the folder.
+
+With an update available and nothing passed, an "Update available! 0.154.0 -> 0.160.0" dialog
+came first, "› 1. Update now (runs `brew upgrade --cask codex`) 2. Skip 3. Skip until next
+version", and took what was typed next: a prompt typed into it lost its words up to a "3" and
+chose the third option with its Return. -c check_for_update_on_startup=false skipped it.
+
+codex plugin marketplace add <muster>/extras, with only extras/.claude-plugin/marketplace.json:
+    Marketplace `muster`: <muster>/extras/.claude-plugin/marketplace.json
+    muster@muster  not installed  <muster>/extras/claude-code
+With extras/.agents/plugins/marketplace.json beside it:
+    Marketplace `muster`: <muster>/extras/.agents/plugins/marketplace.json
+    muster-codex@muster  not installed  <muster>/extras/codex
+codex plugin add muster-codex@muster copied extras/codex, hooks/hooks.json included, into
+<CODEX_HOME>/plugins/cache/muster/muster-codex/local and enabled it.

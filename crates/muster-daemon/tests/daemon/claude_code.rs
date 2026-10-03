@@ -1,4 +1,5 @@
-//! The Claude Code wiring in `extras/claude-code/`, run as Claude Code runs it.
+//! The Claude Code statusline in `extras/claude-code/`, run as Claude Code runs it. Its hooks,
+//! and every other harness's, are `harness_hooks`'.
 
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -13,10 +14,10 @@ const STATUSLINE: &str =
 const STATUS: &str = "{\"model\":{\"display_name\":\"Opus\"},\"context_window\":\
                       {\"used_percentage\":42},\"cost\":{\"total_cost_usd\":1.5}}\n";
 
-struct Scratch(PathBuf);
+pub(super) struct Scratch(pub(super) PathBuf);
 
 impl Scratch {
-    fn new(name: &str) -> Scratch {
+    pub(super) fn new(name: &str) -> Scratch {
         let path = std::env::temp_dir().join(format!("muster-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).expect("the temp directory is writable");
@@ -69,71 +70,5 @@ fn a_daemon_that_never_answers_never_holds_the_statusline_up() {
         Duration::from_mins(1),
         || reported.exists(),
         || format!("{} was never touched", reported.display()),
-    );
-}
-
-const HOOKS: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/claude-code/hooks/hooks.json"));
-
-/// What the SessionStart hook with no matcher prints, which Claude Code adds to the session's
-/// context, when run in an environment holding `variables`.
-fn session_start_context(variables: &[(&str, &str)]) -> String {
-    let hooks: serde_json::Value = serde_json::from_str(HOOKS).unwrap();
-    let groups = hooks["hooks"]["SessionStart"].as_array().expect("a SessionStart hook");
-    let every_session = groups.iter().find(|group| group.get("matcher").is_none());
-    let command = every_session.expect("one for every session")["hooks"][0]["command"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let ran = Command::new("/bin/sh")
-        .args(["-c", &command])
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .envs(variables.iter().copied())
-        .output()
-        .unwrap();
-    assert!(ran.status.success(), "the hook never fails a session");
-    String::from_utf8(ran.stdout).unwrap()
-}
-
-/// An agent in a Muster pane is told, in one line, how to say it is waiting on its own work.
-/// Nowhere else: the line costs every session some context, and outside Muster it means nothing.
-#[test]
-fn only_a_session_in_a_muster_pane_is_told_how_to_say_it_is_waiting() {
-    let told = session_start_context(&[("MUSTER_PANE", "p1"), ("MUSTER_DAEMON", "/bin/true")]);
-    assert_eq!(told.lines().count(), 1, "{told}");
-    assert!(told.contains("report --waiting"), "{told}");
-    assert_eq!(session_start_context(&[("MUSTER_DAEMON", "/bin/true")]), "");
-    assert_eq!(session_start_context(&[]), "");
-}
-
-/// A person's prompt ends any wait the agent declared: whatever it was waiting on, the person
-/// has moved it on.
-#[test]
-fn a_prompt_reports_working_and_ends_a_wait() {
-    let scratch = Scratch::new("prompt-hook");
-    let arguments = scratch.0.join("arguments");
-    let daemon = scratch.0.join("daemon");
-    std::fs::write(
-        &daemon,
-        format!("#!/bin/sh\nprintf '[%s]' \"$@\" > '{}'\n", arguments.display()),
-    )
-    .unwrap();
-    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let hooks: serde_json::Value = serde_json::from_str(HOOKS).unwrap();
-    let command = hooks["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"].as_str().unwrap();
-
-    let ran = Command::new("/bin/sh")
-        .args(["-c", command])
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .env("MUSTER_DAEMON", &daemon)
-        .status()
-        .unwrap();
-
-    assert!(ran.success());
-    assert_eq!(
-        std::fs::read_to_string(&arguments).unwrap(),
-        "[report][--agent][claude][--state][working][--waiting][]"
     );
 }
