@@ -5,16 +5,17 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1791040070378,
   "creator": "Alexander Terp",
   "description": "crates/muster-daemon/tests/daemon (detection module). Failed the full gate once on 2026-10-03 at load ~13 with three worktrees building: 'timed out after 20s waiting for p1 to be Some(\"claude\") Idle, which never arrived'. Passes alone in 0.18s (3/3) and in 12 concurrent copies. A 20s wait for something that takes 0.18s suggests an ordering the test assumes rather than slowness - e.g. a state report or screen read that lands before the wait is armed under contention. Reproduce with the gate's own concurrency before changing anything (cf. a_2LTQZhuFV).",
   "id": "a_2bAJA3dJe",
-  "position": "b0N",
+  "position": "Zv",
   "title": "🎲 a_wait_outlasts_a_working_report_after_the_turn_that_declared_it timed out under load",
   "type": "bug",
-  "updated_at_millis": 1791040070378,
+  "updated_at_millis": 1791042630131,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791040070378}
+    {"field":"column","value":"backlog-hi","at":1791040070378},
+    {"field":"column","value":"next","at":1791042630131}
   ]
 }

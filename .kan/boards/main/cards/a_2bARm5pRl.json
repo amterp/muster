@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1791040401476,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-10-03: \"CLI must have some ergonomic way for humans/agents output and understand the layout of tabs and panes in windows, sizes, etc. Like full understanding of where things sit relatively\".\n\nWhat exists: `muster window --json` gives each pane drawn on screen a `rect` (fractions of the window) and `regions[].layout`, the split tree of the tab on screen with axis and ratio (docs/cli/window.md). What does not:\n- the plain `muster window` text says nothing about geometry - a person or an agent reading it cannot tell what sits beside what;\n- tabs in the background have no layout and their panes a null rect, so nothing describes an arrangement until you look at it;\n- no size in cells (columns x rows) or points, which is what an agent deciding where to split, or a person asking why a pane is cramped, needs;\n- across several windows (one process, MIP-6) nothing describes all of them at once.\n\nThe ask: an ergonomic layout view - e.g. a drawn diagram per tab (boxes with pane names, machines, sizes, the keyboard's pane), or an indented tree, plus the same facts in JSON for every tab, shown or not. Decide whether it is `muster window --layout`, a `muster layout` verb, or the default text output, and keep the core as the one source (the view already knows every region's tree).",
   "id": "a_2bARm5pRl",
-  "position": "Zw",
+  "position": "Yz3",
   "title": "🗺️ The CLI shows where every tab's panes sit, with sizes, for people and agents",
   "type": "feature",
-  "updated_at_millis": 1791040794719,
+  "updated_at_millis": 1791042629986,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791040401476},
-    {"field":"column","value":"next","at":1791040794719}
+    {"field":"column","value":"next","at":1791040794719},
+    {"field":"column","value":"done","at":1791042629986}
   ]
 }
