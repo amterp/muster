@@ -37,7 +37,8 @@ pub fn command(verb: &str, arguments: &str) -> String {
 /// What a woken agent is told: how many messages wait for it in which group, from whom, and the
 /// command that reads them. It carries the range because Claude Code drops a message identical
 /// to one it received shortly before, and no body, because only the agent's own read moves its
-/// cursor (MIP-4, section 5).
+/// cursor (MIP-4, section 5). An urgent one says to read now: it lands in the middle of a task,
+/// and a model told only how to read it finishes the task first.
 pub fn wake_text(notice: &crate::msg_answer::Notice) -> String {
     let range = if notice.first == notice.last {
         format!("#{}", notice.first)
@@ -58,7 +59,8 @@ pub fn wake_text(notice: &crate::msg_answer::Notice) -> String {
         parts.push("still unread".to_string());
     }
     let read = command(READ, &format!("--group {}", notice.group));
-    format!("[{COMMAND}] {}: {}. Read: {read}", notice.group, parts.join(", "))
+    let how = if notice.urgent > 0 { "Read it now, before you go on" } else { "Read" };
+    format!("[{COMMAND}] {}: {}. {how}: {read}", notice.group, parts.join(", "))
 }
 
 #[cfg(test)]
@@ -101,7 +103,7 @@ mod tests {
         assert_eq!(
             wake_text(&urgent),
             "[muster] review: 3 new (#40-42), 2 urgent, 1 to you, from director, critic. \
-             Read: muster msg read --group review"
+             Read it now, before you go on: muster msg read --group review"
         );
     }
 }

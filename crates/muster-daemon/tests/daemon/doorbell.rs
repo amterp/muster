@@ -501,7 +501,7 @@ fn an_urgent_post_rings_an_agent_at_work_and_an_ordinary_one_waits_for_idle() {
     assert_eq!(
         rung,
         [
-            "[muster] integrator+p1: 2 new (#4-5), 1 urgent, 2 to you, from integrator. Read: muster msg read --group integrator+p1"
+            "[muster] integrator+p1: 2 new (#4-5), 1 urgent, 2 to you, from integrator. Read it now, before you go on: muster msg read --group integrator+p1"
         ]
     );
     std::thread::sleep(ANSWER + QUIET + Duration::from_secs(1));
