@@ -319,7 +319,7 @@ fn spent(projects: &[PathBuf]) -> String {
 
 /// The folder Claude Code keeps a project's transcripts in: its real path with every character
 /// other than a letter or digit made a `-`.
-fn transcript_folder(project: &Path) -> String {
+pub(super) fn transcript_folder(project: &Path) -> String {
     let real = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
     real.display()
         .to_string()

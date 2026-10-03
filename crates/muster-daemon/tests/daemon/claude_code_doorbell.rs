@@ -279,3 +279,105 @@ fn a_new_claude_prompt_draws_what_nobody_typed_faint() {
     assert!(caret.style.inverse || caret.style.faint, "the first cell is typed: {drawn:?}");
     assert!(rest.iter().all(|cell| cell.style.faint), "a cell is not faint: {drawn:?}");
 }
+
+/// An urgent post reaches a Claude Code at work (MIP-4, section 6): the doorbell types the wake
+/// into its prompt box while a long command runs, and Claude Code queues it and takes it into
+/// the running turn once that command returns, as a reminder to address it before going on.
+/// Claude Code's own transcript says how it took the line, which is what tells "taken into the
+/// turn" from "sent once the turn ended". Whether the model then acts on it before finishing
+/// its task is the model's call - Haiku 4.5, which this tier runs, finishes first - so that is
+/// printed, not held.
+#[test]
+#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
+fn an_urgent_post_reaches_claude_code_mid_turn() {
+    use crate::claude_code_council::transcript_folder;
+    use crate::claude_code_hooks::{arguments_or_fail, environment, prompt, skipped, start};
+
+    if skipped() {
+        return;
+    }
+    let arguments = arguments_or_fail("that an urgent post reaches Claude Code mid-turn");
+    let environment = environment();
+    let environment: Vec<(&str, &str)> =
+        environment.iter().map(|(name, value)| (*name, value.as_str())).collect();
+    let daemon = daemon_with(&environment);
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    let project =
+        start(&daemon, &mut control, &mut input, &arguments, "worker", &serde_json::json!({}));
+    // Past the grace a newly found agent is held idle through.
+    std::thread::sleep(Duration::from_secs(4));
+    prompt(
+        &mut input,
+        "worker",
+        "Run this command in the foreground with the Bash tool: for i in 1 2 3 4 5 6 7 8; do \
+         date; sleep 5; done. When it finishes, run it once more the same way. Then say DONE.",
+    );
+    daemon.until_agent("worker", proto::AgentState::Working);
+    // Into the command, so the ring is queued behind a tool call that is running.
+    std::thread::sleep(Duration::from_secs(10));
+
+    let muster = muster_harness::built_daemon().with_file_name("muster");
+    let posted = Command::new(&muster)
+        .args(["msg", "post", "--as", "integrator", "--urgent", "--to", "worker"])
+        .arg("Read this as soon as you see it; there is nothing to do about it.")
+        .env_clear()
+        .env("HOME", daemon.root())
+        .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+        .stdin(Stdio::null())
+        .output()
+        .expect("the muster binary runs");
+    let said = String::from_utf8_lossy(&posted.stdout);
+    eprintln!("claude-code: the urgent post said: {said}");
+    assert!(posted.status.success(), "{said} {}", String::from_utf8_lossy(&posted.stderr));
+    assert!(said.contains("woke: worker (working)"), "not rung at work: {said}");
+
+    let home = std::env::var("HOME").expect("HOME is set");
+    let folder =
+        std::path::Path::new(&home).join(".claude/projects").join(transcript_folder(&project));
+    let transcript = || -> Vec<serde_json::Value> {
+        let Ok(files) = std::fs::read_dir(&folder) else { return Vec::new() };
+        files
+            .flatten()
+            .filter(|file| file.path().extension().is_some_and(|extension| extension == "jsonl"))
+            .flat_map(|file| {
+                let text = std::fs::read_to_string(file.path()).unwrap_or_default();
+                text.lines().filter_map(|line| serde_json::from_str(line).ok()).collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let taken = |lines: &[serde_json::Value]| -> Vec<String> {
+        lines
+            .iter()
+            .filter(|line| line["type"] == "queue-operation" && line["operation"] == "remove")
+            .filter(|line| line["content"].as_str().is_some_and(|text| text.contains("[muster]")))
+            .map(|line| line["reason"].as_str().unwrap_or_default().to_string())
+            .collect()
+    };
+    until_turns(Duration::from_mins(3), "Claude Code taking the ring", || {
+        !taken(&transcript()).is_empty()
+    });
+    assert_eq!(
+        taken(&transcript()),
+        ["absorbed_mid_turn"],
+        "Claude Code did not take the ring into the running turn.\n  Impact: an urgent post \
+         reaches an agent only once its turn ends, like an ordinary one.\n  Check: how this \
+         Claude Code version treats a line typed while it works (docs/observations), and \
+         whether its transcript at {} still records queue operations.",
+        folder.display()
+    );
+    until_turns(Duration::from_mins(3), "the worker's turn ending", || {
+        snapshot(&mut control)
+            .panes
+            .iter()
+            .any(|pane| pane.pane == "worker" && pane.agent_state() == proto::AgentState::Idle)
+    });
+    let rewoken = transcript().iter().any(|line| {
+        line["type"] == "user"
+            && line["message"]["content"].as_str().is_some_and(|text| text.contains("still unread"))
+    });
+    eprintln!(
+        "claude-code: the model read the urgent message {}",
+        if rewoken { "only once its turn ended" } else { "before its turn ended" }
+    );
+}
