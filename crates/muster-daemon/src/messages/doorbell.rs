@@ -87,8 +87,8 @@ pub(crate) enum Now {
 
 /// Whether a pane may be rung now; `urgent` for a wake that may ring its agent at work.
 pub(crate) fn may_ring(seen: &Seen, now: Instant, urgent: bool) -> Now {
-    if !may_ring_while(seen.activity, urgent) {
-        return if urgent { Now::Unblocked } else { Now::AtIdle };
+    if let Some(until) = waits_for(seen.activity, urgent) {
+        return until;
     }
     match seen.input_at().map(|at| at + QUIET) {
         Some(quiet) if quiet > now => Now::At(quiet),
@@ -96,11 +96,14 @@ pub(crate) fn may_ring(seen: &Seen, now: Instant, urgent: bool) -> Now {
     }
 }
 
-fn may_ring_while(activity: Option<Activity>, urgent: bool) -> bool {
+/// What a wake waits for while its agent is doing this, or nothing when it may be rung. An agent
+/// in a state nobody can read is not called blocked: what it is waiting for is to be idle.
+fn waits_for(activity: Option<Activity>, urgent: bool) -> Option<Now> {
     match activity {
-        Some(Activity::Idle | Activity::Waiting) => true,
-        Some(Activity::Working) => urgent,
-        Some(Activity::Blocked) | None => false,
+        Some(Activity::Idle | Activity::Waiting) => None,
+        Some(Activity::Working) if urgent => None,
+        Some(Activity::Blocked) if urgent => Some(Now::Unblocked),
+        Some(Activity::Working | Activity::Blocked) | None => Some(Now::AtIdle),
     }
 }
 
@@ -376,7 +379,7 @@ fn unanswered_rings(
         let Via::Pane(pane) = &rung.wake.via else { continue };
         let Some(seen) = panes.get(pane) else { continue };
         let urgent = is_urgent(&rung.wake);
-        let taken = !may_ring_while(seen.activity, urgent)
+        let taken = waits_for(seen.activity, urgent).is_some()
             || !messages.service.woken_for(&rung.wake.name, &rung.wake.notice.group);
         if taken {
             continue;
@@ -504,5 +507,26 @@ pub(crate) fn rang(wake: &Wake, took: bool) {
                             with its input queue full",
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_urgent_wake_waits_for_a_blocked_agent_to_be_unblocked_and_for_an_unread_one_to_be_idle() {
+        assert_eq!(waits_for(Some(Activity::Blocked), true), Some(Now::Unblocked));
+        assert_eq!(waits_for(None, true), Some(Now::AtIdle));
+        assert_eq!(waits_for(Some(Activity::Working), true), None);
+    }
+
+    #[test]
+    fn an_ordinary_wake_waits_for_idle_whatever_its_agent_is_doing() {
+        for activity in [Some(Activity::Working), Some(Activity::Blocked), None] {
+            assert_eq!(waits_for(activity, false), Some(Now::AtIdle), "{activity:?}");
+        }
+        assert_eq!(waits_for(Some(Activity::Idle), false), None);
+        assert_eq!(waits_for(Some(Activity::Waiting), false), None);
     }
 }
