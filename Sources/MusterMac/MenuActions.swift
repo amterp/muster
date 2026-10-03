@@ -75,6 +75,8 @@ public enum MenuActions {
     "reopen_window": Described(
       title: "Reopen Closed Window", selector: #selector(MusterWindow.reopenWindow(_:)),
       group: .window),
+    "close_window": Described(
+      title: "Close Window", selector: #selector(MusterWindow.closeWindow(_:)), group: .window),
     "new_tab": Described(
       title: "New Tab", selector: #selector(MusterWindow.newTab(_:)), group: .tab),
     "next_tab": Described(

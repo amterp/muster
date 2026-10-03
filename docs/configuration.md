@@ -88,7 +88,7 @@ muted = false                  # silences all four, without forgetting which you
 
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
-`opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `new_tab`,
+`opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `close_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
 `numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,

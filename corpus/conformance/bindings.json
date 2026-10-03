@@ -39,6 +39,22 @@
       }
     },
     {
+      "name": "closing a window sits beside closing a pane",
+      "why": "Ghostty's chord, and every macOS app's File menu, where Close Window is Close with shift. With every window in one process, closing one is no longer quitting an app, so it needs an action of its own; quitting stays on cmd+q.",
+      "given": {
+        "actions": [
+          "close_window",
+          "close_pane"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "close_window=shift+super+KeyW",
+          "close_pane=super+KeyW"
+        ]
+      }
+    },
+    {
       "name": "stepping through panes in order",
       "why": "The two that reach every pane whatever shape the tab is in, which is why they are bound to something reachable one-handed rather than to arrows.",
       "given": {
@@ -251,9 +267,9 @@
         ]
       },
       "expect": {
-        "actions": 57,
-        "bound": 50,
-        "distinct_chords": 50
+        "actions": 58,
+        "bound": 51,
+        "distinct_chords": 51
       }
     },
     {

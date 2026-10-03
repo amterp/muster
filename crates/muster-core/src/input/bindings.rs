@@ -43,6 +43,13 @@ pub enum Action {
     /// difference - a window somebody asked for takes an arrangement nothing has ever held, and
     /// this takes the most recent one no live window is holding.
     ReopenWindow,
+    /// Closes the window, which keeps its tabs: their agents keep running, and going to one of
+    /// them brings the window back. Closing the last window quits instead, so the next launch has
+    /// something to open (mip/0006-one-process.md, section 4).
+    ///
+    /// Answered by the shell, like `new_window`: closing a window is the platform's act, and the
+    /// shell tells the core once the window is going.
+    CloseWindow,
 
     /// Quits, and ends the sessions this window is attached to on the way out.
     ///
@@ -172,9 +179,10 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 57] = [
+    pub const ALL: [Action; 58] = [
         Action::NewWindow,
         Action::ReopenWindow,
+        Action::CloseWindow,
         Action::NewTab,
         Action::NextTab,
         Action::PreviousTab,
@@ -236,6 +244,7 @@ impl Action {
     pub fn as_str(self) -> &'static str {
         match self {
             Action::ReopenWindow => "reopen_window",
+            Action::CloseWindow => "close_window",
             Action::NewTab => "new_tab",
             Action::NextTab => "next_tab",
             Action::PreviousTab => "previous_tab",
@@ -318,6 +327,9 @@ impl Action {
             // Ghostty's, and every other macOS app's. It was the one chord in that set
             // Muster had nothing to put behind it.
             Action::NewWindow => Some(Chord::new(Key::KeyN, command)),
+            // Ghostty's, one finger from closing a pane on ⌘W, as Close Window sits beside Close
+            // in every other macOS app's File menu.
+            Action::CloseWindow => Some(Chord::new(Key::KeyW, shifted)),
             Action::NewTab => Some(Chord::new(Key::KeyT, command)),
             // Ghostty's, and one finger away from next and previous pane - which is what they
             // are: the same walk, one level up. Muster's list crosses daemons where Ghostty's

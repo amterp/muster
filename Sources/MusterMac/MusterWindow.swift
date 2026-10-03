@@ -1164,6 +1164,12 @@ extension MusterWindow {
     openAnother(fresh: false)
   }
 
+  /// Closes this window as its close button does, so both go through the same check: the last
+  /// window closing is a quit.
+  @objc public func closeWindow(_ sender: Any?) {
+    window.performClose(sender)
+  }
+
   @objc public func showShortcuts(_ sender: Any?) {
     shortcuts.show(bindings: Core.bindings())
   }
