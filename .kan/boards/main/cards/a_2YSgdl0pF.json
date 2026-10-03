@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1790640581886,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-09-28: \"a bit more right-clicking control\": right-click an agent in the agent list, a tab, or anywhere in a pane, and get the controls you would expect there.\n\nThe one he spelled out: right-click a pane and split it, either on the same machine or starting the new pane on a different machine (a submenu naming every attached machine). That makes the right-click menu the way to make panes where you want them without the CLI.\n\nOther items to consider, per place: rename, close, zoom, move to a new tab, new tab on a machine, copy and paste in a pane. Every item goes through the same core requests the keyboard and CLI use. Ghostty's macOS app (~/src/ghostty) has a right-click menu in a surface with split items, which is a model for the pane's. A pane whose program has asked for mouse reporting may need right-click passed through instead; decide the rule.\n\namterp, 2026-09-30: \"right click on pane to copy muster id\" - and on 2026-10-03, \"build full thing\": this card in full, with Copy Pane ID (the id `muster pane send --pane`, `muster msg post --to` and `$MUSTER_PANE` take) on the pane's menu, and the same for a tab's id and an agent row.",
   "id": "a_2YSgdl0pF",
-  "position": "a0",
+  "position": "YzJ",
   "title": "🖱️ Right-click menus on an agent row, a tab, and a pane",
   "type": "feature",
-  "updated_at_millis": 1791031473999,
+  "updated_at_millis": 1791033754261,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790640581886},
-    {"field":"column","value":"next","at":1791031473999}
+    {"field":"column","value":"next","at":1791031473999},
+    {"field":"column","value":"done","at":1791033754261}
   ]
 }

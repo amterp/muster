@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,12 +18,13 @@
   "creator": "Alexander Terp",
   "description": "No gesture moves a pane out of its split into a tab of its own; only the menu item and `muster pane move --new-tab` do. Built with the right-click menus (a_2YSgdl0pF): a Move to New Tab item on the pane's menu is that gesture.",
   "id": "a_2InAvAxwe",
-  "position": "Zx",
+  "position": "YzI",
   "title": "🖱️ No gesture pops a pane out into a tab of its own",
   "type": "feature",
-  "updated_at_millis": 1791031474276,
+  "updated_at_millis": 1791033754334,
   "history": [
     {"field":"column","value":"backlog-hi","at":1788325197704},
-    {"field":"column","value":"next","at":1791031474274}
+    {"field":"column","value":"next","at":1791031474274},
+    {"field":"column","value":"done","at":1791033754334}
   ]
 }

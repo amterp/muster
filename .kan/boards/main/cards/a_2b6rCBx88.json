@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "codex-support-and-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791031845536,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-10-03: \"add Openai codex support, with extendability properly planned for additional harnesses, muster must not be only for specific harnesses (tho may support some features only for some harnesses depending on what they allow)\".\n\nToday Claude Code is the only harness with more than screen detection: hooks report exact state, context and sub-agents (extras/claude-code), the statusline feeds context used, the doorbell can ring only Claude Code (only claude.toml has an empty-prompt rule, a_2YACckiKU), and Claude-specific code sits in muster-daemon (writer, report, messages/inbox, doorbell, presence). muster-detect has manifests for 19 harnesses, codex.toml among them, all screen rules.\n\nThe ask has two halves:\n- **A harness seam.** Name what Muster can use from a harness as capabilities (state from screen rules, state reported by hooks, context used, an empty-prompt rule for the doorbell, delivering a message mid-turn, a session name, resuming a session, compaction...), with one adapter per harness declaring which it has. Muster degrades per capability rather than per harness name, and adding a harness is an adapter plus its recordings, not edits across the daemon. Large enough for a MIP.\n- **Codex as the second full harness**, proving the seam: whatever Codex exposes (its hooks or notify config, its prompt for the doorbell, its session ids for resume) wired through it, with recorded corpora like corpus/claude-code-*/ and a tier like ./dev --claude-code.\n\nFolds in a_2AJS0Xz7I (\"evaluate and ensure we are not tying ourselves too much to claude\") and a_2YACckiKU (doorbell for Codex first).",
+  "id": "a_2b6rCBx88",
+  "position": "!!!!!!!7",
+  "title": "🧩 Codex support, and a harness seam other harnesses plug into",
+  "type": "feature",
+  "updated_at_millis": 1791032049882,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791031845536}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-claude-code-plan",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791032049720,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-03 driving three Claude Code workers: a session sitting at its ExitPlanMode dialog (\"Claude has written up a plan and is ready to execute. Would you like to proceed?\" with numbered options) showed `done` in `muster window`, while the same screen is plainly waiting on a person. `muster pane wait --until blocked` therefore never fires for it, and the agent list paints it as finished rather than asking.\n\nFind which source decided it: the hooks adapter (extras/claude-code - a Stop or Notification event mapped to done?) or the screen rules (crates/muster-detect/manifests/claude.toml has no rule for this dialog?). Record the screen into the detection corpus and pin it blocked. A permission prompt reads blocked today; this dialog should too.",
+  "id": "a_2b6wVU3cw",
+  "position": "!!!!!!!V",
+  "title": "🚦 A Claude Code plan-approval dialog reads as done, not blocked",
+  "type": "bug",
+  "updated_at_millis": 1791032049720,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791032049720}
+  ]
+}

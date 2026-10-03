@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1791031067641,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-10-01: \"gradual context usage coloring\".\n\nToday the ring beside an agent row is secondary-label grey until 80% (`SidebarModel.contextWarning`), then orange. Ask: a color that moves with the fill - e.g. calm at low use, warming through amber to red near compaction - so a glance says how close, not just past-or-not. Keep it clear of the agent-state colors and readable in light and dark; consider making the ends configurable under `[colors]` like the other colors Muster invented.",
   "id": "a_2b6WxVmKu",
-  "position": "Zy",
+  "position": "YzH",
   "title": "🌡️ The context ring changes color gradually as it fills",
   "type": "enhancement",
-  "updated_at_millis": 1791031474134,
+  "updated_at_millis": 1791034032350,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791031067641},
-    {"field":"column","value":"next","at":1791031474134}
+    {"field":"column","value":"next","at":1791031474134},
+    {"field":"column","value":"done","at":1791034032350}
   ]
 }
