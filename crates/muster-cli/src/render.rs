@@ -506,12 +506,27 @@ impl<'a> Drawing<'a> {
         width: usize,
     ) -> Vec<String> {
         let mut order: Vec<&str> = Vec::new();
+        // A zoomed part is drawn as the one pane filling it, which is what is on screen and what
+        // its daemon sizes that pane to. The panes behind it keep the sizes they had before the
+        // zoom, and drawn in the tree beside a pane sized to the whole tab their boxes and their
+        // sizes would disagree, so they are named under the drawing instead.
+        let mut behind: Vec<&str> = Vec::new();
         let parts: Vec<Part> = layout
             .regions
             .iter()
-            .map(|region| Part {
-                weight: region.weight,
-                root: region.root.as_ref().and_then(|root| tree(root, &mut order)),
+            .map(|region| {
+                let root = match region.root.as_ref() {
+                    Some(root) if region.zoomed && !region.pane_id.is_empty() => {
+                        let mut all = Vec::new();
+                        tree(root, &mut all);
+                        behind.extend(all.into_iter().filter(|pane| *pane != region.pane_id));
+                        order.push(region.pane_id.as_str());
+                        Some(diagram::Node::Pane(order.len() - 1))
+                    }
+                    Some(root) => tree(root, &mut order),
+                    None => None,
+                };
+                Part { weight: region.weight, root }
             })
             .collect();
         let shares: BTreeMap<&str, &muster_proto::PanePlace> =
@@ -533,7 +548,11 @@ impl<'a> Drawing<'a> {
                 pane_box(pane, row, agent, &size, self.keyboard == Some(*pane), self.say_machine)
             })
             .collect();
-        diagram::draw(&parts, &boxes, width)
+        let mut lines = diagram::draw(&parts, &boxes, width);
+        if !behind.is_empty() {
+            lines.push(styled(&format!("behind the zoom: {}", behind.join(", ")), QUIET));
+        }
+        lines
     }
 }
 
@@ -1305,7 +1324,7 @@ fn shell_word(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Others, QUIET, agent_style, daemons_text, held_for, window_json};
+    use super::{Others, QUIET, agent_style, daemons_text, held_for, window_json, window_text};
     use anstyle::{AnsiColor, Color, Style};
 
     fn hue(color: AnsiColor) -> Style {
@@ -1407,6 +1426,67 @@ mod tests {
         assert_eq!(other["frame"]["height"], 1.0, "another open window's pane: {json}");
         let closed = &json["other_windows"][1]["tabs"][0]["panes"][0];
         assert!(closed["frame"].is_null(), "a closed window's pane: {json}");
+    }
+
+    /// A zoomed tab is drawn as the pane filling it, at the size its daemon gives it, and the
+    /// panes behind the zoom are named rather than drawn at sizes from before it.
+    #[test]
+    fn a_zoomed_tab_is_drawn_as_the_pane_that_fills_it() {
+        use muster_proto::{
+            PaneGrid, RosterChanged, RosterPane, RosterTab, TabLayout, ViewNode, ViewPane,
+            ViewRegion, ViewSplit, Window, view_node,
+        };
+        let leaf = |pane: &str| ViewNode {
+            node: Some(view_node::Node::Pane(ViewPane {
+                pane_id: pane.to_string(),
+                ..ViewPane::default()
+            })),
+        };
+        let grid = |pane: &str, cols: u32| PaneGrid {
+            pane_id: pane.to_string(),
+            cols,
+            rows: 40,
+            ..PaneGrid::default()
+        };
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![RosterTab {
+                    tab_id: "t1".to_string(),
+                    panes: ["p1", "p2"]
+                        .map(|pane| RosterPane {
+                            pane_id: pane.to_string(),
+                            ..RosterPane::default()
+                        })
+                        .to_vec(),
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            layouts: vec![TabLayout {
+                tab_id: "t1".to_string(),
+                regions: vec![ViewRegion {
+                    pane_id: "p1".to_string(),
+                    zoomed: true,
+                    weight: 1.0,
+                    root: Some(ViewNode {
+                        node: Some(view_node::Node::Split(Box::new(ViewSplit {
+                            axis: "columns".to_string(),
+                            ratio: 0.5,
+                            first: Some(Box::new(leaf("p1"))),
+                            second: Some(Box::new(leaf("p2"))),
+                        }))),
+                    }),
+                    ..ViewRegion::default()
+                }],
+                ..TabLayout::default()
+            }],
+            grids: vec![grid("p1", 160), grid("p2", 79)],
+            ..Window::default()
+        };
+        let text = window_text(&window, 0, Others::All, false);
+        assert!(text.contains("160x40"), "the zoomed pane is drawn at its size: {text}");
+        assert!(!text.contains("79x40"), "a pane behind the zoom is drawn: {text}");
+        assert!(text.contains("behind the zoom: p2"), "{text}");
     }
 
     /// Idle and unknown are the resting answer and the row already prints the word, so neither

@@ -219,8 +219,9 @@ window puts them and in proportion, whether or not the tab is on screen:
 
 Each box names its pane and says its label, what its agent is doing and how big its terminal is,
 in columns by rows; with more than one machine attached, which one it is on. `▸` is the pane the
-keyboard is on, and a zoomed tab says `zoomed on` the pane filling it while the drawing keeps the
-whole arrangement. The drawing is as wide as the terminal, and boxes too small for their text
+keyboard is on. A zoomed tab says `zoomed on` the pane filling it and draws that pane alone,
+filling the tab, since that is what is on screen and the size its program sees; the panes behind
+the zoom are named on a line under it, `behind the zoom: p1w3r0ab2n`. The drawing is as wide as the terminal, and boxes too small for their text
 are cut rather than dropped, so every pane is named even where a ratio cannot be drawn exactly.
 
 A pane's size is the one its program last saw, as its daemon holds it: what it is drawn at, or
@@ -235,6 +236,9 @@ flag rather than the default. With `--json` it adds three keys, and nothing else
 - `tabs[].regions` - each tab's parts, in the shape `regions[]` below has, with one difference:
   `layout` is the tab's whole tree even when it is zoomed, because this says how the tab is
   laid out and a zoom covers that without changing it. `zoomed` and `pane` say which pane fills it.
+  On a zoomed tab `frame` and `cells` therefore describe different things: `frame` is each pane's
+  place in that tree, and `cells` is what its program sees, which for the zoomed pane is the whole
+  tab and for the panes behind it the size they had before the zoom.
 - `panes[].frame` - where the pane sits in its tab's arrangement, as fractions of the tab, in
   `rect`'s terms, whether or not the tab is on screen.
 - `panes[].cells` - `{"cols", "rows"}`, or `null` when its daemon could not say.
