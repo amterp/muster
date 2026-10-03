@@ -1298,6 +1298,13 @@ impl Default for Windows {
 }
 
 impl Windows {
+    /// Takes another window on, and answers its id.
+    fn add(&mut self, window: Window) -> WindowId {
+        let id = WindowId(self.0.keys().next_back().map_or(0, |last| last.0 + 1));
+        self.0.insert(id, window);
+        id
+    }
+
     fn ids(&self) -> Vec<WindowId> {
         self.0.keys().copied().collect()
     }
@@ -4159,6 +4166,64 @@ pub(crate) fn open(window: WindowId) -> Result<(), String> {
     publish("open");
     show_what_was_asked_for(window);
     Ok(())
+}
+
+/// Which window an `OpenWindow` means, and whether it is one this process has just taken on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Opening {
+    /// A window here that has not opened yet: the one Startup described, on an ordinary launch.
+    Unopened(WindowId),
+    /// A window here already open, which there is nothing more to do for.
+    AlreadyOpen(WindowId),
+    /// A window taken on for this request, beside the ones already here.
+    Added(WindowId),
+}
+
+/// Works out which window an `OpenWindow` is about, taking another on when it names one this
+/// process has not got.
+///
+/// `arrangement` is the file the window remembers itself in: a window here already writing
+/// there is that window, and an empty one means `window` itself until it has opened, and a
+/// window that remembers nothing after. Every daemon this process follows is one the new window
+/// follows too - there is one set of daemons for every window - so its composition starts
+/// attached to each of them, in the order the others have them.
+pub(crate) fn window_to_open(window: WindowId, arrangement: &str, show: &str) -> Opening {
+    let mut session = poison::lock(&SESSION, "session");
+    let existing = if arrangement.is_empty() {
+        (!session.windows[window].opened).then_some(window)
+    } else {
+        session
+            .windows
+            .iter()
+            .find(|(_, held)| arrangement_path(held).as_deref() == Some(arrangement))
+            .map(|(id, _)| id)
+    };
+    if let Some(existing) = existing {
+        if session.windows[existing].opened {
+            return Opening::AlreadyOpen(existing);
+        }
+        if !show.is_empty() {
+            session.windows[existing].show = Some(show.to_string());
+        }
+        return Opening::Unopened(existing);
+    }
+    let name = session.holding.register(arrangement);
+    let daemons: Vec<Daemon> =
+        session.windows[session.front].composition.daemons().cloned().collect();
+    let mut added = Window {
+        name,
+        arrangement: (!arrangement.is_empty()).then(|| (arrangement.to_string(), String::new())),
+        show: (!show.is_empty()).then(|| show.to_string()),
+        ..Window::default()
+    };
+    for daemon in daemons {
+        added.composition.attach_daemon(daemon);
+    }
+    log::info(
+        "window.added",
+        fields! { "window" => added.name.to_string(), "arrangement" => arrangement },
+    );
+    Opening::Added(session.windows.add(added))
 }
 
 /// What the first window was launched to go to, as Startup says.

@@ -120,7 +120,7 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::Startup(startup) => start(&startup),
         request::Payload::LogRecord(record) => write(record),
         request::Payload::AttachPane(attach) => attach_pane(window, &attach.pane_id),
-        request::Payload::OpenWindow(_) => open_window(window),
+        request::Payload::OpenWindow(open) => open_window(window, &open),
         request::Payload::CreateTab(create) => create_tab(window, &create),
         request::Payload::BridgeExited(exited) => bridge_exited(&exited),
         request::Payload::BridgeStarted(started) => bridge_started(&started),
@@ -1589,13 +1589,28 @@ fn unanswered(detail: &str) -> Response {
 }
 
 /// Opens the window onto whatever the daemons hold, which is what a bare `muster` asks for.
-fn open_window(window: WindowId) -> Response {
-    match session::open(window) {
+fn open_window(window: WindowId, open: &proto::OpenWindow) -> Response {
+    let (opening, added) = match session::window_to_open(window, &open.state_path, &open.show) {
+        session::Opening::AlreadyOpen(open) => return opened(open),
+        session::Opening::Unopened(opening) => (opening, false),
+        session::Opening::Added(opening) => (opening, true),
+    };
+    match session::open(opening) {
+        Ok(()) if added => opened(opening),
         Ok(()) => Response::ok(),
         Err(detail) => Response::failure(format!(
             "{detail} This window has no session behind it, so it renders nothing and \
              ignores the keyboard."
         )),
+    }
+}
+
+/// The answer naming a window an `OpenWindow` opened beside the others.
+fn opened(window: WindowId) -> Response {
+    Response {
+        payload: Some(response::Payload::Opened(proto::Opened {
+            window: session::window_name(window),
+        })),
     }
 }
 

@@ -156,6 +156,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::KeyHandled(_) => "a keystroke's outcome",
         response::Payload::Asking(_) => "the pane that asked",
         response::Payload::Went(_) => "where the focus history went",
+        response::Payload::Opened(_) => "a window opened",
     }
 }
 
