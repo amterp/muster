@@ -93,7 +93,7 @@ fn open_a_window(daemon: &Daemon, log: &Path) -> String {
         log_path: log.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to open onto a pane with a socket its bridge can dial",
         || first_pane().is_some_and(|pane| socket_of(&pane).is_some()),
@@ -189,7 +189,7 @@ fn latest_problems() -> Vec<muster::proto::Problem> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

@@ -109,6 +109,34 @@ pub fn any_window_will_do(payload: &request::Payload) -> bool {
             if !moved.tab_id.is_empty() && !moved.window.is_empty())
 }
 
+impl Request {
+    /// A request for whichever window the core resolves it to, from no pane in particular.
+    pub fn new(payload: request::Payload) -> Request {
+        Request { payload: Some(payload), ..Request::default() }
+    }
+
+    /// The same request, for one window by name.
+    #[must_use]
+    pub fn for_window(mut self, window: impl Into<String>) -> Request {
+        self.window = window.into();
+        self
+    }
+}
+
+impl Event {
+    /// An event about the whole app rather than one window.
+    pub fn new(payload: event::Payload) -> Event {
+        Event { payload: Some(payload), ..Event::default() }
+    }
+
+    /// The same event, for one window by name.
+    #[must_use]
+    pub fn for_window(mut self, window: impl Into<String>) -> Event {
+        self.window = window.into();
+        self
+    }
+}
+
 impl Response {
     /// Nothing to report, which is what most requests answer.
     ///

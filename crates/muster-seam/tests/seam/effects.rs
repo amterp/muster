@@ -127,7 +127,7 @@ fn open_window(daemon: &Daemon) -> std::path::PathBuf {
             command_socket_path: socket.to_string_lossy().into_owned(),
             ..Startup::default()
         }),
-        request::Payload::OpenWindow(OpenWindow {}),
+        request::Payload::OpenWindow(OpenWindow::default()),
     ] {
         dispatch(payload);
     }
@@ -144,7 +144,7 @@ fn typing(daemon: &Daemon) -> impl FnMut(&str) {
 }
 
 fn agent(socket: &std::path::Path) -> Option<PaneStateChanged> {
-    let bytes = Request { payload: Some(request::Payload::ReadWindow(ReadWindow {})) };
+    let bytes = Request::new(request::Payload::ReadWindow(ReadWindow {}));
     let window = match dialed(socket, &bytes).payload {
         Some(response::Payload::Window(window)) => window,
         other => panic!("the endpoint answered a ReadWindow with {other:?}"),
@@ -161,7 +161,7 @@ fn dialed(socket: &std::path::Path, request: &Request) -> Response {
 }
 
 fn dispatch(payload: request::Payload) {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = Response::decode(muster::dispatch(&bytes).as_slice()).expect("a response");
     if let Some(response::Payload::Failure(failure)) = reply.payload {
         panic!("the core refused: {}", failure.reason);

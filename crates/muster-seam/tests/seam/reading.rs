@@ -25,7 +25,7 @@ fn a_whole_history_larger_than_a_mebibyte_reaches_its_caller() {
             command_socket_path: socket.to_string_lossy().into_owned(),
             ..Startup::default()
         }),
-        request::Payload::OpenWindow(OpenWindow {}),
+        request::Payload::OpenWindow(OpenWindow::default()),
     ] {
         dispatch(payload);
     }
@@ -59,7 +59,7 @@ fn a_whole_history_larger_than_a_mebibyte_reaches_its_caller() {
 
 fn dialed(socket: &std::path::Path, payload: request::Payload) -> Response {
     use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
-    let request = Request { payload: Some(payload) };
+    let request = Request::new(payload);
     let mut stream = std::os::unix::net::UnixStream::connect(socket).expect("the window listens");
     write_frame(&mut stream, &request.encode_to_vec()).expect("the request is written");
     let reply = read_frame(&mut stream, LARGEST_MESSAGE)
@@ -68,7 +68,7 @@ fn dialed(socket: &std::path::Path, payload: request::Payload) -> Response {
 }
 
 fn dispatch(payload: request::Payload) {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = Response::decode(muster::dispatch(&bytes).as_slice()).expect("a response");
     if let Some(response::Payload::Failure(failure)) = reply.payload {
         panic!("the core refused: {}", failure.reason);

@@ -654,12 +654,10 @@ fn key_down_request() -> Vec<u8> {
         ..muster::proto::KeyEvent::default()
     };
     key.modifiers.push("control".to_string());
-    muster::proto::Request {
-        payload: Some(muster::proto::request::Payload::KeyDown(muster::proto::KeyDown {
-            key: Some(key),
-            ..muster::proto::KeyDown::default()
-        })),
-    }
+    muster::proto::Request::new(muster::proto::request::Payload::KeyDown(muster::proto::KeyDown {
+        key: Some(key),
+        ..muster::proto::KeyDown::default()
+    }))
     .encode_to_vec()
 }
 

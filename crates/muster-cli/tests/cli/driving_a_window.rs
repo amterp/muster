@@ -35,7 +35,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
         command_socket_path: socket.clone(),
         ..Startup::default()
     })));
-    accepted(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+    accepted(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
 
     // What a pane Muster made is handed. From here on this test is exactly what a program inside
     // that pane can do, and nothing else.
@@ -833,7 +833,7 @@ fn json_from(ran: &Ran) -> Value {
 /// Startup and open are the shell's job, so they arrive over the C ABI rather than the socket -
 /// there is no endpoint to dial until the first of them has been answered.
 fn dispatch(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

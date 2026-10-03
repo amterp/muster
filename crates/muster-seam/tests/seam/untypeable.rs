@@ -52,7 +52,7 @@ fn a_pane_whose_bridge_never_dials_is_reported() {
         config_path: config.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the window to show the pane it asked for",
@@ -141,7 +141,7 @@ fn a_zoomed_tab_does_not_accuse_the_panes_it_covers() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the window to open onto the zoomed tab",
@@ -236,7 +236,7 @@ fn a_problem_and_its_clearing_are_in_the_run_log_with_why() {
         log_path: log.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the window to show a pane with a socket",
@@ -398,7 +398,7 @@ fn latest_problems() -> Vec<muster::proto::Problem> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

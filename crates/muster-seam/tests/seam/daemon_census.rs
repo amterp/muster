@@ -36,7 +36,7 @@ fn a_daemon_this_window_is_using_is_marked_and_the_rest_are_not() {
         daemon_records_path: directory.clone(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to be following the daemon it was pointed at",
         || !census().daemons.is_empty(),
@@ -85,7 +85,7 @@ fn a_window_with_nowhere_to_write_says_so_rather_than_answering_with_an_empty_ma
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     let found = census();
     assert!(
@@ -106,7 +106,7 @@ fn census() -> muster::proto::Daemons {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

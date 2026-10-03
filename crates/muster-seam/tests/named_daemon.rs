@@ -64,7 +64,7 @@ fn a_named_daemon_that_does_not_answer_is_not_replaced_by_another() {
         ..Startup::default()
     })));
 
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     // The socket the config named, and no other. A window that cannot reach the daemon it was
     // pointed at has to say so about *that* daemon: substituting another one renders panes
@@ -125,7 +125,7 @@ fn scratch_config_home() -> PathBuf {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

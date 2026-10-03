@@ -218,7 +218,7 @@ fn open_a_window_with(config: &Path) -> Pane {
         config_path: config.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     // The socket, not just the pane. Two of these tests dial the pane's link socket, and a
     // wait that stopped at "a view names a pane" was answered by a view that had not got round
     // to naming its socket yet - so `dial_a_bridge` unwrapped a `None` about a pane that was
@@ -400,7 +400,7 @@ fn forget_the_view() {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

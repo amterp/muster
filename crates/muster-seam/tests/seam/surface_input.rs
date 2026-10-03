@@ -161,7 +161,7 @@ fn open_on(daemon: &Daemon, config: &str) -> String {
         config_path: daemon.muster_config_with(config).to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     let mut found = None;
     until(
         "the window to hold the daemon's pane",
@@ -218,7 +218,7 @@ fn read(pane: &str) -> String {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     Response::decode(muster::dispatch(&bytes).as_slice())
         .expect("the core answers with a response this build knows")
 }

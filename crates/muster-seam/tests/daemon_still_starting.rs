@@ -43,7 +43,7 @@ fn a_window_opens_while_the_daemon_it_found_is_still_starting() {
         tab_holders_path: home.join("holding/tabs-2.toml").to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     let waited = asked.elapsed();
     assert!(
         waited < Duration::from_secs(5),
@@ -130,7 +130,7 @@ fn a_tab_on_a_daemon_still_starting_stays_this_windows() {
         tab_holders_path: record.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     let now = from_toml(&std::fs::read_to_string(&record).unwrap_or_default())
         .expect("the record this window writes reads back");
@@ -178,7 +178,7 @@ fn open_with_no_daemon_configured(program: &Path, name: &str) {
             .into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 }
 
 /// An executable shell script in the scratch home.
@@ -246,7 +246,7 @@ fn silent_daemon() -> PathBuf {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

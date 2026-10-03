@@ -235,7 +235,7 @@ fn an_emptied_window_refills_itself() {
     // window on its way up, which is a real state and the one the guard exists for. Sent here
     // rather than in the shared helper for that reason - opening it there takes the pre-attach
     // state away from the test that is about it.
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     let before = panes(daemon);
     let mut control = daemon.connect();
@@ -656,16 +656,16 @@ extern "C" fn note_view(bytes: *const u8, len: usize) {
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     match Event::decode(bytes) {
-        Ok(Event { payload: Some(event::Payload::ViewChanged(view)) }) => {
+        Ok(Event { payload: Some(event::Payload::ViewChanged(view)), .. }) => {
             *VIEW.lock().expect("a panicking reader poisoned the view") = Some(view);
         }
-        Ok(Event { payload: Some(event::Payload::PaneStateChanged(state)) }) => {
+        Ok(Event { payload: Some(event::Payload::PaneStateChanged(state)), .. }) => {
             STATES
                 .lock()
                 .expect("a panicking reader poisoned the states")
                 .push((state.pane_id, state.state));
         }
-        Ok(Event { payload: Some(event::Payload::RosterChanged(roster)) }) => {
+        Ok(Event { payload: Some(event::Payload::RosterChanged(roster)), .. }) => {
             *ROSTER.lock().expect("a panicking reader poisoned the roster") = Some(roster);
         }
         _ => {}
@@ -753,7 +753,7 @@ fn leaves(node: &ViewNode) -> Vec<(String, String)> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let request = Request { payload: Some(payload) };
+    let request = Request::new(payload);
     Response::decode(muster::dispatch(&request.encode_to_vec()).as_slice())
         .expect("the core answers every request with a decodable response")
 }

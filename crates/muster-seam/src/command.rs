@@ -247,7 +247,7 @@ fn answer(mut stream: UnixStream) {
     // Decoded here only to tell a watch from everything else. Which transport shape a request
     // needs is this file's business; what the request means is still the handler's.
     let decoded = Request::decode(request.as_slice()).ok();
-    if let Some(Request { payload: Some(request::Payload::WatchPanes(watching)) }) = &decoded {
+    if let Some(Request { payload: Some(request::Payload::WatchPanes(watching)), .. }) = &decoded {
         follow(stream, watching);
         return;
     }
@@ -426,20 +426,16 @@ mod tests {
 
     #[test]
     fn a_request_is_named_by_its_kind_and_nothing_it_carries() {
-        let read = Request {
-            payload: Some(request::Payload::ReadPane(ReadPane {
-                pane_id: "p1".to_string(),
-                ..ReadPane::default()
-            })),
-        };
+        let read = Request::new(request::Payload::ReadPane(ReadPane {
+            pane_id: "p1".to_string(),
+            ..ReadPane::default()
+        }));
         assert_eq!(kind(&read), "ReadPane");
-        let send = Request {
-            payload: Some(request::Payload::SendToPane(SendToPane {
-                text: "hunter2".to_string(),
-                ..SendToPane::default()
-            })),
-        };
+        let send = Request::new(request::Payload::SendToPane(SendToPane {
+            text: "hunter2".to_string(),
+            ..SendToPane::default()
+        }));
         assert_eq!(kind(&send), "SendToPane");
-        assert_eq!(kind(&Request { payload: None }), "");
+        assert_eq!(kind(&Request::default()), "");
     }
 }

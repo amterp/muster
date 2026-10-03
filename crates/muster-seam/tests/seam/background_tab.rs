@@ -32,7 +32,7 @@ fn a_pane_in_a_tab_nothing_is_showing_can_be_split() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to open onto a tab",
         || panes_of_tabs().len() == 1,
@@ -91,7 +91,7 @@ fn a_split_still_refuses_a_pane_no_daemon_holds() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to open onto a tab",
         || panes_of_tabs().len() == 1,
@@ -133,7 +133,7 @@ fn closing_a_tab_ends_it_whether_or_not_it_is_the_one_on_screen() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to open onto a tab",
         || panes_of_tabs().len() == 1,
@@ -255,7 +255,7 @@ fn latest_view() -> Option<ViewChanged> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

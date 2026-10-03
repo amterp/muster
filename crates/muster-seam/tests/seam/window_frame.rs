@@ -70,7 +70,7 @@ fn a_window_comes_back_the_size_it_was_left() {
     assert_ok(&answer(request::Payload::SetWindowFrame(SetWindowFrame {
         frame: Some(WindowFrame { rect: Some(rect), full_screen: false }),
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     let written = std::fs::read_to_string(&state)
         .unwrap_or_else(|e| panic!("the window wrote nothing to {}: {e}", state.display()));
@@ -125,7 +125,7 @@ fn the_roster_keeps_the_width_it_was_dragged_to() {
         state_path: state.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     let saved_width = || {
         let written = std::fs::read_to_string(&state).expect("the window wrote its state");
@@ -156,7 +156,7 @@ fn frame_answer(screens: &[WindowRect]) -> WindowFrame {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

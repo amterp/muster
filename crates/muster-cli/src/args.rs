@@ -759,9 +759,7 @@ pub fn parse(
 
     let asking = match &cli.what {
         What::Window { watch: true, .. } => Asking::Watch {
-            request: Box::new(Request {
-                payload: Some(request::Payload::WatchPanes(WatchPanes::default())),
-            }),
+            request: Box::new(Request::new(request::Payload::WatchPanes(WatchPanes::default()))),
             timeout: None,
         },
         What::Window { doing: None, .. } => send(request::Payload::ReadWindow(ReadWindow {})),
@@ -875,15 +873,13 @@ fn pane(
                 None if text == &["-"] => Some(TextSource::Stdin),
                 None => None,
             };
-            let request = Box::new(Request {
-                payload: Some(request::Payload::SendToPane(SendToPane {
-                    pane_id: pane_ref(pane.as_ref(), environment),
-                    text: if from.is_some() { String::new() } else { text.join(" ") },
-                    enter: *enter,
-                    confirm: *confirm,
-                    ..SendToPane::default()
-                })),
-            });
+            let request = Box::new(Request::new(request::Payload::SendToPane(SendToPane {
+                pane_id: pane_ref(pane.as_ref(), environment),
+                text: if from.is_some() { String::new() } else { text.join(" ") },
+                enter: *enter,
+                confirm: *confirm,
+                ..SendToPane::default()
+            })));
             match from {
                 Some(from) => Asking::SendFrom { request, from },
                 None => Asking::Send(request),
@@ -972,12 +968,10 @@ fn pane(
 /// patience does.
 fn wait(panes: &[String], until: &[Awaited], timeout: Option<u64>) -> Asking {
     Asking::Watch {
-        request: Box::new(Request {
-            payload: Some(request::Payload::WatchPanes(WatchPanes {
-                pane_ids: panes.to_vec(),
-                until: until.iter().map(|state| state.wire().to_string()).collect(),
-            })),
-        }),
+        request: Box::new(Request::new(request::Payload::WatchPanes(WatchPanes {
+            pane_ids: panes.to_vec(),
+            until: until.iter().map(|state| state.wire().to_string()).collect(),
+        }))),
         timeout: timeout.map(Duration::from_secs),
     }
 }
@@ -1241,7 +1235,7 @@ fn running_in(environment: &BTreeMap<String, String>) -> Option<String> {
 }
 
 fn send(payload: request::Payload) -> Asking {
-    Asking::Send(Box::new(Request { payload: Some(payload) }))
+    Asking::Send(Box::new(Request::new(payload)))
 }
 
 /// One document, all of them, or the list of what there is.

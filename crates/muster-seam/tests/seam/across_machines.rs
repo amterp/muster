@@ -89,7 +89,7 @@ fn two_machines(devenv: Devenv) -> TwoMachines {
         config_path: config.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     // Only the laptop, because whether the devenv ends up with a pane is what half the tests
     // here are asking about.
@@ -656,10 +656,10 @@ extern "C" fn note(bytes: *const u8, len: usize) {
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     match Event::decode(bytes) {
-        Ok(Event { payload: Some(event::Payload::RosterChanged(roster)) }) => {
+        Ok(Event { payload: Some(event::Payload::RosterChanged(roster)), .. }) => {
             *ROSTER.lock().expect("a panicking reader poisoned the roster") = Some(roster);
         }
-        Ok(Event { payload: Some(event::Payload::ViewChanged(view)) }) => {
+        Ok(Event { payload: Some(event::Payload::ViewChanged(view)), .. }) => {
             *VIEW.lock().expect("a panicking reader poisoned the view") = Some(view);
         }
         _ => {}
@@ -1087,7 +1087,7 @@ fn weights() -> Vec<f32> {
 // --- driving the seam ------------------------------------------------------------------
 
 fn answer(payload: request::Payload) -> Response {
-    let request = Request { payload: Some(payload) };
+    let request = Request::new(payload);
     Response::decode(muster::dispatch(&request.encode_to_vec()).as_slice())
         .expect("the core answers every request with a decodable response")
 }

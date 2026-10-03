@@ -1695,20 +1695,16 @@ fn bindings_message() -> proto::Bindings {
 
 /// Tells the shell the chords moved, which on macOS is what rebuilds the menu.
 fn announce_bindings() {
-    crate::ffi::emit(&proto::Event {
-        payload: Some(event::Payload::BindingsChanged(proto::BindingsChanged {
-            bindings: Some(bindings_message()),
-        })),
-    });
+    crate::ffi::emit(&proto::Event::new(event::Payload::BindingsChanged(proto::BindingsChanged {
+        bindings: Some(bindings_message()),
+    })));
 }
 
 /// Tells the shell what the window should look like now.
 fn announce_appearance() {
-    crate::ffi::emit(&proto::Event {
-        payload: Some(event::Payload::AppearanceChanged(Box::new(proto::AppearanceChanged {
-            appearance: Some(appearance_message()),
-        }))),
-    });
+    crate::ffi::emit(&proto::Event::new(event::Payload::AppearanceChanged(Box::new(
+        proto::AppearanceChanged { appearance: Some(appearance_message()) },
+    ))));
 }
 
 /// Splits a pane, putting the new one on the named side of it.

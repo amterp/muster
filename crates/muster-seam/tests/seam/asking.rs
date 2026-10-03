@@ -28,7 +28,7 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
             config_path: daemon.muster_config().to_string_lossy().into_owned(),
             ..Startup::default()
         }),
-        request::Payload::OpenWindow(OpenWindow {}),
+        request::Payload::OpenWindow(OpenWindow::default()),
     ] {
         assert_ok(&answer(payload));
     }
@@ -85,7 +85,7 @@ fn a_pane_blocked_before_the_window_opened_is_reached() {
             config_path: daemon.muster_config().to_string_lossy().into_owned(),
             ..Startup::default()
         }),
-        request::Payload::OpenWindow(OpenWindow {}),
+        request::Payload::OpenWindow(OpenWindow::default()),
     ] {
         assert_ok(&answer(payload));
     }
@@ -146,7 +146,7 @@ fn keyboard() -> (String, String) {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     Response::decode(muster::dispatch(&bytes).as_slice()).expect("a response this build knows")
 }
 

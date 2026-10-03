@@ -46,7 +46,7 @@ fn a_slow_daemon_does_not_hold_the_window_closed() {
          the window does not appear until every daemon it names has answered."
     );
 
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     assert_eq!(
         health_of("local").first().map(String::as_str),
         Some("connecting"),
@@ -88,7 +88,7 @@ fn a_daemon_missing_at_launch_is_attached_once_it_answers() {
         config_path: config.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     let named_path = named.to_string_lossy().to_string();
     until(
         "the window to say the daemon is missing",
@@ -121,7 +121,7 @@ fn a_daemon_on_its_way_keeps_its_place_in_the_arrangement() {
     let daemon = Daemon::start_built();
     let arrangement = daemon.root().join("window-1.toml");
     start(&daemon.muster_config(), &arrangement);
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to open onto a tab",
         || listed_tabs().len() == 1,
@@ -142,7 +142,7 @@ fn a_daemon_on_its_way_keeps_its_place_in_the_arrangement() {
     turn.relaunch();
     let relay = daemon.delaying_answers_where(subscribes, SLOW);
     start(&relay.muster_config(), &arrangement);
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     assert_eq!(
         saved_tabs(&arrangement),
         before,
@@ -201,7 +201,7 @@ fn a_daemon_on_its_way_takes_neither_the_screen_nor_the_keyboard() {
     .expect("the harness root is writable");
 
     start(&config, &arrangement);
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     assert_eq!(keyboard(), ("t1".to_string(), "a1".to_string()), "the window opened elsewhere");
     until(
         "the devenv's tabs to come back in their place",
@@ -330,7 +330,7 @@ fn listed_panes() -> usize {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

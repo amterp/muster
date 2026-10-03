@@ -432,7 +432,7 @@ fn a_tab_on_a_daemon_still_attaching_stays_this_windows() {
         tab_holders_path: path.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     let record = holders_in(&path);
     assert!(
@@ -513,7 +513,7 @@ fn write_record(path: &Path, holders: &muster_core::composition::Holders) {
 
 fn open_a_window(daemon: &Daemon, name: &str) {
     start_a_window(daemon, name);
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 }
 
 /// Everything a launch does before it says what to show: `muster` then opens, and `muster <pane>`
@@ -632,7 +632,7 @@ fn latest_view() -> Option<ViewChanged> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

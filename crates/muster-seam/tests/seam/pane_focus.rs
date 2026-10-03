@@ -54,7 +54,7 @@ fn a_window_focused_on_a_program_that_asked() -> (Daemon, std::path::PathBuf) {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
 
     // A window starts unfocused, so opening onto the pane tells it nothing: the first report is
     // the focus this test gives it.
@@ -77,7 +77,7 @@ fn holds(path: &Path, expected: &[u8]) {
 }
 
 fn dispatch(payload: request::Payload) -> Response {
-    let reply = muster::dispatch(&Request { payload: Some(payload) }.encode_to_vec());
+    let reply = muster::dispatch(&Request::new(payload).encode_to_vec());
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }
 

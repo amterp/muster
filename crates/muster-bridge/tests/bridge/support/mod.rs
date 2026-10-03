@@ -134,7 +134,7 @@ impl Typing {
         })));
         // A window with nothing in it asks its daemon for a tab, which is where the pane
         // comes from: this test makes none of its own.
-        assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+        assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
         let pane = until_some("the window to show the pane it asked its daemon for", || {
             let on_screen = poison_free(&ON_SCREEN);
             (on_screen.len() == 1).then(|| on_screen.keys().next().cloned()).flatten()
@@ -250,7 +250,7 @@ impl Press {
 }
 
 pub(crate) fn answer(payload: request::Payload) -> Response {
-    let request = Request { payload: Some(payload) };
+    let request = Request::new(payload);
     Response::decode(muster::dispatch(&request.encode_to_vec()).as_slice())
         .expect("the core answers every request with a decodable response")
 }

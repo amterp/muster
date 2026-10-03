@@ -168,7 +168,7 @@ fn a_window_onto_one_pane() -> Open {
         command_socket_path: socket.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
 
     // Waited for, because opening asks for the first tab only once the daemon has sent its
     // first snapshot, and on a loaded machine that arrives after opening has returned. The race
@@ -232,14 +232,14 @@ fn read_window(socket: &std::path::Path) -> Window {
 fn dialed(socket: &std::path::Path, payload: request::Payload) -> Response {
     let mut stream = UnixStream::connect(socket)
         .unwrap_or_else(|error| panic!("nothing is listening on {}: {error}", socket.display()));
-    write_frame(&mut stream, &Request { payload: Some(payload) }.encode_to_vec())
+    write_frame(&mut stream, &Request::new(payload).encode_to_vec())
         .expect("the endpoint takes a request");
     let reply = read_frame(&mut stream, LARGEST_MESSAGE).expect("the endpoint answers it");
     Response::decode(reply.as_slice()).expect("the answer is a response this build knows")
 }
 
 fn dispatch(payload: request::Payload) -> Response {
-    let reply = muster::dispatch(&Request { payload: Some(payload) }.encode_to_vec());
+    let reply = muster::dispatch(&Request::new(payload).encode_to_vec());
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }
 

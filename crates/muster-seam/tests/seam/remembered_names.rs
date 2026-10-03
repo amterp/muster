@@ -40,7 +40,7 @@ fn a_pane_and_a_tab_keep_the_names_they_had_before_this_launch() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until("the roster to arrive", || !listed().is_empty(), || "nothing was listed".to_string());
     assert_eq!(
@@ -66,7 +66,8 @@ extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which is
     // the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
-    if let Ok(Event { payload: Some(event::Payload::RosterChanged(roster)) }) = Event::decode(bytes)
+    if let Ok(Event { payload: Some(event::Payload::RosterChanged(roster)), .. }) =
+        Event::decode(bytes)
     {
         *ROSTER.lock().expect("a panicking reader poisoned the roster") = Some(roster);
     }
@@ -98,7 +99,7 @@ fn listed() -> Vec<String> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

@@ -485,7 +485,7 @@ fn open_the_window(daemon: &Daemon, socket: &std::path::Path) {
         command_socket_path: socket.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
 }
 
 /// Whether the pane's daemon holds a finish nobody has seen, asked of the daemon itself.
@@ -504,11 +504,8 @@ fn watching(socket: &std::path::Path, asked: WatchPanes) -> UnixStream {
     // The harness's own deadline, because every frame here is waiting on a condition the test
     // has already made true.
     stream.set_read_timeout(Some(PATIENCE)).expect("a unix socket takes a read timeout");
-    write_frame(
-        &mut stream,
-        &Request { payload: Some(request::Payload::WatchPanes(asked)) }.encode_to_vec(),
-    )
-    .expect("the endpoint takes a watch");
+    write_frame(&mut stream, &Request::new(request::Payload::WatchPanes(asked)).encode_to_vec())
+        .expect("the endpoint takes a watch");
     stream
 }
 
@@ -597,7 +594,7 @@ fn read_window(socket: &std::path::Path) -> Window {
 fn dialed(socket: &std::path::Path, payload: request::Payload) -> Response {
     let mut stream = UnixStream::connect(socket)
         .unwrap_or_else(|error| panic!("nothing is listening on {}: {error}", socket.display()));
-    write_frame(&mut stream, &Request { payload: Some(payload) }.encode_to_vec())
+    write_frame(&mut stream, &Request::new(payload).encode_to_vec())
         .expect("the endpoint takes a request");
     let reply = read_frame(&mut stream, LARGEST_MESSAGE).expect("the endpoint answers it");
     Response::decode(reply.as_slice()).expect("the answer is a response this build knows")
@@ -609,7 +606,7 @@ fn now_ms() -> i64 {
 }
 
 fn dispatch(payload: request::Payload) -> Response {
-    let reply = muster::dispatch(&Request { payload: Some(payload) }.encode_to_vec());
+    let reply = muster::dispatch(&Request::new(payload).encode_to_vec());
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }
 

@@ -534,18 +534,16 @@ pub(crate) fn set_sidebar_width(width: f64) {
 
 fn announce_problems() {
     let problems = problems();
-    ffi::emit(&Event {
-        payload: Some(event::Payload::ProblemsChanged(ProblemsChanged {
-            problems: problems
-                .into_iter()
-                .map(|problem| ProblemMessage {
-                    key: problem.key,
-                    severity: problem.severity.as_str().to_string(),
-                    detail: problem.detail,
-                })
-                .collect(),
-        })),
-    });
+    ffi::emit(&Event::new(event::Payload::ProblemsChanged(ProblemsChanged {
+        problems: problems
+            .into_iter()
+            .map(|problem| ProblemMessage {
+                key: problem.key,
+                severity: problem.severity.as_str().to_string(),
+                detail: problem.detail,
+            })
+            .collect(),
+    })));
 }
 
 pub(crate) fn set_state_path(path: &str) {
@@ -3022,12 +3020,10 @@ fn reopened_for(tab: &TabId, show: &str) -> bool {
         "window.reopen.asked",
         fields! { "window" => window.name.to_string(), "show" => show },
     );
-    ffi::emit(&Event {
-        payload: Some(event::Payload::ReopenWindow(ReopenWindow {
-            name: window.name.to_string(),
-            show: show.to_string(),
-        })),
-    });
+    ffi::emit(&Event::new(event::Payload::ReopenWindow(ReopenWindow {
+        name: window.name.to_string(),
+        show: show.to_string(),
+    })));
     true
 }
 
@@ -3195,7 +3191,7 @@ pub(crate) fn announce_roster() {
             "panes" => roster.panes().count().to_string(),
         },
     );
-    ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(message)) });
+    ffi::emit(&Event::new(event::Payload::RosterChanged(message)));
 }
 
 /// One numbering, as a log line says it.
@@ -3286,7 +3282,7 @@ pub(crate) fn window_name() -> String {
 /// Brings a window to the front, because somebody went to one of its tabs from another window:
 /// this one for `pid` 0, or the window with that process, which this one hands activation to.
 pub(crate) fn raise_window(pid: u32) {
-    ffi::emit(&Event { payload: Some(event::Payload::RaiseWindow(RaiseWindow { pid })) });
+    ffi::emit(&Event::new(event::Payload::RaiseWindow(RaiseWindow { pid })));
 }
 
 /// The daemon this window's keyboard is on.
@@ -3783,13 +3779,11 @@ fn restore_late(daemon: &DaemonId) {
 /// Its own word rather than one of the mirror's health states: those describe a connection
 /// that exists, and this daemon has none yet.
 fn connecting(daemon: &DaemonId) {
-    ffi::emit(&Event {
-        payload: Some(event::Payload::BackendHealth(crate::proto::BackendHealth {
-            daemon_id: daemon.to_string(),
-            state: "connecting".to_string(),
-            detail: String::new(),
-        })),
-    });
+    ffi::emit(&Event::new(event::Payload::BackendHealth(crate::proto::BackendHealth {
+        daemon_id: daemon.to_string(),
+        state: "connecting".to_string(),
+        detail: String::new(),
+    })));
 }
 
 /// What to tell somebody whose daemon, configured or Muster's own, has not attached since launch.
@@ -4765,7 +4759,7 @@ fn publish(cause: &str) {
                 },
             );
         }
-        ffi::emit(&Event { payload: Some(event::Payload::ViewChanged(message)) });
+        ffi::emit(&Event::new(event::Payload::ViewChanged(message)));
     }
     if let Some(message) = roster_message {
         log::info(
@@ -4779,7 +4773,7 @@ fn publish(cause: &str) {
                 "numbering" => describe_numbering(&numbering),
             },
         );
-        ffi::emit(&Event { payload: Some(event::Payload::RosterChanged(message)) });
+        ffi::emit(&Event::new(event::Payload::RosterChanged(message)));
     }
     drop(publishing);
 
@@ -5016,13 +5010,11 @@ fn report(daemon: &DaemonId, change: &Change) {
             },
         );
         if allowed {
-            ffi::emit(&Event {
-                payload: Some(event::Payload::ClipboardWrite(ClipboardWrite {
-                    daemon_id: daemon.to_string(),
-                    pane_id: pane.to_string(),
-                    text: text.clone(),
-                })),
-            });
+            ffi::emit(&Event::new(event::Payload::ClipboardWrite(ClipboardWrite {
+                daemon_id: daemon.to_string(),
+                pane_id: pane.to_string(),
+                text: text.clone(),
+            })));
         }
     }
     if let Change::PasteHeld { pane, text } = change {
@@ -5034,13 +5026,11 @@ fn report(daemon: &DaemonId, change: &Change) {
                 "characters" => text.chars().count().to_string(),
             },
         );
-        ffi::emit(&Event {
-            payload: Some(event::Payload::PasteHeld(PasteHeld {
-                daemon_id: daemon.to_string(),
-                pane_id: pane.to_string(),
-                text: text.clone(),
-            })),
-        });
+        ffi::emit(&Event::new(event::Payload::PasteHeld(PasteHeld {
+            daemon_id: daemon.to_string(),
+            pane_id: pane.to_string(),
+            text: text.clone(),
+        })));
     }
 
     // Recorded before anything is announced, because it is what the announcement depends on.
@@ -5265,18 +5255,16 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
             "state" => if state.is_empty() { "(withdrawn)".to_string() } else { state.clone() },
         },
     );
-    ffi::emit(&Event {
-        payload: Some(event::Payload::AttentionChanged(AttentionChanged {
-            daemon_id: pane.daemon.to_string(),
-            pane_id: pane.pane.to_string(),
-            state,
-            label,
-            subtitle,
-            note_title,
-            note_body,
-            ..AttentionChanged::default()
-        })),
-    });
+    ffi::emit(&Event::new(event::Payload::AttentionChanged(AttentionChanged {
+        daemon_id: pane.daemon.to_string(),
+        pane_id: pane.pane.to_string(),
+        state,
+        label,
+        subtitle,
+        note_title,
+        note_body,
+        ..AttentionChanged::default()
+    })));
 }
 
 /// Whether this window is the one to tell somebody a pane needs them.
@@ -5378,17 +5366,15 @@ fn announce_message(group: &GroupKey, attend: Attend) {
             "count" => notice.count,
         },
     );
-    ffi::emit(&Event {
-        payload: Some(event::Payload::AttentionChanged(AttentionChanged {
-            daemon_id: group.daemon.to_string(),
-            state,
-            label: group.group.clone(),
-            group: group.group.clone(),
-            count: notice.count,
-            from: notice.from,
-            ..AttentionChanged::default()
-        })),
-    });
+    ffi::emit(&Event::new(event::Payload::AttentionChanged(AttentionChanged {
+        daemon_id: group.daemon.to_string(),
+        state,
+        label: group.group.clone(),
+        group: group.group.clone(),
+        count: notice.count,
+        from: notice.from,
+        ..AttentionChanged::default()
+    })));
 }
 
 /// Whether this window is the one to tell somebody what a daemon says, where no tab decides:
@@ -5444,9 +5430,7 @@ fn announce_state(pane: &PaneKey) {
     // shell, the shell reacts by dispatching, and a dispatch arriving while this held the
     // session would deadlock against it on the same thread.
     let Some(agent) = presented(pane) else { return };
-    ffi::emit(&Event {
-        payload: Some(event::Payload::PaneStateChanged(convert::pane_state(&agent))),
-    });
+    ffi::emit(&Event::new(event::Payload::PaneStateChanged(convert::pane_state(&agent))));
     watch::publish(&Seen::State(agent));
 }
 
@@ -5750,12 +5734,10 @@ fn close_daemons(daemons: &[(DaemonId, String)]) {
 /// its own. A shell that guessed would be a second answer to a question the core owns, and
 /// the two would disagree the first time the default moved.
 fn announce_presentation(presentation: Presentation) {
-    ffi::emit(&Event {
-        payload: Some(event::Payload::PresentationChanged(PresentationChanged {
-            sidebar: presentation.sidebar,
-            sidebar_width: presentation.sidebar_width,
-        })),
-    });
+    ffi::emit(&Event::new(event::Payload::PresentationChanged(PresentationChanged {
+        sidebar: presentation.sidebar,
+        sidebar_width: presentation.sidebar_width,
+    })));
 }
 
 /// Makes this window match the record of which window holds each tab, after something changed it.
@@ -5838,9 +5820,7 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
     // panes stopped painting would bury the one that names the cause.
     watchdog::daemon_away(daemon, health == Health::Stale);
     let heard = DaemonHealth { daemon: daemon.clone(), health, detail: detail.to_string() };
-    ffi::emit(&Event {
-        payload: Some(event::Payload::BackendHealth(convert::backend_health(&heard))),
-    });
+    ffi::emit(&Event::new(event::Payload::BackendHealth(convert::backend_health(&heard))));
     watch::publish(&Seen::Health(heard));
 }
 
@@ -5851,12 +5831,10 @@ fn typeable(daemon: &DaemonId, pane: &PaneId) {
     // Something is painting this pane again, so the next bridge to stop is news.
     poison::lock(&DARK, "dark-panes").remove(&key);
     watchdog::typeable(&key);
-    ffi::emit(&Event {
-        payload: Some(event::Payload::PaneTypeable(PaneTypeable {
-            daemon_id: daemon.to_string(),
-            pane_id: pane.to_string(),
-        })),
-    });
+    ffi::emit(&Event::new(event::Payload::PaneTypeable(PaneTypeable {
+        daemon_id: daemon.to_string(),
+        pane_id: pane.to_string(),
+    })));
 }
 
 #[cfg(test)]

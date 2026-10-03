@@ -27,7 +27,7 @@ fn an_older_daemon_at_a_socket_somebody_named_is_not_asked() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to follow the daemon it was pointed at",
         || listed_panes() == 1,
@@ -50,7 +50,7 @@ fn listed_panes() -> usize {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

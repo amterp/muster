@@ -40,7 +40,7 @@ fn clear_screen_on_the_alternate_screen_hands_the_program_its_key() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
     until("the window to show the pane", the_window_shows_the_pane, String::new);
 
     assert_ok(&dispatch(request::Payload::PerformOnPane(PerformOnPane {
@@ -80,7 +80,7 @@ fn holds(path: &Path, expected: &[u8]) {
 }
 
 fn dispatch(payload: request::Payload) -> Response {
-    let reply = muster::dispatch(&Request { payload: Some(payload) }.encode_to_vec());
+    let reply = muster::dispatch(&Request::new(payload).encode_to_vec());
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }
 

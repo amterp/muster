@@ -148,7 +148,7 @@ fn a_window_reopens_each_saved_tab_once() {
     until("the daemon's first bootstrap to be taken", bootstrapped, || {
         format!("the last view the core published: {:?}", latest_view())
     });
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     assert_eq!(
         regions_shown(),
@@ -281,7 +281,7 @@ fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
         state_path: String::new(),
         ..startup(&daemon, &state)
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the window somebody asked for to open onto something",
@@ -336,7 +336,7 @@ fn two_windows_come_back_each_on_its_own_tabs() {
     forget_the_view();
     muster::ffi::muster_set_event_callback(Some(note));
     assert_ok(&answer(request::Payload::Startup(Startup { ..startup(&daemon, &second) })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the second window to open onto a tab of its own",
         || tab_of_first_region().is_some_and(|tab| tab != theirs),
@@ -559,7 +559,7 @@ fn read_window() -> muster::proto::Window {
 /// Starts the core against this daemon, and opens the window - what a bare `muster` does.
 fn open_a_window(daemon: &Daemon, state: &std::path::Path) {
     assert_ok(&answer(request::Payload::Startup(startup(daemon, state))));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 }
 
 fn startup(daemon: &Daemon, state: &std::path::Path) -> Startup {
@@ -660,7 +660,7 @@ fn forget_the_view() {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

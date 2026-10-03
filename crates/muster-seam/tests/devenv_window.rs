@@ -263,7 +263,7 @@ fn open_a_window(home: &Path, socket: &Path, log: &Path, host: &str, options: &[
             command_socket_path: socket.to_string_lossy().into_owned(),
             ..Startup::default()
         }),
-        request::Payload::OpenWindow(OpenWindow {}),
+        request::Payload::OpenWindow(OpenWindow::default()),
     ] {
         assert_ok(&answer(payload));
     }
@@ -333,7 +333,7 @@ fn read_window(socket: &Path) -> Window {
 /// One request over the window's socket, the way the laptop's `muster` sends it.
 fn dialed(socket: &Path, payload: request::Payload) -> Response {
     let mut stream = UnixStream::connect(socket).expect("the window is listening");
-    let asking = Request { payload: Some(payload) }.encode_to_vec();
+    let asking = Request::new(payload).encode_to_vec();
     write_frame(&mut stream, &asking).expect("the window takes a request");
     let reply = read_frame(&mut stream, LARGEST_MESSAGE).expect("the window answers it");
     Response::decode(reply.as_slice()).expect("an answer this build knows")
@@ -377,7 +377,7 @@ fn scratch_home() -> PathBuf {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     Response::decode(muster::dispatch(&bytes).as_slice()).expect("a response this build knows")
 }
 

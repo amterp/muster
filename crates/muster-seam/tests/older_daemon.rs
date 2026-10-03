@@ -106,7 +106,7 @@ fn open_a_window() {
         daemon_data_path: DAEMON_DATA.to_string(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 }
 
 static PROBLEMS: Mutex<Option<ProblemsChanged>> = Mutex::new(None);
@@ -134,7 +134,7 @@ fn problems() -> Vec<(String, String)> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

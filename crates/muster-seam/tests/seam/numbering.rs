@@ -38,7 +38,7 @@ fn a_numbered_chord_lands_on_the_row_carrying_it() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the roster to arrive with both tabs in it",
@@ -101,7 +101,7 @@ fn a_place_is_the_pane_at_that_place_whatever_the_chords_name() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the roster to arrive with all three panes in it",
         || roster().is_some_and(|roster| rows(&roster).len() == 3),
@@ -141,7 +141,7 @@ fn one_tab_numbers_its_panes_and_arms_nothing() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the roster to arrive with both panes in it",
@@ -182,7 +182,7 @@ fn a_tab_is_named_first_and_a_pane_inside_it_second() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the roster to arrive with all three panes in it",
@@ -243,7 +243,7 @@ fn anything_between_the_two_presses_takes_the_first_one_back() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the roster to arrive with all three panes in it",
         || roster().is_some_and(|roster| rows(&roster).len() == 3),
@@ -288,7 +288,7 @@ fn letting_go_of_the_modifier_takes_the_first_press_back() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the roster to arrive with all three panes in it",
         || roster().is_some_and(|roster| rows(&roster).len() == 3),
@@ -339,7 +339,7 @@ fn hearing_who_holds_which_tab_leaves_a_chord_armed() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the roster to arrive with all three panes in it",
         || roster().is_some_and(|roster| rows(&roster).len() == 3),
@@ -372,7 +372,7 @@ fn ending_a_chord_nobody_started_says_nothing() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the roster to arrive with all three panes in it",
         || roster().is_some_and(|roster| rows(&roster).len() == 3),
@@ -596,7 +596,7 @@ fn counting() -> Counting {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

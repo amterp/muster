@@ -33,7 +33,7 @@ fn the_last_view_the_shell_is_sent_is_the_one_the_core_settled_last() {
         log_path: log.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to open onto a pane",
         || latest_view().is_some_and(|view| view.regions.iter().any(|r| !r.pane_id.is_empty())),
@@ -130,7 +130,7 @@ fn latest_view() -> Option<ViewChanged> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

@@ -55,7 +55,7 @@ fn a_send_the_pane_draws_late_is_confirmed_rather_than_refused() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     let pane = the_only_pane();
     wait_until_reading(&pane);
 
@@ -88,7 +88,7 @@ fn a_send_whose_output_scrolls_it_away_is_still_confirmed() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     let pane = the_only_pane();
     wait_until_reading(&pane);
 
@@ -114,7 +114,7 @@ fn a_send_the_pane_never_showed_is_refused_rather_than_reported_as_done() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     let pane = the_only_pane();
     wait_until_reading(&pane);
 
@@ -169,7 +169,7 @@ fn a_send_to_a_daemon_that_has_gone_is_refused() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     let pane = the_only_pane();
     daemon.kill();
 
@@ -249,7 +249,7 @@ fn read(pane: &str) -> String {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

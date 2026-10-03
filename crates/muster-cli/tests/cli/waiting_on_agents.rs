@@ -235,7 +235,7 @@ fn a_window_onto_one_pane() -> Open {
         command_socket_path: socket.clone(),
         ..Startup::default()
     })));
-    accepted(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+    accepted(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
 
     let mut open = Open { daemon, socket, pane: String::new() };
     open.pane = until_some("the window to describe the pane the daemon holds", || {
@@ -289,7 +289,7 @@ fn next_json(lines: &Receiver<String>, what: &str) -> Value {
 }
 
 fn dispatch(payload: request::Payload) -> Response {
-    let reply = muster::dispatch(&Request { payload: Some(payload) }.encode_to_vec());
+    let reply = muster::dispatch(&Request::new(payload).encode_to_vec());
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }
 

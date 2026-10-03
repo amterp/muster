@@ -93,7 +93,7 @@ fn open_a_window_through(relay: Relay) -> Relay {
         ..Startup::default()
     }));
     assert_ok(&started);
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     relay
 }
 
@@ -152,7 +152,7 @@ fn the_only_pane() -> String {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

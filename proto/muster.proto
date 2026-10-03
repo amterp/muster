@@ -82,6 +82,21 @@ message Request {
     FocusHistory focus_history = 60;
   }
 
+  // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
+  // takes the window holding whatever the request names, else the window `from_pane` is in,
+  // else the one most recently in front - so a shell with one window, and a CLI from before
+  // windows shared a process, need never set it (mip/0006-one-process.md, section 2).
+  //
+  // Outside the oneof so that a core that predates it skips it rather than mis-decoding.
+  string window = 100;
+
+  // The pane the caller is running in, from its `$MUSTER_PANE`, or empty outside every pane.
+  //
+  // Not the pane the request is about. A pane's environment names the window it was made in,
+  // and its tab may since have moved to another; the window holding the pane's tab is the
+  // window it is in now, and this is how the core finds it.
+  string from_pane = 101;
+
   // Find, stepping through its matches, reading where a pane is scrolled to, and scrolling it.
   // Each pane's own libghostty surface holds its history now, so the renderer does all four
   // without asking the core.
@@ -594,7 +609,19 @@ message BridgeStarted {
 // Nothing comes back but Ok. What the window ends up showing arrives as a ViewChanged, like
 // every other answer about what is on screen, and a first tab lands there a moment later when
 // the daemon has made it.
-message OpenWindow {}
+//
+// The first window is the one Startup described, and opening it needs nothing more. Another
+// window in the same process names its own arrangement and what to show, the two things Startup
+// says about the first; the request's `window` is then empty, since the window does not exist
+// until this opens it.
+message OpenWindow {
+  // Where this window's arrangement is written, as Startup's `state_path` is for the first.
+  // Empty opens the first window, or a window that remembers nothing when one is already open.
+  string state_path = 1;
+
+  // A pane or a tab to go to once the window is open, as Startup's `show`.
+  string show = 2;
+}
 
 // Moves the line between two regions of the window.
 //
@@ -1802,6 +1829,10 @@ message Event {
     PasteHeld paste_held = 13;
     ClipboardWrite clipboard_write = 14;
   }
+
+  // The window this event is for, by its name, or empty for one about the whole app: what the
+  // config says, agent states, attention. A shell with one window can ignore it.
+  string window = 100;
 }
 
 // A paste the pane's daemon did not write, waiting for somebody to confirm it.

@@ -45,7 +45,7 @@ fn a_window_opened_on_somebody_elses_session_can_reach_all_of_it() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the window to show something of this session",
@@ -225,7 +225,7 @@ fn roster_panes(roster: &RosterChanged) -> impl Iterator<Item = &muster::proto::
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

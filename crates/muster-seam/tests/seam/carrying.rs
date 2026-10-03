@@ -79,12 +79,10 @@ fn a_request_carried_here_is_answered_here() {
         &ours,
         request::Payload::Carried(Box::new(Carried {
             by: "window-9".to_string(),
-            request: Some(Box::new(Request {
-                payload: Some(request::Payload::FocusTab(FocusTab {
-                    tab_id: theirs,
-                    ..FocusTab::default()
-                })),
-            })),
+            request: Some(Box::new(Request::new(request::Payload::FocusTab(FocusTab {
+                tab_id: theirs,
+                ..FocusTab::default()
+            })))),
         })),
     );
     assert!(other.last().is_none(), "a carried request was carried on");
@@ -99,12 +97,10 @@ fn a_request_carried_here_is_answered_here() {
         &ours,
         request::Payload::Carried(Box::new(Carried {
             by: "window-9".to_string(),
-            request: Some(Box::new(Request {
-                payload: Some(request::Payload::FocusTab(FocusTab {
-                    tab_id: own,
-                    ..FocusTab::default()
-                })),
-            })),
+            request: Some(Box::new(Request::new(request::Payload::FocusTab(FocusTab {
+                tab_id: own,
+                ..FocusTab::default()
+            })))),
         })),
     );
     assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
@@ -483,7 +479,7 @@ fn a_window_opened_to_show_a_tab_shows_it() {
         show: first.clone(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the reopened window to show the tab it was opened for",
         || showing().as_deref() == Some(first.as_str()),
@@ -573,7 +569,7 @@ impl Stand {
                 let Ok(mut stream) = stream else { return };
                 // A window asking whether this one is open connects and says nothing.
                 let Ok(bytes) = read_frame(&mut stream, LARGEST_MESSAGE) else { continue };
-                if let Ok(Request { payload: Some(request::Payload::Carried(carried)) }) =
+                if let Ok(Request { payload: Some(request::Payload::Carried(carried)), .. }) =
                     Request::decode(bytes.as_slice())
                 {
                     noted.lock().expect("a panicking test poisoned the log").push(*carried);
@@ -626,7 +622,7 @@ fn open_a_window(daemon: &Daemon, name: &str) -> PathBuf {
         command_socket_path: socket.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to open onto a tab with a pane in it",
         || listed().first().is_some_and(|tab| has_a_pane(tab)),
@@ -642,7 +638,7 @@ fn has_a_pane(tab: &str) -> bool {
 /// Asks this window over its command socket, the way the CLI does.
 fn ask(socket: &Path, payload: request::Payload) -> Response {
     let mut stream = UnixStream::connect(socket).expect("the window is listening");
-    write_frame(&mut stream, &Request { payload: Some(payload) }.encode_to_vec())
+    write_frame(&mut stream, &Request::new(payload).encode_to_vec())
         .expect("the request can be written");
     let bytes = read_frame(&mut stream, LARGEST_MESSAGE).expect("the window answers");
     Response::decode(bytes.as_slice()).expect("the window answers with a response")
@@ -704,7 +700,7 @@ extern "C" fn note(bytes: *const u8, len: usize) {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

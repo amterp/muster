@@ -256,7 +256,7 @@ fn the_daemon_and_the_window_say_the_same_about_a_pane() {
         command_socket_path: socket.clone(),
         ..Startup::default()
     })));
-    accepted(&dispatch(request::Payload::OpenWindow(OpenWindow {})));
+    accepted(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
     let mut here = Here::new(daemon);
     here.window = socket;
 
@@ -297,7 +297,7 @@ fn the_daemon_and_the_window_say_the_same_about_a_pane() {
 }
 
 fn dispatch(payload: request::Payload) -> Response {
-    let reply = muster::dispatch(&Request { payload: Some(payload) }.encode_to_vec());
+    let reply = muster::dispatch(&Request::new(payload).encode_to_vec());
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }
 

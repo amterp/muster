@@ -31,8 +31,7 @@ fn a_startup_with_no_log_path_is_accepted_rather_than_refused() {
     let _turn = muster::testing::fresh_session();
     // The release default. Logging off is a choice, not a failure, and a seam that
     // reported it as one would put an error in every release run's stderr.
-    let response =
-        answer(&Request { payload: Some(request::Payload::Startup(Startup::default())) });
+    let response = answer(&Request::new(request::Payload::Startup(Startup::default())));
 
     assert!(is_ok(&response), "{response:?}");
 }
@@ -40,12 +39,10 @@ fn a_startup_with_no_log_path_is_accepted_rather_than_refused() {
 #[test]
 fn a_log_path_that_cannot_be_opened_says_what_it_costs() {
     let _turn = muster::testing::fresh_session();
-    let response = answer(&Request {
-        payload: Some(request::Payload::Startup(Startup {
-            log_path: "/nonexistent-directory-for-a-test/muster.jsonl".to_string(),
-            ..Startup::default()
-        })),
-    });
+    let response = answer(&Request::new(request::Payload::Startup(Startup {
+        log_path: "/nonexistent-directory-for-a-test/muster.jsonl".to_string(),
+        ..Startup::default()
+    })));
 
     let reason = failure(&response);
     // Named, so an investigator does not have to guess which path was tried.
@@ -58,13 +55,11 @@ fn a_log_path_that_cannot_be_opened_says_what_it_costs() {
 #[test]
 fn a_level_the_core_does_not_know_is_refused_by_name() {
     let _turn = muster::testing::fresh_session();
-    let response = answer(&Request {
-        payload: Some(request::Payload::LogRecord(LogRecord {
-            level: "verbose".to_string(),
-            event: "app.launch".to_string(),
-            ..LogRecord::default()
-        })),
-    });
+    let response = answer(&Request::new(request::Payload::LogRecord(LogRecord {
+        level: "verbose".to_string(),
+        event: "app.launch".to_string(),
+        ..LogRecord::default()
+    })));
 
     let reason = failure(&response);
     assert!(reason.contains("verbose"), "{reason}");
@@ -78,13 +73,11 @@ fn a_record_at_a_known_level_is_accepted() {
     let _turn = muster::testing::fresh_session();
     // Logging is off in this process, so nothing is written - and that is the point:
     // "accepted" must not mean "a sink happened to be installed".
-    let response = answer(&Request {
-        payload: Some(request::Payload::LogRecord(LogRecord {
-            level: "info".to_string(),
-            event: "app.ready".to_string(),
-            fields: [("typeable".to_string(), "true".to_string())].into_iter().collect(),
-        })),
-    });
+    let response = answer(&Request::new(request::Payload::LogRecord(LogRecord {
+        level: "info".to_string(),
+        event: "app.ready".to_string(),
+        fields: [("typeable".to_string(), "true".to_string())].into_iter().collect(),
+    })));
 
     assert!(is_ok(&response), "{response:?}");
 }
@@ -119,12 +112,10 @@ fn a_fresh_session_starts_where_a_new_process_would() {
         .unwrap_or_else(|e| panic!("could not write {}: {e}", config.display()));
 
     let turn = muster::testing::fresh_session();
-    answer(&Request {
-        payload: Some(request::Payload::Startup(Startup {
-            config_path: config.to_string_lossy().into_owned(),
-            ..Startup::default()
-        })),
-    });
+    answer(&Request::new(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
     assert_eq!(
         zoom_chord(),
         Some("KeyZ".to_string()),
@@ -144,9 +135,8 @@ fn a_fresh_session_starts_where_a_new_process_would() {
 
 /// Which key zooms, as the core would tell a shell building its menu.
 fn zoom_chord() -> Option<String> {
-    let response = answer(&Request {
-        payload: Some(request::Payload::ReadBindings(muster::proto::ReadBindings {})),
-    });
+    let response =
+        answer(&Request::new(request::Payload::ReadBindings(muster::proto::ReadBindings {})));
     match response.payload {
         Some(response::Payload::Bindings(bindings)) => bindings
             .bindings

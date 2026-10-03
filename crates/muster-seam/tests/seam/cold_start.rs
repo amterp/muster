@@ -38,7 +38,7 @@ fn a_window_opened_on_an_empty_daemon_can_be_typed_into() {
     })));
 
     // A bare launch. Nothing names a pane, and on this daemon there is none to name.
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the window to show the tab it asked for",
@@ -106,7 +106,7 @@ fn latest_view() -> Option<ViewChanged> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

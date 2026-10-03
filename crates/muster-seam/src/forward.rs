@@ -57,7 +57,7 @@ pub(crate) fn hand_on(payload: &request::Payload) -> Option<Response> {
     if !matches!(payload, request::Payload::FocusPane(_) | request::Payload::FocusTab(_)) {
         return None;
     }
-    let request = Request { payload: Some(payload.clone()) };
+    let request = Request::new(payload.clone());
     let window = elsewhere(&request)?;
     let to = window.name.to_string();
     let spawned = std::thread::Builder::new().name("carry-focus".to_string()).spawn(move || {
@@ -93,12 +93,10 @@ pub(crate) fn carry(window: &HeldWindow, request: Request) -> Vec<u8> {
         request.payload,
         Some(request::Payload::FocusPane(_) | request::Payload::FocusTab(_))
     );
-    let carried = Request {
-        payload: Some(request::Payload::Carried(Box::new(Carried {
-            by: session::window_name(),
-            request: Some(Box::new(request)),
-        }))),
-    };
+    let carried = Request::new(request::Payload::Carried(Box::new(Carried {
+        by: session::window_name(),
+        request: Some(Box::new(request)),
+    })));
     log::info(
         "request.carried",
         fields! { "to" => window.name.to_string(), "socket" => &window.socket },

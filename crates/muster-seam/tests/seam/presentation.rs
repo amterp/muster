@@ -40,7 +40,7 @@ fn putting_the_roster_away_is_remembered() {
         state_path: state.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     // Told without being asked, and before anything is toggled. A shell holding its own
     // default would agree with this by luck until the default moved.
@@ -107,7 +107,7 @@ fn latest() -> Option<PresentationChanged> {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

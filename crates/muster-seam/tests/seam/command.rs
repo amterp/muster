@@ -44,7 +44,7 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
         log_path: log.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     the_run_log_says_where_this_window_is_listening(&log, &socket);
 
@@ -199,8 +199,7 @@ fn the_run_log_says_where_this_window_is_listening(
 /// than merely being slow.
 fn two_callers_are_both_answered(socket: &std::path::Path) {
     let (mut first, mut second) = (dial(socket), dial(socket));
-    let asking =
-        Request { payload: Some(request::Payload::ReadWindow(ReadWindow {})) }.encode_to_vec();
+    let asking = Request::new(request::Payload::ReadWindow(ReadWindow {})).encode_to_vec();
     write_frame(&mut first, &asking).expect("the endpoint takes a request");
     write_frame(&mut second, &asking).expect("the endpoint takes a second request");
     for (which, stream) in [("first", &mut first), ("second", &mut second)] {
@@ -265,7 +264,7 @@ fn read_window(socket: &std::path::Path) -> Window {
 /// One request over one connection, which is the whole of the protocol.
 fn dialed(socket: &std::path::Path, payload: request::Payload) -> Response {
     let mut stream = dial(socket);
-    let asking = Request { payload: Some(payload) }.encode_to_vec();
+    let asking = Request::new(payload).encode_to_vec();
     write_frame(&mut stream, &asking).expect("the endpoint takes a request");
     let reply = read_frame(&mut stream, LARGEST_MESSAGE).expect("the endpoint answers it");
     Response::decode(reply.as_slice()).expect("the answer is a response this build knows")
@@ -282,7 +281,7 @@ fn dial(socket: &std::path::Path) -> UnixStream {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

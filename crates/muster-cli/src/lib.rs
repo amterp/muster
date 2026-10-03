@@ -483,7 +483,7 @@ fn asks_around(
 /// one something: listing windows asks every window this, and making one asks a window that has
 /// only just appeared whether it is ready to be handed to a caller.
 fn read_window() -> muster_proto::Request {
-    muster_proto::Request {
-        payload: Some(muster_proto::request::Payload::ReadWindow(muster_proto::ReadWindow {})),
-    }
+    muster_proto::Request::new(muster_proto::request::Payload::ReadWindow(
+        muster_proto::ReadWindow {},
+    ))
 }

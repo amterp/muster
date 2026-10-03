@@ -148,7 +148,7 @@ fn open_a_window(home: &Path, host: &str, options: &[String]) {
             log_path: home.join("muster.jsonl").to_string_lossy().into_owned(),
             ..Startup::default()
         }),
-        request::Payload::OpenWindow(OpenWindow {}),
+        request::Payload::OpenWindow(OpenWindow::default()),
     ] {
         assert_ok(&answer(payload));
     }
@@ -212,7 +212,7 @@ fn scratch_home() -> PathBuf {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     Response::decode(muster::dispatch(&bytes).as_slice()).expect("a response this build knows")
 }
 

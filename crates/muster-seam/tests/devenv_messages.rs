@@ -279,7 +279,7 @@ fn open_a_window(
             command_socket_path: socket.to_string_lossy().into_owned(),
             ..Startup::default()
         }),
-        request::Payload::OpenWindow(OpenWindow {}),
+        request::Payload::OpenWindow(OpenWindow::default()),
     ] {
         assert_ok(&answer(payload));
     }
@@ -302,7 +302,7 @@ fn open_a_window(
 fn read_window(socket: &Path) -> Window {
     use muster::proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
     let mut stream = std::os::unix::net::UnixStream::connect(socket).expect("the window listens");
-    let asking = Request { payload: Some(request::Payload::ReadWindow(ReadWindow {})) };
+    let asking = Request::new(request::Payload::ReadWindow(ReadWindow {}));
     write_frame(&mut stream, &asking.encode_to_vec()).expect("the window takes a request");
     let reply = read_frame(&mut stream, LARGEST_MESSAGE).expect("the window answers it");
     match Response::decode(reply.as_slice()).expect("an answer this build knows").payload {
@@ -353,7 +353,7 @@ fn scratch_home() -> PathBuf {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     Response::decode(muster::dispatch(&bytes).as_slice()).expect("a response this build knows")
 }
 

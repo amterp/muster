@@ -38,7 +38,7 @@ fn a_row_dropped_on_another_moves_the_pane_it_names() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     until(
         "the window to list the two panes it opened onto",
@@ -112,7 +112,7 @@ fn a_pane_pulled_into_a_tab_of_its_own_costs_no_pane_and_no_keyboard() {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to list the two panes it opened onto",
         || rows().len() == 2 && tabs().len() == 1,
@@ -278,7 +278,7 @@ fn open_window(daemon: &Daemon) {
         config_path: daemon.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the window to show the two panes it opened onto",
         || shape() == "columns(p1,p2)",
@@ -420,7 +420,7 @@ fn daemon_id() -> String {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     let reply = muster::dispatch(&bytes);
     Response::decode(reply.as_slice()).expect("the core answers with a response this build knows")
 }

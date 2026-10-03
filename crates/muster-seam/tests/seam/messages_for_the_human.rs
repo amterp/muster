@@ -138,7 +138,7 @@ fn open_window(daemon: &Daemon) {
             config_path: daemon.muster_config().to_string_lossy().into_owned(),
             ..Startup::default()
         }),
-        request::Payload::OpenWindow(OpenWindow {}),
+        request::Payload::OpenWindow(OpenWindow::default()),
     ] {
         assert_ok(&answer(payload));
     }
@@ -214,7 +214,7 @@ fn keyboard_pane() -> String {
 }
 
 fn answer(payload: request::Payload) -> Response {
-    let bytes = Request { payload: Some(payload) }.encode_to_vec();
+    let bytes = Request::new(payload).encode_to_vec();
     Response::decode(muster::dispatch(&bytes).as_slice()).expect("a response this build knows")
 }
 
