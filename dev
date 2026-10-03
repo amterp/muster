@@ -372,20 +372,39 @@ fn doctor_bridged_pane(argv):
         take_next = word == "control" or word == "observe"
     return "?"
 
-// The container the remote tier leaves up, named here because nothing else names it.
+// The containers the remote tier leaves up, named here because nothing else names them.
+//
+// Every checkout's rather than only this one's, the way every muster-daemon is listed: the
+// question is what is costing this machine, and a worktree that has since been deleted leaves
+// its container running with nothing left to stop it from. The prefix also catches the one
+// container every checkout shared before each got its own, which carries no checkout label.
 fn doctor_devenv():
-    print(bold("\ndevenv container"))
-    stdout, stderr, code = quiet $`docker ps --filter 'name=^muster-devenv$'` catch:
+    print(bold("\ndevenv containers"))
+    stdout, stderr, code = quiet $`docker ps --filter 'name=^muster-devenv' --format '\{\{.Names\}\}\t\{\{.Ports\}\}\t\{\{.Label "muster.checkout"\}\}'` catch:
         print(dim("  docker is not answering, so nothing this repo starts in it is up"))
         return
-    rows = stdout.trim().split_lines()
-    if len(rows) < 2:
+    rows = stdout.trim().split_lines().filter(fn(row) row.trim() != "")
+    if len(rows) == 0:
         print(dim("  not running"))
         return
+    root = get_path(".").full_path
+    orphans = []
     for row in rows:
-        print("  {row.trim()}")
-    print(dim("  ./dev --ssh leaves this up deliberately - a devenv is a thing you keep. Stop it"))
-    print(dim("  with: ./devenv/devenv down"))
+        name, ports, checkout = row.split("\t")
+        if checkout == root:
+            print("  {name}  {ports}  this checkout")
+        else if checkout == "":
+            print("  {name}  {ports}  {yellow("shared by every checkout, from before each had its own")}")
+            orphans += [name]
+        else if get_path(checkout).exists:
+            print("  {name}  {ports}  {checkout}")
+        else:
+            print("  {name}  {ports}  {yellow("{checkout}, which no longer exists")}")
+            orphans += [name]
+    print(dim("  ./dev --ssh leaves its checkout's up deliberately - a devenv is a thing you keep."))
+    print(dim("  Stop it from that checkout with: ./devenv/devenv down"))
+    for name in orphans:
+        print(dim("  Nothing will stop {name} for you: docker rm -f {name}"))
 
 fn fail_empty_suite(language, cure):
     print_err(red("No {language} tests were discovered."))
@@ -510,9 +529,13 @@ fn run_ssh_tier():
     // repo-relative key silently becomes 'no such file' and then 'permission denied'.
     root = $`pwd`.stdout.trim()
     key = "{root}/devenv/.ssh/id_ed25519"
+    // This checkout's own container, on a port derived from its path, so another worktree's
+    // run of this tier neither shares nor recreates it. Asked of the script that derives it
+    // rather than worked out twice.
+    port = $`./devenv/devenv port`.stdout.trim()
     // The container is a local fixture on a port nobody else uses, and its key changes every
     // time it is rebuilt, so pinning its host key would mean editing a file per rebuild.
-    options = "-p 2222 -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    options = "-p {port} -i {key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
     // Spelled out at both call sites rather than built into a variable first: Rad quotes an
     // interpolated value as one shell word, so a variable holding the whole prefix arrives as
@@ -539,7 +562,7 @@ fn run_ssh_tier():
     // one that cannot survive it: a_28UsunMWa measured frame.decode at 1.67 ns/byte with this
     // container up against 1.44 with it stopped, both against a 0.83 baseline. Somebody running
     // the out-of-gate tiers in sequence gets a perf failure that nothing in the code caused.
-    print(dim("\nThe devenv container is still up on port 2222, deliberately - a devenv is a"))
+    print(dim("\nThis checkout's devenv container is still up on port {port}, deliberately - a devenv is a"))
     print(dim("thing you keep. It costs this machine something while it runs, and ./dev --perf"))
     print(dim("reads slow against its baseline until it stops. Stop it with:"))
     print(dim("  ./devenv/devenv down"))

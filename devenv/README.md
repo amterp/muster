@@ -1,7 +1,7 @@
 # devenv
 
 The Linux machine Muster's remote half talks to: a container running sshd and nothing
-else, reachable at `ssh -p 2222 dev@localhost`.
+else, reachable at `ssh -p $(./devenv/devenv port) dev@localhost`, or `./devenv/devenv ssh`.
 
 ```
 ./devenv/devenv build           build the image, and nothing else
@@ -10,6 +10,7 @@ else, reachable at `ssh -p 2222 dev@localhost`.
 ./devenv/devenv ssh             shell in as dev
 ./devenv/devenv down            stop and remove it
 ./devenv/devenv rebuild         rebuild from scratch
+./devenv/devenv port            the port this checkout's container listens on
 ```
 
 `up` builds every time rather than only when the image is missing. Docker's layer cache
@@ -17,14 +18,23 @@ makes that about a second, and the alternative was worse: an edited Dockerfile d
 until somebody thought to say `rebuild`.
 
 The first `up` generates a keypair into `devenv/.ssh/`, which is gitignored. Nothing
-in the image is a secret and nothing outside localhost can reach it.
+in the image is a secret, and the port is published on loopback only, so nothing outside
+this machine can reach it.
 
-That keypair is per worktree, and the container is one per machine. So `up` checks that a
-running container lets this worktree's key in, and recreates it when it does not - taking
-whatever was running in it, and locking out the worktree that started it until that one runs
-`up` again. `status` reports the mismatch rather than probing over ssh. Two worktrees still
-cannot use the tier at once; whether each gets its own container or all share one key is
-open (kan a_2Ky2ptlug).
+**Each checkout has its own container, image, port and key.** The container and image are
+`muster-devenv-<checkout>`, where `<checkout>` is the first eight hex digits of the SHA-256 of
+the checkout's path - the same name `./dev --contract` gives its directory - and the port is
+22000 plus that number modulo 1000. So two worktrees run `./dev --ssh` at once, neither
+recreates the other's container, and a Dockerfile edit in one reaches no other. The port is
+derived rather than left to docker so that it survives a recreate: anything pointed at it
+stays pointed at it.
+
+The key is baked into the image, so a container started before `devenv/.ssh/` was regenerated
+refuses the new one. `up` checks for that and recreates the container, and `status` reports it
+rather than probing over ssh.
+
+`./dev --doctor` lists every checkout's running container, including one whose worktree has
+since been deleted, which nothing else would stop.
 
 ## One artifact, two jobs
 

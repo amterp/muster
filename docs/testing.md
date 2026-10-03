@@ -154,8 +154,9 @@ Muster's principles, adapted to that evidence:
   measure timing and would be flaky as
   assertions (`--latency` prints verdicts against MIP-3's targets and fails only when it cannot measure),
   the SSH tier needs the devenv container - which holds no muster-daemon, so the SSH tier's tests install this
-  build's the way the app does - `--linux`, which runs the daemon's, detection's and messaging's suites on Linux,
-  needs docker,
+  build's the way the app does, and is the checkout's own, named, ported and keyed after its path, so two
+  worktrees run the tier at once without recreating each other's - `--linux`, which runs the daemon's,
+  detection's and messaging's suites on Linux, needs docker,
   and `--claude-code` needs the network and a model: it drives the Claude Code installed here for one turn, in a
   pane with Muster's hooks and one without, and checks both read working and then idle. It runs with
   `ANTHROPIC_API_KEY` and `--bare` when that is set, and otherwise with `claude`'s own login and only project

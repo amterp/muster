@@ -214,8 +214,9 @@ the daemon moves into `Contents/Library/` - and 0.3.0 shipped a cask where no pa
 was green against the other layout.
 
 `./dev --ssh` is the remote tier, and sits out of the gate for the same reason: it needs docker rather than a GUI
-session. It recreates the devenv container, which holds no muster-daemon, so the remote tests install this build's
-there the way the app does and then run against it. It leaves that container running, deliberately: a devenv is a thing you keep, and recreating it per run is what `up` is
+session. It recreates this checkout's devenv container - each checkout has its own container, port and key, so
+two worktrees run the tier at once (`devenv/README.md`) - which holds no muster-daemon, so the remote tests
+install this build's there the way the app does and then run against it. It leaves that container running, deliberately: a devenv is a thing you keep, and recreating it per run is what `up` is
 for. The tier says so on the way out, because the thing most likely to run next is `--perf`, and a container running
 beside a benchmark is enough to move the numbers it judges - `./devenv/devenv down` when you are finished with it.
 
@@ -260,8 +261,8 @@ starts landing on the slower ones. `./dev --perf --anyway` measures regardless, 
 not the verdict.
 
 `./dev --doctor` says what this repo's own tooling has left running on this machine: every muster-daemon with the
-socket it serves, any herdr daemon an older Muster left behind, the devenv container, and whatever is currently eating
-the CPU. It answers the question the load average at the top of every run raises and cannot itself answer, which is
+socket it serves, any herdr daemon an older Muster left behind, every checkout's devenv container, and whatever
+is currently eating the CPU. It answers the question the load average at the top of every run raises and cannot itself answer, which is
 *what* is busy. What each daemon holds is `muster daemons`' to say, and that is what makes ending a stray one safe,
 since the process holding somebody's live agent looks exactly like the nineteen that hold nothing.
 

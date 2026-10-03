@@ -8,15 +8,23 @@
 #   ./devenv/devenv ssh             shell in as dev
 #   ./devenv/devenv status          is it up, and is there a daemon in it
 #   ./devenv/devenv rebuild         rebuild the image from scratch, then up
+#   ./devenv/devenv port            the port this checkout's container listens on
+#
+# Each checkout gets its own container, image, port and key, named after the checkout's path,
+# so two worktrees can run the remote tier at once without recreating each other's container.
 #
 # Nothing here installs a daemon. The image ships without one, because that absence is what
 # makes the remote tests test Muster's install path rather than its adopt path.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE=muster-devenv
-CONTAINER=muster-devenv
-PORT=2222
+# The same eight hex digits ./dev --contract names its directory with. The port is derived
+# rather than picked by docker so that it survives a recreate, and an ssh config or a Muster
+# host pointed at it stays right.
+CHECKOUT="$(printf %s "$REPO_ROOT" | shasum -a 256 | cut -c1-8)"
+IMAGE="muster-devenv-$CHECKOUT"
+CONTAINER="muster-devenv-$CHECKOUT"
+PORT=$((22000 + 0x$CHECKOUT % 1000))
 KEY="$REPO_ROOT/devenv/.ssh/id_ed25519"
 
 # StrictHostKeyChecking off and a null known-hosts file: the container gets a fresh
@@ -54,10 +62,10 @@ build() {
         -t "$IMAGE" -f "$REPO_ROOT/devenv/Dockerfile" "$@" "$REPO_ROOT"
 }
 
-# Whether the running container lets this worktree's key in. The container name is global to
-# the machine while devenv/.ssh/ is per worktree, so a container another worktree started
-# refuses every login from this one (kan a_2Ky2ptlug). Asked through docker rather than ssh,
-# because ssh with the wrong key cannot tell a refusal from a container that is not answering.
+# Whether the running container lets this checkout's key in. It stops doing so when devenv/.ssh/
+# is deleted and a new key generated, since the old one is baked into the running container.
+# Asked through docker rather than ssh, because ssh with the wrong key cannot tell a refusal
+# from a container that is not answering.
 key_matches() {
     [[ "$(docker exec "$CONTAINER" cat /home/dev/.ssh/authorized_keys 2>/dev/null)" == "$(cat "$KEY.pub")" ]]
 }
@@ -73,25 +81,32 @@ case "${1:-up}" in
         build >/dev/null
         if [[ -n "$(docker ps -q -f "name=^${CONTAINER}$")" ]]; then
             # The rebuild above does not reach a container that is already running, so one
-            # started from another worktree still holds that worktree's key and refuses this
-            # one's (kan a_2LONhlgwh).
+            # started before this checkout's key changed still holds the old one.
             if key_matches; then
-                echo "devenv already running on port $PORT"
+                echo "devenv $CONTAINER already running on port $PORT"
                 exit 0
             fi
-            echo "devenv was running with a key other than this worktree's; recreating it, and whatever was running in it"
+            echo "devenv $CONTAINER was running with an older key of this checkout's; recreating it, and whatever was running in it"
         fi
         docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-        docker run -d --name "$CONTAINER" -p "$PORT:22" "$IMAGE" >/dev/null
+        # On loopback only: nothing outside this machine has any business with it, and docker
+        # publishes on every interface unless told otherwise. The label is what ./dev --doctor
+        # reads to say which checkout a container belongs to.
+        docker run -d --name "$CONTAINER" --label "muster.checkout=$REPO_ROOT" \
+            -p "127.0.0.1:$PORT:22" "$IMAGE" >/dev/null || die \
+            "devenv $CONTAINER would not start on port $PORT." \
+            "  Impact: the remote path and its tests cannot reach this checkout's container." \
+            "  The port comes from this checkout's path, so another program holding it collides every time:" \
+            "  check 'lsof -nP -iTCP:$PORT -sTCP:LISTEN', and stop whatever holds it."
         for _ in $(seq 1 100); do
             ssh "${SSH_OPTS[@]}" dev@localhost true 2>/dev/null && break
             sleep 0.2
         done
         ssh "${SSH_OPTS[@]}" dev@localhost true 2>/dev/null || die \
-            "devenv started but will not accept SSH on port $PORT." \
+            "devenv $CONTAINER started but will not accept SSH on port $PORT." \
             "  Impact: the remote path and its tests cannot reach the container." \
-            "  Check 'docker logs $CONTAINER', and whether something else holds port $PORT."
-        echo "devenv up: ssh -i devenv/.ssh/id_ed25519 -p $PORT dev@localhost"
+            "  Check 'docker logs $CONTAINER'."
+        echo "devenv $CONTAINER up: ssh -i devenv/.ssh/id_ed25519 -p $PORT dev@localhost"
         ;;
     build)
         # Its own command for one caller: CI, which wants to hand docker a cache the
@@ -102,7 +117,7 @@ case "${1:-up}" in
         ;;
     down)
         need_docker
-        docker rm -f "$CONTAINER" >/dev/null 2>&1 && echo "devenv down" || echo "devenv was not running"
+        docker rm -f "$CONTAINER" >/dev/null 2>&1 && echo "devenv $CONTAINER down" || echo "devenv $CONTAINER was not running"
         ;;
     ssh)
         shift
@@ -111,14 +126,14 @@ case "${1:-up}" in
     status)
         need_docker
         if [[ -z "$(docker ps -q -f "name=^${CONTAINER}$")" ]]; then
-            echo "devenv: not running"
+            echo "devenv $CONTAINER: not running"
             exit 1
         fi
-        echo "devenv: running on port $PORT"
+        echo "devenv $CONTAINER: running on port $PORT"
         # Checked before anything goes over ssh, because every probe below fails quietly with
         # the wrong key and the report would read as an empty container.
         if ! key_matches; then
-            echo "devenv: holds a key other than this worktree's, so ssh from here is refused - ./devenv/devenv up recreates it"
+            echo "devenv: holds an older key of this checkout's, so ssh from here is refused - ./devenv/devenv up recreates it"
             exit 1
         fi
         # What is reported is what is there, rather than what ought to be. An empty
@@ -137,7 +152,11 @@ case "${1:-up}" in
         build --no-cache
         exec "$0" up
         ;;
+    port)
+        # For ./dev, which needs the port and should not derive it a second time.
+        echo "$PORT"
+        ;;
     *)
-        die "unknown command: $1" "  Try: build | up | down | ssh | status | rebuild"
+        die "unknown command: $1" "  Try: build | up | down | ssh | status | rebuild | port"
         ;;
 esac
