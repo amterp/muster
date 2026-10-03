@@ -1703,6 +1703,10 @@ fn split_pane(split: &proto::SplitPane) -> Response {
     let Some(pane) = pane else {
         return open_a_tab(&daemon, None, keyboard, cwd, run, name);
     };
+    let onto = &split.new_pane_daemon_id;
+    if !onto.is_empty() && onto != daemon.as_str() {
+        return split_onto(&DaemonId::new(onto), &pane, side, keyboard, split);
+    }
     placed(
         submit(
             &daemon,
@@ -1720,6 +1724,50 @@ fn split_pane(split: &proto::SplitPane) -> Response {
         ),
         &target,
     )
+}
+
+/// Puts a new pane on another machine, in the tab holding the pane being split.
+///
+/// A tab holds one region per machine, side by side, so where the new pane can go depends on
+/// whether that machine already has a part of the tab. When it does, the new pane splits the
+/// pane that part is showing, on whichever side was asked for. When it does not, the machine
+/// joins the tab as a new region at the end, and the side has nothing to apply to: Muster keeps
+/// no split tree over regions (`architecture.md`, the core owns composition).
+///
+/// The split pane's directory goes nowhere. It is a path on the other machine, and the daemon
+/// would start the new pane in a directory that may not exist here.
+fn split_onto(
+    onto: &DaemonId,
+    beside: &PaneId,
+    side: Side,
+    keyboard: Keyboard,
+    split: &proto::SplitPane,
+) -> Response {
+    if !session::is_following(onto) {
+        return no_such_daemon(onto);
+    }
+    let Some(tab) = session::tab_of_pane(beside) else {
+        return Response::failure(format!(
+            "no daemon this window is following holds a pane called {beside}, so there was no \
+             tab to put a pane on {onto} in. Either it closed while this was in flight, or the \
+             name came from an older window - `muster window` lists the panes this one has."
+        ));
+    };
+    let cwd = (!split.cwd.is_empty()).then(|| split.cwd.clone());
+    let run = (!split.run.is_empty()).then(|| split.run.clone());
+    let name = (!split.name.is_empty()).then(|| split.name.clone());
+    let intent = match session::pane_in_part(onto, &tab) {
+        Some(pane) => BackendIntent::SplitPane {
+            pane,
+            side,
+            ratio: (split.ratio > 0.0).then_some(split.ratio),
+            cwd,
+            run,
+            name,
+        },
+        None => BackendIntent::JoinTab { tab, cwd, run, name },
+    };
+    relayed(submit(onto, &intent, keyboard))
 }
 
 /// Types text into a pane, named rather than focused.

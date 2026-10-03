@@ -444,6 +444,126 @@ fn a_split_asked_for_by_machine_lands_on_that_machine() {
     );
 }
 
+/// A pane split onto another machine lands beside the pane that was split, in its tab.
+///
+/// What right-clicking a laptop pane and picking the devenv asks for. Naming the machine alone
+/// would split whichever devenv pane its region has the keyboard on, which is in another tab
+/// here - so the machine travels beside the pane in a field of its own. The first split makes
+/// the devenv a part of the laptop's tab; the second splits that part rather than adding
+/// another, because a tab holds one region per machine.
+#[test]
+fn a_split_onto_another_machine_joins_the_split_panes_tab() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+    let (before, elsewhere) = (panes(&laptop).len(), panes(&devenv).len());
+
+    let first = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop.clone(),
+        new_pane_daemon_id: "devenv".to_string(),
+        side: "right".to_string(),
+        take_focus: true,
+        ..SplitPane::default()
+    })));
+    until(
+        "the new devenv pane to join the laptop's tab",
+        || tab_holding(&first) == Some(tab.clone()),
+        || format!("{tab} spans {:?}, and the list holds {:?}", machines_of(&tab), rows()),
+    );
+    assert_eq!(machines_of(&tab), ["laptop", "devenv"], "the devenv did not join at the end");
+    assert_eq!(panes(&laptop).len(), before, "a split onto the devenv made a laptop pane");
+    assert_eq!(panes(&devenv).len(), elsewhere + 1);
+    until(
+        "the keyboard to follow the new pane onto the devenv",
+        || keyboard() == Some(("devenv".to_string(), first.clone())),
+        || format!("the keyboard is on {:?}", keyboard()),
+    );
+
+    let second = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop.clone(),
+        new_pane_daemon_id: "devenv".to_string(),
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the second devenv pane to join the same tab",
+        || tab_holding(&second) == Some(tab.clone()),
+        || format!("the list holds {:?}", rows()),
+    );
+    assert_eq!(
+        machines_of(&tab),
+        ["laptop", "devenv"],
+        "a second split onto the devenv gave the tab a second devenv part"
+    );
+    assert_eq!(panes(&devenv).len(), elsewhere + 2);
+}
+
+/// Naming the split pane's own machine as the one to put the new pane on is an ordinary split.
+///
+/// The menu lists every attached machine, including the pane's own, and picking that one must
+/// not make the tab grow a region.
+#[test]
+fn a_split_onto_the_panes_own_machine_is_an_ordinary_split() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+    let (before, elsewhere) = (panes(&laptop).len(), panes(&devenv).len());
+
+    let split = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop,
+        new_pane_daemon_id: "laptop".to_string(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the new pane to reach the laptop's tab",
+        || tab_holding(&split) == Some(tab.clone()),
+        || format!("the list holds {:?}", rows()),
+    );
+    assert_eq!(machines_of(&tab), ["laptop"]);
+    assert_eq!(panes(&laptop).len(), before + 1);
+    assert_eq!(panes(&devenv).len(), elsewhere);
+}
+
+/// A machine to put the new pane on that this window does not follow, refused by name - the
+/// same refusal naming the machine alone gets, for the same typo.
+#[test]
+fn a_split_onto_a_machine_this_window_is_not_following_is_refused_by_name() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let (before, elsewhere) = (panes(&laptop).len(), panes(&devenv).len());
+
+    let reason = refusal(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop,
+        new_pane_daemon_id: "typo".to_string(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    }));
+    for expected in ["typo", "laptop", "devenv"] {
+        assert!(
+            reason.contains(expected),
+            "a refusal for a machine that is not there should name it and the ones that are, \
+             and did not mention {expected}: {reason}"
+        );
+    }
+    assert_eq!(panes(&laptop).len(), before, "a refused split reached the laptop anyway");
+    assert_eq!(panes(&devenv).len(), elsewhere, "a refused split reached the devenv anyway");
+}
+
+/// The pane a request made, out of its answer.
+fn made(response: Response) -> String {
+    match response.payload {
+        Some(response::Payload::Made(made)) => made.pane_id,
+        other => panic!("expected the new pane's name, got {other:?}"),
+    }
+}
+
 /// A machine name that reaches no machine, refused by name.
 ///
 /// `--daemon` is the first field a person types a machine into, so a typo in one is a thing
@@ -471,9 +591,9 @@ fn a_machine_this_window_is_not_following_is_refused_by_name() {
 
 /// A pane and a machine that disagree, refused rather than resolved either way.
 ///
-/// The CLI cannot send this - `--pane` and `--daemon` are one clap group - and the window
-/// cannot either, because a click reads both off one view. The socket has neither guard, and
-/// this project treats it as a surface equal to the other two.
+/// The CLI cannot send this - `--pane` beside `--daemon` fills `new_pane_daemon_id`, the tests
+/// above - and the window cannot either, because a click reads both off one view. The socket
+/// has neither guard, and this project treats it as a surface equal to the other two.
 ///
 /// Refusing matters more than which one would have won. Acting on the machine sends the
 /// laptop's pane to the devenv, and the devenv answers "holds no pane called ..., most likely

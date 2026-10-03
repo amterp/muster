@@ -160,7 +160,7 @@
     },
     {
       "name": "a machine named from inside a pane does not carry that pane",
-      "why": "The case that would silently do the opposite of what was asked. $MUSTER_PANE is sent whenever nobody names a pane, and the window reads a named pane as the whole address - so a `--daemon` that let the environment through would send the request straight back to the machine it was trying to leave, and would look like it worked. clap refuses --pane beside --daemon; only this side can refuse the pane nobody typed.",
+      "why": "The case that would silently do the opposite of what was asked. $MUSTER_PANE is sent whenever nobody names a pane, and the window reads a named pane as the whole address - so a `--daemon` that let the environment through would send the request straight back to the machine it was trying to leave, and would look like it worked. A pane typed beside --daemon is a different request, which puts the new pane in that pane's tab; the pane nobody typed is never one.",
       "given": {
         "argv": [
           "pane",
@@ -820,8 +820,8 @@
       }
     },
     {
-      "name": "a pane and a machine are two answers to one question",
-      "why": "A pane's name is already unique across every machine the window shows, so naming a machine beside one is either a restatement or a contradiction - and there is no way to tell which from out here. Refused rather than resolved, on the same terms as a pane and a direction for `focus`.",
+      "name": "a pane and a machine put the new pane on that machine, in that pane's tab",
+      "why": "What right-clicking a pane and picking another machine sends. The machine travels in a field of its own rather than as `daemon_id`, which beside a pane names the machine holding it and is refused when the two disagree - so the window can tell `put it over there` from a caller that got the pane's machine wrong.",
       "given": {
         "argv": [
           "pane",
@@ -833,7 +833,13 @@
         ]
       },
       "expect": {
-        "usage": "ArgumentConflict"
+        "request": {
+          "split_pane": {
+            "pane_id": "p1w3r07bsd",
+            "new_pane_daemon_id": "devenv",
+            "side": "right"
+          }
+        }
       }
     },
     {
@@ -1202,7 +1208,7 @@
     },
     {
       "name": "a tab cannot be asked for both beside a pane and on a machine",
-      "why": "The same refusal on the other verb. Both are spelled the same way and both have to refuse the same way, or the rule is one people learn per command.",
+      "why": "Unlike `pane new`, where the pane says which tab the new one joins, a new tab joins nothing: the pane would only be saying which machine, and the machine is already said. So naming both is a restatement or a contradiction, and there is no way to tell which from out here.",
       "given": {
         "argv": [
           "tab",

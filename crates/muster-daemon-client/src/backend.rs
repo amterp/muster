@@ -205,6 +205,17 @@ impl BackendChannel for DaemonBackend {
                 let created = self.create(placement, cwd, run, name)?;
                 Ok(Outcome { created: Some(created), created_tab: Some(tab) })
             }
+            // The same placement `placement_in` asks for when a moved pane is this machine's
+            // first in the tab, and unnamed for the same reason: the window names this part
+            // after the rest when the daemon announces it.
+            BackendIntent::JoinTab { tab, cwd, run, name } => {
+                let placement = placement::Where::NewTab(placement::NewTab {
+                    tab: tab.to_string(),
+                    label: Some(proto::Label::default()),
+                });
+                let created = self.create(placement, cwd, run, name)?;
+                Ok(Outcome { created: Some(created), created_tab: None })
+            }
             BackendIntent::ClosePane { pane } => {
                 self.pane_request(pane_request::Request::Close(pane_request::Close {
                     pane: pane.to_string(),

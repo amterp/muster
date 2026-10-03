@@ -2056,7 +2056,7 @@ pub(crate) fn submit(
         // have moved.
         let source = match intent {
             BackendIntent::SplitPane { pane, .. } => Some(PaneKey::new(daemon, pane)),
-            BackendIntent::CreateTab { .. } => session
+            BackendIntent::CreateTab { .. } | BackendIntent::JoinTab { .. } => session
                 .composition
                 .focused_region()
                 .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?))),
@@ -2071,6 +2071,7 @@ pub(crate) fn submit(
             // showing. Arranging the list is the same: the rows worth dragging are very often
             // the ones no region is showing. A new tab has no region until it exists.
             BackendIntent::CreateTab { .. }
+            | BackendIntent::JoinTab { .. }
             | BackendIntent::RenamePane { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SwapPanes { .. }
@@ -2166,6 +2167,12 @@ pub(crate) fn submit(
         if let Some(source) = &source {
             session.font_sizes.inherit(&made, source);
         }
+        // A pane joining a tab has no region until the daemon announces its part of the tab,
+        // which reconcile has done by now: a daemon's events arrive before its answer.
+        let region = region.or_else(|| match intent {
+            BackendIntent::JoinTab { tab, .. } => session.composition.region_of(daemon, tab),
+            _ => None,
+        });
         if let (Some(region), Keyboard::Follows) = (region, keyboard) {
             session.composition.focus_pane(region, created.clone());
         }
@@ -2186,7 +2193,7 @@ pub(crate) fn submit(
 /// The tab a request makes under a name the window chose, when it makes one.
 ///
 /// A move into a Muster tab on another machine makes a part of that tab here, under a name the
-/// window already holds, so it is not one.
+/// window already holds, so it is not one - and neither is a pane joining such a tab.
 fn made_tab(intent: &BackendIntent) -> Option<&TabId> {
     match intent {
         BackendIntent::CreateTab { tab, .. }
@@ -3174,6 +3181,26 @@ fn landing(tab: &RosterTab) -> Result<(DaemonId, PaneId), String> {
         )
     })?;
     Ok((pane.key.daemon.clone(), pane.key.pane.clone()))
+}
+
+/// The pane a machine's part of a tab is showing, or `None` when that machine has no part of
+/// the tab.
+///
+/// What a pane split onto another machine is put beside once the tab already has a part there.
+/// The region's own pane first, because that is the one somebody last had the keyboard in; the
+/// mirror's first pane in the tab for a part no reconcile has given a region yet.
+pub(crate) fn pane_in_part(daemon: &DaemonId, tab: &TabId) -> Option<PaneId> {
+    let session = poison::lock(&SESSION, "session");
+    let shown = session
+        .composition
+        .region_of(daemon, tab)
+        .and_then(|region| session.composition.region(region))
+        .and_then(|region| region.pane.clone());
+    if shown.is_some() {
+        return shown;
+    }
+    let mirror = poison::lock(&session.backends.get(daemon)?.mirror, "mirror");
+    mirror.panes_in_tab(tab).next().map(|pane| pane.id.clone())
 }
 
 /// The pane this window's keyboard feeds, named.

@@ -62,8 +62,8 @@ the end of every pane's row once more than one machine is attached. `--json` car
 every pane as `daemon`.
 
 `pane new` and `tab new` take `--daemon ID`, which says *where* rather than what to grow from -
-so it cannot be given beside a `--pane`, and it ignores `$MUSTER_PANE` rather than sending the
-pane you are sitting in back to the machine you were leaving:
+so it ignores `$MUSTER_PANE` rather than sending the pane you are sitting in back to the machine
+you were leaving:
 
     muster pane new --daemon devenv --run claude
 
@@ -76,6 +76,16 @@ That is the state a devenv is in the day you name it in your config, and the sta
 machine is in the moment you close its last pane. The window fills such a machine on its own
 as soon as it says it holds nothing, so most of the time there is nothing to do; `--daemon` is
 how a script says it outright, and how you ask again if a daemon refused.
+
+Beside `--pane`, `--daemon` puts the new pane on that machine in the named pane's tab, which is
+what right-clicking a pane and picking a machine does:
+
+    muster pane new --pane p1w3r07bsd --daemon devenv --run claude
+
+If the tab already has panes on devenv, the new pane splits the one devenv's region has the
+keyboard on, on the side you asked for. If it has none, devenv joins the tab as a new region at
+its right-hand end, and the side is ignored: a tab lays its machines side by side, and Muster
+keeps no split tree across them.
 
 ## Which window
 

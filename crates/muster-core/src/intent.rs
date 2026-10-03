@@ -157,6 +157,25 @@ pub enum BackendIntent {
         run: Option<String>,
         name: Option<String>,
     },
+    /// Makes a pane on this machine as a new part of a Muster tab another machine already holds
+    /// part of, which is what splitting a laptop pane onto a devenv means when the devenv has no
+    /// part of that tab yet. The adapter mints the pane's name and says it in
+    /// [`Outcome::created`].
+    ///
+    /// Not [`BackendIntent::CreateTab`], although the daemon is asked for the same placement:
+    /// that makes a tab under a name the window has only just minted, and this joins one the
+    /// window already holds. The window takes the one before asking and surfaces it after; doing
+    /// either to a tab it already shows would be a write to the shared record of which window
+    /// holds which tab, about a tab whose holder has not changed.
+    JoinTab {
+        tab: TabId,
+        /// Where its pane starts. `None` takes the daemon's own default: the pane it is joining
+        /// is on another machine, so its directory names nothing here.
+        cwd: Option<String>,
+        /// Both mean what they mean on [`BackendIntent::SplitPane`].
+        run: Option<String>,
+        name: Option<String>,
+    },
     /// Grows or shrinks a pane against its neighbour, by a share of the region.
     ///
     /// Unlike `SetSplitRatio`, which names a divider by the turns down to it and says exactly
@@ -283,6 +302,11 @@ impl BackendIntent {
             ),
             BackendIntent::CreateTab { tab, cwd, run, name } => format!(
                 "CreateTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {} }}",
+                counted(run.as_ref()),
+                named(name.as_deref())
+            ),
+            BackendIntent::JoinTab { tab, cwd, run, name } => format!(
+                "JoinTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {} }}",
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),

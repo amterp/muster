@@ -687,6 +687,19 @@ message SplitPane {
   // three panes would drag the user's cursor through all three, and making a pane is not the
   // same act as looking at one.
   bool take_focus = 8;
+
+  // The machine the new pane starts on, when that is not the split pane's own. Empty, or the
+  // pane's own machine, is an ordinary split.
+  //
+  // The new pane joins the tab holding the split pane. A tab holds one region per machine, side
+  // by side: when this machine already has one in the tab, its pane there is split on `side`,
+  // and when it has none it joins the tab as a new region at the end, where `side` has nothing
+  // to apply to. `cwd` is never taken from the split pane, whose directory is a path on another
+  // machine.
+  //
+  // Separate from `daemon_id`, which names the machine holding the pane being split and is
+  // refused when it disagrees with the pane: the two answer different questions.
+  string new_pane_daemon_id = 9;
 }
 
 // Sends text to a pane, whether or not anything is showing it.

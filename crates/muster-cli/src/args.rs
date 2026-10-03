@@ -129,10 +129,11 @@ tab. Both have to be on the same machine - a pane is a process, and it lives whe
 
 `pane new` and `tab new` also take --daemon, which is a machine's own name as `muster window` \
 prints it beside every pane: local, or whatever a [[daemon]] block in your config calls the \
-machine. It says where rather than what to grow from, so it cannot be given beside a REF, and it \
-is the way to reach a machine you have no pane on at all - a devenv the day you attach it, or one \
-whose last pane you closed. A machine with nothing on screen gets a first pane rather than a \
-refusal.
+machine. On its own it says where rather than what to grow from, and it is the way to reach a \
+machine you have no pane on at all - a devenv the day you attach it, or one whose last pane you \
+closed. A machine with nothing on screen gets a first pane rather than a refusal. Beside --pane, \
+`pane new` puts the new pane on that machine in the named pane's tab: split beside that \
+machine's part of the tab when it has one, and as a new part at the tab's end when it does not.
 ";
 
 const EXAMPLES: &str = "\
@@ -407,11 +408,12 @@ enum Doing {
         down: bool,
 
         /// The pane to split, or the one this is running in
-        #[arg(long, value_name = "REF", group = "somewhere")]
+        #[arg(long, value_name = "REF")]
         pane: Option<String>,
 
-        /// The machine to put it on, instead of naming one of its panes
-        #[arg(long, value_name = "ID", group = "somewhere")]
+        /// The machine to put it on: beside --pane when one is named, or on its own for a
+        /// machine you have no pane on
+        #[arg(long, value_name = "ID")]
         daemon: Option<String>,
 
         /// Where it starts, or the directory the split came from
@@ -814,11 +816,12 @@ fn pane(
             // once is refused before this is reached.
             let side = chosen(&[(*left, "left"), (*right, "right"), (*up, "up"), (*down, "down")])
                 .unwrap_or("right");
-            let (pane_id, daemon_id) =
-                pane_and_machine(pane.as_ref(), daemon.as_ref(), environment);
+            let (pane_id, daemon_id, new_pane_daemon_id) =
+                split_target(pane.as_ref(), daemon.as_ref(), environment);
             send(request::Payload::SplitPane(SplitPane {
                 pane_id,
                 daemon_id,
+                new_pane_daemon_id,
                 side: side.to_string(),
                 cwd: directory(cwd.as_ref(), daemon.as_ref(), here)?,
                 run: run.clone().unwrap_or_default(),
@@ -1173,6 +1176,23 @@ fn pane_and_machine(
         Some(daemon) => (String::new(), daemon.clone()),
         None => (pane_ref(pane, environment), String::new()),
     }
+}
+
+/// The pane a split grows from, the machine holding it, and the machine the new pane goes on.
+///
+/// Both named is a pane put beside one on another machine, which the schema carries in a field
+/// of its own: `daemon_id` beside a pane is the machine holding that pane, and is refused when
+/// it disagrees.
+fn split_target(
+    pane: Option<&String>,
+    daemon: Option<&String>,
+    environment: &BTreeMap<String, String>,
+) -> (String, String, String) {
+    if let (Some(_), Some(onto)) = (pane, daemon) {
+        return (pane_ref(pane, environment), String::new(), onto.clone());
+    }
+    let (pane_id, daemon_id) = pane_and_machine(pane, daemon, environment);
+    (pane_id, daemon_id, String::new())
 }
 
 fn running_in(environment: &BTreeMap<String, String>) -> Option<String> {

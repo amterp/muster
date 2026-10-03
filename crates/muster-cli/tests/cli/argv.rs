@@ -210,21 +210,26 @@ fn described_tab(payload: &request::Payload) -> Option<Value> {
     })
 }
 
+fn described_split(split: &muster_proto::SplitPane) -> Value {
+    json!({
+        "split_pane": fields([
+            ("pane_id", said(&split.pane_id)),
+            ("daemon_id", said(&split.daemon_id)),
+            ("new_pane_daemon_id", said(&split.new_pane_daemon_id)),
+            ("side", Some(json!(split.side))),
+            ("cwd", said(&split.cwd)),
+            ("run", said(&split.run)),
+            ("name", said(&split.name)),
+            ("take_focus", split.take_focus.then_some(json!(true))),
+        ])
+    })
+}
+
 fn described_pane_or_window(payload: &request::Payload) -> Value {
     match payload {
         request::Payload::ReadWindow(_) => json!({ "read_window": {} }),
         request::Payload::ReadDaemons(_) => json!({ "read_daemons": {} }),
-        request::Payload::SplitPane(split) => json!({
-            "split_pane": fields([
-                ("pane_id", said(&split.pane_id)),
-                ("daemon_id", said(&split.daemon_id)),
-                ("side", Some(json!(split.side))),
-                ("cwd", said(&split.cwd)),
-                ("run", said(&split.run)),
-                ("name", said(&split.name)),
-                ("take_focus", split.take_focus.then_some(json!(true))),
-            ])
-        }),
+        request::Payload::SplitPane(split) => described_split(split),
         request::Payload::RenamePane(rename) => json!({
             "rename_pane": fields([
                 ("pane_id", said(&rename.pane_id)),
