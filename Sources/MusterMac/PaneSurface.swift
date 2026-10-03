@@ -51,6 +51,12 @@ public protocol PaneSurface: AnyObject {
   /// Called when somebody cmd-clicks a link in the pane, asking for it to be opened.
   var onOpenLink: (@MainActor (OpenedLink) -> Void)? { get set }
 
+  /// Called when the pointer over the pane should change shape.
+  var onPointerShape: (@MainActor (PointerShape) -> Void)? { get set }
+
+  /// Called with the link under the pointer as it arrives over one, and nil as it leaves.
+  var onHoverLink: (@MainActor (String?) -> Void)? { get set }
+
   /// Called when the command this surface is running exits, which for a pane means its
   /// bridge is gone. Settable rather than reported once, because whoever owns the surface is
   /// not who needs to know.

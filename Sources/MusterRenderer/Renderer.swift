@@ -26,13 +26,14 @@ private func rendererWakeup(_ userdata: UnsafeMutableRawPointer?) {
   Task { @MainActor in Renderer.current?.tick() }
 }
 
-/// Takes the actions Muster's find bar and links are built on, and declines the rest.
+/// Takes the actions Muster's find bar, links and pointer are built on, and declines the rest.
 ///
 /// The counts are what the bar draws. Starting and ending a search are claimed without doing
 /// anything, because Muster's own bar is what starts and ends one - a surface never opens
 /// Ghostty's. A link is claimed and handed to the surface it was clicked in, which is the one
-/// place that knows which machine the pane is on. Everything else arrives with the feature that
-/// consumes it.
+/// place that knows which machine the pane is on. The pointer's shape and the link under it are
+/// handed to their surface too, which is how a link shows it can be clicked before it is.
+/// Everything else arrives with the feature that consumes it.
 private func rendererAction(
   _ app: ghostty_app_t?, _ target: ghostty_target_s, _ action: ghostty_action_s
 ) -> Bool {
@@ -62,9 +63,33 @@ private func rendererAction(
     let token = UInt(bitPattern: ghostty_surface_userdata(surface))
     Task { @MainActor in Surface.report(OpenedLink(kind: kind, url: url), token: token) }
     return true
+  case GHOSTTY_ACTION_MOUSE_SHAPE:
+    guard let shape = PointerShape(action.action.mouse_shape),
+      let token = token(of: target)
+    else { return false }
+    Task { @MainActor in Surface.report(shape, token: token) }
+    return true
+  case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+    // Copied here, as for OPEN_URL. Empty is the pointer leaving a link.
+    let over = action.action.mouse_over_link
+    let url =
+      over.url.map {
+        String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(over.len)), as: UTF8.self)
+      } ?? ""
+    guard let token = token(of: target) else { return false }
+    Task { @MainActor in Surface.reportHover(url.isEmpty ? nil : url, token: token) }
+    return true
   default:
     return false
   }
+}
+
+/// The token a surface was created with, for an action aimed at one.
+private func token(of target: ghostty_target_s) -> UInt? {
+  guard target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface else {
+    return nil
+  }
+  return UInt(bitPattern: ghostty_surface_userdata(surface))
 }
 
 /// Hands a search's news to the surface it is about, on the main actor.
@@ -341,6 +366,13 @@ public final class Surface {
   /// is text a program printed and may point anywhere.
   public var onOpenLink: (@MainActor (OpenedLink) -> Void)?
 
+  /// Called when the pointer over this surface should change shape: a hand over a link that a
+  /// click would open, an I-beam over text, or what the program asked for.
+  public var onPointerShape: (@MainActor (PointerShape) -> Void)?
+
+  /// Called with the link under the pointer as it arrives over one, and nil as it leaves.
+  public var onHoverLink: (@MainActor (String?) -> Void)?
+
   /// The offset this surface is already drawn at.
   ///
   /// Not a second home for the answer - the core owns it - but a memo of what was last pushed
@@ -401,6 +433,14 @@ public final class Surface {
 
   static func report(_ link: OpenedLink, token: UInt) {
     living[token]?.surface?.onOpenLink?(link)
+  }
+
+  static func report(_ shape: PointerShape, token: UInt) {
+    living[token]?.surface?.onPointerShape?(shape)
+  }
+
+  static func reportHover(_ url: String?, token: UInt) {
+    living[token]?.surface?.onHoverLink?(url)
   }
 
   public func setSize(width: UInt32, height: UInt32) {
@@ -616,7 +656,37 @@ public final class Surface {
   }
 }
 
-/// What a surface's search has found, as libghostty reports it: one fact at a time.
+/// The shape the pointer takes over a surface, as libghostty asks for it.
+///
+/// Muster's own words for the shapes Ghostty's macOS app draws, so the shell picks the cursor
+/// without knowing libghostty's enum. Ghostty draws nothing for the others, and neither does
+/// Muster: an unknown shape leaves the pointer as it was.
+public enum PointerShape: Equatable, Sendable {
+  case arrow, text, verticalText, link, grab, grabbing, crosshair, notAllowed, contextMenu
+  case resizeLeft, resizeRight, resizeUp, resizeDown, resizeLeftRight, resizeUpDown
+
+  init?(_ shape: ghostty_action_mouse_shape_e) {
+    switch shape {
+    case GHOSTTY_MOUSE_SHAPE_DEFAULT: self = .arrow
+    case GHOSTTY_MOUSE_SHAPE_TEXT: self = .text
+    case GHOSTTY_MOUSE_SHAPE_VERTICAL_TEXT: self = .verticalText
+    case GHOSTTY_MOUSE_SHAPE_POINTER: self = .link
+    case GHOSTTY_MOUSE_SHAPE_GRAB: self = .grab
+    case GHOSTTY_MOUSE_SHAPE_GRABBING: self = .grabbing
+    case GHOSTTY_MOUSE_SHAPE_CROSSHAIR: self = .crosshair
+    case GHOSTTY_MOUSE_SHAPE_NOT_ALLOWED: self = .notAllowed
+    case GHOSTTY_MOUSE_SHAPE_CONTEXT_MENU: self = .contextMenu
+    case GHOSTTY_MOUSE_SHAPE_W_RESIZE: self = .resizeLeft
+    case GHOSTTY_MOUSE_SHAPE_E_RESIZE: self = .resizeRight
+    case GHOSTTY_MOUSE_SHAPE_N_RESIZE: self = .resizeUp
+    case GHOSTTY_MOUSE_SHAPE_S_RESIZE: self = .resizeDown
+    case GHOSTTY_MOUSE_SHAPE_EW_RESIZE: self = .resizeLeftRight
+    case GHOSTTY_MOUSE_SHAPE_NS_RESIZE: self = .resizeUpDown
+    default: return nil
+    }
+  }
+}
+
 /// A link somebody asked to open, as libghostty reported it.
 public struct OpenedLink: Equatable, Sendable {
   public enum Kind: Equatable, Sendable {
@@ -635,6 +705,7 @@ public struct OpenedLink: Equatable, Sendable {
   }
 }
 
+/// What a surface's search has found, as libghostty reports it: one fact at a time.
 public enum SearchReport: Equatable, Sendable {
   /// How many matches there are. Nil while libghostty does not know.
   case total(Int?)

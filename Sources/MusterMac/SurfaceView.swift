@@ -73,6 +73,51 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// is: whoever sets it may do so before the surface exists.
   public var onOpenLink: (@MainActor (OpenedLink) -> Void)?
 
+  /// Called with the link under the pointer as it arrives over one, and nil as it leaves.
+  public var onHoverLink: (@MainActor (String?) -> Void)?
+
+  /// The shape libghostty last asked the pointer to take here. The I-beam until it says, as in
+  /// Ghostty: the pointer is over text.
+  public private(set) var pointerShape: PointerShape = .text {
+    didSet {
+      guard pointerShape != oldValue else { return }
+      window?.invalidateCursorRects(for: self)
+      // A cursor rect takes effect as the pointer next crosses into it, and this changes while
+      // the pointer sits still - a modifier pressed over a link - so it is set now as well.
+      if let window, bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil)) {
+        cursor.set()
+      }
+    }
+  }
+
+  /// The cursor for the shape libghostty asked for.
+  public var cursor: NSCursor { Self.cursor(for: pointerShape) }
+
+  /// Ghostty's choice of cursor for each shape (`SurfaceView_AppKit.swift`, `setCursorShape`).
+  public static func cursor(for shape: PointerShape) -> NSCursor {
+    switch shape {
+    case .arrow: .arrow
+    case .text: .iBeam
+    case .verticalText: .iBeamCursorForVerticalLayout
+    case .link: .pointingHand
+    case .grab: .openHand
+    case .grabbing: .closedHand
+    case .crosshair: .crosshair
+    case .notAllowed: .operationNotAllowed
+    case .contextMenu: .contextualMenu
+    case .resizeLeft: .resizeLeft
+    case .resizeRight: .resizeRight
+    case .resizeUp: .resizeUp
+    case .resizeDown: .resizeDown
+    case .resizeLeftRight: .resizeLeftRight
+    case .resizeUpDown: .resizeUpDown
+    }
+  }
+
+  public override func resetCursorRects() {
+    addCursorRect(bounds, cursor: cursor)
+  }
+
   public override init(frame: NSRect) {
     super.init(frame: frame)
     // Layer-backed before the surface is created, and on the main thread. libghostty's
@@ -109,6 +154,12 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     }
     surface.onOpenLink = { [weak self] link in
       self?.onOpenLink?(link)
+    }
+    surface.onPointerShape = { [weak self] shape in
+      self?.pointerShape = shape
+    }
+    surface.onHoverLink = { [weak self] url in
+      self?.onHoverLink?(url)
     }
     attach(typeable: typeable)
     surface.setSize(

@@ -261,7 +261,9 @@ hyperlink a program printed. Web and mail links open on this Mac, from a devenv 
 opens only from a pane on this Mac, since from a devenv it names a file over there; and a file
 that would run code when opened, or a link hiding invisible characters, is refused with a beep.
 A hyperlink to another app's scheme, such as `vscode://`, asks first, because the screen shows
-its text rather than where it goes. The rules are Ghostty's.
+its text rather than where it goes. The rules are Ghostty's. The pointer turns into a hand over
+a link a click would open, and the link it is over shows at the pane's bottom left, so a
+hyperlink's target can be read before it is opened.
 
 **A row in the agent list says two things, and you write the first one.** Underneath is what
 the agent calls itself - Claude sets its terminal title to what it is working on, so the row

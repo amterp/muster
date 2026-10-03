@@ -273,6 +273,9 @@ public final class PaneChrome: NSView {
   /// typed. Added over the surface rather than beside it, the way the find bar is.
   private let badge = PaneBadge(frame: .zero)
 
+  /// The link under the pointer, at the pane's bottom left while the pointer is over one.
+  private let linkBanner = LinkBanner(frame: .zero)
+
   public init(frame: NSRect, surface: SurfaceView) {
     self.surface = surface
     super.init(frame: frame)
@@ -291,9 +294,13 @@ public final class PaneChrome: NSView {
       guard let self, let paneID = self.paneID else { return }
       self.onPointerRequested?(paneID, pointer)
     }
+    surface.onHoverLink = { [weak self] url in
+      self?.showLink(url)
+    }
     // After the surface, so it composites over libghostty's own layer rather than under it.
     addSubview(badge)
     badge.isHidden = true
+    addSubview(linkBanner)
     addSubview(dropOverlay)
     // Last, so a press on it is the handle's and never the terminal's underneath.
     addSubview(handle)
@@ -352,6 +359,14 @@ public final class PaneChrome: NSView {
 
   /// Whether a number is drawn over this pane right now.
   public var badgeShown: Bool { !badge.isHidden }
+
+  /// The link the banner is showing, or nil while it is hidden.
+  var shownLink: String? { linkBanner.isHidden ? nil : linkBanner.url }
+
+  private func showLink(_ url: String?) {
+    linkBanner.url = url
+    needsLayout = true
+  }
 
   /// The badge itself, so a test can check that a click did not land on it.
   var badgeView: NSView { badge }
@@ -450,6 +465,7 @@ public final class PaneChrome: NSView {
     let focusInset = PaneAppearance.stateWidth + PaneAppearance.focusGap
     focusRing.frame = bounds.insetBy(dx: focusInset, dy: focusInset)
     badge.frame = bounds
+    linkBanner.frame = linkBanner.frame(in: surface.frame)
     handle.frame = PaneDrop.handleFrame(in: bounds)
     window?.invalidateCursorRects(for: handle)
   }
@@ -462,6 +478,53 @@ public final class PaneChrome: NSView {
     focusRing.borderColor =
       isFocused ? PaneAppearance.focusColor.cgColor : NSColor.clear.cgColor
     needsLayout = true
+  }
+}
+
+/// The link under the pointer, in small type at the pane's bottom left, as Ghostty shows one.
+///
+/// What tells somebody where a link goes before they open it - an OSC 8 hyperlink's target is
+/// not on the screen at all. Transparent to the mouse, for the reason the badge is.
+@MainActor
+final class LinkBanner: NSView {
+  private let label = NSTextField(labelWithString: "")
+
+  var url: String? {
+    didSet {
+      label.stringValue = url ?? ""
+      isHidden = url == nil
+    }
+  }
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    isHidden = true
+    wantsLayer = true
+    layer?.cornerRadius = 4
+    layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.9).cgColor
+    label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    label.textColor = .secondaryLabelColor
+    label.lineBreakMode = .byTruncatingMiddle
+    addSubview(label)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
+  }
+
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  /// Its frame at the bottom left of `area`: as wide as the link and never past the area's
+  /// width, so a long one is cut in the middle rather than running off the pane.
+  func frame(in area: NSRect) -> NSRect {
+    let padding = NSSize(width: 6, height: 2)
+    let text = label.intrinsicContentSize
+    let width = min(text.width + padding.width * 2, max(area.width - 8, 0))
+    let height = text.height + padding.height * 2
+    label.frame = NSRect(
+      x: padding.width, y: padding.height, width: max(width - padding.width * 2, 0),
+      height: text.height)
+    return NSRect(x: area.minX + 4, y: area.minY + 4, width: width, height: height)
   }
 }
 
