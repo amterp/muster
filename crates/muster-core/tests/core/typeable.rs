@@ -15,6 +15,8 @@ use muster_core::respawn::{Ended, Ending};
 use muster_core::typeable::{Ask, Waiting};
 use serde_json::{Value, json};
 
+use crate::support::remedy;
+
 #[test]
 fn typeable_conformance() {
     let corpus = Conformance::load("typeable.json");
@@ -23,6 +25,7 @@ fn typeable_conformance() {
         let deadline = number(given, "deadline")?;
         let mut waiting = Waiting::new();
         let (mut raised, mut cleared, mut details) = (Vec::new(), Vec::new(), Vec::new());
+        let mut remedies: Vec<Value> = Vec::new();
         let mut asked: Vec<Value> = Vec::new();
         // What each `ask` step answered and each `reconnected` step named, only for a case that
         // has such a step, so that the cases about something else need not spell them.
@@ -56,9 +59,10 @@ fn typeable_conformance() {
             } else if let Some(now) = step.get("reconcile").and_then(Value::as_u64) {
                 last_read = now;
                 let reported = waiting.reconcile(now, deadline);
-                for (key, detail) in reported.raise {
+                for (key, detail, offered) in reported.raise {
                     raised.push(json!(key));
                     details.push(detail);
+                    remedies.push(remedy::spell(offered.as_ref()));
                 }
                 cleared.extend(
                     reported
@@ -84,6 +88,8 @@ fn typeable_conformance() {
             // Only where a case asks for it. One sentence pinned once beats the same
             // paragraph restated in thirteen cases that are about something else.
             ("detail", given.get("detail").is_some().then(|| json!(details.last()))),
+            // The same terms: only the cases about what a person can do about it.
+            ("remedy", given.get("detail").is_some().then(|| json!(remedies.last()))),
             ("asks", (!asks.is_empty()).then_some(Value::Array(asks))),
             ("reconnected", (!reconnects.is_empty()).then_some(Value::Array(reconnects))),
         ]))

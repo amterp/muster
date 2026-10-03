@@ -307,8 +307,8 @@ fn watch() {
             let mut waiting = poison::lock(&WAITING, "typeable");
             waiting.reconcile(clock::monotonic_now(), deadline)
         };
-        for (key, detail) in reported.raise {
-            session::raise_problem(&key, Severity::Error, &detail);
+        for (key, detail, remedy) in reported.raise {
+            session::raise_problem_with_remedy(&key, Severity::Error, &detail, remedy.as_ref());
         }
         for (key, why) in reported.clear {
             session::clear_problem(&key, why.as_str());
@@ -327,8 +327,8 @@ fn watch() {
             let mut painting = poison::lock(&PAINTING, "painting");
             painting.reconcile(clock::monotonic_now(), painting_deadline)
         };
-        for (key, detail) in painted.raise {
-            session::raise_problem(&key, Severity::Warning, &detail);
+        for (key, detail, remedy) in painted.raise {
+            session::raise_problem_with_remedy(&key, Severity::Warning, &detail, remedy.as_ref());
         }
         for (key, why) in painted.clear {
             session::clear_problem(&key, why.as_str());

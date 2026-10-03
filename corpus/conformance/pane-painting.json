@@ -20,7 +20,7 @@
     },
     {
       "name": "a pane that answers nothing says so once the deadline passes",
-      "why": "The measured failure. Input reached the pane, no frame followed, and every layer below goes on reporting health - so this sentence is the only thing in the window that disagrees with a pane that looks fine. Said once rather than on every reading: the watch asks repeatedly about a condition that stays true, and a raise per reading would republish the roster and reopen a sidebar somebody just closed for as long as the pane stayed quiet.",
+      "why": "The measured failure. Input reached the pane, no frame followed, and every layer below goes on reporting health - so this sentence is the only thing in the window that disagrees with a pane that looks fine. Said once rather than on every reading: the watch asks repeatedly about a condition that stays true, and a raise per reading would republish the roster and reopen a sidebar somebody just closed for as long as the pane stayed quiet. A reattach is offered beside it, since the bridge it replaces is the one this window is running for a pane it is showing.",
       "given": {
         "deadline": 10000,
         "steps": [
@@ -28,9 +28,14 @@
           { "tick": 9999 },
           { "tick": 1 },
           { "tick": 60000 }
-        ]
+        ],
+        "remedy": true
       },
-      "expect": { "raised": ["pane:local/p1w3r07bsd:painting"], "cleared": [] }
+      "expect": {
+        "raised": ["pane:local/p1w3r07bsd:painting"],
+        "cleared": [],
+        "remedy": "reattach local/p1w3r07bsd"
+      }
     },
     {
       "name": "and takes it back the moment the pane paints",

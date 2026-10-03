@@ -94,6 +94,30 @@ fn a_pane_whose_bridge_never_dials_is_reported() {
         problem.detail.contains(&pane) && problem.detail.contains("link.accept.failed"),
         "the sentence has to name the pane and where to look for the cause: {problem:?}"
     );
+
+    // A pane nothing has ever dialed offers a reattach beside the sentence, and the button is
+    // the request itself: the shell sends it back as it came, so it has to work as it came.
+    let remedy = problem.remedy.clone().unwrap_or_else(|| {
+        panic!(
+            "a pane no bridge ever dialed is one Muster asks for again on its own, so asking now \
+             is safe to offer as a button: {problem:?}"
+        )
+    });
+    assert_eq!(remedy.title, "Reattach");
+    let sent = remedy.request.expect("a remedy carries the request its button sends");
+    match &sent.payload {
+        Some(request::Payload::ReattachPane(reattach)) => assert_eq!(reattach.pane_id, pane),
+        other => panic!("the remedy should reattach {pane}, and it sends {other:?}"),
+    }
+    let before = restarts(&pane);
+    let reply = Response::decode(muster::dispatch(&sent.encode_to_vec()).as_slice())
+        .expect("the core answers with a response this build knows");
+    assert_ok(&reply);
+    until(
+        "the remedy to ask the shell for a new bridge",
+        || restarts(&pane) > before,
+        || format!("the pane's bridge count stayed at {before}: {:?}", latest_view()),
+    );
 }
 
 /// A window opening onto a zoomed tab accuses nobody, and unzooming it accuses nobody either.
@@ -325,6 +349,28 @@ fn filling() -> Option<(String, String)> {
         view_node::Node::Pane(pane) => Some((pane.pane_id, pane.link_socket_path)),
         view_node::Node::Split(_) => None,
     }
+}
+
+/// How many bridges the last published view has asked for a pane, which is what moves when
+/// somebody asks for one.
+fn restarts(pane_id: &str) -> u32 {
+    fn find(node: &ViewNode, pane_id: &str) -> Option<u32> {
+        match &node.node {
+            Some(view_node::Node::Pane(pane)) => {
+                (pane.pane_id == pane_id).then_some(pane.bridge_restarts)
+            }
+            Some(view_node::Node::Split(split)) => {
+                split.first.iter().chain(split.second.iter()).find_map(|child| find(child, pane_id))
+            }
+            None => None,
+        }
+    }
+    latest_view()
+        .into_iter()
+        .flat_map(|view| view.regions)
+        .filter_map(|region| region.root)
+        .find_map(|root| find(&root, pane_id))
+        .unwrap_or_default()
 }
 
 /// Every pane the last published view shows.

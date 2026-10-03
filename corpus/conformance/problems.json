@@ -70,6 +70,34 @@
       }
     },
     {
+      "name": "the same words with a remedy offered or taken away are news",
+      "why": "The remedy is a button beside the sentence, so a problem that comes to offer one, or stops offering one, has changed what the person can do - the box has to follow it even though the words are the same. A pane whose bridge was refused offers no button, and the same pane gaining one after its connection was lost is the case this pins. A repeat of the same remedy changes nothing, like a repeat of anything else.",
+      "given": {
+        "steps": [
+          { "raise": "pane:devenv/p206y9q4kd", "severity": "error", "detail": "the pane is dark" },
+          {
+            "raise": "pane:devenv/p206y9q4kd",
+            "severity": "error",
+            "detail": "the pane is dark",
+            "remedy": "reattach devenv/p206y9q4kd"
+          },
+          {
+            "raise": "pane:devenv/p206y9q4kd",
+            "severity": "error",
+            "detail": "the pane is dark",
+            "remedy": "reattach devenv/p206y9q4kd"
+          }
+        ]
+      },
+      "expect": {
+        "changed": [true, true, false],
+        "outstanding": [
+          "error pane:devenv/p206y9q4kd: the pane is dark [reattach devenv/p206y9q4kd]"
+        ],
+        "has_error": true
+      }
+    },
+    {
       "name": "fixing it is news, and staying fixed is not",
       "why": "The disappearance is the only confirmation anybody gets that a save was accepted, so it has to be published. What must not be published is every subsequent successful read: every success path clears the problem its failure path raises, so a window with a good config clears this on every reload forever.",
       "given": {

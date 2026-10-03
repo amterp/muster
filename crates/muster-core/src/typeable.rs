@@ -31,6 +31,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::{DaemonId, PaneKey};
 use crate::diagnostics::clock::describe;
+use crate::problems::Remedy;
 use crate::respawn::{self, Ended, Ending};
 
 /// How many deadlines a pane waits before a bridge is asked for, rather than only reported.
@@ -56,8 +57,9 @@ pub const ASK_AFTER_DEADLINES: u64 = 3;
 /// republish the roster for as long as a pane stayed quiet.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Reported {
-    /// Panes that have just fallen overdue: the problem key and the whole sentence to say.
-    pub raise: Vec<(String, String)>,
+    /// Panes that have just fallen overdue: the problem key, the whole sentence to say, and the
+    /// remedy to offer beside it, if one is safe to.
+    pub raise: Vec<(String, String, Option<Remedy>)>,
 
     /// Keys that were raised and are no longer true, and why each stopped being true.
     ///
@@ -366,7 +368,7 @@ impl Waiting {
                 .difference(&self.reported)
                 .map(|pane| {
                     let last = self.waits.get(pane).and_then(|wait| wait.last.as_ref());
-                    (key(pane), detail(pane, deadline, last))
+                    (key(pane), detail(pane, deadline, last), remedy(pane, last))
                 })
                 .collect(),
             clear: self
@@ -466,6 +468,21 @@ impl Waiting {
 /// keys it expects, and the seam's own test, which reads them back off the wire.
 pub fn key(pane: &PaneKey) -> String {
     format!("pane:{pane}")
+}
+
+/// What to offer beside that sentence as one click, if anything.
+///
+/// A reattach where it takes nothing from anybody, and nothing where it would. A pane that never
+/// had a bridge, or whose bridge lost its connection, is one Muster asks for again on its own
+/// every few deadlines, and whatever last drew it was this window's - so the click only asks
+/// sooner. A refused pane is being drawn by something else, and one taken over is being shown in
+/// another window: a reattach takes it from them, which the sentence says and a button would
+/// not (kan a_2IQsToWVW).
+fn remedy(pane: &PaneKey, last: Option<&Ended>) -> Option<Remedy> {
+    match last.map(|ended| ended.ending) {
+        None | Some(Ending::Gone | Ending::Lost) => Some(Remedy::Reattach(pane.clone())),
+        Some(Ending::Refused | Ending::TakenOver) => None,
+    }
 }
 
 /// What to tell somebody whose pane is deaf, and what to do about it.

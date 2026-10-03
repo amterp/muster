@@ -51,6 +51,7 @@ pub fn problem(report: &FontReport) -> Option<Problem> {
         return Some(Problem {
             key: KEY.to_string(),
             severity: Severity::Warning,
+            remedy: None,
             // What it fell back to is stated as the renderer's own default rather than named,
             // and that is the honest limit: the renderer accepts a family name as a string and
             // offers no way to ask which font it ended up with, so any name here would be a
@@ -69,6 +70,7 @@ pub fn problem(report: &FontReport) -> Option<Problem> {
         return Some(Problem {
             key: KEY.to_string(),
             severity: Severity::Warning,
+            remedy: None,
             detail: format!(
                 "`{}` in the config file's [font] family is installed but is not monospaced, so \
                  columns will not line up and the grid will look wrong. That is the font rather \

@@ -849,6 +849,15 @@ file - true, useless, and asking the person to open the one surface this list ex
 on the pane's own control socket, and the sentence for each is a case in `corpus/conformance/typeable.json`, where
 prose somebody reads under pressure can be reviewed as prose.
 
+**A problem can offer its remedy as a button, and only where clicking it without reading is safe.** The remedy is a
+request with its pane already named, carried on the problem and sent back by the shell exactly as it arrived, so the
+shell decides nothing about it. A remedy one click away and wrong is worse than a sentence, because the sentence is
+read first, so the line is drawn at things Muster would do on its own or that touch only what this window owns: a
+reattach for a pane no bridge ever dialed, for one whose connection went, and for one that stopped painting. A pane
+refused or taken over gets none, because there a reattach takes the pane from whatever is drawing it, which may be a
+window somebody is looking at (kan a_2IQsToWVW). Neither does a refused config, since Muster has no request that opens
+a file, nor a machine that is away, where the remedy is the network rather than anything Muster can do.
+
 **The same watch asks for another bridge, timed from when the shell started the last one.** The shell builds a bridge
 when the number a view carries for a pane moves, and reports `BridgeStarted` once it has acted on it. A pane whose
 started bridge has not dialed three deadlines later is asked for again. Timed from Muster's own ask instead, a loaded

@@ -26,6 +26,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::PaneKey;
+
 /// How much a problem asks of the person reading it.
 ///
 /// The split is what somebody has to *do*, not how bad it feels. That is what makes the
@@ -58,6 +60,35 @@ impl Severity {
     }
 }
 
+/// Something Muster can do about a problem, offered beside it as one click.
+///
+/// An ordinary request with its subject named, rather than an action from the keymap: the
+/// remedies worth offering are about *this* pane, and a keymap action names nothing. The
+/// problem carries the request whole and the shell sends it back unchanged, which is the shape
+/// a rename already has - the chord means "ask me", and what follows is a plain request.
+///
+/// **Offered only where clicking it is safe without reading the sentence beside it.** A remedy
+/// one click away and wrong is worse than a sentence, because a sentence is read first. So a
+/// remedy is something Muster would do on its own anyway, or something that touches only what
+/// this window already owns. Taking a pane from whatever else is drawing it is neither: that
+/// may be a window somebody is looking at, and it stays a sentence somebody acts on
+/// deliberately (kan a_2IQsToWVW).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Remedy {
+    /// Asks for a new bridge for the pane, as `muster pane reattach` does. The agent behind it
+    /// is untouched.
+    Reattach(PaneKey),
+}
+
+impl Remedy {
+    /// What the button says. The core's words, like every label the window draws.
+    pub fn title(&self) -> &'static str {
+        match self {
+            Remedy::Reattach(_) => "Reattach",
+        }
+    }
+}
+
 /// One thing that is wrong.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Problem {
@@ -72,7 +103,15 @@ pub struct Problem {
     /// value, what stopped working and what to type instead - so passing one through
     /// untouched beats anything this module could compose about it.
     pub detail: String,
+
+    /// What Muster can do about it in one click, when that is safe to offer. `None` for most
+    /// problems, whose remedy is the detail: an edit to a file, a machine to bring back, or a
+    /// decision somebody should make deliberately.
+    pub remedy: Option<Remedy>,
 }
+
+/// What is held for one raised condition: everything but its key.
+type Held = (Severity, String, Option<Remedy>);
 
 /// Everything wrong with this window right now.
 #[derive(Debug, Default)]
@@ -80,7 +119,7 @@ pub struct Problems {
     /// Keyed by condition. A `BTreeMap` rather than a `Vec` so that raising the same
     /// condition twice cannot produce two entries, and so the order two runs report is the
     /// same order.
-    raised: BTreeMap<String, (Severity, String)>,
+    raised: BTreeMap<String, Held>,
 }
 
 impl Problems {
@@ -93,9 +132,16 @@ impl Problems {
     /// The answer is what stops a watcher from fighting the person using it. Saving a file
     /// that is still broken in the same way is not a new problem, so it must not republish
     /// and must not reopen a sidebar somebody just closed. Only a genuine change - a first
-    /// raise, a different message, a different severity - is worth anybody's attention.
-    pub fn raise(&mut self, key: &str, severity: Severity, detail: &str) -> bool {
-        let fresh = (severity, detail.to_string());
+    /// raise, a different message, a different severity, a different remedy - is worth
+    /// anybody's attention.
+    pub fn raise(
+        &mut self,
+        key: &str,
+        severity: Severity,
+        detail: &str,
+        remedy: Option<&Remedy>,
+    ) -> bool {
+        let fresh = (severity, detail.to_string(), remedy.cloned());
         match self.raised.get(key) {
             Some(held) if *held == fresh => false,
             _ => {
@@ -124,10 +170,11 @@ impl Problems {
         let mut problems: Vec<Problem> = self
             .raised
             .iter()
-            .map(|(key, (severity, detail))| Problem {
+            .map(|(key, (severity, detail, remedy))| Problem {
                 key: key.clone(),
                 severity: *severity,
                 detail: detail.clone(),
+                remedy: remedy.clone(),
             })
             .collect();
         problems.sort_by(|left, right| {
@@ -142,7 +189,7 @@ impl Problems {
     /// interrupting somebody for and a warning is not, so this is what decides whether a
     /// closed sidebar gets opened.
     pub fn has_error(&self) -> bool {
-        self.raised.values().any(|(severity, _)| *severity == Severity::Error)
+        self.raised.values().any(|(severity, ..)| *severity == Severity::Error)
     }
 
     pub fn is_empty(&self) -> bool {

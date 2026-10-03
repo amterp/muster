@@ -34,7 +34,7 @@ use muster_core::mirror::{Change, Health, Mirror, Restored};
 use muster_core::names::Minter;
 use muster_core::pane_focus::PaneFocus;
 use muster_core::pane_text::PaneText;
-use muster_core::problems::{Problem, Problems, Severity};
+use muster_core::problems::{Problem, Problems, Remedy, Severity};
 use muster_core::reconnect;
 use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
@@ -53,8 +53,8 @@ use crate::bridge_link::{PaneLink, Reports};
 use crate::holding::Holding;
 use crate::proto::{
     AttentionChanged, ClipboardWrite, Event, Names, PaneTypeable, PasteHeld, PresentationChanged,
-    Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReopenWindow, Request, RosterChanged,
-    ViewChanged, event,
+    Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReattachPane, ReopenWindow, Request,
+    RosterChanged, ViewChanged, event, problem, request,
 };
 use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
@@ -332,9 +332,19 @@ static DARK: Mutex<BTreeSet<PaneKey>> = Mutex::new(BTreeSet::new());
 /// somebody keeps closing, and doing the roster and the event together is what stops one
 /// from being forgotten at a new call site.
 pub(crate) fn raise_problem(key: &str, severity: Severity, detail: &str) {
+    raise_problem_with_remedy(key, severity, detail, None);
+}
+
+/// [`raise_problem`], with something to offer beside the sentence as one click.
+pub(crate) fn raise_problem_with_remedy(
+    key: &str,
+    severity: Severity,
+    detail: &str,
+    remedy: Option<&Remedy>,
+) {
     let changed = {
         let mut held = poison::lock(&PROBLEMS, "problems");
-        held.get_or_insert_with(Problems::new).raise(key, severity, detail)
+        held.get_or_insert_with(Problems::new).raise(key, severity, detail, remedy)
     };
     if !changed {
         return;
@@ -346,7 +356,12 @@ pub(crate) fn raise_problem(key: &str, severity: Severity, detail: &str) {
     // own record carries the level where there is one.
     log::info(
         "problem.raised",
-        fields! { "key" => key, "severity" => severity.as_str(), "detail" => detail },
+        fields! {
+            "key" => key,
+            "severity" => severity.as_str(),
+            "detail" => detail,
+            "remedy" => remedy.map(Remedy::title).unwrap_or_default(),
+        },
     );
     reconcile_sidebars_with_problems();
     announce_problems();
@@ -491,9 +506,25 @@ fn announce_problems() {
                 key: problem.key,
                 severity: problem.severity.as_str().to_string(),
                 detail: problem.detail,
+                remedy: problem.remedy.as_ref().map(remedy_message),
             })
             .collect(),
     })));
+}
+
+/// A remedy as the shell sends it back: the request whole, with its pane named. No window is
+/// named, because the core finds the window from the pane (`mip/0006-one-process.md`).
+fn remedy_message(remedy: &Remedy) -> problem::Remedy {
+    let payload = match remedy {
+        Remedy::Reattach(pane) => request::Payload::ReattachPane(ReattachPane {
+            daemon_id: pane.daemon.to_string(),
+            pane_id: pane.pane.to_string(),
+        }),
+    };
+    problem::Remedy {
+        title: remedy.title().to_string(),
+        request: Some(Request { payload: Some(payload), ..Request::default() }),
+    }
 }
 
 /// Where the first window's arrangement is written, as Startup says.

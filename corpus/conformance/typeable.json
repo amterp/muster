@@ -6,7 +6,7 @@
   "cases": [
     {
       "name": "a pane whose bridge never dials is reported once the deadline passes",
-      "why": "The base case, and the whole point: before this the same fact reached the run log and the window said nothing, so the first person to know was whoever typed into a pane that looked fine. The sentence is pinned here rather than in every case because it is one sentence - the deadline in it rather than the elapsed time, so that a condition which stays true has nothing new to say on the next reading.",
+      "why": "The base case, and the whole point: before this the same fact reached the run log and the window said nothing, so the first person to know was whoever typed into a pane that looked fine. The sentence is pinned here rather than in every case because it is one sentence - the deadline in it rather than the elapsed time, so that a condition which stays true has nothing new to say on the next reading. A reattach is offered beside it as a button, because it only asks sooner for the bridge Muster asks for on its own.",
       "given": {
         "deadline": 5000000000,
         "detail": true,
@@ -31,12 +31,13 @@
         "cleared": [],
         "asked": [],
         "next_wake": 10000000000,
-        "detail": "The pane local/p1w3r07bsd has had a socket open for over 5s, and no bridge has attached - the bridge that draws this pane either never started or cannot reach the socket or its daemon. The pane shows what it last drew and nothing typed into it appears, so it looks frozen rather than broken; every other pane in the window is unaffected. Muster asks for another bridge every 15s and keeps asking; `muster pane reattach --pane p1w3r07bsd` asks now. The run log has the cause: look for `link.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`."
+        "detail": "The pane local/p1w3r07bsd has had a socket open for over 5s, and no bridge has attached - the bridge that draws this pane either never started or cannot reach the socket or its daemon. The pane shows what it last drew and nothing typed into it appears, so it looks frozen rather than broken; every other pane in the window is unaffected. Muster asks for another bridge every 15s and keeps asking; `muster pane reattach --pane p1w3r07bsd` asks now. The run log has the cause: look for `link.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`.",
+        "remedy": "reattach local/p1w3r07bsd"
       }
     },
     {
       "name": "a pane taken over by another bridge says which window has it",
-      "why": "Nothing is broken here and the sentence must not read as though something is: another window asked for this pane and the daemon gave it to them, which is the arrangement the daemon allows. What the person needs is where their pane went and how to get it back, and neither is derivable from a blank pane.",
+      "why": "Nothing is broken here and the sentence must not read as though something is: another window asked for this pane and the daemon gave it to them, which is the arrangement the daemon allows. What the person needs is where their pane went and how to get it back, and neither is derivable from a blank pane. No button is offered: a reattach here takes the pane back from the window showing it, which is a decision the sentence describes rather than a click to make by accident.",
       "given": {
         "deadline": 5000000000,
         "detail": true,
@@ -60,12 +61,13 @@
         "cleared": [],
         "asked": [],
         "next_wake": 10000000000,
-        "detail": "Another bridge attached to the pane local/p1w3r07bsd and took it over, so this window has stopped drawing it - most often a second Muster window that was opened onto the same machine. The daemon lets one bridge draw a pane at a time, so nothing here can show it while that one does; the agent itself is untouched and every other pane in this window is unaffected. Whichever window is showing it now is the one to work in. To bring it back here instead, run `muster pane reattach --pane p1w3r07bsd` - that asks for a bridge, and a bridge after the first takes the pane over the way the other window's did."
+        "detail": "Another bridge attached to the pane local/p1w3r07bsd and took it over, so this window has stopped drawing it - most often a second Muster window that was opened onto the same machine. The daemon lets one bridge draw a pane at a time, so nothing here can show it while that one does; the agent itself is untouched and every other pane in this window is unaffected. Whichever window is showing it now is the one to work in. To bring it back here instead, run `muster pane reattach --pane p1w3r07bsd` - that asks for a bridge, and a bridge after the first takes the pane over the way the other window's did.",
+        "remedy": null
       }
     },
     {
       "name": "a pane whose attach was refused says a reattach takes it over",
-      "why": "The failure that cost a working day under herdr, and the one nobody guesses: a stream whose transport died stays open on the far machine until its ssh notices, so the first attach after a relaunch is refused by a machine that is otherwise perfectly healthy. Every replacement bridge takes the pane over, so this is usually gone by the time anyone reads it - and when it is not, what brings the pane back is asking for another bridge, which is the one remedy the sentence names.",
+      "why": "The failure that cost a working day under herdr, and the one nobody guesses: a stream whose transport died stays open on the far machine until its ssh notices, so the first attach after a relaunch is refused by a machine that is otherwise perfectly healthy. Every replacement bridge takes the pane over, so this is usually gone by the time anyone reads it - and when it is not, what brings the pane back is asking for another bridge, which is the one remedy the sentence names. It stays a sentence rather than a button, because that bridge takes the pane from whatever is drawing it, which may be a window somebody is looking at (kan a_2IQsToWVW).",
       "given": {
         "deadline": 5000000000,
         "detail": true,
@@ -96,12 +98,13 @@
         "cleared": [],
         "asked": [],
         "next_wake": 10000000000,
-        "detail": "The pane devenv/p206y9rm8s has been dark for over 5s: something else was drawing it when this window asked, and the daemon lets one bridge draw a pane at a time. The agent behind it is untouched and every other pane in the window is unaffected. `muster pane reattach --pane p206y9rm8s` takes it over from whatever holds it."
+        "detail": "The pane devenv/p206y9rm8s has been dark for over 5s: something else was drawing it when this window asked, and the daemon lets one bridge draw a pane at a time. The agent behind it is untouched and every other pane in the window is unaffected. `muster pane reattach --pane p206y9rm8s` takes it over from whatever holds it.",
+        "remedy": null
       }
     },
     {
       "name": "a pane whose connection went says which machine to check",
-      "why": "A dropped VPN, and the case that recovers on its own once the machine is reachable - so the sentence has to say that rather than send somebody looking for a fault. It also has to say the agent is untouched, because a pane frozen on its last frame reads as work lost.",
+      "why": "A dropped VPN, and the case that recovers on its own once the machine is reachable - so the sentence has to say that rather than send somebody looking for a fault. It also has to say the agent is untouched, because a pane frozen on its last frame reads as work lost. A reattach is offered beside it: what last drew the pane was this window's own bridge, and against a machine still away it only fails again.",
       "given": {
         "deadline": 5000000000,
         "detail": true,
@@ -125,7 +128,8 @@
         "cleared": [],
         "asked": [],
         "next_wake": 10000000000,
-        "detail": "The pane devenv/p206y9q4kd lost the connection carrying it and has not got one back within 5s. It shows what it last painted and takes no keystrokes; the agent behind it is untouched, and panes on other machines in this window are unaffected. Check that the machine holding it is reachable - the run log says `tunnel.down` when the connection is the reason, and Muster keeps asking for a bridge until one dials. `muster pane reattach --pane p206y9q4kd` asks now, once the machine is back."
+        "detail": "The pane devenv/p206y9q4kd lost the connection carrying it and has not got one back within 5s. It shows what it last painted and takes no keystrokes; the agent behind it is untouched, and panes on other machines in this window are unaffected. Check that the machine holding it is reachable - the run log says `tunnel.down` when the connection is the reason, and Muster keeps asking for a bridge until one dials. `muster pane reattach --pane p206y9q4kd` asks now, once the machine is back.",
+        "remedy": "reattach devenv/p206y9q4kd"
       }
     },
     {
@@ -1183,6 +1187,7 @@
         "asked": [],
         "next_wake": 10000000000,
         "detail": "The pane devenv/p206y9p61r has had a socket open for over 5s, and no bridge has attached - the bridge that draws this pane either never started or cannot reach the socket or its daemon. The pane shows what it last drew and nothing typed into it appears, so it looks frozen rather than broken; every other pane in the window is unaffected. Muster asks for another bridge every 15s and keeps asking; `muster pane reattach --pane p206y9p61r` asks now. The run log has the cause: look for `link.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`.",
+        "remedy": "reattach devenv/p206y9p61r",
         "reconnected": [
           [
             "devenv/p206y9p61r"

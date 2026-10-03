@@ -37,6 +37,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::{DaemonId, PaneKey};
 use crate::diagnostics::clock::describe;
+use crate::problems::Remedy;
 use crate::respawn::reattach_command;
 
 /// What the problem list should be told, having compared the unanswered panes against the clock.
@@ -47,8 +48,9 @@ use crate::respawn::reattach_command;
 /// silent pane every time would republish the roster for as long as one stayed quiet.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Reported {
-    /// Panes that have just gone quiet for too long: the problem key and the whole sentence.
-    pub raise: Vec<(String, String)>,
+    /// Panes that have just gone quiet for too long: the problem key, the whole sentence, and a
+    /// reattach to offer beside it.
+    pub raise: Vec<(String, String, Option<Remedy>)>,
 
     /// Keys that were raised and are no longer true, and why each stopped being true.
     ///
@@ -226,7 +228,11 @@ impl Painting {
         let reported = Reported {
             raise: overdue
                 .difference(&self.reported)
-                .map(|pane| (key(pane), stopped(pane, deadline)))
+                // Always safe to offer: the pane is one this window is drawing, so the bridge a
+                // reattach replaces is this window's own, and the agent behind it is untouched.
+                .map(|pane| {
+                    (key(pane), stopped(pane, deadline), Some(Remedy::Reattach(pane.clone())))
+                })
                 .collect(),
             clear: self
                 .reported

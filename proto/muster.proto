@@ -1984,6 +1984,23 @@ message Problem {
   // already name the file, the value, what stopped working and what to type instead, so
   // this is passed through untouched rather than summarized.
   string detail = 3;
+
+  // What Muster can do about it in one click, drawn as a button beside the detail. Absent for
+  // most problems, whose remedy is the detail: a file to edit, a machine to bring back, or a
+  // decision somebody should make deliberately rather than by clicking. One is offered only
+  // where clicking it without reading the sentence is safe (`problems.rs`, Remedy).
+  Remedy remedy = 4;
+
+  // A request with its subject already named, and the words for the button that sends it.
+  //
+  // The shell sends `request` back exactly as it arrived, so it decides nothing about what the
+  // remedy does or which pane it is for. A request rather than a keymap action because a remedy
+  // is about this pane and an action names nothing - the shape a rename already has, where the
+  // chord asks and an ordinary request follows.
+  message Remedy {
+    string title = 1;
+    Request request = 2;
+  }
 }
 
 // What Muster should look like, after the config file was read again.

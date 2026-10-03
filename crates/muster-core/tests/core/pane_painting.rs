@@ -12,6 +12,8 @@ use muster_core::mirror::backend::PaneId;
 use muster_core::painting::Painting;
 use serde_json::{Value, json};
 
+use crate::support::remedy;
+
 /// The corpus counts in milliseconds because that is what a person writing a case thinks in;
 /// `Painting` counts in whatever the caller does, and the seam hands it nanoseconds. Scaled here
 /// so a case would produce the sentence the window really writes.
@@ -25,6 +27,7 @@ fn pane_painting_conformance() {
         let deadline = millis(given, "deadline")?;
         let mut painting = Painting::new();
         let (mut raised, mut cleared) = (Vec::new(), Vec::new());
+        let mut remedies: Vec<Value> = Vec::new();
         let mut now = 0u64;
 
         for step in given.get("steps").and_then(Value::as_array).into_iter().flatten() {
@@ -59,7 +62,10 @@ fn pane_painting_conformance() {
             // the real clock - so a case that reconciled only at the end would be testing a
             // window nobody runs.
             let reported = painting.reconcile(now, deadline);
-            raised.extend(reported.raise.into_iter().map(|(key, _)| json!(key)));
+            for (key, _, offered) in reported.raise {
+                raised.push(json!(key));
+                remedies.push(remedy::spell(offered.as_ref()));
+            }
             cleared.extend(
                 reported
                     .clear
@@ -71,6 +77,8 @@ fn pane_painting_conformance() {
         Ok(fields([
             ("raised", Some(Value::Array(raised))),
             ("cleared", Some(Value::Array(cleared))),
+            // Only where a case asks, so the cases about something else need not spell it.
+            ("remedy", given.get("remedy").is_some().then(|| json!(remedies.last()))),
         ]))
     });
 

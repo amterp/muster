@@ -8,6 +8,8 @@ use conformance::{CaseError, Conformance, fields};
 use muster_core::problems::{Problems, Severity};
 use serde_json::{Value, json};
 
+use crate::support::remedy;
+
 #[test]
 fn problems_conformance() {
     let corpus = Conformance::load("problems.json");
@@ -23,7 +25,11 @@ fn problems_conformance() {
             }
             let key = text(step, "raise")?;
             let detail = text(step, "detail")?;
-            changed.push(json!(problems.raise(&key, severity(step)?, &detail)));
+            let offered = match step.get("remedy").and_then(Value::as_str) {
+                Some(spelled) => Some(remedy::parse(spelled)?),
+                None => None,
+            };
+            changed.push(json!(problems.raise(&key, severity(step)?, &detail, offered.as_ref())));
         }
 
         // Formatted rather than nested, so that a case reads as the list somebody would see and
@@ -32,7 +38,12 @@ fn problems_conformance() {
             .outstanding()
             .into_iter()
             .map(|problem| {
-                json!(format!("{} {}: {}", problem.severity.as_str(), problem.key, problem.detail))
+                let line =
+                    format!("{} {}: {}", problem.severity.as_str(), problem.key, problem.detail);
+                match remedy::spell(problem.remedy.as_ref()) {
+                    Value::String(offered) => json!(format!("{line} [{offered}]")),
+                    _ => json!(line),
+                }
             })
             .collect();
 
