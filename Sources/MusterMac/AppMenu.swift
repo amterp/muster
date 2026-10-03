@@ -217,6 +217,17 @@ enum BoundAction {
     ["action": action, "key": "", "mods": "", "repeat": "false", "source": "mouse"]
   }
 
+  /// The fields for an action picked from a right-click menu, naming what was right-clicked:
+  /// `daemon` and `pane` for a pane or an agent's row, `tab` for a tab's caption. The subject is
+  /// what separates this from a menu bar pick of the same action, which acts on the keyboard's
+  /// pane.
+  static func record(contextMenu item: NSMenuItem, subject: [String: String]) -> [String: String]? {
+    guard let name = item.representedObject as? String else { return nil }
+    return subject.merging(
+      ["action": name, "key": "", "mods": "", "repeat": "false", "source": "context_menu"]
+    ) { _, ours in ours }
+  }
+
   /// The keystroke that chose this item, if a keystroke did.
   ///
   /// Matched against the item's own key equivalent rather than assumed from the event's type,

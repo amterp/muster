@@ -341,7 +341,8 @@ between "bytes" and "control":
   that on the same terms as a shift-drag. Otherwise AppKit asks the surface for a menu, and so does a ctrl-click
   unless the program has captured the mouse. That is Ghostty's rule. A menu on a pane, a tab caption or an agent row
   sends the requests the keyboard sends, naming the pane or tab that was right-clicked rather than the one with the
-  keyboard (`ContextMenus.swift`).
+  keyboard (`ContextMenus.swift`). So its items show no chords, which act on the keyboard's pane, and the run log
+  records a pick as `source: "context_menu"` with what was right-clicked.
 - **A pane is dragged only by its handle.** A small view at the top middle of each pane, Ghostty's, takes the press
   there before the terminal sees it, and nowhere else in a pane starts a move - a modifier that did would be one more
   key no program in a pane could have, and a plain drag is a selection or a report to a program tracking the mouse.

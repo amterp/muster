@@ -13,11 +13,6 @@ import Testing
 
 @MainActor private let laptopPane = PaneKey(daemon: "laptop", pane: "p1w3r07bsd")
 
-@MainActor private let bindings = [
-  Core.Binding(action: "split_right", key: "KeyD", modifiers: ["super"]),
-  Core.Binding(action: "close_pane", key: "KeyW", modifiers: ["super"]),
-]
-
 @Suite("right-click menus", .ownsTheSeam)
 @MainActor
 struct ContextMenuTests {
@@ -25,7 +20,7 @@ struct ContextMenuTests {
   func aPanesMenu() {
     _ = recorder()
     let menu = ContextMenus.pane(
-      laptopPane, surface: nil, machines: ["laptop"], bindings: bindings, rename: { _ in })
+      laptopPane, surface: nil, machines: ["laptop"], rename: { _ in })
 
     #expect(
       titles(menu) == [
@@ -40,32 +35,58 @@ struct ContextMenuTests {
   func theMachineSubmenu() {
     _ = recorder()
     let one = ContextMenus.pane(
-      laptopPane, surface: nil, machines: ["laptop"], bindings: [], rename: { _ in })
+      laptopPane, surface: nil, machines: ["laptop"], rename: { _ in })
     let two = ContextMenus.pane(
-      laptopPane, surface: nil, machines: ["laptop", "devenv"], bindings: [], rename: { _ in })
+      laptopPane, surface: nil, machines: ["laptop", "devenv"], rename: { _ in })
 
     #expect(!titles(one).contains("Split on Machine"))
     #expect(titles(item("Split on Machine", in: two)?.submenu) == ["laptop", "devenv"])
   }
 
-  @Test("an item shows the chord the core says its action is bound to")
-  func chordsComeFromTheBindings() {
+  /// Every item acts on what was right-clicked and every chord on the pane with the keyboard,
+  /// so a chord shown here would describe a different pane whenever those two differ.
+  @Test("no item shows a chord, not even Copy and Paste")
+  func noChords() {
     _ = recorder()
-    let rebound = [Core.Binding(action: "split_right", key: "KeyX", modifiers: ["super", "shift"])]
+    let menu = ContextMenus.pane(
+      laptopPane, surface: nil, machines: ["laptop", "devenv"], rename: { _ in })
+    let row = ContextMenus.agentRow(laptopPane, onScreen: true, rename: { _ in })
+    let tab = ContextMenus.tab("t1", firstPane: laptopPane, machines: [], rename: { _ in })
 
-    let standard = item(
-      "Split Right",
-      in: ContextMenus.pane(
-        laptopPane, surface: nil, machines: [], bindings: bindings, rename: { _ in }))
-    let moved = item(
-      "Split Right",
-      in: ContextMenus.pane(
-        laptopPane, surface: nil, machines: [], bindings: rebound, rename: { _ in }))
+    for item in [menu, row, tab].flatMap(\.items)
+      + (item("Split on Machine", in: menu)?.submenu?
+        .items ?? [])
+    {
+      #expect(item.keyEquivalent == "", "\(item.title) shows a chord")
+    }
+  }
 
-    #expect(standard?.keyEquivalent == "d")
-    #expect(standard?.keyEquivalentModifierMask == .command)
-    #expect(moved?.keyEquivalent == "x")
-    #expect(moved?.keyEquivalentModifierMask == [.command, .shift])
+  /// A menu bar pick and a right-click pick of the same action act on different panes, so the run
+  /// log has to tell them apart, and say which pane or tab the right-click was on.
+  @Test("a pick is logged as a right-click, naming what was right-clicked")
+  func aPickIsLoggedWithItsSubject() {
+    let recorder = recorder()
+    let mark = recorder.requests.count
+
+    choose(
+      "Zoom Pane", in: ContextMenus.pane(laptopPane, surface: nil, machines: [], rename: { _ in }))
+    choose("Close Tab", in: ContextMenus.tab("t1", firstPane: nil, machines: [], rename: { _ in }))
+
+    let records = recorder.sent(since: mark) {
+      if case .logRecord(let record) = $0.payload {
+        record.event == BoundAction.event
+      } else {
+        false
+      }
+    }.map(\.logRecord.fields)
+    #expect(records.count == 2)
+    #expect(records.first?["action"] == "zoom")
+    #expect(records.first?["source"] == "context_menu")
+    #expect(records.first?["daemon"] == "laptop")
+    #expect(records.first?["pane"] == "p1w3r07bsd")
+    #expect(records.last?["action"] == "close_tab")
+    #expect(records.last?["source"] == "context_menu")
+    #expect(records.last?["tab"] == "t1")
   }
 
   @Test("Copy is offered only over a selection")
@@ -78,13 +99,13 @@ struct ContextMenuTests {
       item(
         "Copy",
         in: ContextMenus.pane(
-          laptopPane, surface: bare, machines: [], bindings: [], rename: { _ in }))?.isEnabled
+          laptopPane, surface: bare, machines: [], rename: { _ in }))?.isEnabled
         == false)
     #expect(
       item(
         "Copy",
         in: ContextMenus.pane(
-          laptopPane, surface: selected, machines: [], bindings: [], rename: { _ in }))?.isEnabled
+          laptopPane, surface: selected, machines: [], rename: { _ in }))?.isEnabled
         == true)
   }
 
@@ -92,7 +113,7 @@ struct ContextMenuTests {
   func aSplitNamesItsPane() {
     let recorder = recorder()
     let menu = ContextMenus.pane(
-      laptopPane, surface: nil, machines: [], bindings: [], rename: { _ in })
+      laptopPane, surface: nil, machines: [], rename: { _ in })
     let mark = recorder.requests.count
 
     choose("Split Down", in: menu)
@@ -113,7 +134,7 @@ struct ContextMenuTests {
   func aSplitOntoAnotherMachine() {
     let recorder = recorder()
     let menu = ContextMenus.pane(
-      laptopPane, surface: nil, machines: ["laptop", "devenv"], bindings: [], rename: { _ in })
+      laptopPane, surface: nil, machines: ["laptop", "devenv"], rename: { _ in })
     let mark = recorder.requests.count
 
     choose("devenv", in: item("Split on Machine", in: menu)?.submenu)
@@ -132,7 +153,7 @@ struct ContextMenuTests {
   func theRestNameTheirPane() {
     let recorder = recorder()
     let menu = ContextMenus.pane(
-      laptopPane, surface: nil, machines: [], bindings: [], rename: { _ in })
+      laptopPane, surface: nil, machines: [], rename: { _ in })
     let mark = recorder.requests.count
 
     choose("Zoom Pane", in: menu)
@@ -162,7 +183,7 @@ struct ContextMenuTests {
     choose(
       "Copy Pane ID",
       in: ContextMenus.pane(
-        laptopPane, surface: view, machines: [], bindings: [], rename: { _ in }))
+        laptopPane, surface: view, machines: [], rename: { _ in }))
 
     #expect(board.string(forType: .string) == "p1w3r07bsd")
   }
@@ -172,7 +193,7 @@ struct ContextMenuTests {
     _ = recorder()
     var renamed: [PaneKey] = []
     let menu = ContextMenus.agentRow(
-      laptopPane, onScreen: false, bindings: [], rename: { renamed.append($0) })
+      laptopPane, onScreen: false, rename: { renamed.append($0) })
 
     choose("Rename Pane…", in: menu)
 
@@ -184,8 +205,8 @@ struct ContextMenuTests {
   @Test("an agent row offers Close Pane only for a pane on screen")
   func anAgentRowsMenu() {
     _ = recorder()
-    let hidden = ContextMenus.agentRow(laptopPane, onScreen: false, bindings: [], rename: { _ in })
-    let shown = ContextMenus.agentRow(laptopPane, onScreen: true, bindings: [], rename: { _ in })
+    let hidden = ContextMenus.agentRow(laptopPane, onScreen: false, rename: { _ in })
+    let shown = ContextMenus.agentRow(laptopPane, onScreen: true, rename: { _ in })
 
     #expect(
       titles(hidden) == [
@@ -201,7 +222,7 @@ struct ContextMenuTests {
     let board = scratchClipboard()
     defer { board.releaseGlobally() }
     let menu = ContextMenus.tab(
-      "t1w3r07bsd", firstPane: laptopPane, machines: ["laptop", "devenv"], bindings: [],
+      "t1w3r07bsd", firstPane: laptopPane, machines: ["laptop", "devenv"],
       pasteboard: board, rename: { _ in })
     let mark = recorder.requests.count
 

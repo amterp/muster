@@ -99,35 +99,39 @@ public enum ContextMenuModel {
 
 /// A right-click menu, built from `ContextMenuModel`'s entries.
 ///
-/// A `LoggedMenu`, so a pick writes the same `input.bound.action` record a menu bar pick does.
 /// It holds the objects its items target, because an `NSMenuItem` holds its target weakly and
 /// nothing else would keep them alive while the menu is open.
 @MainActor
-final class ContextMenu: LoggedMenu {
+final class ContextMenu: NSMenu {
   private var targets: [ContextMenuTarget] = []
+  /// What was right-clicked, as the run log names it.
+  private var subject: [String: String] = [:]
 
-  /// Titles come from `MenuActions` and chords from the core's bindings, so an item reads and
-  /// shows the same chord as its menu bar twin. An action this shell has no title for is left
-  /// out, as the menu bar leaves it out.
+  /// Titles come from `MenuActions`, so an item reads as its menu bar twin does. An action this
+  /// shell has no title for is left out, as the menu bar leaves it out.
+  ///
+  /// No item shows a chord. Each one acts on what was right-clicked and its chord acts on the
+  /// pane with the keyboard, which is often another pane, so ⌘W beside Close Pane on an agent's
+  /// row would say it closes that agent when it closes the one you are typing in. Finder and
+  /// Xcode leave chords off their context menus for the same reason.
   static func build(
-    _ entries: [ContextEntry], bindings: [Core.Binding], tab: String = "",
+    _ entries: [ContextEntry], subject: [String: String], tab: String = "",
     perform: @escaping @MainActor (ContextChoice) -> Void
   ) -> ContextMenu {
     let menu = ContextMenu()
+    menu.subject = subject
     // The model says what is enabled. Left on, AppKit would enable every item whose target
     // answers its selector, which is all of them.
     menu.autoenablesItems = false
     for entry in entries {
       switch entry {
       case .item(let choice, let enabled):
-        guard let item = menu.item(for: choice, bindings: bindings, perform: perform) else {
-          continue
-        }
+        guard let item = menu.item(for: choice, perform: perform) else { continue }
         item.isEnabled = enabled
         menu.addItem(item)
       case .submenu(let title, let inner):
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.submenu = build(inner, bindings: bindings, perform: perform)
+        item.submenu = build(inner, subject: subject, perform: perform)
         menu.addItem(item)
       case .moveTabToWindow:
         menu.addItem(MoveTabMenu.shared.item(tab: tab))
@@ -138,9 +142,19 @@ final class ContextMenu: LoggedMenu {
     return menu
   }
 
+  /// Written before the dispatch, as `LoggedMenu` writes a menu bar pick, and told apart from
+  /// one: the same action picked here was aimed at a pane or tab rather than at the keyboard's.
+  override func performActionForItem(at index: Int) {
+    if items.indices.contains(index),
+      let fields = BoundAction.record(contextMenu: items[index], subject: subject)
+    {
+      Core.debug(BoundAction.event, fields)
+    }
+    super.performActionForItem(at: index)
+  }
+
   private func item(
-    for choice: ContextChoice, bindings: [Core.Binding],
-    perform: @escaping @MainActor (ContextChoice) -> Void
+    for choice: ContextChoice, perform: @escaping @MainActor (ContextChoice) -> Void
   ) -> NSMenuItem? {
     guard let title = Self.title(for: choice) else { return nil }
     let target = ContextMenuTarget { perform(choice) }
@@ -148,20 +162,9 @@ final class ContextMenu: LoggedMenu {
     let item = NSMenuItem(
       title: title, action: #selector(ContextMenuTarget.fire(_:)), keyEquivalent: "")
     item.target = target
-    switch choice {
-    case .action(let name):
-      // What tells `LoggedMenu` this is one of the core's actions, and which.
+    if case .action(let name) = choice {
+      // What tells the run log this is one of the core's actions, and which.
       item.representedObject = name
-      if let bound = bindings.first(where: { $0.action == name }) {
-        item.keyEquivalent = menuKeyEquivalent(forKeyNamed: bound.key) ?? ""
-        item.keyEquivalentModifierMask = menuModifiers(bound.modifiers)
-      }
-    case .copy:
-      item.keyEquivalent = "c"
-    case .paste:
-      item.keyEquivalent = "v"
-    default:
-      break
     }
     return item
   }
@@ -199,14 +202,14 @@ public enum ContextMenus {
   /// A pane's menu. `surface` is the one that was right-clicked, for Copy and Paste, and is nil
   /// only in a test that has none.
   public static func pane(
-    _ pane: PaneKey, surface: SurfaceView?, machines: [String], bindings: [Core.Binding],
+    _ pane: PaneKey, surface: SurfaceView?, machines: [String],
     rename: @escaping @MainActor (PaneKey) -> Void
   ) -> NSMenu {
     let pasteboard = surface?.pasteboard ?? .general
     let entries = ContextMenuModel.pane(
       machines: machines, hasSelection: surface?.hasSelection ?? false,
       canPaste: surface?.canPaste ?? false)
-    return ContextMenu.build(entries, bindings: bindings) { choice in
+    return ContextMenu.build(entries, subject: subject(pane)) { choice in
       switch choice {
       case .copy: surface?.copy(nil)
       case .paste: surface?.paste(nil)
@@ -219,10 +222,10 @@ public enum ContextMenus {
   }
 
   public static func agentRow(
-    _ pane: PaneKey, onScreen: Bool, bindings: [Core.Binding],
-    pasteboard: NSPasteboard = .general, rename: @escaping @MainActor (PaneKey) -> Void
+    _ pane: PaneKey, onScreen: Bool, pasteboard: NSPasteboard = .general,
+    rename: @escaping @MainActor (PaneKey) -> Void
   ) -> NSMenu {
-    ContextMenu.build(ContextMenuModel.agentRow(onScreen: onScreen), bindings: bindings) {
+    ContextMenu.build(ContextMenuModel.agentRow(onScreen: onScreen), subject: subject(pane)) {
       perform($0, on: pane, pasteboard: pasteboard, rename: rename)
     }
   }
@@ -230,10 +233,10 @@ public enum ContextMenus {
   /// A tab caption's menu. `firstPane` is where New Tab grows from: that pane's machine and
   /// directory, as cmd+T from inside the tab would use.
   public static func tab(
-    _ tab: String, firstPane: PaneKey?, machines: [String], bindings: [Core.Binding],
-    pasteboard: NSPasteboard = .general, rename: @escaping @MainActor (String) -> Void
+    _ tab: String, firstPane: PaneKey?, machines: [String], pasteboard: NSPasteboard = .general,
+    rename: @escaping @MainActor (String) -> Void
   ) -> NSMenu {
-    ContextMenu.build(ContextMenuModel.tab(machines: machines), bindings: bindings, tab: tab) {
+    ContextMenu.build(ContextMenuModel.tab(machines: machines), subject: ["tab": tab], tab: tab) {
       choice in
       switch choice {
       case .action("new_tab"):
@@ -245,6 +248,10 @@ public enum ContextMenus {
       default: unhandled(choice, menu: "tab")
       }
     }
+  }
+
+  private static func subject(_ pane: PaneKey) -> [String: String] {
+    ["daemon": pane.daemon, "pane": pane.pane]
   }
 
   private static func perform(

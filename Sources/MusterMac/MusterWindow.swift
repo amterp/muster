@@ -949,8 +949,7 @@ extension MusterWindow {
   func menu(forPane pane: PaneKey) -> NSMenu? {
     ContextMenus.pane(
       pane, surface: surfaces.chrome(for: pane)?.surface,
-      machines: Core.machines().map(\.daemon), bindings: bindings,
-      rename: { [weak self] in self?.rename(pane: $0) })
+      machines: Core.machines().map(\.daemon), rename: { [weak self] in self?.rename(pane: $0) })
   }
 
   /// A right-clicked row's menu. A machine's row has none: clicking it already makes a tab
@@ -960,12 +959,11 @@ extension MusterWindow {
     case .pane:
       guard let pane = row.pane else { return nil }
       return ContextMenus.agentRow(
-        pane, onScreen: row.onScreen, bindings: bindings,
-        rename: { [weak self] in self?.rename(pane: $0) })
+        pane, onScreen: row.onScreen, rename: { [weak self] in self?.rename(pane: $0) })
     case .tab:
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
       return ContextMenus.tab(
-        row.tab, firstPane: first, machines: Core.machines().map(\.daemon), bindings: bindings,
+        row.tab, firstPane: first, machines: Core.machines().map(\.daemon),
         rename: { [weak self] in self?.rename(tab: $0) })
     case .machine:
       return nil
