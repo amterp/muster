@@ -601,6 +601,21 @@ fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
     }
 }
 
+/// The request as sent to a daemon speaking `speaks`. A policy file is the whole policy, so one
+/// that leaves out `urgent` means the default, said outright to a daemon that knows the key:
+/// left unsaid, a daemon keeps the list the group has, for a client that cannot see it.
+fn whole(request: &proto::MsgRequest, speaks: proto::Version) -> proto::MsgRequest {
+    let mut request = request.clone();
+    if speaks.minor >= 3
+        && let Some(Asked::GroupSet(msg_request::GroupSet { policy: Some(policy), .. })) =
+            &mut request.request
+        && policy.urgent.is_none()
+    {
+        policy.urgent = Some(msg_request::Names { names: everyone() });
+    }
+    request
+}
+
 /// Whether the request sets a policy that says who may post urgently.
 fn says_who_may_urge(request: &proto::MsgRequest) -> bool {
     let policy = match &request.request {
@@ -624,7 +639,7 @@ fn ask_once(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer,
     }
     let waits = blocks(request);
     let _ = stream.set_read_timeout(if waits { None } else { Some(PATIENCE) });
-    let request = proto::Request { id: 1, service: Some(Service::Msg(request.clone())) };
+    let request = proto::Request { id: 1, service: Some(Service::Msg(whole(request, speaks))) };
     connection::send(&mut stream, &request)
         .map_err(|error| Trouble::Unreachable(format!("{}: {error}", socket.display())))?;
     until_answer(&mut stream)
@@ -1172,6 +1187,36 @@ mod tests {
         assert_eq!(needs_minor(&wait(true)).map(|(_, minor)| minor), Some(1));
         assert_eq!(needs_minor(&join(true)).map(|(_, minor)| minor), Some(1));
         assert_eq!(needs_minor(&pause).map(|(_, minor)| minor), Some(1));
+    }
+
+    /// A policy file is the whole policy: one leaving out `urgent` lets anyone post urgently
+    /// again, said outright to a daemon that knows the key, which keeps the group's list when a
+    /// request says nothing. An older daemon is sent the request as it was.
+    #[test]
+    fn a_policy_file_without_urgent_says_anyone_to_a_daemon_that_knows_the_key() {
+        let set = |urgent: Option<Vec<String>>| proto::MsgRequest {
+            caller: None,
+            request: Some(Asked::GroupSet(msg_request::GroupSet {
+                group: "g".to_string(),
+                policy: Some(msg_request::Policy {
+                    urgent: urgent.map(|names| msg_request::Names { names }),
+                    ..msg_request::Policy::default()
+                }),
+            })),
+        };
+        let urgent = |request: proto::MsgRequest| match request.request {
+            Some(Asked::GroupSet(set)) => set.policy.and_then(|policy| policy.urgent),
+            _ => unreachable!(),
+        };
+        let speaking = |minor| proto::Version { major: 1, minor };
+        let anyone = Some(msg_request::Names { names: vec!["*".to_string()] });
+        assert_eq!(urgent(whole(&set(None), speaking(3))), anyone);
+        assert_eq!(urgent(whole(&set(None), speaking(2))), None);
+        let director = vec!["director".to_string()];
+        assert_eq!(
+            urgent(whole(&set(Some(director.clone())), speaking(3))),
+            Some(msg_request::Names { names: director })
+        );
     }
 
     /// A daemon before 1.3 ignores what it does not know: an urgent post would ring as an

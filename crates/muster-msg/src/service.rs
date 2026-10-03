@@ -945,6 +945,11 @@ impl<S: Store> Messaging<S> {
             .collect()
     }
 
+    /// A group's policy, while this machine keeps or holds a copy of the group.
+    pub fn policy(&self, group: &str) -> Option<&Policy> {
+        self.groups.get(group).map(|group| &group.policy)
+    }
+
     /// Makes a group, with `policy` or the default, and the caller its first member.
     pub fn group_new(
         &mut self,

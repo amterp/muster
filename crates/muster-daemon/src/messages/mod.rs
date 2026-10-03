@@ -242,7 +242,14 @@ impl Messages {
                     .map(|made| changed("made", made, telling))
             }
             Asked::GroupSet(set) => {
-                let policy = policy_from(set.policy.unwrap_or_default());
+                let asked = set.policy.unwrap_or_default();
+                // A client or a machine from before 1.3 says nothing of urgent posts; leaving
+                // them as they were keeps a restriction it cannot see from being lifted.
+                let unsaid = asked.urgent.is_none();
+                let mut policy = policy_from(asked);
+                if unsaid && let Some(kept) = self.service.policy(&set.group) {
+                    policy.urgent.clone_from(&kept.urgent);
+                }
                 let changed_it =
                     self.service.group_set(caller, &set.group, policy, panes, now_ms())?;
                 // The policy decides which messages ring the human, so what waits may have moved.

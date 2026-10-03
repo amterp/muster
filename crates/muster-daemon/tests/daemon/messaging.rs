@@ -422,6 +422,43 @@ fn a_window_hears_what_waits_for_the_human_under_a_new_policy() {
     assert_eq!((told.group.as_str(), told.count), ("g", 3), "ringing the human again said nothing");
 }
 
+/// A policy set by a client or a machine from before 1.3 says nothing about who may post
+/// urgently, and leaves the group's list as it was rather than letting anyone again.
+#[test]
+fn a_policy_that_says_nothing_of_urgent_posts_leaves_who_may_post_them() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &named("director"), "director", "g");
+    let set = |urgent: Option<&[&str]>| {
+        let urgent = urgent.map(|names| msg_request::Names {
+            names: names.iter().map(ToString::to_string).collect(),
+        });
+        let policy = msg_request::Policy { urgent, ..default_policy() };
+        msg(
+            &named("director"),
+            Asked::GroupSet(msg_request::GroupSet { group: "g".to_string(), policy: Some(policy) }),
+        )
+    };
+    let urgent = |control: &mut Control| {
+        let asked = expect(
+            control,
+            msg(&named("director"), Asked::Groups(msg_request::Groups::default())),
+            DONE,
+        );
+        let Some(Answer::Groups(groups)) = msg_answer(&asked).answer.clone() else {
+            panic!("expected the groups");
+        };
+        groups.groups[0].policy.clone().and_then(|policy| policy.urgent).map(|names| names.names)
+    };
+
+    expect(&mut control, set(Some(&["director"])), DONE);
+    expect(&mut control, set(None), DONE);
+    assert_eq!(urgent(&mut control), Some(vec!["director".to_string()]));
+
+    expect(&mut control, set(Some(&["*"])), DONE);
+    assert_eq!(urgent(&mut control), Some(vec!["*".to_string()]));
+}
+
 /// The default policy, as the schema writes it.
 fn default_policy() -> msg_request::Policy {
     let names = |names: &[&str]| msg_request::Names {

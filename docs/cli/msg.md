@@ -356,7 +356,8 @@ where.
 
 An urgent post needs this machine's daemon, and the daemon of the machine its group is kept on,
 to be from a Muster that knows it; either being older refuses it, saying which. A member on a
-machine whose daemon is older is rung for it as for an ordinary post.
+machine whose daemon is older is rung for it as for an ordinary post. A `group set` from an older
+Muster, which knows nothing of `urgent`, leaves the group's list as it was.
 
 A daemon links only to the machines a window attaches it to, so an agent on one devenv cannot
 reach an agent or a group on another: messages cross from the laptop to each devenv and back,
