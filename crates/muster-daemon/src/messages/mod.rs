@@ -810,17 +810,24 @@ fn urgent_unknown_at(
     away: &Away,
 ) -> Option<Reply> {
     let speaks = shared.peers.to(&away.machine)?.speaks;
-    (post.urgent && speaks.minor < URGENT_SINCE).then(|| {
-        refused_as(
-            "",
-            "not_urgent",
-            &format!(
-                "{} is kept on {}, whose muster-daemon speaks protocol {speaks}, which cannot post \
-                 urgently. Update Muster there, or post without --urgent",
-                away.call.group(),
-                away.machine
-            ),
-        )
+    let (code, words) = urgent_unsupported(post.urgent, speaks, away.call.group(), &away.machine)?;
+    Some(refused_as("", code, &words))
+}
+
+/// Its own code rather than `not_urgent`, which is a group's policy saying no: this one is
+/// answered by updating a machine, not by asking whoever may.
+fn urgent_unsupported(
+    urgent: bool,
+    speaks: proto::Version,
+    group: &str,
+    machine: &str,
+) -> Option<(&'static str, String)> {
+    (urgent && speaks.minor < URGENT_SINCE).then(|| {
+        let words = format!(
+            "{group} is kept on {machine}, whose muster-daemon speaks protocol {speaks}, which \
+             cannot post urgently. Update Muster there, or post without --urgent"
+        );
+        ("urgent_unsupported", words)
     })
 }
 
@@ -1504,6 +1511,21 @@ mod tests {
             inbox: Some(Inbox { socket: format!("/nonexistent/{name}.sock"), inode: 1 }),
             ..Caller::default()
         }
+    }
+
+    /// Refused for the machine, not for the policy, so a script can tell "update that daemon"
+    /// from "you may not".
+    #[test]
+    fn an_urgent_post_to_a_machine_too_old_for_it_is_refused_with_its_own_code() {
+        let speaking = |minor| proto::Version { major: 1, minor };
+        let (code, words) = urgent_unsupported(true, speaking(2), "review", "devenv").unwrap();
+        assert_eq!(code, "urgent_unsupported");
+        assert!(
+            words.starts_with("review is kept on devenv, whose muster-daemon speaks"),
+            "{words}"
+        );
+        assert_eq!(urgent_unsupported(true, speaking(3), "review", "devenv"), None);
+        assert_eq!(urgent_unsupported(false, speaking(2), "review", "devenv"), None);
     }
 
     #[test]

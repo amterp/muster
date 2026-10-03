@@ -544,7 +544,8 @@ message MsgRequest {
     string body = 3;
     // Since 1.3. Rings an agent in a pane while it works, at a prompt read as empty, rather
     // than once it is idle, and wakes an addressee woken already. Refused as `not_urgent` when
-    // the group's policy does not let the author.
+    // the group's policy does not let the author, and as `urgent_unsupported` when the group is
+    // kept on a machine whose daemon speaks a protocol before 1.3.
     bool urgent = 4;
   }
 
