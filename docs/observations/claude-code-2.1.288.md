@@ -28,9 +28,10 @@ Told by the reminder to address the line before going on, and by the line to rea
 read the message as soon as the command returned, and then went on with its task
 (`urgent-ring-sonnet.txt`). Haiku 4.5 ran its next command first, finished its task, and read
 the message only when the doorbell rang it "still unread" once it was idle
-(`urgent-ring-haiku.txt`); it did the same in all seven runs, with and without "and nothing else" in
-its task. An earlier run by hand with the default model, Opus, acted on a queued line before its
-next command.
+(`urgent-ring-haiku.txt`). It did the same in seven runs, with and without "and nothing else"
+in its task, and read before its turn ended in an eighth, under `./dev --claude-code`. An
+earlier run by hand with the default model, Opus, acted on a queued line before its next
+command.
 
 ## What this decides for Muster
 

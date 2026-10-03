@@ -285,7 +285,7 @@ fn a_new_claude_prompt_draws_what_nobody_typed_faint() {
 /// the running turn once that command returns, as a reminder to address it before going on.
 /// Claude Code's own transcript says how it took the line, which is what tells "taken into the
 /// turn" from "sent once the turn ended". Whether the model then acts on it before finishing
-/// its task is the model's call - Haiku 4.5, which this tier runs, finishes first - so that is
+/// its task is the model's call - Haiku 4.5, which this tier runs, mostly finishes first - so it is
 /// printed, not held.
 #[test]
 #[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
