@@ -18,8 +18,8 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    ArrangePane, Event, OpenWindow, Request, Response, RosterChanged, Startup, event, request,
-    response,
+    ArrangePane, Event, OpenWindow, Request, Response, RosterChanged, Startup, ViewNode, event,
+    request, response, view_node,
 };
 use muster_daemon_proto::Side;
 use muster_harness::requests::{beside, create, in_new_tab, make};
@@ -171,6 +171,149 @@ fn a_pane_pulled_into_a_tab_of_its_own_costs_no_pane_and_no_keyboard() {
         "the new tab did not take the name the move gave it: {:?}",
         tabs()
     );
+}
+
+/// A pane dropped on its neighbor's bottom edge goes below it: the side by side pair becomes
+/// one above the other, which no move could do before a move could name a side.
+///
+/// Read off the tree the view carries rather than the roster, because the roster lists panes in
+/// reading order and `[p1 | p2]` and `[p2 / p1]` read the same.
+#[test]
+fn a_pane_moved_below_its_neighbor_turns_the_split_on_its_side() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    open_window(&daemon);
+    assert_eq!(shape(), "columns(p1,p2)");
+
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: "p1".to_string(),
+        onto_pane_id: "p2".to_string(),
+        side: "down".to_string(),
+        ..ArrangePane::default()
+    })));
+    until(
+        "the pair to stand one above the other",
+        || shape() == "rows(p2,p1)",
+        || format!("the tab's tree is {}", shape()),
+    );
+
+    // And to the left of it, which puts the pair back side by side the other way round.
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: "p1".to_string(),
+        onto_pane_id: "p2".to_string(),
+        side: "left".to_string(),
+        ..ArrangePane::default()
+    })));
+    until(
+        "the pair to stand side by side again",
+        || shape() == "columns(p1,p2)",
+        || format!("the tab's tree is {}", shape()),
+    );
+}
+
+/// A side reaches into another tab too: the pane leaves its own and lands on that side of the
+/// pane named, where without a side it would only have landed after it.
+#[test]
+fn a_pane_moved_beside_one_in_another_tab_lands_on_that_side() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    open_window(&daemon);
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: "p1".to_string(),
+        new_tab: true,
+        ..ArrangePane::default()
+    })));
+    until(
+        "p1 to have a tab of its own",
+        || rows_in_tab_of("p1") == ["p1"],
+        || format!("the tabs hold {:?}", tabs()),
+    );
+
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: "p1".to_string(),
+        onto_pane_id: "p2".to_string(),
+        side: "up".to_string(),
+        ..ArrangePane::default()
+    })));
+    until(
+        "p1 to be back in p2's tab, above it",
+        || rows_in_tab_of("p2") == ["p1", "p2"] && tabs().len() == 1,
+        || format!("the tabs hold {:?}", tabs()),
+    );
+    assert_eq!(shape(), "rows(p1,p2)");
+}
+
+/// A side that is not one of the four is refused, and so is a side with nothing to be beside.
+#[test]
+fn a_side_has_to_be_one_of_four_and_of_a_pane() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    open_window(&daemon);
+
+    for refused in [
+        ArrangePane {
+            pane_id: "p1".to_string(),
+            onto_pane_id: "p2".to_string(),
+            side: "sideways".to_string(),
+            ..ArrangePane::default()
+        },
+        ArrangePane {
+            pane_id: "p1".to_string(),
+            new_tab: true,
+            side: "down".to_string(),
+            ..ArrangePane::default()
+        },
+    ] {
+        match answer(request::Payload::ArrangePane(refused.clone())).payload {
+            Some(response::Payload::Failure(failure)) => assert!(!failure.reason.is_empty()),
+            other => panic!("{refused:?} answered {other:?}"),
+        }
+    }
+    assert_eq!(shape(), "columns(p1,p2)", "a refused move rearranged the tab");
+}
+
+fn open_window(daemon: &Daemon) {
+    muster::ffi::muster_set_event_callback(Some(note_roster));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow {})));
+    until(
+        "the window to show the two panes it opened onto",
+        || shape() == "columns(p1,p2)",
+        || format!("the tab's tree is {}", shape()),
+    );
+}
+
+/// The tree of the region the keyboard is in, written out: `columns(p1,p2)` is p1 left of p2,
+/// `rows(p2,p1)` is p2 above p1.
+fn shape() -> String {
+    fn written(node: &ViewNode) -> String {
+        match &node.node {
+            Some(view_node::Node::Pane(pane)) => pane.pane_id.clone(),
+            Some(view_node::Node::Split(split)) => format!(
+                "{}({},{})",
+                split.axis,
+                split.first.as_deref().map(written).unwrap_or_default(),
+                split.second.as_deref().map(written).unwrap_or_default()
+            ),
+            None => String::new(),
+        }
+    }
+    match answer(request::Payload::ReadWindow(muster::proto::ReadWindow {})).payload {
+        Some(response::Payload::Window(window)) => window
+            .view
+            .and_then(|view| {
+                let region = view
+                    .regions
+                    .into_iter()
+                    .find(|region| region.region_id == view.focused_region)?;
+                region.root.as_ref().map(written)
+            })
+            .unwrap_or_default(),
+        other => panic!("asking what the window is showing answered {other:?}"),
+    }
 }
 
 /// A daemon holding one tab of two panes, `p1` on the left and `p2` on the right.

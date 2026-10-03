@@ -29,7 +29,7 @@ use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::focus_history::FocusHistory;
 use muster_core::input::{Bindings, InputEvent, InputSink, PaneInput, PaneInputSettings};
-use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal};
+use muster_core::intent::{BackendChannel, BackendIntent, MoveDestination, Outcome, Refusal, Side};
 use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restored};
 use muster_core::names::Minter;
@@ -2735,11 +2735,20 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
 /// exchange places, and a pane dropped on a row in another tab joins that tab behind it. The
 /// person dragging made one decision, so there is one intent name for it and one rule.
 ///
+/// A side settles it the other way: a pane dropped on another pane's edge goes to that side of
+/// it whichever tab either is in, so it is always a move, and a move within one tab is how a
+/// split changes direction.
+///
 /// Both ends have to be on the daemon named. The sidebar refuses a drop across daemons before
 /// it gets here and a CLI caller does not, so for that caller this is the first line rather
 /// than the second - and it has to be, because one daemon cannot place a pane beside a pane it
 /// does not hold.
-pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> Result<(), Refusal> {
+pub(crate) fn arrange_pane(
+    daemon: &DaemonId,
+    pane: &PaneId,
+    onto: &PaneId,
+    side: Option<Side>,
+) -> Result<(), Refusal> {
     let intent = {
         let session = poison::lock(&SESSION, "session");
         let backend = session.backends.get(daemon).ok_or_else(|| {
@@ -2762,13 +2771,18 @@ pub(crate) fn arrange_pane(daemon: &DaemonId, pane: &PaneId, onto: &PaneId) -> R
             })
         };
         let (from, to) = (holding(pane)?, holding(onto)?);
-        if from == to {
-            BackendIntent::SwapPanes { pane: pane.clone(), with: onto.clone() }
-        } else {
-            BackendIntent::MovePane {
-                pane: pane.clone(),
-                to: MoveDestination::Beside { tab: to, after: onto.clone() },
+        match side {
+            None if from == to => {
+                BackendIntent::SwapPanes { pane: pane.clone(), with: onto.clone() }
             }
+            _ => BackendIntent::MovePane {
+                pane: pane.clone(),
+                to: MoveDestination::Beside {
+                    tab: to,
+                    pane: onto.clone(),
+                    side: side.unwrap_or(Side::Right),
+                },
+            },
         }
     };
     submit(daemon, &intent, Keyboard::Follows).map(drop)

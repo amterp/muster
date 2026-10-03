@@ -933,7 +933,8 @@ message FocusTabRelative {
 // One message for both outcomes, because whoever asked made one decision: put this agent
 // there. Which request that becomes is the core's to work out from where the two panes are -
 // the same tab is an exchange, a different tab is a move - and a caller that chose would be a
-// second place that rule lives.
+// second place that rule lives. A `side` settles it the other way: dropping a pane on another
+// pane's edge names exactly where it goes, so with one it is always a move.
 //
 // **Two panes must be on the same daemon.** A pane is a PTY its daemon owns, so moving one to
 // another machine would mean killing a process on one host and starting a different one on
@@ -988,6 +989,15 @@ message ArrangePane {
   // Only read with `new_tab`. Naming it is something the three-command dance could not do at
   // all, because the tab was made before anybody knew what was going into it.
   string tab_name = 5;
+
+  // Which side of `onto_pane_id` the pane goes to: left, right, up or down, the words
+  // SplitPane uses. The two then share what the onto pane had, half each, in whichever tab it
+  // is in - which is how a side by side pair becomes one above the other.
+  //
+  // Only read with `onto_pane_id`, and refused with the other two destinations. Empty keeps
+  // the older meaning above, an exchange in one tab and a landing after it in another, which is
+  // what dropping a row on a row in the agent list still asks for.
+  string side = 7;
 }
 
 // Brings a named tab on screen, and puts the keyboard in it.

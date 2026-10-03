@@ -1174,6 +1174,24 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
              different places; ask for one of them.",
         );
     }
+    let side = if arrange.side.is_empty() {
+        None
+    } else if arrange.onto_pane_id.is_empty() {
+        return Response::failure(format!(
+            "a pane was asked to move to the {:?} side of nothing, so nothing was rearranged. A \
+             side is a side of the pane named as `onto`, and a tab has no sides; name the pane \
+             to put this one beside, or drop the side.",
+            arrange.side
+        ));
+    } else if let Some(side) = Side::parse(&arrange.side) {
+        Some(side)
+    } else {
+        return Response::failure(format!(
+            "the core does not know a side called {:?}, so nothing was rearranged. Only left, \
+             right, up and down exist.",
+            arrange.side
+        ));
+    };
     // The one destination that may cross machines, because it names a tab rather than a pane:
     // a Muster tab is a grouping Muster made, so a pane joining one from another machine moves
     // no process anywhere (MIP-2, stage four).
@@ -1232,7 +1250,7 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
         return no_pane_to_rearrange(&pane);
     };
     relayed(
-        session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id))
+        session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id), side)
             .map(|()| Response::ok()),
     )
 }

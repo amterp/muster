@@ -1246,6 +1246,64 @@
       }
     },
     {
+      "name": "a pane is moved to one side of another",
+      "why": "What dropping a pane on another pane's edge asks for, from a script. A side is the one thing a move could not say before, and it is what turns a side by side pair into one above the other: the pane goes below the one named, in whichever tab that is, rather than trading places with it.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--pane",
+          "p1w3r0ab2n",
+          "--onto",
+          "p1w3r07bsd",
+          "--down"
+        ]
+      },
+      "expect": {
+        "request": {
+          "arrange_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "onto_pane_id": "p1w3r07bsd",
+            "side": "down"
+          }
+        }
+      }
+    },
+    {
+      "name": "a side is a side of a pane, so it needs --onto",
+      "why": "A tab has no sides, and a tab of its own has nothing to be beside. Refused while parsing, so a script that meant `--onto X --down` and dropped the pane is told rather than given a pane somewhere else.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--pane",
+          "p1w3r0ab2n",
+          "--new-tab",
+          "--down"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "two sides at once are two answers to one question",
+      "why": "A pane goes to one side of another. Two is a caller who has not decided, and picking one would put the pane somewhere it was half asked to go.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--onto",
+          "p1w3r07bsd",
+          "--left",
+          "--up"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
       "name": "moving with no --pane moves the pane this is running in",
       "why": "The rule every pane verb follows, and worth pinning here because moving names two panes and could plausibly have demanded both. An agent asking to be put beside another agent should not have to look up its own name first.",
       "given": {

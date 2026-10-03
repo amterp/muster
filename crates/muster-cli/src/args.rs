@@ -125,7 +125,9 @@ somebody's cursor through all three. Ask with --focus.
 
 `pane move` is one verb for two outcomes, because the window works out which from where the panes \
 are: onto a pane in the same tab the two trade places, onto a pane in another tab it joins that \
-tab. Both have to be on the same machine - a pane is a process, and it lives where it lives.
+tab. Add --left, --right, --up or --down and it goes to that side of the pane instead, which is \
+how a side by side pair becomes one above the other. Both have to be on the same machine - a \
+pane is a process, and it lives where it lives.
 
 `pane new` and `tab new` also take --daemon, which is a machine's own name as `muster window` \
 prints it beside every pane: local, or whatever a [[daemon]] block in your config calls the \
@@ -142,7 +144,7 @@ Examples:
   muster pane new --down --run claude --name '🤖 A'
   muster msg post --to p1w3r07bsd --file brief.md
   muster pane wait --pane p1w3r07bsd --until idle,blocked --timeout 600
-  muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd
+  muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd --down
   muster tab new --run claude --name '🤖 reviewer'
   muster pane new --daemon devenv --run claude
   muster focus --next
@@ -548,7 +550,8 @@ enum Doing {
         #[arg(long, value_name = "REF")]
         pane: Option<String>,
 
-        /// Where to put it: in the same tab the two swap, in another it lands after this one
+        /// Where to put it: beside this pane with a side, or else in the same tab the two swap
+        /// and in another it lands after this one
         #[arg(long, group = "somewhere", value_name = "REF")]
         onto: Option<String>,
 
@@ -572,6 +575,23 @@ enum Doing {
         // is required, so refusing the other destination leaves exactly this one.
         #[arg(long, conflicts_with = "onto", value_name = "NAME")]
         name: Option<String>,
+
+        /// Put it left of the --onto pane, sharing that pane's space, in whichever tab it is in
+        //
+        // Refused against the other two destinations rather than made to require `--onto`, for
+        // the reason `--name` is: `requires` does not fire while another member of the required
+        // group above is present, and refusing those two leaves exactly `--onto`.
+        #[arg(long, group = "beside", conflicts_with_all = ["tab", "new_tab"])]
+        left: bool,
+        /// Put it right of the --onto pane
+        #[arg(long, group = "beside", conflicts_with_all = ["tab", "new_tab"])]
+        right: bool,
+        /// Put it above the --onto pane
+        #[arg(long, group = "beside", conflicts_with_all = ["tab", "new_tab"])]
+        up: bool,
+        /// Put it below the --onto pane
+        #[arg(long, group = "beside", conflicts_with_all = ["tab", "new_tab"])]
+        down: bool,
     },
 
     /// Move the divider beside a pane, or even the panes around it out
@@ -827,8 +847,7 @@ fn pane(
             // where ⌘D splits to, and a CLI whose default matched no chord would make the two
             // disagree about what "a split" means. clap holds the four in one group, so two at
             // once is refused before this is reached.
-            let side = chosen(&[(*left, "left"), (*right, "right"), (*up, "up"), (*down, "down")])
-                .unwrap_or("right");
+            let side = chosen_side([*left, *right, *up, *down]).unwrap_or("right");
             let (pane_id, daemon_id, new_pane_daemon_id) =
                 split_target(pane.as_ref(), daemon.as_ref(), environment);
             send(request::Payload::SplitPane(SplitPane {
@@ -888,13 +907,16 @@ fn pane(
             ..ClosePane::default()
         })),
         // clap holds the three destinations in one required group, so exactly one is set here.
-        Doing::Move { pane, onto, tab, new_tab, name } => {
+        Doing::Move { pane, onto, tab, new_tab, name, left, right, up, down } => {
             send(request::Payload::ArrangePane(ArrangePane {
                 pane_id: pane_ref(pane.as_ref(), environment),
                 onto_pane_id: onto.clone().unwrap_or_default(),
                 tab_id: tab.clone().unwrap_or_default(),
                 new_tab: *new_tab,
                 tab_name: name.clone().unwrap_or_default(),
+                // No side is the older move rather than a default one: the two panes trade
+                // places in one tab, and in another the pane lands after the one named.
+                side: chosen_side([*left, *right, *up, *down]).unwrap_or_default().to_string(),
                 ..ArrangePane::default()
             }))
         }
@@ -1021,6 +1043,12 @@ fn tab(
 /// group, so at most one is ever true and the order here only decides what a bug would look like.
 fn chosen(among: &[(bool, &'static str)]) -> Option<&'static str> {
     among.iter().find(|(said, _)| *said).map(|(_, word)| *word)
+}
+
+/// Which of the four side flags was given - left, right, up and down, in that order - spelled
+/// as the core reads a side.
+fn chosen_side([left, right, up, down]: [bool; 4]) -> Option<&'static str> {
+    chosen(&[(left, "left"), (right, "right"), (up, "up"), (down, "down")])
 }
 
 /// Where a pane a command makes should start, as a path the far side can act on.

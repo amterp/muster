@@ -603,6 +603,11 @@ both and the core picks the verb from where the panes are - a shell that chose w
 lives, and it would have to read the tree to do it. An exchange rather than an insertion because an arrangement has
 no "between".
 
+A side is the other answer, for the gesture that can say one. A pane dropped on another pane's edge names the side
+it goes to, so `ArrangePane` carries that side and the core sends a move whichever tab either pane is in: the pane
+leaves its place and shares the target's, half each. That is how a split changes direction, and the daemon has
+always been able to do it - what was missing was a request that could say which side.
+
 A drop across daemons is refused in the shell, before it becomes a request. A pane is a PTY its daemon owns, so
 moving one to another machine means killing a process on one host and starting a different one on another - not a
 move, and nothing the core could honestly do with the intent.

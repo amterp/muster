@@ -55,13 +55,13 @@ impl Side {
 /// and nothing inside it, which is the one that can span machines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MoveDestination {
-    /// Into a tab that exists, landing behind one of its panes.
+    /// Beside a pane, in that pane's tab, on one side of it.
     ///
-    /// `after` is the pane it lands behind in the order the tab lays its panes out - which is
-    /// the order the agent list reads. An ordering rather than a side, because that is what
-    /// dragging a row down a list means; the adapter places it to the right of `after`, which
-    /// is the next place in that order.
-    Beside { tab: TabId, after: PaneId },
+    /// Two callers mean two things by it. Dropping a pane on another pane's edge names the side
+    /// outright. Dropping a row on a row in another tab means "behind this one in the list",
+    /// which is `Side::Right`: the list reads the tab's panes in that order, so the next place
+    /// in it is to the right.
+    Beside { tab: TabId, pane: PaneId, side: Side },
 
     /// Into a tab of its own, which the move makes.
     ///

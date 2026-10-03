@@ -141,6 +141,14 @@ same tab they trade places. In different tabs the pane joins the other's tab, im
 The window works that out from the panes rather than asking you to say, so a script that knows
 where it wants an agent does not also have to know how it got there.
 
+To say exactly where, name a side of the other pane:
+
+    muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd --down
+
+`--left`, `--right`, `--up` and `--down` put the pane on that side of the `--onto` pane, the two
+sharing the space it had, half each, in whichever tab it is in. That is how a side by side pair
+becomes one above the other, and it is what dropping a pane on another pane's edge asks for.
+
 Both panes have to be on the same machine. A pane is a PTY its daemon owns, so there is no move
 that carries one from a laptop to a devenv - `muster window` says which daemon holds each.
 

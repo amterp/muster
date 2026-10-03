@@ -154,7 +154,7 @@ impl DaemonBackend {
     /// Where a moved pane goes, and the tab the move makes, if it makes one.
     fn destination(&self, to: MoveDestination) -> (placement::Where, Option<TabId>) {
         match to {
-            MoveDestination::Beside { after, .. } => (beside(&after, Side::Right), None),
+            MoveDestination::Beside { pane, side, .. } => (beside(&pane, side), None),
             MoveDestination::NewTab { tab, name } => {
                 let label = proto::Label { generation: u64::from(name.is_some()), text: name };
                 let placement = placement::Where::NewTab(placement::NewTab {
