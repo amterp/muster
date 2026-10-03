@@ -3934,6 +3934,10 @@ pub(crate) struct WindowNow {
     pub name: String,
     /// Every other window, open or closed, with the tabs it holds.
     pub others: Vec<OtherWindow>,
+    /// How every tab this window holds is arranged, when the caller asked for the layout.
+    pub layouts: Vec<View>,
+    /// How big each pane's terminal is, when the caller asked for the layout.
+    pub grids: Vec<(DaemonId, PaneId, Grid)>,
 }
 
 /// Another window, as this one can describe it.
@@ -4027,24 +4031,13 @@ pub(crate) fn daemon_health() -> Vec<DaemonHealth> {
         .collect()
 }
 
-/// How every tab a window holds is arranged, and how big each pane's terminal is, for a caller
-/// describing the layout.
+/// How big each pane's terminal is, for a caller describing the layout.
 ///
-/// The sizes are asked of each daemon with the session let go, as `read_pane` asks for text: a
-/// daemon slow to answer must not hold up the window. One that cannot answer - not connected, or
-/// too old to know the question - is left out and logged, and its panes' sizes are then unknown
-/// rather than guessed.
-pub(crate) fn layout(window: WindowId) -> (Vec<View>, Vec<(DaemonId, PaneId, Grid)>) {
-    let (views, channels) = {
-        let session = poison::lock(&SESSION, "session");
-        let views = session.arranged(window);
-        let channels: Vec<(DaemonId, Arc<dyn BackendChannel>)> = session
-            .backends
-            .keys()
-            .filter_map(|daemon| Some((daemon.clone(), session.channel_of(daemon)?)))
-            .collect();
-        (views, channels)
-    };
+/// Asked of each daemon with the session let go, as `read_pane` asks for text: a daemon slow to
+/// answer must not hold up the window. One that cannot answer - not connected, or too old to know
+/// the question - is left out and logged, and its panes' sizes are then unknown rather than
+/// guessed.
+fn grids(channels: Vec<(DaemonId, Arc<dyn BackendChannel>)>) -> Vec<(DaemonId, PaneId, Grid)> {
     let mut grids = Vec::new();
     for (daemon, channel) in channels {
         match channel.grids() {
@@ -4061,10 +4054,12 @@ pub(crate) fn layout(window: WindowId) -> (Vec<View>, Vec<(DaemonId, PaneId, Gri
             ),
         }
     }
-    (views, grids)
+    grids
 }
 
-pub(crate) fn window(window: WindowId) -> WindowNow {
+/// Everything about a window at one moment, read under one lock so its layout cannot describe a
+/// tab its roster has already lost.
+pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
     let session = poison::lock(&SESSION, "session");
     // No reconcile, unlike `publish`. This is a read: a caller asking what the window shows
     // must not be able to move the keyboard or open a region by asking, and anything that
@@ -4100,7 +4095,18 @@ pub(crate) fn window(window: WindowId) -> WindowNow {
     let name = session.windows[window].name.to_string();
     let open_here = session.holding.open_here();
     let others = session.other_windows(window);
+    let (layouts, channels) = if layout {
+        let channels: Vec<(DaemonId, Arc<dyn BackendChannel>)> = session
+            .backends
+            .keys()
+            .filter_map(|daemon| Some((daemon.clone(), session.channel_of(daemon)?)))
+            .collect();
+        (session.arranged(window), channels)
+    } else {
+        (Vec::new(), Vec::new())
+    };
     drop(session);
+    let grids = grids(channels);
     // Dialed with the session let go, for the reason `open_window_holding` gives.
     let others = others
         .into_iter()
@@ -4111,7 +4117,7 @@ pub(crate) fn window(window: WindowId) -> WindowNow {
         })
         .collect();
 
-    WindowNow { view, roster, numbering, agents, daemons, name, others }
+    WindowNow { view, roster, numbering, agents, daemons, name, others, layouts, grids }
 }
 
 /// Starts following every daemon a config file named, each on a thread of its own, and waits

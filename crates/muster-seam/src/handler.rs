@@ -1741,8 +1741,8 @@ fn read_bindings() -> Response {
 /// split a pane and start something in it, and without this it can never learn whether either
 /// happened. The same four messages the shell is sent as events, from the same builders.
 fn read_window(window: WindowId, layout: bool) -> Response {
-    let now = session::window(window);
-    let (layouts, grids) = if layout { laid_out(window) } else { (Vec::new(), Vec::new()) };
+    let now = session::window(window, layout);
+    let (layouts, grids) = laid_out(&now);
     Response {
         payload: Some(response::Payload::Window(proto::Window {
             view: Some(convert::view(&now.view)),
@@ -1787,9 +1787,9 @@ fn read_window(window: WindowId, layout: bool) -> Response {
 }
 
 /// Every tab's arrangement and every pane's size, for a read that asked for the layout.
-fn laid_out(window: WindowId) -> (Vec<proto::TabLayout>, Vec<proto::PaneGrid>) {
-    let (views, grids) = session::layout(window);
-    let layouts = views
+fn laid_out(now: &session::WindowNow) -> (Vec<proto::TabLayout>, Vec<proto::PaneGrid>) {
+    let layouts = now
+        .layouts
         .iter()
         .map(|view| {
             let described = convert::view(view);
@@ -1801,8 +1801,9 @@ fn laid_out(window: WindowId) -> (Vec<proto::TabLayout>, Vec<proto::PaneGrid>) {
             }
         })
         .collect();
-    let grids = grids
-        .into_iter()
+    let grids = now
+        .grids
+        .iter()
         .map(|(daemon, pane, grid)| proto::PaneGrid {
             daemon_id: daemon.to_string(),
             pane_id: pane.to_string(),
