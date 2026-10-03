@@ -56,6 +56,24 @@ struct PaneActionTests {
   }
 
   @MainActor
+  @Test("Select Pane Asking is greyed out while nothing asks, and only that item asks")
+  func theAskingItemAsksTheCore() {
+    let asking = #selector(MusterWindow.focusPaneAsking(_:))
+    _ = seam(answeringReadAsking(Muster_Asking()))
+    #expect(!MusterWindow.isAvailable(asking))
+
+    var waiting = Muster_Asking()
+    waiting.daemonID = "laptop"
+    waiting.paneID = "p2"
+    let busy = seam(answeringReadAsking(waiting))
+    #expect(MusterWindow.isAvailable(asking))
+
+    let before = busy.requests.count
+    #expect(MusterWindow.isAvailable(#selector(MusterWindow.zoomPane(_:))))
+    #expect(busy.requests.count == before)
+  }
+
+  @MainActor
   @Test("clicking a pane asks for the keyboard rather than taking it")
   func aClickIsARequest() {
     // Which pane the keyboard feeds is the core's answer, so a click asks and the view that
@@ -544,4 +562,12 @@ private func click() -> NSEvent {
   NSEvent.mouseEvent(
     with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
     context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+}
+
+/// A core that answers `ReadAsking` with `asking` and everything else with `ok`.
+private func answeringReadAsking(_ asking: Muster_Asking) -> RecordingDispatcher {
+  RecordingDispatcher { request in
+    if case .readAsking = request.payload { return .asking(asking) }
+    return nil
+  }
 }

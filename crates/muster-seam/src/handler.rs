@@ -239,6 +239,7 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::FocusPaneAt(at) => focus_pane_at(window, at.place),
         request::Payload::PressNumberedChord(chord) => press_numbered_chord(window, chord.press),
         request::Payload::FocusAsking(_) => focus_asking(window),
+        request::Payload::ReadAsking(_) => read_asking(),
         request::Payload::FocusHistory(walk) => focus_history(window, walk.forward),
         request::Payload::OpenTranscript(open) if open.group.is_empty() => Response::failure(
             "a request to open a transcript named no group, so nothing opened. A banner for a \
@@ -1457,6 +1458,24 @@ fn counted_from_one(number: u32, asked: &str) -> Result<usize, Box<Response>> {
         ))));
     }
     Ok(number)
+}
+
+/// What `focus_asking` would go to now, without going there.
+fn read_asking() -> Response {
+    let asking = match session::most_urgent_asking() {
+        Some(Asker::Pane(pane)) => proto::Asking {
+            daemon_id: pane.daemon.to_string(),
+            pane_id: pane.pane.to_string(),
+            ..proto::Asking::default()
+        },
+        Some(Asker::Group(group)) => proto::Asking {
+            daemon_id: group.daemon.to_string(),
+            group: group.group,
+            ..proto::Asking::default()
+        },
+        None => proto::Asking::default(),
+    };
+    Response { payload: Some(response::Payload::Asking(asking)) }
 }
 
 /// Goes to what is most urgently asking for somebody, the way clicking its banner does, and

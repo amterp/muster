@@ -916,6 +916,16 @@ public enum Core {
     return !went.paneID.isEmpty || !went.group.isEmpty
   }
 
+  /// Whether anything is asking for somebody now, which is whether `focusAsking` would go
+  /// anywhere. True when the core could not say: an item left enabled beeps when there turns out
+  /// to be nothing, where one greyed out by mistake hides the way to an agent that is waiting.
+  public static func anythingAsking() -> Bool {
+    var request = Muster_Request()
+    request.readAsking = Muster_ReadAsking()
+    guard case .asking(let would) = send(request) else { return true }
+    return !would.paneID.isEmpty || !would.group.isEmpty
+  }
+
   /// Puts the keyboard back on the pane it was on before, or forward again. False only when
   /// there was nowhere to go, as for `focusAsking`.
   @discardableResult
@@ -1149,6 +1159,7 @@ public enum Core {
     case .reattachPane: return "reattach_pane"
     case .focusPane: return "focus_pane"
     case .focusAsking: return "focus_asking"
+    case .readAsking: return "read_asking"
     case .focusHistory: return "focus_history"
     case .openTranscript: return "open_transcript"
     case .focusRelative: return "focus_relative"

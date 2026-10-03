@@ -2,8 +2,8 @@
 //! brought on screen with the keyboard on it, wherever it is in the window.
 
 use muster::proto::{
-    AttentionChanged, Event, FocusAsking, OpenWindow, ReadWindow, Request, Response, Startup,
-    WindowFocus, event, request, response,
+    AttentionChanged, Event, FocusAsking, OpenWindow, ReadAsking, ReadWindow, Request, Response,
+    Startup, WindowFocus, event, request, response,
 };
 use muster_daemon_proto::{AgentState, input_event};
 use muster_harness::requests::{create, in_new_tab, make, until_text};
@@ -39,6 +39,9 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     );
     let (shown, _) = keyboard();
 
+    // Asked before anything asks, as the menu item asks to know whether to grey itself out.
+    assert_eq!(read_asking(), muster::proto::Asking::default(), "something asks already");
+
     // Whichever tab is not on screen asks, so going there has to change what is shown.
     let (hidden_tab, hidden_pane) = if shown == "t1" { ("t2", "p2") } else { ("t1", "p1") };
     let mut input = Input::connect(daemon.socket_path());
@@ -50,13 +53,18 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
         || format!("the window asked {:?}", asked()),
     );
 
+    let would = read_asking();
+    assert_eq!(would.pane_id, hidden_pane, "would go to {would:?}");
+    assert_eq!(keyboard().0, shown, "asking where it would go went there");
+
     let went = focus_asking();
-    assert_eq!(went.pane_id, hidden_pane, "went to {went:?}");
+    assert_eq!(went, would, "went somewhere other than where it said it would");
     assert!(!went.daemon_id.is_empty(), "the answer names no daemon: {went:?}");
     assert_eq!(keyboard(), (hidden_tab.to_string(), hidden_pane.to_string()));
 
     // Somebody looks: the window has the OS's focus with the pane on screen.
     assert_ok(&answer(request::Payload::WindowFocus(WindowFocus { focused: true })));
+    assert_eq!(read_asking(), muster::proto::Asking::default(), "something still asks");
     let nothing = focus_asking();
     assert_eq!(nothing, muster::proto::Asking::default(), "something still asks");
     assert_eq!(keyboard(), (hidden_tab.to_string(), hidden_pane.to_string()), "it moved");
@@ -125,6 +133,13 @@ fn focus_asking() -> muster::proto::Asking {
     match answer(request::Payload::FocusAsking(FocusAsking {})).payload {
         Some(response::Payload::Asking(asking)) => asking,
         other => panic!("the core answered a FocusAsking with {other:?}"),
+    }
+}
+
+fn read_asking() -> muster::proto::Asking {
+    match answer(request::Payload::ReadAsking(ReadAsking {})).payload {
+        Some(response::Payload::Asking(asking)) => asking,
+        other => panic!("the core answered a ReadAsking with {other:?}"),
     }
 }
 
