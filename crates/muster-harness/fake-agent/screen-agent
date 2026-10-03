@@ -18,6 +18,10 @@
 # Every line it reads is also appended to $HOME/fake-agent-heard, which is how a test sees what
 # was typed into it (a daemon's doorbell, say) after the screen has been painted over.
 #
+# SIGUSR1 blocks it at once, without a line read, as an agent at work opens a dialog in the
+# middle of a turn while something typed sits unsent in its prompt; its process id is in
+# $HOME/fake-agent-pid.
+#
 # The first argument, if any, is how it starts:
 # - `starting`: it treats the first line it reads as Claude Code treats what is typed while it
 #   starts: the line fills its prompt, its Return is dropped, and nothing is sent until a later
@@ -33,6 +37,7 @@ tick=0
 draft=
 menu=
 placeholder=
+signalled=
 case "$1" in
     dialog) state=blocked ;;
     placeholder) placeholder=yes ;;
@@ -57,6 +62,9 @@ if [ "$2" = unechoed ]; then
     stty -echo
 fi
 
+printf '%s\n' $$ > "$HOME/fake-agent-pid"
+trap 'signalled=yes; state=blocked; paint' USR1
+
 paint
 
 if [ "$1" = starting ]; then
@@ -64,7 +72,16 @@ if [ "$1" = starting ]; then
     paint
 fi
 
-while IFS= read -r line; do
+while :; do
+    IFS= read -r line
+    read_status=$?
+    # A signal's trap has painted, and may have cut the read short: dash then says it failed,
+    # as it does at the end of input, while bash reads on.
+    if [ -n "$signalled" ]; then
+        signalled=
+        [ "$read_status" -ne 0 ] && continue
+    fi
+    [ "$read_status" -ne 0 ] && break
     line=$draft$line
     draft=
     placeholder=

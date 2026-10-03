@@ -549,6 +549,23 @@ fn an_urgent_post_waits_out_a_dialog() {
     assert!(rung[0].contains("1 urgent"), "{rung:?}");
 }
 
+/// An agent at work may open a dialog after its prompt was read and before the ring's Return,
+/// where Return would answer the dialog: the ring is typed without it, and the Return comes
+/// only once the prompt is seen holding the ring alone, which a dialog drawn over it is not.
+#[test]
+fn a_dialog_opened_over_an_urgent_ring_before_its_return_is_never_answered() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    std::thread::sleep(QUIET);
+
+    agent.post_urgently("p1", "now");
+    agent.until_shows("PROBE-PROMPT> [muster] integrator+p1");
+    agent.daemon.block_agent_unasked();
+    agent.until_shows("PROBE-STATE:BLOCKED");
+    std::thread::sleep(ANSWER * 2);
+    assert_eq!(agent.heard(), ["working"], "a Return reached the dialog");
+}
+
 /// Nor a menu opened over the prompt of an agent at work.
 #[test]
 fn an_urgent_post_waits_out_a_menu_opened_while_the_agent_works() {

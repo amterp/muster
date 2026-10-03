@@ -503,6 +503,16 @@ was.
 
 A ring typed at work is taken once the agent's prompt box is empty again, which is how Claude
 Code shows a line it queued; going to work says nothing, since the agent was already working.
+
+An agent at work can stop to ask a person at any moment, which an idle one does not, and the
+daemon's copy of the screen shows a new dialog a moment after the agent draws it. A Return at
+Claude Code's permission dialog takes its highlighted option, "Yes", while the ring's line
+itself, pasted or typed, does nothing there (`docs/observations/claude-code-2.1.288.md`, section
+3). So a ring at work is typed without its Return. A second look, a second later, presses Return
+only if the prompt box holds the ring and nothing else; a dialog over it keeps the Return back
+until the box shows again, for half a minute at most. What remains unguarded is a dialog drawn
+in the milliseconds between that second look and the Return reaching the agent: the Return would
+answer it.
 Until then Return is pressed again as for any ring. The hooks adapter and the inbox already reach
 an agent mid-turn, so urgency changes nothing for a participant they serve. Whether the model
 stops to read is its own call: in the recording Sonnet read at once, and Haiku 4.5 finished its

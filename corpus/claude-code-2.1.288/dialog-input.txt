@@ -1,0 +1,30 @@
+What Claude Code's Bash permission dialog does with an urgent ring's line written into it, pasted and typed, without a Return.
+
+Recorded 2026-10-03 on macOS 26.4.1 / arm64, Claude Code 2.1.288 running Haiku 4.5 in its default
+permission mode, in a 100x30 pseudo-terminal driven by a scratch script built on
+tools/detection-capture.py, with a logging hook on every event. The session was asked twice to run
+`rm -rf ./no-such-dir` with the Bash tool, which asks permission. The scratch folder's path is
+written <folder>.
+
+The line written, the doorbell's urgent wake:
+    [muster] review: 1 new (#4), 1 urgent, 1 to you, from director. Read it now, before you go on: muster msg read --group review
+
+09:13:11  idle at the prompt
+09:13:17  the Bash permission dialog is up; the terminal's bracketed paste mode is on
+          Do you want to proceed?
+          ❯ 1. Yes
+            2. Yes, and always allow access to <folder> from this project
+            3. No
+          Esc to cancel · Tab to amend
+          hooks so far: SessionStart, UserPromptSubmit, PreToolUse (Bash), PermissionRequest (Bash)
+09:13:17  the line is written as one bracketed paste
+09:13:20  the dialog is drawn as before, "1. Yes" still selected: 28 bytes of output, a redraw
+09:13:20  Esc: "Interrupted · What should Claude do instead?", back at the prompt, the box empty
+09:13:29  the same request, the same dialog; bracketed paste mode still on
+09:13:29  the line is written as plain keys in one write
+09:13:32  nothing drawn at all: the dialog unchanged
+09:13:32  Esc: interrupted again, the box empty
+
+Neither write picked an option, opened the amend field, or left text anywhere. A Return at that
+dialog takes the selected option, "Yes", which is Claude Code's documented behavior and was not
+repeated here.

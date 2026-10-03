@@ -15,7 +15,8 @@ use crate::pane::PaneIo;
 /// Where a pane's agent stands, for the doorbell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AtPrompt {
-    Empty,
+    /// Empty; `at_work` when it was read as the prompt of an agent at work.
+    Empty { at_work: bool },
     /// Its prompt holds this: a draft, or a ring left unsent.
     Holds(String),
     /// Not at its prompt, and why, for a log line.
@@ -49,14 +50,12 @@ pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: boo
     let (drawn, typed) = views(&grid);
     let title = muster_detect::title(&title);
     let input = Input { screen: &drawn, title: &title, progress: "" };
-    let read = manifests.prompt(&agent, input, &typed);
-    let read = if at_work && read.is_none() {
-        manifests.prompt_at_work(&agent, input, &typed)
-    } else {
-        read
+    let (read, at_work) = match manifests.prompt(&agent, input, &typed) {
+        None if at_work => (manifests.prompt_at_work(&agent, input, &typed), true),
+        read => (read, false),
     };
     match read {
-        Some(Prompt::Empty) => AtPrompt::Empty,
+        Some(Prompt::Empty) => AtPrompt::Empty { at_work },
         Some(Prompt::Holds(held)) => AtPrompt::Holds(held),
         None => AtPrompt::Not("its screen is not its prompt"),
     }

@@ -101,6 +101,19 @@ impl Daemon {
         self.until_agent(pane, state);
     }
 
+    /// Blocks the fake agent at once, with nothing typed into it: a dialog opened in the middle
+    /// of a turn, over whatever sits unsent in its prompt. The daemon has one fake agent's
+    /// process id written down, the last started.
+    pub fn block_agent_unasked(&self) {
+        let pid = std::fs::read_to_string(self.root().join("home/fake-agent-pid"))
+            .expect("the fake agent wrote down its process id");
+        let status = std::process::Command::new("kill")
+            .args(["-USR1", pid.trim()])
+            .status()
+            .expect("kill runs");
+        assert!(status.success(), "the fake agent could not be signalled");
+    }
+
     /// Waits until the daemon says the fake agent in `pane` is in `state`.
     pub fn until_agent(&self, pane: &str, state: proto::AgentState) {
         let mut control = self.connect();
