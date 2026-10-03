@@ -464,9 +464,18 @@ public enum SidebarModel {
     return marks
   }
 
-  /// A context this full is drawn in the warning colour: past it an agent is near compacting,
-  /// which is worth knowing before handing it more work.
-  public static let contextWarning: Float = 80
+  /// How far a context ring has moved from its empty colour toward its full one, 0 to 1, for a
+  /// context `used` percent full.
+  ///
+  /// Continuous rather than a step at a threshold, so a glance says how close an agent is to
+  /// compacting and not only whether it has passed some line. Squared so that most of the move
+  /// happens in the top half: a context half full is a quarter of the way along and still
+  /// reads as calm, while 80% is past halfway and 90% is nearly the full colour, which is
+  /// about where harnesses compact.
+  public static func contextBlend(used: Float) -> CGFloat {
+    let fraction = CGFloat(min(max(used, 0), 100) / 100)
+    return fraction * fraction
+  }
 
   /// The progress a row draws, if any. A percentage or a failure is worth a bar; indeterminate
   /// progress is some agents' way of saying they are working, which the dot already says.
@@ -561,6 +570,37 @@ public enum SidebarModel {
   @MainActor
   public static func dotColor(state: String) -> NSColor {
     PaneAppearance.borderColor(state: state)
+  }
+
+  /// The context ring's colour with nothing used: the grey its row's other quiet marks use.
+  public static let contextEmptyColor = NSColor.secondaryLabelColor
+
+  /// The context ring's colour with all of it used. Red because no agent state is red, so a
+  /// nearly full ring cannot be read as an agent asking for something - which the orange it
+  /// replaced could, being `blocked`'s.
+  public static let contextFullColor = NSColor.systemRed
+
+  /// What a context ring `used` percent full is painted in, between `[colors] context_empty`
+  /// and `context_full`, or the defaults above for whichever end the file left out.
+  ///
+  /// Only meaningful under a drawing appearance, because both default ends are dynamic: each is
+  /// resolved to sRGB for the appearance current at the call and then mixed, alpha included,
+  /// since the grey is partly transparent and the red is not.
+  @MainActor
+  public static func contextColor(used: Float) -> NSColor {
+    let chrome = PaneAppearance.configured
+    let empty = chrome.contextEmpty.flatMap(NSColor.init(hex:)) ?? contextEmptyColor
+    let full = chrome.contextFull.flatMap(NSColor.init(hex:)) ?? contextFullColor
+    guard let from = empty.usingColorSpace(.sRGB), let to = full.usingColorSpace(.sRGB) else {
+      return empty
+    }
+    let blend = contextBlend(used: used)
+    let mix = { (a: CGFloat, b: CGFloat) in a + (b - a) * blend }
+    return NSColor(
+      srgbRed: mix(from.redComponent, to.redComponent),
+      green: mix(from.greenComponent, to.greenComponent),
+      blue: mix(from.blueComponent, to.blueComponent),
+      alpha: mix(from.alphaComponent, to.alphaComponent))
   }
 
   /// How tall a row is.
@@ -1161,7 +1201,7 @@ final class SidebarRowView: NSView {
     case .subagents(let count):
       return CountBadge(count: count)
     case .context(let used):
-      return ContextRing(used: CGFloat(used) / 100, warn: used >= SidebarModel.contextWarning)
+      return ContextRing(used: used)
     }
   }
 
@@ -1389,14 +1429,13 @@ final class CountBadge: NSView {
 /// glance down a column of them, where a percentage would have to be read.
 @MainActor
 final class ContextRing: NSView {
-  private let used: CGFloat
-  private let warn: Bool
+  /// Percent, 0 to 100.
+  private let used: Float
 
-  init(used: CGFloat, warn: Bool) {
+  init(used: Float) {
     self.used = used
-    self.warn = warn
     super.init(frame: .zero)
-    setAccessibilityLabel("\(Int((used * 100).rounded()))% of its context used")
+    setAccessibilityLabel("\(Int(used.rounded()))% of its context used")
   }
 
   required init?(coder: NSCoder) {
@@ -1417,10 +1456,10 @@ final class ContextRing: NSView {
     let arc = NSBezierPath()
     arc.appendArc(
       withCenter: center, radius: ring.width / 2, startAngle: 90,
-      endAngle: 90 - 360 * min(used, 1), clockwise: true)
+      endAngle: 90 - 360 * CGFloat(min(used, 100) / 100), clockwise: true)
     arc.lineWidth = width
     arc.lineCapStyle = .round
-    (warn ? NSColor.systemOrange : NSColor.secondaryLabelColor).setStroke()
+    SidebarModel.contextColor(used: used).setStroke()
     arc.stroke()
   }
 }

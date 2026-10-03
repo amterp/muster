@@ -413,6 +413,13 @@ message Appearance {
   // The surface scrolls itself by it, and the core scales what reaches the program by the same,
   // so the two move together.
   double scroll_multiplier = 17;
+
+  // The two ends of the context ring beside an agent's row, which moves from the first to the
+  // second as the context fills. Empty means the shell's own, on the same terms as the agent
+  // states: the platform's colours live in the shell, and the core passes on only what a person
+  // wrote.
+  string context_empty_color = 18;
+  string context_full_color = 19;
 }
 
 // The five agent states, as a person coloured them.

@@ -1138,6 +1138,8 @@ fn appearance_message() -> proto::Appearance {
             idle: color(appearance.colors.agents.idle),
             unknown: color(appearance.colors.agents.unknown),
         }),
+        context_empty_color: color(appearance.colors.context_empty),
+        context_full_color: color(appearance.colors.context_full),
     }
 }
 

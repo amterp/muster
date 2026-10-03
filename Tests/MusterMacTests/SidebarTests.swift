@@ -645,6 +645,50 @@ struct SidebarTests {
     #expect(caption.map(SidebarModel.accessories(of:)) == [])
   }
 
+  @Test("the context ring warms as the context fills, rather than flipping at a line")
+  func theContextRingWarmsGradually() {
+    let blends = stride(from: Float(0), through: 100, by: 5).map(SidebarModel.contextBlend(used:))
+    #expect(blends.first == 0)
+    #expect(blends.last == 1)
+    // Every step moves it, which is what a threshold did not: 60% and 75% used to look alike.
+    #expect(zip(blends, blends.dropFirst()).allSatisfy { $0 < $1 })
+    // Calm while there is plenty left, and most of the way there by the old warning line.
+    #expect(SidebarModel.contextBlend(used: 49) < 0.25)
+    #expect(SidebarModel.contextBlend(used: 80) > 0.5)
+    #expect(SidebarModel.contextBlend(used: -3) == 0)
+    #expect(SidebarModel.contextBlend(used: 140) == 1)
+  }
+
+  @MainActor
+  @Test("the context ring runs between its two ends, in light and in dark")
+  func theContextRingRunsBetweenItsEnds() throws {
+    defer { PaneAppearance.adopt(chrome: .none) }
+    for name in [NSAppearance.Name.aqua, .darkAqua] {
+      let appearance = try #require(NSAppearance(named: name))
+      appearance.performAsCurrentDrawingAppearance {
+        PaneAppearance.adopt(chrome: .none)
+        expectSame(SidebarModel.contextColor(used: 0), SidebarModel.contextEmptyColor)
+        expectSame(SidebarModel.contextColor(used: 100), SidebarModel.contextFullColor)
+
+        // One end repainted leaves the other as shipped, the way one agent state does.
+        PaneAppearance.adopt(
+          chrome: Core.Chrome(
+            divider: nil, focusRing: nil, agents: Core.AgentColors(), contextFull: "#00ff00"))
+        expectSame(SidebarModel.contextColor(used: 100), NSColor(hex: "#00ff00")!)
+        expectSame(SidebarModel.contextColor(used: 0), SidebarModel.contextEmptyColor)
+      }
+    }
+  }
+
+  @Test("a full context ring is not the colour of any agent state")
+  func aFullRingIsNoAgentState() {
+    // The ring sits beside the dot. It used to turn orange, which is `blocked`, so a nearly full
+    // context could be read as an agent waiting on you.
+    for state in ["working", "blocked", "waiting", "done", "idle", "unknown"] {
+      #expect(SidebarModel.contextFullColor != PaneAppearance.defaultBorderColor(state: state))
+    }
+  }
+
   @Test("progress is drawn when it says how far, or that it failed, and not while it only spins")
   func progressIsDrawnWhenItSaysSomething() {
     let key = PaneKey(daemon: "local", pane: "w1:p1")
@@ -823,4 +867,23 @@ struct SidebarTests {
 
     #expect(sidebar.drawnRows.allSatisfy { $0.width == SidebarModel.width })
   }
+}
+
+/// Whether two colours paint the same under the current drawing appearance. Compared as sRGB
+/// components because a dynamic colour and the mix it resolved to are different objects, and a
+/// hair of tolerance because the mix is arithmetic on fractions.
+private func expectSame(
+  _ actual: NSColor, _ expected: NSColor, sourceLocation: SourceLocation = #_sourceLocation
+) {
+  guard let actual = actual.usingColorSpace(.sRGB), let expected = expected.usingColorSpace(.sRGB)
+  else {
+    Issue.record("a colour with no sRGB form", sourceLocation: sourceLocation)
+    return
+  }
+  let components = { (color: NSColor) in
+    [color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent]
+  }
+  #expect(
+    zip(components(actual), components(expected)).allSatisfy { abs($0 - $1) < 0.002 },
+    "\(actual) is not \(expected)", sourceLocation: sourceLocation)
 }

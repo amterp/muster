@@ -62,6 +62,8 @@ fn appearance(appearance: &config::Appearance) -> Vec<String> {
         ("agent_done", colors.agents.done),
         ("agent_idle", colors.agents.idle),
         ("agent_unknown", colors.agents.unknown),
+        ("context_empty", colors.context_empty),
+        ("context_full", colors.context_full),
     ] {
         if let Some(color) = color {
             set.push(format!("colors.{name}={color}"));

@@ -996,7 +996,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_waiting, agent_done, agent_idle, agent_unknown, palette."
+        "refused": "the config file's [colors] has a key called \"backgrnd\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_waiting, agent_done, agent_idle, agent_unknown, context_empty, context_full, palette."
       }
     },
     {
@@ -1091,7 +1091,7 @@
         ]
       },
       "expect": {
-        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_waiting, agent_done, agent_idle, agent_unknown, palette."
+        "refused": "`colors` in the config file is a string, and it has to be a block - `[colors]` with its settings under it. None of the file was applied. Known keys there: background, foreground, cursor, cursor_text, selection_background, selection_foreground, bold, divider, focus_ring, agent_working, agent_blocked, agent_waiting, agent_done, agent_idle, agent_unknown, context_empty, context_full, palette."
       }
     },
     {
@@ -1481,6 +1481,25 @@
         "text": [],
         "appearance": [
           "colors.agent_blocked=#ff0000"
+        ]
+      }
+    },
+    {
+      "name": "the context ring's two ends can be repainted, each on its own",
+      "why": "The ring beside an agent's row moves from one colour to the other as its context fills, and both ends are colours Muster chose, so they are yours on the same terms as the agent states. Partial for the same reason too: somebody whose theme makes the red hard to see is fixing that end, not choosing a ramp.",
+      "given": {
+        "file": [
+          "[colors]",
+          "context_full = \"#f7768e\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "appearance": [
+          "colors.context_full=#f7768e"
         ]
       }
     },

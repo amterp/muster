@@ -65,6 +65,8 @@ agent_waiting = "#7c7fd8"      # idle, and waiting on work it started itself
 agent_done = "#9ece6a"
 agent_idle = "#565f89"
 agent_unknown = "#3b4261"
+context_empty = "#565f89"      # the ring beside a row, with none of the context used
+context_full = "#f7768e"       # and with all of it; the ring moves between the two as it fills
 palette = [                    # the ANSI sixteen, all of them or none
   "#000000", "#cc0000", "#4e9a06", "#c4a000",
   "#3465a4", "#75507b", "#06989a", "#d3d7cf",
@@ -336,7 +338,7 @@ invented** - the vocabulary names what you may change and nothing else, because 
 opinion about which monospace font your machine has and a default palette written into Muster
 would be a transcription of somebody else's. `palette` is the sixteen ANSI colours, all of
 them or none: a partial one leaves the rest as the renderer's and produces a scheme nobody
-designed. `divider`, `focus_ring` and the five `agent_*`
+designed. `divider`, `focus_ring`, the `agent_*` and the two `context_*`
 sit with the pane colours even though Muster rather than the renderer paints them, because you
 pick colours all at once and which piece of code holds the brush is not something you should
 have to know.
@@ -350,6 +352,13 @@ own. Omitting it is the behaviour every terminal has by default.
 four siblings are what a pane's edge and its row's dot are painted in; `focus_ring` is the thin
 inner ring saying which pane the keyboard feeds. Each is optional on its own - fixing the one row
 you cannot see is not adopting a theme - and leaving one out gives you the colour Muster ships.
+
+`context_empty` and `context_full` are the two ends of the small ring beside an agent's row, which
+fills as the agent's context does. Its colour moves from one end to the other as it fills, slowly at
+first and most of the way by 80%, so a glance says how close the agent is to compacting rather than
+only whether it has passed a line. What ships is the grey of the row's other quiet marks and the
+platform's red - red because no agent state is red, so a full ring is never read as an agent
+waiting on you.
 
 Leaving `focus_ring` out follows the macOS accent, which is a decision rather than a shortfall:
 the accent is the platform's own answer to which thing has focus, and it already tracks a choice

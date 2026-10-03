@@ -534,18 +534,39 @@ public enum Core {
   }
 
   /// The colours no renderer paints: the line between two regions, the ring saying which pane
-  /// has the keyboard, and the five agent states.
+  /// has the keyboard, the five agent states, and the two ends of a row's context ring.
   ///
-  /// Grouped rather than seven fields on `Appearance`, because they go to one place - the
+  /// Grouped rather than separate fields on `Appearance`, because they go to one place - the
   /// window's own chrome - and arrive together on one event. Every one is nil for "the file
   /// said nothing", and every one has a different answer to what that means: the platform's
-  /// separator, the platform's accent, and the legend `PaneAppearance` holds.
+  /// separator, the platform's accent, the legend `PaneAppearance` holds, and the ring's
+  /// defaults in `SidebarModel`.
   public struct Chrome: Sendable {
     public let divider: String?
     public let focusRing: String?
     public let agents: AgentColors
+    public let contextEmpty: String?
+    public let contextFull: String?
+
+    init(
+      divider: String?, focusRing: String?, agents: AgentColors, contextEmpty: String? = nil,
+      contextFull: String? = nil
+    ) {
+      self.divider = divider
+      self.focusRing = focusRing
+      self.agents = agents
+      self.contextEmpty = contextEmpty
+      self.contextFull = contextFull
+    }
 
     public static let none = Chrome(divider: nil, focusRing: nil, agents: AgentColors())
+
+    /// Which ends of the context ring a person repainted, for the run log, on the terms
+    /// `AgentColors.described` gives.
+    var describedContext: String {
+      let named = [("empty", contextEmpty), ("full", contextFull)].filter { $0.1 != nil }.map(\.0)
+      return named.isEmpty ? "(default)" : named.joined(separator: " ")
+    }
   }
 
   /// The five agent states as `#rrggbb`, or nil each for the one Muster ships.
@@ -617,7 +638,9 @@ public enum Core {
           waiting: named(answer.agentColors.waiting),
           done: named(answer.agentColors.done),
           idle: named(answer.agentColors.idle),
-          unknown: named(answer.agentColors.unknown))))
+          unknown: named(answer.agentColors.unknown)),
+        contextEmpty: named(answer.contextEmptyColor),
+        contextFull: named(answer.contextFullColor)))
   }
 
   /// How big the window should be, and whether it should be full-screen.
@@ -1220,6 +1243,7 @@ public enum Core {
           "divider": appearance.chrome.divider ?? "(platform)",
           "focus_ring": appearance.chrome.focusRing ?? "(accent)",
           "agents": appearance.chrome.agents.described,
+          "context": appearance.chrome.describedContext,
         ])
       window?.apply(appearance: appearance)
       // The family may have changed with everything else, and the answer to whether this

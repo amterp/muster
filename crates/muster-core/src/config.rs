@@ -129,8 +129,8 @@ pub struct Font {
 
 /// `[colors]`.
 ///
-/// Seven that decide what a pane looks like, seven that decide what Muster's own chrome looks
-/// like, and the ANSI palette a program in a pane addresses by number.
+/// Seven that decide what a pane looks like, the rest of what Muster's own chrome looks like,
+/// and the ANSI palette a program in a pane addresses by number.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Colors {
     pub background: Option<Rgb>,
@@ -175,6 +175,14 @@ pub struct Colors {
     /// no table mapping a state to a hue. `muster window` keeps the terminal's fixed sixteen
     /// and honours none of this, which is why nothing here has to be mapped onto them.
     pub agents: AgentColors,
+
+    /// The two ends of the context ring beside an agent's row: what it is painted in with
+    /// nothing used, and with all of it. The ring moves between them as the context fills.
+    ///
+    /// Absent is the shell's own - the platform's secondary label grey and its red - and each
+    /// is optional on its own, for the reason the agent states are.
+    pub context_empty: Option<Rgb>,
+    pub context_full: Option<Rgb>,
 
     /// The sixteen ANSI colours, black through bright white, or none of them.
     ///
@@ -545,7 +553,7 @@ const ROOT_KEYS: [&str; 15] = [
 const FONT_KEYS: [&str; 2] = ["family", "size"];
 
 /// The keys `[colors]` may carry.
-const COLOR_KEYS: [&str; 16] = [
+const COLOR_KEYS: [&str; 18] = [
     "background",
     "foreground",
     "cursor",
@@ -561,6 +569,8 @@ const COLOR_KEYS: [&str; 16] = [
     "agent_done",
     "agent_idle",
     "agent_unknown",
+    "context_empty",
+    "context_full",
     "palette",
 ];
 
@@ -916,6 +926,8 @@ fn read_colors(block: Option<&toml::Table>) -> Result<Colors, String> {
             idle: color(block, "agent_idle")?,
             unknown: color(block, "agent_unknown")?,
         },
+        context_empty: color(block, "context_empty")?,
+        context_full: color(block, "context_full")?,
         palette: read_palette(block)?,
     })
 }
