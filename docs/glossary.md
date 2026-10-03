@@ -26,6 +26,10 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **doorbell** - a wake typed into the pane an agent runs in, one line and a Return, only into a prompt it has
   just read as empty, and only for a harness whose manifest can read its prompt (MIP-4, section 6). The prompt is
   an idle agent's, or for an urgent post a working one's too.
+- **focus history** - the panes a window's keyboard has been on, oldest first, with a cursor at the current one:
+  `focus_back`, `focus_forward`, `muster focus --back|--forward` and the mouse's back and forward buttons walk it.
+  One per window, at most 50 panes, and not kept across a relaunch. A pane that closed or that another window holds
+  is stepped over.
 - **frame** - one message on a socket: a four-byte length, then that many bytes (`muster-frame`).
 - **group** - a set of participants and the one log of messages they share (MIP-4). Addressing a message decides
   whom it wakes, never who may read it. Kept on the daemon it was made on, its home; another machine with a member

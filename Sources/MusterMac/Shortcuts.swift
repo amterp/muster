@@ -94,8 +94,13 @@ public enum Shortcuts {
     Row(
       title: "Move a pane", chord: "",
       note: "drag the handle at its top onto another pane's edge"),
+    Row(title: "Trade two panes' places", chord: "", note: "drag one's row onto the other's"),
     Row(
-      title: "Split, rename, close, copy its ID", chord: "",
+      title: "Move a pane to another tab", chord: "", note: "drag its row onto the tab's caption"),
+    Row(
+      title: "Move a tab to another window", chord: "", note: "drag its caption into that window"),
+    Row(
+      title: "Split, rename, move or close; copy its ID", chord: "",
       note: "right-click a pane, a tab's caption or an agent's row"),
     Row(
       title: "Go back to the pane before, or forward again", chord: "",
