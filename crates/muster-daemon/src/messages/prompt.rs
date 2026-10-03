@@ -81,3 +81,38 @@ pub(crate) fn is_only(held: &str, text: &str) -> bool {
     let bare = |text: &str| text.chars().filter(|ch| !ch.is_whitespace()).collect::<String>();
     bare(held) == bare(text)
 }
+
+/// What is typed for `line`: the line, and a space after it when its last word holds an `@`.
+/// Codex opens its file search on the word under its cursor once that word holds an `@`, and a
+/// Return pressed while the search is open picks a file rather than sending the line - which a
+/// ring's Return, pressed a second after its line, meets (docs/observations/codex-0.154.0.md,
+/// section 6). A wake ends in its group's name, `@human+builder`, and a space ends the word.
+pub(crate) fn as_typed(line: &str) -> String {
+    if line.split_whitespace().last().is_some_and(|word| word.contains('@')) {
+        format!("{line} ")
+    } else {
+        line.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_line_ending_in_a_word_with_an_at_is_typed_with_a_space_after_it() {
+        assert_eq!(
+            as_typed("muster msg read --group @human+builder"),
+            "muster msg read --group @human+builder "
+        );
+        assert_eq!(
+            as_typed("muster msg read --group review@devenv"),
+            "muster msg read --group review@devenv "
+        );
+        assert_eq!(as_typed("/rename builder"), "/rename builder");
+        assert_eq!(
+            as_typed("from @human. Read: muster msg read --group review"),
+            "from @human. Read: muster msg read --group review"
+        );
+    }
+}

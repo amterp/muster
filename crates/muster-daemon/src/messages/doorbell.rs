@@ -150,7 +150,12 @@ pub(crate) fn may_ring(seen: &Seen, now: Instant, urgent: bool, moving: Option<I
 /// Since when the pane's screen has been found moving as the doorbell looked to ring its idle
 /// agent, noted the first time, and forgotten once it is found still or its agent at work: a
 /// spinner moving through a turn says nothing about the prompt drawn as the turn ends.
-pub(crate) fn moving_since(moving: &mut Moving, pane: &str, seen: &Seen, now: Instant) -> Option<Instant> {
+pub(crate) fn moving_since(
+    moving: &mut Moving,
+    pane: &str,
+    seen: &Seen,
+    now: Instant,
+) -> Option<Instant> {
     let idle = matches!(seen.activity, Some(Activity::Idle | Activity::Waiting));
     if idle && seen.drawn_at().is_some_and(|at| at + STILL > now) {
         Some(*moving.entry(pane.to_string()).or_insert(now))
@@ -197,7 +202,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
     for (wake, seen) in ringing {
         match prompt::look(&seen.io, &seen.agent, &shared.detecting, is_urgent(&wake)) {
             AtPrompt::Empty { at_work } => {
-                let text = messaging::wake_text(&notice_of(&wake.notice));
+                let text = prompt::as_typed(&messaging::wake_text(&notice_of(&wake.notice)));
                 let took = seen.io.queue(Input::Ring { text, enter: !at_work });
                 rang(&wake, took);
                 if took {

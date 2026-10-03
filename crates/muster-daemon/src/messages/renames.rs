@@ -71,7 +71,7 @@ pub(crate) fn look(
                 continue;
             }
         }
-        if !seen.io.queue(Input::Ring { text: rename.line.clone(), enter: true }) {
+        if !seen.io.queue(Input::Ring { text: prompt::as_typed(&rename.line), enter: true }) {
             given_up(shared, pane, &rename.name, "its pane would not take what was typed");
             continue;
         }
