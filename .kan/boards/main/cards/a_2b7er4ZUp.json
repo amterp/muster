@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791033754449,
   "creator": "Alexander Terp",
   "description": "A split onto another machine that has no part of the tab yet joins the tab as a new region at its right-hand end, and the side asked for is ignored (docs/cli/limits.md), because a tab lays machines side by side and keeps no split tree across them. Moving the region afterwards takes a drag. Let the split's side choose where the region goes: left of, or right of, the region holding the pane that was split. Raised while building the right-click Split on Machine item, 2026-10-03.",
   "id": "a_2b7er4ZUp",
-  "position": "b0H",
+  "position": "Yz7",
   "title": "↔️ A machine joining a tab can be placed left or right of another",
   "type": "enhancement",
-  "updated_at_millis": 1791033754449,
+  "updated_at_millis": 1791039114914,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791033754449}
+    {"field":"column","value":"backlog-lo","at":1791033754449},
+    {"field":"column","value":"done","at":1791039114914}
   ]
 }

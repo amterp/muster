@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "hide-the-pointer",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791038830291,
+  "creator": "Alexander Terp",
+  "description": "libghostty sends MOUSE_VISIBILITY, which Ghostty uses for mouse-hide-while-typing; Muster's shell drops it. Raised while wiring link hover, 2026-10-03.",
+  "id": "a_2b9mtuGCB",
+  "position": "b0J",
+  "title": "🖱️ Hide the pointer while typing",
+  "type": "enhancement",
+  "updated_at_millis": 1791038830291,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791038830291}
+  ]
+}
