@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
-use muster_core::attention::{Asker, Attend, Attention, GroupKey, Note, Notifications};
+use muster_core::attention::{Asker, Attend, Attention, GroupKey, Note, Noticed, Notifications};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
@@ -348,7 +348,7 @@ pub(crate) fn raise_problem(key: &str, severity: Severity, detail: &str) {
         "problem.raised",
         fields! { "key" => key, "severity" => severity.as_str(), "detail" => detail },
     );
-    reconcile_sidebar_with_problems();
+    reconcile_sidebars_with_problems();
     announce_problems();
 }
 
@@ -370,7 +370,7 @@ pub(crate) fn clear_problem(key: &str, why: &str) {
         return;
     }
     log::info("problem.cleared", fields! { "key" => key, "why" => why });
-    reconcile_sidebar_with_problems();
+    reconcile_sidebars_with_problems();
     announce_problems();
 }
 
@@ -394,15 +394,18 @@ pub(crate) fn problems() -> Vec<Problem> {
 /// breaks gets their panes resized underneath them, which is accepted, because the alternative
 /// is the silence that cost an evening.
 /// Answers whether it moved the roster, so a caller mid-announcement does not say it twice.
-fn reconcile_sidebar_with_problems() -> bool {
+///
+/// Every window lists the same problems, so each one's roster is reconciled on its own terms:
+/// borrowed where it was closed, and given back only where it was borrowed.
+fn reconcile_sidebar_with_problems(window: WindowId) -> bool {
     let error = poison::lock(&PROBLEMS, "problems").as_ref().is_some_and(Problems::has_error);
-    let shown = poison::lock(&SESSION, "session").window.presentation.sidebar;
+    let shown = poison::lock(&SESSION, "session").windows[window].presentation.sidebar;
 
     if error {
         if shown {
             return false;
         }
-        poison::lock(&SESSION, "session").window.opened_sidebar = true;
+        poison::lock(&SESSION, "session").windows[window].opened_sidebar = true;
         log::info(
             "problems.sidebar.opened",
             fields! {
@@ -412,14 +415,15 @@ fn reconcile_sidebar_with_problems() -> bool {
                             open or close it yourself first",
             },
         );
-        set_sidebar(true);
+        set_sidebar(window, true);
         return true;
     }
 
     // Borrowed, so give it back. Only when Muster was the one who opened it: a roster somebody
     // opened themselves is theirs, and closing it because a problem happened to clear would be
     // Muster tidying away a window it does not own.
-    let borrowed = std::mem::take(&mut poison::lock(&SESSION, "session").window.opened_sidebar);
+    let borrowed =
+        std::mem::take(&mut poison::lock(&SESSION, "session").windows[window].opened_sidebar);
     if borrowed && shown {
         log::info(
             "problems.sidebar.closed",
@@ -428,10 +432,18 @@ fn reconcile_sidebar_with_problems() -> bool {
                              has been put back the way it was found",
             },
         );
-        set_sidebar(false);
+        set_sidebar(window, false);
         return true;
     }
     false
+}
+
+/// [`reconcile_sidebar_with_problems`] for every window, after a problem came or went.
+fn reconcile_sidebars_with_problems() {
+    let windows = poison::lock(&SESSION, "session").windows.ids();
+    for window in windows {
+        reconcile_sidebar_with_problems(window);
+    }
 }
 
 /// Shows or puts away the roster, without asking what it was.
@@ -439,16 +451,17 @@ fn reconcile_sidebar_with_problems() -> bool {
 /// The half of [`toggle_sidebar`] that is not the toggle. Split out so a problem can open the
 /// roster without a second copy of "write it, tell the shell, save it" - which is exactly the
 /// kind of second copy that ends up forgetting the save.
-fn set_sidebar(shown: bool) {
-    let presentation = {
+fn set_sidebar(window: WindowId, shown: bool) {
+    let (name, presentation) = {
         let mut session = poison::lock(&SESSION, "session");
-        if session.window.presentation.sidebar == shown {
+        let showing = &mut session.windows[window];
+        if showing.presentation.sidebar == shown {
             return;
         }
-        session.window.presentation = session.window.presentation.with_sidebar(shown);
-        session.window.presentation
+        showing.presentation = showing.presentation.with_sidebar(shown);
+        (showing.name.clone(), showing.presentation)
     };
-    announce_presentation(presentation);
+    announce_presentation(&name, presentation);
     publish("sidebar");
 }
 
@@ -457,14 +470,16 @@ fn set_sidebar(shown: bool) {
 /// Saved rather than published, like the window's frame: a drag sends one of these per step and
 /// nothing the window shows of a session has moved. The shell draws the width it is answered
 /// with, so a drag past a limit settles at the limit.
-pub(crate) fn set_sidebar_width(width: f64) {
-    let presentation = {
+pub(crate) fn set_sidebar_width(window: WindowId, width: f64) {
+    let (name, presentation) = {
         let mut session = poison::lock(&SESSION, "session");
-        session.window.presentation = session.window.presentation.with_sidebar_width(width);
-        save(&mut session);
-        session.window.presentation
+        let sized = &mut session.windows[window];
+        sized.presentation = sized.presentation.with_sidebar_width(width);
+        let answer = (sized.name.clone(), sized.presentation);
+        save(&mut session, window);
+        answer
     };
-    announce_presentation(presentation);
+    announce_presentation(&name, presentation);
 }
 
 fn announce_problems() {
@@ -481,8 +496,11 @@ fn announce_problems() {
     })));
 }
 
+/// Where the first window's arrangement is written, as Startup says.
 pub(crate) fn set_state_path(path: &str) {
-    poison::lock(&SESSION, "session").window.arrangement =
+    let mut session = poison::lock(&SESSION, "session");
+    let first = session.front;
+    session.windows[first].arrangement =
         (!path.is_empty()).then(|| (path.to_string(), String::new()));
 }
 
@@ -496,7 +514,8 @@ pub(crate) fn set_state_path(path: &str) {
 pub(crate) fn set_tab_holders(record: &str, arrangement: &str, socket: &str) {
     let mut session = poison::lock(&SESSION, "session");
     let mut holding = Holding::new(record, socket);
-    session.window.name = holding.register(arrangement);
+    let first = session.front;
+    session.windows[first].name = holding.register(arrangement);
     session.holding = holding;
 }
 
@@ -1130,8 +1149,12 @@ pub(crate) struct Session {
     /// names are unique across machines, so one minter draws them all.
     minter: Arc<Mutex<Minter>>,
 
-    /// The window this process shows, and everything that is its alone.
-    window: Window,
+    /// The windows this process shows, each with everything that is its alone.
+    windows: Windows,
+
+    /// The window most recently in front: the one a request naming no window is about, and the
+    /// one whose panes attention counts as seen.
+    front: WindowId,
 }
 
 /// One window's own state: what it holds and shows, beside the daemons every window shares.
@@ -1252,6 +1275,74 @@ impl Default for Window {
     }
 }
 
+/// Which of this process's windows, for as long as it runs.
+///
+/// A number rather than the window's name, because a request is resolved to one on the path every
+/// keystroke takes, and a name would be a string compared and cloned there.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct WindowId(u32);
+
+/// This process's windows.
+///
+/// Never empty, and a window is never taken out: one that closes keeps its tabs (MIP-2), so it
+/// stays here to be reopened. That is what lets a [`WindowId`] index this without a lookup that
+/// can fail between one lock and the next.
+#[derive(Debug)]
+struct Windows(BTreeMap<WindowId, Window>);
+
+impl Default for Windows {
+    /// The one window a process starts with, before anybody has opened another.
+    fn default() -> Windows {
+        Windows(BTreeMap::from([(WindowId::default(), Window::default())]))
+    }
+}
+
+impl Windows {
+    fn ids(&self) -> Vec<WindowId> {
+        self.0.keys().copied().collect()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (WindowId, &Window)> {
+        self.0.iter().map(|(id, window)| (*id, window))
+    }
+
+    fn values(&self) -> impl Iterator<Item = &Window> {
+        self.0.values()
+    }
+
+    fn values_mut(&mut self) -> impl Iterator<Item = &mut Window> {
+        self.0.values_mut()
+    }
+
+    /// The window a name means, if it is one of these.
+    fn named(&self, name: &str) -> Option<WindowId> {
+        self.iter().find(|(_, window)| window.name.as_str() == name).map(|(id, _)| id)
+    }
+}
+
+impl std::ops::Index<WindowId> for Windows {
+    type Output = Window;
+
+    fn index(&self, id: WindowId) -> &Window {
+        self.0.get(&id).unwrap_or_else(|| unknown_window(id))
+    }
+}
+
+impl std::ops::IndexMut<WindowId> for Windows {
+    fn index_mut(&mut self, id: WindowId) -> &mut Window {
+        self.0.get_mut(&id).unwrap_or_else(|| unknown_window(id))
+    }
+}
+
+/// An id no window here was given, which nothing outside this file can make.
+fn unknown_window(id: WindowId) -> ! {
+    panic!(
+        "no window has the id {}: ids are handed out here and windows are never taken out, \
+         so this is a bug in the core",
+        id.0
+    )
+}
+
 #[derive(Debug, Default)]
 struct Sent {
     view: Option<ViewChanged>,
@@ -1358,7 +1449,9 @@ impl Session {
         reached: Reached,
     ) -> Result<Option<Arc<muster_daemon_client::follow::Connection>>, String> {
         let id = daemon.id.clone();
-        self.window.composition.attach_daemon(daemon.clone());
+        for window in self.windows.values_mut() {
+            window.composition.attach_daemon(daemon.clone());
+        }
         if self.backends.contains_key(&id) {
             return Ok(None);
         }
@@ -1433,12 +1526,12 @@ impl Session {
         self.font_sizes.retain(|pane| !gone.contains(pane));
     }
 
-    /// Whether this pane is in a tab this window holds.
+    /// Whether this pane is in a tab one of this process's windows holds.
     fn in_a_held_tab(&self, pane: &PaneKey) -> bool {
         self.backends.get(&pane.daemon).is_some_and(|backend| {
-            poison::lock(&backend.mirror, "mirror")
-                .pane(&pane.pane)
-                .is_some_and(|held| self.window.composition.holds(&held.tab))
+            poison::lock(&backend.mirror, "mirror").pane(&pane.pane).is_some_and(|held| {
+                self.windows.values().any(|window| window.composition.holds(&held.tab))
+            })
         })
     }
 
@@ -1457,18 +1550,20 @@ impl Session {
     /// reaches here from a caller, because it is carried to that window first (`forward`).
     fn region_for_tab(
         &self,
+        window: WindowId,
         daemon: &DaemonId,
         tab: &TabId,
         closing: bool,
     ) -> Result<Option<RegionId>, Refusal> {
-        if let Some(region) = self.window.composition.region_of(daemon, tab) {
+        let window = &self.windows[window];
+        if let Some(region) = window.composition.region_of(daemon, tab) {
             return Ok(Some(region));
         }
         let described = self
             .backends
             .get(daemon)
             .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").tab(tab).is_some());
-        if closing && described && self.holding.elsewhere(&self.window.name, tab).is_some() {
+        if closing && described && self.holding.elsewhere(&window.name, tab).is_some() {
             return Ok(None);
         }
         Err(Refusal::Declined(not_showing(daemon)))
@@ -1481,8 +1576,8 @@ impl Session {
         self.open_channels(daemon);
     }
 
-    /// Takes the tabs on this machine that nobody holds, if they are this window's to take, and
-    /// tells the composition which of the machine's tabs are this window's.
+    /// Takes the tabs on this machine that nobody holds, if they are one of this process's
+    /// windows' to take, and tells each window's composition which of the machine's tabs are its.
     ///
     /// Before the window has opened this takes nothing when there is a shared record, because
     /// the window has not said it exists and so is never the one a tab joins. Saying so asks again
@@ -1501,16 +1596,18 @@ impl Session {
             self.holding.follow(followed);
         }
         let taken = self.holding.take_unheld(daemon, &described);
-        for tab in described {
-            if self.holding.holds(&self.window.name, &tab) {
-                self.window.composition.hold(tab);
+        for window in self.windows.values_mut() {
+            for tab in &described {
+                if self.holding.holds(&window.name, tab) {
+                    window.composition.hold(tab.clone());
+                }
             }
         }
         !taken.is_empty()
     }
 
-    /// Every daemon this window follows, and every configured one still on its way: the machines
-    /// the record says this window follows. A daemon being reached over ssh is one this window
+    /// Every daemon this process follows, and every configured one still on its way: the machines
+    /// the record says its windows follow. A daemon being reached over ssh is one this window
     /// will show, and leaving it out would let the record give its tabs away.
     fn followed_or_attaching(&self) -> BTreeSet<DaemonId> {
         let mut daemons: BTreeSet<DaemonId> = self.backends.keys().cloned().collect();
@@ -1528,7 +1625,9 @@ impl Session {
         let Some(backend) = self.backends.get(daemon) else { return };
         let mirror = poison::lock(&backend.mirror, "mirror");
 
-        self.window.composition.reconcile(daemon, &mirror);
+        for window in self.windows.values_mut() {
+            window.composition.reconcile(daemon, &mirror);
+        }
         let attached = self.panes.entry(daemon.clone()).or_default();
         attached.retain(|pane, _| {
             let held = mirror.pane(pane).is_some();
@@ -1582,18 +1681,24 @@ impl Session {
             let mirror = poison::lock(&backend.mirror, "mirror");
             let attached = self.panes.entry(daemon.clone()).or_default();
 
-            let showing = self.window.composition.showing().cloned();
-            self.window
-                .composition
-                .regions()
-                .filter(|region| &region.daemon == daemon)
-                .filter_map(|region| Some((region, mirror.tab(showing.as_ref()?)?)))
-                .flat_map(|(region, layout)| match zoom_filling(region, Some(layout)) {
-                    Some(filling) => vec![filling],
-                    None => layout.root.panes().into_iter().cloned().collect(),
-                })
-                .filter(|pane| !attached.contains_key(pane) && mirror.pane(pane).is_some())
-                .collect()
+            // Every window's, since a pane is drawn by whichever window holds its tab.
+            let mut wanted: Vec<PaneId> = Vec::new();
+            for window in self.windows.values() {
+                let showing = window.composition.showing().cloned();
+                wanted.extend(
+                    window
+                        .composition
+                        .regions()
+                        .filter(|region| &region.daemon == daemon)
+                        .filter_map(|region| Some((region, mirror.tab(showing.as_ref()?)?)))
+                        .flat_map(|(region, layout)| match zoom_filling(region, Some(layout)) {
+                            Some(filling) => vec![filling],
+                            None => layout.root.panes().into_iter().cloned().collect(),
+                        })
+                        .filter(|pane| !attached.contains_key(pane) && mirror.pane(pane).is_some()),
+                );
+            }
+            wanted
         };
 
         for pane in wanted {
@@ -1837,7 +1942,12 @@ impl Session {
     /// trip. Saying so is what lets the caller reword it - a request naming a pane no machine
     /// holds is answered about no machine (`handler::placed`), rather than blaming whichever
     /// one happened to have the keyboard.
-    fn surface(&mut self, daemon: &DaemonId, pane: &PaneId) -> Result<RegionId, Refusal> {
+    fn surface(
+        &mut self,
+        window: WindowId,
+        daemon: &DaemonId,
+        pane: &PaneId,
+    ) -> Result<RegionId, Refusal> {
         let tab = {
             let backend = self.backends.get(daemon).ok_or_else(|| {
                 Refusal::Declined(format!(
@@ -1857,18 +1967,19 @@ impl Session {
         };
         // Another window's tab stays in that window. Surfacing it here would take its terminals
         // from the window showing them, which is the failure kan a_2Mhi0EZlv was raised for.
-        if !self.holding.holds(&self.window.name, &tab) {
-            if let Some(window) = self.holding.elsewhere(&self.window.name, &tab) {
-                return Err(taken_elsewhere(pane, &tab, &window.name));
+        let me = &self.windows[window].name;
+        if !self.holding.holds(me, &tab) {
+            if let Some(holder) = self.holding.elsewhere(me, &tab) {
+                return Err(taken_elsewhere(pane, &tab, &holder.name));
             }
             // Kept under the hold, which reads the record afresh: this window's copy may be a
             // moment behind another window taking the tab.
-            self.holding.keep(&self.window.name, std::slice::from_ref(&tab));
-            if let Some(window) = self.holding.elsewhere(&self.window.name, &tab) {
-                return Err(taken_elsewhere(pane, &tab, &window.name));
+            self.holding.keep(me, std::slice::from_ref(&tab));
+            if let Some(holder) = self.holding.elsewhere(me, &tab) {
+                return Err(taken_elsewhere(pane, &tab, &holder.name));
             }
         }
-        self.window.composition.surface(daemon, &tab).ok_or_else(|| {
+        self.windows[window].composition.surface(daemon, &tab).ok_or_else(|| {
             Refusal::Declined(format!(
                 "{daemon} is followed but not attached to this window's composition, so no \
                  region could be opened onto {pane}."
@@ -1881,14 +1992,29 @@ impl Session {
     /// Every daemon's mirror is locked for the length of it, in the map's own order. That
     /// order is what makes it safe: the only other path taking two of these locks takes them
     /// one at a time and lets go of the mirror before it asks for the session.
-    fn view(&self) -> View {
-        let mirrors: BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> = self
-            .backends
+    fn view(&self, window: WindowId) -> View {
+        let mirrors = self.mirrors();
+        self.view_with(window, &mirrors)
+    }
+
+    /// Every followed daemon's mirror, locked in the map's own order - the order that makes
+    /// holding several at once safe (`view`).
+    fn mirrors(&self) -> BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> {
+        self.backends
             .iter()
             .map(|(id, backend)| (id, poison::lock(&backend.mirror, "mirror")))
-            .collect();
+            .collect()
+    }
+
+    /// [`Session::view`] from mirrors the caller already holds, so a publish over every window
+    /// locks each mirror once rather than once per window.
+    fn view_with(
+        &self,
+        window: WindowId,
+        mirrors: &BTreeMap<&DaemonId, MutexGuard<'_, Mirror>>,
+    ) -> View {
         View::of(
-            &self.window.composition,
+            &self.windows[window].composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
             |daemon| Some(self.backends.get(daemon)?.socket_path.clone()),
             |daemon| self.backends.get(daemon).is_some_and(|backend| backend.tunnel.is_some()),
@@ -1914,14 +2040,20 @@ impl Session {
     ///
     /// Locks every mirror for the length of it, in the map's own order, on the same terms as
     /// [`Session::view`].
-    fn roster(&self, view: &View) -> Roster {
-        let mirrors: BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> = self
-            .backends
-            .iter()
-            .map(|(id, backend)| (id, poison::lock(&backend.mirror, "mirror")))
-            .collect();
+    fn roster(&self, window: WindowId, view: &View) -> Roster {
+        let mirrors = self.mirrors();
+        self.roster_with(window, view, &mirrors)
+    }
+
+    /// [`Session::roster`] from mirrors the caller already holds, as [`Session::view_with`].
+    fn roster_with(
+        &self,
+        window: WindowId,
+        view: &View,
+        mirrors: &BTreeMap<&DaemonId, MutexGuard<'_, Mirror>>,
+    ) -> Roster {
         Roster::of(
-            &self.window.composition,
+            &self.windows[window].composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
             view.showing(),
         )
@@ -1931,19 +2063,16 @@ impl Session {
     ///
     /// Built through a composition of its own, holding that window's tabs, so a tab is described
     /// the same way here as in the window that has it: the same labels, the same pane order.
-    fn other_windows(&self) -> Vec<(HeldWindow, Roster)> {
-        let mirrors: BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> = self
-            .backends
-            .iter()
-            .map(|(id, backend)| (id, poison::lock(&backend.mirror, "mirror")))
-            .collect();
+    fn other_windows(&self, me: WindowId) -> Vec<(HeldWindow, Roster)> {
+        let mirrors = self.mirrors();
+        let me = &self.windows[me];
         let holders = self.holding.holders();
         holders
             .windows()
-            .filter(|window| window.name != self.window.name)
+            .filter(|window| window.name != me.name)
             .map(|window| {
                 let mut theirs = Composition::new();
-                for daemon in self.window.composition.daemons() {
+                for daemon in me.composition.daemons() {
                     theirs.attach_daemon(daemon.clone());
                 }
                 for tab in holders.held_by(&window.name) {
@@ -1967,8 +2096,8 @@ impl Session {
     /// The armed tab is this session's and the rest is [`Numbering::of`]'s, so that the corpus
     /// is exercising the same function the window runs on rather than a second copy of the same
     /// reasoning.
-    fn numbering(&self, roster: &Roster) -> Numbering {
-        Numbering::of(self.window.armed.as_ref(), roster)
+    fn numbering(&self, window: WindowId, roster: &Roster) -> Numbering {
+        Numbering::of(self.windows[window].armed.as_ref(), roster)
     }
 
     /// The pane this window's keyboard feeds.
@@ -1976,8 +2105,8 @@ impl Session {
     /// Handed back behind an `Arc` so the caller can let go of this lock before it sends
     /// anything. A send can be a round trip to a daemon, and holding the session across one
     /// would stall every event arriving from every other daemon behind a wedged one.
-    fn keyboard_pane(&self) -> Option<Arc<AttachedPane>> {
-        let region = self.window.composition.focused_region()?;
+    fn keyboard_pane(&self, window: WindowId) -> Option<Arc<AttachedPane>> {
+        let region = self.windows[window].composition.focused_region()?;
         self.panes.get(&region.daemon)?.get(region.pane.as_ref()?).map(Arc::clone)
     }
 
@@ -1991,11 +2120,22 @@ impl Session {
     /// screen is in a background tab, and a rule that refused them would refuse going to a pane
     /// that finished unseen - which is the feature. `None` means the window holds no tab with
     /// this pane in it at all, which is a pane in a session it is not attached to.
-    fn region_holding(&self, daemon: &DaemonId, pane: &PaneId) -> Option<RegionId> {
+    fn region_holding(
+        &self,
+        window: WindowId,
+        daemon: &DaemonId,
+        pane: &PaneId,
+    ) -> Option<RegionId> {
         let backend = self.backends.get(daemon)?;
         let held = poison::lock(&backend.mirror, "mirror");
         let tab = held.pane(pane)?.tab.clone();
-        self.window.composition.region_of(daemon, &tab)
+        self.windows[window].composition.region_of(daemon, &tab)
+    }
+
+    /// Where a window's keyboard is, as the pane it feeds.
+    fn keyboard_key(&self, window: WindowId) -> Option<PaneKey> {
+        let region = self.windows[window].composition.focused_region()?;
+        Some(PaneKey::new(&region.daemon, region.pane.as_ref()?))
     }
 
     fn channel_of(&self, daemon: &DaemonId) -> Option<Arc<dyn BackendChannel>> {
@@ -2011,9 +2151,29 @@ impl Session {
     }
 }
 
-/// The pane this window's keyboard feeds, if it has one.
-pub(crate) fn keyboard_pane() -> Option<Arc<AttachedPane>> {
-    poison::lock(&SESSION, "session").keyboard_pane()
+/// The window a request is for: the one it names, or the one in front when it names none.
+///
+/// A name this process has no window by is refused rather than read as the front window: a
+/// caller that named one meant it, and acting on another would be acting somewhere it did not ask.
+pub(crate) fn resolve(name: &str) -> Result<WindowId, String> {
+    let session = poison::lock(&SESSION, "session");
+    if name.is_empty() {
+        return Ok(session.front);
+    }
+    session.windows.named(name).ok_or_else(|| {
+        let here: Vec<String> =
+            session.windows.values().map(|window| window.name.to_string()).collect();
+        format!(
+            "this Muster has no window called {name}, so nothing was done. Its windows are: {}. \
+             `muster window list` names every window there is.",
+            here.join(", ")
+        )
+    })
+}
+
+/// The pane a window's keyboard feeds, if it has one.
+pub(crate) fn keyboard_pane(window: WindowId) -> Option<Arc<AttachedPane>> {
+    poison::lock(&SESSION, "session").keyboard_pane(window)
 }
 
 /// A pane this window is drawing, by name: the one under the pointer, or the one a held paste
@@ -2065,6 +2225,7 @@ fn refused_or_unanswered<T>(outcome: &Result<T, Refusal>) -> (String, String) {
 /// is a round trip and holding the session across one would stall every event arriving from
 /// every other daemon behind a wedged one.
 pub(crate) fn submit(
+    window: WindowId,
     daemon: &DaemonId,
     intent: &BackendIntent,
     keyboard: Keyboard,
@@ -2077,11 +2238,9 @@ pub(crate) fn submit(
         // have moved.
         let source = match intent {
             BackendIntent::SplitPane { pane, .. } => Some(PaneKey::new(daemon, pane)),
-            BackendIntent::CreateTab { .. } | BackendIntent::JoinTab { .. } => session
-                .window
-                .composition
-                .focused_region()
-                .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?))),
+            BackendIntent::CreateTab { .. } | BackendIntent::JoinTab { .. } => {
+                session.keyboard_key(window)
+            }
             _ => None,
         };
         // Which region this is about, for the keyboard afterwards. None is an answer rather
@@ -2109,12 +2268,12 @@ pub(crate) fn submit(
             // Closing deliberately stays below. Its argument is the same on paper and its
             // risk is not: it destroys something, and `muster docs limits` already singles
             // it out as the one command whose default destroys the pane it runs in.
-            BackendIntent::SplitPane { pane, .. } => session.region_holding(daemon, pane),
+            BackendIntent::SplitPane { pane, .. } => session.region_holding(window, daemon, pane),
             BackendIntent::ClosePane { pane }
             | BackendIntent::ResizePane { pane, .. }
             | BackendIntent::ZoomPane { pane } => Some(
                 session
-                    .region_holding(daemon, pane)
+                    .region_holding(window, daemon, pane)
                     .ok_or_else(|| Refusal::Declined(not_showing(daemon)))?,
             ),
             // Both keep the region requirement, which now means the window holds this tab
@@ -2125,6 +2284,7 @@ pub(crate) fn submit(
             // what the guard was protecting against.
             BackendIntent::CloseTab { tab } | BackendIntent::SetSplitRatio { tab, .. } => session
                 .region_for_tab(
+                window,
                 daemon,
                 tab,
                 matches!(intent, BackendIntent::CloseTab { .. }),
@@ -2141,7 +2301,7 @@ pub(crate) fn submit(
         // came to the front last (kan a_2Mhi0EZlv). One the request then fails to make is a
         // row for a name nothing will ever use, which the next window to open prunes.
         if let Some(tab) = made_tab(intent) {
-            let me = session.window.name.clone();
+            let me = session.windows[window].name.clone();
             session.holding.making(&me, tab);
         }
         (region, source, channel)
@@ -2174,8 +2334,9 @@ pub(crate) fn submit(
     if !matches!(intent, BackendIntent::MovePane { .. })
         && let Some(tab) = created_tab
     {
-        session.window.composition.hold(tab.clone());
-        session.window.composition.surface(daemon, tab);
+        let composition = &mut session.windows[window].composition;
+        composition.hold(tab.clone());
+        composition.surface(daemon, tab);
     }
     if let Some(created) = created {
         let made = PaneKey::new(daemon, created);
@@ -2192,12 +2353,13 @@ pub(crate) fn submit(
         }
         // A pane joining a tab has no region until the daemon announces its part of the tab,
         // which reconcile has done by now: a daemon's events arrive before its answer.
+        let composition = &mut session.windows[window].composition;
         let region = region.or_else(|| match intent {
-            BackendIntent::JoinTab { tab, .. } => session.window.composition.region_of(daemon, tab),
+            BackendIntent::JoinTab { tab, .. } => composition.region_of(daemon, tab),
             _ => None,
         });
         if let (Some(region), Keyboard::Follows) = (region, keyboard) {
-            session.window.composition.focus_pane(region, created.clone());
+            composition.focus_pane(region, created.clone());
         }
     }
     drop(session);
@@ -2509,23 +2671,23 @@ fn not_showing(daemon: &DaemonId) -> String {
 ///
 /// No daemon is told. Which pane has the keyboard is Muster's own cursor, and a daemon serving
 /// several windows has no single answer to hold (MIP-3, section 14).
-pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
+pub(crate) fn focus(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
     if let Some(tab) = tab_of_pane(pane)
-        && reopened_for(&tab, pane.as_str())
+        && reopened_for(window, &tab, pane.as_str())
     {
         return Ok(());
     }
     {
         let mut session = poison::lock(&SESSION, "session");
-        let region = match session.region_holding(daemon, pane) {
+        let region = match session.region_holding(window, daemon, pane) {
             Some(region) => region,
             // Not on screen, which is the interesting half. An agent that finished or is
             // waiting for somebody is most often in a tab no region is showing, so a focus
             // request that refused there would leave the sidebar listing panes nobody can
             // reach - a display, not attention routing.
-            None => session.surface(daemon, pane)?,
+            None => session.surface(window, daemon, pane)?,
         };
-        session.window.composition.focus_pane(region, pane.clone());
+        session.windows[window].composition.focus_pane(region, pane.clone());
     }
     publish("focus");
     Ok(())
@@ -2537,7 +2699,7 @@ pub(crate) fn focus(daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
 /// before it. A pane that has gone since is passed over. One whose tab another window holds
 /// now is refused by `focus`, and the history has already moved past it, so asking again goes
 /// on to the pane before that.
-pub(crate) fn walk_focus(forward: bool) -> Result<Option<PaneKey>, Refusal> {
+pub(crate) fn walk_focus(window: WindowId, forward: bool) -> Result<Option<PaneKey>, Refusal> {
     let went = {
         let mut session = poison::lock(&SESSION, "session");
         let session = &mut *session;
@@ -2545,7 +2707,7 @@ pub(crate) fn walk_focus(forward: bool) -> Result<Option<PaneKey>, Refusal> {
         if forward { session.focus_history.forward(live) } else { session.focus_history.back(live) }
     };
     let Some(pane) = went else { return Ok(None) };
-    focus(&pane.daemon, &pane.pane)?;
+    focus(window, &pane.daemon, &pane.pane)?;
     Ok(Some(pane))
 }
 
@@ -2554,10 +2716,10 @@ pub(crate) fn walk_focus(forward: bool) -> Result<Option<PaneKey>, Refusal> {
 /// No daemon is told, and there is nothing to tell one: how a window divides itself between
 /// a laptop and a devenv is Muster's own arrangement, and neither daemon knows the other
 /// exists. So unlike every other drag in this app, this one settles here.
-pub(crate) fn set_region_boundary(left: RegionId, ratio: f32) {
+pub(crate) fn set_region_boundary(window: WindowId, left: RegionId, ratio: f32) {
     {
         let mut session = poison::lock(&SESSION, "session");
-        session.window.composition.set_boundary(left, ratio);
+        session.windows[window].composition.set_boundary(left, ratio);
     }
     publish("region_boundary");
 }
@@ -2567,11 +2729,11 @@ pub(crate) fn set_region_boundary(left: RegionId, ratio: f32) {
 /// The order crosses regions, so a step can land on another daemon - which is the point of
 /// showing two of them - and the daemon comes back with the region rather than being assumed
 /// to be the one the keyboard just left.
-pub(crate) fn step(direction: Step) -> Result<(), String> {
+pub(crate) fn step(window: WindowId, direction: Step) -> Result<(), String> {
     let stepped = {
         let session = poison::lock(&SESSION, "session");
-        session.view().step(direction).and_then(|(region, pane)| {
-            Some((session.window.composition.region(region)?.daemon.clone(), pane))
+        session.view(window).step(direction).and_then(|(region, pane)| {
+            Some((session.windows[window].composition.region(region)?.daemon.clone(), pane))
         })
     };
     let (daemon, pane) = stepped.ok_or_else(|| {
@@ -2580,7 +2742,7 @@ pub(crate) fn step(direction: Step) -> Result<(), String> {
          all closed."
             .to_string()
     })?;
-    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
+    focus(window, &daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
 /// Evens out the panes around one, in as many requests as it takes.
@@ -2595,7 +2757,12 @@ pub(crate) fn step(direction: Step) -> Result<(), String> {
 /// what they hold before the first daemon is asked anything. They are only touched at all when
 /// the tab has more than one part: a tab on one machine has a weight that decides nothing, and
 /// rewriting it would print a number nobody asked about.
-pub(crate) fn equalize(daemon: &DaemonId, pane: &PaneId, evenly: Evenly) -> Result<(), String> {
+pub(crate) fn equalize(
+    window: WindowId,
+    daemon: &DaemonId,
+    pane: &PaneId,
+    evenly: Evenly,
+) -> Result<(), String> {
     let (tab, dividers) = {
         let session = poison::lock(&SESSION, "session");
         let backend = session.backends.get(daemon).ok_or_else(|| {
@@ -2638,8 +2805,7 @@ pub(crate) fn equalize(daemon: &DaemonId, pane: &PaneId, evenly: Evenly) -> Resu
     if evenly == Evenly::Tab {
         let weights = {
             let session = poison::lock(&SESSION, "session");
-            let parts: Vec<(RegionId, &DaemonId)> = session
-                .window
+            let parts: Vec<(RegionId, &DaemonId)> = session.windows[window]
                 .composition
                 .tab(&tab)
                 .into_iter()
@@ -2666,7 +2832,7 @@ pub(crate) fn equalize(daemon: &DaemonId, pane: &PaneId, evenly: Evenly) -> Resu
         if !weights.is_empty() {
             let mut session = poison::lock(&SESSION, "session");
             for (region, panes) in weights {
-                session.window.composition.set_weight(region, weight_of(panes));
+                session.windows[window].composition.set_weight(region, weight_of(panes));
             }
             drop(session);
             publish("equalize");
@@ -2679,6 +2845,7 @@ pub(crate) fn equalize(daemon: &DaemonId, pane: &PaneId, evenly: Evenly) -> Resu
     let asked = dividers.len();
     for (sent, divider) in dividers.into_iter().enumerate() {
         submit(
+            window,
             daemon,
             &BackendIntent::SetSplitRatio {
                 tab: tab.clone(),
@@ -2734,11 +2901,11 @@ fn weight_of(panes: usize) -> f32 {
 /// Crosses daemons for the same reason stepping panes does, and one more: a window's tabs are
 /// one list to the person reading them, and a walk that stopped at a machine boundary would
 /// leave the other machine's tabs unreachable whenever no region was on it.
-pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
+pub(crate) fn step_tab(window: WindowId, direction: TabStep) -> Result<(), String> {
     let stepped = {
         let session = poison::lock(&SESSION, "session");
-        let from = session.window.composition.showing().cloned();
-        session.roster(&session.view()).step(from.as_ref(), direction).map(landing)
+        let from = session.windows[window].composition.showing().cloned();
+        session.roster(window, &session.view(window)).step(from.as_ref(), direction).map(landing)
     };
     let (daemon, pane) = stepped.ok_or_else(|| {
         "this window is attached to no tabs to step through, so the keyboard stayed where it \
@@ -2746,7 +2913,7 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
          does one whose tabs all closed."
             .to_string()
     })??;
-    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
+    focus(window, &daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
 /// Puts one pane where another one is, which is what dropping a row on a row means.
@@ -2765,6 +2932,7 @@ pub(crate) fn step_tab(direction: TabStep) -> Result<(), String> {
 /// than the second - and it has to be, because one daemon cannot place a pane beside a pane it
 /// does not hold.
 pub(crate) fn arrange_pane(
+    window: WindowId,
     daemon: &DaemonId,
     pane: &PaneId,
     onto: &PaneId,
@@ -2806,7 +2974,7 @@ pub(crate) fn arrange_pane(
             },
         }
     };
-    submit(daemon, &intent, Keyboard::Follows).map(drop)
+    submit(window, daemon, &intent, Keyboard::Follows).map(drop)
 }
 
 /// Closes a tab and everything in it.
@@ -2814,8 +2982,9 @@ pub(crate) fn arrange_pane(
 /// The only verb here that ends more than it names, which is why it stays beside closing a pane
 /// rather than beside renaming one: a tab this window is not showing is a tab whose panes nobody
 /// can see, and there is no undo for what was running in them.
-pub(crate) fn close_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), Refusal> {
-    submit(daemon, &BackendIntent::CloseTab { tab: tab.clone() }, Keyboard::StaysPut).map(drop)
+pub(crate) fn close_tab(window: WindowId, daemon: &DaemonId, tab: &TabId) -> Result<(), Refusal> {
+    submit(window, daemon, &BackendIntent::CloseTab { tab: tab.clone() }, Keyboard::StaysPut)
+        .map(drop)
 }
 
 /// Calls a tab what somebody wants to call it, on every machine it spans.
@@ -2824,7 +2993,7 @@ pub(crate) fn close_tab(daemon: &DaemonId, tab: &TabId) -> Result<(), Refusal> {
 /// and a part that misses it is renamed when its machine answers again (`catch_up_tab_names`).
 /// The first refusal is the answer; the parts that did take the name keep it, and the catch-up
 /// carries it to the rest.
-pub(crate) fn rename_tab(tab: &TabId, name: Option<&str>) -> Result<(), Refusal> {
+pub(crate) fn rename_tab(window: WindowId, tab: &TabId, name: Option<&str>) -> Result<(), Refusal> {
     let (parts, generation) = {
         let session = poison::lock(&SESSION, "session");
         let mut parts = Vec::new();
@@ -2847,7 +3016,7 @@ pub(crate) fn rename_tab(tab: &TabId, name: Option<&str>) -> Result<(), Refusal>
     for daemon in parts {
         let name = name.map(str::to_string);
         let intent = BackendIntent::RenameTab { tab: tab.clone(), name, generation };
-        if let Err(refusal) = submit(&daemon, &intent, Keyboard::StaysPut) {
+        if let Err(refusal) = submit(window, &daemon, &intent, Keyboard::StaysPut) {
             refused.get_or_insert(refusal);
         }
     }
@@ -2865,6 +3034,7 @@ pub(crate) fn rename_tab(tab: &TabId, name: Option<&str>) -> Result<(), Refusal>
 /// stays where it is, because pulling a pane out of a split is arranging the window rather than
 /// going somewhere (`submit`).
 pub(crate) fn move_pane_to_new_tab(
+    window: WindowId,
     daemon: &DaemonId,
     pane: &PaneId,
     name: Option<String>,
@@ -2873,7 +3043,7 @@ pub(crate) fn move_pane_to_new_tab(
         pane: pane.clone(),
         to: MoveDestination::NewTab { tab: mint_tab(), name },
     };
-    submit(daemon, &intent, Keyboard::StaysPut).map(drop)
+    submit(window, daemon, &intent, Keyboard::StaysPut).map(drop)
 }
 
 /// A name for a tab this window is about to ask for, unique across every machine it shows.
@@ -2894,13 +3064,14 @@ pub(crate) fn mint_tab() -> TabId {
 /// No keyboard move, on the same terms as every other arrangement: putting an agent somewhere is
 /// not going there, and taking the keyboard would interrupt whatever is being typed.
 pub(crate) fn move_pane_to_tab(
+    window: WindowId,
     daemon: &DaemonId,
     pane: &PaneId,
     tab: &TabId,
 ) -> Result<(), Refusal> {
     {
         let session = poison::lock(&SESSION, "session");
-        if session.window.composition.tab(tab).is_none() {
+        if session.windows[window].composition.tab(tab).is_none() {
             return Err(Refusal::NotThere(format!(
                 "this window holds no tab called {tab}, so {pane} was not moved. Either it \
                  closed while this was in flight, or the name came from another window - \
@@ -2912,20 +3083,20 @@ pub(crate) fn move_pane_to_tab(
         pane: pane.clone(),
         to: MoveDestination::Tab { tab: tab.clone() },
     };
-    submit(daemon, &intent, Keyboard::StaysPut).map(drop)
+    submit(window, daemon, &intent, Keyboard::StaysPut).map(drop)
 }
 
 /// Brings a named tab on screen, landing the keyboard on its first pane.
 ///
 /// The mouse's half of what `next_tab` does with the keyboard, through the same [`landing`]
 /// rule so that the two agree about where a tab is entered.
-pub(crate) fn focus_tab(tab: &TabId) -> Result<(), String> {
-    if reopened_for(tab, tab.as_str()) {
+pub(crate) fn focus_tab(window: WindowId, tab: &TabId) -> Result<(), String> {
+    if reopened_for(window, tab, tab.as_str()) {
         return Ok(());
     }
     let found = {
         let session = poison::lock(&SESSION, "session");
-        match session.roster(&session.view()).tabs().find(|held| &held.id == tab) {
+        match session.roster(window, &session.view(window)).tabs().find(|held| &held.id == tab) {
             Some(held) => landing(held),
             None => Err(format!(
                 "this window holds no tab called {tab}, so the keyboard stayed where it was. \
@@ -2934,10 +3105,10 @@ pub(crate) fn focus_tab(tab: &TabId) -> Result<(), String> {
         }
     };
     let (daemon, pane) = found?;
-    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
+    focus(window, &daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
-/// Hands a tab to a window: this one when `window` is empty, or another by pid or by name.
+/// Hands a tab to a window: this one when `to` is empty, or another by pid or by name.
 ///
 /// A write to the record every window shares, so any window can make it and none has to be
 /// asked. The window that had the tab hears the record move and lets it go; the one that has it
@@ -2948,13 +3119,13 @@ pub(crate) fn focus_tab(tab: &TabId) -> Result<(), String> {
 /// this window. Moved to a window by name - this one included - it joins the end of that window's
 /// list without coming on screen: a CLI outside every pane sends it to whichever window answers
 /// first, so what it does cannot depend on which window that was.
-pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> {
-    let bring_here = window.is_empty();
+pub(crate) fn move_tab(window: WindowId, tab: Option<TabId>, to: &str) -> Result<(), Refusal> {
+    let bring_here = to.is_empty();
     let tab = {
         let mut session = poison::lock(&SESSION, "session");
         let tab = match tab {
             Some(tab) => tab,
-            None => session.window.composition.showing().cloned().ok_or_else(|| {
+            None => session.windows[window].composition.showing().cloned().ok_or_else(|| {
                 Refusal::Declined(
                     "this window is showing no tab, so there was none to move. Name one with \
                      --tab."
@@ -2981,8 +3152,7 @@ pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> 
                  the tabs there are."
             )));
         }
-        let to = session.holding.destination(&session.window.name, window)?;
-        let to_me = to == session.window.name;
+        let to = session.holding.destination(&session.windows[window].name, to)?;
         let from = session.holding.holders().holder(&tab).map(ToString::to_string);
         session.holding.give(&tab, &to);
         log::info(
@@ -2993,16 +3163,19 @@ pub(crate) fn move_tab(tab: Option<TabId>, window: &str) -> Result<(), Refusal> 
                 "to" => to.to_string(),
             },
         );
-        if to_me {
-            session.window.composition.hold(tab.clone());
-        } else {
-            session.window.composition.let_go(&tab);
+        // Every window here acts on its own half at once, since either end may be one of them.
+        for held in session.windows.values_mut() {
+            if held.name == to {
+                held.composition.hold(tab.clone());
+            } else {
+                held.composition.let_go(&tab);
+            }
         }
         tab
     };
     reconcile_every_daemon();
     if bring_here {
-        return focus_tab(&tab).map_err(Refusal::Declined);
+        return focus_tab(window, &tab).map_err(Refusal::Declined);
     }
     publish("move_tab");
     Ok(())
@@ -3023,30 +3196,31 @@ fn taken_elsewhere(pane: &PaneId, tab: &TabId, window: &WindowName) -> Refusal {
 /// asked. An open window's tab never reaches here from a caller - it is carried to that window
 /// (`forward`) - and one that does is refused further on, since showing it here would take its
 /// terminals.
-fn reopened_for(tab: &TabId, show: &str) -> bool {
-    let (open_here, window) = {
+fn reopened_for(window: WindowId, tab: &TabId, show: &str) -> bool {
+    let (open_here, holder) = {
         let session = poison::lock(&SESSION, "session");
-        let Some(window) = session.holding.elsewhere(&session.window.name, tab).cloned() else {
+        let Some(holder) = session.holding.elsewhere(&session.windows[window].name, tab).cloned()
+        else {
             return false;
         };
-        (session.holding.open_here(), window)
+        (session.holding.open_here(), holder)
     };
-    if crate::holding::is_open(&open_here, &window) {
+    if crate::holding::is_open(&open_here, &holder) {
         return false;
     }
-    if !poison::lock(&SESSION, "session").holding.ask_to_reopen(&window.name) {
+    if !poison::lock(&SESSION, "session").holding.ask_to_reopen(&holder.name) {
         log::info(
             "window.reopen.already_asked",
-            fields! { "window" => window.name.to_string(), "show" => show },
+            fields! { "window" => holder.name.to_string(), "show" => show },
         );
         return true;
     }
     log::info(
         "window.reopen.asked",
-        fields! { "window" => window.name.to_string(), "show" => show },
+        fields! { "window" => holder.name.to_string(), "show" => show },
     );
     ffi::emit(&Event::new(event::Payload::ReopenWindow(ReopenWindow {
-        name: window.name.to_string(),
+        name: holder.name.to_string(),
         show: show.to_string(),
     })));
     true
@@ -3058,17 +3232,17 @@ fn reopened_for(tab: &TabId, show: &str) -> bool {
 /// resolved as that number was printed and never through what the chords are naming. Taking a
 /// half-typed chord back is the handler's, as for any request that changes something: a script
 /// moving the keyboard is not the second press of a chord somebody began.
-pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
+pub(crate) fn focus_pane_at(window: WindowId, place: usize) -> Result<(), String> {
     let found = {
         let session = poison::lock(&SESSION, "session");
-        let roster = session.roster(&session.view());
+        let roster = session.roster(window, &session.view(window));
         match roster.at(place) {
             Some(pane) => Ok((pane.key.daemon.clone(), pane.key.pane.clone())),
             None => Err(nothing_numbered(&roster, &Numbering::Panes, place)),
         }
     };
     let (daemon, pane) = found?;
-    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
+    focus(window, &daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
 /// Puts the keyboard on whatever the numbered chord `press` names.
@@ -3090,25 +3264,25 @@ pub(crate) fn focus_pane_at(place: usize) -> Result<(), String> {
 /// No `landing` step for a pane, unlike a tab: a pane names itself, where a tab has to
 /// nominate one of its own. Reaching a tab nothing is showing still works either way, because
 /// [`focus`] surfaces the tab holding the pane.
-pub(crate) fn press_numbered_chord(press: usize) -> Result<(), String> {
+pub(crate) fn press_numbered_chord(window: WindowId, press: usize) -> Result<(), String> {
     let found = {
         let mut session = poison::lock(&SESSION, "session");
-        let roster = session.roster(&session.view());
-        let numbering = session.numbering(&roster);
+        let roster = session.roster(window, &session.view(window));
+        let numbering = session.numbering(window, &roster);
         if let Some(landing) = roster.numbered(&numbering, press) {
             let pane = landing.pane();
             let found = (pane.key.daemon.clone(), pane.key.pane.clone());
             // Set from the landing either way, so that a press onto a pane starts the next one
             // over: three ⌘2s are the second tab, its second pane, and the second tab again.
-            session.window.armed = landing.named();
+            session.windows[window].armed = landing.named();
             Ok(found)
         } else {
-            session.window.armed = None;
+            session.windows[window].armed = None;
             Err(nothing_numbered(&roster, &numbering, press))
         }
     };
     let (daemon, pane) = found?;
-    focus(&daemon, &pane).map_err(|refusal| refusal.to_string())
+    focus(window, &daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
 /// What `focus_asking` goes to: the most urgent of what asks for somebody that this window would
@@ -3179,13 +3353,21 @@ fn nothing_numbered(roster: &Roster, numbering: &Numbering, place: usize) -> Str
 /// tabs and the sidebar is drawing them. Most of the requests that land here - a keystroke, a
 /// close, a drag - never publish, so an arm dropped silently would leave a list of numbers
 /// nothing can press. It runs at most once per armed chord: the second call finds nothing.
-pub(crate) fn disarm() {
+pub(crate) fn disarm(window: WindowId) {
     let held = {
         let mut session = poison::lock(&SESSION, "session");
-        session.window.armed.take().is_some()
+        session.windows[window].armed.take().is_some()
     };
     if held {
-        announce_roster();
+        announce_roster(window);
+    }
+}
+
+/// [`announce_roster`] for every window, after something changed what every roster says.
+pub(crate) fn announce_rosters() {
+    let windows = poison::lock(&SESSION, "session").windows.ids();
+    for window in windows {
+        announce_roster(window);
     }
 }
 
@@ -3194,14 +3376,14 @@ pub(crate) fn disarm() {
 /// The narrow half of [`publish`], for the callers that have changed which rows carry numbers
 /// and nothing else. Going through `publish` would reconcile every daemon and save the
 /// composition on a keystroke, which is a lot of work to say that a number moved.
-pub(crate) fn announce_roster() {
+pub(crate) fn announce_roster(window: WindowId) {
     let _publishing = poison::lock(&PUBLISHING, "publishing");
     let (roster, numbering, message) = {
         let mut session = poison::lock(&SESSION, "session");
-        let roster = session.roster(&session.view());
-        let numbering = session.numbering(&roster);
+        let roster = session.roster(window, &session.view(window));
+        let numbering = session.numbering(window, &roster);
         let message = convert::roster(&roster, &numbering, &machine_colors());
-        let unseen = session.window.sent.roster(&message);
+        let unseen = session.windows[window].sent.roster(&message);
         (roster, numbering, unseen.then_some(message))
     };
     let Some(message) = message else { return };
@@ -3253,13 +3435,12 @@ fn landing(tab: &RosterTab) -> Result<(DaemonId, PaneId), String> {
 /// What a pane split onto another machine is put beside once the tab already has a part there.
 /// The region's own pane first, because that is the one somebody last had the keyboard in; the
 /// mirror's first pane in the tab for a part no reconcile has given a region yet.
-pub(crate) fn pane_in_part(daemon: &DaemonId, tab: &TabId) -> Option<PaneId> {
+pub(crate) fn pane_in_part(window: WindowId, daemon: &DaemonId, tab: &TabId) -> Option<PaneId> {
     let session = poison::lock(&SESSION, "session");
-    let shown = session
-        .window
+    let shown = session.windows[window]
         .composition
         .region_of(daemon, tab)
-        .and_then(|region| session.window.composition.region(region))
+        .and_then(|region| session.windows[window].composition.region(region))
         .and_then(|region| region.pane.clone());
     if shown.is_some() {
         return shown;
@@ -3269,9 +3450,9 @@ pub(crate) fn pane_in_part(daemon: &DaemonId, tab: &TabId) -> Option<PaneId> {
 }
 
 /// The pane this window's keyboard feeds, named.
-pub(crate) fn focused_pane() -> Option<PaneId> {
+pub(crate) fn focused_pane(window: WindowId) -> Option<PaneId> {
     let session = poison::lock(&SESSION, "session");
-    session.window.composition.focused_region()?.pane.clone()
+    session.windows[window].composition.focused_region()?.pane.clone()
 }
 
 /// Which daemon holds the pane Muster calls this, if any followed one does.
@@ -3292,20 +3473,22 @@ pub(crate) fn tab_of_pane(pane: &PaneId) -> Option<TabId> {
 ///
 /// Dialed after the session is let go: the other window may be carrying a request to this one at
 /// the same moment, and answering it needs this lock.
-pub(crate) fn open_window_holding(tab: &TabId) -> Option<HeldWindow> {
-    let (open_here, window) = {
+pub(crate) fn open_window_holding(window: WindowId, tab: &TabId) -> Option<HeldWindow> {
+    let (open_here, holder) = {
         let session = poison::lock(&SESSION, "session");
-        (
-            session.holding.open_here(),
-            session.holding.elsewhere(&session.window.name, tab).cloned()?,
-        )
+        let holder = session.holding.elsewhere(&session.windows[window].name, tab).cloned()?;
+        // Not carried to a window here: its socket is this process's own.
+        if session.windows.named(holder.name.as_str()).is_some() {
+            return None;
+        }
+        (session.holding.open_here(), holder)
     };
-    crate::holding::is_open(&open_here, &window).then_some(window)
+    crate::holding::is_open(&open_here, &holder).then_some(holder)
 }
 
 /// This window's name, as the record of which window holds each tab spells it.
-pub(crate) fn window_name() -> String {
-    poison::lock(&SESSION, "session").window.name.to_string()
+pub(crate) fn window_name(window: WindowId) -> String {
+    poison::lock(&SESSION, "session").windows[window].name.to_string()
 }
 
 /// Brings a window to the front, because somebody went to one of its tabs from another window:
@@ -3319,9 +3502,9 @@ pub(crate) fn raise_window(pid: u32) {
 /// What a request naming no daemon means, for the same reason an empty pane id means the
 /// focused pane: a menu item is about what is in front of the user and has nothing else to
 /// say.
-pub(crate) fn focused_daemon() -> Option<DaemonId> {
+pub(crate) fn focused_daemon(window: WindowId) -> Option<DaemonId> {
     let session = poison::lock(&SESSION, "session");
-    session.window.composition.focused_region().map(|region| region.daemon.clone())
+    session.windows[window].composition.focused_region().map(|region| region.daemon.clone())
 }
 
 /// The pane this window's keyboard feeds on one named machine.
@@ -3338,14 +3521,15 @@ pub(crate) fn focused_daemon() -> Option<DaemonId> {
 ///
 /// Read from the composition, because the daemon keeps no focus of its own: where this window's
 /// requests land is this window's to decide.
-pub(crate) fn focused_pane_on(daemon: &DaemonId) -> Option<PaneId> {
+pub(crate) fn focused_pane_on(window: WindowId, daemon: &DaemonId) -> Option<PaneId> {
     let session = poison::lock(&SESSION, "session");
-    let on_screen = session
-        .window
+    let on_screen = session.windows[window]
         .composition
         .focused_region()
         .filter(|region| &region.daemon == daemon)
-        .or_else(|| session.window.composition.regions().find(|region| &region.daemon == daemon))
+        .or_else(|| {
+            session.windows[window].composition.regions().find(|region| &region.daemon == daemon)
+        })
         .and_then(|region| region.pane.clone());
     if on_screen.is_some() {
         return on_screen;
@@ -3354,8 +3538,7 @@ pub(crate) fn focused_pane_on(daemon: &DaemonId) -> Option<PaneId> {
     // than a rare one: a window shows one tab, so at most one machine's panes are drawn unless
     // somebody has grouped two. `--daemon` names a machine directly, and a caller saying it
     // means "act over there" rather than "act over there if it happens to be on screen".
-    session
-        .window
+    session.windows[window]
         .composition
         .tabs()
         .flat_map(MusterTab::regions)
@@ -3369,9 +3552,12 @@ pub(crate) fn focused_pane_on(daemon: &DaemonId) -> Option<PaneId> {
 /// Not the same question as whether it is *showing* one: a tab in the background is still a
 /// tab this window can act on, and a machine that has none is one nothing in the window can
 /// reach.
-pub(crate) fn holding_nothing(daemon: &DaemonId) -> bool {
+pub(crate) fn holding_nothing(window: WindowId, daemon: &DaemonId) -> bool {
     let session = poison::lock(&SESSION, "session");
-    !session.window.composition.tabs().any(|tab| tab.daemons().any(|holding| holding == daemon))
+    !session.windows[window]
+        .composition
+        .tabs()
+        .any(|tab| tab.daemons().any(|holding| holding == daemon))
 }
 
 /// Whether this window is following a daemon by this name.
@@ -3392,9 +3578,9 @@ pub(crate) fn is_attaching(daemon: &DaemonId) -> bool {
 ///
 /// For naming the machines there are when somebody has named one there is not. The window's
 /// order rather than the config file's, so the list reads the way `muster window` prints it.
-pub(crate) fn attached_daemons() -> Vec<DaemonId> {
+pub(crate) fn attached_daemons(window: WindowId) -> Vec<DaemonId> {
     let session = poison::lock(&SESSION, "session");
-    session.window.composition.daemons().map(|daemon| daemon.id.clone()).collect()
+    session.windows[window].composition.daemons().map(|daemon| daemon.id.clone()).collect()
 }
 
 /// Everything about this window at one moment, for a caller that gets no events.
@@ -3512,14 +3698,14 @@ pub(crate) fn daemon_health() -> Vec<DaemonHealth> {
         .collect()
 }
 
-pub(crate) fn window() -> WindowNow {
+pub(crate) fn window(window: WindowId) -> WindowNow {
     let session = poison::lock(&SESSION, "session");
     // No reconcile, unlike `publish`. This is a read: a caller asking what the window shows
     // must not be able to move the keyboard or open a region by asking, and anything that
     // needed reconciling has already published.
-    let view = session.view();
-    let roster = session.roster(&view);
-    let numbering = session.numbering(&roster);
+    let view = session.view(window);
+    let roster = session.roster(window, &view);
+    let numbering = session.numbering(window, &roster);
 
     let agents = session.agents();
     let mut daemons = Vec::new();
@@ -3545,9 +3731,9 @@ pub(crate) fn window() -> WindowNow {
         });
     }
 
-    let name = session.window.name.to_string();
+    let name = session.windows[window].name.to_string();
     let open_here = session.holding.open_here();
-    let others = session.other_windows();
+    let others = session.other_windows(window);
     drop(session);
     // Dialed with the session let go, for the reason `open_window_holding` gives.
     let others = others
@@ -3759,55 +3945,66 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
 /// moving the keyboard would send what they type next to another machine.
 fn restore_late(daemon: &DaemonId) {
     {
-        let mut session = poison::lock(&SESSION, "session");
+        let mut guard = poison::lock(&SESSION, "session");
+        let session = &mut *guard;
         // Until then its tabs are still arriving, and the ones it has not described yet would
         // lose their place: this runs again when it says it has finished (`restored_from_disk`).
         let restoring = session
             .backends
             .get(daemon)
             .is_some_and(|backend| poison::lock(&backend.mirror, "mirror").restoring());
-        if restoring || !session.window.awaiting.remove(daemon) {
+        if restoring {
             return;
         }
-        let Some(left) = session.window.left.clone() else { return };
-        if session.window.awaiting.is_empty() {
-            session.window.left = None;
+        for window in session.windows.ids() {
+            restore_late_in(session, window, daemon);
         }
-        let described: BTreeSet<TabId> =
-            session.backends.get(daemon).map_or_else(BTreeSet::new, |backend| {
-                poison::lock(&backend.mirror, "mirror").tabs().map(|tab| tab.id.clone()).collect()
-            });
-        let mut regions = 0usize;
-        for tab in &left.tabs {
-            if !session.holding.holds(&session.window.name, &tab.id) || !described.contains(&tab.id)
-            {
-                continue;
-            }
-            for region in tab.regions.iter().filter(|region| &region.daemon == daemon) {
-                let Some(id) = session.window.composition.open_region(daemon, tab.id.clone())
-                else {
-                    continue;
-                };
-                session.window.composition.set_weight(id, region.weight);
-                if let Some(pane) = &region.pane {
-                    session.window.composition.set_pane(id, pane.clone());
-                }
-                regions += 1;
-            }
-        }
-        let wanted = Saved::of(
-            &session.window.composition,
-            session.window.presentation,
-            &session.font_sizes,
-        )
-        .keeping(&left, &BTreeSet::from([daemon.clone()]));
-        session.window.composition.arrange_like(&wanted);
-        log::info(
-            "composition.restored_late",
-            fields! { "daemon" => daemon.to_string(), "regions" => regions.to_string() },
-        );
     }
     publish("restored_late");
+}
+
+/// [`restore_late`] for one window, which may have been waiting on this daemon or not.
+fn restore_late_in(session: &mut Session, window: WindowId, daemon: &DaemonId) {
+    let restored = &mut session.windows[window];
+    if !restored.awaiting.remove(daemon) {
+        return;
+    }
+    let Some(left) = restored.left.clone() else { return };
+    if restored.awaiting.is_empty() {
+        restored.left = None;
+    }
+    let described: BTreeSet<TabId> =
+        session.backends.get(daemon).map_or_else(BTreeSet::new, |backend| {
+            poison::lock(&backend.mirror, "mirror").tabs().map(|tab| tab.id.clone()).collect()
+        });
+    let restored = &mut session.windows[window];
+    let mut regions = 0usize;
+    for tab in &left.tabs {
+        if !session.holding.holds(&restored.name, &tab.id) || !described.contains(&tab.id) {
+            continue;
+        }
+        for region in tab.regions.iter().filter(|region| &region.daemon == daemon) {
+            let Some(id) = restored.composition.open_region(daemon, tab.id.clone()) else {
+                continue;
+            };
+            restored.composition.set_weight(id, region.weight);
+            if let Some(pane) = &region.pane {
+                restored.composition.set_pane(id, pane.clone());
+            }
+            regions += 1;
+        }
+    }
+    let wanted = Saved::of(&restored.composition, restored.presentation, &session.font_sizes)
+        .keeping(&left, &BTreeSet::from([daemon.clone()]));
+    restored.composition.arrange_like(&wanted);
+    log::info(
+        "composition.restored_late",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "window" => restored.name.to_string(),
+            "regions" => regions.to_string(),
+        },
+    );
 }
 
 /// Tells the shell a daemon is being attached, so the title and an empty window can say what
@@ -3902,7 +4099,9 @@ fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> 
             if !attach_current(generation) {
                 return Err(Unattached::Abandoned);
             }
-            session.window.composition.detach_daemon(&daemon.id);
+            for window in session.windows.values_mut() {
+                window.composition.detach_daemon(&daemon.id);
+            }
             session.peering.retain(|(near, far), _| *near != daemon.id && *far != daemon.id);
             session.backends.remove(&daemon.id)
         };
@@ -3938,12 +4137,12 @@ pub(crate) enum AttachError {
 /// off the tabs another window has, and for a window with nothing at all means asking a machine
 /// for a tab. That last one is what a fresh machine needs, where Muster has just started a
 /// daemon that has not answered anything yet.
-pub(crate) fn open() -> Result<(), String> {
+pub(crate) fn open(window: WindowId) -> Result<(), String> {
     follow_implicitly_if_nothing_else(Implicitly::InBackground)?;
-    restore_presentation();
-    restore_font_sizes();
-    say_this_window_is_open();
-    reopen_what_was_left();
+    restore_presentation(window);
+    restore_font_sizes(window);
+    say_this_window_is_open(window);
+    reopen_what_was_left(window);
     // After the file has been read and before anything writes over it. Everything above reads
     // the arrangement; everything from here on is entitled to replace it - which is why this
     // sits above the last two steps rather than below them, and it has to. Asking for a tab
@@ -3952,29 +4151,32 @@ pub(crate) fn open() -> Result<(), String> {
     // would turn that rule off and wait forever for a region nothing else will make.
     {
         let mut session = poison::lock(&SESSION, "session");
-        session.window.opened = true;
+        session.windows[window].opened = true;
     }
-    settle_what_the_window_shows();
+    settle_what_the_window_shows(window);
     // A window just opened has been sent nothing, whatever an earlier one was.
-    poison::lock(&SESSION, "session").window.sent = Sent::default();
+    poison::lock(&SESSION, "session").windows[window].sent = Sent::default();
     publish("open");
-    show_what_was_asked_for();
+    show_what_was_asked_for(window);
     Ok(())
 }
 
+/// What the first window was launched to go to, as Startup says.
 pub(crate) fn set_show(show: &str) {
-    poison::lock(&SESSION, "session").window.show = (!show.is_empty()).then(|| show.to_string());
+    let mut session = poison::lock(&SESSION, "session");
+    let first = session.front;
+    session.windows[first].show = (!show.is_empty()).then(|| show.to_string());
 }
 
-fn show_what_was_asked_for() {
-    let Some(show) = poison::lock(&SESSION, "session").window.show.take() else { return };
+fn show_what_was_asked_for(window: WindowId) {
+    let Some(show) = poison::lock(&SESSION, "session").windows[window].show.take() else { return };
     let tab = TabId::new(&show);
     let went = if daemon_holding_tab(&tab).is_some() {
-        focus_tab(&tab)
+        focus_tab(window, &tab)
     } else {
         let pane = PaneId::new(&show);
         match daemon_holding(&pane) {
-            Some(daemon) => focus(&daemon, &pane).map_err(|refusal| refusal.to_string()),
+            Some(daemon) => focus(window, &daemon, &pane).map_err(|refusal| refusal.to_string()),
             None => Err(format!("no daemon holds a pane or tab called {show}")),
         }
     };
@@ -4002,8 +4204,8 @@ fn show_what_was_asked_for() {
 ///
 /// Announced unconditionally, including when there was nothing to read, so the shell is told
 /// the default rather than holding one.
-fn restore_presentation() {
-    let saved = saved_presentation();
+fn restore_presentation(window: WindowId) {
+    let saved = saved_presentation(window);
     let presentation = {
         let mut session = poison::lock(&SESSION, "session");
         // The frame is the one field the shell may already have answered. It asks where to open
@@ -4012,22 +4214,23 @@ fn restore_presentation() {
         // rectangle the window is currently at and write the wish back over the answer. Keeping
         // what is already set makes the two orders agree, which is what `open()` overwriting
         // presentation wholesale has caught out before.
-        let presentation = match session.window.presentation.frame {
+        let presentation = match session.windows[window].presentation.frame {
             Some(_) => saved.with_frame(
-                session.window.presentation.frame,
-                session.window.presentation.full_screen,
+                session.windows[window].presentation.frame,
+                session.windows[window].presentation.full_screen,
             ),
             None => saved,
         };
-        session.window.presentation = presentation;
+        session.windows[window].presentation = presentation;
         presentation
     };
     // Then let anything already wrong have its say. A config refused during `Startup` raised
     // its problem before this ran, so without this the saved answer would quietly win and a
     // window would come back with the roster away and nowhere to report a broken file. It
     // announces for itself when it moves anything, which is why this one is conditional.
-    if !reconcile_sidebar_with_problems() {
-        announce_presentation(presentation);
+    if !reconcile_sidebar_with_problems(window) {
+        let name = poison::lock(&SESSION, "session").windows[window].name.clone();
+        announce_presentation(&name, presentation);
     }
 }
 
@@ -4043,8 +4246,8 @@ fn restore_presentation() {
 ///
 /// Nothing is announced. Every size here reaches the shell on the pane it belongs to, and the
 /// publish that ends `open()` is what carries them.
-fn restore_font_sizes() {
-    let Some(saved) = saved_arrangement() else { return };
+fn restore_font_sizes(window: WindowId) {
+    let Some(saved) = saved_arrangement(window) else { return };
     if saved.font_sizes.entries().next().is_none() {
         return;
     }
@@ -4052,7 +4255,11 @@ fn restore_font_sizes() {
         "state.font_size.restored",
         fields! { "panes" => saved.font_sizes.entries().count().to_string() },
     );
-    poison::lock(&SESSION, "session").font_sizes = saved.font_sizes;
+    // Merged rather than replaced: another window here may already have sized panes of its own.
+    let mut session = poison::lock(&SESSION, "session");
+    for (pane, offset) in saved.font_sizes.entries() {
+        session.font_sizes.set(pane, offset);
+    }
 }
 
 /// Tells the other windows this one is open, and brings this window's idea of who holds what up
@@ -4060,10 +4267,10 @@ fn restore_font_sizes() {
 ///
 /// Before the restore, which reads the answer: a tab another window took while this one was
 /// closed is not this window's to reopen.
-fn say_this_window_is_open() {
+fn say_this_window_is_open(window: WindowId) {
     {
         let mut session = poison::lock(&SESSION, "session");
-        if session.holding.has_opened(&session.window.name) {
+        if session.holding.has_opened(&session.windows[window].name) {
             return;
         }
         // A daemon still restoring has not described every tab it will hold.
@@ -4078,7 +4285,7 @@ fn say_this_window_is_open() {
         }
         let followed = session.followed_or_attaching();
         session.holding.follow(followed);
-        let me = session.window.name.clone();
+        let me = session.windows[window].name.clone();
         session.holding.open(&me, &answered, |tab| described.contains(tab));
     }
     // The daemons described their tabs before this window had said it was open, when it could
@@ -4117,18 +4324,18 @@ fn take_what_nobody_holds() -> bool {
 /// Checked against the mirror, which by now holds each attached daemon's snapshot: a saved
 /// region is a wish, and a tab nobody holds any more would render as a square that never
 /// fills in.
-fn reopen_what_was_left() {
+fn reopen_what_was_left(window: WindowId) {
     let mut session = poison::lock(&SESSION, "session");
     // Tabs given to this window while it was closed are its own as much as the ones it was left
     // on, and come after them.
     let given: Vec<TabId> =
-        session.holding.holders().held_by(&session.window.name).cloned().collect();
+        session.holding.holders().held_by(&session.windows[window].name).cloned().collect();
     for tab in given {
-        session.window.composition.hold(tab);
+        session.windows[window].composition.hold(tab);
     }
     // Read under the lock this already holds, which `saved_arrangement` would take again.
     let Some(saved) =
-        arrangement_path(&session.window).and_then(|path| saved_arrangement_at(&path))
+        arrangement_path(&session.windows[window]).and_then(|path| saved_arrangement_at(&path))
     else {
         return;
     };
@@ -4137,7 +4344,7 @@ fn reopen_what_was_left() {
     // window's now, and one nobody holds - every tab, the first launch after holding was written
     // down - is taken here, which is how a window that was alone comes back exactly as it was.
     let listed: Vec<TabId> = saved.tabs.iter().map(|tab| tab.id.clone()).collect();
-    let me = session.window.name.clone();
+    let me = session.windows[window].name.clone();
     session.holding.keep(&me, &listed);
     // A daemon whose attach finished while this waited for the session has been restored here
     // already, and one still restoring has more tabs to describe than it has so far.
@@ -4155,12 +4362,12 @@ fn reopen_what_was_left() {
         .flat_map(|tab| tab.regions.iter().map(|region| region.daemon.clone()))
         .filter(|daemon| still_describing(daemon))
         .collect();
-    session.window.awaiting = awaiting;
-    if !session.window.awaiting.is_empty() {
-        session.window.left = Some(saved.clone());
+    session.windows[window].awaiting = awaiting;
+    if !session.windows[window].awaiting.is_empty() {
+        session.windows[window].left = Some(saved.clone());
     }
     let restorable = saved.restorable(|daemon, tab| {
-        session.holding.holds(&session.window.name, tab)
+        session.holding.holds(&session.windows[window].name, tab)
             && session
                 .backends
                 .get(daemon)
@@ -4178,22 +4385,23 @@ fn reopen_what_was_left() {
             // tab render the same pane twice, and only one of the two surfaces can have the
             // pane - the other is refused, and becomes a panel that cannot be closed, because
             // closing it would close the pane the live one is using (kan a_2Ht74jTXV).
-            let Some(id) = session.window.composition.open_region(&region.daemon, tab.id.clone())
+            let Some(id) =
+                session.windows[window].composition.open_region(&region.daemon, tab.id.clone())
             else {
                 continue;
             };
-            session.window.composition.set_weight(id, region.weight);
+            session.windows[window].composition.set_weight(id, region.weight);
             if let Some(pane) = &region.pane {
-                session.window.composition.focus_pane(id, pane.clone());
+                session.windows[window].composition.focus_pane(id, pane.clone());
             }
             if region.keyboard {
-                session.window.composition.focus_region(id);
+                session.windows[window].composition.focus_region(id);
             }
             regions += 1;
         }
     }
     if let Some(showing) = &restorable.showing {
-        session.window.composition.show(showing);
+        session.windows[window].composition.show(showing);
     }
 
     log::info(
@@ -4296,16 +4504,16 @@ fn described(daemon: &Daemon) -> String {
 /// Nothing is asked of a machine still restoring what it held before it last stopped. Its tabs
 /// are on their way, and a tab asked for now would be one more beside them; it is asked once
 /// it says it has finished, if the window is still empty then.
-fn open_a_tab_if_the_window_is_empty() {
+fn open_a_tab_if_the_window_is_empty(window: WindowId) {
     let empty = {
         let session = poison::lock(&SESSION, "session");
-        session.window.composition.showing().is_none()
+        session.windows[window].composition.showing().is_none()
     };
     if !empty {
         return;
     }
 
-    let Some(daemon) = first_local_daemon().filter(has_spoken) else {
+    let Some(daemon) = first_local_daemon(window).filter(has_spoken) else {
         log::info(
             "window.empty",
             fields! {
@@ -4326,21 +4534,21 @@ fn open_a_tab_if_the_window_is_empty() {
     // afterwards would ask two or three times over.
     {
         let mut session = poison::lock(&SESSION, "session");
-        if !session.window.tabs_asked_of.insert(daemon.clone()) {
+        if !session.windows[window].tabs_asked_of.insert(daemon.clone()) {
             return;
         }
     }
-    ask_for_a_tab(&daemon);
+    ask_for_a_tab(window, &daemon);
 }
 
 /// Asks one machine for a tab, and says what a refusal costs.
 ///
 /// One caller for the empty window and one for a machine holding nothing, so what happens when
 /// a daemon says no is written down once.
-fn ask_for_a_tab(daemon: &DaemonId) {
+fn ask_for_a_tab(window: WindowId, daemon: &DaemonId) {
     log::info("tab.first.creating", fields! { "daemon" => daemon.to_string() });
     let intent = BackendIntent::CreateTab { tab: mint_tab(), cwd: None, run: None, name: None };
-    let asked = submit(daemon, &intent, Keyboard::Follows);
+    let asked = submit(window, daemon, &intent, Keyboard::Follows);
     if let Err(Refusal::Unanswered(detail)) = &asked {
         log::warn(
             "tab.first.unanswered",
@@ -4393,10 +4601,9 @@ fn has_spoken(daemon: &DaemonId) -> bool {
 }
 
 /// The first attached daemon on this machine, in the order the config named them.
-pub(crate) fn first_local_daemon() -> Option<DaemonId> {
+pub(crate) fn first_local_daemon(window: WindowId) -> Option<DaemonId> {
     let session = poison::lock(&SESSION, "session");
-    session
-        .window
+    session.windows[window]
         .composition
         .daemons()
         .find(|daemon| matches!(daemon.endpoint, Endpoint::Local { .. }))
@@ -4409,9 +4616,9 @@ pub(crate) fn first_local_daemon() -> Option<DaemonId> {
 /// from. Kept apart from [`first_local_daemon`] rather than folded into it, because which of
 /// the two a caller wants is a decision about whether Muster is acting on its own or on
 /// somebody's keystroke, and that is not a decision to make by default.
-pub(crate) fn first_attached_daemon() -> Option<DaemonId> {
+pub(crate) fn first_attached_daemon(window: WindowId) -> Option<DaemonId> {
     let session = poison::lock(&SESSION, "session");
-    session.window.composition.daemons().next().map(|daemon| daemon.id.clone())
+    session.windows[window].composition.daemons().next().map(|daemon| daemon.id.clone())
 }
 
 /// Shows a daemon-owned pane in this window, and points the keyboard at it.
@@ -4426,13 +4633,13 @@ pub(crate) fn first_attached_daemon() -> Option<DaemonId> {
 /// nobody knows: `argv` carries a pane id and a config file carries daemons, and the two are
 /// joined here. Every daemon already being followed is asked; a Muster with no config has one
 /// to ask, this install's own daemon on this machine.
-pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
+pub(crate) fn attach(window: WindowId, pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
     let pane = PaneId::new(pane_id);
     follow_implicitly_if_nothing_else(Implicitly::Waiting).map_err(AttachError::Unreachable)?;
     // A window opened onto one pane is a window like any other: it holds tabs, and a tab nobody
     // holds joins it. Without this it never said it was open, so it held nothing but the tab on
     // screen, and every other tab the daemon had was listed by no window at all.
-    say_this_window_is_open();
+    say_this_window_is_open(window);
 
     // The pane may be on a daemon still attaching, and a window asked for one pane has nothing
     // else to show, so it waits for that daemon as long as a first snapshot is waited for.
@@ -4456,12 +4663,11 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
         // One region per tab, not per pane. A tab's panes are the tab's own tree and they
         // are rendered inside one region; attaching a second pane from a tab already on
         // screen is asking for the keyboard, not for a second copy of the tab.
-        let region = session
-            .window
+        let region = session.windows[window]
             .composition
             .surface(&daemon, &tab)
             .expect("the daemon holding this pane is one being followed");
-        session.window.composition.focus_pane(region, pane.clone());
+        session.windows[window].composition.focus_pane(region, pane.clone());
         session.reconcile(&daemon);
 
         session
@@ -4472,8 +4678,8 @@ pub(crate) fn attach(pane_id: &str) -> Result<Arc<AttachedPane>, AttachError> {
 
     // What the tabs are is settled by the reconcile above; this is only about which of them
     // this window may show, and about a window somebody asked for that has none.
-    poison::lock(&SESSION, "session").window.opened = true;
-    settle_what_the_window_shows();
+    poison::lock(&SESSION, "session").windows[window].opened = true;
+    settle_what_the_window_shows(window);
     // Outside the lock, because emitting reaches the shell and a shell reacting to an event
     // by dispatching a request is ordinary.
     publish("attach");
@@ -4581,9 +4787,22 @@ fn locate(pane: &PaneId) -> Option<(DaemonId, TabId)> {
 /// Two rules with an order between them. Take in whatever the machines have already said -
 /// including any tab nobody holds that is this window's to take - and only then ask for a
 /// tab, so the window that asks is one that genuinely has nothing to open onto.
-fn settle_what_the_window_shows() {
+fn settle_what_the_window_shows(window: WindowId) {
     reconcile_every_daemon();
-    open_a_tab_if_the_window_is_empty();
+    open_a_tab_if_the_window_is_empty(window);
+}
+
+/// [`settle_what_the_window_shows`] for every window that has opened, after a daemon said
+/// something any of them may need to act on.
+fn settle_what_every_window_shows() {
+    reconcile_every_daemon();
+    let opened: Vec<WindowId> = {
+        let session = poison::lock(&SESSION, "session");
+        session.windows.iter().filter(|(_, window)| window.opened).map(|(id, _)| id).collect()
+    };
+    for window in opened {
+        open_a_tab_if_the_window_is_empty(window);
+    }
 }
 
 /// Brings every attached machine's tabs into the window, whatever order the events arrived in.
@@ -4614,8 +4833,8 @@ fn reconcile_every_daemon() {
 /// Replaced rather than appended to, through a temporary beside it: a window that quit while
 /// this was half-written would otherwise come back to a file that parses as far as the third
 /// region and stops.
-fn save(session: &mut Session) {
-    let window = &mut session.window;
+fn save(session: &mut Session, window: WindowId) {
+    let window = &mut session.windows[window];
     if !window.opened {
         return;
     }
@@ -4661,8 +4880,8 @@ fn save(session: &mut Session) {
 /// A file that will not read is a log line and nothing more. Every way this fails ends with a
 /// window that opens the way a first launch does, which is a worse morning and not a broken
 /// one - and refusing to open at all over a state file would be the wrong trade by a mile.
-fn saved_arrangement() -> Option<Saved> {
-    let path = arrangement_path(&poison::lock(&SESSION, "session").window)?;
+fn saved_arrangement(window: WindowId) -> Option<Saved> {
+    let path = arrangement_path(&poison::lock(&SESSION, "session").windows[window])?;
     saved_arrangement_at(&path)
 }
 
@@ -4698,8 +4917,8 @@ fn saved_arrangement_at(path: &str) -> Option<Saved> {
 /// Read from disk rather than from the session, because the one caller outside the restore asks
 /// during launch: a shell has to know where to put the window before it shows it, and `open()`
 /// has not run yet. One function so the two answers cannot differ.
-pub(crate) fn saved_presentation() -> Presentation {
-    saved_arrangement().map(|saved| saved.presentation).unwrap_or_default()
+pub(crate) fn saved_presentation(window: WindowId) -> Presentation {
+    saved_arrangement(window).map(|saved| saved.presentation).unwrap_or_default()
 }
 
 /// Says where the window has settled, so the next launch can put it back.
@@ -4716,26 +4935,34 @@ pub(crate) fn saved_presentation() -> Presentation {
 /// A report that arrives before the window has opened is remembered and not written, which is
 /// the ordinary case at launch: the shell has a frame the moment the window exists, and the
 /// arrangement it would be saved over has not been read yet. `open` writes it a moment later.
-pub(crate) fn set_window_frame(frame: Option<Frame>, full_screen: bool) {
+pub(crate) fn set_window_frame(window: WindowId, frame: Option<Frame>, full_screen: bool) {
     let mut session = poison::lock(&SESSION, "session");
-    session.window.presentation = session.window.presentation.with_frame(frame, full_screen);
-    save(&mut session);
+    session.windows[window].presentation =
+        session.windows[window].presentation.with_frame(frame, full_screen);
+    save(&mut session, window);
 }
 
-/// Tells the shell what this window is showing.
+/// Tells the shell what each window is showing.
 ///
 /// The whole view rather than what moved. A shell handed the whole answer holds no picture
 /// of its own to patch, and the message is a few hundred bytes for a window nobody can fill
 /// past about fifteen panes.
-/// `cause` names what asked, for the log line that says the window moved.
+/// `cause` names what asked, for the log line that says a window moved.
+///
+/// Every window at once, because what changed may be in any of them: a daemon's events say
+/// nothing about which window shows the pane they are about. Windows divide the tabs between
+/// them, so building every window's roster walks the same panes one window holding every tab
+/// would; what each further window adds is its arrangement compared and its two messages
+/// compared against the last ones it was sent.
 fn publish(cause: &str) {
     let publishing = poison::lock(&PUBLISHING, "publishing");
-    // What the window is showing is also the answer to which agents have been seen, so the
-    // two are settled together rather than left to drift. `noticed` is the panes that were
+    // What the front window is showing is also the answer to which agents have been seen, so
+    // the two are settled together rather than left to drift. `noticed` is the panes that were
     // waiting to be noticed and have now been - re-announced below, after the shell has been
     // handed the arrangement they appear in.
-    let (view, roster, numbering, noticed, focus, view_message, roster_message) = {
-        let mut session = poison::lock(&SESSION, "session");
+    let (published, noticed, focus) = {
+        let mut guard = poison::lock(&SESSION, "session");
+        let session = &mut *guard;
         // Before the view is built, and over every daemon rather than whichever one prompted
         // this. Several paths change what is on screen without going near a reconcile:
         // showing a tab that was just created, surfacing a pane from the sidebar, giving a
@@ -4751,16 +4978,32 @@ fn publish(cause: &str) {
         for daemon in &daemons {
             session.reconcile(daemon);
         }
-        let view = session.view();
-        let roster = session.roster(&view);
-        let numbering = session.numbering(&roster);
-        let noticed = session.attention.showing(view.showing().clone());
+        let built: Vec<(WindowId, View, Roster, Numbering)> = {
+            let mirrors = session.mirrors();
+            session
+                .windows
+                .ids()
+                .into_iter()
+                .map(|window| {
+                    let view = session.view_with(window, &mirrors);
+                    let roster = session.roster_with(window, &view, &mirrors);
+                    let numbering = session.numbering(window, &roster);
+                    (window, view, roster, numbering)
+                })
+                .collect()
+        };
+        // Seen means on screen in the window in front, and only one window is in front. Fed
+        // once, from that window: fed by each in turn, whichever published last would decide
+        // what had been seen.
+        let front = session.front;
+        let in_front = built
+            .iter()
+            .find(|(window, ..)| *window == front)
+            .map(|(_, view, ..)| view.showing().clone())
+            .unwrap_or_default();
+        let noticed = session.attention.showing(in_front);
         session.report_seen(&noticed.reported);
-        let keyboard = session
-            .window
-            .composition
-            .focused_region()
-            .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?)));
+        let keyboard = session.keyboard_key(front);
         // Here rather than in `focus`, because a split, a new tab, a tab step and a closed pane
         // all move the keyboard without going through it - and every one of them ends here.
         if let Some(pane) = &keyboard {
@@ -4768,62 +5011,49 @@ fn publish(cause: &str) {
         }
         let told = session.pane_focus.keyboard(keyboard);
         let focus = session.focus_reports(told);
-        // The typeable watch is settled against the same set, and for a reason of its own: what
-        // it says is that a pane renders and swallows what is typed into it, and a pane no
-        // region is drawing renders nothing - so a socket bound for one is owed no bridge until
-        // the window shows it.
-        watchdog::showing(view.showing().clone());
+        // The typeable watch is settled against what any window shows, and for a reason of its
+        // own: what it says is that a pane renders and swallows what is typed into it, and a pane
+        // no region is drawing renders nothing - so a socket bound for one is owed no bridge until
+        // a window shows it. A window behind another is still drawing its panes.
+        let shown: BTreeSet<PaneKey> =
+            built.iter().flat_map(|(_, view, ..)| view.showing().iter().cloned()).collect();
+        watchdog::showing(shown);
         // Here because this is the moment composition is settled, and because everything that
         // changes it ends up here - so nothing has to remember to save.
-        save(&mut session);
+        for (window, ..) in &built {
+            save(session, *window);
+        }
         session.forget_what_closed();
-        let view_message = convert::view(&view);
-        let roster_message = convert::roster(&roster, &numbering, &machine_colors());
-        let view_message = session.window.sent.view(&view_message).then_some(view_message);
-        let roster_message = session.window.sent.roster(&roster_message).then_some(roster_message);
-        (view, roster, numbering, noticed, focus, view_message, roster_message)
+        let colors = machine_colors();
+        let published: Vec<Published> = built
+            .into_iter()
+            .map(|(window, view, roster, numbering)| {
+                let sent = &mut session.windows[window].sent;
+                let view_message = convert::view(&view);
+                let roster_message = convert::roster(&roster, &numbering, &colors);
+                let view_message = sent.view(&view_message).then_some(view_message);
+                let roster_message = sent.roster(&roster_message).then_some(roster_message);
+                Published {
+                    name: session.windows[window].name.clone(),
+                    view,
+                    roster,
+                    numbering,
+                    view_message,
+                    roster_message,
+                }
+            })
+            .collect();
+        (published, noticed, focus)
     };
 
-    if view_message.is_none() && roster_message.is_none() {
+    if published
+        .iter()
+        .all(|window| window.view_message.is_none() && window.roster_message.is_none())
+    {
         log::debug("publish.unchanged", fields! { "cause" => cause });
     }
-
-    // The shape, not the fact. "the view changed" is useless in a bug report and what it
-    // changed to is the whole answer - a window rendering the wrong thing and a window
-    // rendering nothing are one line apart here (`architecture.md`, the diagnostic log).
-    if let Some(message) = view_message {
-        for region in &view.regions {
-            log::info(
-                "view.region",
-                fields! {
-                    "cause" => cause,
-                    "region" => region.id.to_string(),
-                    "daemon" => region.daemon.to_string(),
-                    "tab" => region.tab.to_string(),
-                    "keyboard" => region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
-                    "tree" => match &region.root {
-                        Some(root) => root.to_string(),
-                        None => "(not yet published)".to_string(),
-                    },
-                    "focused" => view.focused == Some(region.id),
-                },
-            );
-        }
-        ffi::emit(&Event::new(event::Payload::ViewChanged(message)));
-    }
-    if let Some(message) = roster_message {
-        log::info(
-            "roster.published",
-            fields! {
-                "cause" => cause,
-                "tabs" => roster.tabs().count().to_string(),
-                "tabs_on_screen" => roster.tabs().filter(|tab| tab.on_screen).count().to_string(),
-                "panes" => roster.panes().count().to_string(),
-                "on_screen" => roster.panes().filter(|pane| pane.on_screen).count().to_string(),
-                "numbering" => describe_numbering(&numbering),
-            },
-        );
-        ffi::emit(&Event::new(event::Payload::RosterChanged(message)));
+    for window in published {
+        window.emit(cause);
     }
     drop(publishing);
 
@@ -4841,6 +5071,65 @@ fn publish(cause: &str) {
     read_what_is_looked_at();
 }
 
+/// One window's part of a publish, settled under the lock and sent after it.
+struct Published {
+    name: WindowName,
+    view: View,
+    roster: Roster,
+    numbering: Numbering,
+    /// None when the shell already has it.
+    view_message: Option<ViewChanged>,
+    roster_message: Option<RosterChanged>,
+}
+
+impl Published {
+    /// Tells the shell, and the log, whatever of this window it has not been told yet.
+    fn emit(self, cause: &str) {
+        let Published { name, view, roster, numbering, view_message, roster_message } = self;
+        // The shape, not the fact. "the view changed" is useless in a bug report and what it
+        // changed to is the whole answer - a window rendering the wrong thing and a window
+        // rendering nothing are one line apart here (`architecture.md`, the diagnostic log).
+        if let Some(message) = view_message {
+            for region in &view.regions {
+                log::info(
+                    "view.region",
+                    fields! {
+                        "cause" => cause,
+                        "window" => name.to_string(),
+                        "region" => region.id.to_string(),
+                        "daemon" => region.daemon.to_string(),
+                        "tab" => region.tab.to_string(),
+                        "keyboard" => region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
+                        "tree" => match &region.root {
+                            Some(root) => root.to_string(),
+                            None => "(not yet published)".to_string(),
+                        },
+                        "focused" => view.focused == Some(region.id),
+                    },
+                );
+            }
+            ffi::emit(&Event::new(event::Payload::ViewChanged(message)).for_window(name.as_str()));
+        }
+        if let Some(message) = roster_message {
+            log::info(
+                "roster.published",
+                fields! {
+                    "cause" => cause,
+                    "window" => name.to_string(),
+                    "tabs" => roster.tabs().count().to_string(),
+                    "tabs_on_screen" => roster.tabs().filter(|tab| tab.on_screen).count().to_string(),
+                    "panes" => roster.panes().count().to_string(),
+                    "on_screen" => roster.panes().filter(|pane| pane.on_screen).count().to_string(),
+                    "numbering" => describe_numbering(&numbering),
+                },
+            );
+            ffi::emit(
+                &Event::new(event::Payload::RosterChanged(message)).for_window(name.as_str()),
+            );
+        }
+    }
+}
+
 /// Applies what a daemon just said to what Muster is holding open.
 ///
 /// Separate from reporting it, and finished before reporting starts: reporting reaches the
@@ -4850,7 +5139,7 @@ fn reconcile(daemon: &DaemonId) {
     let opened = {
         let mut session = poison::lock(&SESSION, "session");
         session.reconcile(daemon);
-        session.window.opened
+        session.windows.values().any(|window| window.opened)
     };
     // A standing rule rather than a launch-time one, because the states that produce a
     // daemon with nothing on screen keep arriving: a tab Muster asked for a moment ago
@@ -4868,7 +5157,7 @@ fn reconcile(daemon: &DaemonId) {
     // this would reopen it on the next thing the daemon said, and the rule needs to learn the
     // difference between empty and dismissed.
     if opened {
-        settle_what_the_window_shows();
+        settle_what_every_window_shows();
     }
 }
 
@@ -5228,8 +5517,8 @@ fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
             },
         );
     }
-    if poison::lock(&SESSION, "session").window.opened {
-        settle_what_the_window_shows();
+    if poison::lock(&SESSION, "session").windows.values().any(|window| window.opened) {
+        settle_what_every_window_shows();
     }
 }
 
@@ -5262,9 +5551,11 @@ fn catch_up_tab_names(daemon: &DaemonId) {
             })
             .collect()
     };
+    // A rename names its tab and moves no keyboard, so any window can send it.
+    let window = poison::lock(&SESSION, "session").front;
     for (tab, name, generation) in lagging {
         let intent = BackendIntent::RenameTab { tab: tab.clone(), name, generation };
-        if let Err(refusal) = submit(daemon, &intent, Keyboard::StaysPut) {
+        if let Err(refusal) = submit(window, daemon, &intent, Keyboard::StaysPut) {
             log::warn(
                 "tab.name.catch_up_failed",
                 fields! {
@@ -5431,36 +5722,30 @@ fn announce_message(group: &GroupKey, attend: Attend) {
     })));
 }
 
-/// Whether this window is the one to tell somebody what a daemon says, where no tab decides:
-/// the one that came to the front most recently among those open, as for a tab nobody holds.
+/// Whether this process is the one to tell somebody what a daemon says, where no tab decides:
+/// it is when the window that came to the front most recently among those open is one of its.
 fn speaks_for_daemon(daemon: &DaemonId) -> bool {
-    let (me, open_here, holders) = {
+    let (open_here, holders) = {
         let session = poison::lock(&SESSION, "session");
         if !session.holding.is_shared() {
             return true;
         }
-        (
-            session.window.name.clone(),
-            session.holding.open_here(),
-            session.holding.holders().clone(),
-        )
+        (session.holding.open_here(), session.holding.holders().clone())
     };
     let open = |window: &HeldWindow| crate::holding::is_open(&open_here, window);
-    holders.in_front(daemon, open) == Some(&me)
+    holders.in_front(daemon, open).is_some_and(|front| open_here.contains(front))
 }
 
 fn speaks_for(pane: &PaneKey) -> bool {
     let Some(tab) = tab_of_pane(&pane.pane) else { return true };
-    let (me, open_here, holders) = {
+    let (open_here, holders) = {
         let session = poison::lock(&SESSION, "session");
-        if session.holding.holds(&session.window.name, &tab) || !session.holding.is_shared() {
+        let held_here =
+            session.windows.values().any(|window| session.holding.holds(&window.name, &tab));
+        if held_here || !session.holding.is_shared() {
             return true;
         }
-        (
-            session.window.name.clone(),
-            session.holding.open_here(),
-            session.holding.holders().clone(),
-        )
+        (session.holding.open_here(), session.holding.holders().clone())
     };
     let open = |window: &HeldWindow| crate::holding::is_open(&open_here, window);
     if let Some(holder) = holders.holder(&tab).and_then(|name| holders.window(name))
@@ -5468,7 +5753,7 @@ fn speaks_for(pane: &PaneKey) -> bool {
     {
         return false;
     }
-    holders.in_front(&pane.daemon, open) == Some(&me)
+    holders.in_front(&pane.daemon, open).is_some_and(|front| open_here.contains(front))
 }
 
 /// What to call one pane, and what its agent says it is doing.
@@ -5515,14 +5800,14 @@ fn presented(pane: &PaneKey) -> Option<PaneAgent> {
 /// The write goes through `publish` like every other change, which is what gets it saved: the
 /// arrangement is written down at the one moment composition is settled, and adding a second
 /// place that remembers to save would be a second place that can forget.
-pub(crate) fn toggle_sidebar() {
-    let shown = !poison::lock(&SESSION, "session").window.presentation.sidebar;
+pub(crate) fn toggle_sidebar(window: WindowId) {
+    let shown = !poison::lock(&SESSION, "session").windows[window].presentation.sidebar;
     // Whatever Muster decided about the roster, the person just decided otherwise. Forgetting
     // that we opened it is what stops the last error clearing later and closing a roster
     // somebody deliberately reopened - or reopening one they deliberately put away.
-    poison::lock(&SESSION, "session").window.opened_sidebar = false;
+    poison::lock(&SESSION, "session").windows[window].opened_sidebar = false;
     log::info("presentation.sidebar", fields! { "shown" => shown });
-    set_sidebar(shown);
+    set_sidebar(window, shown);
 }
 
 /// Types text into a pane by name, whether or not a region is showing it.
@@ -5668,10 +5953,10 @@ pub(crate) fn reset_pane_input(settings: &PaneInputSettings) {
 /// Nothing is announced on its own. The size rides on the pane in the view, so the publish
 /// below is what tells the shell - and it is the same publish that would have told it about
 /// the pane appearing in the first place.
-pub(crate) fn adjust_font_size(change: FontSizeChange) -> Result<(), String> {
+pub(crate) fn adjust_font_size(window: WindowId, change: FontSizeChange) -> Result<(), String> {
     let (pane, offset) = {
         let mut session = poison::lock(&SESSION, "session");
-        let Some(region) = session.window.composition.focused_region() else {
+        let Some(region) = session.windows[window].composition.focused_region() else {
             return Err(no_pane_to_size());
         };
         let Some(pane) = region.pane.clone() else { return Err(no_pane_to_size()) };
@@ -5702,8 +5987,11 @@ fn no_pane_to_size() -> String {
 pub(crate) fn quitting(close_sessions: bool) {
     {
         let mut session = poison::lock(&SESSION, "session");
-        let me = session.window.name.clone();
-        session.holding.close(&me);
+        let names: Vec<WindowName> =
+            session.windows.values().map(|window| window.name.clone()).collect();
+        for name in &names {
+            session.holding.close(name);
+        }
         session.quitting = true;
     }
     if close_sessions {
@@ -5795,11 +6083,14 @@ fn close_daemons(daemons: &[(DaemonId, String)]) {
 /// Sent whole and sent on startup as well as on every change, so a shell holds no default of
 /// its own. A shell that guessed would be a second answer to a question the core owns, and
 /// the two would disagree the first time the default moved.
-fn announce_presentation(presentation: Presentation) {
-    ffi::emit(&Event::new(event::Payload::PresentationChanged(PresentationChanged {
-        sidebar: presentation.sidebar,
-        sidebar_width: presentation.sidebar_width,
-    })));
+fn announce_presentation(window: &WindowName, presentation: Presentation) {
+    ffi::emit(
+        &Event::new(event::Payload::PresentationChanged(PresentationChanged {
+            sidebar: presentation.sidebar,
+            sidebar_width: presentation.sidebar_width,
+        }))
+        .for_window(window.as_str()),
+    );
 }
 
 /// Makes this window match the record of which window holds each tab, after something changed it.
@@ -5811,27 +6102,30 @@ fn announce_presentation(presentation: Presentation) {
 /// into the wrong pane.
 pub(crate) fn follow_the_record() {
     {
-        let mut session = poison::lock(&SESSION, "session");
+        let mut guard = poison::lock(&SESSION, "session");
+        let session = &mut *guard;
         if !session.holding.reread() {
             return;
         }
-        let lost: Vec<TabId> = session
-            .window
-            .composition
-            .held()
-            .filter(|tab| !session.holding.holds(&session.window.name, tab))
-            .cloned()
-            .collect();
-        for tab in &lost {
-            session.window.composition.let_go(tab);
-        }
-        if !lost.is_empty() {
-            log::info(
-                "holding.lost",
-                fields! {
-                    "tabs" => lost.iter().map(TabId::as_str).collect::<Vec<&str>>().join(","),
-                },
-            );
+        for window in session.windows.values_mut() {
+            let lost: Vec<TabId> = window
+                .composition
+                .held()
+                .filter(|tab| !session.holding.holds(&window.name, tab))
+                .cloned()
+                .collect();
+            for tab in &lost {
+                window.composition.let_go(tab);
+            }
+            if !lost.is_empty() {
+                log::info(
+                    "holding.lost",
+                    fields! {
+                        "window" => window.name.to_string(),
+                        "tabs" => lost.iter().map(TabId::as_str).collect::<Vec<&str>>().join(","),
+                    },
+                );
+            }
         }
     }
     reconcile_every_daemon();
@@ -5844,18 +6138,40 @@ pub(crate) fn follow_the_record() {
 /// it changes is which finished agents this window has seen, so only those panes are
 /// re-announced and reported to their daemons - an agent-state change costs that change
 /// rather than a walk of every pane (`architecture.md`, fast is a feature).
-pub(crate) fn window_focused(focused: bool) {
-    log::info("window.focus", fields! { "focused" => focused });
+pub(crate) fn window_focused(window: WindowId, focused: bool) {
     let (noticed, focus) = {
         let mut session = poison::lock(&SESSION, "session");
-        // Coming to the front is what makes this the window a tab nobody holds joins.
-        if focused {
-            let me = session.window.name.clone();
-            session.holding.focused(&me);
+        log::info(
+            "window.focus",
+            fields! { "focused" => focused, "window" => session.windows[window].name.to_string() },
+        );
+        // A window behind another losing focus says nothing about the one in front, and the
+        // order the platform reports two windows trading places in is not one to rely on.
+        if !focused && window != session.front {
+            return;
         }
-        let noticed = session.attention.window_focused(focused);
+        let mut noticed = Noticed::default();
+        let mut told = Vec::new();
+        if focused {
+            // Coming to the front is what makes this the window a tab nobody holds joins.
+            let me = session.windows[window].name.clone();
+            session.holding.focused(&me);
+            // And the one whose panes count as seen, which attention and pane focus are told
+            // before they hear it has focus, so what they notice is this window's panes.
+            if session.front != window {
+                session.front = window;
+                let showing = session.view(window).showing().clone();
+                noticed = session.attention.showing(showing);
+                let keyboard = session.keyboard_key(window);
+                told = session.pane_focus.keyboard(keyboard);
+            }
+        }
+        let focusing = session.attention.window_focused(focused);
+        noticed.settled.extend(focusing.settled);
+        noticed.reported.extend(focusing.reported);
+        noticed.withdrawn.extend(focusing.withdrawn);
         session.report_seen(&noticed.reported);
-        let told = session.pane_focus.window_focused(focused);
+        told.extend(session.pane_focus.window_focused(focused));
         (noticed, session.focus_reports(told))
     };
     tell_focus(focus);

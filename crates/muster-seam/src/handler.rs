@@ -30,7 +30,7 @@ use muster_core::transcript;
 use muster_core::{AgentState, PaneKey};
 
 use crate::proto::{self, Request, Response, event, request, response};
-use crate::session::{self, AttachError, AttachedPane, Keyboard};
+use crate::session::{self, AttachError, AttachedPane, Keyboard, WindowId};
 use crate::{command, convert, forward, watch};
 use prost::Message;
 
@@ -76,6 +76,12 @@ fn handle(request: Request) -> Response {
     let Some(payload) = request.payload else {
         return nothing_was_asked();
     };
+    // Which window this is about, before anything else: the chord below is that window's, and
+    // so is every answer that means "this window".
+    let window = match session::resolve(&request.window) {
+        Ok(window) => window,
+        Err(refusal) => return Response::failure(refusal),
+    };
 
     // A numbered chord is armed by one request and spent by the next, so the rule that
     // ends it is stated here rather than at every caller that could: **a request that only
@@ -93,13 +99,13 @@ fn handle(request: Request) -> Response {
     // path, for every one of them. Skipping it when nothing can be armed would mean reading
     // whether anything is, which is the same lock.
     if !leaves_the_chord_armed(&payload) {
-        session::disarm();
+        session::disarm(window);
     }
 
-    if let Some(handed_on) = forward::hand_on(&payload) {
+    if let Some(handed_on) = forward::hand_on(window, &payload) {
         return handed_on;
     }
-    route(payload)
+    route(window, payload)
 }
 
 /// Every request the core answers, one arm each.
@@ -109,62 +115,65 @@ fn handle(request: Request) -> Response {
 // A table with one arm per request: split into helpers it would be the same length with the
 // correspondence broken up.
 #[allow(clippy::too_many_lines)]
-fn route(payload: request::Payload) -> Response {
+fn route(window: WindowId, payload: request::Payload) -> Response {
     match payload {
         request::Payload::Startup(startup) => start(&startup),
         request::Payload::LogRecord(record) => write(record),
-        request::Payload::AttachPane(attach) => attach_pane(&attach.pane_id),
-        request::Payload::OpenWindow(_) => open_window(),
-        request::Payload::CreateTab(create) => create_tab(&create),
+        request::Payload::AttachPane(attach) => attach_pane(window, &attach.pane_id),
+        request::Payload::OpenWindow(_) => open_window(window),
+        request::Payload::CreateTab(create) => create_tab(window, &create),
         request::Payload::BridgeExited(exited) => bridge_exited(&exited),
         request::Payload::BridgeStarted(started) => bridge_started(&started),
-        request::Payload::KeyDown(down) => with_pane("a keystroke", |pane| key_down(pane, &down)),
-        request::Payload::KeyUp(up) => with_pane("a key release", |pane| key_up(pane, &up)),
-        request::Payload::SendText(text) => with_pane("text", |pane| {
+        request::Payload::KeyDown(down) => {
+            with_pane(window, "a keystroke", |pane| key_down(pane, &down))
+        }
+        request::Payload::KeyUp(up) => with_pane(window, "a key release", |pane| key_up(pane, &up)),
+        request::Payload::SendText(text) => with_pane(window, "text", |pane| {
             pane.input.send_text(&text.text);
             Response::ok()
         }),
-        request::Payload::Paste(paste) => paste_into(&paste),
-        request::Payload::PerformOnPane(perform) => perform_on_pane(&perform),
+        request::Payload::Paste(paste) => paste_into(window, &paste),
+        request::Payload::PerformOnPane(perform) => perform_on_pane(window, &perform),
         request::Payload::Wheel(wheel) => wheel_over(&wheel),
         request::Payload::Mouse(mouse) => mouse_over(&mouse),
-        request::Payload::SplitPane(split) => split_pane(&split),
+        request::Payload::SplitPane(split) => split_pane(window, &split),
         request::Payload::ReattachPane(reattach) => {
-            reattach_pane(&reattach.daemon_id, &reattach.pane_id)
+            reattach_pane(window, &reattach.daemon_id, &reattach.pane_id)
         }
         request::Payload::ClosePane(close) => {
-            act(&close.daemon_id, &close.pane_id, Keyboard::Follows, |pane| {
+            act(window, &close.daemon_id, &close.pane_id, Keyboard::Follows, |pane| {
                 BackendIntent::ClosePane { pane }
             })
         }
         request::Payload::ReadBindings(_) => read_bindings(),
-        request::Payload::ReadWindow(_) => read_window(),
-        request::Payload::ReadPane(read) => read_pane(&read),
-        request::Payload::SendToPane(send) => send_to_pane(&send),
+        request::Payload::ReadWindow(_) => read_window(window),
+        request::Payload::ReadPane(read) => read_pane(window, &read),
+        request::Payload::SendToPane(send) => send_to_pane(window, &send),
         request::Payload::ReadDaemons(_) => read_daemons(),
         request::Payload::WatchPanes(_) => watch_without_a_socket(),
         request::Payload::ReadAppearance(_) => read_appearance(),
-        request::Payload::ReadWindowFrame(read) => read_window_frame(&read.screens),
+        request::Payload::ReadWindowFrame(read) => read_window_frame(window, &read.screens),
         request::Payload::ReportFontFamily(report) => report_font_family(&report),
         request::Payload::SetWindowFrame(set) => {
             let frame = set.frame.unwrap_or_default();
-            session::set_window_frame(frame.rect.map(read_rect), frame.full_screen);
+            session::set_window_frame(window, frame.rect.map(read_rect), frame.full_screen);
             Response::ok()
         }
-        request::Payload::ResizePane(resize) => resize_pane(&resize),
+        request::Payload::ResizePane(resize) => resize_pane(window, &resize),
         request::Payload::SetSidebarWidth(set) => {
-            session::set_sidebar_width(set.width);
+            session::set_sidebar_width(window, set.width);
             Response::ok()
         }
         request::Payload::ToggleSidebar(_) => {
-            session::toggle_sidebar();
+            session::toggle_sidebar(window);
             Response::ok()
         }
-        request::Payload::AdjustFontSize(adjust) => adjust_font_size(&adjust.change),
+        request::Payload::AdjustFontSize(adjust) => adjust_font_size(window, &adjust.change),
         request::Payload::ReloadConfig(_) => reload_config(),
-        request::Payload::Carried(carried) => answer_carried(*carried),
+        request::Payload::Carried(carried) => answer_carried(window, *carried),
         request::Payload::MoveTab(moved) => relayed(
             session::move_tab(
+                window,
                 (!moved.tab_id.is_empty()).then(|| TabId::new(&moved.tab_id)),
                 &moved.window,
             )
@@ -175,8 +184,8 @@ fn route(payload: request::Payload) -> Response {
             Response::ok()
         }
         request::Payload::ZoomPane(zoom) => {
-            act(&zoom.daemon_id, &zoom.pane_id, Keyboard::Follows, |pane| BackendIntent::ZoomPane {
-                pane,
+            act(window, &zoom.daemon_id, &zoom.pane_id, Keyboard::Follows, |pane| {
+                BackendIntent::ZoomPane { pane }
             })
         }
         request::Payload::FocusPane(focus) if focus.pane_id.is_empty() => Response::failure(
@@ -185,41 +194,44 @@ fn route(payload: request::Payload) -> Response {
              focus whatever is already focused - so the shell building this has a bug.",
         ),
         // The pane is never absent here, because an empty id was refused by the arm above.
-        request::Payload::FocusPane(focus) => match target(&focus.daemon_id, &focus.pane_id) {
-            Ok(target) => match &target.pane {
-                Some(pane) => {
-                    placed(session::focus(&target.daemon, pane).map(|()| Response::ok()), &target)
-                }
-                None => nothing_to_act_on(&target.daemon),
-            },
-            Err(refusal) => *refusal,
-        },
+        request::Payload::FocusPane(focus) => {
+            match target(window, &focus.daemon_id, &focus.pane_id) {
+                Ok(target) => match &target.pane {
+                    Some(pane) => placed(
+                        session::focus(window, &target.daemon, pane).map(|()| Response::ok()),
+                        &target,
+                    ),
+                    None => nothing_to_act_on(window, &target.daemon),
+                },
+                Err(refusal) => *refusal,
+            }
+        }
         request::Payload::WindowFocus(focus) => {
-            session::window_focused(focus.focused);
+            session::window_focused(window, focus.focused);
             Response::ok()
         }
-        request::Payload::SetRegionBoundary(set) => move_region_boundary(&set),
-        request::Payload::FocusRelative(step) => focus_relative(&step.direction),
-        request::Payload::FocusTabRelative(step) => step_tab(&step.direction),
-        request::Payload::FocusPaneAt(at) => focus_pane_at(at.place),
-        request::Payload::PressNumberedChord(chord) => press_numbered_chord(chord.press),
-        request::Payload::FocusAsking(_) => focus_asking(),
-        request::Payload::FocusHistory(walk) => focus_history(walk.forward),
+        request::Payload::SetRegionBoundary(set) => move_region_boundary(window, &set),
+        request::Payload::FocusRelative(step) => focus_relative(window, &step.direction),
+        request::Payload::FocusTabRelative(step) => step_tab(window, &step.direction),
+        request::Payload::FocusPaneAt(at) => focus_pane_at(window, at.place),
+        request::Payload::PressNumberedChord(chord) => press_numbered_chord(window, chord.press),
+        request::Payload::FocusAsking(_) => focus_asking(window),
+        request::Payload::FocusHistory(walk) => focus_history(window, walk.forward),
         request::Payload::OpenTranscript(open) if open.group.is_empty() => Response::failure(
             "a request to open a transcript named no group, so nothing opened. A banner for a \
              message always carries its group, so the shell building this has a bug.",
         ),
-        request::Payload::OpenTranscript(open) => match resolve_daemon(&open.daemon_id) {
-            Ok(daemon) => open_transcript(&daemon, &open.group),
+        request::Payload::OpenTranscript(open) => match resolve_daemon(window, &open.daemon_id) {
+            Ok(daemon) => open_transcript(window, &daemon, &open.group),
             Err(refusal) => *refusal,
         },
-        request::Payload::FocusTab(tab) => focus_tab(&tab.tab_id),
-        request::Payload::ArrangePane(arrange) => arrange_pane(&arrange),
-        request::Payload::SetSplitRatio(set) => set_split_ratio(set),
-        request::Payload::EqualizePanes(even) => equalize_panes(&even),
-        request::Payload::RenamePane(rename) => rename_pane(&rename),
-        request::Payload::RenameTab(rename) => rename_tab(&rename),
-        request::Payload::CloseTab(close) => close_tab(&close),
+        request::Payload::FocusTab(tab) => focus_tab(window, &tab.tab_id),
+        request::Payload::ArrangePane(arrange) => arrange_pane(window, &arrange),
+        request::Payload::SetSplitRatio(set) => set_split_ratio(window, set),
+        request::Payload::EqualizePanes(even) => equalize_panes(window, &even),
+        request::Payload::RenamePane(rename) => rename_pane(window, &rename),
+        request::Payload::RenameTab(rename) => rename_tab(window, &rename),
+        request::Payload::CloseTab(close) => close_tab(window, &close),
         // Answered when the panes have been handed back, not when the message was read. The
         // shell is holding its own termination open on this reply, which is the whole point:
         // everything here has to happen while its bridges are still alive to relay it.
@@ -231,7 +243,7 @@ fn route(payload: request::Payload) -> Response {
         // here because an arm reading `Response::ok()` alone would look like a request that
         // does nothing, and the second call is free: `disarm` takes the arm and finds none.
         request::Payload::EndNumberedChord(_) => {
-            session::disarm();
+            session::disarm(window);
             Response::ok()
         }
     }
@@ -241,7 +253,7 @@ fn route(payload: request::Payload) -> Response {
 ///
 /// Answered as though it had arrived directly, and never carried on - see `forward`. Going to a
 /// tab this way brings the window forward, because whoever asked was looking at something else.
-fn answer_carried(carried: proto::Carried) -> Response {
+fn answer_carried(window: WindowId, carried: proto::Carried) -> Response {
     let Some(payload) = carried.request.and_then(|request| request.payload) else {
         return Response::failure(format!(
             "window {} carried an empty request here, so nothing was done - a bug in whatever \
@@ -251,7 +263,7 @@ fn answer_carried(carried: proto::Carried) -> Response {
     };
     let goes_to_a_tab =
         matches!(payload, request::Payload::FocusTab(_) | request::Payload::FocusPane(_));
-    let response = route(payload);
+    let response = route(window, payload);
     if goes_to_a_tab && matches!(response.payload, Some(response::Payload::Ok(_))) {
         session::raise_window(0);
     }
@@ -284,9 +296,9 @@ fn leaves_the_chord_armed(payload: &request::Payload) -> bool {
 /// The pane an agent means is usually not the one it is sitting in, so the daemon comes from
 /// the pane rather than from whatever region is focused - `muster window` names panes across
 /// every attached machine, and a name is meant to be enough on its own.
-fn read_pane(read: &proto::ReadPane) -> Response {
+fn read_pane(window: WindowId, read: &proto::ReadPane) -> Response {
     let pane = if read.pane_id.is_empty() {
-        match session::focused_pane() {
+        match session::focused_pane(window) {
             Some(pane) => pane,
             None => {
                 return Response::failure(
@@ -362,11 +374,10 @@ fn read_daemons() -> Response {
 /// Trimmed, and blank reads as taking the name away. A name of spaces is a row that looks
 /// empty and cannot be told from an unnamed one, so there is one spelling for "no name"
 /// rather than two that render alike.
-fn rename_pane(rename: &proto::RenamePane) -> Response {
+fn rename_pane(window: WindowId, rename: &proto::RenamePane) -> Response {
     let name = wanted_name(&rename.name);
-    act(&rename.daemon_id, &rename.pane_id, Keyboard::Follows, |pane| BackendIntent::RenamePane {
-        pane,
-        name,
+    act(window, &rename.daemon_id, &rename.pane_id, Keyboard::Follows, |pane| {
+        BackendIntent::RenamePane { pane, name }
     })
 }
 
@@ -375,7 +386,7 @@ fn rename_pane(rename: &proto::RenamePane) -> Response {
 /// A tab named outright when the caller said which, and otherwise the tab holding the pane
 /// the keyboard is on - which is what a chord and a menu item mean, since neither can point
 /// at a tab any other way.
-fn rename_tab(rename: &proto::RenameTab) -> Response {
+fn rename_tab(window: WindowId, rename: &proto::RenameTab) -> Response {
     let name = wanted_name(&rename.name);
 
     if !rename.tab_id.is_empty() {
@@ -385,14 +396,16 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
         if holder_of(&tab, &rename.daemon_id).is_none() {
             return no_such_tab(&tab, "renamed");
         }
-        return relayed(session::rename_tab(&tab, name.as_deref()).map(|()| Response::ok()));
+        return relayed(
+            session::rename_tab(window, &tab, name.as_deref()).map(|()| Response::ok()),
+        );
     }
 
-    let daemon = match resolve_daemon(&rename.daemon_id) {
+    let daemon = match resolve_daemon(window, &rename.daemon_id) {
         Ok(daemon) => daemon,
         Err(refusal) => return *refusal,
     };
-    let Some(pane) = session::focused_pane() else {
+    let Some(pane) = session::focused_pane(window) else {
         return Response::failure(
             "no pane has this window's keyboard, so there was no tab to rename. A request that \
              names no tab means the one the keyboard is in, and this window has no keyboard - \
@@ -405,7 +418,7 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
              nothing was changed. Most likely it closed while this was in flight."
         ));
     };
-    relayed(session::rename_tab(&tab, name.as_deref()).map(|()| Response::ok()))
+    relayed(session::rename_tab(window, &tab, name.as_deref()).map(|()| Response::ok()))
 }
 
 /// Closes a tab and every pane in it.
@@ -413,20 +426,20 @@ fn rename_tab(rename: &proto::RenameTab) -> Response {
 /// The tab the keyboard is in when nobody names one, which is what the menu item means and is a
 /// fallback `focus_tab` deliberately does not have: going to a tab has no "the one I am already
 /// in", and closing one does.
-fn close_tab(close: &proto::CloseTab) -> Response {
+fn close_tab(window: WindowId, close: &proto::CloseTab) -> Response {
     if !close.tab_id.is_empty() {
         let tab = TabId::new(&close.tab_id);
         let Some(daemon) = holder_of(&tab, &close.daemon_id) else {
             return no_such_tab(&tab, "closed");
         };
-        return relayed(session::close_tab(&daemon, &tab).map(|()| Response::ok()));
+        return relayed(session::close_tab(window, &daemon, &tab).map(|()| Response::ok()));
     }
 
-    let daemon = match resolve_daemon(&close.daemon_id) {
+    let daemon = match resolve_daemon(window, &close.daemon_id) {
         Ok(daemon) => daemon,
         Err(refusal) => return *refusal,
     };
-    let Some(pane) = session::focused_pane() else {
+    let Some(pane) = session::focused_pane(window) else {
         return Response::failure(
             "no pane has this window's keyboard, so there was no tab to close and nothing was \
              changed. A request that names no tab means the one the keyboard is in.",
@@ -438,7 +451,7 @@ fn close_tab(close: &proto::CloseTab) -> Response {
              nothing was changed. Most likely it closed while this was in flight."
         ));
     };
-    relayed(session::close_tab(&daemon, &tab).map(|()| Response::ok()))
+    relayed(session::close_tab(window, &daemon, &tab).map(|()| Response::ok()))
 }
 
 /// What a rename was asking for: a name, or none at all.
@@ -451,9 +464,9 @@ fn wanted_name(asked: &str) -> Option<String> {
 ///
 /// A direction rather than a size, matching ToggleSidebar: what the chord means is "one more
 /// than whatever I have", and the shell does not hold what it has.
-fn adjust_font_size(change: &str) -> Response {
+fn adjust_font_size(window: WindowId, change: &str) -> Response {
     match FontSizeChange::parse(change) {
-        Some(change) => answer(session::adjust_font_size(change)),
+        Some(change) => answer(session::adjust_font_size(window, change)),
         None => Response::failure(format!(
             "the core does not know a font size change called {change:?}, so the text stayed \
              the size it was. Only {} exist; the shell builds this from a fixed set, so this \
@@ -464,9 +477,9 @@ fn adjust_font_size(change: &str) -> Response {
 }
 
 /// Moves the keyboard by a direction rather than to a named pane.
-fn focus_relative(direction: &str) -> Response {
+fn focus_relative(window: WindowId, direction: &str) -> Response {
     match Step::parse(direction) {
-        Some(step) => answer(session::step(step)),
+        Some(step) => answer(session::step(window, step)),
         None => Response::failure(format!(
             "the core does not know a step called {direction:?}, so the keyboard stayed where \
              it was. Only next, previous, left, right, up and down exist; the shell builds \
@@ -476,12 +489,13 @@ fn focus_relative(direction: &str) -> Response {
 }
 
 /// Puts a divider where a drag left it, named by the turns down to it.
-fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
+fn set_split_ratio(window: WindowId, set: proto::SetSplitRatio) -> Response {
     let tab = TabId::new(set.tab_id);
     let Some(daemon) = holder_of(&tab, &set.daemon_id) else {
         return no_such_tab(&tab, "resized");
     };
     relayed(submit(
+        window,
         &daemon,
         &BackendIntent::SetSplitRatio {
             tab,
@@ -502,7 +516,7 @@ fn set_split_ratio(set: proto::SetSplitRatio) -> Response {
 /// person's chord or drag on one pane and going there is what they meant; this is a statement
 /// about an arrangement, made by something that is usually standing in a different pane than
 /// the one it named.
-fn equalize_panes(even: &proto::EqualizePanes) -> Response {
+fn equalize_panes(window: WindowId, even: &proto::EqualizePanes) -> Response {
     let scope = if even.scope.is_empty() { "tab" } else { &even.scope };
     let Some(evenly) = Evenly::parse(scope) else {
         return Response::failure(format!(
@@ -511,17 +525,17 @@ fn equalize_panes(even: &proto::EqualizePanes) -> Response {
              above and below it. Leaving it out means the whole tab."
         ));
     };
-    let target = match target(&even.daemon_id, &even.pane_id) {
+    let target = match target(window, &even.daemon_id, &even.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
     let Some(pane) = target.pane.clone() else {
-        return nothing_to_act_on(&target.daemon);
+        return nothing_to_act_on(window, &target.daemon);
     };
     // A plain failure rather than [`placed`], because most of the ways this refuses are not the
     // daemon declining anything - a tree that has not arrived yet, a pane in no row - and
     // reporting those as a change a daemon would not make names the wrong culprit.
-    match session::equalize(&target.daemon, &pane, evenly) {
+    match session::equalize(window, &target.daemon, &pane, evenly) {
         Ok(()) => Response::ok(),
         Err(detail) => Response::failure(detail),
     }
@@ -573,9 +587,9 @@ fn send_key(pane: &AttachedPane, key: Option<&proto::KeyEvent>) -> Result<bool, 
 }
 
 /// A paste, into the pane with the keyboard or the one a held paste named.
-fn paste_into(paste: &proto::Paste) -> Response {
+fn paste_into(window: WindowId, paste: &proto::Paste) -> Response {
     if paste.pane_id.is_empty() {
-        return with_pane("a paste", |pane| {
+        return with_pane(window, "a paste", |pane| {
             pane.input.paste(&paste.text, paste.confirmed);
             Response::ok()
         });
@@ -590,20 +604,24 @@ fn paste_into(paste: &proto::Paste) -> Response {
 }
 
 /// Ghostty's clear_screen or reset, on the pane with the keyboard, for its daemon to carry out.
-fn perform_on_pane(perform: &proto::PerformOnPane) -> Response {
+fn perform_on_pane(window: WindowId, perform: &proto::PerformOnPane) -> Response {
     let key = match perform.key.as_ref().map(convert::key).transpose() {
         Ok(key) => key,
         Err(why) => return Response::failure(why),
     };
     match &perform.action {
-        Some(proto::perform_on_pane::Action::Clear(_)) => with_pane("a clear_screen", |pane| {
-            pane.input.clear_screen(key.as_ref());
-            Response::ok()
-        }),
-        Some(proto::perform_on_pane::Action::ResetTerminal(_)) => with_pane("a reset", |pane| {
-            pane.input.reset();
-            Response::ok()
-        }),
+        Some(proto::perform_on_pane::Action::Clear(_)) => {
+            with_pane(window, "a clear_screen", |pane| {
+                pane.input.clear_screen(key.as_ref());
+                Response::ok()
+            })
+        }
+        Some(proto::perform_on_pane::Action::ResetTerminal(_)) => {
+            with_pane(window, "a reset", |pane| {
+                pane.input.reset();
+                Response::ok()
+            })
+        }
         None => Response::failure(
             "a PerformOnPane named no action, so nothing was done; the shell sending it is out of \
              step with this core"
@@ -700,8 +718,12 @@ fn unknown_modifiers(modifiers: &[String], what: &str) -> Response {
 /// The session's lock is released before `act` runs. Sending can be a round trip to a
 /// daemon, and holding the session across one would stall every event arriving from every
 /// other daemon behind a wedged one.
-fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Response {
-    match session::keyboard_pane() {
+fn with_pane(
+    window: WindowId,
+    what: &str,
+    act: impl FnOnce(&AttachedPane) -> Response,
+) -> Response {
+    match session::keyboard_pane(window) {
         Some(pane) => act(&pane),
         None => Response::failure(format!(
             "no pane has this window's keyboard, so {what} went nowhere. A window with no \
@@ -723,13 +745,13 @@ fn with_pane(what: &str, act: impl FnOnce(&AttachedPane) -> Response) -> Respons
 /// name that reaches nothing. Unlike the verbs that go to a daemon, there is no request on its
 /// way that could make an unknown name right a moment later: this acts on what this window
 /// already knows, so what it knows is the answer.
-fn reattach_pane(daemon_id: &str, pane_id: &str) -> Response {
-    let target = match target(daemon_id, pane_id) {
+fn reattach_pane(window: WindowId, daemon_id: &str, pane_id: &str) -> Response {
+    let target = match target(window, daemon_id, pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
     let Some(pane) = target.pane.clone() else {
-        return nothing_to_act_on(&target.daemon);
+        return nothing_to_act_on(window, &target.daemon);
     };
     let key = PaneKey::new(&target.daemon, &pane);
     if !session::reattach(&key) {
@@ -742,19 +764,20 @@ fn reattach_pane(daemon_id: &str, pane_id: &str) -> Response {
 
 /// Builds an intent about a pane and asks for it.
 fn act(
+    window: WindowId,
     daemon_id: &str,
     pane_id: &str,
     keyboard: Keyboard,
     build: impl FnOnce(PaneId) -> BackendIntent,
 ) -> Response {
-    let target = match target(daemon_id, pane_id) {
+    let target = match target(window, daemon_id, pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
     let Some(pane) = target.pane.clone() else {
-        return nothing_to_act_on(&target.daemon);
+        return nothing_to_act_on(window, &target.daemon);
     };
-    placed(submit(&target.daemon, &build(pane), keyboard), &target)
+    placed(submit(window, &target.daemon, &build(pane), keyboard), &target)
 }
 
 /// Which machine a request is about, and which of its panes.
@@ -781,7 +804,7 @@ fn act(
 /// The pane is optional, because a machine can have nothing on screen. What that means is the
 /// caller's to say: `tab new` and `pane new` turn it into a new tab there, and the verbs that need
 /// something to act on refuse.
-fn target(daemon_id: &str, pane_id: &str) -> Result<Target, Box<Response>> {
+fn target(window: WindowId, daemon_id: &str, pane_id: &str) -> Result<Target, Box<Response>> {
     if !pane_id.is_empty() {
         let pane = PaneId::new(pane_id);
         let (daemon, held) = match session::daemon_holding(&pane) {
@@ -789,24 +812,24 @@ fn target(daemon_id: &str, pane_id: &str) -> Result<Target, Box<Response>> {
             Some(holder) if holder.as_str() != daemon_id => {
                 return Err(Box::new(held_elsewhere(&pane, &holder, daemon_id)));
             }
-            Some(_) => (resolve_daemon(daemon_id)?, true),
+            Some(_) => (resolve_daemon(window, daemon_id)?, true),
             // No mirror has heard of this pane. Usually a name read off a window state that
             // has moved on, and sometimes a pane the backend has only just made - so the
             // request goes anyway, because refusing here would refuse one that is about to be
             // right. What it must not do is take the resulting refusal at face value: it comes
             // from whichever machine has the keyboard, about a pane that machine never held.
-            None => (resolve_daemon(daemon_id)?, false),
+            None => (resolve_daemon(window, daemon_id)?, false),
         };
         return Ok(Target { daemon, pane: Some(pane), held });
     }
-    let daemon = resolve_daemon(daemon_id)?;
+    let daemon = resolve_daemon(window, daemon_id)?;
     // Checked here rather than inside `resolve_daemon`, because this is the one branch a name
     // somebody typed arrives on; every other caller reads the daemon off the view it was drawn
     // from.
     if !daemon_id.is_empty() && !session::is_following(&daemon) {
-        return Err(Box::new(no_such_daemon(&daemon)));
+        return Err(Box::new(no_such_daemon(window, &daemon)));
     }
-    let pane = session::focused_pane_on(&daemon);
+    let pane = session::focused_pane_on(window, &daemon);
     Ok(Target { daemon, pane, held: true })
 }
 
@@ -877,8 +900,8 @@ fn relayed(answer: Result<Response, Refusal>) -> Response {
 /// Two states with two ways out, so they get a message each. A machine holding no panes at all
 /// wants one made on it. A machine whose tabs in this window are all off screen wants one of
 /// them named or gone to.
-fn nothing_to_act_on(daemon: &DaemonId) -> Response {
-    if session::holding_nothing(daemon) {
+fn nothing_to_act_on(window: WindowId, daemon: &DaemonId) -> Response {
+    if session::holding_nothing(window, daemon) {
         return Response::failure(format!(
             "the daemon {daemon} holds no panes in this window, so a request that named no pane \
              had nothing to act on and nothing happened. `muster pane new --daemon {daemon}` \
@@ -894,7 +917,7 @@ fn nothing_to_act_on(daemon: &DaemonId) -> Response {
 }
 
 /// Why a name somebody gave a machine reached no machine.
-fn no_such_daemon(daemon: &DaemonId) -> Response {
+fn no_such_daemon(window: WindowId, daemon: &DaemonId) -> Response {
     if session::is_attaching(daemon) {
         return Response::failure(format!(
             "the daemon {daemon} is still being attached, so nothing was done. It did not \
@@ -903,7 +926,7 @@ fn no_such_daemon(daemon: &DaemonId) -> Response {
              attempt ran into."
         ));
     }
-    let attached = session::attached_daemons();
+    let attached = session::attached_daemons(window);
     let held = if attached.is_empty() {
         "this window is following none".to_string()
     } else {
@@ -946,7 +969,7 @@ fn held_elsewhere(pane: &PaneId, holder: &DaemonId, named: &str) -> Response {
 /// The directory is resolved here rather than left to the daemon. A new tab has nothing to
 /// inherit from, so the daemon would start it in a home directory - and the answer somebody
 /// pressing the key means is "where I already am", which the mirror already knows.
-fn create_tab(create: &proto::CreateTab) -> Response {
+fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
     let cwd = (!create.cwd.is_empty()).then(|| create.cwd.clone());
     let run = (!create.run.is_empty()).then(|| create.run.clone());
     let name = (!create.name.is_empty()).then(|| create.name.clone());
@@ -960,9 +983,10 @@ fn create_tab(create: &proto::CreateTab) -> Response {
     // making things on somebody else's machine uninvited is a bigger claim.
     if create.pane_id.is_empty()
         && create.daemon_id.is_empty()
-        && session::focused_daemon().is_none()
+        && session::focused_daemon(window).is_none()
     {
-        let chosen = session::first_local_daemon().or_else(session::first_attached_daemon);
+        let chosen =
+            session::first_local_daemon(window).or_else(|| session::first_attached_daemon(window));
         let Some(daemon) = chosen else {
             return Response::failure(
                 "this window has no daemon to make a tab on, so nothing was opened. A window \
@@ -970,14 +994,14 @@ fn create_tab(create: &proto::CreateTab) -> Response {
                  daemon.unavailable records above say which, if a daemon was meant to be there.",
             );
         };
-        return open_a_tab(&daemon, None, keyboard, cwd, run, name);
+        return open_a_tab(window, &daemon, None, keyboard, cwd, run, name);
     }
 
-    let target = match target(&create.daemon_id, &create.pane_id) {
+    let target = match target(window, &create.daemon_id, &create.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
-    open_a_tab(&target.daemon, target.pane.as_ref(), keyboard, cwd, run, name)
+    open_a_tab(window, &target.daemon, target.pane.as_ref(), keyboard, cwd, run, name)
 }
 
 /// Asks one machine for a tab, starting where `from` is when nobody said where.
@@ -989,6 +1013,7 @@ fn create_tab(create: &proto::CreateTab) -> Response {
 /// drag and no other pane to leave it on, and honouring the flag there would show a pane
 /// nobody can type into until they click it.
 fn open_a_tab(
+    window: WindowId,
     daemon: &DaemonId,
     from: Option<&PaneId>,
     keyboard: Keyboard,
@@ -997,9 +1022,10 @@ fn open_a_tab(
     name: Option<String>,
 ) -> Response {
     let cwd = cwd.or_else(|| from.and_then(|pane| session::cwd_of(daemon, pane)));
-    let keyboard = if session::focused_daemon().is_none() { Keyboard::Follows } else { keyboard };
+    let keyboard =
+        if session::focused_daemon(window).is_none() { Keyboard::Follows } else { keyboard };
     let intent = BackendIntent::CreateTab { tab: session::mint_tab(), cwd, run, name };
-    relayed(submit(daemon, &intent, keyboard))
+    relayed(submit(window, daemon, &intent, keyboard))
 }
 
 /// The daemon a request means, given what it named.
@@ -1009,11 +1035,11 @@ fn open_a_tab(
 /// has no answer, and that is the renderer check.
 /// Boxed refusal, because a `Response` is large enough that returning one by value costs more
 /// than the refusal it almost never is.
-fn resolve_daemon(daemon_id: &str) -> Result<DaemonId, Box<Response>> {
+fn resolve_daemon(window: WindowId, daemon_id: &str) -> Result<DaemonId, Box<Response>> {
     if !daemon_id.is_empty() {
         return Ok(DaemonId::new(daemon_id));
     }
-    session::focused_daemon().ok_or_else(|| {
+    session::focused_daemon(window).ok_or_else(|| {
         Box::new(Response::failure(
             "this window has no daemon its keyboard is on, so a request that named none had \
              nothing to act on. A window with nothing attached looks like this, and so does \
@@ -1037,8 +1063,8 @@ fn read_appearance() -> Response {
 /// Read from the file rather than from the session, because this is asked during launch and the
 /// session's own presentation is not restored until `OpenWindow`. One reader either way: the
 /// restore uses the same function a moment later.
-fn read_window_frame(screens: &[proto::WindowRect]) -> Response {
-    let presentation = session::saved_presentation();
+fn read_window_frame(window: WindowId, screens: &[proto::WindowRect]) -> Response {
+    let presentation = session::saved_presentation(window);
     let screens: Vec<Frame> = screens.iter().copied().map(read_rect).collect();
     Response {
         payload: Some(response::Payload::WindowFrame(proto::WindowFrame {
@@ -1145,9 +1171,9 @@ fn appearance_message() -> proto::Appearance {
 }
 
 /// Moves the keyboard one tab along the window's tab order.
-fn step_tab(direction: &str) -> Response {
+fn step_tab(window: WindowId, direction: &str) -> Response {
     match TabStep::parse(direction) {
-        Some(direction) => answer(session::step_tab(direction)),
+        Some(direction) => answer(session::step_tab(window, direction)),
         None => Response::failure(format!(
             "the core does not know a tab step called {direction:?}, so the keyboard stayed \
              where it was. Only next and previous exist - tabs are a list rather than an \
@@ -1163,7 +1189,7 @@ fn step_tab(direction: &str) -> Response {
 /// A request carrying both means two things and a request carrying neither means nothing, and a
 /// rule that quietly picked one would make a caller's mistake look like a working command that
 /// put the pane somewhere else.
-fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
+fn arrange_pane(window: WindowId, arrange: &proto::ArrangePane) -> Response {
     let named = usize::from(arrange.new_tab)
         + usize::from(!arrange.onto_pane_id.is_empty())
         + usize::from(!arrange.tab_id.is_empty());
@@ -1198,15 +1224,15 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
     if !arrange.tab_id.is_empty() {
         // Empty means the pane the keyboard is on, on the same terms as a tab of its own below:
         // this names one pane, so there is a "the focused one" to fall back to.
-        let target = match target(&arrange.daemon_id, &arrange.pane_id) {
+        let target = match target(window, &arrange.daemon_id, &arrange.pane_id) {
             Ok(found) => found,
             Err(refusal) => return *refusal,
         };
         let Some(pane) = target.pane.clone() else {
-            return nothing_to_act_on(&target.daemon);
+            return nothing_to_act_on(window, &target.daemon);
         };
         return placed(
-            session::move_pane_to_tab(&target.daemon, &pane, &TabId::new(&arrange.tab_id))
+            session::move_pane_to_tab(window, &target.daemon, &pane, &TabId::new(&arrange.tab_id))
                 .map(|()| Response::ok()),
             &target,
         );
@@ -1216,16 +1242,17 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
         // here and cannot below, and the difference is the destination rather than the verb:
         // this names one pane, so there is a "the focused one" to fall back to and a chord
         // and a menu item both mean exactly that.
-        let target = match target(&arrange.daemon_id, &arrange.pane_id) {
+        let target = match target(window, &arrange.daemon_id, &arrange.pane_id) {
             Ok(found) => found,
             Err(refusal) => return *refusal,
         };
         let Some(pane) = target.pane.clone() else {
-            return nothing_to_act_on(&target.daemon);
+            return nothing_to_act_on(window, &target.daemon);
         };
         let name = (!arrange.tab_name.is_empty()).then(|| arrange.tab_name.clone());
         return placed(
-            session::move_pane_to_new_tab(&target.daemon, &pane, name).map(|()| Response::ok()),
+            session::move_pane_to_new_tab(window, &target.daemon, &pane, name)
+                .map(|()| Response::ok()),
             &target,
         );
     }
@@ -1250,7 +1277,7 @@ fn arrange_pane(arrange: &proto::ArrangePane) -> Response {
         return no_pane_to_rearrange(&pane);
     };
     relayed(
-        session::arrange_pane(&daemon, &pane, &PaneId::new(&arrange.onto_pane_id), side)
+        session::arrange_pane(window, &daemon, &pane, &PaneId::new(&arrange.onto_pane_id), side)
             .map(|()| Response::ok()),
     )
 }
@@ -1272,7 +1299,7 @@ fn no_pane_to_rearrange(pane: &PaneId) -> Response {
 /// unique across every attached machine, which is all the request needs. The tab itself is not
 /// optional: unlike a pane, a tab has no "the focused one" to fall back to, and a request naming
 /// neither is a caller that had a tab in hand and dropped it.
-fn focus_tab(tab_id: &str) -> Response {
+fn focus_tab(window: WindowId, tab_id: &str) -> Response {
     if tab_id.is_empty() {
         return Response::failure(
             "a tab was asked for without naming one, so the keyboard stayed where it was. \
@@ -1280,7 +1307,7 @@ fn focus_tab(tab_id: &str) -> Response {
              this request had a tab in hand and dropped it.",
         );
     }
-    answer(session::focus_tab(&TabId::new(tab_id)))
+    answer(session::focus_tab(window, &TabId::new(tab_id)))
 }
 
 /// Which daemon a request about this pane goes to: the one it named, or the one holding the
@@ -1374,17 +1401,17 @@ fn no_such_tab(tab: &TabId, verb: &str) -> Response {
 }
 
 /// Goes to the pane at a place in the window's pane order, counting from one.
-fn focus_pane_at(place: u32) -> Response {
+fn focus_pane_at(window: WindowId, place: u32) -> Response {
     match counted_from_one(place, "a pane was asked for at place") {
-        Ok(place) => answer(session::focus_pane_at(place)),
+        Ok(place) => answer(session::focus_pane_at(window, place)),
         Err(refusal) => *refusal,
     }
 }
 
 /// Does what one of ⌘1 to ⌘9 does.
-fn press_numbered_chord(press: u32) -> Response {
+fn press_numbered_chord(window: WindowId, press: u32) -> Response {
     match counted_from_one(press, "a numbered chord was pressed as") {
-        Ok(press) => answer(session::press_numbered_chord(press)),
+        Ok(press) => answer(session::press_numbered_chord(window, press)),
         Err(refusal) => *refusal,
     }
 }
@@ -1412,9 +1439,9 @@ fn counted_from_one(number: u32, asked: &str) -> Result<usize, Box<Response>> {
 /// Goes to what is most urgently asking for somebody, the way clicking its banner does, and
 /// says which: a pane, or the transcript of a group where a message waits for the human. Nothing
 /// asking is an answer naming nothing rather than a refusal: nothing failed.
-fn focus_asking() -> Response {
+fn focus_asking(window: WindowId) -> Response {
     let went = match session::most_urgent_asking() {
-        Some(Asker::Pane(pane)) => match session::focus(&pane.daemon, &pane.pane) {
+        Some(Asker::Pane(pane)) => match session::focus(window, &pane.daemon, &pane.pane) {
             Ok(()) => proto::Asking {
                 daemon_id: pane.daemon.to_string(),
                 pane_id: pane.pane.to_string(),
@@ -1423,7 +1450,7 @@ fn focus_asking() -> Response {
             Err(refusal) => return relayed(Err(refusal)),
         },
         Some(Asker::Group(group)) => {
-            let opened = open_transcript(&group.daemon, &group.group);
+            let opened = open_transcript(window, &group.daemon, &group.group);
             if !matches!(
                 opened.payload,
                 Some(response::Payload::Ok(_) | response::Payload::Made(_))
@@ -1441,8 +1468,8 @@ fn focus_asking() -> Response {
     Response { payload: Some(response::Payload::Asking(went)) }
 }
 
-fn focus_history(forward: bool) -> Response {
-    match session::walk_focus(forward) {
+fn focus_history(window: WindowId, forward: bool) -> Response {
+    match session::walk_focus(window, forward) {
         Ok(went) => Response {
             payload: Some(response::Payload::Went(went.map_or_else(
                 proto::Went::default,
@@ -1460,7 +1487,7 @@ fn focus_history(forward: bool) -> Response {
 /// it when none does (MIP-4, section 10). A new tab rather than a split, so that nobody's
 /// layout moves under them because a message arrived. Going there is the human reading the
 /// group, so its daemon is told.
-fn open_transcript(daemon: &DaemonId, group: &str) -> Response {
+fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response {
     let Some(command) = transcript::command(group) else {
         return Response::failure(format!(
             "{group:?} cannot be a group's name, so no transcript was opened: its pane would \
@@ -1470,8 +1497,9 @@ fn open_transcript(daemon: &DaemonId, group: &str) -> Response {
         ));
     };
     let response = match session::transcript_pane(daemon, group) {
-        Some(pane) => relayed(session::focus(daemon, &pane).map(|()| Response::ok())),
+        Some(pane) => relayed(session::focus(window, daemon, &pane).map(|()| Response::ok())),
         None => open_a_tab(
+            window,
             daemon,
             None,
             Keyboard::Follows,
@@ -1490,7 +1518,7 @@ fn open_transcript(daemon: &DaemonId, group: &str) -> Response {
 ///
 /// The one arrangement no daemon is asked about, so unlike every other drag this answers
 /// `ok` for a change that has already happened rather than for a request somebody may refuse.
-fn move_region_boundary(set: &proto::SetRegionBoundary) -> Response {
+fn move_region_boundary(window: WindowId, set: &proto::SetRegionBoundary) -> Response {
     let Some(region) = region_id(&set.region_id) else {
         return Response::failure(format!(
             "the core does not know a region called {:?}, so no line moved. A region is named \
@@ -1499,7 +1527,7 @@ fn move_region_boundary(set: &proto::SetRegionBoundary) -> Response {
             set.region_id
         ));
     };
-    session::set_region_boundary(region, set.ratio);
+    session::set_region_boundary(window, region, set.ratio);
     Response::ok()
 }
 
@@ -1519,11 +1547,12 @@ fn region_id(named: &str) -> Option<RegionId> {
 /// its name was minted inside this call. Everything else about the change arrives as a view.
 /// Asks, and shapes the answer - leaving the refusal's kind intact for [`placed`].
 fn submit(
+    window: WindowId,
     daemon: &DaemonId,
     intent: &BackendIntent,
     keyboard: Keyboard,
 ) -> Result<Response, Refusal> {
-    session::submit(daemon, intent, keyboard).map(|made| match made {
+    session::submit(window, daemon, intent, keyboard).map(|made| match made {
         Some(pane) => Response {
             payload: Some(response::Payload::Made(proto::Made { pane_id: pane.to_string() })),
         },
@@ -1560,8 +1589,8 @@ fn unanswered(detail: &str) -> Response {
 }
 
 /// Opens the window onto whatever the daemons hold, which is what a bare `muster` asks for.
-fn open_window() -> Response {
-    match session::open() {
+fn open_window(window: WindowId) -> Response {
+    match session::open(window) {
         Ok(()) => Response::ok(),
         Err(detail) => Response::failure(format!(
             "{detail} This window has no session behind it, so it renders nothing and \
@@ -1584,8 +1613,8 @@ fn read_bindings() -> Response {
 /// The read that makes the endpoint worth having. An agent driving a window has no eyes: it can
 /// split a pane and start something in it, and without this it can never learn whether either
 /// happened. The same four messages the shell is sent as events, from the same builders.
-fn read_window() -> Response {
-    let now = session::window();
+fn read_window(window: WindowId) -> Response {
+    let now = session::window(window);
     Response {
         payload: Some(response::Payload::Window(proto::Window {
             view: Some(convert::view(&now.view)),
@@ -1708,7 +1737,7 @@ fn announce_appearance() {
 }
 
 /// Splits a pane, putting the new one on the named side of it.
-fn split_pane(split: &proto::SplitPane) -> Response {
+fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
     let Some(side) = Side::parse(&split.side) else {
         return Response::failure(format!(
             "the core does not know a side called {:?}, so nothing was split. They are left, \
@@ -1724,7 +1753,7 @@ fn split_pane(split: &proto::SplitPane) -> Response {
     let run = (!split.run.is_empty()).then(|| split.run.clone());
     let name = (!split.name.is_empty()).then(|| split.name.clone());
 
-    let target = match target(&split.daemon_id, &split.pane_id) {
+    let target = match target(window, &split.daemon_id, &split.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
@@ -1733,14 +1762,15 @@ fn split_pane(split: &proto::SplitPane) -> Response {
     // Refusing here would leave `--daemon` unable to reach the machine it is most needed for -
     // the one holding no panes, which is every devenv on the day it is attached.
     let Some(pane) = pane else {
-        return open_a_tab(&daemon, None, keyboard, cwd, run, name);
+        return open_a_tab(window, &daemon, None, keyboard, cwd, run, name);
     };
     let onto = &split.new_pane_daemon_id;
     if !onto.is_empty() && onto != daemon.as_str() {
-        return split_onto(&DaemonId::new(onto), &pane, side, keyboard, split);
+        return split_onto(window, &DaemonId::new(onto), &pane, side, keyboard, split);
     }
     placed(
         submit(
+            window,
             &daemon,
             &BackendIntent::SplitPane {
                 pane,
@@ -1769,6 +1799,7 @@ fn split_pane(split: &proto::SplitPane) -> Response {
 /// The split pane's directory goes nowhere. It is a path on the other machine, and the daemon
 /// would start the new pane in a directory that may not exist here.
 fn split_onto(
+    window: WindowId,
     onto: &DaemonId,
     beside: &PaneId,
     side: Side,
@@ -1776,7 +1807,7 @@ fn split_onto(
     split: &proto::SplitPane,
 ) -> Response {
     if !session::is_following(onto) {
-        return no_such_daemon(onto);
+        return no_such_daemon(window, onto);
     }
     let Some(tab) = session::tab_of_pane(beside) else {
         return Response::failure(format!(
@@ -1788,7 +1819,7 @@ fn split_onto(
     let cwd = (!split.cwd.is_empty()).then(|| split.cwd.clone());
     let run = (!split.run.is_empty()).then(|| split.run.clone());
     let name = (!split.name.is_empty()).then(|| split.name.clone());
-    let intent = match session::pane_in_part(onto, &tab) {
+    let intent = match session::pane_in_part(window, onto, &tab) {
         Some(pane) => BackendIntent::SplitPane {
             pane,
             side,
@@ -1799,20 +1830,20 @@ fn split_onto(
         },
         None => BackendIntent::JoinTab { tab, cwd, run, name },
     };
-    relayed(submit(onto, &intent, keyboard))
+    relayed(submit(window, onto, &intent, keyboard))
 }
 
 /// Types text into a pane, named rather than focused.
-fn send_to_pane(send: &proto::SendToPane) -> Response {
+fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
     // The keyboard never moves for this. Being sent something is not the same as being looked
     // at, and an agent telling two others what to do would otherwise pull the user's cursor
     // onto whichever it addressed last.
-    let target = match target(&send.daemon_id, &send.pane_id) {
+    let target = match target(window, &send.daemon_id, &send.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
     let Some(pane) = target.pane.clone() else {
-        return nothing_to_act_on(&target.daemon);
+        return nothing_to_act_on(window, &target.daemon);
     };
     if let Err(refusal) =
         session::send_to_pane(&target.daemon, &pane, send.text.clone(), send.enter)
@@ -1822,7 +1853,7 @@ fn send_to_pane(send: &proto::SendToPane) -> Response {
     if !send.confirm {
         return Response::ok();
     }
-    confirm_it_arrived(send)
+    confirm_it_arrived(window, send)
 }
 
 /// Reads the pane back and refuses if the message that was just sent does not appear on it.
@@ -1833,9 +1864,9 @@ fn send_to_pane(send: &proto::SendToPane) -> Response {
 /// **Refusal rather than a field on the answer**, because an exit code is the only part of this
 /// a script branches on without reading English, and a send that cannot be seen is exactly the
 /// case `--confirm` was asked for.
-fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
+fn confirm_it_arrived(window: WindowId, send: &proto::SendToPane) -> Response {
     let pane = if send.pane_id.is_empty() {
-        match session::focused_pane() {
+        match session::focused_pane(window) {
             Some(pane) => pane,
             None => return Response::ok(),
         }
@@ -1859,7 +1890,7 @@ fn confirm_it_arrived(send: &proto::SendToPane) -> Response {
 }
 
 /// Grows a pane against its neighbour, by a step.
-fn resize_pane(resize: &proto::ResizePane) -> Response {
+fn resize_pane(window: WindowId, resize: &proto::ResizePane) -> Response {
     let Some(direction) = Side::parse(&resize.direction) else {
         return Response::failure(format!(
             "the core does not know a direction called {:?}, so nothing was resized. They are \
@@ -1900,10 +1931,8 @@ fn resize_pane(resize: &proto::ResizePane) -> Response {
         );
     }
     let fraction = (resize.amount > 0.0).then_some(resize.amount).or(configured);
-    act(&resize.daemon_id, &resize.pane_id, Keyboard::Follows, |pane| BackendIntent::ResizePane {
-        pane,
-        direction,
-        fraction,
+    act(window, &resize.daemon_id, &resize.pane_id, Keyboard::Follows, |pane| {
+        BackendIntent::ResizePane { pane, direction, fraction }
     })
 }
 
@@ -1928,8 +1957,8 @@ fn bridge_started(started: &proto::BridgeStarted) -> Response {
     Response::ok()
 }
 
-fn attach_pane(pane_id: &str) -> Response {
-    match session::attach(pane_id) {
+fn attach_pane(window: WindowId, pane_id: &str) -> Response {
+    match session::attach(window, pane_id) {
         Ok(pane) => Response {
             payload: Some(response::Payload::Attached(proto::Attached {
                 link_socket_path: pane.link_path().to_string(),
@@ -2279,7 +2308,7 @@ fn reload_config() -> Response {
     // The roster too, because a machine's color is on it and the file may have just chosen
     // one. Announced here rather than left to the next publish, so the agent list is right
     // when the save returns rather than whenever a daemon next says something.
-    session::announce_roster();
+    session::announce_rosters();
     Response::ok()
 }
 

@@ -27,7 +27,7 @@ use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster_proto::{Carried, Names, Request, Response, request};
 use prost::Message;
 
-use crate::session;
+use crate::session::{self, WindowId};
 
 /// How long the other window has to answer.
 ///
@@ -38,11 +38,14 @@ use crate::session;
 /// answer.
 const PATIENCE: Duration = Duration::from_secs(45);
 
-/// The other open window a request is about, when it is about one.
-pub(crate) fn elsewhere(request: &Request) -> Option<HeldWindow> {
+/// The open window in another process a request is about, when it is about one.
+///
+/// `window` is the one here the request reached. A window in this same process is never carried
+/// to: its socket is this process's own, and a request carried there would come straight back.
+pub(crate) fn elsewhere(window: WindowId, request: &Request) -> Option<HeldWindow> {
     let payload = request.payload.as_ref()?;
     let tab = tab_named(payload)?;
-    session::open_window_holding(&tab)
+    session::open_window_holding(window, &tab)
 }
 
 /// Hands a focus on another open window's tab to that window, from a thread of its own, and answers
@@ -53,15 +56,15 @@ pub(crate) fn elsewhere(request: &Request) -> Option<HeldWindow> {
 /// window. Only a focus, because the shell lists only this window's tabs, so a focus from a
 /// notification is the one request it makes about another window's. A request carried here is
 /// answered by `route` and never reaches this, so it is not handed back.
-pub(crate) fn hand_on(payload: &request::Payload) -> Option<Response> {
+pub(crate) fn hand_on(window: WindowId, payload: &request::Payload) -> Option<Response> {
     if !matches!(payload, request::Payload::FocusPane(_) | request::Payload::FocusTab(_)) {
         return None;
     }
     let request = Request::new(payload.clone());
-    let window = elsewhere(&request)?;
-    let to = window.name.to_string();
+    let holder = elsewhere(window, &request)?;
+    let to = holder.name.to_string();
     let spawned = std::thread::Builder::new().name("carry-focus".to_string()).spawn(move || {
-        carry(&window, request);
+        carry(window, &holder, request);
     });
     if let Err(error) = spawned {
         log::warn(
@@ -88,13 +91,15 @@ pub(crate) fn hand_on(payload: &request::Payload) -> Option<Response> {
 /// A window that cannot be reached is answered here with a refusal that says which window it
 /// was, rather than carried out here instead: the tab is that window's, and showing it here is
 /// the failure this exists to prevent.
-pub(crate) fn carry(window: &HeldWindow, request: Request) -> Vec<u8> {
+pub(crate) fn carry(by: WindowId, window: &HeldWindow, mut request: Request) -> Vec<u8> {
     let goes_to_a_tab = matches!(
         request.payload,
         Some(request::Payload::FocusPane(_) | request::Payload::FocusTab(_))
     );
+    // A window's name means a window in the process that was asked, which the other one is not.
+    request.window.clear();
     let carried = Request::new(request::Payload::Carried(Box::new(Carried {
-        by: session::window_name(),
+        by: session::window_name(by),
         request: Some(Box::new(request)),
     })));
     log::info(

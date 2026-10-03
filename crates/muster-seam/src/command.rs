@@ -254,13 +254,17 @@ fn answer(mut stream: UnixStream) {
     let asked = decoded.as_ref().map_or_else(String::new, kind);
 
     // A request about another window's tab is that window's to answer (`forward`).
-    let carried = decoded.and_then(|decoded| Some((forward::elsewhere(&decoded)?, decoded)));
+    // A window name nobody here has is left for `dispatch`, which refuses it in so many words.
+    let carried = decoded.and_then(|decoded| {
+        let window = session::resolve(&decoded.window).ok()?;
+        Some((window, forward::elsewhere(window, &decoded)?, decoded))
+    });
     let forwarded = carried.is_some();
 
     // The same bytes-in, bytes-out call the C ABI makes, including its panic guard: a request
     // arriving here is no more trustworthy than one arriving from the shell.
     let response = match carried {
-        Some((window, decoded)) => forward::carry(&window, decoded),
+        Some((window, holder, decoded)) => forward::carry(window, &holder, decoded),
         None => dispatch(&request),
     };
     after_the_window_holds_it(&response);
