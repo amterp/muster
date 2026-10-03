@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791031067303,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-10-01: \"shortcut for renaming tab or pane\". Clarified 2026-10-03: did not know `rename_pane` is `cmd+shift+n`; wants the tab version.\n\n`rename_tab` ships unbound by an earlier deliberate choice (docs/configuration.md: \"you name a tab once and a pane several times an hour\"); amterp reverses it. Pick a chord that collides with nothing Ghostty or macOS uses, and update the paragraph in configuration.md that argued for leaving it unbound.\n\nHe also asked for a way to discover shortcuts: `show_shortcuts` (`cmd+/`, \"muster Shortcuts\" in the menu) already exists. Worth checking it lists both rename chords, and whether it is findable enough (Help menu?).",
   "id": "a_2b6Wwx4Zk",
-  "position": "!!!!!!F",
+  "position": "YzE",
   "title": "🎹 A default chord for renaming a tab",
   "type": "enhancement",
-  "updated_at_millis": 1791031406276,
+  "updated_at_millis": 1791035058325,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791031067303}
+    {"field":"column","value":"backlog-hi","at":1791031067303},
+    {"field":"column","value":"done","at":1791035058325}
   ]
 }
