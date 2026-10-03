@@ -3566,16 +3566,39 @@ fn taken_elsewhere(pane: &PaneId, tab: &TabId, window: &WindowName) -> Refusal {
 
 /// Asks the shell for a window on behalf of somebody outside the app: a new one, or a closed one
 /// by name, or the most recently closed when the name is empty.
-pub(crate) fn ask_for_window(name: &str, show: &str, fresh: bool) {
+pub(crate) fn ask_for_window(name: &str, show: &str, fresh: bool, any: bool) {
     log::info(
         "window.asked_for",
-        fields! { "window" => name, "show" => show, "fresh" => fresh.to_string() },
+        fields! {
+            "window" => name,
+            "show" => show,
+            "fresh" => fresh.to_string(),
+            "any" => any.to_string(),
+        },
     );
     ffi::emit(&Event::new(event::Payload::ReopenWindow(ReopenWindow {
         name: name.to_string(),
-        show: show.to_string(),
+        // Already gone to by the core when any window will do (`handler::ask_for_window`).
+        show: if any { String::new() } else { show.to_string() },
         fresh,
+        any,
     })));
+}
+
+/// The request that goes to a pane or a tab by name, whichever it names.
+pub(crate) fn going_to(name: &str) -> request::Payload {
+    let tab = TabId::new(name);
+    if daemon_holding_tab(&tab).is_some() {
+        request::Payload::FocusTab(crate::proto::FocusTab {
+            tab_id: name.to_string(),
+            ..crate::proto::FocusTab::default()
+        })
+    } else {
+        request::Payload::FocusPane(crate::proto::FocusPane {
+            pane_id: name.to_string(),
+            ..crate::proto::FocusPane::default()
+        })
+    }
 }
 
 /// Asks for a closed window to be opened again when going somewhere means going into it.
@@ -3612,6 +3635,7 @@ fn reopened_for(window: WindowId, tab: &TabId, show: &str) -> bool {
         name: holder.name.to_string(),
         show: show.to_string(),
         fresh: false,
+        any: false,
     })));
     true
 }

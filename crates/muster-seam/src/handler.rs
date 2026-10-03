@@ -155,6 +155,8 @@ fn about_the_whole_app(payload: &request::Payload) -> bool {
             | request::Payload::BridgeStarted(_)
             | request::Payload::ReadReopening(_)
             | request::Payload::AskForWindow(_)
+            | request::Payload::ClaimApp(_)
+            | request::Payload::AdoptOldState(_)
     )
 }
 
@@ -181,6 +183,11 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             })),
         },
         request::Payload::AskForWindow(ask) => ask_for_window(&ask),
+        request::Payload::ClaimApp(claim) => claim_app(claim),
+        request::Payload::AdoptOldState(adopt) => {
+            crate::app_lock::adopt_old_state(&adopt.home);
+            Response::ok()
+        }
         request::Payload::CreateTab(create) => create_tab(window, &create),
         request::Payload::BridgeExited(exited) => bridge_exited(&exited),
         request::Payload::BridgeStarted(started) => bridge_started(&started),
@@ -1722,8 +1729,37 @@ fn ask_for_window(ask: &proto::AskForWindow) -> Response {
             if ask.install.is_empty() { "(unnamed)" } else { &ask.install }
         ));
     }
-    session::ask_for_window(&ask.name, &ask.show, ask.fresh);
+    if ask.any && !ask.show.is_empty() {
+        // Going to a pane or a tab is going to the window holding it, which the ordinary focus
+        // path finds and brings forward; the app is then brought forward as well, since the
+        // launch that asked was in front.
+        let _ = handle(Request::new(session::going_to(&ask.show)));
+    }
+    session::ask_for_window(&ask.name, &ask.show, ask.fresh, ask.any);
     Response::ok()
+}
+
+/// Makes this process the app of its install, or hands the launch to the one that is.
+fn claim_app(claim: proto::ClaimApp) -> Response {
+    match crate::app_lock::claim(
+        &claim.home,
+        &claim.command_socket_path,
+        claim.ask.unwrap_or_default(),
+    ) {
+        Ok(crate::app_lock::Claim::Claimed { state }) => Response {
+            payload: Some(response::Payload::AppClaim(proto::AppClaim {
+                claimed: true,
+                state_directory: state.map(|state| state.display().to_string()).unwrap_or_default(),
+            })),
+        },
+        Ok(crate::app_lock::Claim::HandedOver) => Response {
+            payload: Some(response::Payload::AppClaim(proto::AppClaim {
+                claimed: false,
+                state_directory: String::new(),
+            })),
+        },
+        Err(reason) => Response::failure(reason),
+    }
 }
 
 /// Every action and the chord asking for it, for a shell to build a menu from.

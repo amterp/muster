@@ -159,6 +159,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Went(_) => "where the focus history went",
         response::Payload::Opened(_) => "a window opened",
         response::Payload::Reopening(_) => "the windows to reopen",
+        response::Payload::AppClaim(_) => "a claim on the app",
     }
 }
 

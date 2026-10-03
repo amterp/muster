@@ -80,6 +80,14 @@ fn act(holders: &mut Holders, step: &Value) -> Result<(), CaseError> {
             let gone = strings(step, "windows");
             holders.forget(|window| gone.iter().any(|name| name == window.name.as_str()));
         }
+        "adopt" => {
+            let (from, to) = (text(step, "from"), text(step, "to"));
+            holders.adopt(&text(step, "install"), |arrangement| {
+                arrangement
+                    .strip_prefix(&from)
+                    .map_or_else(|| arrangement.to_string(), |rest| format!("{to}{rest}"))
+            });
+        }
         "prune" => {
             let answered = strings(step, "answered").into_iter().map(DaemonId::new).collect();
             let described = strings(step, "described");

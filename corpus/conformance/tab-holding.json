@@ -927,6 +927,86 @@
           "/s/windows/window-1.toml"
         ]
       }
+    },
+    {
+      "name": "the release adopting the shared record keeps its own rows and drops the others",
+      "why": "Until one app per install, every install's windows shared one record under state/holding/, each row naming the install that wrote it. The release moves that record into state/release/ on its first launch after the change. Its own rows come with it, and so do rows from before rows named an install, which only the release wrote; a development build's rows are dropped with the tabs they held, since that build now keeps a record of its own. Each arrangement is wherever the release moved its file.",
+      "given": {
+        "steps": [
+          {
+            "do": "open",
+            "window": "window-1",
+            "arrangement": "/s/windows/window-1.toml",
+            "socket": "/s/command-11.sock",
+            "pid": 11,
+            "focused": 100,
+            "daemons": [
+              "local"
+            ]
+          },
+          {
+            "do": "open",
+            "window": "window-2",
+            "arrangement": "/s/windows/window-2.toml",
+            "socket": "/s/command-12.sock",
+            "pid": 12,
+            "install": "release",
+            "focused": 200,
+            "daemons": [
+              "local"
+            ]
+          },
+          {
+            "do": "open",
+            "window": "window-3",
+            "arrangement": "/s/windows/window-3.toml",
+            "socket": "/s/command-13.sock",
+            "pid": 13,
+            "install": "dev-0a1b2c",
+            "focused": 300,
+            "daemons": [
+              "local"
+            ]
+          },
+          {
+            "do": "take",
+            "tab": "t1",
+            "window": "window-1"
+          },
+          {
+            "do": "take",
+            "tab": "t3",
+            "window": "window-3"
+          },
+          {
+            "do": "adopt",
+            "install": "release",
+            "from": "/s/windows/",
+            "to": "/s/release/windows/"
+          }
+        ],
+        "reopening": {
+          "install": "release",
+          "answering": [],
+          "existing": [
+            "/s/release/windows/window-1.toml",
+            "/s/release/windows/window-2.toml"
+          ]
+        }
+      },
+      "expect": {
+        "windows": [
+          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/release/windows/window-1.toml focused=100 daemons=local",
+          "window-2 pid=12 socket=/s/command-12.sock arrangement=/s/release/windows/window-2.toml focused=200 daemons=local"
+        ],
+        "tabs": [
+          "t1 window-1"
+        ],
+        "reopening": [
+          "/s/release/windows/window-1.toml",
+          "/s/release/windows/window-2.toml"
+        ]
+      }
     }
   ]
 }

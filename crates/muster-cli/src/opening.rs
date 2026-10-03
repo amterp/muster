@@ -99,7 +99,7 @@ fn ask_a_running_app(
             install: install::INSTALL.to_string(),
             fresh,
             name: name.unwrap_or_default().to_string(),
-            show: String::new(),
+            ..AskForWindow::default()
         }));
         match dial::ask(&asked, Some(&socket), environment) {
             Ok(Response { payload: Some(response::Payload::Ok(_)) }) => {}

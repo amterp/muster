@@ -1213,6 +1213,8 @@ public enum Core {
     case .closeWindow: return "close_window"
     case .readReopening: return "read_reopening"
     case .askForWindow: return "ask_for_window"
+    case .claimApp: return "claim_app"
+    case .adoptOldState: return "adopt_old_state"
     case .focusHistory: return "focus_history"
     case .openTranscript: return "open_transcript"
     case .focusRelative: return "focus_relative"

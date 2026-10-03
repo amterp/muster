@@ -84,6 +84,8 @@ message Request {
     CloseWindow close_window = 62;
     ReadReopening read_reopening = 63;
     AskForWindow ask_for_window = 64;
+    ClaimApp claim_app = 65;
+    AdoptOldState adopt_old_state = 66;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -678,6 +680,41 @@ message AskForWindow {
 
   // What to show once it is open, as OpenWindow's.
   string show = 4;
+
+  // Any window will do: the one in front comes forward, and one opens only when none is open.
+  // What a launch asking for nothing in particular means when the app is already running - a
+  // second `open`, or an older `muster` starting the app - so `fresh` and `name` are ignored.
+  // With `show`, the pane or tab named is gone to, wherever it is.
+  bool any = 5;
+}
+
+// Makes this process the one app of its install under a Muster home, or hands what it was
+// launched to do to the app that already is (mip/0006-one-process.md, section 5).
+//
+// Asked before Startup and needing no session. The lock is `state/app-<install>.lock`, held by
+// this process for as long as it runs; the kernel lets go of it when the process ends, however it
+// ends, so nothing stale is left for the next launch to doubt. The command socket is written into
+// it, which is how a second launch finds the app to hand over to.
+message ClaimApp {
+  // The Muster home, as the shell resolved it. Empty is nowhere: nothing is locked, and the
+  // answer is claimed with nowhere to keep state, as a launch with no home has always been.
+  string home = 1;
+
+  // Where this process will listen, for a later launch to hand over to.
+  string command_socket_path = 2;
+
+  // What this launch was asked to do, sent to the running app when there is one. The install is
+  // filled in by the core.
+  AskForWindow ask = 3;
+}
+
+// Moves the window arrangements and the record of which window holds each tab from where every
+// install kept them, `state/windows/` and `state/holding/`, into this install's own state
+// directory (mip/0006-one-process.md, section 5). Only the release adopts them, once, and only an
+// arrangement no window process from before is still holding. Asked after ClaimApp, once those
+// processes have been asked to quit, and before ReadReopening.
+message AdoptOldState {
+  string home = 1;
 }
 
 // Moves the line between two regions of the window.
@@ -1278,6 +1315,7 @@ message Response {
     Went went = 19;
     Opened opened = 20;
     Reopening reopening = 21;
+    AppClaim app_claim = 22;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.
@@ -1288,6 +1326,17 @@ message Response {
 // it gives (Request.window).
 message Opened {
   string window = 1;
+}
+
+// What a ClaimApp found.
+message AppClaim {
+  // This process is the app. False means another process of this install already is, and has
+  // been handed the request: this launch has nothing left to do.
+  bool claimed = 1;
+
+  // This install's own state directory, `<home>/state/<install>`, where its window arrangements
+  // and its record of which window holds each tab are kept. Empty when there is no home.
+  string state_directory = 2;
 }
 
 // The arrangements to open at launch, the window focused longest ago first - so the one focused
@@ -1988,6 +2037,10 @@ message ReopenWindow {
 
   // A new window onto tabs of its own, rather than a closed one.
   bool fresh = 3;
+
+  // Any window will do, as AskForWindow's: bring the one in front forward, or open one when none
+  // is open.
+  bool any = 4;
 }
 
 // Bring a window to the front.

@@ -184,6 +184,20 @@ impl Holders {
         self.tabs.retain(|_, holder| !forgotten.contains(holder));
     }
 
+    /// Makes a record every install shared into one install's own: the rows another install
+    /// wrote are dropped with their tabs, and the rest are this install's, their arrangements
+    /// where `moved` says each now is. A row written before rows named their install is taken as
+    /// this install's, since the install adopting is the one that wrote rows before then.
+    pub fn adopt(&mut self, install: &str, moved: impl Fn(&str) -> String) {
+        self.forget(|window| !window.install.is_empty() && window.install != install);
+        for window in self.windows.values_mut() {
+            window.install = install.to_string();
+            if !window.arrangement.is_empty() {
+                window.arrangement = moved(&window.arrangement);
+            }
+        }
+    }
+
     /// Drops the tabs that no longer exist anywhere.
     ///
     /// `answered` is the machines whose whole state is in hand, and `described` says whether

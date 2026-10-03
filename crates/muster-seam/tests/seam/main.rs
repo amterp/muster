@@ -21,6 +21,7 @@ mod just_made;
 mod late_daemon;
 mod messages_for_the_human;
 mod numbering;
+mod one_app;
 mod pane_focus;
 mod pane_gone;
 mod perform_on_pane;
