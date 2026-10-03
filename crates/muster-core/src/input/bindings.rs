@@ -389,10 +389,9 @@ impl Action {
             Action::FindPrevious => Some(Chord::new(Key::KeyG, shifted)),
             Action::Zoom => Some(Chord::new(Key::Enter, shifted)),
             // Ghostty's macOS chord, beside its resize chords on ⌘⌃.
-            Action::EqualizePanes => Some(Chord::new(
-                Key::Equal,
-                Modifiers(Modifiers::SUPER.0 | Modifiers::CONTROL.0),
-            )),
+            Action::EqualizePanes => {
+                Some(Chord::new(Key::Equal, Modifiers(Modifiers::SUPER.0 | Modifiers::CONTROL.0)))
+            }
             // Ghostty's macOS chords for its own binding actions, so somebody arriving from it
             // keeps them.
             Action::ScrollToTop => Some(Chord::new(Key::Home, command)),
