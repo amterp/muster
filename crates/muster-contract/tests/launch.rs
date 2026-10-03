@@ -690,6 +690,39 @@ fn a_second_window_opens_in_the_same_app() {
 
 #[test]
 #[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn a_second_launch_opens_its_window_in_the_running_app() {
+    // A second launch of the same install and home - `open -n`, Finder, an older `muster window
+    // new` - hands what it was asked to do to the app already running, and exits without
+    // becoming a second app (mip/0006-one-process.md, section 5).
+    let scratch = Scratch::new("second-launch");
+    let daemon = holding_one_pane();
+    scratch.point_at(&daemon);
+
+    let mut app = Running::start(&built_app(), &scratch, &[], &[]);
+    app.until_settled();
+    let fresh = launch_again(&scratch, &["--fresh"]);
+    app.until_windows_opened(2);
+    // Asking for nothing in particular brings a window forward and opens none.
+    let plain = launch_again(&scratch, &[]);
+    app.until_settled();
+    let records = app.stop();
+
+    for (launch, outcome) in [("--fresh", &fresh), ("a plain launch", &plain)] {
+        assert!(
+            outcome.status.success()
+                && String::from_utf8_lossy(&outcome.stderr).contains("handed to the Muster"),
+            "{launch} with the app running did not hand over and exit: {outcome:?}"
+        );
+    }
+    expect_nothing_wrong(&records, &[]);
+    let pids = values(&records, "window.opened", "pid");
+    let windows = values(&records, "window.opened", "window");
+    assert_eq!(pids.len(), 1, "a window opened in another process: {pids:?}");
+    assert_eq!(windows.len(), 2, "the plain launch opened a window, or --fresh none: {windows:?}");
+}
+
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
 fn every_window_open_at_quit_comes_back() {
     // Quitting is not closing (mip/0006-one-process.md, section 4, kan a_2KAFWbZBa): a quit ends
     // every window at once, so the next launch opens every one of them again.
@@ -735,6 +768,35 @@ fn every_window_comes_back(check: &str, ending: fn(Running) -> Vec<Value>, expec
         back, wanted,
         "the relaunch opened {back:?}, and the windows open when the app ended were {wanted:?}"
     );
+}
+
+/// Launches the app a second time in this check's home, as `open -n` would, and waits for it to
+/// exit: a launch that is not the app has nothing to stay for.
+fn launch_again(scratch: &Scratch, arguments: &[&str]) -> std::process::Output {
+    let mut command = Command::new(built_app());
+    command.args(arguments).env_clear();
+    for inherited in ["PATH", "USER", "LOGNAME", "SHELL", "TMPDIR"] {
+        if let Some(value) = std::env::var_os(inherited) {
+            command.env(inherited, value);
+        }
+    }
+    let mut launched = command
+        .env("HOME", scratch.home())
+        .env("MUSTER_LOG_FILE", scratch.root.join("second-launch.log"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|error| panic!("could not launch the app again: {error}"));
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while launched.try_wait().ok().flatten().is_none() {
+        if Instant::now() > deadline {
+            let _ = launched.kill();
+            panic!("a second launch with the app running did not exit: it became a second app");
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    launched.wait_with_output().expect("the second launch's output can be read")
 }
 
 /// Runs the `muster` the app put on every pane's PATH, against this check's home, and returns what
