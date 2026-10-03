@@ -566,6 +566,23 @@ fn a_dialog_opened_over_an_urgent_ring_before_its_return_is_never_answered() {
     assert_eq!(agent.heard(), ["working"], "a Return reached the dialog");
 }
 
+/// A ring typed at work has its Return about a second later, once the screen shows it: the
+/// window a dialog can open in is that second, not the quiet period that the ring's own typing
+/// would start.
+#[test]
+fn an_urgent_ring_at_work_is_returned_about_a_second_after_it_is_typed() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    std::thread::sleep(QUIET);
+
+    agent.post_urgently("p1", "now");
+    agent.until_shows("PROBE-PROMPT> [muster] integrator+p1");
+    let shown = Instant::now();
+    agent.until_rung(1);
+    let took = shown.elapsed();
+    assert!(took < Duration::from_millis(2500), "the Return came {took:?} after the ring showed");
+}
+
 /// A dialog that stays open over an urgent ring past the doorbell's patience for Returns, and then
 /// closes with the ring still unsent in the prompt: the ring is sent then, not left there for good,
 /// which would leave the agent counted woken and never rung for the message again.

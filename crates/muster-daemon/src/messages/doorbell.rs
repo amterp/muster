@@ -484,9 +484,12 @@ fn unanswered_rings(
             ended(messages, &rung, "Return was pressed for it as often as it may be");
             continue;
         }
+        // A ring's own typing starts the quiet period; before its Return, anybody else's ends it
+        // ([`press_again`]), so it is not waited out.
+        let settled = if rung.returned { may_ring(seen, now, urgent) } else { Now::Ring };
         let at = if due > now {
             due
-        } else if let Now::At(quiet) = may_ring(seen, now, urgent) {
+        } else if let Now::At(quiet) = settled {
             quiet
         } else {
             pressing.push((rung, seen.clone()));
