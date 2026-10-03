@@ -1,0 +1,32 @@
+What Codex 0.154.0 does with a ring typed into its composer while it works, and at its approval
+prompt: the two steps of an urgent ring, its line and then its Return.
+
+Recorded 2026-10-03 on macOS 26.4.1 / arm64, codex-cli 0.154.0 running gpt-5.6-luna at low
+reasoning effort, -a on-request, in a 100x30 pseudo-terminal driven by scratch scripts built on
+`tools/detection-capture.py`. The screens are in `corpus/conformance/agent-prompt.json`.
+
+At the approval prompt for "echo hi > made.txt" (read-only sandbox), its title "[ . ] Action
+Required", options drawn as "› 1. Yes, proceed (y)", "2. Yes, and don't ask again ... (p)", "3.
+No, and tell Codex what to do differently (esc)", one bracketed paste of a ring's line, no Return:
+    ESC[200~[muster] review: 1 new (#4), 1 urgent, 1 to you, from director. Read it now, before you go on: muster msg read --group reviewESC[201~
+    3 s later: the same prompt, "Press enter to confirm or esc to cancel"; made.txt not created
+    Esc: "✗ You canceled the request"; the composer below empty - the paste was dropped
+
+At work on "Run the shell command sleep 15, and then say done.", the composer empty under
+"• Working (4s • esc to interrupt)", one bracketed paste, no Return:
+    ESC[200~Before you go on, say the word PINEAPPLE.ESC[201~
+    1 s later: "› Before you go on, say the word PINEAPPLE." in the composer, the footer replaced by
+    "tab to queue message   97% context left"
+    Return: "• Messages to be submitted after next tool call (press esc to interrupt and send
+    immediately) ↳ Before you go on, say the word PINEAPPLE." above an empty composer
+    once sleep returned: "› Before you go on, say the word PINEAPPLE." then "• PINEAPPLE"
+
+A ring whose last word holds an `@`, as a wake in a group with the human ends, pasted at work:
+    ESC[200~... Read it now, before you go on: muster msg read --group @human+workerESC[201~
+    1.5 s later, below the composer: "no matches", "enter insert · esc close · ←/→ switch search
+    modes   [All Results]   Filesystem Only    Plugins" - Codex's file search, open on the last
+    word, which a Return would answer
+The same line with one space after it: the composer holds it, and no search opens.
+
+In `./dev --codex`, before the space: the ring typed at work stayed in the composer under the open
+search past the end of the turn, never sent.

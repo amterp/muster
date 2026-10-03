@@ -249,8 +249,9 @@ Code treats a message from outside the session to the newest recording in `corpu
 that checked nothing has not passed.
 
 `./dev --codex` is the same for the Codex installed here, and reaches OpenAI: a pane with `extras/codex`'s hooks and
-one without read working and then idle, Esc mid-turn reads idle from Codex's own report, and a message posted to an
-idle Codex rings it in its pane and is answered. Each harness with an adapter gets a tier of its own (MIP-5), since
+one without read working and then idle, the hooked one reporting its context, Esc mid-turn reads idle from Codex's
+own report, a message posted to an idle Codex rings it in its pane and is answered, an urgent post reaches it at
+work, and its messaging hooks hand a sandboxed Codex what it was sent. Each harness with an adapter gets a tier of its own (MIP-5), since
 each reaches a different vendor with a different login.
 
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets

@@ -35,8 +35,8 @@ Codex is the second harness, after Claude Code, that Muster reads by more than i
 one, built with this MIP: the doorbell, which wakes an idle agent by typing into its prompt
 (MIP-4), can read Codex's prompt, using a new detection engine version, 7; Codex's hooks report
 its state; its screens are recorded; and `./dev --codex` checks all of it against the installed
-Codex. Stage two names the rest of what Codex allows: its prompt while it works, fetching messages
-from its hooks, the context it has used, and a route through `codex queue`.
+Codex. Stage two adds the rest of what Codex allows: its prompt while it works, fetching messages
+from its hooks and the context it has used, leaving a route through `codex queue` for later.
 
 ## Decisions for amterp
 
@@ -252,18 +252,31 @@ Stage one, built:
   sandbox's network on (`sandbox_workspace_write.network_access`), which `extras/codex/README.md`
   says, with what it costs.
 
-Stage two, named for later briefs:
+Stage two, built the same day, each piece measured first (`docs/observations/codex-0.154.0.md`,
+sections 6 to 9):
 
 - **Prompt at work.** Codex holds a line typed with Return while it works "to be submitted after
-  next tool call". Whether the urgent ring's two-step write (MIP-4, section 6) is safe at Codex's
-  approval prompt needs measuring. A working rule carries `prompt` only after that, and ships
-  with a live check of it.
-- **Messages fetched by hooks.** Whether a `PostToolUse` hook's output reaches Codex's model, and
-  how a `Stop` hook waits, needs measuring; until then Codex is reached by the doorbell.
-- **Context used.** Codex has no statusline command; its transcript, named in every hook's input,
-  holds token counts. Reading it on every hook needs bounding to the transcript's tail.
-- **A route that types nothing.** `codex queue --thread <id>` queues a message for a session by
-  id, which may reach a Codex the doorbell cannot.
+  next tool call", and its approval prompt ignores a pasted line and takes Return as "Yes", as
+  Claude Code's permission dialog does, so the urgent ring's two-step write (MIP-4, section 6)
+  guards it the same way. `codex.toml`'s working rule reads the composer, and `./dev --codex`
+  posts urgently to a Codex at work and sees it answered. Measuring it found one thing more:
+  Codex opens its file search on a last word holding an `@`, as a wake's group name can, and a
+  Return then goes to the search; the doorbell types a space after such a line, for every harness.
+- **Messages fetched by hooks.** A hook's output reaches Codex's model as `additionalContext`,
+  where exiting 2 replaces a tool call's result, and a `Stop` hook that waits holds the session at
+  "Running hook". So `extras/codex/messaging-hooks.json` hands what arrived to the model after each
+  tool call and as each turn starts, joins with `--pull`, and waits for nothing: between turns
+  Codex is rung, and the ring's turn starts with its messages. Since hooks run outside Codex's
+  sandbox, a sandboxed Codex is handed what it is sent, though it cannot answer without the
+  sandbox's network.
+- **Context used.** Its hooks read the last token count from the transcript's final 64 KB after
+  each tool call and at each turn's end, counted as Codex counts its own "N% context left", past a
+  12,000-token baseline, and report it with the model, in the background. Codex runs hook commands
+  in the user's shell, so they are written to mean the same in zsh as in sh, and the hook tests run
+  every harness's hooks in both.
+- **A route that types nothing**, left for later. `codex queue --thread <name or id>` starts a
+  turn in a running session without typing into its pane. Using it needs the session's id
+  reported - the session reference of section 10 - and a choice of when it beats the doorbell.
 
 ### 8. Recordings and tiers
 
@@ -334,8 +347,8 @@ two forms:
 - **Stage one**, built 2026-10-03: this MIP; detection engine 7 and Codex's prompt rule, with
   recorded screens; `extras/codex`; the hook tests over both harnesses; Codex's observation and
   transcripts; `./dev --codex`; `muster docs harnesses`.
-- **Stage two**: Codex's prompt at work, its messaging hooks, its context used, and `codex queue`,
-  each measured first (section 7).
+- **Stage two**, built 2026-10-03: Codex's prompt at work, its messaging hooks and its context
+  used, each measured first (section 7); `codex queue` measured and left for later.
 - **Session names**, built 2026-10-03 (section 10): detection engine 8 and `[session]` in both
   manifests, the daemon typing a pane's name and taking a session's, and Claude Code's statusline
   reporting it.
@@ -390,6 +403,9 @@ harness that allows less must not break anything.
   With none, a wait the agent declared would stand until its next turn ends.
 - Whether Codex's `SubagentStart` and `SubagentStop` fire for the agents it spawns as Claude
   Code's do; the hooks are wired and were not seen firing.
+- When a `codex queue` route should be chosen over the doorbell for a Codex in a pane, once the
+  session's id is reported: it types nothing, so it reaches a Codex at a dialog, and what it does
+  to a Codex at work was not measured.
 - Whether a person will want `muster` to install an adapter (`muster setup codex`) rather than
   run the harness's own plugin commands.
 
@@ -407,3 +423,5 @@ harness that allows less must not break anything.
   built the same day.
 - 2026-10-03 Session names kept in step with pane names, both ways (kan `a_2b6Wx8Sox`), as section
   10 described: a manifest table behind engine 8, and a report field.
+- 2026-10-03 Codex stage two (kan `a_2bBl75a4X`): prompt at work, messaging hooks and context
+  used built; `codex queue` measured and left for later.

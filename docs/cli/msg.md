@@ -123,7 +123,7 @@ allows.
 **Only Claude Code and Codex are rung.** Reading an empty prompt needs a rule for it in the
 harness's manifest, and so far only theirs have one; `muster docs harnesses` says what Muster gets
 from each harness. An agent of any other harness in a pane is not woken, and the post says `its
-prompt cannot be read`. An urgent post rings Claude Code at work, and waits for Codex to be idle.
+prompt cannot be read`. An urgent post rings either at work.
 
 An agent that neither starts work nor reads within five seconds of a ring has Return pressed
 again, a few times, but only while its prompt holds the ring's own text and nothing else, and
@@ -142,17 +142,19 @@ agent is doing now, not once it is done:
 
 Its ring may be typed while the agent works. Claude Code queues a line typed into its prompt box
 during a turn, and hands it to the model once the tool call it is in returns, with a reminder to
-address it before going on (`docs/observations/claude-code-2.1.288.md`). Everything else above
+address it before going on (`docs/observations/claude-code-2.1.288.md`). Codex holds it as a
+message "to be submitted after next tool call" (`docs/observations/codex-0.154.0.md`). Everything else above
 still holds: nothing typed into the pane for three seconds, the agent still running there, and
 its prompt box read as empty just before the ring. So a draft in the box, a dialog, a menu, or
 a blocked agent is never rung; the post waits, and says what for.
 
 An agent at work can open a dialog at any moment, and a Return there answers it: Claude Code's
-permission dialog takes Return as "Yes". So a ring at work is typed without its Return. About a
-second later, a second look presses Return only if the prompt box holds the ring and nothing
-else; while a dialog covers the box, the Return waits until the box shows again, however long
-that takes. A dialog drawn in the instant between that second look and the Return is the one
-case left unguarded (MIP-4, section 6). The wake counts what is urgent and says to read now:
+permission dialog and Codex's approval prompt both take Return as "Yes". So a ring at work is
+typed without its Return. About a second later, a second look presses Return only if the prompt
+box holds the ring and nothing else; while a dialog covers the box, the Return waits until the
+box shows again, however long that takes. A dialog drawn in the instant between that second look
+and the Return is the one case left unguarded (MIP-4, section 6). The wake counts what is urgent
+and says to read now:
 
     [muster] review: 2 new (#41-42), 1 urgent, 1 to you, from director. Read it now, before you go on: muster msg read --group review
 
@@ -178,6 +180,12 @@ pane: while it works, if one of its `muster msg` commands ran in the last five m
 between turns while its `wait` is waiting. A session idle with no `wait` waiting ended its turn
 without its `Stop` hook - an API error, or Esc - and is rung for what it has unread, as any agent
 in a pane is.
+
+**A Codex session can fetch its own messages with hooks** too, from
+`extras/codex/messaging-hooks.json`: after every tool call, and as each turn starts, what arrived
+is handed to the model as context. Codex has nothing like the background `Stop` hook, so between
+turns it is rung as any agent in a pane is, and the turn the ring starts begins with the messages
+it was rung for - which reach a sandboxed Codex that cannot run `muster` itself.
 
 A Claude Code session outside any pane is woken through its inbox socket, and a wake reaches it
 between tool calls or starts a turn if it was idle. **A session started with

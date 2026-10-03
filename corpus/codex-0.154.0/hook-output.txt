@@ -1,0 +1,36 @@
+What reaches Codex 0.154.0's model from a hook's output, and what a Stop hook that waits does.
+
+Recorded 2026-10-03 on macOS 26.4.1 / arm64, codex-cli 0.154.0 running gpt-5.6-luna at low
+reasoning effort, -a on-request -s workspace-write, --dangerously-bypass-hook-trust, each hook
+passed as -c hooks.<Event>=[...], in a 100x30 pseudo-terminal driven by scratch scripts built on
+`tools/detection-capture.py`.
+
+A PostToolUse hook printing "The secret word is MANGO. Say it in your final answer." to stderr and
+exiting 2, then "Run the shell command echo hi, then reply in one short sentence.":
+    • Ran echo hi  └ hi
+    • Blocked by hook  └ The secret word is MANGO. Say it in your final answer.
+    • The command could not run because the shell tool failed.
+The hook's exit 2 replaced the tool call's result: the model took the command as failed.
+
+A PostToolUse hook printing
+{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"The secret word is KIWI. Say it in your final answer."}},
+the same request:
+    • Ran echo hi  └ hi
+    • The command printed hi; KIWI.
+
+A UserPromptSubmit hook printing
+{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"The secret word is PLUM."}},
+then "What secret word were you told, if any? Answer in one word.":
+    • PLUM
+
+A Stop hook that sleeps 8 s and then prints {"decision":"block","reason":"Now say the word LEMON."},
+and exits 0 at once when its input says "stop_hook_active":true, then "Reply with the single word hi.":
+    • hi
+    while it slept: "• Working (5s • esc to interrupt) · Running hook", the title spinning; text
+    typed meanwhile stayed in the composer with "tab to queue message"
+    after: "• Blocked by hook  └ Now say the word LEMON." then "• LEMON"
+    the hook ran twice: the second time with "stop_hook_active":true
+
+Codex runs a hook's command in the user's shell: under zsh, `${used:+--context-used "$used"}`
+reached the hook's program as one argument, "--context-used 3.0142045454545454", where sh splits it
+into two.

@@ -1,7 +1,8 @@
 # Codex, telling Muster about itself
 
 Codex hooks that report what a session is doing to the Muster daemon that owns its pane: whether
-it is working, waiting on you or idle, and how many sub-agents it runs. The daemon keeps it on the
+it is working, waiting on you or idle, how many sub-agents it runs, its model and how full its
+context is. The daemon keeps it on the
 pane's record, so it outlasts the app and arrives from a devenv the same as from this machine.
 
 Every hook calls `"$MUSTER_DAEMON" report`, which every Muster pane can reach: `$MUSTER_DAEMON` is
@@ -50,32 +51,60 @@ turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waitin
 Muster then holds off calling the pane done until a later turn ends without the agent declaring
 it again, or until you prompt it.
 
+## Context and model
+
+Codex has no statusline command, but every hook is handed its transcript and its model. After each
+tool call and when a turn ends, a hook reads the last token count from the transcript's final 64 KB
+and reports how full the context is, counted as Codex counts its own "N% context left": the first
+12,000 tokens are not counted as used. It reports in the background, so a slow daemon never holds
+Codex up, and it needs `jq`, which macOS ships in `/usr/bin` and a Linux devenv may not.
+
+## Messages through hooks
+
+`messaging-hooks.json` is for a session that takes part in `muster msg` (`muster docs msg`), and
+is not in the plugin, so that only the sessions you choose take part. Merge its events into a
+trusted project's `.codex/hooks.json`, beside the plugin's or `hooks/hooks.json`:
+
+- `PostToolUse` hands the model anything that arrived, after each tool call, as context.
+- `UserPromptSubmit` does the same when a turn starts, so the turn a ring starts begins with the
+  messages it was rung for already in the model's context.
+- `SessionStart` runs `muster msg join --pull`, which tells the daemon these hooks fetch the
+  session's messages, so nothing is typed into its pane while it works.
+
+Codex has nothing like Claude Code's background `Stop` hook: a `Stop` hook that waits holds the
+session at "Running hook", taking typing only as queued messages, for as long as it waits. So
+between turns Codex is still rung by the doorbell, and the ring's turn is where these hooks hand
+over what it was rung for. A hook's output reaches the model as `additionalContext`; exiting 2, as
+Claude Code's hooks do, would replace the tool call's result instead.
+
 ## The sandbox
 
 Codex's `workspace-write` and `read-only` sandboxes refuse a command connecting to a Unix socket,
 the daemon's included. The hooks are not affected, but what the model runs is: its own `report
---waiting`, and `muster msg read` when the doorbell rings it, both fail with "Operation not
-permitted". To let them through, allow the sandbox the network in `~/.codex/config.toml`:
+--waiting`, and `muster msg read` and `muster msg post`, all fail with "Operation not permitted".
+With the messaging hooks a sandboxed Codex is still handed what it is sent, since the hooks run
+outside the sandbox, but it cannot answer. To let the model's own commands through, allow the
+sandbox the network in `~/.codex/config.toml`:
 
 ```toml
 [sandbox_workspace_write]
 network_access = true
 ```
 
-That lets every command the model runs reach the network, not only the daemon. Without it a
-sandboxed Codex in a pane is still rung, but cannot read what it was rung for on its own.
+That lets every command the model runs reach the network, not only the daemon.
 
 ## Not here yet
 
-Codex has no statusline command, so nothing reports how full its context is; it draws "N% context
-left" on its own screen. No hooks fetch `muster msg` messages, so a Codex session is reached by
-the doorbell alone. A `codex exec` that Codex starts from its shell inherits `$MUSTER_PANE`, and
-with the plugin installed its own hooks report into that pane; start it as `env -u MUSTER_DAEMON
-codex exec ...` and they do nothing.
+`codex queue --thread <id>` hands a message to a running Codex session without typing into its
+pane, and Muster does not use it yet. A `codex exec` that Codex starts from its shell inherits
+`$MUSTER_PANE`, and with the plugin installed its own hooks report into that pane; start it as
+`env -u MUSTER_DAEMON codex exec ...` and they do nothing.
 
 ## What was checked
 
 Codex 0.154.0: the hooks in a session's `.codex/hooks.json`, a turn, an approval, Esc mid-turn
-and a message queued at work, with what each hook fired
-(`docs/observations/codex-0.154.0.md`). `./dev --codex` checks that a pane with these hooks reads
-working and then idle from them, against whatever Codex is installed.
+and a message queued at work, with what each hook fired; what a hook's output does; and how Codex
+counts its context (`docs/observations/codex-0.154.0.md`). `./dev --codex` checks, against
+whatever Codex is installed, that a pane with these hooks reads working and then idle from them
+and reports its context, that an urgent post reaches Codex at work, and that the messaging hooks
+hand a sandboxed Codex what it was sent.
