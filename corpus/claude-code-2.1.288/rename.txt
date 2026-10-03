@@ -1,0 +1,31 @@
+What Claude Code 2.1.288 does with `/rename` typed into its prompt box at idle, and how its
+statusline command hears the session's name.
+
+Recorded 2026-10-03 on macOS 26.4.1 / arm64, Claude Code 2.1.288 logged in to a Claude Max
+account, in a 100x30 pseudo-terminal driven by a scratch script built on
+`tools/detection-capture.py`. The session ran with
+    --settings '{"statusLine":{"type":"command","command":"cat >> status.jsonl; ..."}}'
+so every JSON object Claude Code handed its statusline was kept. No model turn was taken.
+
+Idle at an empty prompt, one write holding a bracketed paste and a Return, as the doorbell
+writes a ring:
+    ESC[200~/rename 🤖 AESC[201~ CR
+The prompt box was empty again 4 s later, the name drawn at the right end of the rule above it,
+and the terminal title became "✳ 🤖 A":
+    ───────────────────────────────────────────────────── 🤖 A ─
+    ❯
+    ────────────────────────────────────────────────────────────
+
+Typed as keys, "/rename second name", then Return 1.5 s later: the same, renamed "second name".
+Neither opened a menu that kept the Return.
+
+The statusline:
+    at start, before any rename:   no "session_name" key
+    4 s after each rename:         not run again
+With "refreshInterval": 2 in the statusLine setting, two sessions each renamed "dup", one
+after the other while both ran:
+    first:   "session_name": "dup" within 2 s
+    second:  "session_name": "dup" within 2 s, title "✳ dup"
+    first, 3 s later: still "dup"
+Neither took another name: the uniqueness rule Claude Code's binary carries ("is held by live
+pid N; this session takes ...") did not apply to /rename.

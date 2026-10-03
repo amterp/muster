@@ -24,8 +24,9 @@ use region::Region;
 /// The manifest engine this crate implements. 1 to 3 are herdr's, so herdr's manifests keep
 /// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`, 5 adds a
 /// rule's `prompt`, 6 lets a working rule carry one, read where its `prompt_region` says, and
-/// 7 adds the `current_prompt` region, Codex's composer alone.
-pub const ENGINE_VERSION: u32 = 7;
+/// 7 adds the `current_prompt` region, Codex's composer alone, and 8 a `[session]` table saying
+/// how to rename the harness's session.
+pub const ENGINE_VERSION: u32 = 8;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -35,6 +36,12 @@ const PROMPT_AT_WORK_ENGINE_VERSION: u32 = 6;
 
 /// The engine version that introduced the `current_prompt` region.
 const CURRENT_PROMPT_ENGINE_VERSION: u32 = 7;
+
+/// The engine version that introduced the `[session]` table.
+const SESSION_ENGINE_VERSION: u32 = 8;
+
+/// What a `[session]` rename's template is filled in with.
+const NAME_PLACEHOLDER: &str = "{name}";
 
 /// The engine version that introduced the `top_non_empty_lines` region, in herdr.
 const TOP_NON_EMPTY_LINES_ENGINE_VERSION: u32 = 3;
@@ -102,6 +109,8 @@ pub struct Manifest {
     aliases: Vec<String>,
     script_paths: Vec<String>,
     rules: Vec<Rule>,
+    /// What typed at the agent's empty prompt renames its session, with `{name}` for the name.
+    rename: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -190,6 +199,12 @@ impl Manifest {
     /// into its running turn: what an urgent ring needs.
     pub fn reads_prompt_at_work(&self) -> bool {
         self.rules.iter().any(|rule| rule.prompt.is_some() && rule.state == State::Working)
+    }
+
+    /// The line that, typed at the agent's empty prompt with a Return, renames its session to
+    /// `name`; none when the manifest does not say how.
+    pub fn session_rename(&self, name: &str) -> Option<String> {
+        self.rename.as_ref().map(|template| template.replace(NAME_PLACEHOLDER, name))
     }
 
     /// What the agent's prompt holds, when the rule that decides the screen is one that says
@@ -366,6 +381,14 @@ struct RawManifest {
     script_paths: Vec<String>,
     #[serde(default)]
     rules: Vec<RawRule>,
+    session: Option<RawSession>,
+}
+
+/// How the harness's session is named, as a person at its prompt would name it.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSession {
+    rename: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -508,6 +531,28 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
         }
         validate_gate(&rule.gate(), "rule", 0, &mut complexity)
             .map_err(|error| format!("rule {} has invalid matcher gates: {error}", rule.id))?;
+    }
+    if let Some(session) = &manifest.session {
+        validate_session(manifest, session)?;
+    }
+    Ok(())
+}
+
+/// A rename is typed as one line and sent with one Return, so it holds the name and nothing that
+/// would act as a key on its own.
+fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), String> {
+    if manifest.min_engine_version.unwrap_or(0) < SESSION_ENGINE_VERSION {
+        return Err(format!(
+            "the manifest has a [session] table but min_engine_version is below \
+             {SESSION_ENGINE_VERSION}"
+        ));
+    }
+    let Some(rename) = &session.rename else { return Ok(()) };
+    if !rename.contains(NAME_PLACEHOLDER) {
+        return Err(format!("[session] rename does not say where the name goes: {NAME_PLACEHOLDER}"));
+    }
+    if rename.chars().any(char::is_control) {
+        return Err("[session] rename holds a control character".to_string());
     }
     Ok(())
 }
@@ -744,6 +789,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         aliases: raw.aliases,
         script_paths: raw.script_paths,
         rules,
+        rename: raw.session.and_then(|session| session.rename),
     })
 }
 

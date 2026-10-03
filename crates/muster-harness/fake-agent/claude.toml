@@ -9,8 +9,13 @@
 # claude session.
 
 id = "claude"
-version = "2026.10.03.1"
-min_engine_version = 6
+version = "2026.10.03.2"
+min_engine_version = 8
+
+# What renames a session, as Claude Code's own manifest says it: the fake writes down every line
+# it reads, so a test sees the rename typed.
+[session]
+rename = "/rename {name}"
 
 # At work, its prompt still takes a line, as Claude Code's box does: what an urgent ring reads.
 [[rules]]

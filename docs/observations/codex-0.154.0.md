@@ -1,7 +1,8 @@
 # Codex 0.154.0
 
 What Codex does that Muster acts on: the hooks it fires and when, what its screen shows at its
-composer, what its sandbox lets a command reach, and what it asks before a session starts.
+composer, what its sandbox lets a command reach, what it asks before a session starts, and how
+its sessions are named.
 MIP-5 cites it for Codex's adapter.
 
 Measured 2026-10-03 on macOS 26.4.1 / arm64, with codex-cli 0.154.0 from the Homebrew cask
@@ -74,6 +75,15 @@ In a folder holding both `.agents/plugins/marketplace.json` and Claude Code's
 `.claude-plugin/marketplace.json`, `codex plugin marketplace add` reads the first; with only
 Claude Code's it offers Claude Code's plugin.
 
+## 5. `/rename` takes the name inline, and Codex names a session itself
+
+`/rename <name>` typed at the composer, pasted with its Return in one write or typed as keys,
+names the session before its first turn as well as after one, and the title becomes the name
+(`rename.txt`). Each rename appends `{"id", "thread_name"}` to `~/.codex/session_index.jsonl`,
+where the last line for an id is its name. A session nobody renames is named by Codex after its
+first turn, from what was asked ("Reply with hi"), in the same file and the same form: nothing
+there tells a name a person gave from one Codex chose.
+
 ## What this decides for Muster
 
 - Codex's adapter reports state through hooks, as Claude Code's does, from the same daemon verb:
@@ -89,3 +99,7 @@ Claude Code's it offers Claude Code's plugin.
   own plugin (section 4).
 - The live tier and the capture script trust their scratch folder with the inline table and skip
   the update check, so a run leaves nothing in `~/.codex/config.toml` (section 4).
+- A pane's name reaches the session as `/rename <name>` at an idle empty composer, which
+  `codex.toml`'s `[session]` table says. The session's name does not reach the pane: the one place
+  Codex keeps it cannot tell Codex's own name for a session from a person's, and taking Codex's
+  would rename every pane after its first request (section 5).

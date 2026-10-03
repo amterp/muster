@@ -275,6 +275,12 @@ impl Manifests {
         self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt_at_work())
     }
 
+    /// The line that renames the agent's session to `name`, typed at its empty prompt; none
+    /// when its manifest does not say how.
+    pub fn session_rename(&self, agent: &Agent, name: &str) -> Option<String> {
+        self.entry(agent)?.manifest.session_rename(name)
+    }
+
     fn entry(&self, agent: &Agent) -> Option<&Entry> {
         self.entries.iter().find(|entry| &entry.agent == agent)
     }

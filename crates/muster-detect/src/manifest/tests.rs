@@ -343,6 +343,20 @@ fn current_prompt_needs_engine_seven() {
 }
 
 #[test]
+fn a_session_table_says_how_to_rename_the_session_and_needs_engine_eight() {
+    let with = |engine: u32, rename: &str| {
+        format!("{}\n[session]\nrename = {rename}\n", with_prompt(engine, "idle", "whole_recent"))
+    };
+    let manifest = Manifest::parse(&with(8, "'/rename {name}'")).unwrap();
+    assert_eq!(manifest.session_rename("🤖 A").as_deref(), Some("/rename 🤖 A"));
+    assert!(Manifest::parse(&with(7, "'/rename {name}'")).is_err(), "below engine 8");
+    assert!(Manifest::parse(&with(8, "'/rename'")).is_err(), "without the name's place");
+    assert!(Manifest::parse(&with(8, "\"/rename {name}\\n\"")).is_err(), "with a newline");
+    let without = Manifest::parse(&with_prompt(8, "idle", "whole_recent")).unwrap();
+    assert_eq!(without.session_rename("A"), None);
+}
+
+#[test]
 fn versions_compare_numerically_with_trailing_zeros_insignificant() {
     let v = |text| Version::parse(text).unwrap();
     assert!(v("2026.06.10.1") < v("2026.07.1"));

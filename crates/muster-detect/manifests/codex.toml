@@ -1,7 +1,12 @@
 id = "codex"
-version = "2026.10.03.1"
-min_engine_version = 7
+version = "2026.10.03.2"
+min_engine_version = 8
 updated_at = "2026-10-03T00:00:00Z"
+
+# Typed at an empty composer with a Return; Codex takes the name inline, before its first turn
+# as well as after (docs/observations/codex-0.154.0.md, section 5).
+[session]
+rename = "/rename {name}"
 
 [[rules]]
 id = "osc_title_blocked"
