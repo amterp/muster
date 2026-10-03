@@ -15,7 +15,6 @@
 use muster_core::diagnostics::log;
 use muster_core::fields;
 
-
 /// The longest name typed into a session. A pane's name is never typed in part.
 const NAME_BYTES: usize = 128;
 

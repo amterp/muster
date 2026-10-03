@@ -549,7 +549,9 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     }
     let Some(rename) = &session.rename else { return Ok(()) };
     if !rename.contains(NAME_PLACEHOLDER) {
-        return Err(format!("[session] rename does not say where the name goes: {NAME_PLACEHOLDER}"));
+        return Err(format!(
+            "[session] rename does not say where the name goes: {NAME_PLACEHOLDER}"
+        ));
     }
     if rename.chars().any(char::is_control) {
         return Err("[session] rename holds a control character".to_string());

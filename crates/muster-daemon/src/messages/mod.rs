@@ -480,7 +480,8 @@ impl Messages {
             });
             // A pane whose agent has not been found yet waits for it like a busy one.
             let urgent = doorbell::is_urgent(wake);
-            let ringing = panes.get(pane).map(|seen| (doorbell::may_ring(seen, now, urgent, None), seen));
+            let ringing =
+                panes.get(pane).map(|seen| (doorbell::may_ring(seen, now, urgent, None), seen));
             let until = match ringing {
                 Some((Now::Ring, seen)) => {
                     holding.ringing.push((wake.clone(), seen.clone()));

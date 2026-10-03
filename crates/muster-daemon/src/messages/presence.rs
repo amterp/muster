@@ -82,7 +82,9 @@ impl Panes {
                 });
                 Seen {
                     activity: activity(record),
-                    rings: manifests.as_ref().is_some_and(|manifests| manifests.reads_prompt(&found)),
+                    rings: manifests
+                        .as_ref()
+                        .is_some_and(|manifests| manifests.reads_prompt(&found)),
                     rename,
                     agent,
                     io: io.clone(),

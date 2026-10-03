@@ -1467,7 +1467,13 @@ impl Session {
     /// ([`crate::session_name`]); true when the pane took the session's name. A name counts while
     /// its agent is the pane's, or before detection has found one: a statusline can report before
     /// the first probe lands.
-    fn session_named(&mut self, index: usize, cleared: bool, agent: &str, said: Option<&str>) -> bool {
+    fn session_named(
+        &mut self,
+        index: usize,
+        cleared: bool,
+        agent: &str,
+        said: Option<&str>,
+    ) -> bool {
         let pane = &mut self.panes[index];
         let label = pane.record.label.clone();
         if cleared {
@@ -1480,10 +1486,7 @@ impl Session {
         let Some(taken) = pane.session_name.heard(&pane.record.pane, said, label.as_deref()) else {
             return false;
         };
-        log::info(
-            "session.name.taken",
-            fields! { "pane" => pane.record.pane, "agent" => agent },
-        );
+        log::info("session.name.taken", fields! { "pane" => pane.record.pane, "agent" => agent });
         pane.record.label = Some(taken);
         let record = pane.record.clone();
         self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));

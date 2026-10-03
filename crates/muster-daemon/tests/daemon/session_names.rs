@@ -32,10 +32,8 @@ impl Pane {
     }
 
     fn renamed(&mut self, label: &str) {
-        let rename = proto::pane_request::Rename {
-            pane: "p1".to_string(),
-            label: Some(label.to_string()),
-        };
+        let rename =
+            proto::pane_request::Rename { pane: "p1".to_string(), label: Some(label.to_string()) };
         expect(
             &mut self.control,
             pane(proto::pane_request::Request::Rename(rename)),
