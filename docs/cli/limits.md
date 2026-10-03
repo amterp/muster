@@ -2,11 +2,11 @@
 
 ## With no window open, a pane has only its daemon
 
-`$MUSTER_SOCKET` names the window that made a pane, and the pane outlives that window. When it
-has quit and another window of the same Muster is open - Muster relaunched - `muster` asks that
-one instead, on this machine and on an SSH machine alike, and it carries a change to whichever
-window holds the pane. With no window open at all, the pane's own daemon answers what it can in
-the window's place: `muster window`, `pane read`, `pane send` and `pane wait` work on that
+`$MUSTER_SOCKET` names the app that made a pane, and the pane outlives that app. When it has
+quit and the same Muster is running again - relaunched - `muster` asks the new app instead, on
+this machine and on an SSH machine alike, and the app answers from whichever window holds the
+pane. With no app running at all, the pane's own daemon answers what it can in the window's
+place: `muster window`, `pane read`, `pane send` and `pane wait` work on that
 machine's own panes (`muster docs overview`, "With no window"), and everything else waits for a
 window.
 
@@ -17,10 +17,11 @@ window. A pane made since carries the install in the name it is told.
 ## A pane restored after a daemon restart cannot say which window it is in
 
 A daemon that restarts brings each pane back under its name, with a fresh shell, and gives it
-`$MUSTER_PANE` but not `$MUSTER_SOCKET`: that names a window, and the window that asked for the
-pane may be long gone. So `muster` run inside a restored pane knows which pane it is and not
-which window to tell, and finds a window the way a command outside every pane does (below). With
-one window open that is the right one; with two, pass `--socket`.
+`$MUSTER_PANE` but not `$MUSTER_SOCKET`: that names an app, and the app that asked for the pane
+may be long gone. So `muster` run inside a restored pane knows which pane it is and not which app
+to tell, and finds one the way a command outside every pane does (below). With one install
+running that is the right one; with two, pass `--socket`. The window is still the one holding the
+pane's tab, since the pane says which pane it is.
 
 ## A pane is not told which tab it is in
 
@@ -237,8 +238,8 @@ the window that was in front most recently, of the ones attached to that tab's m
 
 So the agent list, ⌘1 to ⌘9 and `next_tab` are about this window's tabs only. The rest are under
 their own window in `muster window`, and every verb still reaches them: a request naming a tab
-another window holds, or a pane in one, is carried to that window and answered there, and `muster
-tab focus` brings that window forward. So does clicking a notification, whichever window macOS
+another window holds, or a pane in one, is answered by that window, and `muster tab focus` brings
+that window forward. So does clicking a notification, whichever window macOS
 hands the click to. Questions are answered by whichever window was asked.
 
 `muster tab move --tab <TAB> --window <WINDOW>` hands a tab to another window with every pane in it
@@ -250,31 +251,39 @@ dragged to another window.
 So `muster window new` is not a way to look at the same agents twice: the window you ask for holds
 nothing until it makes a tab of its own.
 
-Which window holds each tab is written in `~/.muster/state/holding/tabs.toml`. Deleting it while
-windows are open costs them nothing, because each one writes itself and its tabs back. It costs the
-closed windows their tabs, which then join the window in front.
+Which window holds each tab is written in `~/.muster/state/<install>/holding/tabs.toml`, for the
+next launch. Deleting it while Muster runs costs nothing, because the app writes the whole of it
+back at the next change. Deleting it while Muster is not running costs the closed windows their
+tabs, which then join the window in front.
 
-## Outside a pane, two open windows are ambiguous for a change that names nothing
+## Outside a pane, a change that names nothing reaches the window in front
 
-Each window listens on its own socket, named after its process. A caller inside a pane reaches
-the right one because `$MUSTER_SOCKET` says which. A caller outside every pane has nothing to go
-on, so with two windows open a change that names no tab or pane - `pane new` with no `--pane`,
-`focus`, `zoom` - refuses and names the sockets that answered. Pass `--socket` to pick one.
+Every window of an app answers on one socket, so a caller outside every pane reaches the app and
+nothing says which of its windows is meant. A change that names no tab or pane - `pane new` with
+no `--pane`, `focus`, `zoom` - goes to the window in front, which after `muster window new` from a
+terminal may not be the new window: macOS does not always bring a window forward while another app
+is active. Name the window with `--window window-3`.
 
-A change that does name one goes to whichever window answers first, which carries it to the window
-holding that tab. `tab move` names enough when it gives both `--tab` and `--window`.
+## Two installs under one home are two apps
 
-Questions do not refuse. `muster window` answers for every window that is listening, because
-naming none of them is what "what is everything doing" means. Its output grows a heading per
-window when more than one answers, and `--json` becomes `{"windows": [...]}` with each window's
-ordinary answer inside - so `.windows[].panes[]` reads across all of them. With one window open,
-it is exactly what it was.
+A development build beside the release is a second app, listening on a socket of its own. A
+caller inside a pane reaches its own app because `$MUSTER_SOCKET` says which. A caller outside
+every pane has nothing to go on, so with both running a change that names no tab or pane refuses
+and names the sockets that answered. Pass `--socket` to pick one. A change that does name one goes
+to whichever app answers first, and is refused there if that app's daemon holds no such tab or
+pane.
 
-`muster pane read` and `muster daemons` are asked of every window the same way, and cannot yet
-show what more than one of them answered: each window's heading is followed by the words `a
-pane's text` or `a list of daemons`, and `--json` puts them under `unreadable`. Pass `--socket`
-to read one window's answer. `muster pane wait` and `muster window --watch` refuse outright with
-several windows open, and name the sockets.
+Questions do not refuse. `muster window` answers for every app that is listening, because naming
+none of them is what "what is everything doing" means. Its output grows a heading per app when
+more than one answers, and `--json` becomes `{"windows": [...]}` with each app's ordinary answer
+inside - so `.windows[].panes[]` reads across all of them. With one app running, it is exactly what
+it was.
+
+`muster pane read` and `muster daemons` are asked of every app the same way, and cannot yet show
+what more than one of them answered: each heading is followed by the words `a pane's text` or `a
+list of daemons`, and `--json` puts them under `unreadable`. Pass `--socket` to read one app's
+answer. `muster pane wait` and `muster window --watch` refuse outright with two apps listening,
+and name the sockets.
 
 ## A zoom with nothing to zoom still succeeds
 

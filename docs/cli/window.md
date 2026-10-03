@@ -56,41 +56,63 @@ seen, as the daemon records it. In `--json`, `answered_by` is `"daemon"`; `name`
 ## Other windows
 
 A tab belongs to exactly one window, and `tabs[]` and the rows above are this window's own. The
-tabs every other window holds come after them, under a heading for each window: `window 4321
-(window-2)` for one that is open, and `window-2 (closed)` for one that is not - a closed window
-keeps its tabs, and its agents are still running. Those rows carry no numbers, because the numbers
-are that window's.
+tabs every other window holds come after them, under a heading for each window: `window-2` for one
+that is open, and `window-2 (closed)` for one that is not - a closed window keeps its tabs, and its
+agents are still running. Those rows carry no numbers, because the numbers are that window's.
 
     window-2 (closed)
     tab    t1w3r0mn2q  the other build
             p1w3r0pq7r  blocked  2h  🤖 C  (hidden)
 
-The tab names there work from here: a request naming one is carried to the window that holds it,
-and `muster tab focus` on a closed window's tab reopens that window onto it, as `muster window reopen
-window-2` does. `muster tab move --window` takes a window's name, or the pid of a Muster with one
-window open.
+The tab names there work from here: a request naming one is answered by the window that holds it,
+and `muster tab focus` on a closed window's tab reopens that window onto it, as `muster window
+reopen window-2` does. `muster tab move --window` takes a window's name, open or closed.
 
 Under `--json`, `name` is this window's own name, and `other_windows[]` carries `window` (its
-name), `pid` (null once it has closed) and its `tabs[]`, each with `tab`, `daemons`, `label`,
-`given_name` and `panes[]` of `pane`, `daemon`, `label` and `state`.
+name), `pid` (null once it has closed; every open window shares the app's) and its `tabs[]`, each
+with `tab`, `daemons`, `label`, `given_name` and `panes[]` of `pane`, `daemon`, `label` and
+`state`.
 
-## More than one window
+## Which window answers
 
-Inside a pane this always answers about that pane's own window, because `$MUSTER_SOCKET` says
-which one that is. Outside every pane, with several windows listening, it answers for all of
-them - naming none is what "what is everything doing" means, and a question has nothing to be
-ambiguous about.
+Every window of an app answers on one socket, `$MUSTER_SOCKET`, so the socket says which Muster
+and not which window. The window is, in order:
 
-Each answer is then headed by the window it is about: `window 39103 (window-1)`, the pid the
-socket is named after and the window's own name, with the socket path beside it for `--socket`.
-The open windows' tabs are each under their own heading already, so a closed window is the only
-other one listed, once, after them all. Under `--json` the answer becomes `{"windows": [...]}`,
-each entry carrying its `socket`, its `window`, and the ordinary fields below - so
-`.windows[].panes[] | select(.state == "blocked")` reads across every window - with
-`other_windows[]` narrowed to the closed ones.
+- the one `--window` names: `muster --window window-2 pane new --down`;
+- inside a pane, the window holding that pane's tab, even when the tab has moved to another window
+  since the pane was made;
+- outside every pane, the window in front.
 
-With one window listening, both shapes are exactly what they are above. `--socket PATH` narrows
-to one at any time.
+A request naming a pane or a tab is answered by the window holding it, whichever window it reached.
+`--window` naming a window the app has not got is refused, and so is a closed one, with how to
+reopen it.
+
+## More than one Muster
+
+Two installs under one home - a development build beside the release - are two apps, each with a
+socket of its own. Outside every pane, with both listening, this answers for both: naming none is
+what "what is everything doing" means, and a question has nothing to be ambiguous about.
+
+Each answer is then headed by the window that answered, with the socket path beside it for
+`--socket`, and lists that app's other windows as above. Under `--json` the answer becomes
+`{"windows": [...]}`, each entry carrying its `socket` and the ordinary fields below - so
+`.windows[].panes[] | select(.state == "blocked")` reads across every app.
+
+With one app listening, both shapes are exactly what they are above. `--socket PATH` narrows to one
+at any time.
+
+## Listing windows
+
+`muster window list` is a row per open window, under every app this home has listening: its name,
+how many panes and tabs it holds, and `▸` beside the window this command is running in.
+`--closed` lists the closed windows instead, which is where the name `muster window reopen NAME`
+takes is found.
+
+    ▸ window-1  4 panes, 2 tabs
+      window-2  1 panes, 1 tabs
+
+Under `--json` it is `{"windows": [...]}`, each with `window`, `open`, `here`, `socket`, `panes`,
+`tabs`, and `keyboard` for the window that answered.
 
 ## panes[]
 
@@ -306,8 +328,8 @@ Under `--json` each line is an object: `{"pane", "daemon", "state", "since"}` fo
 `since` as in `panes[]`, `{"pane", "daemon", "closed": true}` for a pane that went, and
 `{"daemon", "state", "detail"}` for a daemon, as in `daemons[]` - the one line with no `pane`.
 
-The watch holds one connection to one window, so outside a pane with several windows open it
-refuses until `--socket` names one. It ends with exit 3 if the window quits under it.
+The watch holds one connection to one Muster, so outside every pane with two installs listening
+it refuses until `--socket` names one. It ends with exit 3 if the app quits under it.
 `muster pane wait` is the same watch narrowed to named panes and ended by a state, or with exit
 4 when one of their daemons stops answering; `muster docs agents` has both.
 
@@ -366,9 +388,10 @@ that.
   keeps no `.lock` file.
 - `panes` and `directories` say what an answering daemon holds. This is the row that decides
   anything - a count of zero is a daemon you can end and lose nothing.
-- `attached_here` says whether the window answering is using it. A window can only speak for
-  itself, so `false` means "not this window" rather than "nothing". With more than one window
-  open, pass `--socket` to hear one window's answer; `muster docs limits` says why.
+- `attached_here` says whether the Muster answering is using it; every window of an app follows
+  the same daemons. An app can only speak for itself, so `false` means "not this Muster" rather
+  than "nothing". With two installs listening, pass `--socket` to hear one's answer; `muster docs
+  limits` says why.
 - `started` is when Muster started it. It is there to be recognised, not sorted by: age is
   exactly what picks the wrong process.
 

@@ -13,9 +13,10 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **capability** - one thing Muster can use from a harness: its state read off its screen, its own report of it,
   a prompt the doorbell can read, hooks that fetch its messages (MIP-5, section 2). Muster checks a capability,
   never a harness's name.
-- **command endpoint** - the unix socket a window answers requests on, at
+- **command endpoint** - the unix socket the app answers requests on for every one of its windows, at
   `~/.muster/state/command-<pid>.sock`. The same schema the shell/core seam carries, arriving from another process -
-  which is what the CLI is. A pane reads the path of its own window's from `MUSTER_SOCKET`.
+  which is what the CLI is. A pane reads the path of its own app's from `MUSTER_SOCKET`; which window a request is
+  about is `--window`, else the window holding the pane's tab, else the window in front.
 - **composition** - the Muster-owned arrangement: which daemons are attached, which tabs the window holds and in
   what order, which of them is on screen, and how each divides between the machines holding panes in it. Not an
   input method's composition, which is a different thing with the same name and lives under `input::` wherever it
@@ -45,7 +46,7 @@ One name per concept; docs and code use these terms. Alphabetical.
   plugin files in `extras/<harness>/`, its recordings and observations, and its live tier (MIP-5). Data and files,
   not daemon code; not the backend's **adapter** above.
 - **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
-  lists only the tabs it holds; the record is `~/.muster/state/holding/tabs.toml`, shared by every window.
+  lists only the tabs it holds; the record is `~/.muster/state/<install>/holding/tabs.toml`, which the app keeps.
 - **intent** - a requested mutation sent to a daemon (split, close, resize, zoom, input, spawn). Muster never
   mutates; it requests.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never

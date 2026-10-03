@@ -124,7 +124,7 @@ core and this is the other door into it.
 **Tabs are named too, and for a narrower reason than panes.** `t1w3r07bsd`, minted by Muster and
 unique across every machine a window shows, so `muster tab focus` and `muster tab rename` reach one
 without saying which daemon holds it - or which window: a tab belongs to exactly one window, and a
-request naming another window's tab is carried to that window. What a tab does not get is a name in any pane's environment:
+request naming another window's tab is answered by that window. What a tab does not get is a name in any pane's environment:
 nothing has to tell a tab which tab it is, so there is no `$MUSTER_TAB`, and a script that means the
 tab it is sitting in reads that out of `muster window` - where every pane says which tab holds it.
 
@@ -145,15 +145,17 @@ running. `muster --help` has the grammar, `muster completions zsh` writes a comp
 
 Every pane Muster makes on this machine can drive the window it is drawn in without being set up
 first: the command is on its `PATH` from `~/.muster/bin`, `$MUSTER_PANE` says which pane it is, and
-`$MUSTER_SOCKET` says which window to tell. So `muster pane new` inside a pane splits that pane,
-and an agent told "split two panes below you and start an agent in each" can do it.
+`$MUSTER_SOCKET` says which app to tell - every window of an install is a window of one app, which
+answers from the window holding that pane's tab. So `muster pane new` inside a pane splits that pane,
+and an agent told "split two panes below you and start an agent in each" can do it. Outside every
+pane, `--window window-2` says which window a command is about.
 
 **Two paths reach `muster`, and it matters less than it looks which one you get.**
 `~/.muster/bin/muster` is the app's, repointed at every launch to the CLI of the app that is
 running, and Muster hands its daemon a `PATH` with that directory at the front. Homebrew's
 `muster` is a second link, into `/Applications`, for terminals that are not panes. Whichever
 one a pane ends up finding drives the window it is drawn in, because both read `$MUSTER_SOCKET`
-and that is what names the window - so the two do not compete over *which* window, only over
+and `$MUSTER_PANE`, and those are what name the window - so the two do not compete over *which* window, only over
 which build of the CLI answers, and that is a question only while they are different versions.
 
 Front of the `PATH` is what Muster asks for rather than what you necessarily get. A login shell

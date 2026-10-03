@@ -18,7 +18,7 @@ have exactly one. `muster pane move --tab` is what puts a second machine in a ta
 
 Every tab is in exactly one window. A window lists its own tabs and no others, and `muster tab
 move` hands one to another window. Any command works from any window all the same: one naming a
-tab or pane another window holds is carried to that window and answered there.
+tab or pane another window holds is answered by that window.
 
 Panes outlive the window: quitting Muster leaves the daemons running, and the agents in their
 panes keep working - and the window keeps its tabs, so reopening it comes back to them, and
@@ -89,20 +89,29 @@ because a tab lays its machines side by side and Muster keeps no split tree acro
 
 ## Which window
 
-`$MUSTER_SOCKET` names the window a pane is drawn in, and Muster sets it in every pane it
-creates, on an SSH machine as well as this one. Over there it is a path on that machine, which
-the window's ssh connection carries back to the window, so every verb works from a devenv pane
-exactly as it does here. Without it, `muster` looks for listening windows under `~/.muster/state`.
-If more than one answers, a change that names its tab or pane goes to any of them, since that
-window carries it to the one holding it; a change that names nothing refuses rather than guessing;
-`muster window` answers for all of them, headed by which window each answer is about. Other
-questions cannot yet answer for several windows at once - see `muster docs limits`. `--socket PATH`
-names one outright.
+Every window of an app is a window of one process, which listens on one socket. `$MUSTER_SOCKET`
+names it, and Muster sets it in every pane it creates, on an SSH machine as well as this one. Over
+there it is a path on that machine, which the app's ssh connection carries back, so every verb
+works from a devenv pane exactly as it does here. Without it, `muster` looks for the app listening
+under `~/.muster/state`.
 
-`muster window list` says which windows are listening under this `MUSTER_HOME`, marking the one
-this command is running in. A window launched with a home of its own is not in that list and is
-reached by spelling out its socket. `muster window new` asks the running app for another window,
-waits for it to open, and prints its name: `window-3`.
+The socket says which Muster, and the window is decided after that: `--window NAME` when it is
+given; inside a pane, the window holding that pane's tab; outside every pane, the window in front.
+A request naming a tab or a pane is answered by the window holding it, whichever that is. So from a
+plain terminal, `muster window new` prints the new window's name and `muster --window window-3 pane
+new` makes a pane there.
+
+Only one app runs per install under one home: launching Muster again, with `open -n` or from
+Finder, hands what it was asked to do to the app already running. Two installs - a development
+build beside the release - are two apps with a socket each. With both listening, a change that
+names its tab or pane goes to either, a change that names nothing refuses rather than guessing, and
+`muster window` answers for both, headed by which app each answer is from. `--socket PATH` names one
+outright.
+
+`muster window list` lists the open windows under this `MUSTER_HOME`, marking the one this command
+is running in, and `--closed` the closed ones. A Muster launched with a home of its own is not in
+that list and is reached by spelling out its socket. `muster window new` asks the running app for
+another window, waits for it to open, and prints its name: `window-3`.
 
 `muster window reopen` brings back the window you closed last, and `muster window reopen
 window-2` a particular one, each printing the name the same way. The two verbs differ in one
@@ -110,16 +119,15 @@ thing: a window you ask for holds nothing until it makes a tab of its own, and r
 an arrangement nothing has ever held; a reopened window comes back to its own arrangement and the
 tabs it kept. Going to one of its tabs, `muster tab focus <TAB>`, reopens a closed window too.
 
-Every window of an app is a window of one process, so its socket reaches all of them, and with no
-app running `window new` and `window reopen` start one. Quitting is not closing: every window open
-when Muster quits, or crashes, opens again at the next launch, and only a window you close stays
-closed.
+With no app running, `window new` and `window reopen` start one. Quitting is not closing: every
+window open when Muster quits, or crashes, opens again at the next launch, and only a window you
+close stays closed.
 
-Names are not a window's: two windows on one machine call the same pane the same thing, because
-a name is the daemon's and both windows ask the same daemon. Tabs are a window's, and that
-follows from the daemon's rule rather than the window's - one bridge may draw a pane, so a pane
-one window is drawing is a pane another cannot draw at the same time. Which window holds each
-tab is written down in `~/.muster/state/holding/tabs.toml`, where every window reads it.
+Names are not a window's: every window calls the same pane the same thing, because a name is the
+daemon's. Tabs are a window's, and that follows from the daemon's rule rather than the window's -
+one bridge may draw a pane, so a pane one window is drawing is a pane another cannot draw at the
+same time. Which window holds each tab is written down in the install's state directory,
+`~/.muster/state/<install>/holding/tabs.toml`, for the next launch to read.
 
 A pane moves to another window with its tab, `muster tab move --tab <TAB> --window <WINDOW>`, and
 never to another machine: a pane is a process and it lives where it lives.
@@ -131,8 +139,8 @@ afterwards and can move it, so front is what Muster asks for rather than a guara
 that drops it altogether, as Debian's does, still leaves `muster` at the end of the `PATH`,
 which Muster appends once the profile has run; that is how a pane on an SSH machine finds it.
 
-Little rides on which copy wins. Every one of them finds the window through `$MUSTER_SOCKET`,
-so a Homebrew `muster` inside a pane drives that pane's window exactly as the app's own does;
+Little rides on which copy wins. Every one of them finds the app through `$MUSTER_SOCKET`, so
+a Homebrew `muster` inside a pane drives that pane's window exactly as the app's own does;
 what differs is the build, and only while the two are different versions.
 
 Outside a pane it is whatever your own `PATH` finds. A Homebrew install puts one there
@@ -149,8 +157,8 @@ quit. They answer as a window would: the same text, the same `--json`, the same 
 same `--confirm` read-back and the same wait. Panes are named as a window names them.
 
 They fall back only when there is no window to ask: `$MUSTER_SOCKET` names one that does not
-answer, or, with it unset, none is listening. A window named with `--socket` that is not there is
-refused, and so are several windows with nothing saying which. `--no-window` asks the daemon even
+answer, or, with it unset, none is listening. A Muster named with `--socket` that is not there is
+refused, and so are two apps with nothing saying which, and a window named with `--window`. `--no-window` asks the daemon even
 with a window open.
 
 `muster window` says when the daemon answered: its first line names the daemon, and `--json`

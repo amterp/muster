@@ -44,7 +44,7 @@ takes you to the pane you were on before, in whatever tab, and forward undoes it
 **A notification when an agent needs you, and one click back to it.** An agent that starts waiting
 on you, or that finishes while nobody is looking, says so - and activating the notification takes
 you to that pane, including one no split is showing. `cmd+shift+a` goes there without the
-click, to whichever agent in the window has waited longest, the blocked ones first. A pane you
+click, to whichever agent has waited longest, the blocked ones first, in whichever window it is. A pane you
 are already looking at stays quiet; that is what its border is for. Both are switchable, and one
 line in your config mutes the lot, which silences the notifications and leaves `cmd+shift+a`.
 
@@ -59,11 +59,13 @@ copy the ID `muster` takes for it.
 
 **More than one window, and `cmd+n` to make one.** Every window is a window of one app, so
 `cmd+q` quits them all - and the next launch brings every one of them back onto its own tabs,
-after a crash as well as a quit. `cmd+shift+w` closes one window, which keeps its tabs: Reopen
-Closed Window or `muster window reopen <name>` brings it back. Every tab belongs to one window,
+after a crash as well as a quit. Launching Muster again, from the Dock or with `open -n`, brings
+the running app forward rather than starting a second one. `cmd+shift+w` closes one window, which
+keeps its tabs: Reopen Closed Window, the Reopen submenu beside it, or `muster window reopen
+<name>` brings it back. Every tab belongs to one window,
 and each window lists only its own; drag a tab's row, or any row of a window holding one tab,
 into another window, or use Move Tab to Window, and its agents go with it still running. Any
-`muster` command reaches any tab from any window.
+`muster` command reaches any tab from any window, and `--window` names the window one is about.
 
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
 same list as the ones on your laptop. `cmd+shift+]` and `cmd+shift+[` step between a laptop tab and a
@@ -123,9 +125,6 @@ after:
 - A pane sits beside another machine's panes only as that machine's part of the tab, to their left
   or right: a laptop pane cannot go above a devenv one. And a pane dropped on a tab's caption lands where Muster
   puts it; to choose, drop it on a pane's edge once that tab is on screen.
-- Reopen Closed Window in the menu brings back the most recent closed window. An older one comes
-  back by name, `muster window reopen window-2`, or when you go to one of its tabs - `muster
-  window` lists them under the closed window's name.
 - Two windows cannot show the same tab. Muster's daemon draws each pane in one window at a time, so a
   tab is in exactly one window and moves between them rather than being shown in both.
 - A pane on its own cannot be dragged to another window; it goes with its tab.

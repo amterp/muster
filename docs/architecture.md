@@ -692,25 +692,23 @@ one answer to give, and checks once a second whether a quiet watch's caller is s
 pane wait` does not hold a thread. A watch is also told when a daemon it follows stops answering and when it is back,
 because nothing about that daemon's panes reaches the window in between (kan a_2P5njTPcm).
 
-**A request about another window's tab is carried to that window.** A tab belongs to exactly one window, and any
-verb works from any window, so the window a caller reaches checks whether a change it was asked for names a tab - or a
-pane in a tab - another open window holds, and if so sends it over that window's socket wrapped in a `Carried` and
-relays the answer. Here at the endpoint rather than in the CLI, because the socket is a door for anything that speaks
-the schema; and not in `dispatch`, because the shell calls that on its main thread and only ever shows its own tabs. A
-carried request is answered where it lands and never carried again. Questions are answered wherever they arrive,
-since every window follows the same daemons.
+**A request about another window's tab is answered by that window.** A tab belongs to exactly one window, and any
+verb works from any window. Every window of an install is a window of one app, so the core finds the window holding
+the tab a request names, or the tab of the pane it names, and answers there; a request that names neither is about the
+window it names in `Request.window` (`muster --window`), else the window holding the tab of the pane it came from,
+else the window in front (MIP-6, section 2).
 
-**A pid in the socket name, because two Musters are two processes.** A caller has to be able to reach the one it
-means, and a single fixed path would mean the second Muster to open silently took the first one's callers. One process
-holds every window it opens, so its socket reaches all of them, and a request says which window it is about. Which window a
-pane belongs to is settled when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that request,
-beside the `MUSTER_PANE` that says which pane it is, and between them a program inside a pane can drive the window it
-is drawn in without being configured. The pane outlives that process, so a pane whose window has quit asks the sockets
-beside its own that share its name up to the process - the other windows of the same Muster on that machine - and a
-change names its pane, so whichever answers carries it to the window holding the pane's tab. A name kept per
-arrangement was the other way, and would have left every pane already running unreachable after the relaunch that
-brought it in. Every request the CLI sends from a pane also says which pane it came from, so a process holding several
-windows answers one that names nothing from the window holding that pane's tab (MIP-6).
+**One app per install per home, and a pid in the socket name.** The first launch takes a lock, `state/app-<install>.lock`,
+for as long as it runs, and writes its socket into it; a second launch - `open -n`, Finder, an older `muster` - finds
+it held, sends the running app what it was launched to do, and exits (MIP-6, section 5). The lock is an `flock`, so the
+kernel lets go when the process ends however it ends. Two installs are two apps with a socket each, which is why the
+socket still carries a pid: a caller has to be able to reach the one it means. Which app a pane belongs to is settled
+when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that request, beside the `MUSTER_PANE` that
+says which pane it is, and between them a program inside a pane can drive the window it is drawn in without being
+configured. The pane outlives that process, so a pane whose app has quit asks the sockets beside its own that share
+its name up to the pid - the app running now - and every request the CLI sends from a pane says which pane it came
+from, so the app answers from the window holding that pane's tab. A name kept per arrangement was the other way, and
+would have left every pane already running unreachable after the relaunch that brought it in.
 
 **A devenv pane is told a path on the devenv, which the window's ssh master carries back.** A unix socket path means
 nothing on another machine, so the window asks the master it already holds for that daemon to forward its socket to

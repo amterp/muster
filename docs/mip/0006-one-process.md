@@ -244,9 +244,9 @@ share `~/.muster/state` unless `MUSTER_HOME` says otherwise. So the unit that ge
 the install within a home, not the home alone.
 
 The process holds `state/app-<install>.lock` for as long as it runs, and writes its socket's path
-beside it. A second launch of the same install and home finds the lock held, sends what it was
-launched to do (a fresh window, a named one, a tab to show) to the running app as an
-`OpenWindow`, and exits. `open -n` and a `muster window new` from before this change both end as
+into it. A second launch of the same install and home finds the lock held, sends what it was
+launched to do (a fresh window, a named one, a tab to show, or any window) to the running app as an
+`AskForWindow`, and exits. `open -n` and a `muster window new` from before this change both end as
 a new window of the running app. A Dock click with the app running never starts a process; the
 app answers it by bringing a window forward, or opening one if none is open.
 
@@ -411,13 +411,19 @@ Each stage leaves `main` working.
      2026-10-03.
    - **3b: the app lock, and the rest of sections 5 and 6.** `state/app-<install>.lock`, a second
      launch handing its request to the running app, the Dock's reopen, arrangements and the
-     record under `state/<install>/`, and pre-change processes asked to quit. Until then a second
-     process can still start, from the Dock with the app already running or from a CLI facing an
-     app from before this change, and carrying and `.held` claims keep two processes apart as they
-     always have.
+     record under `state/<install>/`, and pre-change processes asked to quit. Built 2026-10-03. The
+     lock is an `flock` held by the core, with the socket written into the lock file, and one
+     request both takes it and hands a launch over, since the shell does not know the install. A
+     launch asking for nothing in particular, and the Dock's reopen, ask for any window: the app
+     brings its front window forward and opens one only when none is open. Only the release adopts
+     the old `state/windows/` and `state/holding/`; a development build starts with its own empty
+     directory. A pre-change process's windows are opened here explicitly once it has quit,
+     because a process from before 3a marked its windows closed on the way out.
 4. **Removals, and the rest of the CLI and docs.** Section 7, the Reopen submenu, `muster window
    list --closed`, and the docs: README "More than one window", `docs/cli/window.md`,
    `docs/cli/overview.md` "Which window", architecture.md "One action path" and "Durability".
+   Built 2026-10-03, with the global `--window` from Open Questions. The holders record keeps its
+   row format, a pid meaning open, so a launch reads what an older one wrote.
 
 ## Open Questions
 
@@ -425,11 +431,14 @@ Each stage leaves `main` working.
   which 0.6.0's tab model fixed. If nothing needs it, the second-home case in `a_2KAFWbZBa` stops
   arising. If something does, a second home is a second Muster process under this MIP, and
   `muster window list` should at least say that other homes exist. Check before stage 3.
-- **Does the CLI need a flag naming a window?** Rules 1 and 3 cover a command that names a tab or
-  pane and a command run in a pane. What is left is a command outside every pane that names
-  nothing, such as `muster pane new` from a plain terminal, which goes to the front window. A
-  global `--window` would collide with `muster tab move --window`, which already names a move's
-  destination. Lean: add nothing until somebody needs it.
+- **Does the CLI need a flag naming a window?** Settled in stage 4: yes. Rules 1 and 3 cover a
+  command that names a tab or pane and a command run in a pane. What was left is a command outside
+  every pane that names nothing, such as `muster pane new` from a plain terminal, which goes to the
+  front window - and after `muster window new` from a terminal, macOS does not always bring the new
+  window forward, so the next command reached the old one. A global `--window` sets
+  `Request.window`. The collision with `muster tab move --window` is settled by meaning: the window
+  a move is about is where the tab goes, so for `tab move` the flag fills the destination, which is
+  the request it always sent.
 - **Where do windows open on relaunch when the display they shared is gone?** Each window's frame
   is fitted to the screens on its own today, so two windows fitted onto one remaining screen may
   land on top of each other. Settle in stage 3.
@@ -447,3 +456,4 @@ Each stage leaves `main` working.
 
 ## History
 - 2026-10-03 Draft. Stages 1, 2 and 3a built the same day.
+- 2026-10-03 Stages 3b and 4 built. The open question on a `--window` flag settled.
