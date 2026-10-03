@@ -231,7 +231,9 @@ fn ask_a_window(
         // No window at all, rather than one that would not answer or several to choose from:
         // this machine's daemon holds the panes, and answers what it can about them.
         Err(Trouble::Unreachable(detail))
-            if named.is_none() && !dial::any_window_answers(environment) =>
+            if named.is_none()
+                && request.window.is_empty()
+                && !dial::any_window_answers(environment) =>
         {
             if windowless::can_answer(request) {
                 from_the_daemon(request, environment, json)
@@ -297,7 +299,9 @@ fn follow(
     }
     match dial::follow(request, named, environment) {
         Err(Trouble::Unreachable(detail))
-            if named.is_none() && !dial::any_window_answers(environment) =>
+            if named.is_none()
+                && request.window.is_empty()
+                && !dial::any_window_answers(environment) =>
         {
             from_the_daemon().map_err(|trouble| neither(&detail, trouble))
         }
@@ -471,7 +475,10 @@ fn asks_around(
 ) -> bool {
     let in_a_pane =
         environment.get(environment::WINDOW_SOCKET).is_some_and(|path| !path.is_empty());
-    if named.is_some() || (in_a_pane && !dial::own_window_gone(environment)) {
+    if named.is_some()
+        || !request.window.is_empty()
+        || (in_a_pane && !dial::own_window_gone(environment))
+    {
         return false;
     }
     request.payload.as_ref().is_some_and(muster_proto::only_reads)

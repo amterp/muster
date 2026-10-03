@@ -51,6 +51,18 @@ fn cli_conformance() {
                         _ => None,
                     },
                 ),
+                // The window a request names, which is not in its payload: `--window`.
+                (
+                    "window",
+                    match &invocation.asking {
+                        Asking::Send(request)
+                        | Asking::Watch { request, .. }
+                        | Asking::SendFrom { request, .. } => {
+                            (!request.window.is_empty()).then(|| json!(request.window))
+                        }
+                        _ => None,
+                    },
+                ),
                 // Where a send's text is read from when it is not on the command line. Pinned
                 // beside the request rather than folded into it, because it is a decision this
                 // CLI makes before anything is sent - and the one a relative path turns on.

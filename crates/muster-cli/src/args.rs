@@ -151,9 +151,10 @@ Examples:
   muster pane new --daemon devenv --run claude
   muster focus --next
 
-Which window: $MUSTER_SOCKET names it, and Muster sets that in every pane it makes, on an SSH
-machine as well as this one. Otherwise muster looks for a listening window under
-~/.muster/state, and refuses rather than guessing if more than one answers.
+Which window: --window names it. Otherwise a command in a pane is about the window holding that
+pane's tab, and one outside every pane is about the window in front. Which Muster: $MUSTER_SOCKET,
+which Muster sets in every pane it makes, on an SSH machine as well as this one; otherwise the one
+listening under ~/.muster/state, and a refusal rather than a guess if two installs answer.
 
 Exit codes: 0 it happened, 1 the window refused, 2 the command line was wrong, 3 there was
 no window to ask, 4 a window took it and never answered, 5 a wait ran out first. Send it again
@@ -193,6 +194,24 @@ struct Cli {
     // window that is not there is refused rather than passed over.
     #[arg(long, global = true, conflicts_with = "socket", display_order = 102)]
     no_window: bool,
+
+    /// The window this is about, by name: window-2. For `tab move`, where the tab goes
+    //
+    // Every window of an app answers on one socket, so a command names its window here when
+    // nothing else does: a pane's tab decides inside a pane, and outside every pane the window in
+    // front would answer (mip/0006-one-process.md, Open Questions). A window the app has not got,
+    // or one that is closed, is refused rather than guessed at.
+    //
+    // For `tab move` the window a move is about is where the tab goes, so this fills the move's
+    // destination - which is what `tab move --window` has always meant.
+    #[arg(
+        long,
+        global = true,
+        value_name = "WINDOW",
+        conflicts_with = "no_window",
+        display_order = 103
+    )]
+    window: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -734,18 +753,14 @@ enum WithTab {
 
     /// Hand a tab to another window, with every pane in it still running
     //
-    // `--window` takes a window's name, as `muster window` prints it, open or closed. The app's pid
-    // is still taken, from when each window was a process of its own, and means the window in
-    // front. Without it the tab comes here - into the window this command reaches - and comes on
-    // screen.
+    // Where it goes is the global `--window`: a window's name, as `muster window` prints it, open
+    // or closed. The app's pid is still taken, from when each window was a process of its own,
+    // and means the window in front. Without it the tab comes here - into the window this command
+    // reaches - and comes on screen.
     Move {
-        /// The tab to move, or the one the window is showing
+        /// The tab to move, or the one the window is showing. `--window` says where it goes
         #[arg(long, value_name = "REF")]
         tab: Option<String>,
-
-        /// Where it goes: a window's name, like window-2. This window if not given
-        #[arg(long, value_name = "WINDOW")]
-        window: Option<String>,
     },
 
     /// Call a tab something. An empty name takes the name away again
@@ -798,7 +813,7 @@ pub fn parse(
             Asking::ReopenWindow(name.clone())
         }
         What::Pane { doing } => pane(doing, environment, here)?,
-        What::Tab { doing } => tab(doing, environment, here)?,
+        What::Tab { doing } => tab(doing, environment, here, cli.window.as_deref())?,
         What::Focus { asking: true, .. } => send(request::Payload::FocusAsking(FocusAsking {})),
         What::Focus { back: true, .. } => {
             send(request::Payload::FocusHistory(FocusHistory { forward: false }))
@@ -854,7 +869,39 @@ pub fn parse(
         What::Completions { shell } => Asking::Print(completions(*shell)),
     };
 
+    let asking = match (&cli.window, &cli.what) {
+        (None, _) | (Some(_), What::Tab { doing: WithTab::Move { .. } }) => asking,
+        (Some(window), _) => for_window(asking, window)?,
+    };
     Ok(Invocation { asking, json: cli.json, socket: cli.socket, no_window: cli.no_window })
+}
+
+/// The request, for one window by name.
+///
+/// Refused for a command that is not about one window - listing them, opening one, a message for
+/// the daemon - rather than ignored: a flag that silently does nothing is one nobody finds out
+/// did nothing.
+fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
+    Ok(match asking {
+        Asking::Send(request) => Asking::Send(Box::new(request.for_window(window))),
+        Asking::SendFrom { request, from } => {
+            Asking::SendFrom { request: Box::new(request.for_window(window)), from }
+        }
+        Asking::Watch { request, timeout } => {
+            Asking::Watch { request: Box::new(request.for_window(window)), timeout }
+        }
+        Asking::Print(_)
+        | Asking::Survey { .. }
+        | Asking::MakeWindow
+        | Asking::ReopenWindow(_)
+        | Asking::Message(_) => {
+            return Err(Failure::Refused(format!(
+                "--window {window} names the window a command is about, and this command is not \
+                 about one window, so nothing was done. `muster window reopen {window}` brings a \
+                 closed window back."
+            )));
+        }
+    })
 }
 
 fn pane(
@@ -1010,6 +1057,7 @@ fn tab(
     doing: &WithTab,
     environment: &BTreeMap<String, String>,
     here: Option<&Path>,
+    window: Option<&str>,
 ) -> Result<Asking, Failure> {
     Ok(match doing {
         WithTab::New { pane, daemon, cwd, run, name, focus } => {
@@ -1042,9 +1090,9 @@ fn tab(
             tab_id: tab.clone().unwrap_or_default(),
             ..CloseTab::default()
         })),
-        WithTab::Move { tab, window } => send(request::Payload::MoveTab(MoveTab {
+        WithTab::Move { tab } => send(request::Payload::MoveTab(MoveTab {
             tab_id: tab.clone().unwrap_or_default(),
-            window: window.clone().unwrap_or_default(),
+            window: window.unwrap_or_default().to_string(),
         })),
         WithTab::Rename { tab, name } => send(request::Payload::RenameTab(RenameTab {
             tab_id: tab.clone().unwrap_or_default(),

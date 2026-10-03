@@ -2042,6 +2042,64 @@
       }
     },
     {
+      "name": "a command names its window with --window",
+      "why": "Every window of an app answers on one socket, so outside every pane a command that names nothing reaches the window in front. `--window` names the one meant, on any command, as the request's window rather than in its payload (mip/0006-one-process.md, Open Questions).",
+      "given": {
+        "argv": [
+          "--window",
+          "window-2",
+          "pane",
+          "new",
+          "--down"
+        ]
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "side": "down"
+          }
+        },
+        "window": "window-2"
+      }
+    },
+    {
+      "name": "for a tab move, --window is where the tab goes",
+      "why": "The window a move is about is the one the tab goes to, so `--window` fills the move's destination and the request names no window of its own - the same request `tab move --window` has always sent.",
+      "given": {
+        "argv": [
+          "tab",
+          "move",
+          "--tab",
+          "t1w3r07bsd",
+          "--window",
+          "window-2"
+        ]
+      },
+      "expect": {
+        "request": {
+          "move_tab": {
+            "tab_id": "t1w3r07bsd",
+            "window": "window-2"
+          }
+        }
+      }
+    },
+    {
+      "name": "--window on a command about every window is refused",
+      "why": "A flag that silently does nothing is one nobody finds out did nothing. Listing windows, opening one and reopening one are not about a window that is open.",
+      "given": {
+        "argv": [
+          "--window",
+          "window-2",
+          "window",
+          "list"
+        ]
+      },
+      "expect": {
+        "refused": "--window window-2 names the window a command is about, and this command is not about one window, so nothing was done. `muster window reopen window-2` brings a closed window back."
+      }
+    },
+    {
       "name": "closed windows are listed on their own",
       "why": "A window somebody closed stays closed, keeps its tabs, and comes back by name with `muster window reopen NAME` (mip/0006-one-process.md, section 4). This is where the name is found.",
       "given": {
