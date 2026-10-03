@@ -679,6 +679,10 @@ public final class SidebarView: NSView {
   /// tab in this window.
   public var onTabReceived: ((String) -> Void)?
 
+  /// Builds the menu for a right-clicked row, or answers nil for none. The window's to answer,
+  /// because what the menu offers depends on the bindings and the machines.
+  public var onRowMenu: ((SidebarModel.Row) -> NSMenu?)?
+
   public private(set) var rows: [SidebarModel.Row] = []
 
   /// The frames the list has settled on for its rows.
@@ -700,7 +704,7 @@ public final class SidebarView: NSView {
   /// window's list, it moves the tab there.
   static let draggedTab = NSPasteboard.PasteboardType("dev.muster.tab")
 
-  private let table = NSTableView()
+  private let table = SidebarTable()
   private let scroll = NSScrollView()
   private let problemsView = ProblemsView()
 
@@ -733,6 +737,10 @@ public final class SidebarView: NSView {
     table.action = #selector(rowClicked)
     table.doubleAction = #selector(rowDoubleClicked)
     table.registerForDraggedTypes([SidebarView.draggedPane, SidebarView.draggedTab])
+    table.rowMenu = { [weak self] row in
+      guard let self, self.rows.indices.contains(row) else { return nil }
+      return self.onRowMenu?(self.rows[row])
+    }
     // A move rather than a copy: there is no second copy of an agent to make. Offered outside
     // this window too, because a tab row goes to another window - which is another process, so
     // to AppKit another application. The types are Muster's own, so nothing else accepts one,
@@ -861,6 +869,18 @@ public final class SidebarView: NSView {
     let clicked = table.clickedRow
     guard rows.indices.contains(clicked), !rows[clicked].isMachine else { return }
     onRowRenamed?(rows[clicked])
+  }
+}
+
+/// The list's table, which asks for a row's menu when somebody right-clicks it.
+///
+/// Asked per click rather than set once as the table's `menu`, because each row is about a
+/// different pane or tab and a roster arriving can change which row is under the pointer.
+final class SidebarTable: NSTableView {
+  var rowMenu: ((Int) -> NSMenu?)?
+
+  override func menu(for event: NSEvent) -> NSMenu? {
+    rowMenu?(row(at: convert(event.locationInWindow, from: nil)))
   }
 }
 

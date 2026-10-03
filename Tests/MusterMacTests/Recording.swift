@@ -67,9 +67,12 @@ final class RecordingSurface: PaneSurface {
   }
   func navigateSearch(next: Bool) { navigations.append(next) }
   func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags) { positions.append(point) }
+  /// Whether a button is the program's, as it is once the program has asked for the mouse.
+  var consumesButtons = false
+  var mouseCaptured = false
   func mouseButton(_ number: Int, pressed: Bool, modifiers: NSEvent.ModifierFlags) -> Bool {
     buttons.append((number, pressed))
-    return false
+    return consumesButtons
   }
   func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32) {
     scrolls.append((dx, dy, precise, momentum))

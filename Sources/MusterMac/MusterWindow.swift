@@ -229,15 +229,13 @@ public final class MusterWindow: NSObject {
     sidebar.onRowRenamed = { [weak self] row in
       guard let self else { return }
       if let pane = row.pane {
-        askToName(subject: "pane", current: row.givenName) { name in
-          Core.renamePane(name: name, daemonID: pane.daemon, paneID: pane.pane)
-        }
+        rename(pane: pane)
       } else if row.isTab {
-        askToName(subject: "tab", current: row.givenName) { name in
-          Core.renameTab(name: name, tabID: row.tab)
-        }
+        rename(tab: row.tab)
       }
     }
+    sidebar.onRowMenu = { [weak self] row in self?.menu(for: row) }
+    surfaces.menu = { [weak self] pane in self?.menu(forPane: pane) }
     applyTitle()
   }
 
@@ -922,6 +920,49 @@ extension MusterWindow {
   /// and the name appears when the daemon's answer comes back as the next roster.
   func askToName(subject: String, current: String, then send: @escaping (String) -> Void) {
     RenameSheet.ask(on: window, subject: subject, current: current, then: send)
+  }
+
+  /// Names a pane, having asked what to call it - the pane named rather than the keyboard's,
+  /// for a row double-clicked or a menu opened on a pane somebody is not typing into.
+  func rename(pane: PaneKey) {
+    askToName(subject: "pane", current: namedPane(pane)?.givenName ?? "") { name in
+      Core.renamePane(name: name, daemonID: pane.daemon, paneID: pane.pane)
+    }
+  }
+
+  func rename(tab: String) {
+    let current = roster.tabs.first { $0.id == tab }?.givenName ?? ""
+    askToName(subject: "tab", current: current) { name in
+      Core.renameTab(name: name, tabID: tab)
+    }
+  }
+
+  /// The machines are asked for as the menu opens, because one can attach or drop between one
+  /// right-click and the next.
+  func menu(forPane pane: PaneKey) -> NSMenu? {
+    ContextMenus.pane(
+      pane, surface: surfaces.chrome(for: pane)?.surface,
+      machines: Core.machines().map(\.daemon), bindings: bindings,
+      rename: { [weak self] in self?.rename(pane: $0) })
+  }
+
+  /// A right-clicked row's menu. A machine's row has none: clicking it already makes a tab
+  /// there, and its name is the config file's to change.
+  func menu(for row: SidebarModel.Row) -> NSMenu? {
+    switch row.kind {
+    case .pane:
+      guard let pane = row.pane else { return nil }
+      return ContextMenus.agentRow(
+        pane, onScreen: row.onScreen, bindings: bindings,
+        rename: { [weak self] in self?.rename(pane: $0) })
+    case .tab:
+      let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
+      return ContextMenus.tab(
+        row.tab, firstPane: first, machines: Core.machines().map(\.daemon), bindings: bindings,
+        rename: { [weak self] in self?.rename(tab: $0) })
+    case .machine:
+      return nil
+    }
   }
 
   /// This window's roster entry for a pane, if it has one.

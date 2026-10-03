@@ -65,6 +65,10 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// than on the surface, because the find bar can open before the pane's surface exists.
   public var onSearch: (@MainActor (SearchReport) -> Void)?
 
+  /// Builds this pane's context menu, or answers nil for none. The window's to answer, because
+  /// what the menu offers depends on the agent list and the machines, which a surface never sees.
+  public var onMenu: (@MainActor () -> NSMenu?)?
+
   /// Called when somebody cmd-clicks a link in this pane. Held here for the reason `onSearch`
   /// is: whoever sets it may do so before the surface exists.
   public var onOpenLink: (@MainActor (OpenedLink) -> Void)?
@@ -271,9 +275,34 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   }
 
   public override func rightMouseDown(with event: NSEvent) {
-    // Not consumed is libghostty leaving the click to the host, which is AppKit's context menu
-    // - none today, and whatever `menu(for:)` answers if that changes.
+    // Not consumed is libghostty leaving the click to the host, and AppKit then asks
+    // `menu(for:)`. Consumed is a program that asked for the mouse, which gets the click and
+    // no menu opens - Ghostty's rule, so a right-click means here what it means there.
     if !button(event, 1, pressed: true) { super.rightMouseDown(with: event) }
+  }
+
+  /// The pane's context menu, for a right-click libghostty left to the host or a ctrl-click.
+  ///
+  /// A ctrl-click is the platform's right-click, except over a program that asked for the
+  /// mouse: AppKit asks this before any mouse event, so answering would take the click from a
+  /// program that can do something with it. Ghostty draws the line in the same place.
+  ///
+  /// Showing a menu also asks for the keyboard here, as a left click does. Copy and Paste act
+  /// on the pane with the keyboard, and a Paste chosen from this pane's menu has to land here.
+  public override func menu(for event: NSEvent) -> NSMenu? {
+    switch event.type {
+    case .rightMouseDown:
+      break
+    case .leftMouseDown:
+      guard event.modifierFlags.contains(.control), surface?.mouseCaptured != true else {
+        return nil
+      }
+    default:
+      return nil
+    }
+    guard let menu = onMenu?() else { return nil }
+    onClick?()
+    return menu
   }
 
   public override func rightMouseUp(with event: NSEvent) {
@@ -440,6 +469,10 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     Core.debug("selection.copied", ["bytes": String(selected.utf8.count)])
   }
 
+  public var hasSelection: Bool { surface?.selectedText?.isEmpty == false }
+
+  public var canPaste: Bool { pasteboard.string(forType: .string) != nil }
+
   /// Greys out an Edit item that would do nothing.
   ///
   /// AppKit enables an item as soon as something in the responder chain implements it, so
@@ -449,9 +482,9 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   public func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
     case #selector(copy(_:)):
-      return surface?.selectedText?.isEmpty == false
+      return hasSelection
     case #selector(paste(_:)):
-      return pasteboard.string(forType: .string) != nil
+      return canPaste
     default:
       // Anything else in the chain answers for itself; a view that claimed on their behalf
       // would grey out items it knows nothing about.

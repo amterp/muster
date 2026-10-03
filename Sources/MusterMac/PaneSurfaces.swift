@@ -72,6 +72,9 @@ public final class PaneSurfaces {
   private var windowIsVisible = true
   private var windowIsKey = false
 
+  /// Builds a pane's context menu, handed to each surface with the pane it shows.
+  public var menu: (@MainActor (PaneKey) -> NSMenu?)?
+
   public init(parkedIn container: NSView, startPane: @escaping StartPane) {
     self.startPane = startPane
     parking.isHidden = true
@@ -140,6 +143,7 @@ public final class PaneSurfaces {
     chrome.attach(paneID: leaf.paneID)
     chrome.onFocusRequested = focus
     chrome.onPointerRequested = pointer
+    chrome.surface.onMenu = { [weak self] in self?.menu?(key) }
     held[key] = Held(
       chrome: chrome, linkSocketPath: leaf.linkSocketPath, daemonSocket: daemonSocket,
       bridgeRestarts: leaf.bridgeRestarts)

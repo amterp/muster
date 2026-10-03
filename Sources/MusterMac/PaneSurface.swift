@@ -74,6 +74,9 @@ public protocol PaneSurface: AnyObject {
   @discardableResult
   func mouseButton(_ number: Int, pressed: Bool, modifiers: NSEvent.ModifierFlags) -> Bool
 
+  /// Whether the program in this pane has asked for the mouse.
+  var mouseCaptured: Bool { get }
+
   /// Scrolls the surface's own history, or lets it answer as the pane's modes say. Deltas are
   /// positive right and up, and `momentum` is in libghostty's numbering.
   func scroll(dx: Double, dy: Double, precise: Bool, momentum: UInt32)

@@ -390,12 +390,16 @@ public enum Core {
   ///
   /// A ratio of zero means the daemon's own default, which is what a keybinding wants; a
   /// drag-to-split would say.
+  /// `newPaneDaemonID` puts the new pane on another machine, in the split pane's tab; empty
+  /// keeps it on the split pane's own.
   public static func split(
-    side: String, ratio: Float = 0, daemonID: String = "", paneID: String = ""
+    side: String, ratio: Float = 0, daemonID: String = "", paneID: String = "",
+    newPaneDaemonID: String = ""
   ) {
     var split = Muster_SplitPane()
     split.daemonID = daemonID
     split.paneID = paneID
+    split.newPaneDaemonID = newPaneDaemonID
     split.side = side
     split.ratio = ratio
     // Said outright, because the field defaults to false and false is what a script means. This
@@ -899,9 +903,11 @@ public enum Core {
   /// Naming no tab means the keyboard's, which is what a menu item means. Unlike going to a tab,
   /// closing one has a sensible "the one I am already in" - that is exactly what somebody
   /// picking this is asking for.
-  public static func closeTab() {
+  public static func closeTab(tabID: String = "") {
+    var close = Muster_CloseTab()
+    close.tabID = tabID
     var request = Muster_Request()
-    request.closeTab = Muster_CloseTab()
+    request.closeTab = close
     send(request)
   }
 
@@ -910,8 +916,12 @@ public enum Core {
   /// The same request a drag sends, with the other destination set. Naming no pane means the
   /// keyboard's, which is what a menu item means and what the core reads an empty id as - a drag
   /// says which pane because the row it started on knows, and a menu item has no row.
-  public static func movePaneToNewTab() {
+  public static func movePaneToNewTab(_ pane: PaneKey? = nil) {
     var arrange = Muster_ArrangePane()
+    if let pane {
+      arrange.daemonID = pane.daemon
+      arrange.paneID = pane.pane
+    }
     arrange.newTab = true
     var request = Muster_Request()
     request.arrangePane = arrange

@@ -156,7 +156,7 @@ public enum AppMenu {
 /// Every menu `AppMenu.build` makes is one of these, because AppKit dispatches a key equivalent
 /// through the submenu holding the item rather than through the menu bar.
 @MainActor
-final class LoggedMenu: NSMenu {
+class LoggedMenu: NSMenu {
   override func performActionForItem(at index: Int) {
     // `NSApp` is implicitly unwrapped and is nil until an application exists, so it is read as
     // the optional it is: a log line must not be the thing that ends the process. No event and
@@ -230,9 +230,22 @@ enum BoundAction {
 public final class MoveTabMenu: NSObject, NSMenuDelegate {
   public static let shared = MoveTabMenu()
 
-  func item() -> NSMenuItem {
+  /// A tab's own copy of the submenu, so the menu on its row moves that tab and the menu bar's
+  /// moves the one on screen.
+  private final class Submenu: NSMenu {
+    var tab = ""
+  }
+
+  /// Which tab a pick moves, and where to. An empty tab is the one this window is showing.
+  private struct Destination {
+    let tab: String
+    let window: String
+  }
+
+  func item(tab: String = "") -> NSMenuItem {
     let item = NSMenuItem(title: "Move Tab to Window", action: nil, keyEquivalent: "")
-    let submenu = NSMenu(title: "Move Tab to Window")
+    let submenu = Submenu(title: "Move Tab to Window")
+    submenu.tab = tab
     submenu.delegate = self
     item.submenu = submenu
     return item
@@ -240,6 +253,7 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
 
   /// Asked of the core each time, because windows open and close between one look and the next.
   public func menuNeedsUpdate(_ menu: NSMenu) {
+    let tab = (menu as? Submenu)?.tab ?? ""
     menu.removeAllItems()
     let windows = Core.otherWindows()
     if windows.isEmpty {
@@ -252,14 +266,14 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
       let item = NSMenuItem(
         title: window.title, action: #selector(move(_:)), keyEquivalent: "")
       item.target = self
-      item.representedObject = window.name
+      item.representedObject = Destination(tab: tab, window: window.name)
       menu.addItem(item)
     }
   }
 
   @objc private func move(_ sender: NSMenuItem) {
-    guard let window = sender.representedObject as? String else { return }
-    Core.info("tab.move.picked", ["window": window])
-    Core.moveTab(to: window)
+    guard let destination = sender.representedObject as? Destination else { return }
+    Core.info("tab.move.picked", ["window": destination.window, "tab": destination.tab])
+    Core.moveTab(destination.tab, to: destination.window)
   }
 }

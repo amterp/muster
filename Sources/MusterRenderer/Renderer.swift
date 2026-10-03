@@ -584,6 +584,12 @@ public final class Surface {
       ghosttyMods(modifiers))
   }
 
+  /// Whether the program in this pane has asked for the mouse, which is what decides whether a
+  /// ctrl-click is the program's or a context menu.
+  public var mouseCaptured: Bool {
+    ghostty_surface_mouse_captured(surface)
+  }
+
   /// Scrolls this surface's own history, or lets it answer as the pane's modes say.
   ///
   /// `momentum` is already in libghostty's numbering (`scrollMomentum`), because the same
