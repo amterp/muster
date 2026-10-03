@@ -841,6 +841,15 @@ public final class SidebarView: NSView {
     fatalError("muster builds its views in code")
   }
 
+  /// Redraws every row against the colours in force, after the config file was read again.
+  ///
+  /// Whole rather than diffed, unlike everything else here: the rows have not changed, only
+  /// what they are painted in, so the diff that keeps a fifteen-row list from flickering on
+  /// every agent transition would correctly decide there was nothing to do.
+  public func reloadColors() {
+    table.reloadData()
+  }
+
   /// Redraws the rows that would come out different, and only those.
   ///
   /// This is called on every agent transition, which is the most frequent thing that happens
@@ -851,27 +860,23 @@ public final class SidebarView: NSView {
   /// pane (`architecture.md`, fast is a feature), and the sidebar was undoing that
   /// downstream.
   ///
+  /// A changed row is shown again in the view it already has, rather than reloaded. Reloading
+  /// even one row builds its view from nothing, and that construction was most of what a focus
+  /// change cost the main thread (kan a_2WEaf4xGg). A row with no view loaded - scrolled out of
+  /// sight - needs nothing, because the table asks for it from `rows` when it comes back.
+  ///
   /// A whole reload is still right when the shape of the list moves - a pane opened, a tab
   /// closed, rows reordered by a drag - because then the rows are not the same rows and
   /// comparing them position by position would be comparing different things. That case is
   /// rare; a state blinking is not.
   ///
-  /// **Two calls, because `reloadData(forRowIndexes:)` does not re-measure.** It rebuilds a
-  /// row's view inside the frame that row already had, and `noteHeightOfRows` is the only
-  /// thing that makes a table ask again. Skipping it is how a pane whose agent titles itself
-  /// came to draw two lines in a one-line frame until something unrelated reloaded the lot.
+  /// **Showing a row again does not re-measure it.** It draws inside the frame the row already
+  /// had, and `noteHeightOfRows` is the only thing that makes a table ask again. Skipping it is
+  /// how a pane whose agent titles itself came to draw two lines in a one-line frame until
+  /// something unrelated reloaded the lot.
   ///
   /// Instantly rather than animated: a note animates by default, and a row growing under
   /// somebody reading the list is the movement the two heights exist to avoid.
-  /// Redraws every row against the colours in force, after the config file was read again.
-  ///
-  /// Whole rather than diffed, unlike everything else here: the rows have not changed, only
-  /// what they are painted in, so the diff that keeps a fifteen-row list from flickering on
-  /// every agent transition would correctly decide there was nothing to do.
-  public func reloadColors() {
-    table.reloadData()
-  }
-
   public func apply(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil) {
     let fresh = SidebarModel.rows(roster: roster, agents: agents, keyboard: keyboard)
     let previous = rows
@@ -880,13 +885,19 @@ public final class SidebarView: NSView {
       table.reloadData()
       return
     }
-    guard !changed.redraw.isEmpty else { return }
-    table.reloadData(forRowIndexes: changed.redraw, columnIndexes: IndexSet(integer: 0))
+    for index in changed.redraw {
+      rowView(at: index)?.show(fresh[index])
+    }
     guard !changed.remeasure.isEmpty else { return }
     NSAnimationContext.runAnimationGroup { context in
       context.duration = 0
       table.noteHeightOfRows(withIndexesChanged: changed.remeasure)
     }
+  }
+
+  /// The view drawing a row, or nil when the table has none loaded for it.
+  func rowView(at row: Int) -> SidebarRowView? {
+    table.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarRowView
   }
 
   @objc private func rowClicked() {
@@ -933,7 +944,11 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int
   ) -> NSView? {
     guard rows.indices.contains(row) else { return nil }
-    return SidebarRowView(row: rows[row])
+    let view =
+      tableView.makeView(withIdentifier: SidebarRowView.identifier, owner: self)
+      as? SidebarRowView ?? SidebarRowView()
+    view.show(rows[row])
+    return view
   }
 
   /// Daemon headings are labels, not destinations. Selecting one would move the keyboard
@@ -1033,8 +1048,16 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
 }
 
 /// One row: a state dot or the chord that reaches it, a name, and whether anything is showing it.
+///
+/// Built once and shown many times. A focus change moves the keyboard marker on two rows and an
+/// agent going idle repaints one, and rebuilding a row's fields and layers for that cost about a
+/// millisecond of AppKit construction each - more than anything else a focus change does on the
+/// main thread. So a row changing is `show` on the view already there, and the table hands a
+/// view back for reuse when a whole reload or a scroll asks for one.
 @MainActor
 final class SidebarRowView: NSView {
+  static let identifier = NSUserInterfaceItemIdentifier("sidebar-row")
+
   private let dot = CALayer()
   private let showing = CALayer()
   private let name = NSTextField(labelWithString: "")
@@ -1046,6 +1069,8 @@ final class SidebarRowView: NSView {
   private let swatch = CALayer()
   /// The marks at the trailing edge, left to right (`SidebarModel.accessories(of:)`).
   private var marks: [NSView] = []
+  /// What `marks` draws, so a row whose marks did not change keeps the views it has.
+  private var accessories: [SidebarModel.Accessory] = []
   private let progressTrack = CALayer()
   private let progressBar = CALayer()
   /// How much of the bar is filled, from 0 to 1.
@@ -1053,33 +1078,71 @@ final class SidebarRowView: NSView {
   /// Every layer's colour, kept to resolve again when the appearance changes: a layer holds a
   /// resolved colour, so one set once keeps light mode's in dark.
   private var layerColors: [(layer: CALayer, color: NSColor)] = []
-  private let indented: Bool
-  private let isTab: Bool
+  private var indented = false
+  private var isTab = false
 
-  init(row: SidebarModel.Row) {
+  /// Whether this row carries the keyboard marker.
+  var marksKeyboard: Bool { highlight.superlayer != nil }
+
+  /// What the second line says, or nil when the row has none.
+  var shownSubtitle: String? { subtitle.superview == nil ? nil : subtitle.stringValue }
+
+  /// How many marks sit at the trailing edge, and whether a progress bar runs under the text.
+  var shownMarks: Int { marks.count }
+  var showsProgress: Bool { progressBar.superlayer != nil }
+
+  init() {
+    super.init(frame: .zero)
+    identifier = SidebarRowView.identifier
+    wantsLayer = true
+    highlight.cornerRadius = 5
+    // A square rather than a circle, and at the far edge rather than beside the name: the dot
+    // by the name is the agent's state, and a second round mark in a second color beside it
+    // would read as a second state.
+    swatch.cornerRadius = 2
+    showing.cornerRadius = SidebarRowView.showingSize / 2
+    dot.cornerRadius = SidebarRowView.dotSize / 2
+    for bar in [progressTrack, progressBar] {
+      bar.cornerRadius = SidebarRowView.progressHeight / 2
+    }
+    subtitle.font = .systemFont(ofSize: 10, weight: .regular)
+    subtitle.textColor = .secondaryLabelColor
+    // Truncated rather than wrapped, and the full text on hover. Wrapping would make a row's
+    // height a function of what its agent is doing, so the list would jump under somebody
+    // reading it every time an agent wrote a longer sentence. In a list whose whole value is
+    // being scannable, a stable row beats a complete one.
+    subtitle.lineBreakMode = .byTruncatingTail
+    // Long directory names truncate rather than spilling past the row, for the same reason.
+    name.lineBreakMode = .byTruncatingTail
+    addSubview(name)
+  }
+
+  /// Draws `row`, taking away whatever the row this view last showed had and this one does not.
+  func show(_ row: SidebarModel.Row) {
     // Panes indent under their tab caption, and sit flush when there is none. The list is
     // 200pt wide, so a level of nesting that buys nothing is a level that costs a word off
     // every label.
     indented = row.isPane && row.tab != nil
     isTab = row.isTab
-    super.init(frame: .zero)
-    wantsLayer = true
+    layerColors = []
+    for layer in [highlight, swatch, showing, dot, progressTrack, progressBar] {
+      layer.removeFromSuperlayer()
+    }
+    for field in [subtitle, tabPress, press] {
+      field.removeFromSuperview()
+    }
+    progressFilled = 0
 
-    // The pane the keyboard feeds, marked the way the window already marks it. Drawn behind
-    // everything else and only for the one row, so a list of a dozen panes beside a window
-    // of two can be read back against it.
+    // The pane the keyboard feeds, marked the way the window already marks it. Behind
+    // everything else and only for the one row, so a list of a dozen panes beside a window of
+    // two can be read back against it.
     if row.hasKeyboard {
       paint(highlight, NSColor.controlAccentColor.withAlphaComponent(0.22))
-      highlight.cornerRadius = 5
-      layer?.addSublayer(highlight)
+      layer?.insertSublayer(highlight, at: 0)
     }
 
-    // A square rather than a circle, and at the far edge rather than beside the name: the dot
-    // by the name is the agent's state, and a second round mark in a second color beside it
-    // would read as a second state.
     if let machine = row.machine, let color = NSColor(hex: machine.color) {
       paint(swatch, color)
-      swatch.cornerRadius = 2
       layer?.addSublayer(swatch)
     }
 
@@ -1109,7 +1172,6 @@ final class SidebarRowView: NSView {
       // accent highlight on a pane row already says where you are typing.
       if row.onScreen {
         paint(showing, .tertiaryLabelColor)
-        showing.cornerRadius = SidebarRowView.showingSize / 2
         layer?.addSublayer(showing)
       }
     case .pane(let first, let second):
@@ -1121,40 +1183,22 @@ final class SidebarRowView: NSView {
       // looks broken.
       name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
       paint(dot, SidebarModel.dotColor(state: row.state))
-      dot.cornerRadius = SidebarRowView.dotSize / 2
       layer?.addSublayer(dot)
       if !row.subtitle.isEmpty {
-        subtitle.font = .systemFont(ofSize: 10, weight: .regular)
         subtitle.stringValue = row.subtitle
-        subtitle.textColor = .secondaryLabelColor
-        // Truncated rather than wrapped, and the full text on hover. Wrapping would make a
-        // row's height a function of what its agent is doing, so the list would jump under
-        // somebody reading it every time an agent wrote a longer sentence. In a list whose
-        // whole value is being scannable, a stable row beats a complete one.
-        subtitle.lineBreakMode = .byTruncatingTail
-        subtitle.toolTip = row.subtitle
         addSubview(subtitle)
-      }
-      for accessory in SidebarModel.accessories(of: row) {
-        let mark = SidebarRowView.mark(for: accessory)
-        marks.append(mark)
-        addSubview(mark)
       }
       if let progress = SidebarModel.progress(of: row) {
         let failed = progress.state == "error"
         progressFilled = failed ? 1 : CGFloat(min(max(progress.percent ?? 0, 0), 100)) / 100
         paint(progressTrack, .quaternaryLabelColor)
         paint(progressBar, failed ? .systemRed : .controlAccentColor)
-        for bar in [progressTrack, progressBar] {
-          bar.cornerRadius = SidebarRowView.progressHeight / 2
-          layer?.addSublayer(bar)
-        }
+        layer?.addSublayer(progressTrack)
+        layer?.addSublayer(progressBar)
       }
     }
-    // Long directory names truncate rather than spilling past the row, for the same reason.
-    name.lineBreakMode = .byTruncatingTail
-    name.toolTip = row.label
-    addSubview(name)
+    showMarks(SidebarModel.accessories(of: row))
+
     if row.isPane {
       // The whole of what is known, on hover and to VoiceOver, which otherwise hears a name and
       // nothing of the dot beside it.
@@ -1165,8 +1209,28 @@ final class SidebarRowView: NSView {
       setAccessibilityElement(true)
       setAccessibilityRole(.staticText)
       setAccessibilityLabel(details)
+    } else {
+      toolTip = nil
+      name.toolTip = row.label
+      setAccessibilityElement(false)
+      setAccessibilityRole(nil)
+      setAccessibilityLabel(nil)
     }
     resolveColors()
+    needsLayout = true
+  }
+
+  /// Replaces the trailing marks, unless they are the ones already drawn.
+  private func showMarks(_ wanted: [SidebarModel.Accessory]) {
+    guard wanted != accessories else { return }
+    accessories = wanted
+    for mark in marks {
+      mark.removeFromSuperview()
+    }
+    marks = wanted.map(SidebarRowView.mark(for:))
+    for mark in marks {
+      addSubview(mark)
+    }
   }
 
   private func paint(_ layer: CALayer, _ color: NSColor) {

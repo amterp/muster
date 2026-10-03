@@ -867,6 +867,50 @@ struct SidebarTests {
 
     #expect(sidebar.drawnRows.allSatisfy { $0.width == SidebarModel.width })
   }
+
+  @Test("a focus change moves the marker in the rows already drawn, rather than rebuilding them")
+  @MainActor func aFocusChangeReusesTheRows() {
+    let sidebar = SidebarView(
+      frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    let panes = [
+      pane("local", "w1:p1"), pane("local", "w1:p2", place: 2), pane("local", "w1:p3", place: 3),
+    ]
+    sidebar.apply(roster: roster(panes), agents: [:], keyboard: panes[0].key)
+    _ = sidebar.drawnRows
+    let before = panes.indices.map { sidebar.rowView(at: $0) }
+    #expect(before.allSatisfy { $0 != nil })
+    #expect(before.map { $0?.marksKeyboard } == [true, false, false])
+
+    sidebar.apply(roster: roster(panes), agents: [:], keyboard: panes[1].key)
+
+    let after = panes.indices.map { sidebar.rowView(at: $0) }
+    #expect(zip(before, after).allSatisfy { $0 === $1 })
+    #expect(after.map { $0?.marksKeyboard } == [false, true, false])
+  }
+
+  @Test("a row shown again takes away what the row before it had")
+  @MainActor func aReusedRowForgetsItsLastRow() {
+    let sidebar = SidebarView(
+      frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    let busy = pane("local", "w1:p1", subtitle: "chasing a flaky test")
+    var agent = PaneAgent(state: "working")
+    agent.rang = true
+    agent.contextUsed = 40
+    agent.progress = PaneAgent.Progress(state: "running", percent: 30)
+    sidebar.apply(roster: roster([busy]), agents: [busy.key: agent])
+    _ = sidebar.drawnRows
+    let row = sidebar.rowView(at: 0)
+    #expect(row?.shownSubtitle == "chasing a flaky test")
+    #expect(row?.shownMarks == 2)
+    #expect(row?.showsProgress == true)
+
+    sidebar.apply(roster: roster([pane("local", "w1:p1")]), agents: [busy.key: "idle"])
+
+    #expect(sidebar.rowView(at: 0) === row)
+    #expect(row?.shownSubtitle == nil)
+    #expect(row?.shownMarks == 0)
+    #expect(row?.showsProgress == false)
+  }
 }
 
 /// Whether two colours paint the same under the current drawing appearance. Compared as sRGB
