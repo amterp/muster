@@ -57,8 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let commands = refreshMusterCommand(
       executable: CommandLine.arguments[0], commands: commandsPath())
     // A window somebody asked for remembers its tabs under a record of its own, which the shell
-    // picks and claims for as long as this process runs - an OS question. Which tabs it holds is
-    // the core's, and a window starts holding nothing until it asks for a tab of its own.
+    // picks - an OS question. Which tabs it holds is the core's, and a window starts holding
+    // nothing until it asks for a tab of its own.
     //
     // A plain launch comes back to every window that was open when Muster last ended - a quit, a
     // crash, a reboot - each onto its own arrangement (mip/0006-one-process.md, section 4). The
@@ -76,38 +76,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // way out as every quit used to (mip/0006-one-process.md, section 6).
     let retired = Retiring.arrangements(retiring, in: InstallState.directory)
       .filter { !restored.contains($0) }
-    let reopening = (restored + retired).filter { Arrangements.take($0) }
+    let reopening = restored + retired
     // A launch told what to be opens that first, and the windows it comes back to beside it.
     let first = reopensEvery ? reopening.first : nil
     let arrangement =
-      first ?? Arrangements.open(fresh: fresh, named: launchWindow(arguments: launched))
+      first
+      ?? Arrangements.open(
+        fresh: fresh, named: launchWindow(arguments: launched), open: Set(reopening))
     let reopened = first == nil ? reopening : Array(reopening.dropFirst())
     Core.start(
       logPath: logPath, configPath: config, daemon: daemon, statePath: arrangement,
       commandSocketPath: commandSocketPath(), commandsPath: commands,
       daemonRecordsPath: daemonRecordsPath(), tabHoldersPath: holders,
       show: launchShow(arguments: launched))
-    if let refused = Arrangements.linkRefused {
-      Core.warn(
-        "arrangement.claim.unlinked",
-        [
-          "detail": refused,
-          "impact":
-            "this filesystem refused the link that makes a window's claim on its arrangement "
-            + "exclusive, so claims were made another way that two launches in the same moment "
-            + "can both win",
-          "check": "whether Muster's home is on a network or FAT volume; set MUSTER_HOME to a "
-            + "local APFS directory",
-        ])
-    }
-    // Every window's claim is given up on the way out, so a relaunch in the same second finds
-    // the records rather than the claims. Not relied on: a process that is killed never gets
-    // here, and a claim carries a pid for exactly that.
-    NotificationCenter.default.addObserver(
-      forName: NSApplication.willTerminateNotification, object: nil, queue: .main
-    ) { [weak self] _ in
-      MainActor.assumeIsolated { self?.windows?.releaseEveryClaim() }
-    }
     Core.info(
       "app.launch",
       [
@@ -171,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let windows = WindowOpening(renderer: renderer, executable: CommandLine.arguments[0])
       self.windows = windows
       let muster = MusterWindow(renderer: renderer, executable: CommandLine.arguments[0])
-      windows.adopt(muster, claimed: arrangement)
+      windows.adopt(muster, arrangement: arrangement)
       AppMenu.install(target: KeyWindowActions.shared, bindings: Core.bindings())
       Core.openWindowAsked = { [weak windows] asked in windows?.open(asked) }
       muster.show()
@@ -195,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // In the order they were focused, so the window somebody last looked at opens last and
         // is in front.
         for arrangement in reopened {
-          windows.reopen(claimed: arrangement)
+          windows.reopen(arrangement: arrangement)
         }
       case .pane(let paneID):
         attached = muster.opened(as: Core.attach(paneID: paneID))

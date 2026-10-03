@@ -60,16 +60,45 @@ public enum Retiring {
   }
 
   /// The arrangements in a directory with a live claim on them, and the pid holding each.
+  ///
+  /// A claim is a `.held` file beside an arrangement, holding the pid of the window process that
+  /// had it open. One whose process is gone is no window to ask anything of, and is left alone.
   static func claims(in directory: URL) -> [Holder] {
-    Arrangements.releaseDeadClaims(in: directory)
     let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
     return names.filter { $0.hasSuffix(".held") }.sorted().compactMap { name in
       let claim = directory.appendingPathComponent(name)
       guard let digits = try? String(contentsOf: claim, encoding: .utf8),
-        let pid = pid_t(digits.trimmingCharacters(in: .whitespacesAndNewlines))
+        let pid = pid_t(digits.trimmingCharacters(in: .whitespacesAndNewlines)),
+        isAlive(pid), !startedAfter(pid, claim)
       else { return nil }
       return Holder(pid: pid, stem: String(name.dropLast(".held".count)))
     }
+  }
+
+  /// Whether the process with this pid started after the claim was written, which makes it
+  /// somebody else: macOS hands a dead window's pid to the next process that needs one, and the
+  /// process that wrote a claim started before it wrote it.
+  ///
+  /// With two seconds' slack, because HFS+ keeps a file's time to the second. False when either
+  /// time cannot be read.
+  private static func startedAfter(_ pid: pid_t, _ claim: URL) -> Bool {
+    guard let started = started(pid), let written = Arrangements.written(claim) else {
+      return false
+    }
+    return started > written.addingTimeInterval(2)
+  }
+
+  /// When a process started, or nothing when there is no such process.
+  static func started(_ pid: pid_t) -> Date? {
+    var process = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+    guard sysctl(&name, 4, &process, &size, nil, 0) == 0,
+      size == MemoryLayout<kinfo_proc>.stride
+    else { return nil }
+    let start = process.kp_proc.p_un.__p_starttime
+    return Date(
+      timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
   }
 
   /// The holders that are another process of this bundle.

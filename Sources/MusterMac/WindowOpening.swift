@@ -4,7 +4,7 @@ import MusterRenderer
 /// Opens this app's windows, and keeps hold of them while they are open (mip/0006-one-process.md).
 ///
 /// Every window of an install is a window of one process, so ⌘N, Reopen Closed Window, going to
-/// a closed window's tab and `muster window new` all end here: an arrangement claimed, the core
+/// a closed window's tab and `muster window new` all end here: an arrangement chosen, the core
 /// asked to open a window onto it, and a `MusterWindow` built for the name it answers with. In
 /// that order, and all on the main thread before returning, so the window is registered before
 /// any event the core published for it is delivered.
@@ -13,9 +13,12 @@ public final class WindowOpening {
   private let renderer: Renderer
   private let executable: String
 
-  /// Every window this opened, with the arrangement it claimed - released when it closes, so a
-  /// later launch, or a reopen, can take it.
-  private var opened: [(window: MusterWindow, claimed: String?)] = []
+  /// Every window open, with the arrangement it writes: no other window may be opened onto one of
+  /// these while it is open, and a closed window's becomes free to reopen.
+  private var opened: [(window: MusterWindow, arrangement: String?)] = []
+
+  /// The arrangements the open windows write.
+  public var arrangementsOpen: Set<String> { Set(opened.compactMap(\.arrangement)) }
 
   public init(renderer: Renderer, executable: String) {
     self.renderer = renderer
@@ -23,8 +26,8 @@ public final class WindowOpening {
   }
 
   /// Takes on a window opened some other way: the launch's first, which `Startup` described.
-  public func adopt(_ window: MusterWindow, claimed: String?) {
-    opened.append((window, claimed))
+  public func adopt(_ window: MusterWindow, arrangement: String?) {
+    opened.append((window, arrangement))
     window.onClosed = { [weak self] in self?.closed($0) }
   }
 
@@ -41,25 +44,28 @@ public final class WindowOpening {
       return
     }
     let named = asked.name.isEmpty ? nil : asked.name
-    guard let arrangement = Arrangements.open(fresh: asked.fresh, named: named) else {
+    guard
+      let arrangement = Arrangements.open(
+        fresh: asked.fresh, named: named, open: arrangementsOpen)
+    else {
       Core.warn(
-        "window.open.unclaimed",
+        "window.open.unremembered",
         [
           "window": asked.name,
           "impact": "no window opened, and the windows already open are unaffected",
-          "check": "whether Muster's state directory is writable, and whether the window named "
-            + "is open in another Muster",
+          "check": "whether this Muster has a home to keep its windows in: HOME or MUSTER_HOME, "
+            + "and MUSTER_STATE if it is set",
         ])
       NSSound.beep()
       return
     }
-    // Asked for by name and not given that record: it is held by a window open elsewhere, and a
-    // window opened onto some other record would be a window nobody asked for.
+    // Asked for by name and not given that record: no closed window is called that, and a window
+    // opened onto some other record would be a window nobody asked for.
     if let named,
       URL(fileURLWithPath: arrangement).deletingPathExtension().lastPathComponent != named
     {
-      Arrangements.release(arrangement)
-      Core.info("window.reopen.held_elsewhere", ["window": named])
+      Core.info("window.reopen.unknown", ["window": named])
+      NSSound.beep()
       return
     }
     open(arrangement: arrangement, show: asked.show)
@@ -81,16 +87,14 @@ public final class WindowOpening {
     window.raise()
   }
 
-  /// Opens a window onto an arrangement this launch has already claimed: one of the windows open
-  /// when Muster last ended.
-  public func reopen(claimed arrangement: String) {
+  /// Opens a window onto one of the windows open when Muster last ended.
+  public func reopen(arrangement: String) {
     open(arrangement: arrangement, show: "")
   }
 
-  /// Opens a window onto a claimed arrangement.
+  /// Opens a window onto an arrangement no window here has open.
   private func open(arrangement: String, show: String) {
     guard let name = Core.open(arrangement: arrangement, show: show) else {
-      Arrangements.release(arrangement)
       NSSound.beep()
       return
     }
@@ -99,7 +103,7 @@ public final class WindowOpening {
       return
     }
     let window = MusterWindow(renderer: renderer, executable: executable)
-    adopt(window, claimed: arrangement)
+    adopt(window, arrangement: arrangement)
     window.opened(as: name)
     window.show()
     // Asked for from outside the app as often as from inside it - `muster window new` in a
@@ -108,18 +112,8 @@ public final class WindowOpening {
     NSApp.activate(ignoringOtherApps: true)
   }
 
-  /// Gives up a closed window's claim on its arrangement, which keeps its tabs for a reopen.
+  /// Forgets a closed window, which frees its arrangement for a reopen; its tabs stay its own.
   private func closed(_ window: MusterWindow) {
-    guard let at = opened.firstIndex(where: { $0.window === window }) else { return }
-    if let claimed = opened[at].claimed { Arrangements.release(claimed) }
-    opened.remove(at: at)
-  }
-
-  /// Gives up every claim, on the way out. The windows stay open in the record, which is what the
-  /// next launch reopens; the claims only stop two live processes taking one arrangement.
-  public func releaseEveryClaim() {
-    for (_, claimed) in opened {
-      if let claimed { Arrangements.release(claimed) }
-    }
+    opened.removeAll { $0.window === window }
   }
 }

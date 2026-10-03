@@ -22,13 +22,15 @@ public enum Arrangements {
     state?.appendingPathComponent("windows", isDirectory: true)
   }
 
-  /// The arrangement this launch adopts, and the claim it leaves on it while it runs.
+  /// The arrangement a window opens onto.
   ///
-  /// Three answers, in order. `MUSTER_STATE` names a file outright and takes no claim, which is
-  /// what a test and a script want. A launch somebody asked for takes a record nothing has ever
-  /// held. Anything else takes the most recently written record no live window is holding, which
-  /// is the window Muster comes back to - and, when another window is running, the one that was
-  /// closed.
+  /// Three answers, in order. `MUSTER_STATE` names a file outright, which is what a test and a
+  /// script want. A window somebody asked for takes a record nothing has been written into. Any
+  /// other takes the most recently written record no window here has open, which is the window
+  /// Muster comes back to - and, when another window is open, the one closed last.
+  ///
+  /// `open` is the arrangements this app's windows have open. Every window of the install is a
+  /// window of this app, so no other process can hold one (mip/0006-one-process.md, section 5).
   ///
   /// `nil` is a real answer and not a failure: the window opens fresh and remembers nothing,
   /// which is what every window did before any of this existed.
@@ -37,7 +39,7 @@ public enum Arrangements {
     named: String? = nil,
     environment: [String: String] = ProcessInfo.processInfo.environment,
     state: URL? = InstallState.directory,
-    pid: Int32 = ProcessInfo.processInfo.processIdentifier
+    open: Set<String> = []
   ) -> String? {
     if let explicit = environment["MUSTER_STATE"] {
       // Deliberately including empty, which is how a test or a script says "remember nothing"
@@ -47,69 +49,41 @@ public enum Arrangements {
     guard let directory = directory(state: state) else { return nil }
     try? FileManager.default.createDirectory(
       at: directory, withIntermediateDirectories: true)
-
-    // Before anything is chosen, so that a record whose window was killed is available again
-    // rather than held by a process that is gone.
-    releaseDeadClaims(in: directory)
     adoptTheOldSingleFile(into: directory, environment: environment)
 
-    if let record = reopening(named, in: directory), claim(record, by: pid) {
-      return record.path
+    let slots = slots(in: directory, open: open)
+    if let named, !named.contains("/"),
+      let slot = slots.first(where: { $0.stem == named && !$0.open })
+    {
+      return slot.record.path
     }
-    // Chosen again whenever another launch claims the same slot first: the claim that beat this
-    // one now marks the slot held, so the next choice is a different one.
-    for _ in 0..<claimAttempts {
-      let record = fresh ? mint(in: directory) : (free(in: directory) ?? mint(in: directory))
-      if claim(record, by: pid) { return record.path }
-    }
-    return nil
+    let record =
+      fresh ? mint(in: directory, slots: slots) : (free(slots) ?? mint(in: directory, slots: slots))
+    return record.path
   }
 
-  /// Claims one arrangement by its path, for a launch reopening a window that was open when
-  /// Muster last ended. False when a live window holds it already.
-  public static func take(
-    _ path: String, pid: Int32 = ProcessInfo.processInfo.processIdentifier
-  ) -> Bool {
-    let record = URL(fileURLWithPath: path)
-    releaseDeadClaims(in: record.deletingLastPathComponent())
-    return claim(record, by: pid)
-  }
-
-  /// How many slots a launch tries before opening a window that remembers nothing. Only a launch
-  /// racing this many others at once ever reaches the last.
-  private static let claimAttempts = 8
-
-  /// Says the window holding this record has gone, so the next launch may take it.
-  ///
-  /// Called on the way out. Not relied on: a window that is killed never gets here, which is why
-  /// a claim carries a pid and `releaseDeadClaims` checks it. What this buys is the case in
-  /// between - quit one window and reopen it in the same second, before anything has swept.
-  public static func release(_ path: String) {
-    try? FileManager.default.removeItem(at: claimFile(for: URL(fileURLWithPath: path)))
-  }
-
-  /// One window's slot: the arrangement it writes, and the claim a live window leaves on it.
-  ///
-  /// Both halves are keyed by the same stem, because a window claims its slot at launch and the
-  /// core writes the arrangement into it later - so between those two moments the slot exists
-  /// with no file in it, and a launch that only looked at files would hand the same one out
-  /// twice.
+  /// One window's record, and whether a window here has it open.
   struct Slot {
     let stem: String
     let record: URL
-    let held: Bool
+    let open: Bool
     /// When the arrangement was last written, or nothing when none has been.
     let written: Date?
   }
 
-  /// Every slot in the directory, newest arrangement first.
-  static func slots(in directory: URL) -> [Slot] {
+  /// Every record in the directory, newest first, with the ones in `open` marked.
+  static func slots(in directory: URL, open: Set<String> = []) -> [Slot] {
     let names =
       (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-    var stems = Set<String>()
-    for name in names where name.hasSuffix(".toml") || name.hasSuffix(".held") {
-      stems.insert(String(name.dropLast(5)))
+    var stems = Set(names.filter { $0.hasSuffix(".toml") }.map { String($0.dropLast(5)) })
+    // A window here that has not written its record yet still has it.
+    for path in open {
+      let record = URL(fileURLWithPath: path)
+      if record.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL {
+        stems.insert(record.deletingPathExtension().lastPathComponent)
+      }
     }
+    let openPaths = Set(open.map { URL(fileURLWithPath: $0).standardizedFileURL.path })
     return
       stems
       .map { stem -> Slot in
@@ -117,46 +91,35 @@ public enum Arrangements {
         return Slot(
           stem: stem,
           record: record,
-          held: FileManager.default.fileExists(atPath: claimFile(for: record).path),
+          open: openPaths.contains(record.standardizedFileURL.path),
           written: written(record))
       }
       .sorted { ($0.written ?? .distantPast) > ($1.written ?? .distantPast) }
   }
 
-  /// The slot a launch was told to reopen, if no live window is holding it.
+  /// The most recent record no window here has open and something has actually been written
+  /// into.
   ///
-  /// Held means that window is open after all - it opened between somebody going to its tab and
-  /// this launch - and taking its record as well would be two windows writing one file. The
-  /// launch then goes the ordinary way instead.
-  private static func reopening(_ name: String?, in directory: URL) -> URL? {
-    guard let name, !name.contains("/") else { return nil }
-    return slots(in: directory).first { $0.stem == name && !$0.held }?.record
+  /// A record with nothing written in it is skipped rather than adopted: it belongs to a window
+  /// that opened and quit before publishing, so there is nothing there to come back to and taking
+  /// it would look like a window that forgot everything.
+  private static func free(_ slots: [Slot]) -> URL? {
+    slots.first { !$0.open && $0.written != nil }?.record
   }
 
-  /// The most recent slot no window is holding and something has actually been written into.
-  ///
-  /// A slot with no arrangement in it is skipped rather than adopted: it belongs to a window
-  /// that claimed one and quit before publishing, so there is nothing there to come back to and
-  /// taking it would look like a window that forgot everything.
-  private static func free(in directory: URL) -> URL? {
-    slots(in: directory).first { !$0.held && $0.written != nil }?.record
-  }
-
-  /// A slot nothing is holding and nothing has been written into.
+  /// A record no window here has open and nothing has been written into.
   ///
   /// Numbered rather than named from the registry that mints pane and tab names: that registry
-  /// is the core's, and the core is not running yet - which file to hand it is the question
-  /// being answered here. A number is what a person would call these anyway.
+  /// is the core's, and which file to hand it is the question being answered here. A number is
+  /// what a person would call these anyway.
   ///
   /// The oldest are dropped once there are more than `kept`. A record is a few hundred bytes, so
   /// this is about a directory somebody opens rather than about space.
-  private static func mint(in directory: URL) -> URL {
-    let existing = slots(in: directory)
-    for old in existing.dropFirst(kept - 1) where !old.held {
+  private static func mint(in directory: URL, slots: [Slot]) -> URL {
+    for old in slots.dropFirst(kept - 1) where !old.open {
       try? FileManager.default.removeItem(at: old.record)
-      try? FileManager.default.removeItem(at: claimFile(for: old.record))
     }
-    let taken = Set(slots(in: directory).filter { $0.held || $0.written != nil }.map(\.stem))
+    let taken = Set(slots.filter { $0.open || $0.written != nil }.map(\.stem))
     var number = 1
     while taken.contains("window-\(number)") { number += 1 }
     return directory.appendingPathComponent("window-\(number).toml")
@@ -164,106 +127,6 @@ public enum Arrangements {
 
   /// How many closed windows are worth being able to reopen.
   private static let kept = 20
-
-  /// Claims a slot for a window, and says whether it got it.
-  ///
-  /// Exclusive: two launches that both found a slot free cannot both claim it, because the claim
-  /// is linked into place and a link onto a name that exists fails. Written beside it first, so
-  /// nobody ever reads a claim with no pid in it and sweeps it as garbage.
-  ///
-  /// `linking` is `link(2)`, and a parameter so that a test can stand in for a filesystem that
-  /// cannot link.
-  static func claim(
-    _ record: URL, by pid: Int32,
-    linking: (String, String) -> Int32 = { link($0, $1) }
-  ) -> Bool {
-    let claim = claimFile(for: record)
-    let written = claim.appendingPathExtension("\(pid)")
-    guard (try? String(pid).write(to: written, atomically: false, encoding: .utf8)) != nil else {
-      return false
-    }
-    defer { unlink(written.path) }
-    if linking(written.path, claim.path) == 0 { return true }
-    let refused = errno
-    if refused == EEXIST { return false }
-    // A filesystem that will not link at all. Still exclusive, but the claim exists empty for a
-    // moment before its pid is in it, which a launch sweeping dead claims at that moment reads as
-    // garbage - a narrow race, and better than every window remembering nothing.
-    linkRefused = String(cString: strerror(refused))
-    return createExclusively(claim, holding: pid)
-  }
-
-  /// Why the last claim could not be linked into place, when that happened.
-  ///
-  /// Kept rather than logged, because a claim is made before the core that writes the log has
-  /// started. The launch says it once the core is up. Unsynchronized because a launch claims once,
-  /// on the main thread, before anything else is running.
-  nonisolated(unsafe) public private(set) static var linkRefused: String?
-
-  private static func createExclusively(_ claim: URL, holding pid: Int32) -> Bool {
-    let descriptor = Darwin.open(claim.path, O_WRONLY | O_CREAT | O_EXCL, 0o644)
-    guard descriptor >= 0 else { return false }
-    defer { close(descriptor) }
-    let text = String(pid)
-    let wrote = text.withCString { Darwin.write(descriptor, $0, strlen($0)) }
-    return wrote == text.utf8.count
-  }
-
-  private static func claimFile(for record: URL) -> URL {
-    record.deletingPathExtension().appendingPathExtension("held")
-  }
-
-  /// Drops the claims of windows that are no longer running.
-  ///
-  /// A pid that no longer exists is the first test, on the same terms as the endpoint sockets:
-  /// `kill(pid, 0)` reports existence without sending anything, and EPERM counts as alive, since
-  /// a process owned by somebody else is still a process.
-  ///
-  /// A pid that exists is not enough, because macOS hands a dead window's pid to the next process
-  /// that needs one, and a claim that looks alive forever is a window nobody can reopen. The
-  /// process that wrote a claim started before it wrote it, so one that started after the claim
-  /// was written is somebody else.
-  static func releaseDeadClaims(in directory: URL) {
-    let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-    for name in names where name.hasSuffix(".held") {
-      let claim = directory.appendingPathComponent(name)
-      guard let digits = try? String(contentsOf: claim, encoding: .utf8),
-        let pid = pid_t(digits.trimmingCharacters(in: .whitespacesAndNewlines))
-      else {
-        try? FileManager.default.removeItem(at: claim)
-        continue
-      }
-      let exists = kill(pid, 0) == 0 || errno == EPERM
-      if exists, !startedAfter(pid, claim) { continue }
-      try? FileManager.default.removeItem(at: claim)
-    }
-  }
-
-  /// Whether the process with this pid started after the claim was written.
-  ///
-  /// False when either time cannot be read, which keeps the claim: a window wrongly thought
-  /// closed is two windows writing one record, and that is the worse mistake.
-  ///
-  /// With two seconds' slack, because HFS+ keeps a file's time to the second: a window started at
-  /// .3 that wrote its claim at .8 has a claim that reads as written before it started. A pid
-  /// reused that soon after the window that held it wrote its claim is not a case that happens.
-  private static func startedAfter(_ pid: pid_t, _ claim: URL) -> Bool {
-    guard let started = started(pid), let written = self.written(claim) else { return false }
-    return started > written.addingTimeInterval(2)
-  }
-
-  /// When a process started, or nothing when there is no such process.
-  static func started(_ pid: pid_t) -> Date? {
-    var process = kinfo_proc()
-    var size = MemoryLayout<kinfo_proc>.stride
-    var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-    guard sysctl(&name, 4, &process, &size, nil, 0) == 0,
-      size == MemoryLayout<kinfo_proc>.stride
-    else { return nil }
-    let start = process.kp_proc.p_un.__p_starttime
-    return Date(
-      timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
-  }
 
   /// Moves the one file every window used to share into the first record.
   ///
@@ -279,7 +142,7 @@ public enum Arrangements {
   }
 
   /// When an arrangement was last written, or nothing when the file is not there yet.
-  private static func written(_ url: URL) -> Date? {
+  static func written(_ url: URL) -> Date? {
     guard FileManager.default.fileExists(atPath: url.path) else { return nil }
     return try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
   }
