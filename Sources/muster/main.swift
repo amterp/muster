@@ -73,10 +73,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // A window somebody asked for remembers its tabs under a record of its own, which the shell
     // picks and claims for as long as this process runs - an OS question. Which tabs it holds is
     // the core's, and a window starts holding nothing until it asks for a tab of its own.
+    //
+    // A plain launch comes back to every window that was open when Muster last ended - a quit, a
+    // crash, a reboot - each onto its own arrangement (mip/0006-one-process.md, section 4). The
+    // first becomes the window `Startup` describes, and the rest open beside it once it has. With
+    // none to come back to, which is a first launch or the first after upgrading from a Muster
+    // that closed every window on the way out, the launch takes one arrangement as it always did.
     let launched = Array(CommandLine.arguments.dropFirst())
     let fresh = launchIsFresh(arguments: launched)
-    let arrangement = Arrangements.open(fresh: fresh, named: launchWindow(arguments: launched))
     let holders = tabHoldersPath()
+    let reopened =
+      launchReopensEveryWindow(
+        arguments: launched, environment: ProcessInfo.processInfo.environment)
+      ? Core.reopening(tabHoldersPath: holders).filter { Arrangements.take($0) } : []
+    let arrangement =
+      reopened.first ?? Arrangements.open(fresh: fresh, named: launchWindow(arguments: launched))
     Core.start(
       logPath: logPath, configPath: config, daemon: daemon, statePath: arrangement,
       commandSocketPath: commandSocketPath(), commandsPath: commands,
@@ -173,6 +184,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         attached = muster.opened(as: opened)
         if !attached {
           muster.report(problem: "no session could be opened (see stderr)")
+        }
+        // In the order they were focused, so the window somebody last looked at opens last and
+        // is in front.
+        for arrangement in reopened.dropFirst() {
+          windows.reopen(claimed: arrangement)
         }
       case .pane(let paneID):
         attached = muster.opened(as: Core.attach(paneID: paneID))

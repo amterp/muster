@@ -61,6 +61,12 @@ public final class WindowOpening {
     open(arrangement: arrangement, show: asked.show)
   }
 
+  /// Opens a window onto an arrangement this launch has already claimed: one of the windows open
+  /// when Muster last ended.
+  public func reopen(claimed arrangement: String) {
+    open(arrangement: arrangement, show: "")
+  }
+
   /// Opens a window onto a claimed arrangement.
   private func open(arrangement: String, show: String) {
     guard let name = Core.open(arrangement: arrangement, show: show) else {

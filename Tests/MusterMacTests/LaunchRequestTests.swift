@@ -58,3 +58,16 @@ func aReopenedWindowIsStillAnOrdinaryLaunch() {
   #expect(launchShow(arguments: arguments) == "t1w3r07bsd")
   #expect(launchHome(arguments: arguments) == "/tmp/somewhere")
 }
+
+@Test("a plain launch reopens every window, and a launch told what to be opens one")
+func onlyAPlainLaunchReopensEveryWindow() {
+  // mip/0006-one-process.md, section 4: quitting is not closing, so the Dock, Spotlight and a
+  // double-click come back to every window. Anything that said which window to be means that one.
+  #expect(launchReopensEveryWindow(arguments: [], environment: [:]))
+  #expect(launchReopensEveryWindow(arguments: ["--home", "/tmp/somewhere"], environment: [:]))
+  #expect(!launchReopensEveryWindow(arguments: [freshFlag], environment: [:]))
+  #expect(!launchReopensEveryWindow(arguments: ["--window", "window-2"], environment: [:]))
+  #expect(!launchReopensEveryWindow(arguments: ["p1w3r07bsd"], environment: [:]))
+  #expect(!launchReopensEveryWindow(arguments: ["--renderer-check"], environment: [:]))
+  #expect(!launchReopensEveryWindow(arguments: [], environment: ["MUSTER_STATE": ""]))
+}

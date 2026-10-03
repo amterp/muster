@@ -63,6 +63,16 @@ public enum Arrangements {
     return nil
   }
 
+  /// Claims one arrangement by its path, for a launch reopening a window that was open when
+  /// Muster last ended. False when a live window holds it already.
+  public static func take(
+    _ path: String, pid: Int32 = ProcessInfo.processInfo.processIdentifier
+  ) -> Bool {
+    let record = URL(fileURLWithPath: path)
+    releaseDeadClaims(in: record.deletingLastPathComponent())
+    return claim(record, by: pid)
+  }
+
   /// How many slots a launch tries before opening a window that remembers nothing. Only a launch
   /// racing this many others at once ever reaches the last.
   private static let claimAttempts = 8

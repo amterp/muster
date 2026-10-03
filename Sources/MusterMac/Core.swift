@@ -53,6 +53,22 @@ public enum Core {
     stayResponsive()
   }
 
+  /// The arrangements of this install's windows that were open when Muster last ended, focused
+  /// longest ago first, for a launch to open again.
+  ///
+  /// Asked before `start`, because the answer decides what `Startup` is told: the first of them
+  /// is the first window. The core reads the record of which window holds each tab, which is its
+  /// own, and needs no session to do it.
+  public static func reopening(tabHoldersPath: String?) -> [String] {
+    guard let tabHoldersPath else { return [] }
+    var read = Muster_ReadReopening()
+    read.tabHoldersPath = tabHoldersPath
+    var request = Muster_Request()
+    request.readReopening = read
+    guard case .reopening(let reopening) = send(request) else { return [] }
+    return reopening.arrangements
+  }
+
   /// Keeps macOS from napping this process for as long as it runs.
   ///
   /// A window nobody can see, which includes every window while the screen is locked, is

@@ -94,6 +94,18 @@ private func valueOf(_ flag: String, in arguments: [String]) -> String? {
   return value.isEmpty ? nil : value
 }
 
+/// Whether this launch reopens every window that was open when Muster last ended, rather than
+/// opening one (mip/0006-one-process.md, section 4).
+///
+/// A plain launch does: from the Dock, from Spotlight, or by opening the bundle. One that was told
+/// what to be does not - a window somebody asked for, a closed window by name, a pane to start
+/// on, a renderer check - and neither does one pointed at an arrangement outright by
+/// `MUSTER_STATE`, which is a test or a script asking for exactly one window.
+public func launchReopensEveryWindow(arguments: [String], environment: [String: String]) -> Bool {
+  launchRequest(arguments: arguments) == .open && !launchIsFresh(arguments: arguments)
+    && launchWindow(arguments: arguments) == nil && environment["MUSTER_STATE"] == nil
+}
+
 /// What `launchIsFresh` looks for, here so that the reader and the stripper cannot disagree.
 public let freshFlag = "--fresh"
 public let windowFlag = "--window"

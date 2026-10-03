@@ -247,3 +247,16 @@ private func publish(_ path: String?) {
   let claim = record.deletingPathExtension().appendingPathExtension("held")
   #expect((try? String(contentsOf: claim, encoding: .utf8)) == "4501")
 }
+
+@Test func aWindowToReopenIsTakenByItsPathUnlessALiveWindowHoldsIt() {
+  // What a launch does with each window the core says was open when Muster last ended: it takes
+  // that window's own record, and leaves one a live window still holds to that window.
+  let home = scratch("take")
+  let live = ProcessInfo.processInfo.processIdentifier
+  let held = Arrangements.open(fresh: true, environment: ["MUSTER_HOME": home], pid: live)!
+  let ended = "\(home)/state/windows/window-7.toml"
+  publish(ended)
+
+  #expect(Arrangements.take(ended, pid: live))
+  #expect(!Arrangements.take(held, pid: 4007), "took a record a live window holds")
+}
