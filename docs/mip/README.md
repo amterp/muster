@@ -24,4 +24,5 @@ corrections get a superseding MIP, and the History section records the transitio
 | [MIP-2](0002-muster-tabs.md) | Muster's own units - the window, the tab and the pane | Architecture | Accepted |
 | [MIP-3](0003-own-daemon.md) | A daemon of Muster's own, and herdr removed | Architecture | Draft |
 | [MIP-4](0004-agent-messaging.md) | Agents messaging each other, and groups convened around a policy | Architecture | Draft |
+| [MIP-5](0005-harnesses.md) | Harnesses - what Muster uses from an agent program, and an adapter for each | Architecture | Draft |
 | [MIP-6](0006-one-process.md) | Every window is a window of one Muster process | Architecture | Draft |
