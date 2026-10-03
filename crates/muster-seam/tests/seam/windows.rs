@@ -358,6 +358,46 @@ fn a_request_from_a_pane_is_about_that_panes_window() {
     }
 }
 
+/// A pane's environment names the window it was made in, and its tab may since have moved. A
+/// request from it that names nothing - a split of "this pane" - is about the window holding its
+/// tab now, which nothing has to carry it to.
+#[test]
+fn a_request_from_a_pane_whose_tab_moved_is_about_the_window_it_moved_to() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, _) = two_windows(&daemon);
+    let pane = keyboard_in("window-1").expect("the first window opened onto a pane");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab {
+            tab_id: first.clone(),
+            window: "window-2".to_string(),
+        }),
+    )));
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::FocusTab(FocusTab { tab_id: first, ..FocusTab::default() }),
+    )));
+    focus_window("window-1");
+
+    let mut split = Request::new(request::Payload::SplitPane(SplitPane {
+        side: "right".to_string(),
+        ..SplitPane::default()
+    }));
+    split.from_pane = pane;
+    let made = match answer(&split).payload {
+        Some(response::Payload::Made(made)) => made.pane_id,
+        other => panic!("splitting from the moved pane answered {other:?}"),
+    };
+    assert!(
+        panes_in("window-2").contains(&made),
+        "the split was not made in the window the pane's tab moved to: {:?}",
+        panes_in("window-2")
+    );
+    assert!(!panes_in("window-1").contains(&made), "the split was made in the window in front");
+}
+
 /// A window name nobody here has is refused even when the request names a pane that decides which
 /// window answers: the caller meant some window, and was wrong about which.
 #[test]

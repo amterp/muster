@@ -20,7 +20,6 @@ mod bridge_link;
 pub mod command;
 mod convert;
 pub mod ffi;
-mod forward;
 mod handler;
 mod holding;
 mod peering;

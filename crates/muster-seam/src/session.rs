@@ -3885,39 +3885,16 @@ pub(crate) fn tab_of_pane(pane: &PaneId) -> Option<TabId> {
     locate(pane).map(|(_, tab)| tab)
 }
 
-/// The other window holding a tab, if it is open.
-///
-/// Dialed after the session is let go: the other window may be carrying a request to this one at
-/// the same moment, and answering it needs this lock.
-pub(crate) fn open_window_holding(window: WindowId, tab: &TabId) -> Option<HeldWindow> {
-    let (open_here, holder) = {
-        let session = poison::lock(&SESSION, "session");
-        let holder = session.holding.elsewhere(&session.windows[window].name, tab).cloned()?;
-        // Not carried to a window here: its socket is this process's own.
-        if session.windows.named(holder.name.as_str()).is_some() {
-            return None;
-        }
-        (session.holding.open_here(), holder)
-    };
-    crate::holding::is_open(&open_here, &holder).then_some(holder)
-}
-
 /// This window's name, as the record of which window holds each tab spells it.
 pub(crate) fn window_name(window: WindowId) -> String {
     poison::lock(&SESSION, "session").windows[window].name.to_string()
-}
-
-/// Brings a window to the front, because somebody went to one of its tabs from another window:
-/// this one for `pid` 0, or the window with that process, which this one hands activation to.
-pub(crate) fn raise_window(pid: u32) {
-    ffi::emit(&Event::new(event::Payload::RaiseWindow(RaiseWindow { pid })));
 }
 
 /// Brings one of this process's windows to the front, because somebody went to one of its tabs
 /// from somewhere else.
 pub(crate) fn raise(window: WindowId) {
     let name = window_name(window);
-    ffi::emit(&Event::new(event::Payload::RaiseWindow(RaiseWindow { pid: 0 })).for_window(name));
+    ffi::emit(&Event::new(event::Payload::RaiseWindow(RaiseWindow {})).for_window(name));
 }
 
 /// The daemon this window's keyboard is on.

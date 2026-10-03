@@ -69,7 +69,6 @@ message Request {
     EqualizePanes equalize_panes = 47;
     WatchPanes watch_panes = 48;
     ReadTabHolders read_tab_holders = 49;
-    Carried carried = 50;
     MoveTab move_tab = 51;
     Wheel wheel = 52;
     Mouse mouse = 53;
@@ -107,22 +106,10 @@ message Request {
   // Each pane's own libghostty surface holds its history now, so the renderer does all four
   // without asking the core.
   reserved 8, 32, 33, 34, 44;
-}
 
-// A request another window carried here, because it is about a tab this window holds.
-//
-// A tab belongs to exactly one window and only that window may show it (kan a_2Mhi0EZlv), so a
-// request about another window's tab is answered by that window: `muster tab focus` works from
-// any window. The window a caller reached wraps the request in this and sends it on, and relays
-// the answer back.
-//
-// A carried request is answered here and never carried on, whatever this window believes about
-// who holds the tab. Two windows whose records briefly disagree would otherwise hand it back and
-// forth.
-message Carried {
-  // The window that carried it, by its arrangement's name - for the log.
-  string by = 1;
-  Request request = 2;
+  // A request one window process carried to another, about a tab that one held. Every window of
+  // an install is a window of one process now, which answers it from that window's state.
+  reserved 50;
 }
 
 // This process is going away.
@@ -300,8 +287,8 @@ message RenamePane {
 // close per pane: a daemon closing its own tab is one act, where N closes is N chances to be
 // interrupted half way and left with a tab holding one pane and no reason.
 //
-// A tab another open window holds is closed by that window: the request is carried there
-// (Carried). A tab a closed window holds is closed from here, since the daemon does the closing
+// A tab another open window holds is closed by that window, which the core finds from the tab.
+// A tab a closed window holds is closed from here, since the daemon does the closing
 // and the closed window only remembers the tab. Refused for a tab in a session nobody here is
 // attached to. It used to be refused for any tab no region was showing, and that stopped being a
 // usable rule when a window came to show one tab at a time: every tab but one would be
@@ -326,8 +313,6 @@ message CloseTab {
 // changes. The window that had the tab stops listing it and lets its terminals go, and the
 // window that has it now attaches when it shows it.
 //
-// Never carried to another window (Carried): which window holds a tab is a record every window
-// shares, and any window can write it.
 message MoveTab {
   // The tab to move, as `muster window` prints it. Empty means the tab this window is showing,
   // which is what a menu item means.
@@ -2050,12 +2035,11 @@ message ReopenWindow {
 // go to that tab, and a tab brought on screen behind whatever they are looking at is not
 // somewhere they went.
 //
-// Sent on both sides of the carry, because macOS 14 activates an app only when the active one
-// hands over: the window carrying the request hands activation to the holder's process, and the
-// holder brings itself forward.
+// The window is the one the event names. The app activates itself to bring it forward, which
+// macOS 14 allows a running app to ask for even when another app is active.
 message RaiseWindow {
-  // The process to hand activation to, or 0 for this window itself.
-  uint32 pid = 1;
+  // The process to hand activation to, while windows were processes of their own.
+  reserved 1;
 }
 
 // One pane started asking for a person, or stopped.

@@ -1,18 +1,16 @@
-//! A request about another window's tab is carried to that window (kan a_2Mhi0EZlv).
+//! Another window's tabs, as the record of which window holds each tab says (kan a_2Mhi0EZlv).
 //!
-//! Alex's rule: any `muster` verb works from any window. A tab belongs to exactly one window, so
-//! the window a caller reached hands a request about another window's tab to that window, over
-//! its command socket, and relays the answer. These drive this window's own command socket the
-//! way the CLI does, with a stand-in for the other window that records what it was carried.
+//! Alex's rule: any `muster` verb works from any window, and a tab belongs to exactly one window.
+//! These drive this window's own command socket the way the CLI does, with closed windows and a
+//! stand-in for an open window in another process written into the record.
 
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use muster::proto::{
-    AttentionChanged, Carried, CloseTab, CreateTab, Event, FocusPane, FocusTab, MoveTab,
-    OpenWindow, ReadTabHolders, ReadWindow, RenameTab, ReopenWindow, Request, Response, Startup,
-    event, request, response,
+    AttentionChanged, CloseTab, CreateTab, Event, FocusTab, MoveTab, OpenWindow, ReadTabHolders,
+    ReadWindow, ReopenWindow, Request, Response, Startup, event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, Holders, WindowName};
@@ -22,139 +20,6 @@ use muster_harness::requests::{create, in_new_tab, make, snapshot};
 use muster_harness::{Daemon, until};
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use prost::Message;
-
-/// Going to, renaming and closing a tab another window holds all reach that window.
-#[test]
-fn a_request_about_another_windows_tab_is_carried_there() {
-    let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start_built();
-    let other = Stand::in_for(&daemon, "window-9");
-    let ours = open_a_window(&daemon, "window-1");
-    let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
-
-    for request in [
-        request::Payload::FocusTab(FocusTab { tab_id: theirs.clone(), ..FocusTab::default() }),
-        request::Payload::RenameTab(RenameTab {
-            tab_id: theirs.clone(),
-            name: "renamed".to_string(),
-            ..RenameTab::default()
-        }),
-        request::Payload::CloseTab(CloseTab { tab_id: theirs.clone(), ..CloseTab::default() }),
-    ] {
-        let answer = ask(&ours, request.clone());
-        assert!(
-            matches!(answer.payload, Some(response::Payload::Ok(_))),
-            "the other window's answer was not relayed: {answer:?}"
-        );
-        let carried = other.last().expect("the other window was carried nothing");
-        assert_eq!(carried.by, "window-1", "the carried request does not say who carried it");
-        assert_eq!(
-            carried.request.and_then(|request| request.payload),
-            Some(request),
-            "the other window was carried something other than what was asked"
-        );
-    }
-    // Carried and not also done here: the stand-in closes nothing, so a tab gone from the daemon
-    // would be this window acting on another window's tab after all.
-    assert_eq!(daemon_tabs(&daemon).len(), 2, "the close was carried out here as well as carried");
-}
-
-/// A request carried to this window is answered here, and never carried on.
-///
-/// Two windows whose records briefly disagree would otherwise hand a request back and forth. And
-/// going to a tab this way brings the window forward, because whoever asked was looking at
-/// something else.
-#[test]
-fn a_request_carried_here_is_answered_here() {
-    let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start_built();
-    let other = Stand::in_for(&daemon, "window-9");
-    let ours = open_a_window(&daemon, "window-1");
-    let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
-    RAISED.lock().expect("a panicking test poisoned the log").clear();
-
-    // Carried here although the record says the other window has it: this window answers, and
-    // refuses rather than showing another window's tab.
-    let answer = ask(
-        &ours,
-        request::Payload::Carried(Box::new(Carried {
-            by: "window-9".to_string(),
-            request: Some(Box::new(Request::new(request::Payload::FocusTab(FocusTab {
-                tab_id: theirs,
-                ..FocusTab::default()
-            })))),
-        })),
-    );
-    assert!(other.last().is_none(), "a carried request was carried on");
-    assert!(
-        matches!(answer.payload, Some(response::Payload::Failure(_))),
-        "this window went to a tab it does not hold: {answer:?}"
-    );
-
-    // And one of its own tabs, carried here, is gone to and brings the window forward.
-    let own = listed().first().cloned().expect("the window holds a tab");
-    let answer = ask(
-        &ours,
-        request::Payload::Carried(Box::new(Carried {
-            by: "window-9".to_string(),
-            request: Some(Box::new(Request::new(request::Payload::FocusTab(FocusTab {
-                tab_id: own,
-                ..FocusTab::default()
-            })))),
-        })),
-    );
-    assert!(matches!(answer.payload, Some(response::Payload::Ok(_))), "{answer:?}");
-    assert!(
-        RAISED.lock().expect("a panicking test poisoned the log").contains(&0),
-        "going to a tab from another window left this window behind whatever was in front"
-    );
-}
-
-/// Going to a pane in another open window's tab from this window's own shell reaches that window.
-///
-/// A notification is the one way the shell asks about a tab it does not list: macOS hands the click
-/// to whichever instance it chooses, and the pane may be in any window. The shell calls in on its
-/// main thread, which never waits on another window, so the request is carried from a thread of
-/// its own and the call answers at once.
-#[test]
-fn a_notification_click_for_another_windows_pane_reaches_that_window() {
-    let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start_built();
-    let other = Stand::in_for(&daemon, "window-9");
-    let ours = open_a_window(&daemon, "window-1");
-    let theirs = a_second_tab_given_to(&daemon, &ours, "window-9");
-    let pane = pane_of(&theirs);
-    RAISED.lock().expect("a panicking test poisoned the log").clear();
-
-    let focused = answer(request::Payload::FocusPane(FocusPane {
-        pane_id: pane.clone(),
-        ..FocusPane::default()
-    }));
-
-    assert!(
-        matches!(focused.payload, Some(response::Payload::Ok(_))),
-        "going to {pane} in another window's tab was refused: {focused:?}"
-    );
-    until(
-        "the other window to be carried the focus",
-        || other.carried.lock().expect("a panicking test poisoned the log").len() == 1,
-        || "the other window was carried nothing".to_string(),
-    );
-    let carried = other.last().expect("just waited for it");
-    assert_eq!(
-        carried.request.and_then(|request| request.payload),
-        Some(request::Payload::FocusPane(FocusPane { pane_id: pane, ..FocusPane::default() })),
-        "the other window was carried something other than the focus"
-    );
-    assert!(!listed().contains(&theirs), "the other window's tab was brought here instead");
-    // The stand-in's pid, which is what this window hands activation to: on macOS 14 an app comes
-    // forward only when the active one lets it.
-    assert_eq!(
-        RAISED.lock().expect("a panicking test poisoned the log").clone(),
-        vec![1],
-        "this window did not hand activation to the window it carried the focus to"
-    );
-}
 
 /// A tab moved to a window by name joins that window's list, whichever window was asked.
 ///
@@ -538,10 +403,9 @@ fn showing() -> Option<String> {
     }
 }
 
-/// The other window, as far as this one can tell: a socket that answers, named in the record.
-struct Stand {
-    carried: Arc<Mutex<Vec<Carried>>>,
-}
+/// The other window, as far as this one can tell: a socket that answers, named in the record, as
+/// a window process from before one app per install was.
+struct Stand;
 
 impl Stand {
     fn in_for(daemon: &Daemon, name: &str) -> Stand {
@@ -563,26 +427,17 @@ impl Stand {
         });
         write_record(&path, &holders);
 
-        let carried = Arc::new(Mutex::new(Vec::new()));
-        let noted = Arc::clone(&carried);
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { return };
                 // A window asking whether this one is open connects and says nothing.
-                let Ok(bytes) = read_frame(&mut stream, LARGEST_MESSAGE) else { continue };
-                if let Ok(Request { payload: Some(request::Payload::Carried(carried)), .. }) =
-                    Request::decode(bytes.as_slice())
-                {
-                    noted.lock().expect("a panicking test poisoned the log").push(*carried);
+                if read_frame(&mut stream, LARGEST_MESSAGE).is_err() {
+                    continue;
                 }
                 let _ = write_frame(&mut stream, &Response::ok().encode_to_vec());
             }
         });
-        Stand { carried }
-    }
-
-    fn last(&self) -> Option<Carried> {
-        self.carried.lock().expect("a panicking test poisoned the log").pop()
+        Stand
     }
 }
 
@@ -676,8 +531,6 @@ fn listed() -> Vec<String> {
     }
 }
 
-/// The `pid` of every `RaiseWindow` emitted, 0 for this window itself.
-static RAISED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 static REOPENED: Mutex<Vec<ReopenWindow>> = Mutex::new(Vec::new());
 static ASKED: Mutex<Vec<AttentionChanged>> = Mutex::new(Vec::new());
 
@@ -687,9 +540,6 @@ extern "C" fn note(bytes: *const u8, len: usize) {
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
     match event.payload {
-        Some(event::Payload::RaiseWindow(raise)) => {
-            RAISED.lock().expect("a panicking test poisoned the log").push(raise.pid);
-        }
         Some(event::Payload::ReopenWindow(reopen)) => {
             REOPENED.lock().expect("a panicking test poisoned the log").push(reopen);
         }

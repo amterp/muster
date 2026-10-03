@@ -19,9 +19,7 @@ use crate::{Trouble, environment};
 /// How long to wait for a window to answer.
 ///
 /// A deadline against a wedged window rather than a budget anything spends: a window answers in
-/// milliseconds. Longer than the deadline a window gives another window it carries a request to
-/// (`muster-seam`'s `forward::PATIENCE`), so a hang there is answered by the window that asked,
-/// naming the one that did not.
+/// milliseconds.
 const PATIENCE: Duration = Duration::from_mins(1);
 
 /// Sends one request to a window and hands back what it said.

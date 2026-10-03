@@ -41,7 +41,7 @@ use muster_proto::{Request, Response, WatchPanes, request, response};
 use prost::Message;
 
 use crate::watch::Next;
-use crate::{dispatch, forward, handler, session};
+use crate::{dispatch, handler, session};
 
 /// The endpoint this process is listening on, held so that it stays open.
 ///
@@ -254,20 +254,9 @@ fn answer(mut stream: UnixStream) {
     }
     let asked = decoded.as_ref().map_or_else(String::new, kind);
 
-    // A request about another window's tab is that window's to answer (`forward`).
-    // A window name nobody here has is left for `dispatch`, which refuses it in so many words.
-    let carried = decoded.and_then(|decoded| {
-        let resolved = session::resolve(&decoded).ok()?;
-        Some((resolved.from, forward::elsewhere(resolved.to, &decoded)?, decoded))
-    });
-    let forwarded = carried.is_some();
-
     // The same bytes-in, bytes-out call the C ABI makes, including its panic guard: a request
     // arriving here is no more trustworthy than one arriving from the shell.
-    let response = match carried {
-        Some((window, holder, decoded)) => forward::carry(window, &holder, decoded),
-        None => dispatch(&request),
-    };
+    let response = dispatch(&request);
     after_the_window_holds_it(&response);
     let answered = received.elapsed();
     let sent = write_frame(&mut stream, &response);
@@ -277,7 +266,6 @@ fn answer(mut stream: UnixStream) {
         "command.answered",
         fields! {
             "request" => asked,
-            "forwarded" => forwarded,
             "ms" => format!("{:.1}", answered.as_secs_f64() * 1000.0),
             "sent_ms" => format!("{:.1}", received.elapsed().as_secs_f64() * 1000.0),
         },
@@ -319,10 +307,9 @@ fn kind(request: &Request) -> String {
 /// A caller here names the pane in its next command - `muster pane read --pane "$(muster pane
 /// new)"` - and every lookup in the window refuses a name it has not heard of yet (kan
 /// a_2P5nkSS8g). A pane this window asked for is already held when the answer comes back, since
-/// a daemon's events are applied before its answer. One made through another window
-/// (`forward`) is not: that window's answer can arrive before this window's own connection to
-/// the daemon carries the event. Waiting once here answers that for every verb, including ones
-/// written after this.
+/// a daemon's events are applied before its answer, but not always before this connection's
+/// answer is written: the daemon may answer the request before its event about the pane has been
+/// read. Waiting once here answers that for every verb, including ones written after this.
 ///
 /// Not in the handler, because the shell reaches that on its main thread. The shell learns of the
 /// pane from the event and never names one before then, so a wait there would stop the window

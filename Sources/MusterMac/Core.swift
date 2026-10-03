@@ -1291,7 +1291,6 @@ public enum Core {
     case .adjustFontSize: return "adjust_font_size"
     case .reloadConfig: return "reload_config"
     case .readTabHolders: return "read_tab_holders"
-    case .carried: return "carried"
     case .moveTab: return "move_tab"
     case .bridgeExited: return "bridge_exited"
     case .bridgeStarted: return "bridge_started"
@@ -1524,25 +1523,6 @@ public enum Core {
       info("window.reopen", ["window": reopen.name, "show": reopen.show])
       openWindowAsked?(
         WindowAsked(name: reopen.name, show: reopen.show, fresh: reopen.fresh, any: reopen.any))
-    case .raiseWindow(let raise) where raise.pid != 0:
-      // This window is carrying somebody to another window's tab. Since macOS 14 an app comes
-      // forward only when the active one hands over, and if anything is active here it is this
-      // window, where the click or the command came from.
-      // A pid is read from a record a person can edit, and one past what a pid can be is ignored
-      // rather than trapped on.
-      guard let pid = pid_t(exactly: raise.pid) else {
-        warn(
-          "window.raise.unhandable",
-          [
-            "pid": String(raise.pid),
-            "impact": "the window holding the tab was not handed activation, so it may stay "
-              + "behind whatever is in front",
-            "check": "the pid for that window in ~/.muster/state/holding/tabs.toml",
-          ])
-        break
-      }
-      info("window.raise.handed", ["pid": String(pid)])
-      NSRunningApplication(processIdentifier: pid)?.activate(from: .current, options: [])
     case .raiseWindow:
       // Somebody went to one of this window's tabs from another window, or from a terminal. The
       // tab is already on screen; this is the window coming forward to show it.
@@ -1550,7 +1530,7 @@ public enum Core {
       // The deprecated call on purpose. macOS 14's `activate()` succeeds only when the active app
       // yields, and a terminal running `muster tab focus` never does - so the tab changed inside
       // this window while it stayed behind. This one still forces it forward.
-      info("window.raised", [:])
+      info("window.raised", ["window": event.window])
       NSApp.activate(ignoringOtherApps: true)
       window(for: event)?.raise()
     case nil:

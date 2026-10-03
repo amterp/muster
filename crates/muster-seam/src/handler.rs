@@ -31,7 +31,7 @@ use muster_core::{AgentState, PaneKey};
 
 use crate::proto::{self, Request, Response, event, request, response};
 use crate::session::{self, AttachError, AttachedPane, Keyboard, Resolved, WindowId};
-use crate::{command, convert, forward, watch};
+use crate::{command, convert, watch};
 use prost::Message;
 
 /// Answers one encoded request.
@@ -114,14 +114,10 @@ fn handle(request: Request) -> Response {
         }
     }
 
-    if let Some(handed_on) = forward::hand_on(resolved.to, &payload) {
-        return handed_on;
-    }
     let goes_to_a_tab = goes_to_a_tab(&payload);
     let response = route(resolved.to, payload);
-    // Somebody looking at one window went to a tab in another, so that window comes forward, as it
-    // does when a window in another process is carried a focus. A request from a pane in the
-    // window it is about raises nothing: a script moving its own window's keyboard must not take
+    // Somebody looking at one window went to a tab in another, so that window comes forward. A
+    // request from a pane in the window it is about raises nothing: a script moving its own window's keyboard must not take
     // the screen from whatever is in front.
     if resolved.to != resolved.from && goes_to_a_tab && is_ok(&response) {
         session::raise(resolved.to);
@@ -237,7 +233,6 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         }
         request::Payload::AdjustFontSize(adjust) => adjust_font_size(window, &adjust.change),
         request::Payload::ReloadConfig(_) => reload_config(),
-        request::Payload::Carried(carried) => answer_carried(window, *carried),
         request::Payload::MoveTab(moved) => relayed(
             session::move_tab(
                 window,
@@ -315,35 +310,6 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             Response::ok()
         }
     }
-}
-
-/// Answers a request another window carried here, because it is about one of this window's tabs.
-///
-/// Answered as though it had arrived directly, and never carried on - see `forward`. Going to a
-/// tab this way brings the window forward, because whoever asked was looking at something else.
-fn answer_carried(window: WindowId, carried: proto::Carried) -> Response {
-    let Some(request) = carried.request else {
-        return empty_carried(&carried.by);
-    };
-    // The window it was carried to is whichever is in front here, since a carried request names
-    // none (`forward::carry`); the window holding its tab is the one to answer it.
-    let window = session::resolve(&request).map_or(window, |resolved| resolved.to);
-    let Some(payload) = request.payload else {
-        return empty_carried(&carried.by);
-    };
-    let goes_to_a_tab = goes_to_a_tab(&payload);
-    let response = route(window, payload);
-    if goes_to_a_tab && is_ok(&response) {
-        session::raise(window);
-    }
-    response
-}
-
-fn empty_carried(by: &str) -> Response {
-    Response::failure(format!(
-        "window {by} carried an empty request here, so nothing was done - a bug in whatever built \
-         it."
-    ))
 }
 
 /// Whether a request leaves an armed numbered chord alone.
