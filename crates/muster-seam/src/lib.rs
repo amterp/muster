@@ -24,7 +24,6 @@ mod handler;
 mod holding;
 mod peering;
 mod session;
-mod shared_file;
 pub mod testing;
 mod watch;
 mod watchdog;

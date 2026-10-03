@@ -3605,21 +3605,21 @@ pub(crate) fn going_to(name: &str) -> request::Payload {
 ///
 /// A closed window keeps its tabs and their agents keep running, so a notification about one of
 /// them, or `muster tab focus` naming one, is somebody going to that window. Says whether it
-/// asked. An open window's tab never reaches here from a caller - that window answers it, by
-/// [`resolve`] or by carrying (`forward`) - and one that does is refused further on, since showing
-/// it here would take its terminals.
+/// asked. An open window's tab never reaches here from a caller - [`resolve`] sends it to that
+/// window - and one that does is refused further on, since showing it here would take its
+/// terminals.
 fn reopened_for(window: WindowId, tab: &TabId, show: &str) -> bool {
-    let (open_here, holder) = {
+    let holder = {
         let session = poison::lock(&SESSION, "session");
         let Some(holder) = session.holding.elsewhere(&session.windows[window].name, tab).cloned()
         else {
             return false;
         };
-        (session.holding.open_here(), holder)
+        if session.holding.open_here().contains(&holder.name) {
+            return false;
+        }
+        holder
     };
-    if crate::holding::is_open(&open_here, &holder) {
-        return false;
-    }
     if !poison::lock(&SESSION, "session").holding.ask_to_reopen(&holder.name) {
         log::info(
             "window.reopen.already_asked",
@@ -3699,21 +3699,11 @@ pub(crate) fn press_numbered_chord(window: WindowId, press: usize) -> Result<(),
     focus(window, &daemon, &pane).map_err(|refusal| refusal.to_string())
 }
 
-/// What `focus_asking` goes to: the most urgent of what asks for somebody that this window would
-/// post a banner for - a pane, or a group where a message waits for the human.
-///
-/// Only those, so that it goes where a banner click would. Another open window speaks for its own
-/// tabs and takes back what they ask once somebody looks there, which this window never sees, so
-/// one of its panes could stay at the head of this window's list for good.
+/// What `focus_asking` goes to: the most urgent of what asks for somebody - a pane, or a group
+/// where a message waits for the human - in whichever window it is.
 pub(crate) fn most_urgent_asking() -> Option<Asker> {
-    let asking: Vec<Asker> = {
-        let session = poison::lock(&SESSION, "session");
-        session.attention.asking().into_iter().map(|(asker, _)| asker).collect()
-    };
-    asking.into_iter().find(|asker| match asker {
-        Asker::Pane(pane) => speaks_for(pane),
-        Asker::Group(group) => speaks_for_daemon(&group.daemon),
-    })
+    let session = poison::lock(&SESSION, "session");
+    session.attention.asking().into_iter().map(|(asker, _)| asker).next()
 }
 
 /// The pane on `daemon` that is the transcript of `group`, if there is one (MIP-4, section 10).
@@ -4016,7 +4006,7 @@ pub(crate) struct WindowNow {
 #[derive(Debug)]
 pub(crate) struct OtherWindow {
     pub name: String,
-    /// Zero once it has closed, or when its socket stopped answering.
+    /// Zero once it has closed.
     pub pid: u32,
     /// Its tabs, described from this window's copy of each daemon.
     pub roster: Roster,
@@ -4188,12 +4178,11 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
     };
     drop(session);
     let grids = grids(channels);
-    // Dialed with the session let go, for the reason `open_window_holding` gives.
     let others = others
         .into_iter()
         .map(|(window, roster)| OtherWindow {
             name: window.name.to_string(),
-            pid: if crate::holding::is_open(&open_here, &window) { window.pid } else { 0 },
+            pid: if open_here.contains(&window.name) { window.pid } else { 0 },
             roster,
         })
         .collect();
@@ -6134,9 +6123,6 @@ fn catch_up_tab_names(daemon: &DaemonId) {
 /// is the core's decision (`roster`) and a banner naming an agent differently from the row it
 /// appears on is two names for one thing.
 fn announce_attention(pane: &PaneKey, attend: Attend) {
-    if matches!(attend, Attend::Raised(_)) && !speaks_for(pane) {
-        return;
-    }
     let (state, label, subtitle) = match attend {
         Attend::Raised(alert) => {
             let (label, subtitle) = describe_pane(pane).unwrap_or_default();
@@ -6249,9 +6235,6 @@ fn read_what_is_looked_at() {
 /// Tells the shell a group started or stopped asking for the human, on the terms
 /// [`announce_attention`] tells it of a pane.
 fn announce_message(group: &GroupKey, attend: Attend) {
-    if matches!(attend, Attend::Raised(_)) && !speaks_for_daemon(&group.daemon) {
-        return;
-    }
     let state = match attend {
         Attend::Raised(alert) => alert.as_str().to_string(),
         Attend::Withdrawn => String::new(),
@@ -6276,42 +6259,6 @@ fn announce_message(group: &GroupKey, attend: Attend) {
         from: notice.from,
         ..AttentionChanged::default()
     })));
-}
-
-/// Whether this process is the one to tell somebody what a daemon says, where no tab decides:
-/// it is when the window that came to the front most recently among those open is one of its.
-fn speaks_for_daemon(daemon: &DaemonId) -> bool {
-    let (open_here, holders) = {
-        let session = poison::lock(&SESSION, "session");
-        if !session.holding.is_shared() {
-            return true;
-        }
-        (session.holding.open_here(), session.holding.holders().clone())
-    };
-    let open = |window: &HeldWindow| crate::holding::is_open(&open_here, window);
-    holders.in_front(daemon, open).is_some_and(|front| open_here.contains(front))
-}
-
-fn speaks_for(pane: &PaneKey) -> bool {
-    let Some(tab) = tab_of_pane(&pane.pane) else { return true };
-    let (open_here, holders) = {
-        let session = poison::lock(&SESSION, "session");
-        let held_here = session
-            .windows
-            .values()
-            .any(|window| window.opened && session.holding.holds(&window.name, &tab));
-        if held_here || !session.holding.is_shared() {
-            return true;
-        }
-        (session.holding.open_here(), session.holding.holders().clone())
-    };
-    let open = |window: &HeldWindow| crate::holding::is_open(&open_here, window);
-    if let Some(holder) = holders.holder(&tab).and_then(|name| holders.window(name))
-        && open(holder)
-    {
-        return false;
-    }
-    holders.in_front(&pane.daemon, open).is_some_and(|front| open_here.contains(front))
 }
 
 /// What to call one pane, and what its agent says it is doing.
@@ -6655,45 +6602,6 @@ fn announce_presentation(window: &WindowName, presentation: Presentation) {
         }))
         .for_window(window.as_str()),
     );
-}
-
-/// Makes this window match the record of which window holds each tab, after something changed it.
-///
-/// A tab another window has taken leaves this window's list, and its surfaces go with it - so its
-/// terminals are free for the window that has it now, and the panes in it keep running. A tab
-/// given to this window joins the end of the list at the reconcile below, and is not brought on
-/// screen: a window that switched tabs because of something done elsewhere is one that types
-/// into the wrong pane.
-pub(crate) fn follow_the_record() {
-    {
-        let mut guard = poison::lock(&SESSION, "session");
-        let session = &mut *guard;
-        if !session.holding.reread() {
-            return;
-        }
-        for window in session.windows.values_mut() {
-            let lost: Vec<TabId> = window
-                .composition
-                .held()
-                .filter(|tab| !session.holding.holds(&window.name, tab))
-                .cloned()
-                .collect();
-            for tab in &lost {
-                window.composition.let_go(tab);
-            }
-            if !lost.is_empty() {
-                log::info(
-                    "holding.lost",
-                    fields! {
-                        "window" => window.name.to_string(),
-                        "tabs" => lost.iter().map(TabId::as_str).collect::<Vec<&str>>().join(","),
-                    },
-                );
-            }
-        }
-    }
-    reconcile_every_daemon();
-    publish("holders");
 }
 
 /// The window gained or lost the OS's focus.

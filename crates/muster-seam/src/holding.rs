@@ -1,17 +1,17 @@
 //! This process's side of the record of which window holds each tab.
 //!
 //! The rules are the core's (`muster_core::composition::holding`); what is here is the part
-//! that needs a process: which windows are this process's, the file every window shares, the
-//! clock, and whether a window in another process is open - which is asked by dialing its socket
-//! rather than trusting a pid, because a pid outlives nothing and is handed to the next process
-//! that asks.
+//! that needs a process: which windows are this process's, the file the record is kept in, and
+//! the clock.
 //!
-//! A process may show several windows (MIP-6), so the record and what was last read of it are
-//! the process's, and each window is a row it writes for itself.
+//! Every window of an install is a window of this one process, and no second process of the
+//! install can run beside it (mip/0006-one-process.md, section 5). So the record is this
+//! process's alone: read once at startup, written whole whenever it changes, and kept for the
+//! next launch to read. Nothing else writes it while this process runs, so nothing is locked and
+//! nothing is read back.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use muster_core::composition::holding::{from_toml, to_toml};
@@ -20,10 +20,7 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::intent::Refusal;
 use muster_core::mirror::backend::TabId;
-use muster_core::shared::SharedRecord;
 use muster_daemon_proto::install;
-
-use crate::shared_file::{HOLDERS, SharedFile};
 
 /// This process's windows, and what it last read about which window holds each tab.
 #[derive(Debug)]
@@ -31,26 +28,19 @@ pub(crate) struct Holding {
     /// Where this process answers requests, or empty for one nothing outside can reach. Every
     /// window here answers on it.
     socket: String,
-    /// The file every window shares, or `None` for a process with nowhere to write one - which
+    /// The file the record is kept in, or `None` for a process with nowhere to write one - which
     /// is every test that names none. Its windows then share every tab among themselves, and a
     /// process with one window holds every tab, as a single window always did.
-    record: Option<SharedFile>,
-    /// The record as this process last read or wrote it.
+    record: Option<PathBuf>,
+    /// The record, as this process has it: read at startup and changed here since.
     holders: Holders,
-    /// Tabs nobody holds that this process has already decided are not its windows' to take.
-    ///
-    /// Remembered so that deciding costs a dial per window once rather than on every reconcile:
-    /// while a tab sits unclaimed because another window is in front or waiting on an answer,
-    /// every agent transition reconciles. Forgotten whenever the record moves, because that is
-    /// what changes the answer.
-    passed_over: BTreeSet<TabId>,
     /// The machines this process follows, as it last wrote them into its windows' rows. Every
     /// window here follows the same ones.
     daemons: BTreeSet<DaemonId>,
     /// Closed windows this process has asked the shell to reopen, and when.
     ///
-    /// Remembered so that two requests close together launch one app. The second arrives while
-    /// the first launch is still starting, when the window does not answer on its socket yet.
+    /// Remembered so that two requests close together - a double click on a notification - ask
+    /// once. The second arrives before the shell has opened the window and said so.
     reopening: BTreeMap<WindowName, Instant>,
     /// The windows this process shows, by name.
     here: BTreeMap<WindowName, Here>,
@@ -80,11 +70,11 @@ impl Default for Holding {
 
 impl Holding {
     pub(crate) fn new(record: &str, socket: &str) -> Holding {
+        let record = (!record.is_empty()).then(|| PathBuf::from(record));
         Holding {
             socket: socket.to_string(),
-            record: (!record.is_empty()).then(|| SharedFile::at(record, &HOLDERS)),
-            holders: Holders::new(),
-            passed_over: BTreeSet::new(),
+            holders: record.as_deref().map(read).unwrap_or_default(),
+            record,
             daemons: BTreeSet::new(),
             reopening: BTreeMap::new(),
             here: BTreeMap::new(),
@@ -116,8 +106,8 @@ impl Holding {
         unnamed(self.here.keys().filter(|name| name.as_str().starts_with("pid-")).count())
     }
 
-    /// This process's windows that are open, which are open without dialing anything: every one
-    /// that has not said it closed.
+    /// This process's windows that are open: every one that has not said it closed. Every open
+    /// window of the install is one of these.
     pub(crate) fn open_here(&self) -> BTreeSet<WindowName> {
         self.here.iter().filter(|(_, here)| !here.closed).map(|(name, _)| name.clone()).collect()
     }
@@ -125,11 +115,6 @@ impl Holding {
     /// This process's windows that have said they are open, which are the rows it writes.
     fn said_open(&self) -> BTreeSet<WindowName> {
         self.here.iter().filter(|(_, here)| here.open).map(|(name, _)| name.clone()).collect()
-    }
-
-    /// Whether there is a record other windows read, rather than this process being the only one.
-    pub(crate) fn is_shared(&self) -> bool {
-        self.record.is_some()
     }
 
     pub(crate) fn holders(&self) -> &Holders {
@@ -162,21 +147,18 @@ impl Holding {
             return;
         }
         let window = self.row(me, now());
-        let (mine, open_here) = (self.here.clone(), self.open_here());
+        let mine = self.here.clone();
         self.change(move |holders| {
             // Before registering this window, so the question is about the others. A window
             // whose arrangement is gone can never be reopened, and a tab it held would otherwise
             // be held by nobody who could ever show it.
             holders.forget(|window| {
                 !mine.contains_key(&window.name)
-                    && !is_open(&open_here, window)
                     && (window.arrangement.is_empty() || !Path::new(&window.arrangement).exists())
             });
             holders.opened(window);
             holders.prune(answered, described);
         });
-        // After the write rather than before, because the write is what gives this window its row:
-        // marked open first, it would read as an open window the record had lost, and be put back.
         if let Some(here) = self.here.get_mut(me) {
             here.open = true;
             here.closed = false;
@@ -241,8 +223,8 @@ impl Holding {
 
     /// Says this process is asking for a closed window back, and whether it had not already.
     ///
-    /// Ten seconds covers a window starting, after which it answers on its socket and a request
-    /// for one of its tabs is carried to it instead of reaching here.
+    /// Ten seconds is far longer than the shell takes to open a window, which then says it is open
+    /// and is asked nothing more.
     pub(crate) fn ask_to_reopen(&mut self, window: &WindowName) -> bool {
         const STARTING: Duration = Duration::from_secs(10);
         let now = Instant::now();
@@ -289,8 +271,8 @@ impl Holding {
     /// name, open or closed.
     ///
     /// A pid names only an open window, because a closed window has no process - and a pid whose
-    /// window has gone is a number the next process may already have. This process's own pid
-    /// means `me`, which a window in another process naming this one by pid means as well.
+    /// window has gone is a number the next process may already have. Every open window is this
+    /// process's, so only this process's own pid names any of them.
     pub(crate) fn destination(&self, me: &WindowName, said: &str) -> Result<WindowName, Refusal> {
         if said.is_empty() {
             return Ok(me.clone());
@@ -311,20 +293,11 @@ impl Holding {
                 }
                 return Ok(me.clone());
             }
-            let open_here = self.open_here();
-            return self
-                .holders
-                .windows()
-                .find(|window| window.pid == pid && is_open(&open_here, window))
-                .map(|window| window.name.clone())
-                .ok_or_else(|| {
-                    Refusal::NotThere(format!(
-                        "no open window has pid {pid}, so nothing was moved. `muster window list` \
-                         shows the windows that are open, and a closed one is named rather than \
-                         numbered: {}.",
-                        self.known()
-                    ))
-                });
+            return Err(Refusal::NotThere(format!(
+                "no open window has pid {pid}, so nothing was moved. `muster window list` shows \
+                 the windows that are open, and a closed one is named rather than numbered: {}.",
+                self.known()
+            )));
         }
         let name = WindowName::new(said);
         if self.here.contains_key(&name) || self.holders.window(&name).is_some() {
@@ -338,11 +311,15 @@ impl Holding {
 
     /// Every window the record knows, as a person would name each.
     fn known(&self) -> String {
+        let open_here = self.open_here();
         self.holders
             .windows()
-            .map(|window| match window.pid {
-                0 => format!("{} (closed)", window.name),
-                pid => format!("{} (pid {pid})", window.name),
+            .map(|window| {
+                if open_here.contains(&window.name) {
+                    window.name.to_string()
+                } else {
+                    format!("{} (closed)", window.name)
+                }
             })
             .collect::<Vec<String>>()
             .join(", ")
@@ -351,25 +328,19 @@ impl Holding {
     /// Takes the tabs nobody holds on this machine, if one of this process's windows is the one
     /// they join, for that window.
     ///
-    /// Answers with what was taken; the record says by which window. Checked again under the
-    /// hold, because another window may have taken one between this process reading the record
-    /// and deciding.
+    /// Answers with what was taken; the record says by which window.
     pub(crate) fn take_unheld(&mut self, daemon: &DaemonId, described: &[TabId]) -> Vec<TabId> {
-        let unheld: Vec<TabId> = described
-            .iter()
-            .filter(|tab| self.holders.holder(tab).is_none() && !self.passed_over.contains(*tab))
-            .cloned()
-            .collect();
+        let unheld: Vec<TabId> =
+            described.iter().filter(|tab| self.holders.holder(tab).is_none()).cloned().collect();
         if unheld.is_empty() {
             return Vec::new();
         }
         let open_here = self.open_here();
-        let joins = match self.holders.taker(daemon, |window| is_open(&open_here, window)) {
+        let joins = match self.holders.taker(daemon, |window| open_here.contains(&window.name)) {
             Taker::Window(taker) if self.here.contains_key(&taker) => taker,
-            // With nowhere to share the record there is no other process to hand a tab to, so
-            // one of this process's windows holds it whether or not any has said it is open: the
-            // one in front, or failing that the first by name. A single window holds every tab, as
-            // it always did.
+            // With nowhere to keep the record, one of this process's windows holds it whether or
+            // not any has said it is open: the one in front, or failing that the first by name. A
+            // single window holds every tab, as it always did.
             _ if self.record.is_none() => match self.here.keys().next() {
                 Some(first) => first.clone(),
                 None => return Vec::new(),
@@ -386,7 +357,6 @@ impl Holding {
                         },
                     },
                 );
-                self.passed_over.extend(unheld);
                 return Vec::new();
             }
         };
@@ -411,72 +381,11 @@ impl Holding {
         taken
     }
 
-    /// Reads the record again, and says whether who holds which tab moved.
-    pub(crate) fn reread(&mut self) -> bool {
-        let Some(record) = &self.record else { return false };
-        let mut read = None;
-        record.exclusively(&mut |text| {
-            read = Some(text.to_string());
-            None
-        });
-        let Some(text) = read else { return false };
-        let holders = match from_toml(&text) {
-            Ok(holders) => holders,
-            Err(detail) => {
-                unreadable(&detail);
-                return false;
-            }
-        };
-        let before = self.holders.clone();
-        if self.said_open().iter().any(|me| holders.window(me).is_none()) {
-            // A write rather than an edit of what was just read, so it happens under the hold and
-            // `change` puts this process's windows back from the copy in memory.
-            self.change(|_| {});
-        } else {
-            self.holders = holders;
-        }
-        self.passed_over.clear();
-        moved(&before, &self.holders)
-    }
-
-    /// Reads the record, changes it, and writes it back, all inside one hold.
+    /// Changes the record, and writes it.
     fn change(&mut self, work: impl FnOnce(&mut Holders)) {
-        self.passed_over.clear();
-        let Some(record) = &self.record else {
-            work(&mut self.holders);
-            return;
-        };
-        let mut pending = Some(work);
-        let mut changed = None;
-        let fallback = self.holders.clone();
-        let rows: Vec<HeldWindow> = self
-            .said_open()
-            .iter()
-            .map(|me| {
-                self.row(me, self.holders.window(me).map_or_else(now, |window| window.focused))
-            })
-            .collect();
-        record.exclusively(&mut |text| {
-            let mut holders = match from_toml(text) {
-                Ok(holders) => holders,
-                Err(detail) => {
-                    unreadable(&detail);
-                    fallback.clone()
-                }
-            };
-            for row in &rows {
-                if holders.window(&row.name).is_none() {
-                    rejoin(&mut holders, &fallback, row.clone());
-                }
-            }
-            let work = pending.take().expect("a hold does its work once");
-            work(&mut holders);
-            let written = to_toml(&holders);
-            changed = Some(holders);
-            Some(written)
-        });
-        if let Some(holders) = changed {
-            self.holders = holders;
+        work(&mut self.holders);
+        if let Some(record) = &self.record {
+            write(record, &self.holders);
         }
     }
 }
@@ -496,52 +405,6 @@ pub(crate) fn first_unnamed() -> WindowName {
     unnamed(0)
 }
 
-/// Whether who holds which tab differs between two copies of the record.
-///
-/// A window coming to the front changes the record too, and on its own that moves nothing on
-/// screen - so only who holds which tab counts.
-fn moved(before: &Holders, after: &Holders) -> bool {
-    let differs =
-        |window: &HeldWindow| after.held_by(&window.name).ne(before.held_by(&window.name));
-    after.windows().any(differs) || before.windows().any(differs)
-}
-
-/// Puts an open window back into a record that has lost it, with the tabs it held that no
-/// window has taken since.
-///
-/// A record loses an open window two ways: somebody deleted the file, which the warning for an
-/// unreadable one invites, or another window opening forgot this one because its socket did not
-/// answer. Either way this window is still showing those tabs, and without its row it would let
-/// go of every one of them.
-fn rejoin(holders: &mut Holders, remembered: &Holders, window: HeldWindow) {
-    let me = &window.name.clone();
-    holders.opened(window);
-    let mut taken = Vec::new();
-    for tab in remembered.held_by(me) {
-        if holders.holder(tab).is_none() {
-            holders.take(tab.clone(), me);
-            taken.push(tab.clone());
-        }
-    }
-    log::warn(
-        "holding.rejoined",
-        fields! {
-            "window" => me.to_string(),
-            "tabs" => join(&taken),
-            "impact" => "the record had lost this open window, so it was written back with the \
-                         tabs it held; a tab another window took in the meantime stays there",
-            "check" => "whether somebody deleted the record, or whether this window stopped \
-                        answering on its socket long enough for another window to forget it",
-        },
-    );
-}
-
-/// Whether a window is open: one of this process's is when `open_here` says so, and another is
-/// when its socket answers.
-///
-/// A connect and nothing else. The window at the other end reads no request and logs that at
-/// debug, which is the cost of asking; a socket file left behind by a window that crashed
-/// refuses, which is the answer.
 /// The arrangements of this install's windows that were open when Muster last ended, for the
 /// launch to open again, focused longest ago first.
 ///
@@ -552,28 +415,49 @@ pub(crate) fn reopening(record: &str) -> Vec<String> {
     if record.is_empty() {
         return Vec::new();
     }
-    let mut read = None;
-    SharedFile::at(record, &HOLDERS).exclusively(&mut |text| {
-        read = Some(text.to_string());
-        None
-    });
-    let holders = match from_toml(&read.unwrap_or_default()) {
-        Ok(holders) => holders,
-        Err(detail) => {
-            unreadable(&detail);
-            return Vec::new();
-        }
-    };
-    holders.open_when_last_ended(
+    // Every row the last process of this install left open is a window open when it ended: this
+    // launch holds the app, so no process of the install is still running to be showing one.
+    read(Path::new(record)).open_when_last_ended(
         install::INSTALL,
-        |window| is_open(&BTreeSet::new(), window),
+        |_| false,
         |arrangement| Path::new(arrangement).exists(),
     )
 }
 
-pub(crate) fn is_open(open_here: &BTreeSet<WindowName>, window: &HeldWindow) -> bool {
-    open_here.contains(&window.name)
-        || (!window.socket.is_empty() && UnixStream::connect(&window.socket).is_ok())
+/// The record as the file holds it: empty when there is no file yet, and empty with a warning
+/// when this build cannot read it.
+fn read(record: &Path) -> Holders {
+    match std::fs::read_to_string(record) {
+        Ok(text) => from_toml(&text).unwrap_or_else(|detail| {
+            unreadable(&detail);
+            Holders::new()
+        }),
+        Err(_) => Holders::new(),
+    }
+}
+
+/// Writes the record whole, through a file beside it renamed into place, so the next launch never
+/// reads one half written.
+fn write(record: &Path, holders: &Holders) {
+    let staged = record.with_extension("writing");
+    let written = record
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::write(&staged, to_toml(holders)))
+        .and_then(|()| std::fs::rename(&staged, record));
+    if let Err(failure) = written {
+        log::warn(
+            "holding.save.failed",
+            fields! {
+                "record" => record.display(),
+                "detail" => failure.to_string(),
+                "impact" => "which window holds each tab is right while Muster runs, but the next \
+                             launch reads what was last written: it may reopen a window's tabs in \
+                             another, or not reopen a window that was open",
+                "check" => "whether the state directory is writable and the disk has room",
+            },
+        );
+    }
 }
 
 fn now() -> i64 {
@@ -593,12 +477,11 @@ fn unreadable(detail: &str) {
         "holding.unreadable",
         fields! {
             "detail" => detail,
-            "impact" => "this window carries on from what it last read, so it keeps its own tabs, \
-                         but it cannot see which tabs other windows have taken or given away \
-                         since - it may list one of theirs, or miss one given to it",
-            "check" => "whether another Muster of a different version is open, and what is in \
-                        the file; deleting it is safe, since every open window writes itself and \
-                        its tabs back, and costs only which closed window held which tab",
+            "impact" => "the record of which window holds each tab was read as empty, so no \
+                         window reopens from it and every tab joins the window in front; it is \
+                         written afresh at the next change",
+            "check" => "whether a newer Muster wrote it, and what is in the file; deleting it is \
+                        safe, and costs only which closed window held which tab",
         },
     );
 }

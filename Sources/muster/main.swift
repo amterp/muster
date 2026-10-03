@@ -17,8 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var renderer: Renderer?
   /// Held for the life of the app; dropping it stops the watch.
   private var watcher: ConfigWatcher?
-  /// Hears another window take a tab, give one away, open or close.
-  private var holdingWatcher: ConfigWatcher?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Before anything is started, so that from here a SIGTERM is a quit rather than a death.
@@ -89,7 +87,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       commandSocketPath: commandSocketPath(), commandsPath: commands,
       daemonRecordsPath: daemonRecordsPath(), tabHoldersPath: holders,
       show: launchShow(arguments: launched))
-    watchTabHolders(holders)
     if let refused = Arrangements.linkRefused {
       Core.warn(
         "arrangement.claim.unlinked",
@@ -254,29 +251,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   ///
   /// That makes this an output-only check on the renderer, and it says so rather than
   /// presenting a terminal that ignores the keyboard.
-  /// Watches the record of which window holds each tab, so a tab another window takes leaves this
-  /// one and a tab given to this one arrives.
-  ///
-  /// Its directory is made first, because a watch is on the directory and the first window ever
-  /// to open finds none. The core writes into it moments later.
-  private func watchTabHolders(_ path: String?) {
-    guard let path else { return }
-    let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
-    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let watcher = ConfigWatcher(path: path) { Core.readTabHolders() }
-    holdingWatcher = watcher
-    if !watcher.start() {
-      Core.warn(
-        "holding.watch.failed",
-        [
-          "path": path,
-          "impact": "this window will not hear another window take one of its tabs, so it can "
-            + "keep drawing a tab that has moved and fight the other window for its terminals",
-          "check": "whether the directory holding it exists and is readable",
-        ])
-    }
-  }
-
   private func explainRendererCheck() {
     FileHandle.standardError.write(
       Data(

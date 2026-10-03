@@ -68,7 +68,6 @@ message Request {
     ReattachPane reattach_pane = 46;
     EqualizePanes equalize_panes = 47;
     WatchPanes watch_panes = 48;
-    ReadTabHolders read_tab_holders = 49;
     MoveTab move_tab = 51;
     Wheel wheel = 52;
     Mouse mouse = 53;
@@ -110,6 +109,10 @@ message Request {
   // A request one window process carried to another, about a tab that one held. Every window of
   // an install is a window of one process now, which answers it from that window's state.
   reserved 50;
+
+  // The shell telling the core another window process had changed the record of which window
+  // holds each tab. One process writes it now, and needs telling nothing.
+  reserved 49;
 }
 
 // This process is going away.
@@ -534,18 +537,6 @@ message AdjustFontSize {
 // watcher dispatches this rather than being a second path to it. That is what keeps one action
 // path honest: a chord, a menu item, a CLI and a saved file all arrive here.
 message ReloadConfig {}
-
-// Reads which window holds each tab again, and makes this window match it.
-//
-// What the shell sends when the record changes on disk, which is another window taking a tab,
-// giving one away, opening or closing. A tab this window has lost leaves its list and its
-// terminals are let go; a tab it has gained joins the end of its list without coming on screen,
-// because a window that switched tabs on something another window did is one that types into
-// the wrong pane.
-//
-// Like ReloadConfig, a request rather than something the core watches for itself: watching a
-// file is an OS question, and an idle window should cost no wakeups at all.
-message ReadTabHolders {}
 
 // Shows the roster or puts it away.
 //
@@ -1736,16 +1727,16 @@ message Startup {
   // says so, which is exactly what it did before this existed.
   string daemon_records_path = 14;
 
-  // Where every window writes which window holds each tab, or empty for nowhere.
+  // Where this install keeps which window holds each tab, or empty for nowhere.
   //
   // One file for every window, because the rule it keeps spans them: a tab belongs to exactly
   // one window, and a window lists only its own (kan a_2Mhi0EZlv). A daemon lets one bridge draw
   // a pane, so a tab two windows both listed is a tab one of them takes from the other at the
   // first click. No daemon can hold this - none knows which windows exist.
   //
-  // In a directory of its own so the shell can watch it, and send ReadTabHolders when another
-  // window changes it, without waking for every arrangement a window saves beside it. Empty is
-  // what every test gets: the window then holds every tab, as a single window always did.
+  // This process's alone: read at startup, written whenever it changes, and kept for the next
+  // launch. Empty is what every test gets: the window then holds every tab, as a single window
+  // always did.
   string tab_holders_path = 15;
 
   // A pane or a tab to go to once the window is open, or empty for wherever it was left.

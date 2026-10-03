@@ -851,13 +851,6 @@ public enum Core {
     send(request)
   }
 
-  /// Tells the core another window changed which window holds each tab.
-  public static func readTabHolders() {
-    var request = Muster_Request()
-    request.readTabHolders = Muster_ReadTabHolders()
-    send(request)
-  }
-
   public static func toggleSidebar() {
     var request = Muster_Request()
     request.toggleSidebar = Muster_ToggleSidebar()
@@ -1290,7 +1283,6 @@ public enum Core {
     case .sendToPane: return "send_to_pane"
     case .adjustFontSize: return "adjust_font_size"
     case .reloadConfig: return "reload_config"
-    case .readTabHolders: return "read_tab_holders"
     case .moveTab: return "move_tab"
     case .bridgeExited: return "bridge_exited"
     case .bridgeStarted: return "bridge_started"

@@ -16,8 +16,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use muster::proto::{
-    EndNumberedChord, Event, FocusPaneAt, OpenWindow, PressNumberedChord, ReadTabHolders, Request,
-    Response, RosterChanged, Startup, ViewChanged, WindowFocus, event, request, response,
+    EndNumberedChord, Event, FocusPaneAt, OpenWindow, PressNumberedChord, Request, Response,
+    RosterChanged, Startup, ViewChanged, WindowFocus, event, request, response,
     roster_changed::Counting,
 };
 use muster_daemon_proto::{Placement, Side};
@@ -320,44 +320,6 @@ fn letting_go_of_the_modifier_takes_the_first_press_back() {
         "the first tab's only pane to have the keyboard",
         || showing(&named(VISIBLE)),
         || format!("the view still shows {:?}", shown()),
-    );
-}
-
-/// Hearing which window holds each tab leaves a half-typed chord armed.
-///
-/// A window coming to the front writes the shared record of which window holds each tab, and the
-/// shell hears that write and asks the core to read it again - a moment after the click. A first
-/// press made in that moment is not something anybody took back (kan a_2Mhi0EZlv).
-#[test]
-fn hearing_who_holds_which_tab_leaves_a_chord_armed() {
-    let _turn = a_fresh_window();
-    let daemon = Daemon::start_built();
-    a_session_of_two_tabs_the_second_holding_two(&daemon);
-
-    muster::ffi::muster_set_event_callback(Some(note));
-    assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon.muster_config().to_string_lossy().into_owned(),
-        ..Startup::default()
-    })));
-    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
-    until(
-        "the roster to arrive with all three panes in it",
-        || roster().is_some_and(|roster| rows(&roster).len() == 3),
-        || format!("the roster holds {:?}", roster().map(|held| places(&held))),
-    );
-
-    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
-    until(
-        "the tab the press named to be armed",
-        || armed_tabs() == vec![2],
-        || format!("the armed tabs carry {:?}", armed_tabs()),
-    );
-    assert_ok(&answer(request::Payload::ReadTabHolders(ReadTabHolders {})));
-    assert_ok(&answer(request::Payload::PressNumberedChord(PressNumberedChord { press: 2 })));
-    until(
-        "the second press to land in the armed tab",
-        || showing(&named(INNER_SECOND)),
-        || format!("the view shows {:?} and the armed tabs are {:?}", shown(), armed_tabs()),
     );
 }
 

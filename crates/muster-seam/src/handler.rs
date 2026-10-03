@@ -241,10 +241,6 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             )
             .map(|()| Response::ok()),
         ),
-        request::Payload::ReadTabHolders(_) => {
-            session::follow_the_record();
-            Response::ok()
-        }
         request::Payload::ZoomPane(zoom) => {
             act(window, &zoom.daemon_id, &zoom.pane_id, Keyboard::Follows, |pane| {
                 BackendIntent::ZoomPane { pane }
@@ -320,17 +316,8 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
 /// press itself, the one request whose whole job is to spend what the first one armed. It is stated
 /// here rather than folded into the shared list because it is a fact about this rule - a CLI
 /// that fanned it out would move the keyboard in every window somebody had open.
-///
-/// `ReadTabHolders` is the other. It changes what the window lists, but nobody pressed anything:
-/// it is the shell hearing the shared record move, and this window coming to the front writes that
-/// record itself - so a first press made in the moment after clicking into a window would be
-/// disarmed by the window's own echo.
 fn leaves_the_chord_armed(payload: &request::Payload) -> bool {
-    muster_proto::only_reads(payload)
-        || matches!(
-            payload,
-            request::Payload::PressNumberedChord(_) | request::Payload::ReadTabHolders(_)
-        )
+    muster_proto::only_reads(payload) || matches!(payload, request::Payload::PressNumberedChord(_))
 }
 
 /// Hands back what a pane has printed.

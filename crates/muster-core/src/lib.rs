@@ -27,7 +27,6 @@ pub mod problems;
 pub mod reconnect;
 pub mod respawn;
 pub mod roster;
-pub mod shared;
 pub mod transcript;
 pub mod typeable;
 

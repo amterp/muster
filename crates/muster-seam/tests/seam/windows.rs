@@ -11,9 +11,9 @@ use std::sync::Mutex;
 
 use muster::proto::{
     AskForWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking, FocusHistory, FocusPane,
-    FocusTab, MoveTab, OpenWindow, Quitting, ReadAsking, ReadReopening, ReadTabHolders, ReadWindow,
-    ReattachPane, Request, Response, SplitPane, Startup, ToggleSidebar, ViewNode, WindowFocus,
-    event, request, response, view_node,
+    FocusTab, MoveTab, OpenWindow, Quitting, ReadAsking, ReadReopening, ReadWindow, ReattachPane,
+    Request, Response, SplitPane, Startup, ToggleSidebar, ViewNode, WindowFocus, event, request,
+    response, view_node,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::AgentState;
@@ -182,6 +182,36 @@ fn a_tab_moves_between_two_windows_here() {
         holders(&daemon).get(&first).map(String::as_str),
         Some("window-2"),
         "the record still gives the moved tab to the window it left"
+    );
+}
+
+/// A tab moved to a window by name joins the end of that window's list without coming on screen,
+/// whichever window was asked, and its panes keep running.
+///
+/// From outside a pane the CLI's request reaches whichever window is in front. Only a move naming
+/// no window - "bring it here" - is somebody looking at the window it lands in.
+#[test]
+fn a_tab_moved_to_a_window_by_name_joins_its_list_without_coming_on_screen() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, second) = two_windows(&daemon);
+    let panes = panes_in("window-1").len() + panes_in("window-2").len();
+
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab {
+            tab_id: second.clone(),
+            window: "window-1".to_string(),
+        }),
+    )));
+
+    assert_eq!(listed("window-1"), vec![first.clone(), second], "the tab is not at the end");
+    assert_eq!(showing_in("window-1"), Some(first), "a tab moved here by name came on screen");
+    assert_eq!(
+        panes_in("window-1").len() + panes_in("window-2").len(),
+        panes,
+        "moving a tab between windows ended a pane"
     );
 }
 
@@ -721,8 +751,8 @@ fn closing_one_window_leaves_the_other_and_keeps_its_tabs() {
     }
 }
 
-/// A closed window is sent nothing: reading the record again neither gives it its tabs back nor
-/// draws them anywhere.
+/// A closed window is sent nothing: a tab nobody asked for does not join it, and nothing is drawn
+/// for it.
 #[test]
 fn a_closed_window_is_sent_nothing() {
     let _turn = muster::testing::fresh_session();
@@ -732,7 +762,6 @@ fn a_closed_window_is_sent_nothing() {
     assert_ok(&answer(&in_window("window-2", request::Payload::CloseWindow(CloseWindow {}))));
     let sent = sent_to("window-2");
 
-    assert_ok(&answer(&Request::new(request::Payload::ReadTabHolders(ReadTabHolders {}))));
     make(&mut daemon.connect(), create("p-outside", in_new_tab("t-outside")));
     until(
         "the open window to take the tab nobody asked for",
