@@ -51,7 +51,8 @@ line in your config mutes the lot, which silences the notifications and leaves `
 the daemon writes it down rather than the app. An agent that sets a terminal title gets a second
 line under that, so a row reads `payments spike` over `chasing a flaky test`. Drag one row onto
 another and the two panes trade places; drop it on a row in a different tab and the agent moves
-there.
+there. Right-click a pane, a tab's caption or an agent's row to split, rename, move or close it,
+or to copy the ID `muster` takes for it.
 
 **More than one window, and `cmd+n` to make one.** Each is its own process, so quitting one leaves
 the others alone, and each has its own address for the CLI - `muster window list` says which are
@@ -62,7 +63,8 @@ window keeps its tabs, and any `muster` command reaches any tab from any window.
 **Local and remote in one window.** Name an SSH host in your config and its agents appear in the
 same list as the ones on your laptop. `cmd+shift+]` and `cmd+shift+[` step between a laptop tab and a
 devenv tab the way they do in Ghostty, and one tab can hold both at once - drag a devenv agent's
-row onto a laptop tab's caption and they sit side by side.
+row onto a laptop tab's caption and they sit side by side, or right-click a laptop pane and split
+it onto the devenv.
 
 **A CLI that drives the window.** `muster` reports what every agent is doing, waits for one to
 finish, reads back what any pane has printed, makes panes and tabs, moves and resizes them, names

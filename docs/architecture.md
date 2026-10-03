@@ -336,6 +336,12 @@ between "bytes" and "control":
   not at all. Clicks and drags take the same path, and a shift-click is reported only to a program that asked for
   shift with XTSHIFTESCAPE; otherwise it selects, as it does in Ghostty. The daemon decides that, since it is the one
   holding the program's modes.
+- **A right-click opens a menu only when the program does not want it.** The surface is offered the click first,
+  and consumes it when the program tracks the mouse, so the program gets the click and no menu opens. Shift gets past
+  that on the same terms as a shift-drag. Otherwise AppKit asks the surface for a menu, and so does a ctrl-click
+  unless the program has captured the mouse. That is Ghostty's rule. A menu on a pane, a tab caption or an agent row
+  sends the requests the keyboard sends, naming the pane or tab that was right-clicked rather than the one with the
+  keyboard (`ContextMenus.swift`).
 
 ## The shell/core seam
 

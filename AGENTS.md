@@ -12,6 +12,7 @@ if your harness wants one.
 that ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each
 of the first nine and one to whichever is asking for you, states an agent reports itself where the screen cannot
 say them - `waiting` on its own build among them - renaming, trading two agents' places by dragging a row,
+right-click menus on a pane, a tab and an agent row, including a split onto any attached machine,
 configuration that reloads when you save it, a CLI that drives the window from inside a pane on either machine, a
 notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH machine in the
 same window - where one tab can hold a laptop pane beside a devenv pane - several windows that each hold their own
