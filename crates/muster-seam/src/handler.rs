@@ -1594,12 +1594,16 @@ fn submit(
     intent: &BackendIntent,
     keyboard: Keyboard,
 ) -> Result<Response, Refusal> {
-    session::submit(window, daemon, intent, keyboard).map(|made| match made {
+    session::submit(window, daemon, intent, keyboard).map(made_or_ok)
+}
+
+fn made_or_ok(made: Option<PaneId>) -> Response {
+    match made {
         Some(pane) => Response {
             payload: Some(response::Payload::Made(proto::Made { pane_id: pane.to_string() })),
         },
         None => Response::ok(),
-    })
+    }
 }
 
 fn answer(outcome: Result<(), String>) -> Response {
@@ -1890,7 +1894,10 @@ fn split_onto(
         },
         None => BackendIntent::JoinTab { tab, cwd, run, name },
     };
-    relayed(submit(window, onto, &intent, keyboard))
+    let split = session::daemon_holding(beside).map(|daemon| PaneKey::new(&daemon, beside));
+    relayed(
+        session::submit_from(window, onto, &intent, keyboard, split.as_ref()).map(made_or_ok),
+    )
 }
 
 /// Types text into a pane, named rather than focused.

@@ -2237,6 +2237,21 @@ pub(crate) fn submit(
     intent: &BackendIntent,
     keyboard: Keyboard,
 ) -> Result<Option<PaneId>, Refusal> {
+    submit_from(window, daemon, intent, keyboard, None)
+}
+
+/// [`submit`], for a pane made on another machine than the pane it was split from.
+///
+/// The intent alone cannot say which pane that was: it names a pane on the machine it goes to,
+/// or none at all when that machine is joining the tab. `split` is the pane that was split, which
+/// is what the new pane takes its text size from.
+pub(crate) fn submit_from(
+    window: WindowId,
+    daemon: &DaemonId,
+    intent: &BackendIntent,
+    keyboard: Keyboard,
+    split: Option<&PaneKey>,
+) -> Result<Option<PaneId>, Refusal> {
     let (region, source, channel) = {
         let mut session = poison::lock(&SESSION, "session");
         // Which pane this request came from, for a pane it may be about to make. A split names
@@ -2244,6 +2259,7 @@ pub(crate) fn submit(
         // asked. Read here rather than after the round trip, because by then the keyboard may
         // have moved.
         let source = match intent {
+            _ if split.is_some() => split.cloned(),
             BackendIntent::SplitPane { pane, .. } => Some(PaneKey::new(daemon, pane)),
             BackendIntent::CreateTab { .. } | BackendIntent::JoinTab { .. } => {
                 session.keyboard_key(window)
@@ -2358,8 +2374,13 @@ pub(crate) fn submit(
         if let Some(source) = &source {
             session.font_sizes.inherit(&made, source);
         }
-        // A pane joining a tab has no region until the daemon announces its part of the tab,
-        // which reconcile has done by now: a daemon's events arrive before its answer.
+        // A pane joining a tab has no region until a reconcile sees the daemon's part of the
+        // tab. The mirror already holds it, since a daemon's events arrive before its answer,
+        // but the reconcile behind them runs on the daemon's notice thread and may not have
+        // yet - and without the region the keyboard could not follow the new pane.
+        if matches!(intent, BackendIntent::JoinTab { .. }) {
+            session.reconcile(daemon);
+        }
         let composition = &mut session.windows[window].composition;
         let region = region.or_else(|| match intent {
             BackendIntent::JoinTab { tab, .. } => composition.region_of(daemon, tab),

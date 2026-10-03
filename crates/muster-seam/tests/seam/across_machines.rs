@@ -17,9 +17,9 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow, PaneText,
+    AdjustFontSize, ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow, PaneText,
     ReadPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged, SendToPane,
-    SplitPane, Startup, ZoomPane, event, request, response,
+    SplitPane, Startup, ViewNode, ZoomPane, event, request, response, view_node,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{create, in_new_tab, make, read_text};
@@ -500,6 +500,55 @@ fn a_split_onto_another_machine_joins_the_split_panes_tab() {
     assert_eq!(panes(&devenv).len(), elsewhere + 2);
 }
 
+/// A pane put on another machine opens at the text size of the pane that was split, as any split
+/// does - not at the size of whichever pane had the keyboard, which is what `muster pane new
+/// --pane X --daemon devenv` got when X was not the keyboard's pane.
+#[test]
+fn a_split_onto_another_machine_takes_the_split_panes_text_size() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop: _laptop, devenv: _devenv } = a_window_showing_two_machines();
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    put_the_keyboard_on(&on_laptop);
+
+    let sized = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop.clone(),
+        side: "right".to_string(),
+        take_focus: true,
+        ..SplitPane::default()
+    })));
+    until(
+        "the keyboard to follow the split",
+        || keyboard().map(|(_, pane)| pane) == Some(sized.clone()),
+        || format!("the keyboard is on {:?}", keyboard()),
+    );
+    for _ in 0..2 {
+        assert_ok(&answer(request::Payload::AdjustFontSize(AdjustFontSize {
+            change: "larger".to_string(),
+        })));
+    }
+    put_the_keyboard_on(&on_laptop);
+    let size = font_size_of(&sized).expect("the sized pane is on screen");
+    assert_ne!(Some(size), font_size_of(&on_laptop), "the two laptop panes are the same size");
+
+    let joined = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: sized.clone(),
+        new_pane_daemon_id: "devenv".to_string(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the devenv pane to open at the split pane's size",
+        || font_size_of(&joined) == Some(size),
+        || {
+            format!(
+                "{joined} is at {:?}, the split pane at {size}, the keyboard's at {:?}",
+                font_size_of(&joined),
+                font_size_of(&on_laptop)
+            )
+        },
+    );
+}
+
 /// Naming the split pane's own machine as the one to put the new pane on is an ordinary split.
 ///
 /// The menu lists every attached machine, including the pane's own, and picking that one must
@@ -688,6 +737,34 @@ fn pane_on(daemon: &str) -> Option<String> {
     rows()
         .into_iter()
         .find_map(|(held, name, pane)| (held == daemon && name == given).then_some(pane))
+}
+
+/// How far a pane's text is from the configured size, while the window shows it.
+fn font_size_of(pane: &str) -> Option<i32> {
+    fn find(node: &ViewNode, pane: &str) -> Option<i32> {
+        match node.node.as_ref()? {
+            view_node::Node::Pane(held) => (held.pane_id == pane).then_some(held.font_size_offset),
+            view_node::Node::Split(split) => split
+                .first
+                .iter()
+                .chain(split.second.iter())
+                .find_map(|child| find(child, pane)),
+        }
+    }
+    let view = VIEW.lock().expect("a panicking reader poisoned the view").clone()?;
+    view.regions.iter().filter_map(|region| region.root.as_ref()).find_map(|root| find(root, pane))
+}
+
+fn put_the_keyboard_on(pane: &str) {
+    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+        pane_id: pane.to_string(),
+        ..FocusPane::default()
+    })));
+    until(
+        "the keyboard to reach the pane asked for",
+        || keyboard().map(|(_, held)| held).as_deref() == Some(pane),
+        || format!("the keyboard is on {:?}", keyboard()),
+    );
 }
 
 /// Which tab the list says holds this pane.
