@@ -1,7 +1,7 @@
 id = "claude"
-version = "2026.09.28.2"
-min_engine_version = 5
-updated_at = "2026-09-28T00:00:00Z"
+version = "2026.10.03.1"
+min_engine_version = 6
+updated_at = "2026-10-03T00:00:00Z"
 aliases = ["claude-code"]
 
 [[rules]]
@@ -23,6 +23,11 @@ any = [
   { line_regex = ['^\s*[⏸⏵].*esc to interrupt(?:\s|·|$)'] },
   { line_regex = ['^\s*[\x{002A}\x{00B7}\x{2722}\x{2733}\x{2736}\x{273B}\x{273D}]\s+\S.*…(?:\s+\(\d+[smh](?:\s|·)|\s*$)'] },
 ]
+# What is typed into the prompt box while Claude works is queued and taken into the running
+# turn, so an urgent message may be typed here. Read in the box alone: the request that started
+# the turn is drawn above it with the same caret.
+prompt = '^\s*❯\s?'
+prompt_region = "prompt_box_body"
 
 [[rules]]
 id = "background_agents_working"

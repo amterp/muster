@@ -1,7 +1,7 @@
 {
   "concept": "detection.prompt",
   "source": "authored",
-  "citation": "MIP-4, section 6: the doorbell rings only an empty prompt. The Claude screens are corpus/conformance/agent-detection-recorded.json's, recorded from Claude Code 2.1.283; how it draws a suggestion nobody typed, every cell faint, is held to the installed Claude Code by claude_code_doorbell's live check.",
+  "citation": "MIP-4, section 6: the doorbell rings only an empty prompt. The 2.1.283 screens are corpus/conformance/agent-detection-recorded.json's, recorded from Claude Code 2.1.283; the 2.1.288 screens of an agent at work were recorded the same way, by tools/detection-capture.py, with the capture's folder renamed /tmp/capture; how it draws a suggestion nobody typed, every cell faint, is held to the installed Claude Code by claude_code_doorbell's live check.",
   "why": "The doorbell types into a pane only when its agent's screen reads as that agent at an empty prompt. Each case is a screen as drawn, its title and progress, and the same screen as typed - every faint cell blank - and says whether the rule deciding the screen shows the prompt, and what the prompt holds. A case with no `typed` reads the screen as typed whole.",
   "cases": [
     {
@@ -98,8 +98,8 @@
       }
     },
     {
-      "name": "claude 2.1.283: working is not the prompt",
-      "why": "The prompt box stays on screen while Claude Code works, but the working rules decide it.",
+      "name": "claude 2.1.283: the prompt box of an agent at work is read, and empty",
+      "why": "The prompt box stays on screen while Claude Code works, and what is typed there is queued into the running turn. The working rules decide the screen, so it is not the idle prompt; it is the prompt at work, read in the box alone - the request above it is drawn with the same caret.",
       "given": {
         "agent": "claude",
         "progress": "",
@@ -107,7 +107,54 @@
         "title": "◐ Remove no-such-dir"
       },
       "expect": {
-        "atPrompt": false
+        "atPrompt": true,
+        "whileWorking": true
+      }
+    },
+    {
+      "name": "claude 2.1.288: at work with its prompt box empty, it is at its prompt",
+      "why": "What is typed into the box while Claude Code works is queued and taken into the running turn, so an urgent ring may be typed here. The request that started the turn is drawn above the box with the same caret, and is not read.",
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.288\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /memory\n  ⎿  Cancelled memory editing\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Brewed for 3s · done 7:56 am\n\n❯ Without using any tools, write a 600-word story about a lighthouse keeper.\n\n\n\n\n\n✻ Thinking… (3s · thinking with high effort)\n  ⎿  Tip: Name your conversations with /rename to find them easily in /resume later\n                                                                                  ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [07:56:59] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "◑ Run rm -rf ./no-such-dir",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.288\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /memory\n  ⎿  Cancelled memory editing\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Brewed for 3s · done 7:56 am\n\n❯ Without using any tools, write a 600-word story about a lighthouse keeper.\n\n\n\n\n\n✻ Thinking… (3s · thinking with high effort)\n  ⎿  Tip: Name your conversations with /rename to find them easily in /resume later\n                                                                                  ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [07:56:59] /tmp/capture\n  ⏸ manual mode on · ← for agents"
+      },
+      "expect": {
+        "atPrompt": true,
+        "whileWorking": true
+      }
+    },
+    {
+      "name": "claude 2.1.288: at work with a draft in its prompt box, the box holds it",
+      "why": "Words somebody typed while Claude Code works, not yet sent: a ring typed now would be sent inside them, so the doorbell waits.",
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.288\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /memory\n  ⎿  Cancelled memory editing\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Brewed for 3s · done 7:56 am\n\n❯ Without using any tools, write a 600-word story about a lighthouse keeper.\n\n\n\n\n\n✢ Thinking… (5s · thinking with high effort)\n  ⎿  Tip: Name your conversations with /rename to find them easily in /resume later\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ and give it a title\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [07:56:59] /tmp/capture\n  ⏸ manual mode on\n",
+        "title": "◐ Run rm -rf ./no-such-dir",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.288\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /memory\n  ⎿  Cancelled memory editing\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Brewed for 3s · done 7:56 am\n\n❯ Without using any tools, write a 600-word story about a lighthouse keeper.\n\n\n\n\n\n✢ Thinking… (5s · thinking with high effort)\n  ⎿  Tip: Name your conversations with /rename to find them easily in /resume later\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ and give it a title\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [07:56:59] /tmp/capture\n  ⏸ manual mode on"
+      },
+      "expect": {
+        "atPrompt": true,
+        "whileWorking": true,
+        "holds": "and give it a title"
+      }
+    },
+    {
+      "name": "claude 2.1.288: at work with a message queued, its prompt box is empty",
+      "why": "A Return while Claude Code works queues what was typed, drawn above the box, and empties the box, where a hint is drawn faint. Empty is how the doorbell knows a ring typed at work was taken.",
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.288\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /memory\n  ⎿  Cancelled memory editing\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Brewed for 3s · done 7:56 am\n\n❯ Without using any tools, write a 600-word story about a lighthouse keeper.\n\n❯ and give it a title\n  ctrl+enter to send now\n\n\n✢ Thinking… (6s · thinking with high effort)\n  ⎿  Tip: Name your conversations with /rename to find them easily in /resume later\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Press up to edit queued messages\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [07:56:59] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "◐ Run rm -rf ./no-such-dir",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.288\n▝▜██████▀  Opus 5.5 with high effort · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ /memory\n  ⎿  Cancelled memory editing\n\n❯ Run this exact shell command with the Bash tool and nothing else: rm -rf ./no-such-dir\n\n  Ran 1 shell command\n  ⎿  Interrupted · What should Claude do instead?\n\n✻ Brewed for 3s · done 7:56 am\n\n❯ Without using any tools, write a 600-word story about a lighthouse keeper.\n\n❯ and give it a title\n  ctrl+enter to send now\n\n\n✢ Thinking… (6s · thinking with high effort)\n  ⎿  Tip: Name your conversations with /rename to find them easily in /resume later\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [07:56:59] /tmp/capture\n  ⏸ manual mode on · ← for agents"
+      },
+      "expect": {
+        "atPrompt": true,
+        "whileWorking": true
       }
     },
     {

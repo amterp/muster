@@ -358,6 +358,22 @@ fn a_prompt_is_read_only_by_an_idle_rule_on_the_screen_at_engine_five() {
     assert!(Manifest::parse(&with_prompt(4, "idle", "whole_recent")).is_err(), "engine 4");
     assert!(Manifest::parse(&with_prompt(5, "working", "whole_recent")).is_err(), "working");
     assert!(Manifest::parse(&with_prompt(5, "idle", "osc_title")).is_err(), "the title");
+    assert!(Manifest::parse(&with_prompt(6, "blocked", "whole_recent")).is_err(), "blocked");
+}
+
+#[test]
+fn a_working_rule_and_a_prompt_region_need_engine_six_and_the_screen() {
+    assert!(Manifest::parse(&with_prompt(6, "working", "whole_recent")).is_ok());
+    let region = |engine: u32, prompt: &str, read_in: &str| {
+        with_prompt(engine, "idle", "whole_recent")
+            .replace("prompt = '^> ?'", &format!("{prompt}prompt_region = \"{read_in}\""))
+    };
+    let prompt = "prompt = '^> ?'\n";
+    assert!(Manifest::parse(&region(6, prompt, "prompt_box_body")).is_ok());
+    assert!(Manifest::parse(&region(5, prompt, "prompt_box_body")).is_err(), "engine 5");
+    assert!(Manifest::parse(&region(6, prompt, "osc_title")).is_err(), "the title");
+    assert!(Manifest::parse(&region(6, prompt, "nowhere")).is_err(), "no such region");
+    assert!(Manifest::parse(&region(6, "", "prompt_box_body")).is_err(), "no prompt");
 }
 
 #[test]
@@ -371,4 +387,74 @@ fn a_prompt_holds_what_follows_its_marker_as_typed() {
     );
     assert_eq!(manifest.prompt(input("> hint\n"), ">     \n"), Some(Prompt::Empty));
     assert_eq!(manifest.prompt(input("nothing\n"), "nothing\n"), None);
+}
+
+/// A working screen whose request is drawn above its prompt box with the box's own caret, under
+/// a title that says it works: a title rule outranks the screen's, as Claude's spinner does.
+const AT_WORK: &str = r#"
+id = "agent"
+min_engine_version = 6
+
+[[rules]]
+id = "title_working"
+state = "working"
+priority = 1100
+region = "osc_title"
+contains = ["busy"]
+
+# Below the title rule, as Claude's Bash permission rule is: only the screen read alone sees it.
+[[rules]]
+id = "dialog"
+state = "blocked"
+priority = 980
+region = "whole_recent"
+contains = ["proceed?"]
+
+[[rules]]
+id = "live_turn"
+state = "working"
+priority = 970
+region = "whole_recent"
+contains = ["thinking"]
+prompt = '^> ?'
+prompt_region = "prompt_box_body"
+
+[[rules]]
+id = "at_prompt"
+state = "idle"
+priority = 950
+region = "prompt_box_body"
+line_regex = ['^>']
+prompt = '^> ?'
+"#;
+
+#[test]
+fn the_prompt_of_an_agent_at_work_is_read_in_its_box_and_never_as_the_idle_prompt() {
+    fn busy(screen: &str) -> Input<'_> {
+        Input { screen, title: "busy", progress: "" }
+    }
+    let manifest = Manifest::parse(AT_WORK).unwrap();
+    let rule = "\u{2500}".repeat(10);
+    let screen = |box_line: &str, above: &str| {
+        format!("> the request\n{above}\n{rule}\n{box_line}\n{rule}\n")
+    };
+    let working = screen("> ", "thinking");
+    assert_eq!(manifest.prompt_at_work(busy(&working), &working), Some(Prompt::Empty));
+    assert_eq!(manifest.prompt(busy(&working), &working), None, "read as the idle prompt");
+
+    let draft = screen("> half typed", "thinking");
+    assert_eq!(
+        manifest.prompt_at_work(busy(&draft), &draft),
+        Some(Prompt::Holds("half typed".to_string()))
+    );
+
+    // The title says it works, and only the title: the screen is its idle prompt, or a dialog.
+    let idle = screen("> ", "");
+    assert_eq!(manifest.prompt_at_work(busy(&idle), &idle), None, "an idle screen");
+    let dialog = screen("> 1. Yes", "thinking\nproceed?");
+    assert_eq!(manifest.prompt_at_work(busy(&dialog), &dialog), None, "a dialog");
+
+    // The screen works, and the title says nothing: still at work.
+    let quiet = Input { screen: &working, title: "", progress: "" };
+    assert_eq!(manifest.prompt_at_work(quiet, &working), Some(Prompt::Empty));
 }

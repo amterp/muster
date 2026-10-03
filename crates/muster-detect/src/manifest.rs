@@ -22,12 +22,15 @@ use crate::State;
 use region::Region;
 
 /// The manifest engine this crate implements. 1 to 3 are herdr's, so herdr's manifests keep
-/// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`, and 5 adds a
-/// rule's `prompt`.
-pub const ENGINE_VERSION: u32 = 5;
+/// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`, 5 adds a
+/// rule's `prompt`, and 6 lets a working rule carry one, read where its `prompt_region` says.
+pub const ENGINE_VERSION: u32 = 6;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
+
+/// The engine version that introduced a working rule's `prompt`, and `prompt_region`.
+const PROMPT_AT_WORK_ENGINE_VERSION: u32 = 6;
 
 /// The engine version that introduced the `top_non_empty_lines` region, in herdr.
 const TOP_NON_EMPTY_LINES_ENGINE_VERSION: u32 = 3;
@@ -107,8 +110,10 @@ struct Rule {
     skip_state_update: bool,
     gate: Gate,
     /// Where the prompt's text starts on its line, for a rule that decides the screen is the
-    /// agent at its prompt.
+    /// agent at its prompt, or at work with its prompt showing.
     prompt: Option<Regex>,
+    /// Where on the screen the prompt is read, when not the rule's own region.
+    prompt_region: Option<Region>,
 }
 
 #[derive(Debug, Clone)]
@@ -178,7 +183,7 @@ impl Manifest {
     }
 
     /// What the agent's prompt holds, when the rule that decides the screen is one that says
-    /// it is at its prompt; none when it is anything else - a dialog, a menu, at work, or
+    /// it is idle at its prompt; none when it is anything else - a dialog, a menu, at work, or
     /// nothing a rule recognizes.
     ///
     /// `typed` is the same screen with every cell nobody typed blanked - a suggestion drawn
@@ -186,29 +191,23 @@ impl Manifest {
     /// rule is decided and its region found on the screen as drawn, since what frames a prompt
     /// may be drawn faint too; only the prompt's own text is read from `typed`.
     pub fn prompt(&self, input: Input<'_>, typed: &str) -> Option<Prompt> {
-        let rule = self.decide(input)?;
-        let marker = rule.prompt.as_ref()?;
-        let region = rule.region.slice(input);
-        let screen = input.screen;
-        let start = (region.as_ptr() as usize).checked_sub(screen.as_ptr() as usize)?;
-        if start + region.len() > screen.len() {
-            return None;
-        }
-        let first = screen[..start].matches('\n').count();
-        let count = region.lines().count();
-        let drawn: Vec<&str> = screen.lines().skip(first).take(count).collect();
-        let typed: Vec<&str> = typed.lines().skip(first).take(count).collect();
-        let (at, found) = drawn.iter().enumerate().find_map(|(at, line)| {
-            marker.find(line).map(|found| (at, line[..found.end()].chars().count()))
-        })?;
-        let rest: String =
-            typed.get(at).map_or(String::new(), |line| line.chars().skip(found).collect());
-        let held: Vec<&str> = std::iter::once(rest.as_str())
-            .chain(typed.iter().skip(at + 1).copied())
-            .flat_map(str::split_whitespace)
-            .collect();
-        let joined = held.join(" ");
-        Some(if joined.is_empty() { Prompt::Empty } else { Prompt::Holds(joined) })
+        let rule = self.decide(input).filter(|rule| rule.state == State::Idle)?;
+        read_prompt(rule, input, typed)
+    }
+
+    /// What the prompt holds of an agent at work, for an agent that takes what is typed while
+    /// it works into the turn it is running; none when the screen is anything else.
+    ///
+    /// Two rules have to agree. The one deciding the screen with its title says the agent is
+    /// working, and the one deciding the screen alone, title and progress left out, is a
+    /// working rule that says where the prompt is. The second is what keeps a dialog, a menu
+    /// or a viewer from being read as the prompt: a title says what the agent is doing, never
+    /// what a keystroke would land in, so a title rule outranking them must not decide here.
+    pub fn prompt_at_work(&self, input: Input<'_>, typed: &str) -> Option<Prompt> {
+        self.decide(input).filter(|rule| rule.state == State::Working)?;
+        let screen = Input { screen: input.screen, title: "", progress: "" };
+        let rule = self.decide(screen).filter(|rule| rule.state == State::Working)?;
+        read_prompt(rule, screen, typed)
     }
 
     /// The rule that decides: every rule is evaluated, and the highest priority that matches
@@ -226,6 +225,33 @@ impl Manifest {
         }
         matched
     }
+}
+
+/// What the prompt holds, on a screen `rule` decides: read from the line its marker is found
+/// on, in its prompt region, to the region's end.
+fn read_prompt(rule: &Rule, input: Input<'_>, typed: &str) -> Option<Prompt> {
+    let marker = rule.prompt.as_ref()?;
+    let region = rule.prompt_region.unwrap_or(rule.region).slice(input);
+    let screen = input.screen;
+    let start = (region.as_ptr() as usize).checked_sub(screen.as_ptr() as usize)?;
+    if start + region.len() > screen.len() {
+        return None;
+    }
+    let first = screen[..start].matches('\n').count();
+    let count = region.lines().count();
+    let drawn: Vec<&str> = screen.lines().skip(first).take(count).collect();
+    let typed: Vec<&str> = typed.lines().skip(first).take(count).collect();
+    let (at, found) = drawn.iter().enumerate().find_map(|(at, line)| {
+        marker.find(line).map(|found| (at, line[..found.end()].chars().count()))
+    })?;
+    let rest: String =
+        typed.get(at).map_or(String::new(), |line| line.chars().skip(found).collect());
+    let held: Vec<&str> = std::iter::once(rest.as_str())
+        .chain(typed.iter().skip(at + 1).copied())
+        .flat_map(str::split_whitespace)
+        .collect();
+    let joined = held.join(" ");
+    Some(if joined.is_empty() { Prompt::Empty } else { Prompt::Holds(joined) })
 }
 
 impl Gate {
@@ -365,6 +391,7 @@ struct RawRule {
     #[serde(default)]
     line_regex: Vec<String>,
     prompt: Option<String>,
+    prompt_region: Option<String>,
 }
 
 impl RawRule {
@@ -465,7 +492,7 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
                 rule.id
             ));
         }
-        if rule.prompt.is_some() {
+        if rule.prompt.is_some() || rule.prompt_region.is_some() {
             validate_prompt(manifest, rule, region)?;
         }
         validate_gate(&rule.gate(), "rule", 0, &mut complexity)
@@ -474,20 +501,44 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
     Ok(())
 }
 
-/// A prompt is read off the screen, and only a rule that says the agent is idle can say it is
-/// at its prompt.
+/// A prompt is read off the screen, and only a rule that says the agent is idle, or at work
+/// and taking what is typed into its turn, can say where it is.
 fn validate_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Result<(), String> {
-    if manifest.min_engine_version.is_none_or(|version| version < PROMPT_ENGINE_VERSION) {
+    let engine = manifest.min_engine_version.unwrap_or(0);
+    if rule.prompt.is_none() {
+        return Err(format!("rule {} uses prompt_region without prompt", rule.id));
+    }
+    if engine < PROMPT_ENGINE_VERSION {
         return Err(format!(
             "rule {} uses prompt but min_engine_version is below {PROMPT_ENGINE_VERSION}",
             rule.id
         ));
     }
-    if rule.state != Some(RawState::Idle) || rule.skip_state_update {
-        return Err(format!("rule {} uses prompt without state = \"idle\"", rule.id));
+    let at_work = rule.state == Some(RawState::Working);
+    if !(rule.state == Some(RawState::Idle) || at_work) || rule.skip_state_update {
+        return Err(format!(
+            "rule {} uses prompt without state = \"idle\" or \"working\"",
+            rule.id
+        ));
     }
-    if matches!(region, Region::OscTitle | Region::OscProgress) {
-        return Err(format!("rule {} uses prompt on a region that is not the screen", rule.id));
+    if (at_work || rule.prompt_region.is_some()) && engine < PROMPT_AT_WORK_ENGINE_VERSION {
+        return Err(format!(
+            "rule {} uses prompt at work or prompt_region but min_engine_version is below \
+             {PROMPT_AT_WORK_ENGINE_VERSION}",
+            rule.id
+        ));
+    }
+    let read_in = match &rule.prompt_region {
+        Some(text) => Region::parse(text).ok_or_else(|| {
+            format!("rule {} uses invalid prompt_region: {}", rule.id, text.trim())
+        })?,
+        None => region,
+    };
+    if matches!(read_in, Region::OscTitle | Region::OscProgress) {
+        return Err(format!(
+            "rule {} reads its prompt from a region that is not the screen",
+            rule.id
+        ));
     }
     Ok(())
 }
@@ -630,8 +681,18 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
                     rule.prompt.as_deref().map(Regex::new).transpose().map_err(|error| {
                         format!("rule {} has an invalid prompt: {error}", rule.id)
                     })?;
+                let prompt_region = rule
+                    .prompt_region
+                    .as_deref()
+                    .map(|text| {
+                        Region::parse(text).ok_or_else(|| {
+                            format!("rule {} uses invalid prompt_region: {text}", rule.id)
+                        })
+                    })
+                    .transpose()?;
                 Ok(Rule {
                     prompt,
+                    prompt_region,
                     state,
                     priority: rule.priority,
                     region,

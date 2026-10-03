@@ -1,5 +1,6 @@
 //! Renders a capture from `tools/detection-capture.py` into corpus cases: each marked moment's
-//! bytes through the terminal the daemon runs, then read the way the daemon reads a pane. The
+//! bytes through the terminal the daemon runs, then read the way the daemon reads a pane, and
+//! as the doorbell reads it, faint cells blanked, where that differs. The
 //! expected state is the one the capture script knew the agent to be in, never this engine's
 //! verdict - which is printed beside it, to stderr, for whoever is reviewing.
 
@@ -32,6 +33,7 @@ fn main() {
         progress.observe(bytes);
 
         let screen = screen_text(&terminal.text(0, rows - 1));
+        let typed = typed_view(&terminal);
         let title = title(&terminal.title());
         let progress = progress.get().to_string();
         let detection = manifests
@@ -40,10 +42,15 @@ fn main() {
             "{}: expected {}, the engine says {} by {:?}",
             mark["name"], mark["expect"], detection.state, detection.rule
         );
+        let mut given =
+            json!({ "agent": "claude", "screen": screen, "title": title, "progress": progress });
+        if typed != screen {
+            given["typed"] = json!(typed);
+        }
         cases.push(json!({
             "name": mark["name"],
             "why": mark["note"],
-            "given": { "agent": "claude", "screen": screen, "title": title, "progress": progress },
+            "given": given,
             "expect": if mark["skip"] == true {
                 json!({ "state": mark["expect"], "skipStateUpdate": true })
             } else {
@@ -52,4 +59,19 @@ fn main() {
         }));
     }
     println!("{}", serde_json::to_string_pretty(&cases).expect("cases serialize"));
+}
+
+/// The screen as the doorbell reads a prompt's text: every cell nobody typed blank, with as
+/// many lines and characters as the screen detection reads (crates/muster-daemon's prompt.rs).
+fn typed_view(terminal: &Terminal) -> String {
+    let grid = terminal.viewport(terminal.columns(), terminal.rows());
+    let mut drawn: Vec<String> =
+        grid.rows.iter().map(|row| row.text().trim_end().to_string()).collect();
+    let mut typed: Vec<String> =
+        grid.rows.iter().map(|row| row.typed_text().trim_end().to_string()).collect();
+    while drawn.last().is_some_and(String::is_empty) {
+        drawn.pop();
+        typed.pop();
+    }
+    typed.join("\n")
 }

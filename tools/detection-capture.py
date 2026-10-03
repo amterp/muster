@@ -3,8 +3,9 @@
 
 Runs `claude` in a pseudo-terminal of a fixed size, walks it through the states detection has
 to tell apart - the folder trust prompt, idle at its prompt, menus opened from the prompt,
-working on a request, blocked on a Bash permission prompt, and idle again after the prompt is
-refused - and writes everything
+working on a request, blocked on a Bash permission prompt, idle again after the prompt is
+refused, and at work with its prompt box empty, holding a draft, and with a message queued -
+and writes everything
 it printed to <out>/raw, with the byte offset each state was reached at in <out>/marks.json.
 
 The bytes are then rendered by the terminal the daemon runs, which is what makes the fixtures
@@ -16,7 +17,7 @@ recorded rather than transcribed:
 The second prints the corpus cases. Read them before committing: a screen can carry a name,
 an email or a path, and anything a rule does not read should be scrubbed.
 
-It spends one short request against whatever account `claude` is logged in to, and runs it
+It spends two short requests against whatever account `claude` is logged in to, and runs it
 in <out>, which it trusts when asked. Nothing is sent to the network by this script itself.
 """
 
@@ -133,6 +134,21 @@ def main() -> int:
             send("\x1b")
             pump(4)
             mark("idle after refusing", "idle", "The prompt refused with Esc; Claude Code back at its prompt.")
+
+        # Work long enough to type into: what is typed while Claude Code works stays in its
+        # prompt box, and a Return queues it for the running turn. No tool, so no dialog.
+        send("Without using any tools, write a 600-word story about a lighthouse keeper.")
+        pump(1)
+        send("\r")
+        pump(4)
+        mark("working with an empty prompt box", "working", "Claude Code writing, its prompt box empty below the spinner.")
+        send("and give it a title")
+        pump(1.5)
+        mark("working with a draft in the prompt box", "working", "Words typed into the prompt box while Claude Code works, not yet sent.")
+        send("\r")
+        pump(1.5)
+        mark("working with a message queued", "working", "The words sent with Return while Claude Code works: queued for the running turn.")
+        pump(90, b"\xe2\x9c\xb3 ")
     finally:
         os.kill(pid, signal.SIGTERM)
         pump(1)
