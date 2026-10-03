@@ -59,6 +59,15 @@ pub(crate) const QUIET: Duration = Duration::from_secs(3);
 /// a ring at work does not wait for this.
 const STILL: Duration = Duration::from_millis(500);
 
+/// How long an idle agent's screen may keep moving, never still for [`STILL`], before it is rung
+/// regardless: an animated statusline or a clock never stops, and waiting for it would wait
+/// forever. Well past a harness drawing its prompt for the first time, which is what [`STILL`]
+/// waits out; the prompt, read as empty just before the ring, is the guard from then on.
+const MOVING: Duration = Duration::from_secs(5);
+
+/// When the doorbell first found each pane it would ring with its screen still moving, by pane.
+pub(crate) type Moving = HashMap<String, Instant>;
+
 /// How long the thread sleeps while something is pending that no change will announce - a
 /// pane whose agent is not yet found, or whose prompt holds a draft.
 pub(crate) const LOOK_AGAIN: Duration = Duration::from_secs(5);
@@ -121,18 +130,33 @@ pub(crate) enum Now {
     At(Instant),
 }
 
-/// Whether a pane may be rung now; `urgent` for a wake that may ring its agent at work.
-pub(crate) fn may_ring(seen: &Seen, now: Instant, urgent: bool) -> Now {
+/// Whether a pane may be rung now; `urgent` for a wake that may ring its agent at work, and
+/// `moving` when the doorbell first found the pane's screen moving as it looked to ring it.
+pub(crate) fn may_ring(seen: &Seen, now: Instant, urgent: bool, moving: Option<Instant>) -> Now {
     if let Some(until) = waits_for(seen.activity, urgent) {
         return until;
     }
     let typed = seen.input_at().map(|at| at + QUIET);
-    let drawn = (seen.activity != Some(Activity::Working))
+    let restless = moving.is_some_and(|since| now >= since + MOVING);
+    let drawn = (seen.activity != Some(Activity::Working) && !restless)
         .then(|| seen.drawn_at().map(|at| at + STILL))
         .flatten();
     match typed.into_iter().chain(drawn).max() {
         Some(settled) if settled > now => Now::At(settled),
         _ => Now::Ring,
+    }
+}
+
+/// Since when the pane's screen has been found moving as the doorbell looked to ring its idle
+/// agent, noted the first time, and forgotten once it is found still or its agent at work: a
+/// spinner moving through a turn says nothing about the prompt drawn as the turn ends.
+pub(crate) fn moving_since(moving: &mut Moving, pane: &str, seen: &Seen, now: Instant) -> Option<Instant> {
+    let idle = matches!(seen.activity, Some(Activity::Idle | Activity::Waiting));
+    if idle && seen.drawn_at().is_some_and(|at| at + STILL > now) {
+        Some(*moving.entry(pane.to_string()).or_insert(now))
+    } else {
+        moving.remove(pane);
+        None
     }
 }
 
@@ -285,12 +309,13 @@ fn run(shared: &Weak<Shared>) {
     // What each watched pane's agent was doing when last looked at, to see it go idle.
     let mut before: HashMap<String, Option<Activity>> = HashMap::new();
     let mut typing = Typing::new();
+    let mut moving = Moving::new();
     // The first look is at once: a daemon that starts may already hold wakes to ring again.
     let mut sleep = Duration::ZERO;
     loop {
         std::thread::park_timeout(sleep);
         let Some(shared) = shared.upgrade() else { return };
-        sleep = look(&shared, &mut before, &mut typing);
+        sleep = look(&shared, &mut before, &mut typing, &mut moving);
     }
 }
 
@@ -300,6 +325,7 @@ fn look(
     shared: &Shared,
     before: &mut HashMap<String, Option<Activity>>,
     typing: &mut Typing,
+    moving: &mut Moving,
 ) -> Duration {
     let (quiet, handing_over) = standing(shared);
     if quiet && typing.is_empty() && !shared.lock().wants_session_names() {
@@ -312,7 +338,8 @@ fn look(
     let panes = Panes::of(shared);
     let mut next: Option<Instant> = None;
     // First, so that a ring looking at the same pane sees the rename's write and waits it out.
-    renames::look(shared, &panes, Instant::now(), typing, &mut next);
+    moving.retain(|pane, _| panes.exists(pane));
+    renames::look(shared, &panes, Instant::now(), typing, moving, &mut next);
     if quiet {
         before.clear();
         return until(next, false);
@@ -361,7 +388,8 @@ fn look(
             }
             let dropped = match (panes.get(pane), panes.doorbell(pane)) {
                 (Some(seen), Ringable::Rings) => {
-                    match may_ring(seen, now, is_urgent(&wake)) {
+                    let since = moving_since(moving, pane, seen, now);
+                    match may_ring(seen, now, is_urgent(&wake), since) {
                         Now::Ring => ringing.push((wake, seen.clone())),
                         Now::At(at) => {
                             sooner(&mut next, at);
@@ -486,7 +514,7 @@ fn unanswered_rings(
         }
         // A ring's own typing starts the quiet period; before its Return, anybody else's ends it
         // ([`press_again`]), so it is not waited out.
-        let settled = if rung.returned { may_ring(seen, now, urgent) } else { Now::Ring };
+        let settled = if rung.returned { may_ring(seen, now, urgent, None) } else { Now::Ring };
         let at = if due > now {
             due
         } else if let Now::At(quiet) = settled {

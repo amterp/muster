@@ -20,7 +20,7 @@ use std::time::Instant;
 use muster_core::diagnostics::log;
 use muster_core::fields;
 
-use super::doorbell::{self, Now};
+use super::doorbell::{self, Moving, Now};
 use super::presence::{Panes, Seen};
 use super::prompt::{self, AtPrompt};
 use crate::session::Shared;
@@ -46,6 +46,7 @@ pub(crate) fn look(
     panes: &Panes,
     now: Instant,
     typing: &mut Typing,
+    moving: &mut Moving,
     next: &mut Option<Instant>,
 ) {
     second_looks(shared, panes, now, typing, next);
@@ -54,7 +55,8 @@ pub(crate) fn look(
         if typing.contains_key(pane) {
             continue;
         }
-        match doorbell::may_ring(seen, now, false) {
+        let since = doorbell::moving_since(moving, pane, seen, now);
+        match doorbell::may_ring(seen, now, false, since) {
             Now::Ring => {}
             Now::At(at) => {
                 doorbell::sooner(next, at);

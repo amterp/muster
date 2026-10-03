@@ -566,6 +566,22 @@ fn a_dialog_opened_over_an_urgent_ring_before_its_return_is_never_answered() {
     assert_eq!(agent.heard(), ["working"], "a Return reached the dialog");
 }
 
+/// An idle agent whose screen never stops moving - an animated statusline, a clock - is still rung:
+/// waiting for half a second of stillness would wait forever. Its prompt, read empty just before,
+/// is the guard then.
+#[test]
+fn an_idle_agent_whose_screen_keeps_moving_is_still_rung() {
+    let mut agent = Agent::in_a_pane();
+    agent.type_in("animate", true);
+    agent.until_shows("frame ");
+    std::thread::sleep(QUIET);
+
+    agent.post("p1", "hello");
+    let rung = agent.until_rung(1);
+    assert!(rung[0].starts_with("[muster] integrator+p1"), "{rung:?}");
+    agent.type_in("still", true);
+}
+
 /// A ring typed at work has its Return about a second later, once the screen shows it: the
 /// window a dialog can open in is that second, not the quiet period that the ring's own typing
 /// would start.

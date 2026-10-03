@@ -7,10 +7,11 @@
 # run this script as `claude` - the daemon identifies the agent from the pane's foreground
 # process name (crates/muster-harness/src/agents.rs does both).
 #
-# Commands, one per line: working | blocked | idle | menu | nomenu | quit, or notify <text>,
-# which asks the terminal to notify somebody the way Claude Code does in Ghostty (OSC 777).
-# `menu` paints a menu opened from the prompt, which leaves the state as it was, and `nomenu`
-# closes it.
+# Commands, one per line: working | blocked | idle | menu | nomenu | animate | still | quit, or
+# notify <text>, which asks the terminal to notify somebody the way Claude Code does in Ghostty
+# (OSC 777). `menu` paints a menu opened from the prompt, which leaves the state as it was, and
+# `nomenu` closes it. `animate` redraws a line above the state's five times a second, whatever the
+# state, as an animated statusline or a clock does, and `still` stops it.
 #
 # Its last line is its prompt, `PROBE-PROMPT> `, left for the terminal's echo of what is typed,
 # so a line half typed into it shows there as it would in an agent's prompt.
@@ -40,6 +41,7 @@ draft=
 menu=
 placeholder=
 signalled=
+animator=
 case "$1" in
     dialog) state=blocked ;;
     placeholder) placeholder=yes ;;
@@ -98,12 +100,22 @@ while :; do
     tick=$((tick + 1))
     case "$line" in
         notify\ *) printf '\033]777;notify;Claude Code;%s\a' "${line#notify }" ;;
+        *animate*)
+            if [ -z "$animator" ]; then
+                (while :; do printf '\0337\033[2;1Hframe %s\033[K\0338' "$(date +%s)"; sleep 0.2; done) &
+                animator=$!
+            fi ;;
+        *still*)
+            [ -n "$animator" ] && kill "$animator"
+            animator= ;;
         *nomenu*)  menu= ;;
         *menu*)    menu=yes ;;
         *working*) state=working ;;
         *blocked*) state=blocked ;;
         *idle*)    state=idle ;;
-        *quit*)    exit 0 ;;
+        *quit*)
+            [ -n "$animator" ] && kill "$animator"
+            exit 0 ;;
     esac
     paint
 done
