@@ -255,6 +255,21 @@
       }
     },
     {
+      "name": "codex 0.154.0: a draft opening with a blank line holds what follows it",
+      "why": "A draft whose first line is empty and whose second is blank: the composer runs to the blank line above the footer, the last block, so the words below the blank line are read and the doorbell waits them out rather than typing into them.",
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "╭─────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.154.0)                      │\n│                                                 │\n│ model:     gpt-5.6-luna low   /model to change  │\n│ directory: /tmp/capture │\n╰─────────────────────────────────────────────────╯\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n›\n\n  second paragraph\n\n  gpt-5.6-luna low · /tmp/capture\n",
+        "title": "codex",
+        "typed": "\n     OpenAI Codex\n\n             gpt-5.6-luna low   /model\n             /tmp/capture\n\n\n  Tip: New For a limited time, Codex is included in your plan for free – let’s build together.\n\n\n›\n\n  second paragraph\n\n  gpt-5.6-luna low   /tmp/capture"
+      },
+      "expect": {
+        "atPrompt": true,
+        "holds": "second paragraph"
+      }
+    },
+    {
       "name": "codex 0.154.0: after a turn the composer is read, not the request above it",
       "why": "The request that started the turn is drawn above the composer with the same caret, and the footer below it; only the composer is the prompt, and it is empty.",
       "given": {

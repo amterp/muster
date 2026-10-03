@@ -268,6 +268,15 @@ def codex_draft(capture: Capture) -> None:
     capture.mark("a draft at the prompt", "idle", "Words typed into Codex's composer and not sent: a draft, which the doorbell waits out.")
     capture.send("\x15")
     capture.pump(1.5)
+    # A draft whose first line is empty and whose second is blank, pasted.
+    capture.send("\x1b[200~\n\nsecond paragraph\x1b[201~")
+    capture.pump(1.5)
+    capture.mark("a draft opening with a blank line", "idle", "A draft whose first line is empty: still a draft, not an empty composer.")
+    for _ in range(3):
+        capture.send("\x15")
+        capture.pump(0.5)
+    capture.send("\x7f")
+    capture.pump(1.5)
 
 
 def codex_approval(capture: Capture) -> None:

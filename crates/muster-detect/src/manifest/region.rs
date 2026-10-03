@@ -177,15 +177,20 @@ fn after_current_prompt_block_marker(content: &str) -> Option<&str> {
 
 /// Muster's, not herdr's: Codex's prompt line and the lines that continue it, down to the blank
 /// line above the footer Codex draws under its composer - what is typed into Codex and nothing
-/// else, where `after_last_prompt_marker` runs on into the footer.
+/// else, where `after_last_prompt_marker` runs on into the footer. The footer is the last block
+/// on screen, so the composer ends at the last blank line, not the first: a draft can hold blank
+/// lines of its own, and one opening with a blank line would otherwise read as empty.
 fn current_prompt(content: &str) -> &str {
     let lines: Vec<&str> = content.lines().collect();
     let Some(index) = current_codex_prompt_index(&lines) else {
         return "";
     };
-    let end = lines[index..]
+    let blank = |line: &&str| line.trim().is_empty();
+    let rest = &lines[index..];
+    let end = rest
         .iter()
-        .position(|line| line.trim().is_empty())
+        .rposition(|line| !blank(line))
+        .and_then(|footer| rest[..footer].iter().rposition(blank))
         .map_or(lines.len(), |relative| index + relative);
     let start = line_start_offset(content, &lines, index);
     &content[start..line_start_offset(content, &lines, end).max(start)]

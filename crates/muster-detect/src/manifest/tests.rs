@@ -321,6 +321,8 @@ fn current_prompt_is_codexs_composer_down_to_the_blank_line_above_its_footer() {
     assert_eq!(region(screen, "current_prompt"), "› half\n  typed\n");
     assert_eq!(region("› just this\n", "current_prompt"), "› just this\n");
     assert_eq!(region("› old prompt\n• working on it\n", "current_prompt"), "");
+    let paragraphs = "› \n\n  second paragraph\n\n  gpt-5 · /work\n";
+    assert_eq!(region(paragraphs, "current_prompt"), "› \n\n  second paragraph\n");
 }
 
 #[test]
