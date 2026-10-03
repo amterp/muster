@@ -134,6 +134,21 @@ fn act(
         // The one drag Muster settles for itself: no daemon knows the other one exists, so
         // nothing upstream can say how a window divides between them.
         "setBoundary" => composition.set_boundary(region(step)?, ratio(step)),
+        // Where a machine joining a tab goes when the split that brought it named a side.
+        "placeRegion" => {
+            let beside = text(step, "beside");
+            let beside = beside
+                .strip_prefix('r')
+                .and_then(|number| number.parse().ok())
+                .map(RegionId::new)
+                .ok_or_else(|| {
+                    CaseError::new(format!(
+                        "a region is named like r0, and this case says {beside:?}"
+                    ))
+                })?;
+            let before = step.get("before").and_then(Value::as_bool).unwrap_or(false);
+            composition.place_region(region(step)?, beside, before);
+        }
         // What following a notification does before it moves the keyboard: the pane that
         // asked may be in a tab no region is showing, and surfacing it is the core's job.
         "surface" => {

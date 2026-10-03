@@ -730,9 +730,9 @@ message SplitPane {
   //
   // The new pane joins the tab holding the split pane. A tab holds one region per machine, side
   // by side: when this machine already has one in the tab, its pane there is split on `side`,
-  // and when it has none it joins the tab as a new region at the end, where `side` has nothing
-  // to apply to. `cwd` is never taken from the split pane, whose directory is a path on another
-  // machine.
+  // and when it has none it joins the tab as a new region beside the split pane's - before it
+  // for `left` or `up`, after it for `right` or `down`. `cwd` is never taken from the split
+  // pane, whose directory is a path on another machine.
   //
   // Separate from `daemon_id`, which names the machine holding the pane being split and is
   // refused when it disagrees with the pane: the two answer different questions.

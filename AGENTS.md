@@ -13,15 +13,15 @@ ships Ghostty's chords where Ghostty has one, an agent list carrying a state on 
 first nine and one to whichever is asking for you, states an agent reports itself where the screen cannot say them -
 `waiting` on its own build among them - renaming, trading two agents' places by dragging a row, dragging a pane by its
 handle onto another pane's edge, right-click menus on a pane, a tab and an agent row, including a split onto any
-attached machine, a focus history the mouse's back and forward buttons walk across tabs, configuration that reloads
-when you save it, a CLI that drives the window from inside a pane on either machine, a notification when an agent needs
-you that takes you to the pane that asked, a second daemon on an SSH machine in the same window - where one tab can
-hold a laptop pane beside a devenv pane - several windows that each hold their own tabs and hand them to each other, a
-newer Muster taking over an older daemon's panes with their agents still running, agents posting messages to each other
-and being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is
-attached to both, and a message for you raising a notification that opens the conversation. Not built, and worth
-knowing before you install rather than after: a pane sits beside another machine's panes only as that machine's part of
-the tab, at its end - a laptop pane cannot go above a devenv one.
+attached machine, a focus history the mouse's back and forward buttons walk across tabs, configuration that reloads when
+you save it, a CLI that drives the window from inside a pane on either machine, a notification when an agent needs you
+that takes you to the pane that asked, a second daemon on an SSH machine in the same window - where one tab can hold a
+laptop pane beside a devenv pane - several windows that each hold their own tabs and hand them to each other, a newer
+Muster taking over an older daemon's panes with their agents still running, agents posting messages to each other and
+being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to
+both, and a message for you raising a notification that opens the conversation. Not built, and worth knowing before you
+install rather than after: a pane sits beside another machine's panes only as that machine's part of the tab, to their
+left or right - a laptop pane cannot go above a devenv one.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.

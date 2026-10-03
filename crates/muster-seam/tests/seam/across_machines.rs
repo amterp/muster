@@ -17,9 +17,9 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    AdjustFontSize, ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow, PaneText,
-    ReadPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged, SendToPane,
-    SplitPane, Startup, ViewNode, ZoomPane, event, request, response, view_node,
+    AdjustFontSize, ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow,
+    PaneText, ReadPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged,
+    SendToPane, SplitPane, Startup, ViewNode, ZoomPane, event, request, response, view_node,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{create, in_new_tab, make, read_text};
@@ -500,6 +500,34 @@ fn a_split_onto_another_machine_joins_the_split_panes_tab() {
     assert_eq!(panes(&devenv).len(), elsewhere + 2);
 }
 
+/// A machine joining a tab goes on the side the split asked for: left of the split pane's part
+/// puts it first, where the end of the tab was the only place it could go before.
+#[test]
+fn a_split_onto_another_machine_to_the_left_puts_that_machine_first() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop: _laptop, devenv: _devenv } = a_window_showing_two_machines();
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+
+    let joined = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop,
+        new_pane_daemon_id: "devenv".to_string(),
+        side: "left".to_string(),
+        take_focus: true,
+        ..SplitPane::default()
+    })));
+    until(
+        "the devenv to join the laptop's tab on its left",
+        || machines_of(&tab) == ["devenv", "laptop"],
+        || format!("{tab} spans {:?}, and the list holds {:?}", machines_of(&tab), rows()),
+    );
+    until(
+        "the keyboard to follow the new pane onto the devenv",
+        || keyboard() == Some(("devenv".to_string(), joined.clone())),
+        || format!("the keyboard is on {:?}", keyboard()),
+    );
+}
+
 /// A pane put on another machine opens at the text size of the pane that was split, as any split
 /// does - not at the size of whichever pane had the keyboard, which is what `muster pane new
 /// --pane X --daemon devenv` got when X was not the keyboard's pane.
@@ -744,11 +772,9 @@ fn font_size_of(pane: &str) -> Option<i32> {
     fn find(node: &ViewNode, pane: &str) -> Option<i32> {
         match node.node.as_ref()? {
             view_node::Node::Pane(held) => (held.pane_id == pane).then_some(held.font_size_offset),
-            view_node::Node::Split(split) => split
-                .first
-                .iter()
-                .chain(split.second.iter())
-                .find_map(|child| find(child, pane)),
+            view_node::Node::Split(split) => {
+                split.first.iter().chain(split.second.iter()).find_map(|child| find(child, pane))
+            }
         }
     }
     let view = VIEW.lock().expect("a panicking reader poisoned the view").clone()?;

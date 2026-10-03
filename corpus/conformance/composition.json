@@ -2739,6 +2739,177 @@
       }
     },
     {
+      "name": "a machine joining a tab can be put just right of the region it was split from",
+      "why": "A split onto a machine with no part of the tab yet opens that machine's region at the tab's end. Asked to go right of a pane in the first of three regions, it belongs beside that region rather than past the third, which is where right of it is on screen.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/daemon-devenv.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "gpu",
+            "socketPath": "/tmp/daemon-gpu.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "gpu",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "placeRegion",
+            "region": "r2",
+            "beside": "r0",
+            "before": false
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/daemon-devenv.sock",
+          "gpu local=/tmp/daemon-gpu.sock",
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1",
+          "r2 daemon=gpu tab=w1:t1",
+          "r1 daemon=devenv tab=w1:t1"
+        ],
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
+      }
+    },
+    {
+      "name": "or just left of it",
+      "why": "Left of the first region is the tab's start, so the new machine's part comes first and the keyboard stays where it was.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/daemon-devenv.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "gpu",
+            "socketPath": "/tmp/daemon-gpu.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "gpu",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "placeRegion",
+            "region": "r2",
+            "beside": "r0",
+            "before": true
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/daemon-devenv.sock",
+          "gpu local=/tmp/daemon-gpu.sock",
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedRegion": "r0",
+        "regions": [
+          "r2 daemon=gpu tab=w1:t1",
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=devenv tab=w1:t1"
+        ],
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
+      }
+    },
+    {
+      "name": "placing a region beside one in another tab changes nothing",
+      "why": "A tab's regions are its own arrangement, and a region cannot sit beside one it shares no tab with. Refusing silently is right here: the caller just made the region and has nothing to do about a split pane that moved tabs in the meantime.",
+      "given": {
+        "steps": [
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/daemon-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "local",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "placeRegion",
+            "region": "r1",
+            "beside": "r0",
+            "before": true
+          }
+        ],
+        "attached": []
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/daemon-devenv.sock",
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=devenv tab=w1:t2"
+        ],
+        "showing": [],
+        "showingTab": "w1:t1",
+        "view": []
+      }
+    },
+    {
       "name": "a boundary keeps the pair's own width, so nothing else moves",
       "why": "What makes a drag local. The two weights still sum to what they summed to before, so every other region in the tab keeps exactly the width it had - which is what the person dragging expects and what a rule dividing the whole tab would break. Three machines rather than two, because a pair is the whole tab when there are only two of them and nothing is left to leave alone.",
       "given": {

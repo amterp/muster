@@ -1857,8 +1857,9 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
 /// A tab holds one region per machine, side by side, so where the new pane can go depends on
 /// whether that machine already has a part of the tab. When it does, the new pane splits the
 /// pane that part is showing, on whichever side was asked for. When it does not, the machine
-/// joins the tab as a new region at the end, and the side has nothing to apply to: Muster keeps
-/// no split tree over regions (`architecture.md`, the core owns composition).
+/// joins the tab as a new region beside the split pane's: before it for left or up, after it
+/// for right or down. Muster keeps no split tree over regions, so a laptop pane cannot go above
+/// a devenv one (`architecture.md`, the core owns composition).
 ///
 /// The split pane's directory goes nowhere. It is a path on the other machine, and the daemon
 /// would start the new pane in a directory that may not exist here.
@@ -1894,10 +1895,9 @@ fn split_onto(
         },
         None => BackendIntent::JoinTab { tab, cwd, run, name },
     };
-    let split = session::daemon_holding(beside).map(|daemon| PaneKey::new(&daemon, beside));
-    relayed(
-        session::submit_from(window, onto, &intent, keyboard, split.as_ref()).map(made_or_ok),
-    )
+    let split = session::daemon_holding(beside)
+        .map(|daemon| session::Beside { pane: PaneKey::new(&daemon, beside), side });
+    relayed(session::submit_from(window, onto, &intent, keyboard, split.as_ref()).map(made_or_ok))
 }
 
 /// Types text into a pane, named rather than focused.

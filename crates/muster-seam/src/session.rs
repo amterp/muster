@@ -2240,17 +2240,23 @@ pub(crate) fn submit(
     submit_from(window, daemon, intent, keyboard, None)
 }
 
+/// The pane a split onto another machine came from, and the side it asked for.
+pub(crate) struct Beside {
+    pub(crate) pane: PaneKey,
+    pub(crate) side: Side,
+}
+
 /// [`submit`], for a pane made on another machine than the pane it was split from.
 ///
 /// The intent alone cannot say which pane that was: it names a pane on the machine it goes to,
-/// or none at all when that machine is joining the tab. `split` is the pane that was split, which
-/// is what the new pane takes its text size from.
+/// or none at all when that machine is joining the tab. The new pane takes its text size from
+/// the pane that was split, and a machine joining the tab goes on the side asked for.
 pub(crate) fn submit_from(
     window: WindowId,
     daemon: &DaemonId,
     intent: &BackendIntent,
     keyboard: Keyboard,
-    split: Option<&PaneKey>,
+    split: Option<&Beside>,
 ) -> Result<Option<PaneId>, Refusal> {
     let (region, source, channel) = {
         let mut session = poison::lock(&SESSION, "session");
@@ -2259,7 +2265,7 @@ pub(crate) fn submit_from(
         // asked. Read here rather than after the round trip, because by then the keyboard may
         // have moved.
         let source = match intent {
-            _ if split.is_some() => split.cloned(),
+            _ if split.is_some() => split.map(|split| split.pane.clone()),
             BackendIntent::SplitPane { pane, .. } => Some(PaneKey::new(daemon, pane)),
             BackendIntent::CreateTab { .. } | BackendIntent::JoinTab { .. } => {
                 session.keyboard_key(window)
@@ -2383,7 +2389,19 @@ pub(crate) fn submit_from(
         }
         let composition = &mut session.windows[window].composition;
         let region = region.or_else(|| match intent {
-            BackendIntent::JoinTab { tab, .. } => composition.region_of(daemon, tab),
+            BackendIntent::JoinTab { tab, .. } => {
+                let joined = composition.region_of(daemon, tab)?;
+                // Beside the region holding the split pane rather than at the tab's end, where
+                // opening a region puts it. A tab lays its machines side by side, so up and down
+                // read as before and after: left or up puts the machine first.
+                if let Some(split) = split
+                    && let Some(beside) = composition.region_of(&split.pane.daemon, tab)
+                {
+                    let before = matches!(split.side, Side::Left | Side::Up);
+                    composition.place_region(joined, beside, before);
+                }
+                Some(joined)
+            }
             _ => None,
         });
         if let (Some(region), Keyboard::Follows) = (region, keyboard) {

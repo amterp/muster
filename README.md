@@ -117,8 +117,8 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- A pane sits beside another machine's panes only as that machine's part of the tab, at its end: a
-  laptop pane cannot go above a devenv one. And a pane dropped on a tab's caption lands where Muster
+- A pane sits beside another machine's panes only as that machine's part of the tab, to their left
+  or right: a laptop pane cannot go above a devenv one. And a pane dropped on a tab's caption lands where Muster
   puts it; to choose, drop it on a pane's edge once that tab is on screen.
 - Reopen Closed Window brings back the most recent closed window. An older one comes back when you
   go to one of its tabs - `muster window` lists them under the closed window's name.

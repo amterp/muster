@@ -538,6 +538,26 @@ impl Composition {
         }
     }
 
+    /// Moves a region to just before or just after another region of the same tab.
+    ///
+    /// Where a machine joining a tab goes when the split that brought it named a side: to the
+    /// left of the region holding the split pane, or to its right, rather than at the tab's end
+    /// where opening a region puts it. Widths, the keyboard and the tab on screen stay as they
+    /// were. Two regions in different tabs, or one region named twice, change nothing.
+    pub fn place_region(&mut self, region: RegionId, beside: RegionId, before: bool) {
+        if region == beside {
+            return;
+        }
+        let Some(tab) = self.tab_holding_mut(region) else { return };
+        if !tab.regions.iter().any(|held| held.id == beside) {
+            return;
+        }
+        let Some(from) = tab.regions.iter().position(|held| held.id == region) else { return };
+        let moved = tab.regions.remove(from);
+        let Some(at) = tab.regions.iter().position(|held| held.id == beside) else { return };
+        tab.regions.insert(if before { at } else { at + 1 }, moved);
+    }
+
     /// Moves the line between a region and the one to its right.
     ///
     /// `ratio` is the named region's share of the two of them together, so the pair keeps

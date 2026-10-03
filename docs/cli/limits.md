@@ -161,13 +161,13 @@ A path is tidied lexically, so `..` steps are worked out without asking the file
 matches what a shell's own `cd ..` does, and differs from `realpath` where a symlink is in the
 way.
 
-## A pane put on another machine joins the tab at its end
+## A pane put on another machine goes beside its part of the tab, not above or below it
 
-`muster pane new --pane P --daemon devenv` cannot put the new pane above, below or to the left
-of P when P's tab has no panes on devenv yet. Devenv joins the tab as a new region at its
-right-hand end, whatever side was asked for. A tab lays its machines out as regions side by
-side, and Muster keeps no split tree across them. Once devenv has a region in the tab, later
-panes split within it on the side asked for.
+`muster pane new --pane P --daemon devenv` cannot put the new pane above or below P when P's
+tab has no panes on devenv yet. Devenv joins the tab as a new region beside the one holding P:
+before it for `--left` or `--up`, after it for `--right` or `--down`. A tab lays its machines
+out as regions side by side, and Muster keeps no split tree across them. Once devenv has a
+region in the tab, later panes split within it on the side asked for.
 
 ## There is no search
 

@@ -83,9 +83,9 @@ what right-clicking a pane and picking a machine does:
     muster pane new --pane p1w3r07bsd --daemon devenv --run claude
 
 If the tab already has panes on devenv, the new pane splits the one devenv's region has the
-keyboard on, on the side you asked for. If it has none, devenv joins the tab as a new region at
-its right-hand end, and the side is ignored: a tab lays its machines side by side, and Muster
-keeps no split tree across them.
+keyboard on, on the side you asked for. If it has none, devenv joins the tab as a new region
+beside the pane's: to its left for `--left` or `--up`, to its right for `--right` or `--down`,
+because a tab lays its machines side by side and Muster keeps no split tree across them.
 
 ## Which window
 
