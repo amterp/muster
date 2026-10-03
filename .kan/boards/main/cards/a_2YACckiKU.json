@@ -2,18 +2,19 @@
   "_v": 3,
   "alias": "the-doorbell-reads",
   "alias_explicit": false,
-  "column": "next",
+  "column": "backlog-hi",
   "created_at_millis": 1790596529015,
   "creator": "Alexander Terp",
   "description": "The doorbell rings only a prompt it positively reads as empty (MIP-4 section 6): a manifest rule carrying prompt = '\u003cregex\u003e' (detection engine 5), with faint cells blanked as untyped. Only claude.toml has one. Every other harness is never rung by the doorbell; it is reached through its inbox or hooks, or the post says its prompt cannot be read and exits 6 when nobody else heard. For each harness: record its empty prompt (fresh and after a turn), add a prompt rule, and a case in corpus/conformance/agent-prompt.json.",
   "id": "a_2YACckiKU",
   "parent": "a_2Y3ODvuwa",
-  "position": "Zz",
+  "position": "!!!!!!3",
   "title": "The doorbell reads other harnesses' empty prompts, Codex first",
   "type": "feature",
-  "updated_at_millis": 1791036712223,
+  "updated_at_millis": 1791043528751,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790596529015},
-    {"field":"column","value":"next","at":1791036712223}
+    {"field":"column","value":"next","at":1791036712223},
+    {"field":"column","value":"backlog-hi","at":1791043528751}
   ]
 }
