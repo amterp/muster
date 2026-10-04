@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "a-resumed-agent",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -15,14 +15,15 @@
   "creator": "Alexander Terp",
   "description": "Resuming after a restart (a_27QdHGMeC) runs claude --resume \u003cid\u003e, which drops the flags the agent was started with: model, effort, --permission-mode, --settings. So a worker started with ct -m 2 comes back asking for permission it had skipped. That fails safe, but a person has to re-grant or restart it. Carrying the original launch forward means knowing it: the pane's --run command, or the hooks reporting it.",
   "id": "a_2YXWVPfDI",
-  "position": "Zq",
+  "position": "Yy0",
   "title": "▶️ A resumed agent keeps the flags it was started with",
   "type": "feature",
-  "updated_at_millis": 1791121852753,
+  "updated_at_millis": 1791123068789,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790652108781},
     {"field":"column","value":"in-progress","at":1791121472189},
     {"field":"column","value":"backlog-lo","at":1791121584669},
-    {"field":"column","value":"in-progress","at":1791121852753}
+    {"field":"column","value":"in-progress","at":1791121852753},
+    {"field":"column","value":"done","at":1791123068789}
   ]
 }
