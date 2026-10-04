@@ -556,6 +556,9 @@ public enum SidebarModel {
     if agent.reported { state += ", as the agent reports" }
     lines.append(state)
     if agent.unreadable { lines.append("Muster cannot read this agent's screen") }
+    if agent.adapter == "silent" {
+      lines.append("its adapter is not reporting (muster docs harnesses)")
+    }
     if !agent.waiting.isEmpty { lines.append("waiting on \(agent.waiting)") }
     if !row.subtitle.isEmpty && row.subtitle != subtitle("", agent: agent) {
       lines.append(row.subtitle)

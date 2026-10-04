@@ -198,8 +198,9 @@ fn a_wait_on_context_ends_when_the_agent_says_it(here: &Here) {
     let ran = here.muster(&["pane", "wait", "--pane", "p2", "--context", "80", "--timeout", "1"]);
     let complaint = refused_with(&ran, 5);
     assert!(
-        complaint.contains("p2 has not said how full its context is"),
-        "a wait its harness may never meet has to say so before the timeout does:\n{complaint}"
+        complaint.contains("p2's adapter is not reporting"),
+        "a wait its harness may never meet has to say so before the timeout does, and an agent \
+         that ended a turn without reporting is one whose adapter is missing:\n{complaint}"
     );
     assert!(complaint.contains("not at 80% context within 1s"), "{complaint}");
 

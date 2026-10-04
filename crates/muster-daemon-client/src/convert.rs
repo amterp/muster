@@ -10,7 +10,7 @@ use muster_core::daemon_settings::{DaemonSettings, Palette};
 use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, OptionAsAlt};
 use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::{
-    AgentFacts, LayoutNode, Pane, PaneId, Progress, ProgressState, SplitAxis, Tab, TabId,
+    Adapter, AgentFacts, LayoutNode, Pane, PaneId, Progress, ProgressState, SplitAxis, Tab, TabId,
 };
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
 use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
@@ -120,6 +120,11 @@ fn lost(restored: proto::Restored) -> Restored {
 
 pub fn pane(record: proto::Pane) -> Pane {
     let agent_state = record.agent_state();
+    let adapter = match record.adapter() {
+        proto::Adapter::Unsaid => Adapter::Unsaid,
+        proto::Adapter::Reporting => Adapter::Reporting,
+        proto::Adapter::Silent => Adapter::Silent,
+    };
     let facts = record.facts.unwrap_or_default();
     Pane {
         id: PaneId::new(record.pane),
@@ -148,6 +153,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         },
         reported: record.state_reported,
         unreadable: record.screen_unreadable,
+        adapter,
     }
 }
 

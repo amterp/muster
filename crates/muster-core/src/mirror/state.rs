@@ -371,6 +371,7 @@ fn described(before: &Pane, now: &Pane) -> bool {
     before.facts != now.facts
         || before.reported != now.reported
         || before.unreadable != now.unreadable
+        || before.adapter != now.adapter
 }
 
 /// Whether a tab's tree or its zoom has moved.

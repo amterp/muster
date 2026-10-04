@@ -418,18 +418,28 @@ fn context_unsaid(
     watch
         .pane_ids
         .iter()
-        .filter(|named| {
-            panes.iter().any(|pane| {
-                &pane.pane_id == *named
+        .filter_map(|named| {
+            panes.iter().find(|pane| {
+                &pane.pane_id == named
                     && pane.facts.as_ref().is_none_or(|facts| facts.context_used.is_none())
             })
         })
         .map(|pane| {
-            format!(
-                "{pane} has not said how full its context is. Claude Code, Codex and OpenCode say \
-                 it once Muster's adapter is installed (`muster docs harnesses`); until {pane} \
-                 does, --context cannot end this wait."
-            )
+            let pane_id = &pane.pane_id;
+            if pane.adapter == "silent" {
+                format!(
+                    "{pane_id}'s adapter is not reporting, so it will not say how full its \
+                     context is and --context cannot end this wait. `muster harness install` \
+                     installs the adapter, and the agent takes it up once restarted (`muster docs \
+                     harnesses`)."
+                )
+            } else {
+                format!(
+                    "{pane_id} has not said how full its context is. Claude Code, Codex and \
+                     OpenCode say it once Muster's adapter is installed (`muster docs \
+                     harnesses`); until {pane_id} does, --context cannot end this wait."
+                )
+            }
         })
         .collect()
 }

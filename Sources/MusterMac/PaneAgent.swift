@@ -32,6 +32,9 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
   public var progress: Progress?
   /// A program in the pane rang the bell and nobody has looked at the pane since.
   public var rang = false
+  /// `reporting`, `silent` (an adapter Muster ships is not reporting), `none` (its harness has
+  /// no adapter), or empty while there is nothing to say yet.
+  public var adapter = ""
 
   public init(state: String) {
     self.state = state
@@ -46,6 +49,7 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
     reported = changed.reported
     unreadable = changed.unreadable
     rang = changed.rang
+    adapter = changed.adapter
     if changed.hasFacts {
       let facts = changed.facts
       contextUsed = facts.hasContextUsed ? facts.contextUsed : nil

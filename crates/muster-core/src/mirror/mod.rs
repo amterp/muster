@@ -9,6 +9,6 @@ pub mod event;
 pub mod ordered;
 pub mod state;
 
-pub use backend::{AgentFacts, Health, Pane, PaneId, Snapshot, Tab, TabId};
+pub use backend::{Adapter, AgentFacts, Health, Pane, PaneId, Snapshot, Tab, TabId};
 pub use event::{BackendEvent, Change, Restored};
 pub use state::Mirror;

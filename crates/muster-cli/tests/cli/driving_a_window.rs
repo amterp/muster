@@ -358,6 +358,7 @@ fn what_an_agent_says_and_a_bell_are_in_the_window(
     assert_eq!(described["facts"]["context_used"], json!(64.0), "{described}");
     assert_eq!(described["facts"]["waiting"], Value::Null, "nothing said is null: {described}");
     assert_eq!(described["unreadable"], json!(false), "{described}");
+    assert_eq!(described["adapter"], json!("reporting"), "it reported: {described}");
 
     let plain = run(&["window"], environment);
     let line = plain.out.lines().find(|line| line.contains(pane)).unwrap_or_default();

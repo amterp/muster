@@ -102,6 +102,21 @@ pub struct Pane {
     /// Whether the daemon's rules have stopped reading this agent's screen, so that its state
     /// comes only from what the agent reports.
     pub unreadable: bool,
+    /// Whether the agent reports itself through its harness's adapter, as its daemon judged it.
+    pub adapter: Adapter,
+}
+
+/// Whether a pane's agent reports itself, as its daemon judged it ([`crate::harnesses`] says
+/// what that means for its harness).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Adapter {
+    /// Nothing to say yet: no agent, one that has not ended a turn, or a daemon too old to say.
+    #[default]
+    Unsaid,
+    /// It has reported since it came into the pane.
+    Reporting,
+    /// It ended a turn having reported nothing.
+    Silent,
 }
 
 impl Pane {

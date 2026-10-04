@@ -775,6 +775,22 @@ struct SidebarTests {
         ].joined(separator: "\n"))
   }
 
+  @Test("hovering a row whose adapter is not reporting says where to read about it")
+  func detailsNameASilentAdapter() {
+    let key = PaneKey(daemon: "local", pane: "w1:p1")
+    let roster = roster([tab("local", panes: [pane("local", "w1:p1", label: "muster · codex")])])
+    var agent = PaneAgent(state: "idle")
+    agent.adapter = "silent"
+    let row = SidebarModel.rows(roster: roster, agents: [key: agent]).first { $0.isPane }
+    #expect(
+      row.map(SidebarModel.details(of:))
+        == ["muster · codex", "idle", "its adapter is not reporting (muster docs harnesses)"]
+        .joined(separator: "\n"))
+    agent.adapter = "none"
+    let quiet = SidebarModel.rows(roster: roster, agents: [key: agent]).first { $0.isPane }
+    #expect(quiet.map(SidebarModel.details(of:)) == "muster · codex\nidle")
+  }
+
   @Test("a row with a second line is taller, and only that row")
   func onlyASecondLineCostsHeight() {
     // The reason this is asserted rather than left to look right: a list of fifteen agents is

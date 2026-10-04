@@ -17,7 +17,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use muster_core::composition::{Rect, ViewNode, ViewPane, places_in};
-use muster_core::mirror::backend::{PaneId, SplitAxis};
+use muster_core::harnesses;
+use muster_core::mirror::backend::{Adapter, PaneId, SplitAxis};
 use muster_core::pane_text::{self, PaneText, Scope};
 use muster_core::{AgentState, Until};
 use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection};
@@ -335,6 +336,15 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         }),
         progress: None,
         rang: false,
+        adapter: harnesses::standing(pane.agent.as_deref(), adapter_of(pane)).as_str().to_string(),
+    }
+}
+
+fn adapter_of(pane: &daemon_proto::Pane) -> Adapter {
+    match pane.adapter() {
+        daemon_proto::Adapter::Unsaid => Adapter::Unsaid,
+        daemon_proto::Adapter::Reporting => Adapter::Reporting,
+        daemon_proto::Adapter::Silent => Adapter::Silent,
     }
 }
 

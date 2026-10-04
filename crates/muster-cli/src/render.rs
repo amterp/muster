@@ -823,7 +823,8 @@ fn pane_line(
 }
 
 /// What else is worth a glance about a pane's agent, each a few words: how full its context is,
-/// its sub-agents, whether its screen can be read, a bell nobody heard, and a program's progress.
+/// its sub-agents, whether its screen can be read, an adapter that could report and does not, a
+/// bell nobody heard, and a program's progress.
 ///
 /// The model and the cost are left to `--json`: they change what somebody does next less often
 /// than they would lengthen every line.
@@ -841,6 +842,10 @@ fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
     }
     if agent.unreadable {
         notes.push("(cannot read the screen)".to_string());
+    }
+    // Only where there is an adapter to install: a harness without one is silent by nature.
+    if agent.adapter == "silent" {
+        notes.push("(adapter not reporting)".to_string());
     }
     if agent.rang {
         notes.push("(bell)".to_string());
@@ -1049,6 +1054,7 @@ fn window_json(window: &Window, others: Others) -> Value {
                     json!({ "state": progress.state, "percent": progress.percent })
                 }),
                 "rang": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.rang),
+                "adapter": states.get(pane.pane_id.as_str()).map(|agent| agent.adapter.as_str()).filter(|adapter| !adapter.is_empty()),
                 "on_screen": pane.on_screen,
                 "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
                 // Null rather than zeroes for a pane the window is not drawing, so this and
@@ -1474,6 +1480,44 @@ mod tests {
             "the window paints blocked orange, and yellow is the nearest of the sixteen"
         );
         assert_eq!(agent_style("done"), hue(AnsiColor::Green), "the window paints done green");
+    }
+
+    /// An adapter that could report and does not is a note on the pane's row; one with nothing to
+    /// say yet is no note, and null in `--json`.
+    #[test]
+    fn a_silent_adapter_is_noted_and_an_unsaid_one_is_not() {
+        use muster_proto::{PaneStateChanged, RosterChanged, RosterPane, RosterTab, Window};
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![RosterTab {
+                    tab_id: "t1".to_string(),
+                    panes: ["p1", "p2"]
+                        .map(|pane| RosterPane {
+                            pane_id: pane.to_string(),
+                            ..RosterPane::default()
+                        })
+                        .to_vec(),
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            panes: [("p1", "silent"), ("p2", "")]
+                .map(|(pane, adapter)| PaneStateChanged {
+                    pane_id: pane.to_string(),
+                    state: "idle".to_string(),
+                    adapter: adapter.to_string(),
+                    ..PaneStateChanged::default()
+                })
+                .to_vec(),
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert_eq!(json["panes"][0]["adapter"], "silent", "{json}");
+        assert!(json["panes"][1]["adapter"].is_null(), "{json}");
+        let text = window_text(&window, 0, Others::All, false);
+        let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
+        assert!(row("p1").contains("(adapter not reporting)"), "{text}");
+        assert!(!row("p2").contains("adapter"), "{text}");
     }
 
     /// Under `--layout`, a pane in another window, open or closed, has a frame in its own tab like

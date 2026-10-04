@@ -1710,6 +1710,7 @@ impl Session {
             facts: pane.facts.clone(),
             progress,
             rang: self.attention.has_rung(key),
+            adapter: muster_core::harnesses::standing(pane.agent.as_deref(), pane.adapter),
         }
     }
 
@@ -3860,6 +3861,7 @@ pub(crate) struct PaneAgent {
     pub progress: Option<Progress>,
     /// A bell in the pane has gone unseen.
     pub rang: bool,
+    pub adapter: muster_core::harnesses::Standing,
 }
 
 /// How much of one daemon's truth the window has, as the shell and a watch are told it.

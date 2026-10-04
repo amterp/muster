@@ -111,6 +111,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         facts: given.get("facts").map(read_facts).unwrap_or_default(),
         reported: given.get("reported").and_then(Value::as_bool).unwrap_or_default(),
         unreadable: given.get("unreadable").and_then(Value::as_bool).unwrap_or_default(),
+        adapter: muster_core::mirror::Adapter::default(),
     }
 }
 

@@ -2731,6 +2731,12 @@ message PaneStateChanged {
   // What to call the pane, as `muster window` prints it, on a watch's answers so a person reading
   // one does not have to look each pane up. Empty on the shell's event, whose roster carries it.
   string label = 10;
+
+  // Whether the agent reports itself through its harness's adapter: `reporting`; `silent`, it
+  // ended a turn having reported nothing and Muster ships an adapter for its harness, which
+  // `muster harness install` installs; `none`, the same for a harness Muster has no adapter
+  // for. Empty while there is nothing to say: no agent, or one that has not yet ended a turn.
+  string adapter = 11;
 }
 
 message PaneProgress {
