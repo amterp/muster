@@ -24,6 +24,11 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// than from libghostty's, which is focused and visible.
   private var windowIsKey = false
   private var windowIsVisible = true
+  /// Whether this pane is parked: held off screen in a tab no region is showing.
+  private var parked = false
+
+  /// Whether libghostty should draw this surface: its window can be seen, and it is in it.
+  private var seen: Bool { windowIsVisible && !parked }
 
   /// Whether this view has a pane to type into. A bare `muster` does not - it is the
   /// renderer check - and a view that sent keystrokes anyway would fill the log with
@@ -155,7 +160,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public func attach(_ surface: any PaneSurface, typeable: Bool) {
     self.surface = surface
-    if !windowIsVisible {
+    if !seen {
       surface.setOcclusion(visible: false)
     }
     surface.onProcessExited = { [weak self] processAlive in
@@ -580,9 +585,17 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   /// libghostty stops drawing a surface only when told it cannot be seen.
   public func apply(windowIsVisible visible: Bool) {
-    guard visible != windowIsVisible else { return }
+    let before = seen
     windowIsVisible = visible
-    surface?.setOcclusion(visible: visible)
+    if seen != before { surface?.setOcclusion(visible: seen) }
+  }
+
+  /// A parked pane is in a hidden view inside a window that may well be visible, so its window
+  /// being seen says nothing about it: without this it drew at full rate for nobody.
+  public func apply(parked: Bool) {
+    let before = seen
+    self.parked = parked
+    if seen != before { surface?.setOcclusion(visible: seen) }
   }
 
   public override func becomeFirstResponder() -> Bool {

@@ -121,6 +121,7 @@ public final class PaneSurfaces {
       if existing.linkSocketPath == leaf.linkSocketPath,
         existing.bridgeRestarts == leaf.bridgeRestarts, !neverDialed
       {
+        existing.chrome.surface.apply(parked: false)
         return (existing.chrome, false)
       }
       let reason =
@@ -171,6 +172,7 @@ public final class PaneSurfaces {
     for (key, entry) in held where !onScreen.contains(key) {
       guard entry.chrome.superview !== parking else { continue }
       parking.addSubview(entry.chrome)
+      entry.chrome.surface.apply(parked: true)
     }
     if let alive { release(everythingBut: alive) }
   }
