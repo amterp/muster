@@ -411,11 +411,8 @@ pub(crate) fn reopening(record: &str) -> Vec<String> {
     }
     // Every row the last process of this install left open is a window open when it ended: this
     // launch holds the app, so no process of the install is still running to be showing one.
-    read(Path::new(record)).open_when_last_ended(
-        install::INSTALL,
-        |_| false,
-        |arrangement| Path::new(arrangement).exists(),
-    )
+    read(Path::new(record))
+        .open_when_last_ended(install::INSTALL, |arrangement| Path::new(arrangement).exists())
 }
 
 /// The record as the file holds it: empty when there is no file yet, and empty with a warning

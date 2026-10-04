@@ -117,16 +117,13 @@ fn taker(holders: &Holders, asked: &Value) -> String {
     }
 }
 
-/// Asks which arrangements a launch of one install reopens, with the windows the case says still
-/// answer and the arrangements it says are on disk - both of which the seam finds out for itself.
+/// Asks which arrangements a launch of one install reopens, with the arrangements the case says
+/// are on disk, which the seam finds out for itself.
 fn reopening(holders: &Holders, asked: &Value) -> Vec<String> {
-    let answering = strings(asked, "answering");
     let existing = strings(asked, "existing");
-    holders.open_when_last_ended(
-        &text(asked, "install"),
-        |window| answering.iter().any(|name| name == window.name.as_str()),
-        |arrangement| existing.iter().any(|path| path == arrangement),
-    )
+    holders.open_when_last_ended(&text(asked, "install"), |arrangement| {
+        existing.iter().any(|path| path == arrangement)
+    })
 }
 
 fn describe(window: &HeldWindow) -> String {

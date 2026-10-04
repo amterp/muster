@@ -139,13 +139,11 @@ impl Holders {
     /// The arrangements of `install`'s windows that were open when Muster last ended, focused
     /// longest ago first.
     ///
-    /// Open when it ended means a row with a pid, which a close would have cleared, whose process
-    /// is gone: `answers` dials its socket, and a window that still answers is open in a process
-    /// that is still running. Its arrangement has to still be there to be reopened (`exists`).
+    /// Open when it ended means a row with a pid, which a close would have cleared. Its
+    /// arrangement has to still be there to be reopened (`exists`).
     pub fn open_when_last_ended(
         &self,
         install: &str,
-        answers: impl Fn(&HeldWindow) -> bool,
         exists: impl Fn(&str) -> bool,
     ) -> Vec<String> {
         let mut ended: Vec<&HeldWindow> = self
@@ -156,7 +154,6 @@ impl Holders {
                     && window.pid != 0
                     && !window.arrangement.is_empty()
                     && exists(&window.arrangement)
-                    && !answers(window)
             })
             .collect();
         ended.sort_by_key(|window| (window.focused, window.name.clone()));

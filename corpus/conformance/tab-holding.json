@@ -729,7 +729,6 @@
         ],
         "reopening": {
           "install": "dev-a",
-          "answering": [],
           "existing": [
             "/s/windows/window-1.toml",
             "/s/windows/window-2.toml"
@@ -740,58 +739,6 @@
         "windows": [
           "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
           "window-2 pid=0 socket= arrangement=/s/windows/window-2.toml focused=200 daemons=local"
-        ],
-        "tabs": [],
-        "reopening": [
-          "/s/windows/window-1.toml"
-        ]
-      }
-    },
-    {
-      "name": "a window that still answers is open in a process still running, and is not reopened",
-      "why": "A pid alone cannot tell a window that ended from one that is open: an older Muster, or a second process, may be running it. Its socket answering is the test, as it is for every other question about whether a window is open.",
-      "given": {
-        "steps": [
-          {
-            "do": "open",
-            "window": "window-1",
-            "arrangement": "/s/windows/window-1.toml",
-            "socket": "/s/command-11.sock",
-            "pid": 11,
-            "install": "dev-a",
-            "focused": 100,
-            "daemons": [
-              "local"
-            ]
-          },
-          {
-            "do": "open",
-            "window": "window-2",
-            "arrangement": "/s/windows/window-2.toml",
-            "socket": "/s/command-22.sock",
-            "pid": 22,
-            "install": "dev-a",
-            "focused": 200,
-            "daemons": [
-              "local"
-            ]
-          }
-        ],
-        "reopening": {
-          "install": "dev-a",
-          "answering": [
-            "window-2"
-          ],
-          "existing": [
-            "/s/windows/window-1.toml",
-            "/s/windows/window-2.toml"
-          ]
-        }
-      },
-      "expect": {
-        "windows": [
-          "window-1 pid=11 socket=/s/command-11.sock arrangement=/s/windows/window-1.toml focused=100 daemons=local",
-          "window-2 pid=22 socket=/s/command-22.sock arrangement=/s/windows/window-2.toml focused=200 daemons=local"
         ],
         "tabs": [],
         "reopening": [
@@ -843,7 +790,6 @@
         ],
         "reopening": {
           "install": "dev-a",
-          "answering": [],
           "existing": [
             "/s/windows/window-1.toml",
             "/s/windows/window-2.toml"
@@ -906,7 +852,6 @@
         ],
         "reopening": {
           "install": "dev-a",
-          "answering": [],
           "existing": [
             "/s/windows/window-1.toml",
             "/s/windows/window-2.toml",
@@ -987,7 +932,6 @@
         ],
         "reopening": {
           "install": "release",
-          "answering": [],
           "existing": [
             "/s/release/windows/window-1.toml",
             "/s/release/windows/window-2.toml"
