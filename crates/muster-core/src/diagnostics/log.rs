@@ -6,7 +6,7 @@
 //! `MUSTER_LOG_FILE`, which the app sets for itself and every bridge it spawns.
 
 use std::collections::BTreeMap;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock, PoisonError, RwLock};
 
 use super::clock::{monotonic_now, wall_clock_millis};
 use super::sink::JsonLinesSink;
@@ -105,6 +105,14 @@ struct Installed {
 /// Installed once during startup, before anything else runs, and read from every thread
 /// after that.
 static INSTALLED: RwLock<Option<Installed>> = RwLock::new(None);
+
+/// Records emitted before a sink was installed, written when one is.
+///
+/// The app claims its lock and adopts old state before `Startup` installs the run's log, and what
+/// those steps say is exactly what explains a launch that went wrong. Bounded, because a process
+/// that never installs a sink - the CLI, a test - would otherwise keep every record it emits.
+static EARLY: Mutex<Vec<LogRecord>> = Mutex::new(Vec::new());
+const EARLY_LIMIT: usize = 256;
 static INCLUDES_INPUT: OnceLock<bool> = OnceLock::new();
 
 /// Recovers the log lock rather than reporting that it could not be taken.
@@ -131,8 +139,14 @@ macro_rules! recovered {
 
 /// Turns logging on for this process.
 pub fn install(sink: Box<dyn LogSink>, process: impl Into<String>, minimum: LogLevel) {
+    let process = process.into();
+    let early = std::mem::take(&mut *EARLY.lock().unwrap_or_else(PoisonError::into_inner));
+    for mut record in early.into_iter().filter(|record| record.level >= minimum) {
+        record.process.clone_from(&process);
+        sink.write(&record);
+    }
     let mut slot = recovered!(INSTALLED.write());
-    *slot = Some(Installed { sink, minimum, process: process.into() });
+    *slot = Some(Installed { sink, minimum, process });
 }
 
 /// Turns logging on if the environment asks for it.
@@ -177,14 +191,18 @@ pub fn enabled(level: LogLevel) -> bool {
 
 pub fn emit(level: LogLevel, event: &str, fields: BTreeMap<String, String>) {
     let slot = recovered!(INSTALLED.read());
+    // SAFETY: getpid is always safe to call and reads no memory we own.
+    let pid = unsafe { libc::getpid() };
     let Some(installed) = slot.as_ref() else {
+        let mut early = EARLY.lock().unwrap_or_else(PoisonError::into_inner);
+        if early.len() < EARLY_LIMIT {
+            early.push(LogRecord::now(level, String::new(), pid, event, fields));
+        }
         return;
     };
     if level < installed.minimum {
         return;
     }
-    // SAFETY: getpid is always safe to call and reads no memory we own.
-    let pid = unsafe { libc::getpid() };
     installed.sink.write(&LogRecord::now(level, &installed.process, pid, event, fields));
 }
 
@@ -277,7 +295,34 @@ at_level!(error, LogLevel::Error);
 
 #[cfg(test)]
 mod tests {
-    use super::relabelled;
+    use std::sync::{Arc, Mutex};
+
+    use super::{LogLevel, LogRecord, LogSink, emit, install, relabelled};
+
+    struct Kept(Arc<Mutex<Vec<LogRecord>>>);
+
+    impl LogSink for Kept {
+        fn write(&self, record: &LogRecord) {
+            self.0.lock().unwrap().push(record.clone());
+        }
+    }
+
+    /// The only test in this binary that installs a sink, since a sink is the process's.
+    #[test]
+    fn what_was_said_before_the_log_was_installed_reaches_it() {
+        emit(LogLevel::Info, "app.claimed", std::collections::BTreeMap::new());
+        emit(LogLevel::Debug, "below.the.bar", std::collections::BTreeMap::new());
+        let kept = Arc::new(Mutex::new(Vec::new()));
+        install(Box::new(Kept(Arc::clone(&kept))), "app", LogLevel::Info);
+
+        let written = kept.lock().unwrap();
+        let claimed = written.iter().find(|record| record.event == "app.claimed");
+        assert_eq!(claimed.map(|record| record.process.as_str()), Some("app"), "{written:?}");
+        assert!(
+            !written.iter().any(|record| record.event == "below.the.bar"),
+            "a record below the installed level was written: {written:?}"
+        );
+    }
 
     const LINE: &str = "{\"time\":\"2026-09-27T03:00:00.000Z\",\"mono_ns\":5000,\"level\":\"info\",\
                         \"process\":\"daemon\",\"pid\":7,\"event\":\"pane.created\"}\n";
