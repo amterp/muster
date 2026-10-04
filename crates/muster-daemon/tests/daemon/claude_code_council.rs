@@ -27,9 +27,14 @@ const EXTRAS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras");
 /// How long the council has to reach its outcome.
 const BUDGET: Duration = Duration::from_mins(25);
 
-/// How long all three sessions may sit idle together before the council counts as stranded:
-/// in a directed council somebody always holds the turn until the outcome is posted.
+/// How long all three sessions may sit idle together, with nothing new in the log, before the
+/// council counts as stranded: in a directed council somebody always holds the turn until the
+/// outcome is posted.
 const STRANDED: Duration = Duration::from_mins(3);
+
+/// How often [`watch`] looks. Against [`STRANDED`], ten seconds late is nothing; what a sample
+/// can miss is a turn that starts and ends between two, which [`Stillness`] catches by its post.
+const SAMPLED: Duration = Duration::from_secs(10);
 
 /// How many messages the agents post before the human tells the director to finish, which
 /// clears the proof's forty with room for the rounds already under way.
@@ -184,7 +189,7 @@ fn a_directed_council_of_three_sessions_runs_past_forty_messages_with_nobody_lea
 /// three sessions sit idle together for longer than [`STRANDED`].
 fn watch(control: &mut Control, panes: [&str; 3], wrap_up: impl Fn()) -> Outcome {
     let began = Instant::now();
-    let mut idle_since: Option<Instant> = None;
+    let mut stillness = Stillness::default();
     let mut longest_idle = Duration::ZERO;
     let mut told = false;
     loop {
@@ -209,11 +214,9 @@ fn watch(control: &mut Control, panes: [&str; 3], wrap_up: impl Fn()) -> Outcome
         }
         let all_idle =
             panes.iter().all(|pane| agent_state(control, pane) == proto::AgentState::Idle);
-        let since =
-            if all_idle { *idle_since.get_or_insert_with(Instant::now) } else { Instant::now() };
-        idle_since = all_idle.then_some(since);
-        longest_idle = longest_idle.max(since.elapsed());
-        if since.elapsed() > STRANDED || began.elapsed() > BUDGET {
+        let still = stillness.observe(all_idle, entries.len(), Instant::now());
+        longest_idle = longest_idle.max(still);
+        if still > STRANDED || began.elapsed() > BUDGET {
             for pane in panes {
                 eprintln!("claude-code: {pane} shows:\n{}", read_text(control, pane, 0, 0).text);
             }
@@ -221,12 +224,46 @@ fn watch(control: &mut Control, panes: [&str; 3], wrap_up: impl Fn()) -> Outcome
             panic!(
                 "the council {why} after {:?}, all three idle for {:?}; its log:\n{}",
                 began.elapsed(),
-                since.elapsed(),
+                still,
                 transcript(&entries)
             );
         }
-        std::thread::sleep(Duration::from_secs(10));
+        std::thread::sleep(SAMPLED);
     }
+}
+
+/// How long a council has gone without moving: every session idle at each sample, and no entry
+/// added to its log since. Every turn in a directed council posts, so the log growing is a turn
+/// taken even when no sample saw anyone working.
+#[derive(Debug, Default)]
+struct Stillness {
+    since: Option<Instant>,
+    entries: usize,
+}
+
+impl Stillness {
+    fn observe(&mut self, all_idle: bool, entries: usize, now: Instant) -> Duration {
+        let moved = std::mem::replace(&mut self.entries, entries) != entries;
+        if !all_idle || moved {
+            self.since = all_idle.then_some(now);
+            return Duration::ZERO;
+        }
+        now - *self.since.get_or_insert(now)
+    }
+}
+
+/// A turn too short for any sample to see working still restarts the clock, by what it posted.
+#[test]
+fn a_turn_between_two_samples_is_not_stillness() {
+    let start = Instant::now();
+    let at = |seconds| start + Duration::from_secs(seconds);
+    let mut stillness = Stillness::default();
+    assert_eq!(stillness.observe(true, 4, at(0)), Duration::ZERO, "the first log seen is news");
+    assert_eq!(stillness.observe(true, 4, at(10)), Duration::from_secs(10));
+    assert_eq!(stillness.observe(true, 5, at(20)), Duration::ZERO, "somebody posted");
+    assert_eq!(stillness.observe(true, 5, at(200)), STRANDED);
+    assert_eq!(stillness.observe(false, 5, at(210)), Duration::ZERO, "somebody is working");
+    assert_eq!(stillness.observe(true, 5, at(220)), Duration::ZERO);
 }
 
 struct Outcome {

@@ -975,7 +975,11 @@ green on its own.
 
    As built, the forty-message proof is `claude_code_council.rs` in `./dev --claude-code`: three
    Haiku sessions reached 56 messages in six minutes for about $1.59. Its first four runs failed
-   on the skill, not on delivery, and the skill was fixed from them. Left for later: `group
+   on the skill, not on delivery, and the skill was fixed from them. Its check for a stranded
+   council samples every ten seconds and counts three minutes of every session idle with nothing
+   new in the log: ten seconds late against three minutes costs nothing, and a turn that starts
+   and ends between two samples still posts, so the log growing restarts the count. Following
+   presence events was not needed, since they say who is connected rather than who took a turn. Left for later: `group
    delete`, a session idle for more than an hour, and the hooks on Linux.
 
 5. **Across machines.** `msg.peer`, peer links over the forwarded socket, replicas, presence over
