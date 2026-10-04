@@ -4051,11 +4051,6 @@ pub(crate) fn raise(window: WindowId) {
     ffi::emit(&Event::new(event::Payload::RaiseWindow(RaiseWindow {})).for_window(name));
 }
 
-/// The daemon this window's keyboard is on.
-///
-/// What a request naming no daemon means, for the same reason an empty pane id means the
-/// focused pane: a menu item is about what is in front of the user and has nothing else to
-/// say.
 /// The daemon this app runs beside, where the human is homed (MIP-4, section 10): the one
 /// attached without a tunnel.
 pub(crate) fn home_daemon() -> Option<DaemonId> {
@@ -4063,6 +4058,11 @@ pub(crate) fn home_daemon() -> Option<DaemonId> {
     session.backends.iter().find(|(_, backend)| backend.tunnel.is_none()).map(|(id, _)| id.clone())
 }
 
+/// The daemon this window's keyboard is on.
+///
+/// What a request naming no daemon means, for the same reason an empty pane id means the
+/// focused pane: a menu item is about what is in front of the user and has nothing else to
+/// say.
 pub(crate) fn focused_daemon(window: WindowId) -> Option<DaemonId> {
     let session = poison::lock(&SESSION, "session");
     session.windows[window].composition.focused_region().map(|region| region.daemon.clone())
@@ -4444,8 +4444,10 @@ pub(crate) fn follow_changed(config: &Config) -> Vec<Daemon> {
                 attaches.under_way.contains(&daemon.id) || !following.contains(&daemon.id);
             if held != daemon && unattached {
                 daemon.clone_into(held);
-                // The attach under way, if any, is no longer current, and stops.
+                // The attach under way, if any, stops counting now, before its backend is let go
+                // below: one still current could make another in between.
                 attaches.under_way.remove(&daemon.id);
+                attaches.issue(&daemon.id);
                 added.push(daemon.clone());
             }
         }
@@ -4534,9 +4536,12 @@ struct Attaches {
 }
 
 impl Attaches {
+    /// Starts an attach of `daemon`, on its first attempt: whatever an attach it replaces had
+    /// failed is that one's.
     fn issue(&mut self, daemon: &DaemonId) -> Ticket {
         self.issued += 1;
         self.latest.insert(daemon.clone(), self.issued);
+        self.failed_once.remove(daemon);
         Ticket { generation: self.generation, attach: self.issued }
     }
 
@@ -4631,7 +4636,14 @@ fn keep_attaching(daemon: &Daemon, ticket: Ticket) {
     let mut attempts = reconnect::Attempts::new();
     loop {
         connecting(&daemon.id);
-        match attach_daemon_in(daemon, ticket) {
+        let attached = attach_daemon_in(daemon, ticket);
+        // A corrected block may have started another attach meanwhile, and what this one found
+        // out about the old endpoint is no longer anybody's news: no problem, no health, and
+        // nothing that would make the new attach look as if it had failed.
+        if !attach_current(&daemon.id, ticket) {
+            return;
+        }
+        match attached {
             Ok(()) => {
                 health(&daemon.id, Health::Connected, "");
                 link_daemons();
@@ -7192,6 +7204,27 @@ fn typeable(daemon: &DaemonId, pane: &PaneId) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A daemon's attach started again from a corrected block is on its first attempt, whatever
+    /// the attach it replaces had failed, and that one no longer counts.
+    #[test]
+    fn a_new_attach_of_a_daemon_is_on_its_first_attempt_and_the_old_one_is_stale() {
+        let mut attaches = Attaches {
+            generation: 3,
+            under_way: BTreeSet::new(),
+            latest: BTreeMap::new(),
+            issued: 0,
+            failed_once: BTreeSet::new(),
+        };
+        let devenv = DaemonId::new("devenv");
+        let first = attaches.issue(&devenv);
+        attaches.failed_once.insert(devenv.clone());
+
+        let second = attaches.issue(&devenv);
+        assert!(!attaches.failed_once.contains(&devenv), "the new attach has not failed yet");
+        assert!(attaches.current(&devenv, second));
+        assert!(!attaches.current(&devenv, first), "the attach it replaced still counts");
+    }
 
     #[test]
     fn a_pane_is_told_the_window_socket_on_its_own_machine() {
