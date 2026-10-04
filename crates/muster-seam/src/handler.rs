@@ -177,7 +177,10 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             Ok(()) => Response::ok(),
             Err(refusal) => Response::failure(refusal),
         },
-        request::Payload::StillOpen(_) => Response::ok(),
+        request::Payload::StillOpen(_) => {
+            session::still_open(window);
+            Response::ok()
+        }
         request::Payload::ReadReopening(read) => Response {
             payload: Some(response::Payload::Reopening(proto::Reopening {
                 arrangements: crate::holding::reopening(&read.tab_holders_path),

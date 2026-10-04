@@ -131,7 +131,9 @@ plain launch would start it, reopening its windows, and then asked.
 keep running, and `--closed` lists it. It prints the name once the window has closed. With no name
 it is the window this command is about, as `--window` would name it. Closing a window already
 closed changes nothing and succeeds. The last window open is refused rather than closed, because
-closing it is a quit; `cmd+q` quits, and every window comes back on the next launch.
+closing it is a quit; `cmd+q` quits, and every window comes back on the next launch. A window with
+a sheet up in it cannot close until the sheet is answered: the command says so after 30 seconds,
+and asking again once it is answered closes it.
 
 ## panes[]
 

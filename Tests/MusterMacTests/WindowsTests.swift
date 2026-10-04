@@ -123,6 +123,7 @@ struct WindowsTests {
   func aCloseReachesItsWindow() {
     Windows.forgetAll()
     defer { Windows.forgetAll() }
+    _ = recorder()
     let first = StandIn("window-1")
     let second = StandIn("window-2")
     Windows.register(first)
@@ -135,6 +136,33 @@ struct WindowsTests {
 
     #expect(first.applied.isEmpty, "the window in front was closed instead")
     #expect(second.applied == ["close"])
+  }
+
+  /// A close that did not happen is said, so the core stops counting the window as closing: one
+  /// still open after its close (a sheet up in it), and one this shell has not got. A window
+  /// that closed says nothing more.
+  @Test("a close that did not happen is reported")
+  func aCloseThatDidNotHappenIsReported() {
+    Windows.forgetAll()
+    defer { Windows.forgetAll() }
+    let recorder = recorder()
+    let kept = StandIn("window-1")
+    let closing = StandIn("window-2", closes: true)
+    Windows.register(kept)
+    Windows.register(closing)
+
+    for name in ["window-1", "window-2", "window-9"] {
+      var shut = Muster_Event()
+      shut.shutWindow = Muster_ShutWindow()
+      shut.window = name
+      Core.deliver(shut)
+    }
+
+    let still = recorder.sent(since: 0) {
+      if case .stillOpen = $0.payload { true } else { false }
+    }
+    #expect(still.map(\.window) == ["window-1", "window-9"])
+    #expect(closing.applied == ["close"])
   }
 
   /// A second launch and the Dock's reopen ask for any window, which the app answers by bringing
@@ -195,8 +223,13 @@ private final class StandIn: ShellWindow {
     contentRect: NSRect(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
     backing: .buffered, defer: true)
   var applied: [String] = []
+  /// Whether closing it closes it, as a real window does when nothing holds it open.
+  let closes: Bool
 
-  init(_ name: String) { self.name = name }
+  init(_ name: String, closes: Bool = false) {
+    self.name = name
+    self.closes = closes
+  }
 
   func apply(_ contents: WindowContents) { applied.append("view") }
   func apply(_ roster: Roster) { applied.append("roster") }
@@ -209,5 +242,8 @@ private final class StandIn: ShellWindow {
   func hold(_ held: HeldPaste) { applied.append("paste") }
   func lists(_ pane: PaneKey) -> Bool { false }
   func raise() { applied.append("raise") }
-  func close() { applied.append("close") }
+  func close() {
+    applied.append("close")
+    if closes { Windows.remove(self) }
+  }
 }

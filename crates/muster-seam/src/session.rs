@@ -5084,6 +5084,33 @@ pub(crate) fn ask_to_close_window(window: WindowId) -> Result<(), String> {
     Ok(())
 }
 
+/// The shell was asked to close a window and it is still open, so it is counted open again.
+///
+/// Without this the window would stay closing for good: asking to close it again would do
+/// nothing, and it would be left out of the count that refuses closing the last window, so the
+/// window beside it could not be closed either.
+pub(crate) fn still_open(window: WindowId) {
+    let name = {
+        let mut session = poison::lock(&SESSION, "session");
+        let kept = &mut session.windows[window];
+        if kept.lifecycle != Lifecycle::Closing {
+            return;
+        }
+        kept.lifecycle = Lifecycle::Open;
+        kept.name.to_string()
+    };
+    log::warn(
+        "window.close.kept",
+        fields! {
+            "window" => name,
+            "impact" => "the window was asked to close and is still open, though `muster window \
+                         close` answered that it had asked",
+            "check" => "whether a sheet or a dialog is up in that window, which disables its \
+                        close button; close it there, or ask again once it is answered",
+        },
+    );
+}
+
 /// Which window an `OpenWindow` means, and whether it is one this process has just taken on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Opening {

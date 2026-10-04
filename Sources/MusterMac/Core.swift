@@ -1121,6 +1121,15 @@ public enum Core {
     send(request)
   }
 
+  /// Says a window the core asked to close is still open. Named outright, since the window may be
+  /// one this shell has not got.
+  static func stillOpen(window: String) {
+    var request = Muster_Request()
+    request.stillOpen = Muster_StillOpen()
+    request.window = window
+    send(request)
+  }
+
   /// Says where the window is, and waits for the core to have it: what a window closing says
   /// last, where the coalescing sender could still be holding a report.
   static func setWindowFrameNow(rect: NSRect?, fullScreen: Bool) {
@@ -1266,6 +1275,7 @@ public enum Core {
     case .readAsking: return "read_asking"
     case .closeWindow: return "close_window"
     case .askToCloseWindow: return "ask_to_close_window"
+    case .stillOpen: return "still_open"
     case .readReopening: return "read_reopening"
     case .askForWindow: return "ask_for_window"
     case .claimApp: return "claim_app"
@@ -1537,7 +1547,13 @@ public enum Core {
       // `muster window close`: closed as its close button closes it, so a window closing says
       // where it was and tells the core, whichever way it was asked.
       info("window.shut", ["window": event.window])
-      window(for: event)?.close()
+      let shut = window(for: event)
+      shut?.close()
+      // A close that did not happen - a sheet up in the window disables its close button - is
+      // said, or the core would count this window as closing for good.
+      if shut == nil || Windows.all.contains(where: { $0 === shut }) {
+        stillOpen(window: event.window)
+      }
     case .raiseWindow:
       // Somebody went to one of this window's tabs from another window, or from a terminal. The
       // tab is already on screen; this is the window coming forward to show it.

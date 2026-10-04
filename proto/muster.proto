@@ -660,8 +660,9 @@ message CloseWindow {}
 // window is the one the request resolves to, as for any request.
 //
 // The shell closes windows, so this asks it to (ShutWindow) and the window goes the way its close
-// button takes it, which then reports CloseWindow. Answered Ok once asked, and Ok with nothing
-// asked for a window already closed. The last window open is refused rather than asked for:
+// button takes it, which then reports CloseWindow, or StillOpen when it could not close it.
+// Answered Ok once asked, and Ok with nothing asked for a window already closed or already being
+// closed. The last window open is refused rather than asked for:
 // closing it is a quit, and a script that meant one window should not end every one.
 message AskToCloseWindow {}
 
@@ -2130,7 +2131,8 @@ message RaiseWindow {
 //
 // The window is the one the event names. Through the close button's own path, so the shell's
 // rules for closing apply as they do to a click: the window says where it was, and reports
-// CloseWindow.
+// CloseWindow. A close that does not happen - a sheet up in the window, or no window by that
+// name - reports StillOpen.
 message ShutWindow {}
 
 // One pane started asking for a person, or stopped.
