@@ -8,6 +8,7 @@
 //! `flock` rather than a file whose presence is the lock: the kernel lets go of it when the
 //! process ends, by a quit, a crash or `kill -9` alike, so there is never a stale lock to doubt.
 
+use std::collections::BTreeSet;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
@@ -172,8 +173,8 @@ fn exchange(socket: &str, request: &Request) -> Result<Response, String> {
 ///
 /// Only the release: it is the install that wrote there before installs had places of their own,
 /// and a development build adopting the release's windows would open them onto a daemon that
-/// holds none of their tabs. An arrangement with a claim beside it belongs to a window process
-/// from before that is still running, and stays where that process writes it.
+/// holds none of their tabs. An arrangement stays where it is while a window process from before
+/// is still running with a claim on it, and so does one the record says another install wrote.
 pub(crate) fn adopt_old_state(home: &str) {
     if home.is_empty() || INSTALL != "release" {
         return;
@@ -190,25 +191,36 @@ pub(crate) fn adopt(home: &Path, install: &str) {
     if record.exists() || windows.exists() {
         return;
     }
-    let mut moved = 0usize;
+    let old = std::fs::read_to_string(&old_record).ok();
+    let others: BTreeSet<PathBuf> = old
+        .as_deref()
+        .and_then(|text| from_toml(text).ok())
+        .map(|holders| {
+            holders
+                .windows()
+                .filter(|window| !window.install.is_empty() && window.install != install)
+                .map(|window| PathBuf::from(&window.arrangement))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut moved: BTreeSet<PathBuf> = BTreeSet::new();
     if let Ok(entries) = std::fs::read_dir(&old_windows) {
         let _ = std::fs::create_dir_all(&windows);
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_none_or(|extension| extension != "toml")
-                || path.with_extension("held").exists()
+                || others.contains(&path)
+                || claimed_by_a_running_process(&path.with_extension("held"))
             {
                 continue;
             }
             if std::fs::rename(&path, windows.join(entry.file_name())).is_ok() {
-                moved += 1;
+                let _ = std::fs::remove_file(path.with_extension("held"));
+                moved.insert(path);
             }
         }
     }
-    let rows = match std::fs::read_to_string(&old_record) {
-        Ok(text) => adopt_record(&text, install, &old_windows, &windows),
-        Err(_) => None,
-    };
+    let rows = old.as_deref().and_then(|text| adopt_record(text, install, &moved, &windows));
     if let Some(text) = &rows {
         let written = record
             .parent()
@@ -232,21 +244,49 @@ pub(crate) fn adopt(home: &Path, install: &str) {
         "state.adopted",
         fields! {
             "into" => own.display(),
-            "arrangements" => moved.to_string(),
+            "arrangements" => moved.len().to_string(),
             "record" => rows.is_some().to_string(),
         },
     );
 }
 
+/// Whether a claim beside an arrangement names a process that is still running.
+///
+/// A window process from before removed its claim only on a clean quit, so one that crashed, was
+/// killed or went down with the machine left a claim naming nobody. Adopting past such a claim is
+/// the case this exists for: skipping it would leave that window's arrangement where nothing reads
+/// it, and its tabs would join whichever window is open.
+fn claimed_by_a_running_process(claim: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(claim) else { return false };
+    let Ok(pid) = text.trim().parse::<libc::pid_t>() else { return false };
+    if pid <= 0 {
+        return false;
+    }
+    // SAFETY: signal 0 sends nothing; it only asks whether the pid exists.
+    if unsafe { libc::kill(pid, 0) } == 0 {
+        return true;
+    }
+    // Running as somebody else is still running.
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
 /// The shared record, as `install`'s own: its rows and the rows from before rows named an
-/// install, with every arrangement under `old` now under `new`. `None` for a record this build
+/// install, with every arrangement in `moved` now under `new`. A row whose arrangement did not
+/// move keeps its path, since that is still where its file is. `None` for a record this build
 /// cannot read, which is left where it is rather than guessed at.
-fn adopt_record(text: &str, install: &str, old: &Path, new: &Path) -> Option<String> {
+fn adopt_record(
+    text: &str,
+    install: &str,
+    moved: &BTreeSet<PathBuf>,
+    new: &Path,
+) -> Option<String> {
     let mut holders = from_toml(text).ok()?;
     holders.adopt(install, |arrangement| {
-        Path::new(arrangement)
-            .strip_prefix(old)
-            .map_or_else(|_| arrangement.to_string(), |rest| new.join(rest).display().to_string())
+        let path = Path::new(arrangement);
+        match path.file_name() {
+            Some(file) if moved.contains(path) => new.join(file).display().to_string(),
+            _ => arrangement.to_string(),
+        }
     });
     Some(to_toml(&holders))
 }
@@ -298,7 +338,8 @@ mod tests {
     }
 
     /// The release takes the arrangements nothing holds and the record, with every row's
-    /// arrangement where its file went; one a running window holds stays put.
+    /// arrangement where its file is; one a running window holds stays put, and so does one
+    /// another install wrote.
     #[test]
     fn the_old_state_is_adopted_once() {
         let home = home();
@@ -307,11 +348,20 @@ mod tests {
         std::fs::create_dir_all(home.join("state/holding")).expect("the old holding directory");
         std::fs::write(old.join("window-1.toml"), "one").expect("written");
         std::fs::write(old.join("window-2.toml"), "two").expect("written");
-        std::fs::write(old.join("window-2.held"), "4321").expect("written");
+        std::fs::write(old.join("window-2.held"), std::process::id().to_string()).expect("written");
+        std::fs::write(old.join("window-4.toml"), "four").expect("written");
+        let row = |name: &str, install: &str| {
+            format!(
+                "[[window]]\nname = \"{name}\"\narrangement = \"{}\"\nsocket = \"\"\npid = 7\n\
+                 install = \"{install}\"\nfocused = 0\ndaemons = []\n\n",
+                old.join(format!("{name}.toml")).display()
+            )
+        };
         let record = format!(
-            "version = 1\n\n[[window]]\nname = \"window-1\"\narrangement = \"{}\"\nsocket = \"\"\n\
-             pid = 0\nfocused = 0\ndaemons = []\n",
-            old.join("window-1.toml").display()
+            "version = 1\n\n{}{}{}",
+            row("window-1", ""),
+            row("window-2", "release"),
+            row("window-4", "dev-1234")
         );
         std::fs::write(home.join("state/holding/tabs.toml"), &record).expect("written");
 
@@ -324,10 +374,13 @@ mod tests {
         );
         assert!(old.join("window-2.toml").exists(), "a held arrangement was moved");
         assert!(!own.join("windows/window-2.toml").exists());
+        assert!(old.join("window-4.toml").exists(), "another install's arrangement was taken");
         let adopted = std::fs::read_to_string(own.join("holding/tabs.toml")).expect("adopted");
         assert!(
             adopted.contains(&own.join("windows/window-1.toml").display().to_string())
-                && adopted.contains("install = \"release\""),
+                && adopted.contains(&old.join("window-2.toml").display().to_string())
+                && adopted.contains("install = \"release\"")
+                && !adopted.contains("window-4"),
             "{adopted}"
         );
         assert!(!home.join("state/holding/tabs.toml").exists(), "the old record was left behind");
@@ -335,5 +388,25 @@ mod tests {
         std::fs::write(old.join("window-3.toml"), "three").expect("written");
         adopt(&home, "release");
         assert!(!own.join("windows/window-3.toml").exists(), "adopted a second time");
+    }
+
+    /// A claim whose process has gone - a crash, a kill, a reboot under a build from before - is
+    /// no claim: its window is adopted like any other, so it reopens rather than being lost.
+    #[test]
+    fn a_claim_nobody_holds_any_more_is_adopted_past() {
+        let home = home();
+        let old = home.join("state/windows");
+        std::fs::create_dir_all(&old).expect("the old windows directory");
+        let mut ended = std::process::Command::new("/usr/bin/true").spawn().expect("true runs");
+        let gone = ended.id();
+        ended.wait().expect("true ends");
+        std::fs::write(old.join("window-1.toml"), "one").expect("written");
+        std::fs::write(old.join("window-1.held"), gone.to_string()).expect("written");
+
+        adopt(&home, "release");
+
+        let own = home.join("state/release/windows");
+        assert_eq!(std::fs::read_to_string(own.join("window-1.toml")).ok().as_deref(), Some("one"));
+        assert!(!old.join("window-1.held").exists(), "the stale claim was left behind");
     }
 }
