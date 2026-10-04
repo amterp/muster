@@ -404,6 +404,11 @@ harness that allows less must not break anything.
   With none, a wait the agent declared would stand until its next turn ends.
 - Whether Codex's `SubagentStart` and `SubagentStop` fire for the agents it spawns as Claude
   Code's do; the hooks are wired and were not seen firing.
+- What OpenCode can supply. Measured so far (`docs/observations/opencode-1.3.15.md`): its prompt is
+  a box no existing region reads alone, and a paste and its Return in one write is not sent, so a
+  prompt reader needs a region of its own behind a new engine version and leaves the second
+  Return to the doorbell's presses. Its working screens and its plugins' events, the likely source
+  of reported state, need a model that answers, which could not be chosen from outside in 1.3.15.
 - When a `codex queue` route should be chosen over the doorbell for a Codex in a pane, once the
   session's id is reported: it types nothing, so it reaches a Codex at a dialog, and what it does
   to a Codex at work was not measured.
