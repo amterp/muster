@@ -165,7 +165,10 @@ interval escalates on the same rule the bridge policy uses - a run of failures e
 half a minute, not when one came up - so nothing about a process existing can reset it
 (`crates/muster-core/src/reconnect.rs`). It reports and keeps trying rather than giving up, which is where it
 deliberately differs: a bridge that gives up costs one pane, and a tunnel that gave up costs every pane on that
-machine until the app is relaunched, which is the failure this whole arrangement exists to prevent.
+machine until the app is relaunched, which is the failure this whole arrangement exists to prevent. The one
+exception is a daemon that can never start - its binary is not there, or nothing says where home is - which is
+said once as an error and not tried again, since the same attempt would fail the same way. Everything less certain
+keeps trying: a host that does not resolve is also a laptop whose VPN is down.
 
 **A master is addressed by its control path, not by its pid.** The child Muster spawned is the master only while ssh
 stays in the foreground, and `ControlPersist` in somebody's own ssh config makes `ssh -N -M` fork once it has

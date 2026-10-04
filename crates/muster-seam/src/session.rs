@@ -924,7 +924,7 @@ fn window_beside(remote_socket: &str, window: &str) -> Option<String> {
     Some(directory.join(format!("window-{install}-{window}.sock")).to_string_lossy().into_owned())
 }
 
-fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
+fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, Unattached> {
     match endpoint {
         // A socket somebody named is a daemon somebody chose. Taken as asked for, and left
         // alone: this is the deliberate way out of the arrangement below.
@@ -939,18 +939,16 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, String> {
             let inherited: BTreeMap<String, String> = std::env::vars().collect();
             let home =
                 install::muster_home(|name| inherited.get(name).cloned()).ok_or_else(|| {
-                    "Muster cannot work out where its daemon's socket goes, because nothing in the \
-                 environment says where home is - neither MUSTER_HOME nor HOME. This window will \
-                 render nothing. Give the daemon a `socket` in the config file to say outright."
-                        .to_string()
+                    Unattached::Lasting(
+                        "Muster cannot work out where its daemon's socket goes, because nothing \
+                         in the environment says where home is - neither MUSTER_HOME nor HOME. \
+                         This window will render nothing. Give the daemon a `socket` in the \
+                         config file to say outright."
+                            .to_string(),
+                    )
                 })?;
             let socket = install::socket_path(&home);
-            let binary = daemon_binary().ok_or_else(|| {
-                "this app was not told where its muster-daemon is, so there is no daemon to start \
-                 and this window will render nothing. A build stages it beside the bridge; this \
-                 is a bug in how the shell starts Muster."
-                    .to_string()
-            })?;
+            let binary = runnable_daemon_binary()?;
             let given = environment::for_daemon(
                 &inherited,
                 platform_locale().as_deref(),
@@ -4477,6 +4475,24 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
                 return;
             }
             Err(Unattached::Abandoned) => return,
+            Err(Unattached::Lasting(refusal)) => {
+                log::warn(
+                    "daemon.unavailable.lasting",
+                    fields! {
+                        "daemon" => daemon.id.to_string(),
+                        "detail" => &refusal,
+                        "impact" => "this daemon's panes are absent from the window, and Muster \
+                                     has stopped trying to attach it, because another attempt \
+                                     would fail the same way",
+                        "check" => "the problem's sentence names what to change; relaunch \
+                                    Muster once it is changed",
+                    },
+                );
+                health(&daemon.id, Health::Disconnected, &refusal);
+                raise_problem(&key, Severity::Error, &stopped_attaching(daemon, &refusal));
+                attach_ended(&daemon.id, generation);
+                return;
+            }
             Err(Unattached::Failed(refusal)) => {
                 let retry = attempts.failed();
                 if retry.logged {
@@ -4620,12 +4636,66 @@ fn never_attached(daemon: &Daemon, refusal: &str) -> String {
     )
 }
 
+/// What a daemon that will never attach is said to be, once Muster has stopped trying.
+fn stopped_attaching(daemon: &Daemon, refusal: &str) -> String {
+    let whose = if named_daemons().is_empty() {
+        "Muster could not start its own daemon on this machine".to_string()
+    } else {
+        format!("Muster could not reach the daemon {}", described(daemon))
+    };
+    format!(
+        "{whose}: {refusal}. Waiting will not change that, so Muster has stopped trying, and \
+         this daemon's panes are absent from the window until it is fixed and Muster is \
+         relaunched. Every other daemon's panes are unaffected."
+    )
+}
+
 /// Why an attach did not end with the daemon followed.
 enum Unattached {
     /// The attempt failed, for the reason given, and another can be made.
     Failed(String),
+    /// The attempt failed for a reason waiting cannot change, such as a daemon binary that is
+    /// not there, so no other is made. Kept to what is certain: a host that does not resolve is
+    /// also a laptop whose VPN is down, and that one comes back (kan a_2YAdjHjmh).
+    Lasting(String),
     /// The session it was for has been replaced, so nobody wants the daemon any more.
     Abandoned,
+}
+
+impl From<String> for Unattached {
+    fn from(refusal: String) -> Unattached {
+        Unattached::Failed(refusal)
+    }
+}
+
+/// The daemon binary this app was given, once it is known to be there to run.
+fn runnable_daemon_binary() -> Result<String, Unattached> {
+    let binary = daemon_binary().ok_or_else(|| {
+        Unattached::Lasting(
+            "this app was not told where its muster-daemon is, so there is no daemon to start and \
+             this window will render nothing. A build stages it beside the bridge; this is a bug \
+             in how the shell starts Muster."
+                .to_string(),
+        )
+    })?;
+    runnable(Path::new(&binary)).map_err(Unattached::Lasting)?;
+    Ok(binary)
+}
+
+/// Whether a daemon binary is there to run, or why not.
+///
+/// Asked before launching, because the launch reports a missing file as one more failure to
+/// start, and a failure to start is worth trying again where a missing file is not.
+fn runnable(binary: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    match std::fs::metadata(binary) {
+        Ok(found) if found.is_file() && found.permissions().mode() & 0o111 != 0 => Ok(()),
+        Ok(_) => Err(format!(
+            "the muster-daemon at {} is not a program this machine can run",
+            binary.display()
+        )),
+        Err(error) => Err(format!("there is no muster-daemon at {} ({error})", binary.display())),
+    }
 }
 
 /// How long a window opening onto a daemon waits for its first snapshot before carrying on
@@ -4637,13 +4707,13 @@ const FIRST_SNAPSHOT: std::time::Duration = std::time::Duration::from_secs(10);
 fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
     let generation = poison::lock(&ATTACHES, "attaches").generation;
     attach_daemon_in(daemon, generation).map_err(|unattached| match unattached {
-        Unattached::Failed(refusal) => refusal,
+        Unattached::Failed(refusal) | Unattached::Lasting(refusal) => refusal,
         Unattached::Abandoned => "the window was reset while its daemon attached".to_string(),
     })
 }
 
 fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> {
-    let mut reached = reach(&daemon.id, &daemon.endpoint).map_err(Unattached::Failed)?;
+    let mut reached = reach(&daemon.id, &daemon.endpoint)?;
     let handover = reached.handover.take();
     let socket = reached.socket_path.clone();
     log::info(

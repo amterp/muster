@@ -19,7 +19,8 @@
 //! up costs every pane on that machine and its remedy is to relaunch the app, which is the
 //! failure the whole recovery story exists to prevent - a laptop that comes back from lunch
 //! should find its window working. So the ceiling is a long interval rather than a stop, and
-//! what happens at the point a bridge would give up is that somebody is told.
+//! what happens at the point a bridge would give up is that somebody is told. The caller stops
+//! only for a failure that is certain to repeat, such as a daemon binary that is not there.
 //!
 //! Pure - no clock, no processes, no sockets. Time arrives as a number, so every rule here is
 //! driven by a recorded case.
