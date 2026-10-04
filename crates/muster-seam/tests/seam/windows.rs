@@ -899,6 +899,32 @@ fn the_last_window_open_is_not_closed_when_asked() {
     );
 }
 
+/// Two closes asked at once of an app with two windows close one: the second counts the first as
+/// done, rather than both seeing two windows open and together closing the last.
+#[test]
+fn two_closes_asked_at_once_leave_a_window_open() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::AskToCloseWindow(AskToCloseWindow {}),
+    )));
+    let second =
+        answer(&in_window("window-1", request::Payload::AskToCloseWindow(AskToCloseWindow {})));
+
+    assert!(
+        matches!(second.payload, Some(response::Payload::Failure(_))),
+        "the second close was asked for while the first was still under way: {second:?}"
+    );
+    assert_eq!(
+        windows_sent(|payload| matches!(payload, event::Payload::ShutWindow(_))),
+        vec!["window-2".to_string()]
+    );
+}
+
 /// Going to a closed window's tab asks for that window back, and opening its arrangement again
 /// brings it back onto that tab.
 #[test]

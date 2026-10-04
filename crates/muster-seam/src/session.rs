@@ -1208,6 +1208,9 @@ pub(crate) struct Session {
 }
 
 /// One window's own state: what it holds and shows, beside the daemons every window shares.
+// `opened`, `closed` and `closing` are one lifecycle kept as three flags; an enum would say so,
+// and is the change to make when the next state joins them.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug)]
 pub(crate) struct Window {
     /// What the record of which window holds each tab calls it, after its arrangement:
@@ -1321,6 +1324,11 @@ pub(crate) struct Window {
     /// --tab`. Brought in as it opens, before it would ask a machine for a tab of its own.
     brings: Option<TabId>,
 
+    /// Whether the shell has been asked to close this window and has not yet said it closed.
+    /// Counted as closed already, so two closes asked at once cannot both leave one window and
+    /// together close the last.
+    closing: bool,
+
     /// True when Muster opened the roster itself to show an error, having found it closed.
     /// Kept so that clearing the last error can put it back the way somebody left it -
     /// borrowing the roster is defensible, keeping it is not.
@@ -1363,6 +1371,7 @@ impl Default for Window {
             show: None,
             first_tab_on: None,
             brings: None,
+            closing: false,
             opened_sidebar: false,
             shown_errors: BTreeSet::new(),
             bridge_baselines: BTreeMap::new(),
@@ -5028,12 +5037,18 @@ pub(crate) fn close_window(window: WindowId) {
 /// meant to close one window should not end them all, and a person who means to quit has cmd+q.
 pub(crate) fn ask_to_close_window(window: WindowId) -> Result<(), String> {
     let name = {
-        let session = poison::lock(&SESSION, "session");
+        let mut session = poison::lock(&SESSION, "session");
         let asked = &session.windows[window];
-        if !asked.opened {
+        if !asked.opened || asked.closing {
             return Ok(());
         }
-        if session.windows.opened().len() == 1 {
+        let staying = session
+            .windows
+            .opened()
+            .into_iter()
+            .filter(|open| !session.windows[*open].closing)
+            .count();
+        if staying == 1 {
             return Err(format!(
                 "{} is the only window open, and closing the last window quits Muster, so \
                  nothing was closed. Quit with cmd+q if that is what you meant: the agents keep \
@@ -5041,7 +5056,10 @@ pub(crate) fn ask_to_close_window(window: WindowId) -> Result<(), String> {
                 asked.name
             ));
         }
-        asked.name.to_string()
+        let name = asked.name.to_string();
+        // Marked under the same lock as the count, so a second close asked at once counts this one.
+        session.windows[window].closing = true;
+        name
     };
     log::info("window.close.asked", fields! { "window" => name.clone() });
     ffi::emit(&Event::new(event::Payload::ShutWindow(ShutWindow {})).for_window(name));
