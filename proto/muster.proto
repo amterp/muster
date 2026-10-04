@@ -1507,6 +1507,11 @@ message Window {
   // ReadWindow.layout asked. A pane missing here is one whose daemon did not answer, or is too
   // old to be asked: its size is unknown rather than any number.
   repeated PaneGrid grids = 9;
+
+  // The install of Muster answering (`muster_daemon_proto::install::INSTALL`), so a CLI with
+  // several apps listening asks for a window only of its own install's. Empty from an app older
+  // than the field.
+  string install = 10;
 }
 
 // One tab's arrangement, as it is drawn when the tab is on screen.

@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use muster_proto::{
-    AskForWindow, Failure, Machine, Ok as Accepted, OtherWindow, Request, Response, Window, frame,
-    request, response,
+    AskForWindow, Failure, Ok as Accepted, OtherWindow, Request, Response, Window, frame, request,
+    response,
 };
 use prost::Message;
 
@@ -83,10 +83,10 @@ fn a_window_on_a_machine_is_asked_of_the_app_following_it() {
     assert!(asked[0].fresh && asked[0].daemon == "local", "{asked:?}");
 }
 
-/// An app that follows no such machine is not asked, and is not answered by starting another
-/// app, which would not follow it either.
+/// This install's app refusing a machine it does not follow is the answer, rather than a reason
+/// to start another app, which would not follow it either.
 #[test]
-fn a_window_on_a_machine_no_app_follows_is_refused() {
+fn a_window_on_a_machine_the_app_refuses_is_refused() {
     let scratch = Scratch::new("ask-no-daemon");
     let app = App::answering(scratch.home(), 505, "window-1", "window-2");
     let environment =
@@ -97,7 +97,22 @@ fn a_window_on_a_machine_no_app_follows_is_refused() {
 
     assert_ne!(code, 0, "a window was reported opened on a machine nothing follows");
     assert!(errors.contains("devenv") && !errors.contains("no-such.app"), "{errors}");
-    assert!(app.asked().is_empty(), "the app was asked though it follows no such machine");
+    assert_eq!(app.asked().len(), 1, "this install's app was not asked");
+}
+
+/// An app that says it is another install's is not asked: its windows follow another daemon.
+#[test]
+fn an_app_of_another_install_is_not_asked() {
+    let scratch = Scratch::new("ask-other-install");
+    let app = App::of_another_install(scratch.home(), 506, "window-1", "window-2");
+    let environment =
+        BTreeMap::from([("MUSTER_APP".to_string(), "/tmp/muster-cli/no-such.app".to_string())]);
+
+    let (code, _, errors) = run(&["window", "new"], scratch.home(), environment);
+
+    assert_ne!(code, 0);
+    assert!(errors.contains("no-such.app"), "the command did not go on to start the app: {errors}");
+    assert!(app.asked().is_empty(), "another install's app was asked for a window");
 }
 
 /// What a stand-in app was asked, and whether it says yes.
@@ -106,16 +121,34 @@ struct App {
 }
 
 impl App {
-    /// Opens `opens` when asked, and lists it from then on beside `name`.
+    /// This install's app: opens `opens` when asked, and lists it from then on beside `name`. A
+    /// machine other than `local` is refused, as the core refuses one it does not follow.
     fn answering(home: &Path, pid: u32, name: &str, opens: &str) -> App {
-        App::listening(home, pid, name, Some(opens.to_string()))
+        App::listening(
+            home,
+            pid,
+            name,
+            Some(opens.to_string()),
+            muster_daemon_proto::install::INSTALL,
+        )
     }
 
+    /// An app too old to say its install, which refuses every request for a window.
     fn refusing(home: &Path, pid: u32, name: &str) -> App {
-        App::listening(home, pid, name, None)
+        App::listening(home, pid, name, None, "")
     }
 
-    fn listening(home: &Path, pid: u32, name: &str, opens: Option<String>) -> App {
+    fn of_another_install(home: &Path, pid: u32, name: &str, opens: &str) -> App {
+        App::listening(home, pid, name, Some(opens.to_string()), "another-install")
+    }
+
+    fn listening(
+        home: &Path,
+        pid: u32,
+        name: &str,
+        opens: Option<String>,
+        install: &'static str,
+    ) -> App {
         let path = home.join("state").join(format!("command-{pid}.sock"));
         let listener = UnixListener::bind(&path).expect("the temporary directory is writable");
         let asked = Arc::new(Mutex::new(Vec::new()));
@@ -129,8 +162,12 @@ impl App {
                 };
                 let request = Request::decode(bytes.as_slice()).unwrap_or_default();
                 let answer = if let Some(request::Payload::AskForWindow(ask)) = request.payload {
+                    let unfollowed = !ask.daemon.is_empty() && ask.daemon != "local";
+                    let reason = format!("this Muster follows no machine called {}", ask.daemon);
                     heard.lock().expect("a test thread panicked").push(ask);
-                    if opens.is_some() {
+                    if unfollowed {
+                        response::Payload::Failure(Failure { reason })
+                    } else if opens.is_some() {
                         response::Payload::Ok(Accepted {})
                     } else {
                         response::Payload::Failure(Failure {
@@ -151,10 +188,7 @@ impl App {
                     response::Payload::Window(Window {
                         name: name.clone(),
                         windows: others,
-                        daemons: vec![Machine {
-                            daemon_id: "local".to_string(),
-                            ..Machine::default()
-                        }],
+                        install: install.to_string(),
                         ..Window::default()
                     })
                 };

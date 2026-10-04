@@ -3684,14 +3684,16 @@ pub(crate) fn ask_for_window(ask: &crate::proto::AskForWindow) {
 }
 
 /// Why a fresh window cannot be opened onto `daemon` or `tab`, if it cannot: the app follows no
-/// machine by that name, or no machine it follows holds that tab.
+/// machine by that name and is not attaching one, or no machine it follows holds that tab. A
+/// machine still attaching is accepted: the window opens empty, and asks it for a tab once it
+/// answers.
 pub(crate) fn cannot_open_onto(daemon: &str, tab: &str) -> Option<String> {
     if !daemon.is_empty() {
         let followed: Vec<String> = {
             let session = poison::lock(&SESSION, "session");
             session.backends.keys().map(ToString::to_string).collect()
         };
-        if !followed.iter().any(|id| id == daemon) {
+        if !followed.iter().any(|id| id == daemon) && !is_attaching(&DaemonId::new(daemon)) {
             return Some(format!(
                 "this Muster follows no machine called {daemon}, so no window was opened. It \
                  follows: {}. `muster window` lists them.",

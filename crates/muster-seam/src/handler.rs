@@ -1792,6 +1792,7 @@ fn read_window(window: WindowId, layout: bool) -> Response {
                 .collect(),
             places: places(&now.view),
             name: now.name.clone(),
+            install: muster_daemon_proto::install::INSTALL.to_string(),
             windows: now
                 .others
                 .iter()

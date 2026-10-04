@@ -61,21 +61,6 @@ impl Onto {
     fn is_said(&self) -> bool {
         self.daemon.is_some() || self.tab.is_some()
     }
-
-    /// Why the app that answered `window` cannot open a window onto this, if it cannot: it
-    /// follows no such machine, or holds no such tab in any window.
-    fn missing_from(&self, window: &Window) -> Option<String> {
-        if let Some(daemon) = &self.daemon
-            && !window.daemons.iter().any(|machine| &machine.daemon_id == daemon)
-        {
-            return Some(format!("it follows no machine called {daemon}"));
-        }
-        let tab = self.tab.as_ref()?;
-        let held = window.roster.iter().flat_map(|roster| roster.tabs.iter());
-        let elsewhere = window.windows.iter().flat_map(|other| other.tabs.iter());
-        (!held.chain(elsewhere).any(|listed| &listed.tab_id == tab))
-            .then(|| format!("no window of it holds a tab called {tab}"))
-    }
 }
 
 /// Opens another window, onto tabs of its own or onto what `onto` says, and hands back what it is
@@ -107,35 +92,21 @@ fn open_a_window(
     name: Option<&str>,
     onto: &Onto,
 ) -> Result<Opened, Trouble> {
-    let mut passed_over = Vec::new();
-    if let Some(opened) = ask_a_running_app(environment, fresh, name, onto, &mut passed_over)? {
+    if let Some(opened) = ask_a_running_app(environment, fresh, name, onto)? {
         return Ok(opened);
     }
     if onto.is_said() {
-        // An app answered and has not got the machine or the tab: starting another would not
-        // have them either.
-        if !passed_over.is_empty() {
-            return Err(Trouble::Refused(format!(
-                "no window was opened: {}. `muster window` lists the machines and tabs there are.",
-                passed_over.join("; ")
-            )));
-        }
         // None running: started as a plain launch is, which reopens its windows, and then asked.
         // A machine or a tab is something the running app is asked about, never a launch's
         // arguments.
         launch(environment, false, None)?;
-        return ask_a_running_app(environment, fresh, name, onto, &mut passed_over)?.ok_or_else(
-            || {
-                Trouble::Refused(format!(
-                    "Muster was started and no window was opened: {}.",
-                    if passed_over.is_empty() {
-                        "the app did not take the request".to_string()
-                    } else {
-                        passed_over.join("; ")
-                    }
-                ))
-            },
-        );
+        return ask_a_running_app(environment, fresh, name, onto)?.ok_or_else(|| {
+            Trouble::Refused(
+                "Muster was started, and did not take the request for a window, so none was \
+                 opened. Its run log says why."
+                    .to_string(),
+            )
+        });
     }
     let socket = launch(environment, fresh, name)?;
     let window = name.map(str::to_string).or_else(|| windows_open(&socket, environment).ok()?.0);
@@ -144,18 +115,18 @@ fn open_a_window(
 
 /// Asks a running app of this install for the window, and waits for it to open. Nothing when no
 /// app here takes the request: none answers, or every one belongs to another install or
-/// predates being asked.
+/// predates being asked. An app that says it is this install's and refuses is answered with its
+/// refusal, since no other app could take the request in its place.
 fn ask_a_running_app(
     environment: &BTreeMap<String, String>,
     fresh: bool,
     name: Option<&str>,
     onto: &Onto,
-    passed_over: &mut Vec<String>,
 ) -> Result<Option<Opened>, Trouble> {
     for socket in apps(environment) {
         let Ok((_, before, window)) = windows_open(&socket, environment) else { continue };
-        if let Some(missing) = onto.missing_from(&window) {
-            passed_over.push(format!("the Muster at {socket} was passed over, as {missing}"));
+        let ours = window.install == install::INSTALL;
+        if !ours && !window.install.is_empty() {
             continue;
         }
         if let Some(name) = name
@@ -173,8 +144,12 @@ fn ask_a_running_app(
         }));
         match dial::ask(&asked, Some(&socket), environment) {
             Ok(Response { payload: Some(response::Payload::Ok(_)) }) => {}
-            // Another install's app, or one from before windows shared a process: it keeps its
-            // windows to itself, so the next is asked, and failing every one the app is started.
+            Ok(Response { payload: Some(response::Payload::Failure(failure)) }) if ours => {
+                return Err(Trouble::Refused(failure.reason));
+            }
+            // An app too old to say its install, which may be another install's or from before
+            // windows shared a process: the next is asked, and failing every one the app is
+            // started.
             _ => continue,
         }
         return opened_in(&socket, environment, &before, name).map(Some).ok_or_else(|| {

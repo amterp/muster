@@ -1086,6 +1086,54 @@ fn a_first_window_starts_on_the_machine_the_config_names_first() {
     );
 }
 
+/// A window asked for on a machine still attaching is opened, and its first tab is asked of that
+/// machine once it answers, rather than the machine being refused as unknown.
+#[test]
+fn a_window_on_a_machine_still_attaching_waits_for_it() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let (near, far) = (Daemon::start_built(), Daemon::start_built());
+    let slow = far.delaying_answers_where(subscribes, std::time::Duration::from_secs(3));
+    let config = near.root().join("attaching.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "[[daemon]]\nid = \"local\"\nsocket = {:?}\n\n[[daemon]]\nid = \"devenv\"\n\
+             socket = {:?}\n",
+            near.socket_path().to_string_lossy(),
+            slow.socket_path().to_string_lossy()
+        ),
+    )
+    .expect("the harness root is writable");
+    forget_events();
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(&Request::new(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: arrangement(&near, "window-1").to_string_lossy().into_owned(),
+        tab_holders_path: record(&near).to_string_lossy().into_owned(),
+        ..Startup::default()
+    }))));
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow::default()))));
+
+    assert_ok(&answer(&Request::new(request::Payload::AskForWindow(AskForWindow {
+        install: muster_daemon_proto::install::INSTALL.to_string(),
+        fresh: true,
+        daemon: "devenv".to_string(),
+        ..AskForWindow::default()
+    }))));
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow {
+        state_path: arrangement(&near, "window-2").to_string_lossy().into_owned(),
+        daemon: "devenv".to_string(),
+        ..OpenWindow::default()
+    }))));
+
+    until(
+        "the window to open onto a tab on the machine once it answers",
+        || machine_showing_in("window-2").as_deref() == Some("devenv"),
+        || format!("window-2 shows a tab on {:?}", machine_showing_in("window-2")),
+    );
+}
+
 /// The window's subscribe, whose answer carries the daemon's state.
 fn subscribes(request: &daemon_proto::Request) -> bool {
     matches!(
