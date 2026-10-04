@@ -5117,9 +5117,10 @@ fn restarted(daemon: &DaemonId, restart: &Restart) {
             "daemon" => daemon.to_string(),
             "started_again" => restart.started_again.to_string(),
             "lost" => restart.lost.len().to_string(),
-            "agents" => restart.agents.iter().map(|(pane, _, agent)| format!("{pane}:{agent}")).collect::<Vec<_>>().join(" "),
+            "resumed" => restart.resumed.iter().map(|(pane, _, agent)| format!("{pane}:{agent}")).collect::<Vec<_>>().join(" "),
+            "stopped" => restart.stopped.iter().map(|(pane, _, agent)| format!("{pane}:{agent}")).collect::<Vec<_>>().join(" "),
             "impact" => "every process in its panes is new: shells start again in their \
-                         directories, and an agent runs again only if the daemon resumed it",
+                         directories, and an agent runs again only where the daemon resumed it",
             "check" => "why the daemon stopped, in its own log beside its socket; a crash \
                         there is a bug",
         },

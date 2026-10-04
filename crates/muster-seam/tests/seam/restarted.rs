@@ -60,7 +60,7 @@ fn a_restart_that_stopped_an_agent_is_said_until_its_pane_is_seen_to() {
         said.detail.contains(
             "restarted, so its pane came back from its saved state with new \
                               processes"
-        ) && said.detail.contains("had an agent running"),
+        ) && said.detail.contains("1 agent stopped and has to be started again"),
         "{}",
         said.detail
     );

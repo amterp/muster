@@ -1671,7 +1671,7 @@
           "agentStateChanged:p1:idle->unknown",
           "paneRelabelled:p1",
           "agentStateChanged:p2:idle->unknown",
-          "restarted:again=2:lost=[]:agents=[p1]"
+          "restarted:again=2:lost=[]:resumed=[]:stopped=[p1]"
         ]
       }
     },
@@ -1805,7 +1805,7 @@
           "tabRemoved:t1",
           "paneRemoved:p1",
           "paneRemoved:p2",
-          "restarted:again=0:lost=[p1,p2]:agents=[p1]"
+          "restarted:again=0:lost=[p1,p2]:resumed=[]:stopped=[p1]"
         ]
       }
     },
@@ -1890,7 +1890,7 @@
           "paneRemoved:p2",
           "layoutChanged:t1",
           "restored:lost=[p2]:saving=on",
-          "restarted:again=1:lost=[p2]:agents=[p1]"
+          "restarted:again=1:lost=[p2]:resumed=[]:stopped=[p1]"
         ]
       }
     },
@@ -1971,7 +1971,7 @@
           "agentStateChanged:p1:idle->unknown",
           "paneRelabelled:p1",
           "agentStateChanged:p2:idle->unknown",
-          "restarted:again=2:lost=[]:agents=[p1]",
+          "restarted:again=2:lost=[]:resumed=[]:stopped=[p1]",
           "agentStateChanged:p1:unknown->idle",
           "paneRelabelled:p1",
           "restartSettled"
@@ -2067,7 +2067,7 @@
           "agentStateChanged:p1:idle->unknown",
           "paneRelabelled:p1",
           "agentStateChanged:p2:idle->unknown",
-          "restarted:again=2:lost=[]:agents=[p1]",
+          "restarted:again=2:lost=[]:resumed=[]:stopped=[p1]",
           "paneRemoved:p1",
           "restartSettled"
         ],
@@ -2217,7 +2217,7 @@
           "tabRemoved:t1",
           "paneRemoved:p1",
           "paneRemoved:p2",
-          "restarted:again=0:lost=[p1,p2]:agents=[]",
+          "restarted:again=0:lost=[p1,p2]:resumed=[]:stopped=[]",
           "restartSettled"
         ],
         "health": "connected",
@@ -2226,6 +2226,201 @@
         "panes": [],
         "restoring": false,
         "tabs": []
+      }
+    },
+    {
+      "name": "an agent the daemon resumed is said to be resumed, and settles once it is seen",
+      "why": "A daemon that resumes an agent's session starts its pane with the resume as its command, which a pane it brings back otherwise never has. That agent is resumed rather than stopped, and the restart needs nobody once detection finds it running.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2,
+          "restoredFromFile": true,
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "unknown",
+              "cwd": "/src/api",
+              "command": "claude --resume s1"
+            },
+            {
+              "id": "p2",
+              "agentState": "unknown",
+              "cwd": "/src/web"
+            }
+          ]
+        },
+        "afterEvents": [
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src/api",
+            "command": "claude --resume s1",
+            "agent": "claude"
+          }
+        ]
+      },
+      "expect": {
+        "agentStates": {
+          "p1": "idle",
+          "p2": "unknown"
+        },
+        "changes": [
+          "agentStateChanged:p1:idle->unknown",
+          "paneRelabelled:p1",
+          "agentStateChanged:p2:idle->unknown",
+          "restarted:again=2:lost=[]:resumed=[p1]:stopped=[]",
+          "agentStateChanged:p1:unknown->idle",
+          "paneRelabelled:p1",
+          "restartSettled"
+        ],
+        "health": "connected",
+        "layouts": {
+          "t1": "columns(p1, p2@0.5)"
+        },
+        "paneTabs": {
+          "p1": "t1",
+          "p2": "t1"
+        },
+        "panes": [
+          "p1",
+          "p2"
+        ],
+        "restoring": false,
+        "tabs": [
+          "t1"
+        ]
+      }
+    },
+    {
+      "name": "a run that finished restoring while the connection was down is judged on the next reconnect",
+      "why": "A mirror that met the new run mid-restore waits for its `restored`, and a connection that drops before it arrives never sees it. The next snapshot of the same run, no longer restoring, is the run as restored, so the restart is judged from it rather than never.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2,
+          "restoring": true,
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "unknown",
+              "cwd": "/src/api"
+            }
+          ]
+        },
+        "resnapshotAgain": {
+          "instance": 2,
+          "restoredFromFile": true,
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "unknown",
+              "cwd": "/src/api"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "agentStates": {
+          "p1": "unknown"
+        },
+        "changes": [
+          "agentStateChanged:p1:idle->unknown",
+          "paneRelabelled:p1",
+          "paneRemoved:p2",
+          "layoutChanged:t1",
+          "restarted:again=1:lost=[p2]:resumed=[]:stopped=[p1]"
+        ],
+        "health": "connected",
+        "layouts": {
+          "t1": "p1"
+        },
+        "paneTabs": {
+          "p1": "t1"
+        },
+        "panes": [
+          "p1"
+        ],
+        "restoring": false,
+        "tabs": [
+          "t1"
+        ]
       }
     }
   ]

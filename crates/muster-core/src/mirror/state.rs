@@ -142,15 +142,7 @@ impl Mirror {
                 changes.push(Change::PaneRemoved(id.clone()));
             }
         }
-        if new_run {
-            let before: Vec<Pane> = previous_panes.values().cloned().collect();
-            if self.restoring {
-                self.before_restart = Some(before);
-            } else {
-                self.before_restart = None;
-                changes.extend(self.restarted(&before, restored_from_file));
-            }
-        }
+        changes.extend(self.judge_restart(new_run, &previous_panes, restored_from_file));
         // After the panes, because a tree names them: a reader told the arrangement first
         // would be handed a tree referring to a pane it has not been told exists. A tab that
         // went away is a TabRemoved and needs no second announcement about its tree.
@@ -391,6 +383,32 @@ impl Mirror {
     }
 
     /// Works out what a restart cost against the panes held before it, and keeps it.
+    /// After a bootstrap, works out what a different run cost, or holds the panes of the run before
+    /// until a run still restoring has finished.
+    fn judge_restart(
+        &mut self,
+        new_run: bool,
+        previous_panes: &Ordered<PaneId, Pane>,
+        restored_from_file: bool,
+    ) -> Option<Change> {
+        if new_run {
+            let before: Vec<Pane> = previous_panes.values().cloned().collect();
+            if self.restoring {
+                self.before_restart = Some(before);
+                return None;
+            }
+            self.before_restart = None;
+            return self.restarted(&before, restored_from_file);
+        }
+        if self.restoring {
+            return None;
+        }
+        // The run finished restoring while the connection was down, so its `restored` never
+        // reached this mirror: the snapshot is the run as restored.
+        let before = self.before_restart.take()?;
+        self.restarted(&before, restored_from_file)
+    }
+
     /// Whether the daemon's last restart still needs somebody.
     pub fn restart_outstanding(&self) -> bool {
         self.restart_outstanding
@@ -401,7 +419,7 @@ impl Mirror {
     fn restarted(&mut self, before: &[Pane], from_file: bool) -> Option<Change> {
         let restart = Restart::between(
             before,
-            |pane| self.panes.contains_key(pane) || self.unplaced.contains_key(pane),
+            |pane| self.panes.get(pane).or_else(|| self.unplaced.get(pane)),
             from_file,
         )?;
         self.last_restart = Some(restart.clone());

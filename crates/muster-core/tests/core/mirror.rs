@@ -31,6 +31,10 @@ fn mirror_conformance() {
         for event in given.get("afterEvents").and_then(Value::as_array).into_iter().flatten() {
             changes.extend(mirror.apply(read_event(event)));
         }
+        // A second reconnect, to the same run: one that missed what happened between the two.
+        if let Some(again) = given.get("resnapshotAgain") {
+            changes.extend(mirror.bootstrap(read_snapshot(again)));
+        }
 
         // Every field, every case. The corpus compares whole objects, and for a state machine
         // that is the point: a case asserting only what it is about would miss a change that
@@ -166,17 +170,18 @@ fn describe(change: &Change) -> String {
                 .join(","),
             if restored.saving_stopped { "stopped" } else { "on" }
         ),
-        Change::Restarted(restart) => format!(
-            "restarted:again={}:lost=[{}]:agents=[{}]",
-            restart.started_again,
-            restart.lost.iter().map(|(pane, _)| pane.to_string()).collect::<Vec<_>>().join(","),
-            restart
-                .agents
-                .iter()
-                .map(|(pane, _, _)| pane.to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-        ),
+        Change::Restarted(restart) => {
+            let ids = |agents: &[(PaneId, String, String)]| {
+                agents.iter().map(|(pane, _, _)| pane.to_string()).collect::<Vec<_>>().join(",")
+            };
+            format!(
+                "restarted:again={}:lost=[{}]:resumed=[{}]:stopped=[{}]",
+                restart.started_again,
+                restart.lost.iter().map(|(pane, _)| pane.to_string()).collect::<Vec<_>>().join(","),
+                ids(&restart.resumed),
+                ids(&restart.stopped),
+            )
+        }
         Change::RestartSettled => "restartSettled".to_string(),
         Change::PasteHeld { pane, text } => format!("pasteHeld:{pane}:{}", text.len()),
         Change::ClipboardWrite { pane, text } => format!("clipboardWrite:{pane}:{}", text.len()),
