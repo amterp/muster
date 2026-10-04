@@ -448,7 +448,8 @@ impl<S: Store> Messaging<S> {
     /// Picks up where a previous host left off. Each group's members are read back from its
     /// log, which is appended before the saved state is written - and so are its policy and
     /// whether it is paused, where the log records them, since the saved state may have missed
-    /// its last write (`muster-daemon`'s store writes it without waiting for the disk).
+    /// its last write (`muster-daemon`'s store does not sync the directory after replacing it, so
+    /// a power loss can undo the last replace).
     pub fn restore(store: S, saved: Saved, logs: BTreeMap<String, Vec<Entry>>) -> Messaging<S> {
         let mut policies: BTreeMap<String, Policy> =
             saved.groups.into_iter().map(|record| (record.name, record.policy)).collect();

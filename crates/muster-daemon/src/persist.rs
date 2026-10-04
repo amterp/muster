@@ -183,9 +183,10 @@ fn ratios(node: &Node) -> Result<(), String> {
     Ok(())
 }
 
-/// Moves a file this daemon cannot use out of the way, keeping it, and says where it went.
-pub(crate) fn move_aside(path: &Path) -> std::io::Result<PathBuf> {
-    let aside = aside(path, "corrupt");
+/// Moves a file this daemon cannot use out of the way, keeping it as `<file>.<why>-<seconds>`, and
+/// says where it went.
+pub(crate) fn move_aside(path: &Path, why: &str) -> std::io::Result<PathBuf> {
+    let aside = aside(path, why);
     std::fs::rename(path, &aside)?;
     Ok(aside)
 }
@@ -231,15 +232,18 @@ pub(crate) fn write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     commit(path)
 }
 
-/// Writes `bytes` as the file at `path`, whole or not at all, as [`write`] does, without asking
-/// the disk to have it before returning: no full flush of the file, and none of its directory.
+/// Writes `bytes` as the file at `path`, whole or not at all, as [`write`] does, without syncing
+/// the directory after the rename. The file's own data reaches the disk before the rename -
+/// `sync_data` is F_FULLFSYNC on macOS and fdatasync on Linux - so the path never names a file
+/// whose contents were lost; what a power loss can undo is the rename, leaving the earlier whole
+/// file in place.
 ///
-/// For state that is written often and costs little to lose its latest change to - after a power
-/// loss the path holds an earlier whole file rather than this one. What a session's tabs are
-/// keeps [`write`], since that is somebody's work. The message service's state is written on
-/// every post and read, and its latest change lost costs a message shown as unread again, a wake
-/// repeated, or a session joined that moment joining again; a group's policy and pause are read
-/// back from its log, which is appended and synced first.
+/// For state that is written often and costs little to lose its latest change to. What a
+/// session's tabs are keeps [`write`], since that is somebody's work. The message service's state
+/// is written on every post and read, where syncing the directory too took a save from 5 ms to
+/// 10 ms on an Apple silicon Mac; its latest change lost costs a message shown as unread again, a
+/// wake repeated, or a session joined that moment joining again. A group's policy and pause are
+/// read back from its log, which is appended and synced first.
 pub(crate) fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut file = File::options()
         .write(true)

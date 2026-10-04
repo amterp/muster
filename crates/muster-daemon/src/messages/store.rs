@@ -63,31 +63,22 @@ impl Files {
         DirBuilder::new().recursive(true).mode(0o700).create(self.logs())
     }
 
-    /// Everything kept, or nothing where nothing was. A file that cannot be read is logged and
-    /// left in place; it costs what it held, never the rest.
+    /// Everything kept, or nothing where nothing was. A file that cannot be read costs what it
+    /// held, never the rest: a log is logged and left in place, and a state file this daemon
+    /// cannot use is moved aside, since the next save would otherwise replace it.
     pub(crate) fn load(&self) -> Found {
         let saved = match std::fs::read(self.state()) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Saved::default(),
-            Err(error) => {
-                unreadable(&self.state(), &error.to_string());
-                Saved::default()
-            }
-            Ok(bytes) => match serde_json::from_slice::<Kept>(&bytes) {
-                Ok(kept) if kept.version <= VERSION => kept.saved,
-                Ok(kept) => {
-                    unreadable(
-                        &self.state(),
-                        &format!(
-                            "it is version {}, newer than this daemon's {VERSION}",
-                            kept.version
-                        ),
-                    );
-                    Saved::default()
-                }
-                Err(error) => {
-                    unreadable(&self.state(), &error.to_string());
-                    Saved::default()
-                }
+            Err(error) => self.set_aside(Unusable::Unreadable, &error.to_string()),
+            Ok(bytes) => match version_of(&bytes) {
+                Some(version) if version > VERSION => self.set_aside(
+                    Unusable::Newer,
+                    &format!("it is version {version}, newer than this daemon's {VERSION}"),
+                ),
+                _ => match serde_json::from_slice::<Kept>(&bytes) {
+                    Ok(kept) => kept.saved,
+                    Err(error) => self.set_aside(Unusable::Corrupt, &error.to_string()),
+                },
             },
         };
         let mut logs = BTreeMap::new();
@@ -108,6 +99,85 @@ impl Files {
         }
         Found { saved, logs }
     }
+}
+
+/// Why a state file could not be used.
+#[derive(Debug, Clone, Copy)]
+enum Unusable {
+    /// It could not be read at all.
+    Unreadable,
+    /// It is not a state any daemon writes: damaged, or edited.
+    Corrupt,
+    /// A newer daemon wrote it.
+    Newer,
+}
+
+impl Unusable {
+    /// What the file is renamed for, as `state.json.<tag>-<seconds>`.
+    fn tag(self) -> &'static str {
+        match self {
+            Unusable::Unreadable => "unreadable",
+            Unusable::Corrupt => "corrupt",
+            Unusable::Newer => "newer",
+        }
+    }
+}
+
+impl Files {
+    /// Moves a state file this daemon cannot use aside, where a person or a newer daemon can still
+    /// read it, and starts from nothing.
+    fn set_aside(&self, why: Unusable, error: &str) -> Saved {
+        let state = self.state();
+        let (impact, check) = match why {
+            Unusable::Newer => (
+                "this daemon starts its messages over: no participant has read anything, and \
+                 groups, members, policies and pauses come back from the group logs; the newer \
+                 daemon's file is kept where it was moved",
+                "move the file back as state.json before running the newer daemon again",
+            ),
+            Unusable::Unreadable | Unusable::Corrupt => (
+                "every participant's read cursors and wakes start over, so everything in its \
+                 groups reads unread again; groups, members, policies and pauses come back from \
+                 the group logs",
+                "whether the machine lost power or something other than the daemon wrote the \
+                 file; the moved file holds whatever it had",
+            ),
+        };
+        match persist::move_aside(&state, why.tag()) {
+            Ok(aside) => log::error(
+                "msg.store.state_set_aside",
+                fields! {
+                    "file" => state.display(),
+                    "moved_to" => aside.display(),
+                    "error" => error,
+                    "impact" => impact,
+                    "check" => check,
+                },
+            ),
+            Err(moving) => log::error(
+                "msg.store.state_set_aside",
+                fields! {
+                    "file" => state.display(),
+                    "error" => error,
+                    "moving" => moving,
+                    "impact" => format!("{impact}; it could not be moved aside, so the next \
+                                         save replaces it"),
+                    "check" => "the permissions on the file and its directory",
+                },
+            ),
+        }
+        Saved::default()
+    }
+}
+
+/// The version a state file says it is, read on its own: a newer daemon's file may not parse as
+/// this one's, and must still be told apart from a damaged one.
+fn version_of(bytes: &[u8]) -> Option<u32> {
+    #[derive(Deserialize)]
+    struct Versioned {
+        version: u32,
+    }
+    serde_json::from_slice::<Versioned>(bytes).ok().map(|versioned| versioned.version)
 }
 
 impl Store for Files {
@@ -219,8 +289,8 @@ fn unreadable(path: &Path, error: &str) {
         fields! {
             "file" => path.display(),
             "error" => error,
-            "impact" => "the daemon starts without what the file held: participants lose their \
-                         read cursors, or a group its log",
+            "impact" => "the daemon starts without what the file held: the group's log, or part \
+                         of it",
             "check" => "the file's permissions and contents; it is left where it is",
         },
     );
@@ -300,13 +370,46 @@ mod tests {
         );
     }
 
+    /// What is in the store's directory beside the state file, named `state.json.<tag>-...`.
+    fn set_aside(files: &Files, tag: &str) -> Vec<Vec<u8>> {
+        let prefix = format!("state.json.{tag}-");
+        std::fs::read_dir(files.directory())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|file| file.file_name().to_string_lossy().starts_with(&prefix))
+            .map(|file| std::fs::read(file.path()).unwrap())
+            .collect()
+    }
+
+    /// Not read, and moved aside for the newer daemon: left in place, this daemon's next save
+    /// would replace it.
     #[test]
-    fn a_state_file_from_a_newer_daemon_is_not_read() {
+    fn a_state_file_from_a_newer_daemon_is_moved_aside_not_read() {
         let socket = scratch("newer");
         let files = Files::beside(&socket);
         files.ensure_directories().unwrap();
-        std::fs::write(files.state(), br#"{"version":99,"participants":[],"groups":[]}"#).unwrap();
+        // A shape this daemon could not parse, as a newer format may be.
+        let newer = br#"{"version":99,"participants":{"renamed":true}}"#;
+        std::fs::write(files.state(), newer).unwrap();
         assert_eq!(Files::beside(&socket).load().saved, Saved::default());
-        assert!(files.state().exists(), "the newer file is left for the newer daemon");
+        assert!(!files.state().exists());
+        assert_eq!(set_aside(&files, "newer"), [newer.to_vec()]);
+    }
+
+    /// A state file that does not parse is kept for a person to read, not replaced by the next
+    /// save; the group logs still load.
+    #[test]
+    fn a_damaged_state_file_is_moved_aside_and_the_logs_still_load() {
+        let socket = scratch("damaged");
+        let mut files = Files::beside(&socket);
+        files.append("g", &message(1, "kept")).unwrap();
+        std::fs::write(files.state(), b"{\"version\":1,\"partici").unwrap();
+
+        let found = Files::beside(&socket).load();
+        assert_eq!(found.saved, Saved::default());
+        assert_eq!(found.logs["g"], vec![message(1, "kept")]);
+        assert_eq!(set_aside(&files, "corrupt"), [b"{\"version\":1,\"partici".to_vec()]);
+        files.save(&Saved::default()).unwrap();
+        assert_eq!(set_aside(&files, "corrupt").len(), 1, "the save replaced the damaged file");
     }
 }

@@ -814,7 +814,11 @@ guard never holds the human's post on either machine.
 
 Each daemon stores the groups it is home to beside its persisted state (MIP-3 section 2): an
 append-only log file per group, synced on each append, and a file of participants, wake addresses,
-cursors and policies, written with an atomic rename as MIP-3's persisted state is. A group posts a
+cursors and policies, written with an atomic rename. That file's contents are synced before the
+rename and its directory is not, which would double the cost of a save written on every post and
+read: a power loss can undo its last write, never leave it damaged. A state file the daemon cannot
+use - damaged, unreadable, or a newer daemon's - is moved aside as `state.json.<why>-<seconds>`
+rather than replaced, and the daemon starts its cursors and wakes over. A group posts a
 message every few seconds at most, so that is at most one sync every few seconds per group. Logs
 survive a daemon restart, a daemon handoff (MIP-3 section 10) and a reboot. Wake addresses survive
 too and are found dead at first use, which marks their participants gone until they return. Replicas

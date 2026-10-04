@@ -351,7 +351,7 @@ fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
             );
             (true, None)
         }
-        persist::Loaded::Corrupt(why) => match persist::move_aside(&path) {
+        persist::Loaded::Corrupt(why) => match persist::move_aside(&path, "corrupt") {
             Ok(aside) => {
                 log::warn(
                     "daemon.state.corrupt",

@@ -48,7 +48,7 @@ fn a_restored_service_has_the_same_members_cursors_and_log() {
     assert_eq!(posted.wakes.iter().map(|wake| wake.name.as_str()).collect::<Vec<_>>(), ["a"]);
 }
 
-/// The saved state may miss its last write, since it is written without waiting for the disk;
+/// The saved state may miss its last write, since a power loss can undo the rename that wrote it;
 /// a group's policy and its pause are read back from its log, which records both.
 #[test]
 fn a_policy_and_a_pause_the_saved_state_missed_are_read_back_from_the_log() {
