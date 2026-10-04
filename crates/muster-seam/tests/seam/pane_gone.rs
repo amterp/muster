@@ -29,6 +29,11 @@ use prost::Message;
 
 /// Short enough that the gate does not wait out the shipped five seconds. The same number
 /// `untypeable.rs` and `stalled.rs` run on, and for the same reasons.
+///
+/// It runs from when the core binds the pane's socket, and this test dials only once it has seen
+/// the socket in a view, so a loaded machine can be past it first. That is harmless: the problem
+/// it raises is cleared by the `gone` report, and no replacement is asked for, because a pane
+/// whose first bridge was never started has an ask still pending. A dial 1.2 s late passes.
 const DEADLINE_MS: u64 = 300;
 
 /// How long "and nothing was said about it" waits before it counts as true.

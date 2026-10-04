@@ -10,7 +10,6 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
 
 use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
 use muster_daemon_proto::{self as proto, session_request};
@@ -260,9 +259,12 @@ fn a_wait_on_a_pane_that_closes_is_refused(here: &Here) {
     let subscribed = r#""request":"session.subscribe""#;
     let mut logging = here.daemon.connect();
     let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let replayed = match expect(&mut logging, session(follow), proto::Outcome::Done).answer.detail {
+        Some(proto::answer::Detail::Followed(followed)) => followed.newest,
+        other => panic!("a follow answered with {other:?}"),
+    };
     let before = logging
-        .logged_times_until(subscribed, usize::MAX, Duration::from_millis(300))
+        .logged_through(replayed, PATIENCE)
         .iter()
         .filter(|line| line.line.contains(subscribed))
         .count();

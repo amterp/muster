@@ -9,8 +9,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use muster::proto::{
-    AdjustFontSize, Event, FocusPane, OpenWindow, Request, Response, Startup, ViewChanged, event,
-    request, response,
+    AdjustFontSize, Event, FocusPane, OpenWindow, Request, Response, RosterChanged, Startup,
+    ViewChanged, ViewNode, event, request, response, view_node,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -34,12 +34,12 @@ fn a_republish_that_changes_nothing_sends_the_shell_nothing() {
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
-    until(
-        "the window to open onto a pane",
-        || keyboard().is_some(),
-        || format!("the last view the core published: {:?}", latest_view()),
-    );
-    settle();
+    // Everything opening publishes, so the counts below start after it: the view and roster that
+    // add the tab, and the ones that add the pane's record and its socket, which can come
+    // separately and in either order.
+    until("the window to finish opening onto a pane", opened, || {
+        format!("the last view: {:?}\nthe last roster: {:?}", latest_view(), latest_roster())
+    });
     let (daemon_id, pane_id) = keyboard().expect("the window opened onto a pane");
     let (views, rosters) = counts();
 
@@ -72,8 +72,14 @@ fn a_republish_that_changes_nothing_sends_the_shell_nothing() {
     );
 }
 
-/// Waits until nothing has been published for a while, so a count read next is not racing a
-/// daemon event still on its way.
+/// Waits until nothing has been published for a while.
+///
+/// Nothing arriving is this test's subject, and there is no event for it, so it costs elapsed
+/// time. What it waits out is a daemon echoing the requests above back as an event that
+/// republishes; every publish the requests cause directly is sent before their dispatch returns.
+/// Measured over six runs beside other gates, the publishes opening causes landed within a
+/// millisecond of one another and nothing followed in the next three seconds, so 400 ms is a
+/// wide margin. A slower echo can only let a regression through, never fail a correct build.
 fn settle() {
     let quiet = Duration::from_millis(400);
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -92,6 +98,34 @@ fn settle() {
     panic!("the window never stopped republishing: {last:?} after ten seconds");
 }
 
+/// Whether the window has finished opening onto its pane: the view names the pane the keyboard
+/// is on and gives it a socket for its bridge, and the roster lists it.
+fn opened() -> bool {
+    let (Some((_, pane)), Some(view), Some(roster)) = (keyboard(), latest_view(), latest_roster())
+    else {
+        return false;
+    };
+    let socket = view
+        .regions
+        .iter()
+        .filter_map(|region| region.root.as_ref())
+        .any(|root| has_socket(root, &pane));
+    let listed = roster.tabs.iter().flat_map(|tab| &tab.panes).any(|row| row.pane_id == pane);
+    socket && listed
+}
+
+fn has_socket(node: &ViewNode, pane: &str) -> bool {
+    match &node.node {
+        Some(view_node::Node::Pane(leaf)) => {
+            leaf.pane_id == pane && !leaf.link_socket_path.is_empty()
+        }
+        Some(view_node::Node::Split(split)) => {
+            split.first.iter().chain(split.second.iter()).any(|child| has_socket(child, pane))
+        }
+        None => false,
+    }
+}
+
 /// The daemon and pane the keyboard is on, as the published view names them.
 fn keyboard() -> Option<(String, String)> {
     let view = latest_view()?;
@@ -104,11 +138,12 @@ fn keyboard() -> Option<(String, String)> {
 
 struct Seen {
     view: Option<ViewChanged>,
+    roster: Option<RosterChanged>,
     views: usize,
     rosters: usize,
 }
 
-static SEEN: Mutex<Seen> = Mutex::new(Seen { view: None, views: 0, rosters: 0 });
+static SEEN: Mutex<Seen> = Mutex::new(Seen { view: None, roster: None, views: 0, rosters: 0 });
 
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
@@ -121,7 +156,10 @@ extern "C" fn note(bytes: *const u8, len: usize) {
             seen.views += 1;
             seen.view = Some(view);
         }
-        Some(event::Payload::RosterChanged(_)) => seen.rosters += 1,
+        Some(event::Payload::RosterChanged(roster)) => {
+            seen.rosters += 1;
+            seen.roster = Some(roster);
+        }
         _ => {}
     }
 }
@@ -133,6 +171,10 @@ fn counts() -> (usize, usize) {
 
 fn latest_view() -> Option<ViewChanged> {
     SEEN.lock().expect("a panicking test poisoned the events").view.clone()
+}
+
+fn latest_roster() -> Option<RosterChanged> {
+    SEEN.lock().expect("a panicking test poisoned the events").roster.clone()
 }
 
 fn answer(payload: request::Payload) -> Response {

@@ -162,6 +162,24 @@ impl Control {
         }
         &self.logged
     }
+
+    /// The log lines that have arrived so far, reading for up to `within` more until the line
+    /// numbered `number` is among them. A daemon numbers its lines from 1 with no gaps, and its
+    /// answer to `FollowLog` says the number of the last one it replays, so this is how a caller
+    /// knows the replay has all arrived.
+    pub fn logged_through(&mut self, number: u64, within: Duration) -> &[proto::LogLine] {
+        let deadline = Instant::now() + within;
+        while self.logged.last().is_none_or(|line| line.number < number) {
+            match self.next_frame(deadline) {
+                None => break,
+                Some(Frame::Logged) => {}
+                Some(Frame::Message(message)) => {
+                    panic!("waiting for the log, the daemon sent {message:?}")
+                }
+            }
+        }
+        &self.logged
+    }
 }
 
 enum Frame {

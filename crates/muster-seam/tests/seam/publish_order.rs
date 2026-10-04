@@ -7,11 +7,11 @@
 //! sends nothing. Publishes run on daemon threads, the main thread and the watchdog's.
 
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use muster::proto::{
-    AdjustFontSize, Event, OpenWindow, Request, Response, Startup, ViewChanged, event, request,
-    response,
+    AdjustFontSize, Event, OpenWindow, Request, Response, RosterChanged, Startup, ViewChanged,
+    ViewNode, event, request, response, view_node,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -34,12 +34,11 @@ fn the_last_view_the_shell_is_sent_is_the_one_the_core_settled_last() {
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
-    until(
-        "the window to open onto a pane",
-        || latest_view().is_some_and(|view| view.regions.iter().any(|r| !r.pane_id.is_empty())),
-        || format!("the last view the core published: {:?}", latest_view()),
-    );
-    settle();
+    // Everything opening publishes: the view and roster that add the tab, and the ones that add
+    // the pane's record and its socket, which can come separately and in either order.
+    until("the window to finish opening onto a pane", opened, || {
+        format!("the last view: {:?}\nthe last roster: {:?}", latest_view(), latest_roster())
+    });
     // Opening a window forgets what the shell was sent, on purpose, so the view it opens onto
     // can arrive twice. Counted from here.
     SEEN.lock().expect("a panicking test poisoned the events").2 = 0;
@@ -59,10 +58,12 @@ fn the_last_view_the_shell_is_sent_is_the_one_the_core_settled_last() {
             })
         })
         .collect();
+    // Joined is enough: a font size change publishes before its dispatch returns, and publishes
+    // settle and send one at a time, so every view these changes caused has been sent. A publish
+    // from another thread after this one settles the current view, which changes nothing below.
     for thread in threads {
         thread.join().expect("a publishing thread");
     }
-    settle();
 
     // The core never sends the view it last sent, so in order the shell never receives one
     // twice running. Out of order it does: settled S1, settled S2, sent S2, sent S1 - and the
@@ -80,45 +81,64 @@ fn the_last_view_the_shell_is_sent_is_the_one_the_core_settled_last() {
     );
 }
 
-/// Waits until nothing has been published for a while.
-fn settle() {
-    let quiet = Duration::from_millis(400);
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let mut last = count();
-    let mut since = Instant::now();
-    while Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(50));
-        let now = count();
-        if now != last {
-            last = now;
-            since = Instant::now();
-        } else if since.elapsed() >= quiet {
-            return;
+/// Whether the window has finished opening onto its pane: the view gives the pane a socket for
+/// its bridge, and the roster lists it.
+fn opened() -> bool {
+    let (Some(view), Some(roster)) = (latest_view(), latest_roster()) else { return false };
+    let Some(pane) = view.regions.iter().find(|region| !region.pane_id.is_empty()) else {
+        return false;
+    };
+    let socket = view
+        .regions
+        .iter()
+        .filter_map(|region| region.root.as_ref())
+        .any(|root| has_socket(root, &pane.pane_id));
+    let listed =
+        roster.tabs.iter().flat_map(|tab| &tab.panes).any(|row| row.pane_id == pane.pane_id);
+    socket && listed
+}
+
+fn has_socket(node: &ViewNode, pane: &str) -> bool {
+    match &node.node {
+        Some(view_node::Node::Pane(leaf)) => {
+            leaf.pane_id == pane && !leaf.link_socket_path.is_empty()
         }
+        Some(view_node::Node::Split(split)) => {
+            split.first.iter().chain(split.second.iter()).any(|child| has_socket(child, pane))
+        }
+        None => false,
     }
-    panic!("the window never stopped republishing");
 }
 
 /// Views received, the last of them, and how many were the same as the one before.
 static SEEN: Mutex<(usize, Option<ViewChanged>, usize)> = Mutex::new((0, None, 0));
+
+/// The last roster received.
+static ROSTER: Mutex<Option<RosterChanged>> = Mutex::new(None);
 
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
-    if let Some(event::Payload::ViewChanged(view)) = event.payload {
-        let mut seen = SEEN.lock().expect("a panicking test poisoned the events");
-        seen.0 += 1;
-        if seen.1.as_ref() == Some(&view) {
-            seen.2 += 1;
+    match event.payload {
+        Some(event::Payload::ViewChanged(view)) => {
+            let mut seen = SEEN.lock().expect("a panicking test poisoned the events");
+            seen.0 += 1;
+            if seen.1.as_ref() == Some(&view) {
+                seen.2 += 1;
+            }
+            seen.1 = Some(view);
         }
-        seen.1 = Some(view);
+        Some(event::Payload::RosterChanged(roster)) => {
+            *ROSTER.lock().expect("a panicking test poisoned the roster") = Some(roster);
+        }
+        _ => {}
     }
 }
 
-fn count() -> usize {
-    SEEN.lock().expect("a panicking test poisoned the events").0
+fn latest_roster() -> Option<RosterChanged> {
+    ROSTER.lock().expect("a panicking test poisoned the roster").clone()
 }
 
 fn repeats() -> usize {
