@@ -297,6 +297,17 @@ impl Manifests {
         self.entry(agent)?.manifest.session_wake(session, message)
     }
 
+    /// The command that starts the agent's session `session` again after a daemon restart,
+    /// carrying what of `arguments` can be carried; none when its manifest does not say how.
+    pub fn session_resume(
+        &self,
+        agent: &Agent,
+        session: &str,
+        arguments: &[String],
+    ) -> Option<crate::Resume> {
+        self.entry(agent)?.manifest.session_resume(session, arguments)
+    }
+
     fn entry(&self, agent: &Agent) -> Option<&Entry> {
         self.entries.iter().find(|entry| &entry.agent == agent)
     }

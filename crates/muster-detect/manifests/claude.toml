@@ -1,6 +1,6 @@
 id = "claude"
-version = "2026.10.04.1"
-min_engine_version = 11
+version = "2026.10.04.2"
+min_engine_version = 12
 updated_at = "2026-10-04T00:00:00Z"
 aliases = ["claude-code"]
 
@@ -11,6 +11,27 @@ rename = "/rename {name}"
 # Typed the same way, and what follows it is what the summary should keep
 # (docs/observations/claude-code-2.1.289.md, section 1).
 compact = "/compact {focus}"
+# What a pane runs after a daemon restart to start its session again, with the arguments Claude
+# Code was running with where {args} is (crates/muster-detect/src/resume.rs). From `claude --help`
+# at 2.1.289: what starts, forks or leaves a session of its own is dropped, and every option
+# that takes a value, `<x>` or `[x]`, is listed so its value is not read as a first prompt.
+resume = ["claude", "{args}", "--resume", "{session}"]
+resume_drops = [
+  "-p", "--print", "-c", "--continue", "-r", "--resume", "--session-id", "--fork-session",
+  "--from-pr", "--teleport", "--cloud", "--environment", "--bg", "--background", "--desktop",
+  "-w", "--worktree", "--tmux", "-h", "--help", "-v", "--version",
+]
+resume_values = [
+  "--add-dir", "--agent", "--agents", "--allowedTools", "--allowed-tools",
+  "--append-system-prompt", "--autocompact", "--betas", "--cloud", "-d", "--debug",
+  "--debug-file", "--disallowedTools", "--disallowed-tools", "--effort", "--environment",
+  "--fallback-model", "--file", "--from-pr", "--input-format", "--json-schema",
+  "--max-budget-usd", "--mcp-config", "--model", "-n", "--name", "--output-format",
+  "--permission-mode", "--permission-prompts", "--plugin-dir", "--plugin-url",
+  "--prompt-suggestions", "--remote-control", "--remote-control-session-name-prefix", "-r",
+  "--resume", "--session-id", "--setting-sources", "--settings", "--system-prompt",
+  "--system-prompt-snapshot", "--teleport", "--tools", "-w", "--worktree",
+]
 
 [[rules]]
 id = "osc_title_working"

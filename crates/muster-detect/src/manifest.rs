@@ -18,7 +18,7 @@ use std::fmt;
 use regex::Regex;
 use serde::Deserialize;
 
-use crate::State;
+use crate::{State, resume};
 use region::Region;
 
 /// The manifest engine this crate implements. 1 to 3 are herdr's, so herdr's manifests keep
@@ -27,9 +27,10 @@ use region::Region;
 /// 7 adds the `current_prompt` region, Codex's composer alone, 8 a `[session]` table saying
 /// how to rename the harness's session, 9 the `bar_prompt` region, a prompt box drawn with a
 /// bar down its left side, with a rule's `prompt_margin` and `prompt_placeholder`, 10 a
-/// `[session]` `wake`, the command that hands a running session a message, and 11 a
-/// `[session]` `compact`, the line that compacts the session's context.
-pub const ENGINE_VERSION: u32 = 11;
+/// `[session]` `wake`, the command that hands a running session a message, 11 a
+/// `[session]` `compact`, the line that compacts the session's context, and 12 a `[session]`
+/// `resume`, the command that starts a session again after a daemon restart.
+pub const ENGINE_VERSION: u32 = 12;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -52,6 +53,9 @@ const WAKE_ENGINE_VERSION: u32 = 10;
 
 /// The engine version that introduced `[session]` `compact`.
 const COMPACT_ENGINE_VERSION: u32 = 11;
+
+/// The engine version that introduced `[session]` `resume`, `resume_drops` and `resume_values`.
+const RESUME_ENGINE_VERSION: u32 = 12;
 
 /// Where a `[session]` compact's template takes what to keep, when its harness takes one.
 const FOCUS_PLACEHOLDER: &str = "{focus}";
@@ -136,6 +140,8 @@ pub struct Manifest {
     /// What typed at the agent's empty prompt compacts its context, with `{focus}` where the
     /// harness takes what to keep, if it takes it.
     compact: Option<String>,
+    /// The command that starts the session again after a daemon restart.
+    resume: Option<resume::Spelling>,
 }
 
 #[derive(Debug, Clone)]
@@ -253,6 +259,13 @@ impl Manifest {
             )));
         }
         Some(Ok(template.replace(FOCUS_PLACEHOLDER, focus.unwrap_or_default()).trim().to_string()))
+    }
+
+    /// The command, as arguments, that starts the session with id `session` again after the
+    /// pane it ran in was lost to a daemon restart, carrying what of `arguments` - the ones the
+    /// agent was running with - can be carried. None when the manifest does not say how.
+    pub fn session_resume(&self, session: &str, arguments: &[String]) -> Option<resume::Resume> {
+        self.resume.as_ref().map(|spelling| spelling.resume(session, arguments))
     }
 
     /// The command, as arguments, that hands the session with id `session` the message
@@ -460,6 +473,11 @@ struct RawSession {
     rename: Option<String>,
     wake: Option<Vec<String>>,
     compact: Option<String>,
+    resume: Option<Vec<String>>,
+    #[serde(default)]
+    resume_drops: Vec<String>,
+    #[serde(default)]
+    resume_values: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -630,6 +648,7 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     if let Some(compact) = &session.compact {
         validate_compact(manifest, compact)?;
     }
+    validate_resume(manifest, session)?;
     let Some(rename) = &session.rename else { return Ok(()) };
     if !rename.contains(NAME_PLACEHOLDER) {
         return Err(format!(
@@ -638,6 +657,48 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     }
     if rename.chars().any(char::is_control) {
         return Err("[session] rename holds a control character".to_string());
+    }
+    Ok(())
+}
+
+/// A resume is a program and its arguments, run through the pane's shell with each word quoted:
+/// the session's id fills one whole argument, and the arguments carried fill one place, so both
+/// are somewhere exactly once. The flag lists mean nothing without the command.
+fn validate_resume(manifest: &RawManifest, session: &RawSession) -> Result<(), String> {
+    let Some(resume) = &session.resume else {
+        if !session.resume_drops.is_empty() || !session.resume_values.is_empty() {
+            return Err("[session] resume_drops and resume_values need a resume".to_string());
+        }
+        return Ok(());
+    };
+    if manifest.min_engine_version.unwrap_or(0) < RESUME_ENGINE_VERSION {
+        return Err(format!(
+            "[session] resume needs min_engine_version {RESUME_ENGINE_VERSION} or later"
+        ));
+    }
+    if resume.first().is_none_or(|program| program.trim().is_empty() || program.starts_with('{')) {
+        return Err("[session] resume names no program".to_string());
+    }
+    for placeholder in [resume::SESSION_PLACEHOLDER, resume::ARGUMENTS_PLACEHOLDER] {
+        if resume.iter().filter(|argument| *argument == placeholder).count() != 1 {
+            return Err(format!(
+                "[session] resume needs exactly one argument that is exactly {placeholder}"
+            ));
+        }
+    }
+    let words = resume.iter().chain(&session.resume_drops).chain(&session.resume_values);
+    if words.clone().any(|word| word.chars().any(char::is_control)) {
+        return Err("[session] resume holds a control character".to_string());
+    }
+    if let Some(flag) = session
+        .resume_drops
+        .iter()
+        .chain(&session.resume_values)
+        .find(|flag| !flag.starts_with('-'))
+    {
+        return Err(format!(
+            "[session] resume_drops and resume_values hold flags, and {flag} is not one"
+        ));
     }
     Ok(())
 }
@@ -939,6 +1000,13 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         rules,
         rename: raw.session.as_ref().and_then(|session| session.rename.clone()),
         compact: raw.session.as_ref().and_then(|session| session.compact.clone()),
+        resume: raw.session.as_ref().and_then(|session| {
+            Some(resume::Spelling {
+                command: session.resume.clone()?,
+                drops: session.resume_drops.clone(),
+                values: session.resume_values.clone(),
+            })
+        }),
         wake: raw.session.and_then(|session| session.wake),
     })
 }

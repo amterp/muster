@@ -16,16 +16,18 @@ mod manifest;
 mod manifests;
 mod osc;
 mod process;
+mod resume;
 
 use std::fmt;
 use std::sync::Arc;
 
 pub use detector::{Carried, CarriedReport, Detector, Drift, Pane, Publication, Tick};
-pub use identify::{Probe, identify_in_job, identify_process, probe};
+pub use identify::{Probe, agent_arguments, identify_in_job, identify_process, probe};
 pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Prompt, Version};
 pub use manifests::{Manifests, Source, Warning};
 pub use osc::{Progress, title};
 pub use process::{Job, Placed, Process, Processes, System};
+pub use resume::Resume;
 
 /// What an agent is doing, as far as its screen says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

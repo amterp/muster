@@ -480,6 +480,39 @@ fn a_session_compact_takes_a_focus_only_where_it_says_and_needs_engine_eleven() 
     assert_eq!(without.session_compact(None), None);
 }
 
+/// A resume names its program, and takes the session's id and the carried arguments each in
+/// exactly one whole argument; its flag lists hold flags, and need it.
+#[test]
+fn a_session_resume_fills_its_command_and_is_validated() {
+    let with = |engine: u32, session: &str| {
+        format!(
+            "id = \"x\"\nmin_engine_version = {engine}\n\n[session]\n{session}\n\n\
+             [[rules]]\nid = \"r\"\nstate = \"idle\"\ncontains = [\"> \"]\n"
+        )
+    };
+    let spelled = "resume = ['claude', '{args}', '--resume', '{session}']\n\
+                   resume_drops = ['-p']\nresume_values = ['--model']";
+    let manifest = Manifest::parse(&with(12, spelled)).unwrap();
+    let arguments: Vec<String> =
+        ["--model", "opus", "-p", "hello"].iter().map(ToString::to_string).collect();
+    let resume = manifest.session_resume("s-1", &arguments).unwrap();
+    assert_eq!(resume.command, ["claude", "--model", "opus", "--resume", "s-1"]);
+    assert_eq!(resume.uncarried, None);
+
+    assert!(Manifest::parse(&with(11, spelled)).is_err(), "below engine 12");
+    for bad in [
+        "resume = ['claude', '--resume', '{session}']",
+        "resume = ['claude', '{args}', '{args}', '{session}']",
+        "resume = ['{args}', '{session}']",
+        "resume = ['claude', '{args}', '{session}']\nresume_values = ['model']",
+        "resume_drops = ['-p']",
+    ] {
+        assert!(Manifest::parse(&with(12, bad)).is_err(), "accepted {bad}");
+    }
+    let without = Manifest::parse(&with(12, "rename = '/rename {name}'")).unwrap();
+    assert_eq!(without.session_resume("s-1", &[]), None);
+}
+
 #[test]
 fn versions_compare_numerically_with_trailing_zeros_insignificant() {
     let v = |text| Version::parse(text).unwrap();

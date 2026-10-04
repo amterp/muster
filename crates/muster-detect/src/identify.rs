@@ -128,6 +128,28 @@ pub fn identify_process(process: &Process, manifests: &Manifests) -> Option<Agen
     manifests.agent_named(&normalized_process_name(process, manifests))
 }
 
+/// The agent in a job and the arguments its process was started with, after the word that names
+/// it: `["--model", "opus"]` for `claude --model opus`, and the same for `node .../claude/cli.js
+/// --model opus`, whose runtime and script are how it was run rather than what it was told.
+///
+/// None when no process is an agent, or the kernel would not give the agent's arguments.
+pub fn agent_arguments(job: &Job, manifests: &Manifests) -> Option<(Agent, Vec<String>)> {
+    let (agent, _) = identify_in_job(job, manifests)?;
+    let names_it = |token: &str| {
+        agent_name_from_path_token(token, manifests)
+            .and_then(|name| manifests.agent_named(&name))
+            .is_some_and(|named| named == agent)
+    };
+    let process = job
+        .leader()
+        .into_iter()
+        .chain(&job.processes)
+        .find(|process| identify_process(process, manifests).as_ref() == Some(&agent))?;
+    let argv = process.argv.as_deref()?;
+    let at = argv.iter().position(|word| names_it(word)).unwrap_or(0);
+    Some((agent, argv.get(at + 1..).unwrap_or_default().to_vec()))
+}
+
 /// The name a process should be looked up by.
 fn normalized_process_name(process: &Process, manifests: &Manifests) -> String {
     let effective = process.argv0.as_deref().unwrap_or(&process.name);
@@ -307,6 +329,57 @@ mod tests {
         assert!(flag_matches("-econsole.log(1)", &["-e"]));
         assert!(flag_matches("--eval=1", &["--eval"]));
         assert!(!flag_matches("--evaluate", &["--eval"]));
+    }
+
+    fn process(pid: u32, name: &str, argv: &[&str]) -> Process {
+        Process {
+            pid,
+            name: name.to_string(),
+            argv0: None,
+            argv: Some(argv.iter().map(ToString::to_string).collect()),
+        }
+    }
+
+    /// The agent's own arguments, whether it is the job's leader, a wrapper's child, or a script
+    /// a runtime runs.
+    #[test]
+    fn an_agents_arguments_follow_the_word_that_names_it() {
+        let manifests = Manifests::built_in();
+        let alone =
+            Job { group: 1, processes: vec![process(1, "claude", &["claude", "--model", "opus"])] };
+        assert_eq!(
+            agent_arguments(&alone, &manifests),
+            Some((Agent::new("claude"), vec!["--model".to_string(), "opus".to_string()]))
+        );
+
+        let wrapped = Job {
+            group: 1,
+            processes: vec![
+                process(1, "rad", &["rad", "/bin/ct", "-m", "2"]),
+                process(2, "claude", &["/opt/claude", "--model", "opus", "--effort", "high"]),
+            ],
+        };
+        assert_eq!(
+            agent_arguments(&wrapped, &manifests).map(|(_, arguments)| arguments.join(" ")),
+            Some("--model opus --effort high".to_string()),
+            "the wrapper's own -m 2 is not the agent's"
+        );
+
+        let scripted = Job {
+            group: 1,
+            processes: vec![process(
+                1,
+                "sh",
+                &["/bin/sh", "/home/a/bin/claude", "--model", "opus"],
+            )],
+        };
+        assert_eq!(
+            agent_arguments(&scripted, &manifests).map(|(_, arguments)| arguments.join(" ")),
+            Some("--model opus".to_string())
+        );
+
+        let shell = Job { group: 1, processes: vec![process(1, "zsh", &["-zsh"])] };
+        assert_eq!(agent_arguments(&shell, &manifests), None);
     }
 
     #[test]
