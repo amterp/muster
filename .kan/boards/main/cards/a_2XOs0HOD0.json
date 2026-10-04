@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -19,12 +19,13 @@
   "description": "pane.read counts rows from the oldest row still held, so once scrollback starts trimming, a row number a caller saved points at different text on the next read. A stable numbering needs a trimmed-row count from libghostty (a C API addition in deps/ghostty-patches). Found in round 2 (slot 2, streams).",
   "id": "a_2XOs0HOD0",
   "parent": "a_2XJ1fUIyr",
-  "position": "Zi",
+  "position": "Yxm",
   "title": "pane.read: row numbers that stay stable as history is trimmed",
   "type": "feature",
-  "updated_at_millis": 1791126791521,
+  "updated_at_millis": 1791129737735,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790483722201},
-    {"field":"column","value":"in-progress","at":1791126791521}
+    {"field":"column","value":"in-progress","at":1791126791521},
+    {"field":"column","value":"done","at":1791129737735}
   ]
 }
