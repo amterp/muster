@@ -72,7 +72,11 @@ impl Peer {
             What::Created { by } => What::Created { by: self.inward(&by) },
             What::Joined { who } => What::Joined { who: self.inward(&who) },
             What::Left { who } => What::Left { who: self.inward(&who) },
-            What::Changed { by, change } => What::Changed { by: self.inward(&by), change },
+            What::Changed { by, change, policy } => What::Changed {
+                by: self.inward(&by),
+                change,
+                policy: policy.map(|policy| Box::new(self.policy(*policy))),
+            },
         };
         Entry { what, ..entry }
     }
@@ -846,12 +850,12 @@ impl<S: Store> Messaging<S> {
                     forgotten = true;
                     self.forget_wakes(&key);
                 }
-                What::Changed { by, change: Change::Resumed } => {
+                What::Changed { by, change: Change::Resumed, .. } => {
                     paused = false;
                     resumed = Some(by.clone());
                 }
-                What::Changed { change: Change::SetPolicy, .. } => {
-                    ringing = group.policy.clone();
+                What::Changed { change: Change::SetPolicy, policy, .. } => {
+                    ringing = policy.as_deref().unwrap_or(&group.policy).clone();
                 }
                 _ => {}
             }

@@ -1535,6 +1535,30 @@ fn a_message_before_a_new_ring_set_in_one_batch_rings_under_the_old() {
     assert_eq!(applied.reached, [("critic".to_string(), Reach::Woken)]);
 }
 
+/// A message between two new ring sets in one batch is rung under the first, the one it was
+/// posted under, rather than under the last the batch ends with.
+#[test]
+fn a_message_between_two_ring_sets_in_one_batch_rings_under_the_one_before_it() {
+    let (mut wire, builder, head) = replica_missing_entries();
+    let ring = |names: &[&str]| Policy {
+        ring: BTreeMap::from([(
+            "*".to_string(),
+            names.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        )]),
+        ..Policy::default()
+    };
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.group_set(&builder, "review", ring(&["critic@devenv"]), sessions, now).unwrap();
+    wire.post(Side::Laptop, &builder, None, &[], "for the critic").unwrap();
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.group_set(&builder, "review", ring(&["builder"]), sessions, now).unwrap();
+
+    let applied = catch_up(&mut wire, head);
+    assert_eq!(applied.reached, [("critic".to_string(), Reach::Woken)]);
+}
+
 /// A name copied from the other machine's answer means what it meant there: the devenv reads
 /// `review@devenv` and `critic@devenv`, as the laptop writes them, as its own `review` and
 /// `critic`.

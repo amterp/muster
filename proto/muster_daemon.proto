@@ -830,6 +830,11 @@ message MsgAnswer {
     message Changed {
       string by = 1;
       Change change = 2;
+      // Since 1.3. The policy a set_policy set, so a replica taking several in one batch rings
+      // each message under the one it was posted under. Absent from a daemon before 1.3, and for
+      // an entry written before the log recorded it: the replica then reads it, as before, under
+      // the policy the batch ends with.
+      optional MsgRequest.Policy policy = 3;
     }
 
     enum Change {

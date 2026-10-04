@@ -789,10 +789,14 @@ cannot reach an agent or group on a second devenv (the second hop).
 as one made there, whom its author may address and whether the group is paused among them, and a
 forwarded join or leave is checked against `membership`. Every batch of entries the home sends
 carries the policy, so a replica wakes its own members as the home would, and a pause or resume
-there holds or wakes the replica's members too. The policy is the one at the batch's end, and the
-log says that a policy was set but not which, so a replica reads each message under what the log
-can say of the one it was posted under: a pause exactly, since each pause and resume is an entry,
-and a ring set as the replica's previous policy until the batch sets a new one. Only the home
+there holds or wakes the replica's members too. The batch carries the policy at its end, and each
+entry setting a policy records the policy it set, so a replica reads every message under the one it
+was posted under: a pause exactly, since each pause and resume is an entry, and a ring set as the
+replica's previous policy until the batch sets a new one, then as each new one in turn. An entry
+written before the log recorded the policy, or sent by a daemon before protocol 1.3, says only that
+a policy was set; a message after it is read under the policy at the batch's end, as every one was
+before. The field is optional in the log's JSON and on the wire, so an older build reading a newer
+log or peer skips it and reads as it always did, and nothing has to be rewritten. Only the home
 changes a policy, its members or its pause; those verbs on a replica are refused as
 `kept_elsewhere`, naming the home. A policy may name a member on another machine as the home names
 it, `director@devenv`, and a replica reads it in its own names, so a devenv agent can direct a
@@ -1159,3 +1163,6 @@ bind.
   and a replica that missed it forgets it at its next refetch (sections 8, 12 and 13).
   `muster msg open` goes to a group's transcript as its notification does (sections 10 and 13).
   Messages show the human by the name `human_name` gives, or the login name (section 10).
+- 2026-10-04 An entry setting a policy records the policy it set, so a replica taking several in
+  one batch rings each message under the one it was posted under (section 11). Old logs and
+  daemons before 1.3 read as before.

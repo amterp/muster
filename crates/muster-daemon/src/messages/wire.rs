@@ -86,7 +86,11 @@ fn entry_from(entry: msg_answer::Entry) -> Option<Entry> {
                 msg_answer::entry::Change::Resumed => Change::Resumed,
                 msg_answer::entry::Change::Unspecified => return None,
             };
-            What::Changed { by: changed.by, change }
+            What::Changed {
+                by: changed.by,
+                change,
+                policy: changed.policy.map(|policy| Box::new(policy_from(policy))),
+            }
         }
     };
     Some(Entry { seq: entry.seq, at_ms: entry.at_ms, what })
@@ -426,7 +430,20 @@ mod tests {
                 Entry {
                     seq: 5,
                     at_ms: 10,
-                    what: What::Changed { by: "a".into(), change: Change::Paused },
+                    what: What::Changed { by: "a".into(), change: Change::Paused, policy: None },
+                },
+                // An empty ring set is a policy, and has to arrive as one rather than as none.
+                Entry {
+                    seq: 6,
+                    at_ms: 11,
+                    what: What::Changed {
+                        by: "a".into(),
+                        change: Change::SetPolicy,
+                        policy: Some(Box::new(muster_msg::Policy {
+                            ring: std::collections::BTreeMap::new(),
+                            ..muster_msg::Policy::default()
+                        })),
+                    },
                 },
             ],
         };

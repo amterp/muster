@@ -1466,8 +1466,9 @@ pub(super) fn entry_of(entry: &Entry) -> msg_answer::Entry {
         What::Created { by } => Said::Created(by.clone()),
         What::Joined { who } => Said::Joined(who.clone()),
         What::Left { who } => Said::Left(who.clone()),
-        What::Changed { by, change } => Said::Changed(msg_answer::entry::Changed {
+        What::Changed { by, change, policy } => Said::Changed(msg_answer::entry::Changed {
             by: by.clone(),
+            policy: policy.as_deref().map(policy_of),
             change: match change {
                 Change::SetPolicy => msg_answer::entry::Change::SetPolicy,
                 Change::Paused => msg_answer::entry::Change::Paused,

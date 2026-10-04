@@ -1119,8 +1119,11 @@ impl<S: Store> Messaging<S> {
         if self.groups[group].policy.paused {
             return Ok(Changed::by(&by, group, None));
         }
-        let seq =
-            self.append(group, What::Changed { by: by.clone(), change: Change::Paused }, now_ms)?;
+        let seq = self.append(
+            group,
+            What::Changed { by: by.clone(), change: Change::Paused, policy: None },
+            now_ms,
+        )?;
         self.groups.get_mut(group).expect("looked up above").policy.paused = true;
         self.forget_wakes(group);
         self.save()?;
@@ -1154,8 +1157,11 @@ impl<S: Store> Messaging<S> {
         if !self.groups[group].policy.paused {
             return Ok(posted);
         }
-        posted.seq =
-            self.append(group, What::Changed { by: by.clone(), change: Change::Resumed }, now_ms)?;
+        posted.seq = self.append(
+            group,
+            What::Changed { by: by.clone(), change: Change::Resumed, policy: None },
+            now_ms,
+        )?;
         self.groups.get_mut(group).expect("looked up above").policy.paused = false;
         posted.tell = self.tell(group, posted.seq - 1, None);
         self.wake_resumed(group, &by, &mut posted, presence, now_ms);
@@ -1240,7 +1246,11 @@ impl<S: Store> Messaging<S> {
         policy: Policy,
         now_ms: u64,
     ) -> Result<u64, Refusal> {
-        let change = What::Changed { by: by.to_string(), change: Change::SetPolicy };
+        let change = What::Changed {
+            by: by.to_string(),
+            change: Change::SetPolicy,
+            policy: Some(Box::new(policy.clone())),
+        };
         let seq = self.append(group, change, now_ms)?;
         self.groups.get_mut(group).expect("a group that exists").policy = policy;
         Ok(seq)

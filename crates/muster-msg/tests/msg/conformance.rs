@@ -188,7 +188,7 @@ fn entry(entry: &muster_msg::Entry) -> String {
         What::Created { by } => format!("#{} created by {by}", entry.seq),
         What::Joined { who } => format!("#{} {who} joined", entry.seq),
         What::Left { who } => format!("#{} {who} left", entry.seq),
-        What::Changed { by, change } => {
+        What::Changed { by, change, .. } => {
             let change = match change {
                 Change::SetPolicy => "set the policy",
                 Change::Paused => "paused",
