@@ -322,3 +322,102 @@ fn codexs_messaging_hooks_hand_what_arrived_to_the_model_as_context() {
         );
     }
 }
+
+/// OpenCode's adapter is a plugin, JavaScript OpenCode loads into itself, so it is run here under
+/// `node` rather than a shell, fed the events OpenCode 1.18.34 was recorded publishing.
+const OPENCODE_PLUGIN: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/opencode/plugin/muster.js");
+
+/// Loads the plugin as OpenCode does, with a client that knows one model's context window, and
+/// hands it each event in `events`, a JSON line each, waiting for each to be handled.
+const OPENCODE_DRIVER: &str = r#"
+import { readFileSync } from "node:fs";
+const { Muster } = await import(process.argv[2]);
+const models = { "big-pickle": { limit: { context: 200000 } } };
+const client = { config: { providers: async () => ({ data: { providers: [{ id: "opencode", models }] } }) } };
+const plugin = await Muster({ client });
+for (const line of readFileSync(process.argv[3], "utf8").split("\n").filter(Boolean)) {
+  await plugin.event?.({ event: JSON.parse(line) });
+}
+"#;
+
+/// What OpenCode's plugin reports for the recorded events in `corpus/opencode-1.18.34/<events>`,
+/// a line of bracketed arguments per report, with `$MUSTER_DAEMON` set or not.
+fn opencode_reports(events: &str, in_a_pane: bool) -> Vec<String> {
+    // A folder per run: the tests run at once, and each counts its own reports.
+    let scratch = Scratch::new(&format!("opencode-{}-{in_a_pane}", events.replace('.', "-")));
+    let said = scratch.0.join("said");
+    let daemon = scratch.0.join("daemon");
+    std::fs::write(
+        &daemon,
+        format!("#!/bin/sh\nprintf '[%s]' \"$@\" >> '{0}'\necho >> '{0}'\n", said.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let driver = scratch.0.join("driver.mjs");
+    std::fs::write(&driver, OPENCODE_DRIVER).unwrap();
+    // As `.mjs`: OpenCode loads the `.js` as a module, and a node before 22 does so only by the
+    // file's name, as Debian's 18 in the Linux suite's container does.
+    let plugin = scratch.0.join("muster.mjs");
+    std::fs::copy(OPENCODE_PLUGIN, &plugin).unwrap();
+    let events = format!("{}/../../corpus/opencode-1.18.34/{events}", env!("CARGO_MANIFEST_DIR"));
+    let mut node = Command::new("node");
+    node.arg(&driver).arg(&plugin).arg(events).env_remove("MUSTER_DAEMON");
+    if in_a_pane {
+        node.env("MUSTER_DAEMON", &daemon);
+    }
+    let ran = node.output().unwrap_or_else(|error| {
+        panic!(
+            "node could not be run: {error}.\n  Impact: OpenCode's plugin is untested.\n  Fix: \
+             install Node.js; the Linux suite's container has it (tools/linux-run/Dockerfile)."
+        )
+    });
+    assert!(ran.status.success(), "the plugin failed: {}", String::from_utf8_lossy(&ran.stderr));
+    std::fs::read_to_string(&said).unwrap_or_default().lines().map(str::to_string).collect()
+}
+
+/// A turn, a refused permission and a turn ended with Esc, as OpenCode published them: each turn
+/// reads working and ends idle, the permission prompt reads blocked until it is answered, and
+/// each assistant message reports the context it used against the model's window.
+#[test]
+fn opencodes_plugin_reports_what_each_recorded_event_means() {
+    assert_eq!(
+        opencode_reports("plugin-events-turns.jsonl", true),
+        [
+            "[report][--clear]",
+            "[report][--agent][opencode][--session-id][ses_efa44b0b5ffejqYaVzzLoccB84]",
+            "[report][--agent][opencode][--state][working]",
+            "[report][--context-used][9.77][--model][opencode/big-pickle][--cost-usd][0.0000]",
+            "[report][--agent][opencode][--state][idle]",
+            "[report][--agent][opencode][--state][working]",
+            "[report][--agent][opencode][--state][blocked]",
+            "[report][--agent][opencode][--state][working]",
+            "[report][--context-used][9.80][--model][opencode/big-pickle][--cost-usd][0.0000]",
+            "[report][--agent][opencode][--state][idle]",
+            "[report][--agent][opencode][--state][working]",
+            "[report][--agent][opencode][--state][idle]",
+        ]
+    );
+}
+
+/// A sub-agent runs in a session of its own, which starts and goes idle inside the main
+/// session's turn: reported, it would read the pane idle while its agent works.
+#[test]
+fn opencodes_plugin_leaves_a_sub_agents_session_out() {
+    assert_eq!(
+        opencode_reports("plugin-events-subagent.jsonl", true),
+        [
+            "[report][--clear]",
+            "[report][--agent][opencode][--session-id][ses_efa286cb7ffexqbZM4JCqf5tgd]",
+            "[report][--agent][opencode][--state][working]",
+            "[report][--context-used][9.28][--model][opencode/big-pickle][--cost-usd][0.0000]",
+            "[report][--agent][opencode][--state][idle]",
+        ]
+    );
+}
+
+/// Outside a Muster pane there is no daemon to tell, and the plugin hooks nothing.
+#[test]
+fn opencodes_plugin_does_nothing_outside_a_pane() {
+    assert_eq!(opencode_reports("plugin-events-turns.jsonl", false), Vec::<String>::new());
+}

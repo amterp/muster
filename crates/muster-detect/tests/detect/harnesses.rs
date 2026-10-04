@@ -59,6 +59,17 @@ fn wiring(directory: &Path) -> String {
     text
 }
 
+/// `wiring` with quotes, commas and brackets taken out, so a hook's shell command and a plugin's
+/// argument list read the same: `report --agent codex --state` and `["--agent", "opencode",
+/// "--state", ...]`.
+fn words(wiring: &str) -> String {
+    let spaced: String = wiring
+        .chars()
+        .map(|character| if "\"',[]".contains(character) { ' ' } else { character })
+        .collect();
+    spaced.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// What each harness's directory under `extras/` holds, by the manifest id its name resolves
 /// to. Every directory but the skill, which is for any harness, names one.
 fn extras(manifests: &Manifests) -> Vec<(Agent, String)> {
@@ -83,7 +94,7 @@ fn supplied(manifests: &Manifests, extras: &[(Agent, String)], agent: &Agent) ->
     Supplied {
         prompt: manifests.reads_prompt(agent),
         prompt_at_work: manifests.reads_prompt_at_work(agent),
-        reported_state: wiring.contains(&format!("report --agent {} --state", agent.id())),
+        reported_state: words(&wiring).contains(&format!("--agent {} --state", agent.id())),
         context: wiring.contains("--context-used"),
         subagents: wiring.contains("--subagent-started"),
         fetches_messages: wiring.contains("msg read --if-unread"),

@@ -370,7 +370,7 @@ OpenCode is the third harness, measured at 1.18.34 (`docs/observations/opencode-
 installed 1.3.15 is refused by OpenCode's free models, so only a current build could be recorded
 at work without a paid login.
 
-Built, with no `extras/opencode`:
+Built:
 
 - **Screen state.** Herdr's rules read every recorded screen right: working by its progress bar,
   blocked at its permission prompt, idle otherwise.
@@ -381,17 +381,24 @@ Built, with no `extras/opencode`:
   each; and `prompt_placeholder`, what an empty prompt reads as when the harness draws its
   suggestion in a color rather than faint, as OpenCode does. 1.18.34 sends a paste and its Return
   in one write, so a ring needs no second Return.
+- **Reported state, interrupt, context, session reference.** `extras/opencode` is a plugin, a
+  JavaScript module OpenCode loads into itself, whose `event` hook turns OpenCode's events into
+  `"$MUSTER_DAEMON" report --agent opencode`: `session.status` busy reports working,
+  `permission.asked` blocked and `permission.replied` working again, and `session.idle`, which
+  ends every turn, Esc and a refused permission included, reports idle. A new session clears the
+  last one's facts and reports its id. Each assistant message reports the model, the context used
+  against the window OpenCode's own provider list gives, and the session's cost. A sub-agent runs
+  in a session of its own whose turns start and end inside the main session's, so the plugin
+  leaves sessions with a parent out. It is tested under `node` on the events 1.18.34 was recorded
+  publishing, which is why the Linux suite's container carries node; the table in `muster docs
+  harnesses` reads a plugin's argument list as it reads a hook's command.
 
 Not built, and why:
 
 - **Prompt at work.** A line typed while OpenCode works waits for the turn to end, so ringing at
   work gains nothing over ringing once idle.
-- **Reported state, interrupt, context, session reference.** A plugin can supply all four: its
-  `event` hook hears `session.status` busy and idle and `session.idle` at every turn's end, Esc
-  and a refused permission included, `permission.asked` and `permission.replied`, and token counts
-  on each assistant message, and each event carries the session's id. It would call
-  `"$MUSTER_DAEMON" report --agent opencode` through the shell its context hands it. Left for an
-  `extras/opencode` of its own, with a live tier.
+- **Waiting declared, sub-agents counted, messages fetched.** Each needs the plugin to tell the
+  model something, or to count the sessions it now leaves out; neither was measured.
 - **Session names.** Whether OpenCode can rename a session by typing at its prompt was not
   measured. It names each session itself from its first request, as Codex does, so the pane would
   not take OpenCode's names for the same reason it does not take Codex's.
@@ -411,7 +418,9 @@ Not built, and why:
 - **Codex woken by `codex queue`**, built 2026-10-04 (section 7): the session reference reported
   and handed over, detection engine 10 and `[session] wake`, the doorbell choosing the command
   for an idle agent.
-- **Later**: the rest of section 10, and `extras/opencode`.
+- **OpenCode's plugin**, built 2026-10-04 (section 11): `extras/opencode`, reporting its state,
+  context, cost and session id.
+- **Later**: the rest of section 10.
 
 ## Rationale
 
@@ -492,3 +501,5 @@ harness that allows less must not break anything.
   plugin events measured, its adapter's plugin left for later.
 - 2026-10-04 Codex woken through `codex queue` (kan `a_2bEEFlerm`): the session reference built
   as section 10 described, and when the command beats the doorbell decided from measurements.
+- 2026-10-04 `extras/opencode`, a plugin reporting OpenCode's state, context and session id
+  (section 11).

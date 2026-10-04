@@ -57,6 +57,15 @@ publishes (`plugin-events.txt`):
 - `session.updated` carries the session's title, which OpenCode sets itself from the first request.
 - Every event about a session carries its id, `sessionID`.
 
+- `permission.replied` names the prompt it answers by `requestID`, the `id` `permission.asked`
+  gave it.
+- A sub-agent started with the task tool runs in a session of its own: `session.created` carries
+  its parent's id in `info.parentID`, and its own `session.status` and `session.idle` arrive
+  inside the main session's turn.
+- The plugin's `client.config.providers()` lists every model with its context window,
+  `limit.context`; an assistant message's `tokens.total` is its input, output, reasoning and
+  cached tokens together, and `cost` is in dollars, 0 for a free model.
+
 The plugin's context includes a shell, `$`, to run commands with. The `permission.ask` hook was
 not called. Whether a plugin can put text before the model mid-turn, as Codex's hooks do, was not
 measured.
@@ -66,6 +75,6 @@ measured.
 `opencode.toml` reads the prompt box with detection engine 9: the `bar_prompt` region, the bar
 cut from each line as the prompt's margin, and the suggestion named as a placeholder that reads
 empty. So the doorbell rings OpenCode at an empty box. It does not ring OpenCode at work, since a
-line typed then waits for the turn to end anyway. The plugin events are enough for a plugin in
-`extras/opencode` to report working, blocked and idle, an interrupt, the context used and the
-session's id; none is built yet.
+line typed then waits for the turn to end anyway. The plugin events are enough for a plugin to
+report working, blocked and idle, an interrupt, the context used and the session's id, and
+`extras/opencode` does, leaving a sub-agent's session out.

@@ -1,0 +1,34 @@
+{"type": "session.created", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"id": "ses_efa286cb7ffexqbZM4JCqf5tgd"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "user"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "status": {"type": "busy"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "assistant", "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "user"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "status": {"type": "busy"}}}
+{"type": "session.created", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"id": "ses_efa283335ffeS3bMKrAazOEQaw", "parentID": "ses_efa286cb7ffexqbZM4JCqf5tgd"}}}
+{"type": "session.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"id": "ses_efa283335ffeS3bMKrAazOEQaw", "parentID": "ses_efa286cb7ffexqbZM4JCqf5tgd"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "role": "user"}}}
+{"type": "session.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"id": "ses_efa283335ffeS3bMKrAazOEQaw", "parentID": "ses_efa286cb7ffexqbZM4JCqf5tgd"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "status": {"type": "busy"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "role": "assistant", "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "session.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"id": "ses_efa283335ffeS3bMKrAazOEQaw", "parentID": "ses_efa286cb7ffexqbZM4JCqf5tgd"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "role": "user"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "status": {"type": "busy"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "role": "assistant", "tokens": {"total": 17726, "input": 15773, "output": 4, "reasoning": 0, "cache": {"write": 0, "read": 1949}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "role": "assistant", "tokens": {"total": 17726, "input": 15773, "output": 4, "reasoning": 0, "cache": {"write": 0, "read": 1949}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "status": {"type": "busy"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "status": {"type": "idle"}}}
+{"type": "session.idle", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw"}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "assistant", "tokens": {"total": 18550, "input": 18194, "output": 64, "reasoning": 124, "cache": {"write": 0, "read": 168}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "assistant", "tokens": {"total": 18550, "input": 18194, "output": 64, "reasoning": 124, "cache": {"write": 0, "read": 168}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "status": {"type": "busy"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "assistant", "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "session.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"id": "ses_efa283335ffeS3bMKrAazOEQaw", "parentID": "ses_efa286cb7ffexqbZM4JCqf5tgd"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "info": {"sessionID": "ses_efa283335ffeS3bMKrAazOEQaw", "role": "user"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "user"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "status": {"type": "busy"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "assistant", "tokens": {"total": 18552, "input": 18368, "output": 7, "reasoning": 79, "cache": {"write": 0, "read": 98}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "assistant", "tokens": {"total": 18552, "input": 18368, "output": 7, "reasoning": 79, "cache": {"write": 0, "read": 98}}, "cost": 0, "modelID": "big-pickle", "providerID": "opencode"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "status": {"type": "busy"}}}
+{"type": "session.status", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "status": {"type": "idle"}}}
+{"type": "session.idle", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd"}}
+{"type": "message.updated", "properties": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "info": {"sessionID": "ses_efa286cb7ffexqbZM4JCqf5tgd", "role": "user"}}}

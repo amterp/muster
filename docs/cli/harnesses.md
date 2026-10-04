@@ -8,8 +8,8 @@ small adapter Muster ships for it (`extras/` in Muster's source).
 | Capability | Claude Code | Codex | OpenCode | Every other harness |
 |---|---|---|---|---|
 | Its state read off the screen | yes | yes | yes | yes |
-| Its own report of its state | yes | yes | no | no |
-| Context used, model and cost | yes | yes | no | no |
+| Its own report of its state | yes | yes | yes | no |
+| Context used, model and cost | yes | yes | yes | no |
 | Sub-agents counted | yes | yes | no | no |
 | Rung at an empty prompt | yes | yes | yes | no |
 | Rung while it works, for an urgent post | yes | yes | no | no |
@@ -28,7 +28,8 @@ kimi, kiro, maki, pi, qodercli.
   adapter's hooks installed.
 - **Context used, model and cost**: shown on the pane's record. Claude Code reports all three
   through the statusline in its adapter. Codex has no statusline command, so its hooks report its
-  context, read off its transcript, and its model, but not its cost.
+  context, read off its transcript, and its model, but not its cost. OpenCode's plugin reports
+  all three after each assistant message.
 - **Sub-agents counted**: how many sub-agents the session runs, from its hooks. Codex's are wired
   and have not yet been seen firing.
 - **Rung at an empty prompt**: `muster msg post` types a one-line wake into the agent's pane once
@@ -88,6 +89,11 @@ Muster's daemon, so a sandboxed Codex cannot run `muster msg read` or `post` its
 sandbox may use the network; the messaging hooks hand it what it is sent regardless.
 `extras/codex/README.md` has both, and the setting's cost.
 
-**OpenCode** has no adapter yet: Muster reads its state off its screen and rings it at an empty
-prompt, and nothing more. Every other harness has no adapter either: Muster reads its state off its
-screen, and does not ring it.
+**OpenCode**: a plugin for its state, context and cost.
+
+    mkdir -p ~/.config/opencode/plugin
+    ln -s /path/to/muster/extras/opencode/plugin/muster.js ~/.config/opencode/plugin/
+
+`extras/opencode/README.md` has what it reports, and what it does not yet.
+
+Every other harness has no adapter: Muster reads its state off its screen, and does not ring it.

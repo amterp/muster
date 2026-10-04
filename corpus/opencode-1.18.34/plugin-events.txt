@@ -43,3 +43,25 @@ A story requested, then Esc twice while it wrote:
     message.updated              role assistant, error MessageAbortedError, with tokens
 
 Every event carrying a session carried its id, sessionID.
+
+The same, a second session, "Use the task tool to launch a general subagent that replies with the
+word PLUM. Do not answer yourself.", with the plugin also calling client.config.providers():
+    session.created              <session>
+    session.status               busy
+    session.created              <child>, info.parentID <session>
+    session.status               busy, sessionID <child>
+    message.updated              assistant, sessionID <child>, tokens total 17726
+    session.status               idle, sessionID <child>
+    session.idle                 sessionID <child>
+    message.updated              assistant, sessionID <session>, tokens total 18550 (input
+                                 18194 + output 64 + reasoning 124 + cache read 168), cost 0
+    session.status               idle, sessionID <session>
+    session.idle                 sessionID <session>
+    client.config.providers()    providers[].models[<id>].limit.context, e.g. 262144
+
+permission.replied carries {"sessionID", "requestID": <the asked event's id>, "reply": "reject"}.
+
+plugin-events-turns.jsonl and plugin-events-subagent.jsonl hold both recordings' events in order,
+cut to the fields extras/opencode reads, with the repeats left out above; the hook tests feed them
+to the plugin.
+
