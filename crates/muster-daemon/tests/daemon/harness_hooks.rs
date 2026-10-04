@@ -28,7 +28,10 @@ const CLAUDE_CODE: Harness = Harness {
         "/../../extras/claude-code/hooks/hooks.json"
     )),
     reports: &[
-        ("SessionStart", "[report][--clear][report][--agent][claude][--session-id-from-hook]"),
+        (
+            "SessionStart",
+            "[report][--clear][report][--agent][claude][--from][session-id=/session_id]",
+        ),
         ("SubagentStart", "[report][--subagent-started]"),
         ("SubagentStop", "[report][--subagent-stopped]"),
         ("UserPromptSubmit", "[report][--agent][claude][--state][working][--waiting][]"),
@@ -318,7 +321,7 @@ fn claude_codes_session_start_reports_its_session_id() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|group| group.to_string().contains("--session-id-from-hook"))
+        .find(|group| group.to_string().contains("session-id=/session_id"))
         .expect("a SessionStart hook reports the session's id");
     assert!(
         group.get("matcher").is_none(),
@@ -341,7 +344,7 @@ fn claude_codes_session_start_reports_its_session_id() {
         assert!(output.status.success(), "a hook never fails a session");
         assert!(output.stdout.is_empty(), "{shell}: what it prints reaches the model");
         let said = std::fs::read_to_string(&arguments).unwrap_or_default();
-        assert_eq!(said, "[report][--agent][claude][--session-id-from-hook]", "in {shell}");
+        assert_eq!(said, "[report][--agent][claude][--from][session-id=/session_id]", "in {shell}");
         assert_eq!(std::fs::read_to_string(&read).unwrap(), input, "the hook's input reaches it");
     }
 }

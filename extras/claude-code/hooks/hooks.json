@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --session-id-from-hook >/dev/null 2>&1 || true"
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --from session-id=/session_id >/dev/null 2>&1 || true"
           }
         ]
       }

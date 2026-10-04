@@ -354,7 +354,7 @@ protocol field is added as a minor version, per `proto/muster_daemon.proto`'s ru
 A session reference, the third, is built in exactly those two forms for Codex (section 7): a
 report field, `--session-id`, and a manifest's `[session] wake`. Claude Code's hooks report its
 session's id since a restart resumes the session (`[session] resume`, detection engine 12), with
-`--session-id-from-hook`, which reads it from the hook's input.
+`--from session-id=/session_id`, which reads it from the hook's input, as Codex's hook does.
 
 The fourth, a session name kept in step with the pane's, is built, both ways, in exactly those
 two forms:

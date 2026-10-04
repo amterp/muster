@@ -42,7 +42,7 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
-    [--session-id ID | --session-id-from-hook]] [--from FLAG=POINTER]...\n\n\
+    [--session-id ID]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
@@ -58,26 +58,23 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     session the pane's own name otherwise. It needs --agent, as --state does. --session-id is \
     the harness's id for its session, which the daemon names it by to reach it through the \
     harness's own command, where its manifest says how; empty forgets it. It needs --agent too. \
-    --session-id-from-hook takes it from the `session_id` of the JSON a hook is handed on its \
-    standard input, as Claude Code's and Codex's hooks are, so a hook needs nothing to read it. \
     --from fills a flag from the JSON object on stdin, which a harness hands its hooks and \
     statusline: --from context-used=/context_window/used_percentage reads that JSON pointer, a \
     number or text, as --context-used's value. A value missing or null leaves the flag out, and \
     a flag given later replaces one given before, so --session-name '' before a --from \
-    session-name says no name when the JSON has none. Stdin is read only for --from.";
-
-/// The most of a hook's input read for its session's id. A hook's input is a few hundred bytes.
-const HOOK_INPUT_LIMIT: u64 = 1 << 20;
+    session-name says no name when the JSON has none, and --from session-id=/session_id reads \
+    the id a hook is handed. Stdin is read only for --from, and never from a terminal. A report \
+    whose every --from found nothing, and that says nothing else, is not sent.";
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
-    let arguments = match filled_from(arguments.collect(), read_stdin) {
-        Ok(arguments) => arguments,
+    let Filled { arguments, came_up_empty } = match filled_from(arguments.collect(), read_stdin) {
+        Ok(filled) => filled,
         Err(problem) => {
             eprintln!("muster-daemon report: {problem}\n{USAGE}");
             return ExitCode::from(2);
         }
     };
-    let mut report = match parse(arguments.into_iter(), |name| std::env::var(name).ok()) {
+    let report = match parse(arguments.into_iter(), |name| std::env::var(name).ok()) {
         Ok(Parsed::Report(report)) => *report,
         Ok(Parsed::Help) => {
             println!("{USAGE}");
@@ -88,14 +85,11 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    if report.session_id.as_deref() == Some(FROM_HOOK) {
-        match hook_input().and_then(|input| hook_session_id(&input)) {
-            Ok(id) => report.session_id = Some(id),
-            Err(problem) => {
-                eprintln!("muster-daemon report: {problem}");
-                return ExitCode::from(2);
-            }
-        }
+    // A hook whose input held none of what it reads from it - a session start that carried no id
+    // - has nothing to tell, and the daemon is not dialed for it. A report with no --from at all
+    // is sent as it stands: the daemon counts any report it takes as the adapter reporting.
+    if came_up_empty && says_nothing(&report) {
+        return ExitCode::SUCCESS;
     }
     let Some(socket) = std::env::var_os("MUSTER_DAEMON_SOCKET").map(PathBuf::from) else {
         eprintln!(
@@ -113,38 +107,6 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     }
 }
 
-/// What `--session-id-from-hook` leaves as the session id until the hook's input is read: not an
-/// id a harness writes, and refused by the daemon if it ever got that far.
-const FROM_HOOK: &str = "\u{0}from-hook";
-
-/// A hook's JSON input, from standard input. Refused at a terminal, where nothing would arrive.
-fn hook_input() -> Result<String, String> {
-    use std::io::{IsTerminal as _, Read as _};
-    let stdin = std::io::stdin();
-    if stdin.is_terminal() {
-        return Err(
-            "--session-id-from-hook reads a hook's JSON input, and none is piped in".to_string()
-        );
-    }
-    let mut input = String::new();
-    stdin
-        .lock()
-        .take(HOOK_INPUT_LIMIT)
-        .read_to_string(&mut input)
-        .map_err(|error| format!("could not read the hook's input: {error}"))?;
-    Ok(input)
-}
-
-/// The `session_id` in a hook's JSON input.
-fn hook_session_id(input: &str) -> Result<String, String> {
-    let input: serde_json::Value = serde_json::from_str(input)
-        .map_err(|error| format!("the hook's input is not JSON: {error}"))?;
-    match input.get("session_id") {
-        Some(serde_json::Value::String(id)) => Ok(id.clone()),
-        _ => Err("the hook's input has no session_id".to_string()),
-    }
-}
-
 /// The arguments with each `--from FLAG=POINTER` replaced by `--FLAG VALUE`, the value read out of
 /// the JSON object `stdin` gives - read once, and only when a `--from` asks for it - or by nothing
 /// where the JSON holds no value there. Kept in place, so that order decides between a `--from`
@@ -152,14 +114,15 @@ fn hook_session_id(input: &str) -> Result<String, String> {
 fn filled_from(
     arguments: Vec<String>,
     stdin: impl FnOnce() -> Result<String, String>,
-) -> Result<Vec<String>, String> {
+) -> Result<Filled, String> {
     if !arguments.iter().any(|argument| argument == "--from") {
-        return Ok(arguments);
+        return Ok(Filled { arguments, came_up_empty: false });
     }
     let json: serde_json::Value = serde_json::from_str(&stdin()?).map_err(|error| {
         format!("--from reads a JSON object on stdin, and it is not one: {error}")
     })?;
     let mut filled = Vec::with_capacity(arguments.len());
+    let mut found = false;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         if argument != "--from" {
@@ -184,13 +147,39 @@ fn filled_from(
             }
         };
         filled.extend([format!("--{flag}"), value]);
+        found = true;
     }
-    Ok(filled)
+    Ok(Filled { arguments: filled, came_up_empty: !found })
 }
 
+/// The arguments with every `--from` filled in, and whether there were some and every one of them
+/// found nothing.
+struct Filled {
+    arguments: Vec<String>,
+    came_up_empty: bool,
+}
+
+/// Whether a report holds nothing beyond its pane and the agent sending it.
+fn says_nothing(report: &pane_request::Report) -> bool {
+    *report
+        == pane_request::Report {
+            pane: report.pane.clone(),
+            agent: report.agent.clone(),
+            ..pane_request::Report::default()
+        }
+}
+
+/// A harness's JSON, from standard input. Refused at a terminal, where nothing would arrive and the
+/// read would wait on a person.
 fn read_stdin() -> Result<String, String> {
+    use std::io::IsTerminal as _;
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return Err("--from reads a JSON object on stdin, and none is piped in".to_string());
+    }
     let mut text = String::new();
-    std::io::stdin()
+    stdin
+        .lock()
         .take(STDIN_BYTES + 1)
         .read_to_string(&mut text)
         .map_err(|error| format!("--from could not read stdin: {error}"))?;
@@ -260,7 +249,6 @@ fn parse(
             "--clear" => report.clear = true,
             "--session-name" => report.session_name = Some(value("--session-name")?),
             "--session-id" => report.session_id = Some(value("--session-id")?),
-            "--session-id-from-hook" => report.session_id = Some(FROM_HOOK.to_string()),
             "--agent" => report.agent = value("--agent")?,
             "--state" => {
                 let given = value("--state")?;
@@ -357,7 +345,7 @@ mod tests {
 
     fn filled(arguments: &[&str], stdin: &str) -> Result<Vec<String>, String> {
         let arguments = arguments.iter().map(|argument| (*argument).to_string()).collect();
-        filled_from(arguments, || Ok(stdin.to_string()))
+        filled_from(arguments, || Ok(stdin.to_string())).map(|filled| filled.arguments)
     }
 
     /// Claude Code's statusline JSON, cut down to what its statusline reports.
@@ -420,7 +408,9 @@ mod tests {
     #[test]
     fn from_reads_stdin_only_when_asked_and_refuses_what_it_cannot_fill() {
         let untouched = filled_from(vec!["--clear".to_string()], || panic!("stdin was read"));
-        assert_eq!(untouched.unwrap(), ["--clear"]);
+        let untouched = untouched.unwrap();
+        assert_eq!(untouched.arguments, ["--clear"]);
+        assert!(!untouched.came_up_empty, "no --from, so nothing came up empty");
         let refused = |arguments: &[&str], stdin: &str| filled(arguments, stdin).unwrap_err();
         assert!(refused(&["--from", "model=/model"], "not json").contains("not one"));
         assert!(refused(&["--from", "clear=/x"], "{}").contains("fills only"));
@@ -437,19 +427,28 @@ mod tests {
         }
     }
 
-    /// A hook hands its session's id in the JSON on its standard input, which the report reads
-    /// so the hook needs no JSON tool of its own.
+    /// A hook hands its session's id in the JSON on its standard input, however the session
+    /// started, which `--from` reads so the hook needs no JSON tool of its own; input with no id
+    /// leaves a report that says nothing, which is not sent.
     #[test]
     fn a_session_id_is_read_from_a_hooks_input() {
-        let report = parsed(&["--agent", "claude", "--session-id-from-hook"], Some("p1")).unwrap();
-        assert_eq!(report.session_id.as_deref(), Some(FROM_HOOK));
-        assert!(parsed(&["--session-id-from-hook"], Some("p1")).is_err(), "needs --agent");
-
+        let arguments = ["--agent", "claude", "--from", "session-id=/session_id"];
         let input =
             r#"{"session_id":"0199-a b","hook_event_name":"SessionStart","source":"resume"}"#;
-        assert_eq!(hook_session_id(input).as_deref(), Ok("0199-a b"));
-        assert!(hook_session_id("{}").is_err());
-        assert!(hook_session_id("not json").is_err());
+        let given = filled(&arguments, input).unwrap();
+        let report = parsed(&given.iter().map(String::as_str).collect::<Vec<_>>(), Some("p1"));
+        assert_eq!(report.unwrap().session_id.as_deref(), Some("0199-a b"));
+
+        let empty = |arguments: &[&str]| {
+            let arguments = arguments.iter().map(|argument| (*argument).to_string()).collect();
+            filled_from(arguments, || Ok(r#"{"source":"startup"}"#.to_string())).unwrap()
+        };
+        let none = empty(&arguments);
+        assert!(none.came_up_empty, "an input with no id fills nothing");
+        let report =
+            parsed(&none.arguments.iter().map(String::as_str).collect::<Vec<_>>(), Some("p1"));
+        assert!(says_nothing(&report.unwrap()), "and the report has nothing to tell");
+        assert!(!says_nothing(&parsed(&["--clear"], Some("p1")).unwrap()), "--clear is something");
     }
 
     #[test]
