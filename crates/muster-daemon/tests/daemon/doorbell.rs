@@ -75,8 +75,12 @@ impl Agent {
 
     /// Types into the agent's pane as a person would, with a Return or without.
     fn type_in(&self, text: &str, enter: bool) {
+        self.type_in_pane("p1", text, enter);
+    }
+
+    fn type_in_pane(&self, pane: &str, text: &str, enter: bool) {
         Input::connect(self.daemon.socket_path()).send(
-            "p1",
+            pane,
             proto::input_event::Input::Send(proto::input_event::Send {
                 text: text.to_string(),
                 enter,
@@ -783,6 +787,30 @@ fn a_stalled_wake_command_is_typed_instead() {
     agent.post("p1", "a brief");
     agent.until_rung(1);
     assert_eq!(agent.woken(), ["slow"], "the command was run again for the same wake");
+}
+
+/// A command slow to answer holds only its own pane: another pane's ring, due while it runs,
+/// is not kept waiting for it.
+#[test]
+fn a_slow_wake_command_holds_no_other_panes_ring() {
+    let mut agent = Agent::in_a_pane();
+    make(&mut agent.control, create("p2", in_new_tab("t2")));
+    agent.daemon.run_agent("p2");
+    agent.reports_session("slow");
+    std::thread::sleep(QUIET);
+
+    // p2's ring waits out the quiet this starts, and falls due while p1's command runs.
+    agent.type_in_pane("p2", "idle", true);
+    std::thread::sleep(Duration::from_secs(2));
+    agent.post("p1", "a brief");
+    until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
+    let started = Instant::now();
+    agent.post("p2", "another");
+    until_some("p2 to be rung", || {
+        agent.rung().iter().any(|rung| rung.contains("integrator+p2")).then_some(())
+    });
+    let waited = started.elapsed();
+    assert!(waited < Duration::from_secs(3), "p2 was rung {waited:?} after p1's command started");
 }
 
 /// Codex reports its session's id only as the session starts, so a daemon taking the pane over

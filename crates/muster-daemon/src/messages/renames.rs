@@ -14,7 +14,7 @@
 //! is not typed again until the pane is renamed: retyping it into a screen that would not take
 //! it once is how a loop starts.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use muster_core::diagnostics::log;
@@ -39,11 +39,13 @@ pub(crate) struct Typed {
 }
 
 /// Types each pane's name still wanted into its agent's prompt where the pane allows, and looks
-/// again at each typed earlier. Says through `next` when it wants to look again. Called with no
-/// lock held.
+/// again at each typed earlier, leaving alone the panes `busy` names, where something else is
+/// handing the agent a line. Says through `next` when it wants to look again. Called with no lock
+/// held.
 pub(crate) fn look(
     shared: &Shared,
     panes: &Panes,
+    busy: &HashSet<String>,
     now: Instant,
     typing: &mut Typing,
     moving: &mut Moving,
@@ -52,7 +54,7 @@ pub(crate) fn look(
     second_looks(shared, panes, now, typing, next);
     for (pane, seen) in panes.iter() {
         let Some(rename) = &seen.rename else { continue };
-        if typing.contains_key(pane) {
+        if typing.contains_key(pane) || busy.contains(pane) {
             continue;
         }
         let since = doorbell::moving_since(moving, pane, seen, now);

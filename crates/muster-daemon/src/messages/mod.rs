@@ -60,6 +60,8 @@ pub(crate) struct Messages {
     rung: Vec<doorbell::Rung>,
     /// Wakes handed to their sessions by command that their agents have not yet taken.
     commanded: Vec<doorbell::Commanded>,
+    /// Panes whose wake command is running. Nothing else is typed or run there until it ends.
+    commanding: HashSet<String>,
     /// Wakes whose command took too long, by participant and group, to be typed instead.
     type_instead: HashSet<(String, String)>,
     /// Panes whose wake command has taken too long once: a second time ends the route.
@@ -103,6 +105,7 @@ impl Messages {
             pending: service.outstanding(),
             rung: Vec::new(),
             commanded: Vec::new(),
+            commanding: HashSet::new(),
             type_instead: HashSet::new(),
             stalled: HashSet::new(),
             hook_grace: HashMap::new(),
@@ -555,13 +558,20 @@ impl Messages {
             self.pending.retain(|earlier| {
                 earlier.name != wake.name || earlier.notice.group != wake.notice.group
             });
+            // A pane whose wake command is running is left to the doorbell, which that command
+            // nudges as it ends.
+            if self.commanding.contains(pane) {
+                holding.deferred.push((wake.name.clone(), msg_answer::Until::Prompt));
+                self.pending.push(wake.clone());
+                continue;
+            }
             // A pane whose agent has not been found yet waits for it like a busy one.
             let urgent = doorbell::is_urgent(wake);
             let ringing = panes
                 .get(pane)
                 .map(|seen| (doorbell::reach(seen, now, urgent, None, self.types(wake)), seen));
             let until = match ringing {
-                // The doorbell's thread runs the command, nudged once this lock is let go.
+                // The doorbell starts the command, nudged once this lock is let go.
                 Some((By::Command, _)) => {
                     self.pending.push(wake.clone());
                     continue;

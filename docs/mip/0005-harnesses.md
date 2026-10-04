@@ -303,7 +303,9 @@ sections 6 to 9):
   many rather than one lost. A command that fails is rung as usual; one that refused - exited
   non-zero, or could not start - is not run for that session again, while one that only took
   longer than five seconds, as a loaded machine can make it, has that wake typed and is tried
-  again for the next; a second time, it is not run for that session again either.
+  again for the next; a second time, it is not run for that session again either. Each command
+  runs on a thread of its own, one per pane at a time, so a slow one delays no other pane's ring
+  or rename, and nothing is typed into its own pane until it ends.
   It runs through a login shell, which reads `.zprofile` but not `.zshrc`, so `codex` must be on
   the `PATH` a login shell sets.
 

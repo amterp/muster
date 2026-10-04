@@ -32,7 +32,7 @@
 //! draft for good.
 
 use std::collections::HashMap;
-use std::sync::{OnceLock, Weak};
+use std::sync::{Arc, OnceLock, Weak};
 use std::thread::Thread;
 use std::time::{Duration, Instant};
 
@@ -317,13 +317,13 @@ pub(crate) struct Commanded {
     at: Instant,
 }
 
-/// Hands each wake to its session through the command its agent's manifest names, with no lock
-/// held, once its agent's prompt shows: a picker or a dialog over it may take the message, or keep
-/// it unsent. A wake whose command fails waits to be typed, and a command that refused it is not
-/// run for that session again. Says what came of each wake, in the order given.
-fn command_all(shared: &Shared, commanding: Reaching) -> Vec<Came> {
+/// Hands each wake to its session through the command its agent's manifest names, once its
+/// agent's prompt shows: a picker or a dialog over it may take the message, or keep it unsent.
+/// Each command runs on a thread of its own, one pane at a time, so a slow one holds nobody else's
+/// ring; what came of it is settled there and the doorbell nudged. Called with no lock held. Says
+/// which wakes wait instead, in the order given; a wake handed to a command says nothing here.
+fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
     let mut came = Vec::new();
-    let mut handed = Vec::new();
     let mut waiting = Vec::new();
     for (wake, seen) in commanding {
         let pane = pane_of(&wake).to_string();
@@ -338,62 +338,99 @@ fn command_all(shared: &Shared, commanding: Reaching) -> Vec<Came> {
         let arguments = shared.detecting.manifests().and_then(|manifests| {
             manifests.session_wake(&Agent::new(&seen.agent), &session, &text)
         });
-        let ran = arguments
-            .ok_or_else(|| {
-                command::Failed::Refused("its manifest no longer names a command".to_string())
-            })
-            .and_then(|arguments| command::run(&arguments));
-        match ran {
-            Ok(()) => {
-                log::info(
-                    "msg.rang",
-                    fields! {
-                        "name" => wake.name,
-                        "pane" => pane,
-                        "group" => wake.notice.group,
-                        "again" => wake.notice.again,
-                        "via" => "command",
-                    },
-                );
-                shared.messages().stalled.remove(&pane);
-                handed.push(Commanded { wake, session, at: Instant::now() });
-                came.push(Came::Rang);
-            }
-            Err(failed) => {
-                let refused = matches!(failed, command::Failed::Refused(_));
-                log::warn(
-                    "msg.ring.command_failed",
-                    fields! {
-                        "name" => wake.name,
-                        "pane" => pane,
-                        "agent" => seen.agent,
-                        "why" => failed.why(),
-                        "refused" => refused,
-                        "impact" => "the wake is typed into the pane instead, once its prompt is \
-                                     empty; a command that refused it, or took too long twice, is \
-                                     not tried again until the agent reports its session anew",
-                        "check" => "whether the harness's command is on the PATH a login shell \
-                                    gives, and whether the session the agent reported is still \
-                                    running",
-                    },
-                );
-                let mut messages = shared.messages();
-                let again = !refused && !messages.stalled.insert(pane.clone());
-                messages.type_instead.insert((wake.name.clone(), wake.notice.group.clone()));
-                drop(messages);
-                if refused || again {
-                    shared.messages().stalled.remove(&pane);
-                    shared.lock().forget_session_id(&pane, &session);
+        let Some(arguments) = arguments else {
+            let refused =
+                command::Failed::Refused("its manifest no longer names a command".to_string());
+            settle(shared, Ran { wake, pane, session, agent: seen.agent }, Err(refused));
+            continue;
+        };
+        shared.messages().commanding.insert(pane.clone());
+        let ran = Ran { wake, pane, session, agent: seen.agent };
+        let unstarted = ran.clone();
+        let weak = Arc::downgrade(shared);
+        let started =
+            std::thread::Builder::new().name("wake-command".to_string()).spawn(move || {
+                let outcome = command::run(&arguments);
+                if let Some(shared) = weak.upgrade() {
+                    settle(&shared, ran, outcome);
                 }
-                waiting.push(wake);
-                came.push(Came::Waits);
-            }
+            });
+        if let Err(error) = started {
+            let stalled =
+                command::Failed::Stalled(format!("no thread could be started for it: {error}"));
+            settle(shared, unstarted, Err(stalled));
         }
     }
-    let mut messages = shared.messages();
-    messages.commanded.extend(handed);
-    messages.pending.extend(waiting);
+    shared.messages().pending.extend(waiting);
     came
+}
+
+/// A wake whose command was started, with what settling it needs.
+#[derive(Clone)]
+struct Ran {
+    wake: Wake,
+    pane: String,
+    session: String,
+    agent: String,
+}
+
+/// What came of a wake's command: one that handed it over is watched until its agent takes it,
+/// and one that failed leaves it to be typed, a command that refused it, or took too long twice,
+/// not run for that session again. Lets the pane run another, and nudges the doorbell.
+fn settle(shared: &Shared, ran: Ran, outcome: Result<(), command::Failed>) {
+    let Ran { wake, pane, session, agent } = ran;
+    match outcome {
+        Ok(()) => {
+            log::info(
+                "msg.rang",
+                fields! {
+                    "name" => wake.name,
+                    "pane" => pane,
+                    "group" => wake.notice.group,
+                    "again" => wake.notice.again,
+                    "via" => "command",
+                },
+            );
+            let mut messages = shared.messages();
+            messages.stalled.remove(&pane);
+            messages.commanding.remove(&pane);
+            messages.commanded.push(Commanded { wake, session, at: Instant::now() });
+        }
+        Err(failed) => {
+            let refused = matches!(failed, command::Failed::Refused(_));
+            log::warn(
+                "msg.ring.command_failed",
+                fields! {
+                    "name" => wake.name,
+                    "pane" => pane,
+                    "agent" => agent,
+                    "why" => failed.why(),
+                    "refused" => refused,
+                    "impact" => "the wake is typed into the pane instead, once its prompt is \
+                                 empty; a command that refused it, or took too long twice, is \
+                                 not tried again until the agent reports its session anew",
+                    "check" => "whether the harness's command is on the PATH a login shell \
+                                gives, and whether the session the agent reported is still \
+                                running",
+                },
+            );
+            let mut messages = shared.messages();
+            let again = !refused && !messages.stalled.insert(pane.clone());
+            messages.type_instead.insert((wake.name.clone(), wake.notice.group.clone()));
+            if refused || again {
+                messages.stalled.remove(&pane);
+            }
+            drop(messages);
+            if refused || again {
+                shared.lock().forget_session_id(&pane, &session);
+            }
+            // After the id is forgotten, so the doorbell's next look at the pane types the wake.
+            let mut messages = shared.messages();
+            messages.commanding.remove(&pane);
+            messages.pending.push(wake);
+        }
+    }
+    shared.doorbell.nudge();
 }
 
 /// Looks at each wake handed over by command, before anything is rung: one whose agent has gone
@@ -524,7 +561,7 @@ fn run(shared: &Weak<Shared>) {
 /// Types the panes' names wanted in their agents' sessions, rings what may be rung, and says how
 /// long to sleep before looking again.
 fn look(
-    shared: &Shared,
+    shared: &Arc<Shared>,
     before: &mut HashMap<String, Option<Activity>>,
     typing: &mut Typing,
     moving: &mut Moving,
@@ -542,7 +579,8 @@ fn look(
     let panes = Panes::of(shared);
     // First, so that a ring looking at the same pane sees the rename's write and waits it out.
     moving.retain(|pane, _| panes.exists(pane));
-    renames::look(shared, &panes, Instant::now(), typing, moving, &mut next);
+    let busy = shared.messages().commanding.clone();
+    renames::look(shared, &panes, &busy, Instant::now(), typing, moving, &mut next);
     if quiet {
         before.clear();
         return until(next, false);
@@ -589,6 +627,11 @@ fn look(
                 );
                 continue;
             }
+            // Its pane's command, ending, nudges the doorbell to look again.
+            if messages.commanding.contains(pane) {
+                messages.pending.push(wake);
+                continue;
+            }
             let dropped = match (panes.get(pane), panes.doorbell(pane)) {
                 (Some(seen), Ringable::Rings) => {
                     let since = moving_since(moving, pane, seen, now);
@@ -621,18 +664,30 @@ fn look(
         }
         pressing = unanswered_rings(&mut messages, &panes, now, moving, &mut next);
     }
+    deliver(shared, commanding, ringing, pressing, &mut next);
+    until(next, unfound)
+}
+
+/// Runs, rings and presses Return for what a look found due, with no lock held, and says through
+/// `next` when to look again.
+fn deliver(
+    shared: &Arc<Shared>,
+    commanding: Reaching,
+    ringing: Reaching,
+    pressing: Vec<(Rung, Seen)>,
+    next: &mut Option<Instant>,
+) {
     let came = [command_all(shared, commanding), ring_all(shared, ringing)].concat();
     // A ring is looked at again once it is due its Return, or a Return pressed again; nothing
     // announces a draft being cleared, so a prompt that held one is looked at again too.
     for (what, after) in [(Came::Rang, SETTLE), (Came::Waits, LOOK_AGAIN)] {
         if came.contains(&what) {
-            sooner(&mut next, Instant::now() + after);
+            sooner(next, Instant::now() + after);
         }
     }
     if press_again(shared, pressing) {
-        sooner(&mut next, Instant::now() + ANSWER);
+        sooner(next, Instant::now() + ANSWER);
     }
-    until(next, unfound)
 }
 
 /// Whether no wake is waiting to be rung, pressed again or woken once more, and whether a handoff

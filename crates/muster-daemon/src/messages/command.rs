@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use crate::pty;
 
-/// How long the command may take. It runs on the doorbell's thread, which rings nobody else
-/// meanwhile; `codex queue` answers in well under a second.
+/// How long the command may take: `codex queue` answers in well under a second, and a login shell
+/// slow to start can take a few. It runs on a thread of its own, so only its pane waits for it.
 const PATIENCE: Duration = Duration::from_secs(5);
 
 /// How much of what a failed command printed is kept, for the log.
