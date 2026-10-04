@@ -2356,9 +2356,19 @@ impl Session {
         self.panes.iter().map(view).collect()
     }
 
-    /// Whether any pane's name is still to be typed into its agent's session.
+    /// Whether any pane's name is still to be typed into its agent's session: one wanted, for an
+    /// agent whose manifest says how. A named pane whose agent's harness cannot be renamed keeps
+    /// its name wanted, and must not keep the doorbell's thread looking.
     pub(crate) fn wants_session_names(&self) -> bool {
-        self.panes.iter().any(|pane| pane.session_name.wanted().is_some())
+        let Some(manifests) = self.detecting.manifests() else { return false };
+        self.panes.iter().any(|pane| {
+            let (Some(name), Some(agent)) =
+                (pane.session_name.wanted(), pane.record.agent.as_deref())
+            else {
+                return false;
+            };
+            manifests.session_rename(&muster_detect::Agent::new(agent), name).is_some()
+        })
     }
 
     /// `name` was typed into the session of the agent in `pane`, or typing it was given up.
