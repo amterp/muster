@@ -61,6 +61,10 @@ pub struct RosterMachine {
 
     /// How many panes it holds, on screen or not. Zero is the state worth drawing.
     pub panes: usize,
+
+    /// What its last restart cost, in a few words, while that restart still needs somebody
+    /// ([`crate::mirror::Restart::outstanding`]). The other state worth a row of its own.
+    pub restarted: Option<String>,
 }
 
 /// The color that marks a machine's rows in the agent list.
@@ -557,6 +561,10 @@ impl Roster {
                     id: daemon.id.clone(),
                     health: held.map_or(Health::Disconnected, Mirror::health),
                     panes: held.map_or(0, |held| held.panes().count()),
+                    restarted: held
+                        .filter(|held| held.restart_outstanding())
+                        .and_then(Mirror::last_restart)
+                        .map(crate::mirror::Restart::summary),
                 }
             })
             .collect();

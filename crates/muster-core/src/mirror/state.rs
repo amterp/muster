@@ -56,6 +56,8 @@ pub struct Mirror {
     before_restart: Option<Vec<Pane>>,
     /// What the daemon's last restart cost, kept for anybody who asks later.
     last_restart: Option<Restart>,
+    /// Whether that restart still needs somebody ([`Restart::outstanding`]).
+    restart_outstanding: bool,
 }
 
 impl Mirror {
@@ -171,6 +173,7 @@ impl Mirror {
                 changes.push(Change::HumanNoticed(group.clone()));
             }
         }
+        changes.extend(self.restart_settled());
         changes
     }
 
@@ -187,6 +190,12 @@ impl Mirror {
 
     /// Applies one event, and reports what it actually changed.
     pub fn apply(&mut self, event: BackendEvent) -> Vec<Change> {
+        let mut changes = self.apply_event(event);
+        changes.extend(self.restart_settled());
+        changes
+    }
+
+    fn apply_event(&mut self, event: BackendEvent) -> Vec<Change> {
         match event {
             BackendEvent::PaneOpened(pane) | BackendEvent::PaneChanged(pane) => {
                 self.upsert_pane(pane)
@@ -382,6 +391,13 @@ impl Mirror {
     }
 
     /// Works out what a restart cost against the panes held before it, and keeps it.
+    /// Whether the daemon's last restart still needs somebody.
+    pub fn restart_outstanding(&self) -> bool {
+        self.restart_outstanding
+    }
+
+    /// Works out what a restart cost against the panes held before it, and keeps it. Said
+    /// only when it needs somebody; otherwise it is kept for `muster window` alone.
     fn restarted(&mut self, before: &[Pane], from_file: bool) -> Option<Change> {
         let restart = Restart::between(
             before,
@@ -389,7 +405,26 @@ impl Mirror {
             from_file,
         )?;
         self.last_restart = Some(restart.clone());
-        Some(Change::Restarted(restart))
+        self.restart_outstanding = self.restart_needs_somebody();
+        self.restart_outstanding.then_some(Change::Restarted(restart))
+    }
+
+    fn restart_needs_somebody(&self) -> bool {
+        let Some(restart) = &self.last_restart else { return false };
+        let pane = |id: &PaneId| self.panes.get(id).or_else(|| self.unplaced.get(id));
+        restart.outstanding(
+            |id| pane(id).map(|held| held.agent.as_deref().filter(|agent| !agent.is_empty())),
+            !self.panes.is_empty() || !self.unplaced.is_empty(),
+        )
+    }
+
+    /// Says once that an outstanding restart no longer needs anybody.
+    fn restart_settled(&mut self) -> Option<Change> {
+        if !self.restart_outstanding || self.restart_needs_somebody() {
+            return None;
+        }
+        self.restart_outstanding = false;
+        Some(Change::RestartSettled)
     }
 
     pub fn agent_state(&self, id: &PaneId) -> Option<AgentState> {

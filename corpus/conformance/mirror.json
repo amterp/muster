@@ -1893,6 +1893,340 @@
           "restarted:again=1:lost=[p2]:agents=[p1]"
         ]
       }
+    },
+    {
+      "name": "a restart settles once the agent it stopped is back",
+      "why": "The warning about a restart says what needs somebody. Once detection finds an agent in the pane whose agent the restart stopped, nothing does, and the mirror says so once.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2,
+          "restoredFromFile": true,
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "unknown",
+              "cwd": "/src/api"
+            },
+            {
+              "id": "p2",
+              "agentState": "unknown",
+              "cwd": "/src/web"
+            }
+          ]
+        },
+        "afterEvents": [
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src/api",
+            "agent": "claude"
+          }
+        ]
+      },
+      "expect": {
+        "agentStates": {
+          "p1": "idle",
+          "p2": "unknown"
+        },
+        "changes": [
+          "agentStateChanged:p1:idle->unknown",
+          "paneRelabelled:p1",
+          "agentStateChanged:p2:idle->unknown",
+          "restarted:again=2:lost=[]:agents=[p1]",
+          "agentStateChanged:p1:unknown->idle",
+          "paneRelabelled:p1",
+          "restartSettled"
+        ],
+        "health": "connected",
+        "layouts": {
+          "t1": "columns(p1, p2@0.5)"
+        },
+        "paneTabs": {
+          "p1": "t1",
+          "p2": "t1"
+        },
+        "panes": [
+          "p1",
+          "p2"
+        ],
+        "restoring": false,
+        "tabs": [
+          "t1"
+        ]
+      }
+    },
+    {
+      "name": "a restart settles once the pane whose agent stopped is closed",
+      "why": "A warning about a pane the window no longer has helps nobody, so closing the pane whose agent the restart stopped settles it as surely as the agent coming back.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2,
+          "restoredFromFile": true,
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "unknown",
+              "cwd": "/src/api"
+            },
+            {
+              "id": "p2",
+              "agentState": "unknown",
+              "cwd": "/src/web"
+            }
+          ]
+        },
+        "afterEvents": [
+          {
+            "kind": "paneClosed",
+            "id": "p1"
+          }
+        ]
+      },
+      "expect": {
+        "agentStates": {
+          "p2": "unknown"
+        },
+        "changes": [
+          "agentStateChanged:p1:idle->unknown",
+          "paneRelabelled:p1",
+          "agentStateChanged:p2:idle->unknown",
+          "restarted:again=2:lost=[]:agents=[p1]",
+          "paneRemoved:p1",
+          "restartSettled"
+        ],
+        "health": "connected",
+        "layouts": {
+          "t1": "columns(p1, p2@0.5)"
+        },
+        "paneTabs": {
+          "p2": "t1"
+        },
+        "panes": [
+          "p2"
+        ],
+        "restoring": false,
+        "tabs": [
+          "t1"
+        ]
+      }
+    },
+    {
+      "name": "a restart that stopped no agent and kept its panes needs nobody",
+      "why": "Shells that started again lost their scrollback, which nothing can give back, so there is nothing for a warning to ask of anybody. The restart is still kept for muster window.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 2,
+          "restoredFromFile": true
+        }
+      },
+      "expect": {
+        "agentStates": {
+          "p1": "idle",
+          "p2": "idle"
+        },
+        "changes": [],
+        "health": "connected",
+        "layouts": {
+          "t1": "columns(p1, p2@0.5)"
+        },
+        "paneTabs": {
+          "p1": "t1",
+          "p2": "t1"
+        },
+        "panes": [
+          "p1",
+          "p2"
+        ],
+        "restoring": false,
+        "tabs": [
+          "t1"
+        ]
+      }
+    },
+    {
+      "name": "a daemon that came back empty needs somebody until it holds a pane again",
+      "why": "None of what it held came back, so the person's whole workspace on that machine is gone. Opening any pane there is somebody acting on it, and settles the restart.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2
+        },
+        "afterEvents": [
+          {
+            "kind": "paneOpened",
+            "id": "p9",
+            "agentState": "idle",
+            "cwd": "/src"
+          }
+        ]
+      },
+      "expect": {
+        "agentStates": {},
+        "changes": [
+          "tabRemoved:t1",
+          "paneRemoved:p1",
+          "paneRemoved:p2",
+          "restarted:again=0:lost=[p1,p2]:agents=[]",
+          "restartSettled"
+        ],
+        "health": "connected",
+        "layouts": {},
+        "paneTabs": {},
+        "panes": [],
+        "restoring": false,
+        "tabs": []
+      }
     }
   ]
 }

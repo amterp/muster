@@ -177,6 +177,7 @@ fn describe(change: &Change) -> String {
                 .collect::<Vec<_>>()
                 .join(","),
         ),
+        Change::RestartSettled => "restartSettled".to_string(),
         Change::PasteHeld { pane, text } => format!("pasteHeld:{pane}:{}", text.len()),
         Change::ClipboardWrite { pane, text } => format!("clipboardWrite:{pane}:{}", text.len()),
         Change::Rang(pane) => format!("rang:{pane}"),

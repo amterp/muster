@@ -110,6 +110,7 @@ pub(crate) fn roster(
                 state: machine.health.as_str().to_string(),
                 panes: u32::try_from(machine.panes).unwrap_or(u32::MAX),
                 color: machine_color(&machine.id, chosen).to_string(),
+                restarted: machine.restarted.clone().unwrap_or_default(),
             })
             .collect(),
         tabs: roster

@@ -534,6 +534,25 @@ struct SidebarTests {
     #expect(rows.filter { $0.isMachine }.map(\.label) == ["devenv"])
   }
 
+  /// A connected machine holding panes says nothing a row would add - until a restart stopped
+  /// something there that still needs somebody.
+  @Test("a machine whose restart still needs somebody gets a row saying what it cost")
+  func aRestartedMachineGetsARow() {
+    let restarted = "restarted: 2 panes started again, 1 agent stopped"
+    let roster = roster(
+      [tab("local", "w1:t1", place: 1, panes: [pane("local", "w1:p1")])],
+      machines: [Roster.Machine(id: "local", state: "connected", panes: 1, restarted: restarted)])
+    let rows = SidebarModel.rows(roster: roster, agents: [:]).filter { $0.isMachine }
+
+    #expect(rows.map(\.label) == ["local"])
+    #expect(rows.first?.subtitle == restarted)
+
+    let settled = self.roster(
+      [tab("local", "w1:t1", place: 1, panes: [pane("local", "w1:p1")])],
+      machines: [Roster.Machine(id: "local", state: "connected", panes: 1)])
+    #expect(SidebarModel.rows(roster: settled, agents: [:]).allSatisfy { !$0.isMachine })
+  }
+
   @Test("the list takes its width, and gives it up before squeezing the panes")
   func theTerminalsWin() {
     let roomy = SidebarModel.widths(in: 960)

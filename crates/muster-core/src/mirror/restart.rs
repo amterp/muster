@@ -58,6 +58,26 @@ impl Restart {
         (started_again > 0 || !lost.is_empty()).then_some(Restart { started_again, lost, agents })
     }
 
+    /// Whether this restart still needs somebody: a pane whose agent it stopped is still in the
+    /// window and has not shown one since, or the daemon came back with none of what it held
+    /// and still holds nothing.
+    ///
+    /// A pane that did not come back holds nothing up - it is not in the window, so there is
+    /// nothing to close or wait on - and nor does a shell that only started again, whose
+    /// scrollback nothing can give back. Closing a pane whose agent stopped settles it, since a
+    /// warning about a pane the window no longer has helps nobody.
+    ///
+    /// `agent_of` is a pane's agent now: `None` for a pane the window does not hold, `Some(None)`
+    /// for one running no agent.
+    pub fn outstanding<'a>(
+        &self,
+        agent_of: impl Fn(&PaneId) -> Option<Option<&'a str>>,
+        holds_any: bool,
+    ) -> bool {
+        let stopped = self.agents.iter().any(|(pane, _, _)| agent_of(pane) == Some(None));
+        stopped || (self.started_again == 0 && !holds_any)
+    }
+
     /// The whole sentence for the window's problem list: what happened, what it cost, and
     /// what to do about it.
     pub fn describe(&self, daemon: &str) -> String {

@@ -6126,6 +6126,13 @@ fn report(daemon: &DaemonId, change: &Change) {
     if let Change::Restarted(restart) = change {
         restarted(daemon, restart);
     }
+    if let Change::RestartSettled = change {
+        clear_problem(
+            &format!("restarted:{daemon}"),
+            "every agent the restart stopped is back or its pane closed, and the machine holds \
+             panes again",
+        );
+    }
     if let Change::ClipboardWrite { pane, text } = change {
         let allowed = clipboard_writes_allowed();
         log::info(
@@ -6314,7 +6321,8 @@ fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
 /// Says that a daemon answering is a new run, and what that cost the panes it held.
 ///
 /// A warning rather than an error: nothing is broken now, and the roster is not forced open over
-/// somebody's work. It stays for the window's run, and the next restart replaces it.
+/// somebody's work. It stands while the restart needs somebody, and a `RestartSettled` takes it
+/// down.
 fn restarted(daemon: &DaemonId, restart: &Restart) {
     log::warn(
         "daemon.restarted",

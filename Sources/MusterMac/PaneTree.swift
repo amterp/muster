@@ -99,7 +99,7 @@ extension Roster {
       machines: changed.machines.map { machine in
         Roster.Machine(
           id: machine.daemonID, state: machine.state, panes: Int(machine.panes),
-          color: machine.color)
+          color: machine.color, restarted: machine.restarted)
       },
       numbering: Roster.Numbering(changed.counting))
   }

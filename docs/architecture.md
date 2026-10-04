@@ -1054,8 +1054,13 @@ the panes it held: a pane back under its name was started again if that run brou
 missing was lost. A handover is a new run too, with every process still running, and says nothing. A run still
 restoring is judged once it says it has finished, or every pane not back yet would read as lost
 (`crates/muster-core/src/mirror/restart.rs`). What it cost - how many panes started again, which were lost, which had
-an agent running - becomes a warning in the window's problem list and the machine's `detail` in `muster window`, once
-per restart rather than on every reconnect, and the connection itself stays `connected`, because it is. Rebuilding is
+an agent running - is the machine's `detail` in `muster window` for the rest of the run, once per restart rather than on
+every reconnect, and the connection itself stays `connected`, because it is. While the restart still needs somebody it
+is also a warning in the window's problem list and a row for the machine in the agent list, whose tooltip says what it
+cost: while a pane whose agent it stopped is still open without one, or while a daemon that came back with none of
+what it held holds nothing. An agent found again, the pane closed, or a pane made on the empty machine takes both
+down. Panes that did not come back hold nothing up - the window has no row for them to act on - and nor do shells that
+only started again, so a restart that stopped no agent raises no warning at all. Rebuilding is
 the daemon's file and `resume_agents` already doing it; Muster says what they could not bring back rather than keeping
 a second copy to restore from.
 

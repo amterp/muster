@@ -122,6 +122,9 @@ pub enum Change {
     /// The daemon answering is a different run from the one the mirror held, and some of what
     /// it held did not carry on: its processes were started again, or it did not come back.
     Restarted(crate::mirror::restart::Restart),
+    /// The last restart no longer needs anybody: every agent it stopped is back or its pane is
+    /// gone, and a daemon that came back empty holds a pane again.
+    RestartSettled,
     /// A paste is waiting for somebody to confirm it. Passed through rather than held: the
     /// mirror is what the daemon holds, and this is a question for whoever is looking.
     PasteHeld {
@@ -168,6 +171,7 @@ impl Change {
             Change::LayoutChanged(_) => "layout_changed",
             Change::Restored(_) => "restored",
             Change::Restarted(_) => "restarted",
+            Change::RestartSettled => "restart_settled",
             Change::PasteHeld { .. } => "paste_held",
             Change::ClipboardWrite { .. } => "clipboard_write",
             Change::Rang(_) => "rang",
@@ -216,7 +220,13 @@ impl Change {
     /// case rather than the rare one.
     pub fn republishes(&self) -> bool {
         self.moves_structure()
-            || matches!(self, Change::PaneRelabelled(_) | Change::TabRelabelled(_))
+            || matches!(
+                self,
+                Change::PaneRelabelled(_)
+                    | Change::TabRelabelled(_)
+                    | Change::Restarted(_)
+                    | Change::RestartSettled
+            )
     }
 
     /// The pane whose agent state the shell has to be told about, if any.

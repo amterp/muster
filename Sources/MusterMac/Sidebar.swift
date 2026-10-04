@@ -132,15 +132,20 @@ public struct Roster: Equatable {
     /// What marks its rows, as `#rrggbb`. The core's answer, so every window agrees on it.
     public let color: String
 
-    public init(id: String, state: String, panes: Int, color: String = "") {
+    /// What its last restart cost, in a few words, while that still needs somebody; empty
+    /// otherwise. The problem list carries the whole sentence.
+    public let restarted: String
+
+    public init(id: String, state: String, panes: Int, color: String = "", restarted: String = "") {
       self.id = id
       self.state = state
       self.panes = panes
       self.color = color
+      self.restarted = restarted
     }
 
     /// Whether this machine has something to say that its panes do not.
-    public var worthDrawing: Bool { panes == 0 || state != "connected" }
+    public var worthDrawing: Bool { panes == 0 || state != "connected" || !restarted.isEmpty }
   }
 
   /// What a press is counting, and so whether one is half-typed.
@@ -461,7 +466,8 @@ public enum SidebarModel {
       rows.append(
         Row(
           kind: .machine, daemon: machine.id, tab: "", pane: nil, label: machine.id,
-          subtitle: "", givenName: "", state: machine.state, agent: nil, onScreen: false,
+          subtitle: machine.restarted, givenName: "", state: machine.state, agent: nil,
+          onScreen: false,
           hasKeyboard: false, reservedPresses: 0, machine: mark(machine.id), isSecondPress: false))
     }
     if !groups.isEmpty {
@@ -1339,7 +1345,8 @@ final class SidebarRowView: NSView {
       setAccessibilityLabel(details)
     } else {
       toolTip = nil
-      name.toolTip = row.label
+      // A machine row's subtitle is what its restart cost, which the heading has no line for.
+      name.toolTip = row.subtitle.isEmpty ? row.label : "\(row.label): \(row.subtitle)"
       setAccessibilityElement(false)
       setAccessibilityRole(nil)
       setAccessibilityLabel(nil)

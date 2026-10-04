@@ -2391,6 +2391,12 @@ message RosterMachine {
   // in every window. The core's answer rather than the shell's, so two windows and a script
   // agree about it.
   string color = 4;
+
+  // What its last restart cost, in a few words - `restarted: 2 panes started again, 1 agent
+  // stopped` - while that restart still needs somebody: an agent it stopped is not back and its
+  // pane is still open, or it came back holding nothing. Empty otherwise. A machine with this
+  // gets a row of its own, as one holding nothing does; the problem list has the whole sentence.
+  string restarted = 5;
 }
 
 message RosterTab {
