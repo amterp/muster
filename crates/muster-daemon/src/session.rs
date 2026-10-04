@@ -118,7 +118,8 @@ impl Shared {
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, executable, data, log } = places;
         let Saved { persister, settings, restoring } = saved;
-        Arc::new_cyclic(|shared: &Weak<Shared>| {
+        let watched = overrides.clone();
+        let built = Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
             let publisher = std::thread::Builder::new()
@@ -136,18 +137,6 @@ impl Shared {
                 );
             }
             persister.start(shared.clone());
-            if let Some(overrides) = overrides.clone() {
-                let (stopping, reloading) = (shared.clone(), shared.clone());
-                detect::watch_overrides(
-                    overrides,
-                    move || stopping.upgrade().is_none_or(|shared| shared.lock().stopping),
-                    move || {
-                        if let Some(shared) = reloading.upgrade() {
-                            shared.reload_overrides();
-                        }
-                    },
-                );
-            }
             let shared = shared.clone();
             let ended: Ended = Arc::new(move |serial, status| {
                 if let Some(shared) = shared.upgrade() {
@@ -210,7 +199,22 @@ impl Shared {
                 instance,
                 socket,
             }
-        })
+        });
+        // Not from inside `new_cyclic`: until it returns, the weak handle cannot be upgraded, and
+        // the watcher would read that as the daemon having stopped and end for good.
+        if let Some(overrides) = watched {
+            let (stopping, reloading) = (Arc::downgrade(&built), Arc::downgrade(&built));
+            detect::watch_overrides(
+                overrides,
+                move || stopping.upgrade().is_none_or(|shared| shared.lock().stopping),
+                move || {
+                    if let Some(shared) = reloading.upgrade() {
+                        shared.reload_overrides();
+                    }
+                },
+            );
+        }
+        built
     }
 
     /// Starts the doorbell, once the panes this daemon begins with are in: its first look rings
