@@ -782,12 +782,7 @@ fn every_window_open_at_quit_comes_back() {
 fn every_window_open_when_the_app_was_killed_comes_back() {
     // The same after `kill -9`, which writes nothing on the way out: a window is open in the
     // record from the moment it opens until somebody closes it.
-    // A killed app's bridges find it gone, and say so into the next run's log.
-    every_window_comes_back(
-        "kill-relaunch",
-        Running::kill,
-        &["bridge.link.failed", "bridge.stream.failed"],
-    );
+    every_window_comes_back("kill-relaunch", Running::kill, &[]);
 }
 
 /// Opens a second window, ends the app with `ending`, launches it again, and checks both windows
@@ -807,6 +802,9 @@ fn every_window_comes_back(check: &str, ending: fn(Running) -> Vec<Value>, expec
     let mut again = Running::start(&built_app(), &scratch, &[], &[]);
     again.until_ready();
     again.until_windows_opened(2);
+    // Settled before it is stopped, as the first launch was: stopped while its bridges were
+    // still starting, they dial a window that has quit and say so in this run's log.
+    again.until_settled();
     let after = again.stop();
 
     expect_nothing_wrong(&after, expected);
