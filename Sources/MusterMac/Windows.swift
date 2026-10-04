@@ -21,6 +21,7 @@ public protocol ShellWindow: AnyObject {
   func apply(appearance: Core.Appearance)
   func apply(bindings: [Core.Binding])
   func apply(problems: [Problem])
+  func apply(groups: [SidebarModel.MessageGroup])
   func hold(_ held: HeldPaste)
   /// Whether this window lists the pane, which decides where a held paste is asked about.
   func lists(_ pane: PaneKey) -> Bool

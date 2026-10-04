@@ -154,12 +154,13 @@ impl Mirror {
         changes
     }
 
-    /// What waits for the human in `group`, as the daemon last said: nothing once they read it.
+    /// What waits for the human in `group`, as the daemon last said: a count of 0 once they read
+    /// it, and nothing once they leave it.
     pub fn human_notice(&self, group: &str) -> Option<&HumanNotice> {
         self.human.get(group)
     }
 
-    /// Every group where something waits for the human.
+    /// Every group the human is in, with what waits for them there.
     pub fn human_notices(&self) -> impl Iterator<Item = (&String, &HumanNotice)> {
         self.human.iter()
     }
@@ -205,12 +206,12 @@ impl Mirror {
                 if before == progress { Vec::new() } else { vec![Change::ProgressChanged(pane)] }
             }
             BackendEvent::HumanNotice { group, notice } => {
-                let before = if notice.count == 0 {
-                    self.human.remove(&group)
-                } else {
+                let before = if notice.listed() {
                     self.human.insert(group.clone(), notice.clone())
+                } else {
+                    self.human.remove(&group)
                 };
-                let after = (notice.count > 0).then_some(notice);
+                let after = notice.listed().then_some(notice);
                 if before == after { Vec::new() } else { vec![Change::HumanNoticed(group)] }
             }
             // For a pane no tree names yet, which draws nowhere.

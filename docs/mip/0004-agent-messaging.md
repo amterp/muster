@@ -703,6 +703,14 @@ As built in stage 3, under Decision 1 (a):
   reads as the one on its own machine: the human's home, where a group kept elsewhere is
   followed by its full name. It is the one msg verb that asks the window, and answers with the
   transcript's pane.
+- **The sidebar lists the human's groups**, added afterwards as Decision 1 (b). Under the tabs, a
+  caption and a row per group the human is in, on every daemon on the app's machine, with the
+  unread count that would wake them as a badge and an `@` while any were addressed to them;
+  choosing a row is choosing the banner. A group read to the end stays listed, so the daemon's
+  notice to the windows says whether the human is still in the group (`member`, since 1.3), and
+  a group joined is told of before anything is posted there. A group kept on another machine is
+  listed by its replica's full name once the replica exists here. The core puts the groups in
+  one list for the whole app, and the shell draws it.
 - **The human's home publishes.** For a group homed elsewhere, the home daemon's replica wakes
   the human the way a local post does (section 11), and a window takes what waits for the human
   only from a daemon on its own machine, so only the daemon on the app's machine ever tells a
@@ -955,8 +963,9 @@ green on its own.
    not wake the human raises none.
 
    As built, under Decision 1 (a), with the human exempt from the guard (section 4); the proof
-   is `crates/muster-seam/tests/seam/messages_for_the_human.rs`, against a real daemon. Left for
-   later: the display name of section 10, and Decision 1 (b).
+   is `crates/muster-seam/tests/seam/messages_for_the_human.rs`, against a real daemon. Decision
+   1 (b) was built afterwards, and section 10 describes it. Left for later: the display name of
+   section 10.
 
 4. **Groups with policy, and the council skill.** `ring`, `allow`, `membership` and `paused`; the
    hooks adapter and its snippet; the skill replacing `council-participant`, with its presets.

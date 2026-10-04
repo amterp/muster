@@ -930,6 +930,10 @@ message MsgAnswer {
     bool again = 7;
     // Since 1.3. How many of them were posted urgently.
     uint64 urgent = 8;
+    // Since 1.3. On a notice to the windows, whether the human is in the group: a group whose
+    // count falls to 0 because the human read it is still theirs to list, and one they left or
+    // that was deleted is not. A daemon that predates it leaves it false.
+    bool member = 9;
   }
 }
 

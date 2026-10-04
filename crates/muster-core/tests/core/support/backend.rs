@@ -68,7 +68,8 @@ pub(crate) fn read_snapshot(given: &Value) -> Snapshot {
     }
 }
 
-/// What waits for the human in one group: `{ "last": 5, "count": 1, "to_you": 1, "from": ["a"] }`.
+/// What waits for the human in one group: `{ "last": 5, "count": 1, "to_you": 1, "from": ["a"] }`,
+/// and `"member": true` while the human is in it.
 pub(crate) fn read_human_notice(given: &Value) -> HumanNotice {
     let number = |key: &str| given.get(key).and_then(Value::as_u64).unwrap_or_default();
     HumanNotice {
@@ -76,6 +77,7 @@ pub(crate) fn read_human_notice(given: &Value) -> HumanNotice {
         count: number("count"),
         to_you: number("to_you"),
         from: collect(given, "from", |from| from.as_str().unwrap_or_default().to_string()),
+        member: given.get("member").and_then(Value::as_bool).unwrap_or_default(),
     }
 }
 

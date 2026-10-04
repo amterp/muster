@@ -462,6 +462,57 @@ struct SidebarTests {
     #expect(!SidebarModel.canArrange(onDevenv, onto: machine))
   }
 
+  @Test("the human's groups sit under a caption after the tabs, with what waits in each")
+  func theHumansGroupsAreListedLast() {
+    let groups = [
+      SidebarModel.MessageGroup(daemon: "local", group: "review", unread: 3, toYou: 1),
+      SidebarModel.MessageGroup(daemon: "local", group: "standup", unread: 0, toYou: 0),
+    ]
+    let rows = SidebarModel.rows(
+      roster: roster([tab("local", panes: [pane("local", "w1:p1")])]), agents: [:],
+      groups: groups)
+    #expect(rows.map(\.label) == ["w1:p1", "Messages", "review", "standup"])
+    let caption = rows[1]
+    #expect(caption.isHeader && !caption.isDestination, "the caption goes nowhere")
+    let review = rows[2]
+    #expect(review.isGroup && review.isDestination && review.daemon == "local")
+    #expect(SidebarModel.accessories(of: review) == [.toYou(1), .unread(3)])
+    #expect(SidebarModel.accessories(of: rows[3]) == [], "a group read to the end is quiet")
+    // One machine says nothing about which; the pane rows follow the same rule.
+    #expect(review.machine == nil)
+    // A group can go nowhere a pane can be dragged.
+    #expect(!SidebarModel.canArrange(PaneKey(daemon: "local", pane: "w1:p1"), onto: review))
+
+    let none = SidebarModel.rows(
+      roster: roster([tab("local", panes: [pane("local", "w1:p1")])]), agents: [:])
+    #expect(!none.contains { $0.label == "Messages" }, "no caption over no groups")
+  }
+
+  @Test("a group says which machine keeps it while more than one is attached")
+  func aGroupCarriesItsMachinesMark() {
+    let rows = SidebarModel.rows(
+      roster: roster([
+        tab("local", panes: [pane("local", "w1:p1"), pane("devenv", "w1:p2", place: 2)])
+      ]),
+      agents: [:],
+      groups: [SidebarModel.MessageGroup(daemon: "devenv", group: "g", unread: 1, toYou: 0)])
+    let group = try? #require(rows.first { $0.isGroup })
+    #expect(group?.machine == SidebarModel.MachineMark(daemon: "devenv", color: "#8d9440"))
+  }
+
+  @Test("a message arriving redraws its group's row and nothing else")
+  func aMessageRedrawsOneRow() {
+    let roster = roster([tab("local", panes: [pane("local", "w1:p1")])])
+    let before = SidebarModel.rows(
+      roster: roster, agents: [:],
+      groups: [SidebarModel.MessageGroup(daemon: "local", group: "g", unread: 0, toYou: 0)])
+    let after = SidebarModel.rows(
+      roster: roster, agents: [:],
+      groups: [SidebarModel.MessageGroup(daemon: "local", group: "g", unread: 1, toYou: 1)])
+    let changed = try? #require(SidebarModel.changes(from: before, to: after))
+    #expect(changed?.redraw == IndexSet([2]))
+  }
+
   @Test("every row in the list is somewhere to go")
   func everyRowSelects() {
     // Clicking a caption shows that tab, which is the mouse's half of what ⌘N does; clicking a

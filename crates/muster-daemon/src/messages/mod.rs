@@ -21,7 +21,7 @@ mod wire;
 pub(crate) use doorbell::Doorbell;
 pub(crate) use peer::Peers;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -79,6 +79,9 @@ pub(crate) struct Messages {
     told: Vec<msg_answer::Notice>,
     /// How many times the human's notices have been handed out, which orders them.
     tellings: u64,
+    /// The groups the human is in, as the windows were last told: one joined since is told of
+    /// with what waits there, so a window lists it before anything is posted to it.
+    human_groups: BTreeSet<String>,
     /// Follows of a log waiting for its next entry, woken by anything that may have appended.
     follows: Vec<Sender<()>>,
     /// Changes made by the request being handled, for the other machines with members in
@@ -100,6 +103,8 @@ impl Messages {
         let files = Files::beside(socket);
         let found = files.load();
         let service = Messaging::restore(files, found.saved, found.logs);
+        // A window that attends this daemon is told these by its snapshot.
+        let human_groups = service.human_groups();
         Messages {
             // A wake the daemon before this one deferred and never rang is lost with it, and one
             // it rang cannot be told from one it did not, so each is rung again once its pane
@@ -117,6 +122,7 @@ impl Messages {
             waits: HashMap::new(),
             told: Vec::new(),
             tellings: 0,
+            human_groups,
             follows: Vec::new(),
             telling: Vec::new(),
         }
@@ -124,12 +130,22 @@ impl Messages {
 
     /// What waits for the human, in each group with anything waiting.
     pub(crate) fn human(&self) -> Vec<msg_answer::Notice> {
-        self.service.human_notices().iter().map(notice_of).collect()
+        self.service.human_notices().iter().map(|notice| self.for_human(notice)).collect()
+    }
+
+    /// `notice` as the windows are told it, saying whether the human is still in its group.
+    fn for_human(&self, notice: &muster_msg::Notice) -> msg_answer::Notice {
+        msg_answer::Notice { member: self.service.human_is_in(&notice.group), ..notice_of(notice) }
     }
 
     /// What the request just handled changed for the human, in the order the service decided
     /// it, for [`tell_human`] once this lock is let go.
     fn take_told(&mut self) -> Told {
+        let groups = self.service.human_groups();
+        for group in groups.difference(&self.human_groups) {
+            self.told.push(self.for_human(&self.service.human_notice(group)));
+        }
+        self.human_groups = groups;
         self.tellings += 1;
         Told { order: self.tellings, notices: std::mem::take(&mut self.told) }
     }
@@ -159,6 +175,7 @@ impl Messages {
             let files = self.service.store().clone();
             let found = files.load();
             self.service = Messaging::restore(files, found.saved, found.logs);
+            self.human_groups = self.service.human_groups();
             // Every wake still unread is rung again, so a ring from before is not also pressed.
             self.rung.clear();
             self.pending = self.service.outstanding();
@@ -175,7 +192,7 @@ impl Messages {
         }
         // Removed is the human leaving, as far as the windows are concerned.
         if members.removed.iter().any(|name| name == muster_msg::HUMAN) {
-            self.told.push(nothing_waits(&members.group));
+            self.told.push(nothing_waits(&members.group, false));
         }
         changed("members", members, &mut self.telling)
     }
@@ -194,7 +211,9 @@ impl Messages {
                 let told = &mut self.told;
                 self.service.read(caller, read.group.as_deref(), panes).map(|read| {
                     if read.name == muster_msg::HUMAN {
-                        told.extend(read.groups.iter().map(|(group, _)| nothing_waits(group)));
+                        told.extend(
+                            read.groups.iter().map(|(group, _)| nothing_waits(group, true)),
+                        );
                     }
                     let groups = read
                         .groups
@@ -274,7 +293,7 @@ impl Messages {
                 let changed_it =
                     self.service.group_set(caller, &set.group, policy, panes, now_ms())?;
                 // The policy decides which messages ring the human, so what waits may have moved.
-                self.told.push(notice_of(&self.service.human_notice(&changed_it.group)));
+                self.told.push(self.for_human(&self.service.human_notice(&changed_it.group)));
                 Ok(changed("set_policy", changed_it, &mut self.telling))
             }
             Asked::Pause(pause) => self
@@ -391,7 +410,7 @@ fn deleting(shared: &Arc<Shared>, caller: &Caller, group: &str, panes: &Panes) -
         let result = messages.service.group_delete(caller, group, panes);
         if let Ok(deleted) = &result {
             messages.let_go(&deleted.ended);
-            messages.told.push(nothing_waits(&deleted.group));
+            messages.told.push(nothing_waits(&deleted.group, false));
             messages.appended();
         }
         (result, messages.take_told())
@@ -438,8 +457,9 @@ fn tell_human(shared: &Shared, told: Told) {
     }
 }
 
-fn nothing_waits(group: &str) -> msg_answer::Notice {
-    msg_answer::Notice { group: group.to_string(), ..msg_answer::Notice::default() }
+/// Nothing waits for the human in `group`, which they are still `member` of, or have left.
+fn nothing_waits(group: &str, member: bool) -> msg_answer::Notice {
+    msg_answer::Notice { group: group.to_string(), member, ..msg_answer::Notice::default() }
 }
 
 /// Answers a follow of a log once its group has an entry after `since`, at once if it already
@@ -547,7 +567,7 @@ impl Messages {
             let pane = match &wake.via {
                 Via::Pane(pane) => pane,
                 Via::Human => {
-                    self.told.push(notice_of(&wake.notice));
+                    self.told.push(self.for_human(&wake.notice));
                     continue;
                 }
                 Via::Inbox(_) => {
@@ -681,6 +701,8 @@ fn joining(
             match joined {
                 Ok(joined) => {
                     peer::tell(shared, &joined.tell);
+                    let told = shared.messages().take_told();
+                    tell_human(shared, told);
                     joined
                 }
                 Err(refusal) => return refused("", &refusal),
@@ -795,7 +817,7 @@ fn leaving(
     if name == muster_msg::HUMAN {
         let told = {
             let mut messages = shared.messages();
-            messages.told.extend(groups.iter().map(|group| nothing_waits(group)));
+            messages.told.extend(groups.iter().map(|group| nothing_waits(group, false)));
             messages.take_told()
         };
         tell_human(shared, told);
@@ -983,7 +1005,7 @@ fn finding<T>(
     mut act: impl FnMut(&[String]) -> Result<T, Refusal>,
 ) -> Result<(T, Vec<String>), Refusal> {
     let mut found = Vec::new();
-    let mut asked = std::collections::BTreeSet::new();
+    let mut asked = BTreeSet::new();
     loop {
         match act(&found) {
             Err(Refusal::NoSuchParticipant { name }) if asked.insert(name.clone()) => {
@@ -1520,6 +1542,8 @@ pub(crate) fn notice_of(notice: &muster_msg::Notice) -> msg_answer::Notice {
         urgent: notice.urgent,
         from: notice.from.clone(),
         again: notice.again,
+        // Only the windows read it, and `Messages::for_human` says it.
+        member: false,
     }
 }
 

@@ -235,6 +235,26 @@ public enum SidebarModel {
     case pane(tabPress: Int, press: Int)
     /// A machine with something to say its panes cannot: unreachable, or holding nothing.
     case machine
+    /// The caption over the groups the human is in.
+    case messages
+    /// A group the human is in, with how many messages there would wake them and how many of
+    /// those were addressed to them.
+    case group(unread: Int, toYou: Int)
+  }
+
+  /// A group the human is in, as the core listed it (MIP-4, Decision 1b).
+  public struct MessageGroup: Equatable {
+    public let daemon: String
+    public let group: String
+    public let unread: Int
+    public let toYou: Int
+
+    public init(daemon: String, group: String, unread: Int, toYou: Int) {
+      self.daemon = daemon
+      self.group = group
+      self.unread = unread
+      self.toYou = toYou
+    }
   }
 
   /// One line in the list.
@@ -316,14 +336,15 @@ public enum SidebarModel {
     /// named and what the next keystroke will do.
     public let isSecondPress: Bool
 
-    public var isHeader: Bool { kind == .machine }
+    public var isHeader: Bool { kind == .machine || kind == .messages }
 
     /// Whether picking this row means something.
     ///
-    /// Every row does now, including a machine's: picking one asks for a pane on it, which is
-    /// the only way into a machine holding nothing (kan a_2HpkpfIfq) and what makes it safe to
-    /// stop giving every machine a column of its own (kan a_2I6h18OU6).
-    public var isDestination: Bool { true }
+    /// Every row does but the messages caption, including a machine's: picking one asks for a
+    /// pane on it, which is the only way into a machine holding nothing (kan a_2HpkpfIfq) and
+    /// what makes it safe to stop giving every machine a column of its own (kan a_2I6h18OU6).
+    /// A group's opens its transcript.
+    public var isDestination: Bool { kind != .messages }
 
     public var isMachine: Bool { kind == .machine }
 
@@ -334,6 +355,11 @@ public enum SidebarModel {
 
     public var isPane: Bool {
       if case .pane = kind { return true }
+      return false
+    }
+
+    public var isGroup: Bool {
+      if case .group = kind { return true }
       return false
     }
   }
@@ -379,9 +405,14 @@ public enum SidebarModel {
   /// `keyboard` is the pane the core's view says has the keyboard, or nil when no region
   /// does. Passed in rather than derived here: which pane that is arrives on the view, and
   /// the roster is a separate message - the same join the window already makes for states.
-  public static func rows(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil)
-    -> [Row]
-  {
+  ///
+  /// **The human's groups come last, under a caption of their own**, and only when they are in
+  /// any: a list of tabs is about this window, and the groups are about the person, so they sit
+  /// apart rather than among the tabs (MIP-4, Decision 1b).
+  public static func rows(
+    roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil,
+    groups: [MessageGroup] = []
+  ) -> [Row] {
     let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.press > 0 }
     // Reserved from what a kind of row can carry in this window rather than from what each row
     // happens to carry, so the column is a property of the list - which is the whole point of
@@ -429,6 +460,21 @@ public enum SidebarModel {
           subtitle: "", givenName: "", state: machine.state, agent: nil, onScreen: false,
           hasKeyboard: false, reservedPresses: 0, machine: mark(machine.id), isSecondPress: false))
     }
+    if !groups.isEmpty {
+      rows.append(
+        Row(
+          kind: .messages, daemon: "", tab: "", pane: nil, label: "Messages", subtitle: "",
+          givenName: "", state: "", agent: nil, onScreen: false, hasKeyboard: false,
+          reservedPresses: 0, machine: nil, isSecondPress: false))
+    }
+    for group in groups {
+      rows.append(
+        Row(
+          kind: .group(unread: group.unread, toYou: group.toYou), daemon: group.daemon, tab: "",
+          pane: nil, label: group.group, subtitle: "", givenName: "", state: "", agent: nil,
+          onScreen: false, hasKeyboard: false, reservedPresses: 0, machine: mark(group.daemon),
+          isSecondPress: false))
+    }
     return rows
   }
 
@@ -447,6 +493,10 @@ public enum SidebarModel {
     case bell
     /// Sub-agents running, as a count like Mail's unread one.
     case subagents(Int)
+    /// Messages in a group that would wake the human, as Mail's unread count.
+    case unread(Int)
+    /// Messages in a group addressed to the human.
+    case toYou(Int)
     /// How full the agent's context is, from 0 to 100, as a ring.
     case context(Float)
   }
@@ -455,6 +505,9 @@ public enum SidebarModel {
   /// nearest the name; the gauges, which are read rather than noticed, sit at the edge where a
   /// column of them lines up down the list.
   public static func accessories(of row: Row) -> [Accessory] {
+    if case .group(let unread, let toYou) = row.kind {
+      return (toYou > 0 ? [.toYou(toYou)] : []) + (unread > 0 ? [.unread(unread)] : [])
+    }
     guard let agent = row.agent else { return [] }
     var marks: [Accessory] = []
     if agent.unreadable { marks.append(.unreadable) }
@@ -727,6 +780,11 @@ public final class SidebarView: NSView {
   /// giving every machine a column of its own: a machine you have finished with stays empty,
   /// and one row gets you back (kan a_2HpkpfIfq, a_2I6h18OU6).
   public var onMachinePicked: ((String) -> Void)?
+  /// A group picked from the messages section, by its daemon and name: opens its transcript.
+  public var onGroupPicked: ((String, String) -> Void)?
+
+  /// The human's groups, drawn under the tabs on the next `apply(roster:agents:keyboard:)`.
+  public var groups: [SidebarModel.MessageGroup] = []
 
   /// Called when somebody double-clicks a row, meaning they want to rename what it names.
   ///
@@ -919,7 +977,8 @@ public final class SidebarView: NSView {
   /// Instantly rather than animated: a note animates by default, and a row growing under
   /// somebody reading the list is the movement the two heights exist to avoid.
   public func apply(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil) {
-    let fresh = SidebarModel.rows(roster: roster, agents: agents, keyboard: keyboard)
+    let fresh = SidebarModel.rows(
+      roster: roster, agents: agents, keyboard: keyboard, groups: groups)
     let previous = rows
     rows = fresh
     guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
@@ -952,14 +1011,20 @@ public final class SidebarView: NSView {
       onTabPicked?(rows[clicked].tab)
     case .machine:
       onMachinePicked?(rows[clicked].daemon)
+    case .group:
+      onGroupPicked?(rows[clicked].daemon, rows[clicked].label)
+    case .messages:
+      break
     }
   }
 
-  /// A double-click asks to rename. A machine's row names nothing renameable, so it does
-  /// nothing - the machine's name is the config file's and not Muster's to change.
+  /// A double-click asks to rename. Only a pane or a tab is Muster's to rename: a machine's
+  /// name is the config file's, and a group's is everyone's in it.
   @objc private func rowDoubleClicked() {
     let clicked = table.clickedRow
-    guard rows.indices.contains(clicked), !rows[clicked].isMachine else { return }
+    guard rows.indices.contains(clicked), rows[clicked].isPane || rows[clicked].isTab else {
+      return
+    }
     onRowRenamed?(rows[clicked])
   }
 }
@@ -1197,10 +1262,16 @@ final class SidebarRowView: NSView {
     }
 
     switch row.kind {
-    case .machine:
+    case .machine, .messages:
       name.font = .systemFont(ofSize: 10, weight: .semibold)
       name.stringValue = row.label.uppercased()
       name.textColor = .secondaryLabelColor
+    case .group(let unread, _):
+      // Bold while something waits, as a mailbox is: the badge says how much, the weight says
+      // that the row is worth reading at all.
+      name.font = .systemFont(ofSize: 12, weight: unread > 0 ? .semibold : .regular)
+      name.stringValue = row.label
+      name.textColor = unread > 0 ? .labelColor : .secondaryLabelColor
     case .tab(let reached):
       // Its own press sits in the tab column, drawn as a whole chord rather than as the prefix
       // to one - a caption is somewhere you go, not a step on the way to a pane.
@@ -1309,7 +1380,11 @@ final class SidebarRowView: NSView {
     case .bell:
       return symbol("bell.fill", tint: .secondaryLabelColor, saying: "the bell rang")
     case .subagents(let count):
-      return CountBadge(count: count)
+      return CountBadge(count: count, saying: count == 1 ? "1 sub-agent" : "\(count) sub-agents")
+    case .unread(let count):
+      return CountBadge(count: count, saying: "\(count) unread")
+    case .toYou(let count):
+      return symbol("at", tint: .controlAccentColor, saying: "\(count) addressed to you")
     case .context(let used):
       return ContextRing(used: used)
     }
@@ -1491,13 +1566,13 @@ final class SidebarRowView: NSView {
   }
 }
 
-/// How many sub-agents a row's agent has running, drawn the way Mail draws an unread count: a
-/// number in a capsule, quiet enough to skip and plain enough to read at a glance.
+/// A count drawn the way Mail draws an unread one - sub-agents running, messages unread: a number
+/// in a capsule, quiet enough to skip and plain enough to read at a glance.
 @MainActor
 final class CountBadge: NSView {
   private let label = NSTextField(labelWithString: "")
 
-  init(count: Int) {
+  init(count: Int, saying: String) {
     super.init(frame: .zero)
     wantsLayer = true
     layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
@@ -1506,7 +1581,7 @@ final class CountBadge: NSView {
     label.textColor = .secondaryLabelColor
     label.alignment = .center
     addSubview(label)
-    setAccessibilityLabel(count == 1 ? "1 sub-agent" : "\(count) sub-agents")
+    setAccessibilityLabel(saying)
   }
 
   required init?(coder: NSCoder) {

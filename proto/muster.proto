@@ -2048,6 +2048,22 @@ message Mouse {
   double y = 7;
 }
 
+// The groups the human is in, on every daemon on this machine, with what waits for them in each:
+// the sidebar's messages section (MIP-4, Decision 1b). About the whole app, whole each time, and
+// sent only when it changed. Choosing one is `OpenTranscript`.
+message GroupsChanged {
+  repeated MessageGroup groups = 1;
+}
+
+message MessageGroup {
+  string daemon_id = 1;
+  string group = 2;
+  // Unread messages there that would wake the human.
+  uint64 unread = 3;
+  // How many of those were addressed to the human.
+  uint64 to_you = 4;
+}
+
 // What the core tells the shell without being asked.
 //
 // Delivered through the callback registered at startup, from whichever thread noticed.
@@ -2069,6 +2085,7 @@ message Event {
     PasteHeld paste_held = 13;
     ClipboardWrite clipboard_write = 14;
     ShutWindow shut_window = 15;
+    GroupsChanged groups_changed = 16;
     AskingChanged asking_changed = 20;
   }
 

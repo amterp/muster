@@ -331,6 +331,12 @@ fn human_notice(window: &mut Control) -> msg_answer::Notice {
     }
 }
 
+/// Joining is news to a window, which lists the group with nothing waiting in it.
+fn human_joined(window: &mut Control, group: &str) {
+    let told = human_notice(window);
+    assert_eq!((told.group.as_str(), told.count, told.member), (group, 0, true));
+}
+
 fn attend(window: &mut Control) -> proto::Snapshot {
     let asked = expect(window, attending_request(), proto::Outcome::Done);
     let Some(proto::answer::Detail::Snapshot(snapshot)) = asked.answer.detail else {
@@ -348,6 +354,7 @@ fn a_window_hears_each_message_for_the_human_once_and_no_chatter() {
     assert_eq!(attend(&mut window).human, []);
     let mut control = daemon.connect();
     join(&mut control, &the_human(), "@human", "g");
+    human_joined(&mut window, "g");
     join(&mut control, &named("a"), "a", "g");
     join(&mut control, &named("b"), "b", "g");
 
@@ -376,6 +383,7 @@ fn a_window_hears_nothing_waits_once_the_human_is_removed_from_the_group() {
     attend(&mut window);
     let mut control = daemon.connect();
     join(&mut control, &the_human(), "@human", "g");
+    human_joined(&mut window, "g");
     join(&mut control, &named("a"), "a", "g");
     expect(&mut control, post_to(&named("a"), "@human", "need input"), DONE);
     assert_eq!(human_notice(&mut window).count, 1);
@@ -387,7 +395,7 @@ fn a_window_hears_nothing_waits_once_the_human_is_removed_from_the_group() {
     });
     expect(&mut control, msg(&named("a"), remove), DONE);
     let told = human_notice(&mut window);
-    assert_eq!((told.group.as_str(), told.count), ("g", 0));
+    assert_eq!((told.group.as_str(), told.count, told.member), ("g", 0, false));
 }
 
 /// A group whose policy changes may wake the human for what is already there, or no longer:
@@ -400,6 +408,7 @@ fn a_window_hears_what_waits_for_the_human_under_a_new_policy() {
     attend(&mut window);
     let mut control = daemon.connect();
     join(&mut control, &the_human(), "@human", "g");
+    human_joined(&mut window, "g");
     join(&mut control, &named("a"), "a", "g");
     join(&mut control, &named("b"), "b", "g");
     for body in ["one", "two", "three"] {
@@ -533,6 +542,7 @@ fn deleting_a_group_removes_its_log_and_ends_what_was_kept_to_it() {
     attend(&mut window);
     let mut control = daemon.connect();
     join(&mut control, &the_human(), "@human", "g");
+    human_joined(&mut window, "g");
     join(&mut control, &named("a"), "a", "g");
     join(&mut control, &named("b"), "b", "g");
     expect(&mut control, post_to(&named("a"), "@human", "need input"), DONE);

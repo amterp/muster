@@ -1324,6 +1324,10 @@ public enum Core {
   /// tabs, or a new one somebody outside the app asked for. Set by the app at launch.
   @MainActor public static var openWindowAsked: ((WindowAsked) -> Void)?
 
+  /// The human's groups as the core last listed them, about the whole app rather than one
+  /// window: kept so a window opened later starts with them.
+  @MainActor public private(set) static var messageGroups: [SidebarModel.MessageGroup] = []
+
   /// A window the core asked for (`ReopenWindow`).
   public struct WindowAsked: Equatable, Sendable {
     /// The window by name, or empty for the most recently closed one - unless `fresh`.
@@ -1541,6 +1545,15 @@ public enum Core {
         WindowAsked(
           name: reopen.name, show: reopen.show, fresh: reopen.fresh, any: reopen.any,
           daemon: reopen.daemon, tab: reopen.tab))
+    case .groupsChanged(let changed):
+      messageGroups = changed.groups.map {
+        SidebarModel.MessageGroup(
+          daemon: $0.daemonID, group: $0.group, unread: Int($0.unread), toYou: Int($0.toYou))
+      }
+      info("groups.received", ["count": String(messageGroups.count)])
+      for window in windows(for: event) {
+        window.apply(groups: messageGroups)
+      }
     case .shutWindow:
       // `muster window close`: closed as its close button closes it, so a window closing says
       // where it was and tells the core, whichever way it was asked.

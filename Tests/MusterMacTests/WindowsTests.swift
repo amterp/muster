@@ -239,6 +239,7 @@ private final class StandIn: ShellWindow {
   func apply(appearance: Core.Appearance) { applied.append("appearance") }
   func apply(bindings: [Core.Binding]) { applied.append("bindings") }
   func apply(problems: [Problem]) { applied.append("problems") }
+  func apply(groups: [SidebarModel.MessageGroup]) { applied.append("groups") }
   func hold(_ held: HeldPaste) { applied.append("paste") }
   func lists(_ pane: PaneKey) -> Bool { false }
   func raise() { applied.append("raise") }

@@ -37,6 +37,7 @@ pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
             .human
             .into_iter()
             .map(|notice| (notice.group.clone(), human(notice)))
+            .filter(|(_, notice)| notice.listed())
             .collect(),
     };
     (converted, unreadable)
@@ -87,7 +88,13 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
 
 /// What the daemon says waits for the human in one group (MIP-4, section 10).
 fn human(notice: proto::msg_answer::Notice) -> HumanNotice {
-    HumanNotice { last: notice.last, count: notice.count, to_you: notice.to_you, from: notice.from }
+    HumanNotice {
+        last: notice.last,
+        count: notice.count,
+        to_you: notice.to_you,
+        from: notice.from,
+        member: notice.member,
+    }
 }
 
 /// What a program says of its progress, or `None` once it takes it back.

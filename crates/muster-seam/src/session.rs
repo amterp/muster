@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
-use muster_core::attention::{Asker, Attend, Attention, GroupKey, Note, Noticed, Notifications};
+use muster_core::attention::{
+    Asker, Attend, Attention, GroupKey, HumanNotice, Note, Noticed, Notifications,
+};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
@@ -31,6 +33,7 @@ use muster_core::input::{Bindings, InputEvent, InputSink, PaneInput, PaneInputSe
 use muster_core::intent::{
     BackendChannel, BackendIntent, Grid, MoveDestination, Outcome, Refusal, Side,
 };
+use muster_core::message_groups::{self, MessageGroup};
 use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restored};
 use muster_core::names::Minter;
@@ -54,9 +57,10 @@ use muster_ssh::{Forward, Reverse, State as TunnelState, Tunnel, remote_environm
 use crate::bridge_link::{PaneLink, Reports};
 use crate::holding::Holding;
 use crate::proto::{
-    AskingChanged, AttentionChanged, ClipboardWrite, Event, Names, PaneTypeable, PasteHeld,
-    PresentationChanged, Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReattachPane,
-    ReopenWindow, Request, RosterChanged, ShutWindow, ViewChanged, event, problem, request,
+    AskingChanged, AttentionChanged, ClipboardWrite, Event, GroupsChanged,
+    MessageGroup as GroupMessage, Names, PaneTypeable, PasteHeld, PresentationChanged,
+    Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReattachPane, ReopenWindow, Request,
+    RosterChanged, ShutWindow, ViewChanged, event, problem, request,
 };
 use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
@@ -523,6 +527,43 @@ pub(crate) fn set_sidebar_width(window: WindowId, width: f64) {
         answer
     };
     announce_presentation(&name, presentation);
+}
+
+/// Tells the shell the human's groups on every daemon, if they changed since it was last told.
+fn announce_groups() {
+    let groups = {
+        let mut session = poison::lock(&SESSION, "session");
+        let held: Vec<(DaemonId, String, HumanNotice)> = session
+            .backends
+            .iter()
+            .flat_map(|(daemon, backend)| {
+                let mirror = poison::lock(&backend.mirror, "mirror");
+                let notices = mirror.human_notices();
+                notices
+                    .map(|(group, notice)| (daemon.clone(), group.clone(), notice.clone()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let groups = message_groups::listed(
+            held.iter().map(|(daemon, group, notice)| (daemon, group, notice)),
+        );
+        if groups == session.groups_sent {
+            return;
+        }
+        session.groups_sent.clone_from(&groups);
+        groups
+    };
+    ffi::emit(&Event::new(event::Payload::GroupsChanged(GroupsChanged {
+        groups: groups
+            .into_iter()
+            .map(|group| GroupMessage {
+                daemon_id: group.daemon.to_string(),
+                group: group.group,
+                unread: group.unread,
+                to_you: group.to_you,
+            })
+            .collect(),
+    })));
 }
 
 fn announce_problems() {
@@ -1182,6 +1223,9 @@ pub(crate) struct Session {
     /// Stamped here rather than in the mirror, which is a pure fold over what a daemon said -
     /// and a daemon's events carry no time.
     state_since: BTreeMap<PaneKey, i64>,
+
+    /// The human's groups as the shell was last told them, so it is told only of a change.
+    groups_sent: Vec<MessageGroup>,
 
     /// How big each pane's text is, for the panes somebody has sized.
     ///
@@ -6511,6 +6555,7 @@ fn report(daemon: &DaemonId, change: &Change) {
     }
     if let Change::HumanNoticed(group) = change {
         human_noticed(daemon, group);
+        announce_groups();
     }
 
     if let Some(pane) = change.announces_agent_state() {
@@ -6778,7 +6823,8 @@ fn human_noticed(daemon: &DaemonId, group: &str) {
         let notice = session.backends.get(daemon).and_then(|backend| {
             poison::lock(&backend.mirror, "mirror").human_notice(group).cloned()
         });
-        let looking = notice.is_some() && session.looking_at_transcript(&key);
+        let waiting = notice.as_ref().is_some_and(|notice| notice.count > 0);
+        let looking = waiting && session.looking_at_transcript(&key);
         if looking {
             session.read_as_human(&key);
         }

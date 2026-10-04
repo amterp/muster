@@ -3,8 +3,8 @@
 //! raises nothing (MIP-4, section 10).
 
 use muster::proto::{
-    AttentionChanged, Event, FocusAsking, OpenWindow, ReadWindow, Request, Response, Startup,
-    WindowFocus, event, request, response,
+    AttentionChanged, Event, FocusAsking, GroupsChanged, OpenWindow, ReadWindow, Request, Response,
+    Startup, WindowFocus, event, request, response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{self, Answer};
@@ -54,7 +54,7 @@ fn a_message_for_the_human_notifies_once_and_lands_on_its_transcript() {
         || asked_of("g").last().is_some_and(|last| last.state.is_empty()),
         || format!("the window asked {:?}", self::asked()),
     );
-    assert!(snapshot(&mut control).human.is_empty(), "the human has read it");
+    assert!(nothing_waits(&mut control), "the human has read it");
     assert_eq!(focus_asking(), muster::proto::Asking::default(), "something still asks");
 
     // Somebody reading the transcript is the human reading it: a message then asks nothing,
@@ -65,11 +65,63 @@ fn a_message_for_the_human_notifies_once_and_lands_on_its_transcript() {
     let mut watching = daemon.connect();
     until(
         "the window to read what it is showing",
-        || snapshot(&mut control).human.is_empty(),
+        || nothing_waits(&mut control),
         || format!("the daemon says {:?} waits", snapshot(&mut watching).human),
     );
     assert_eq!(asked_of("g").len(), before, "asked while looking: {:?}", self::asked());
     assert_eq!(keyboard_pane(), transcript, "the transcript was found again, not made again");
+}
+
+/// The sidebar's groups: every group the human is in, with what waits there, still listed once
+/// they have read it and gone once they leave (MIP-4, Decision 1b).
+#[test]
+fn the_humans_groups_are_listed_with_what_waits_in_each_until_they_leave() {
+    let _turn = muster::testing::fresh_session();
+    muster::ffi::muster_set_event_callback(Some(note));
+    GROUPS.lock().expect("a panicking test poisoned the log").take();
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    open_window(&daemon);
+    group_of_three(&mut control);
+    until_groups(&[("g", 0, 0)]);
+
+    post(&mut control, "a", "@human", "need input");
+    post(&mut control, "a", "@human", "and this");
+    until_groups(&[("g", 2, 2)]);
+
+    let opened = answer(request::Payload::OpenTranscript(muster::proto::OpenTranscript {
+        daemon_id: String::new(),
+        group: "g".to_string(),
+    }));
+    assert_ok(&opened);
+    until_groups(&[("g", 0, 0)]);
+
+    let leave = Asked::Leave(msg_request::Leave { group: Some("g".to_string()) });
+    expect(&mut control, msg(&the_human(), leave), daemon_proto::Outcome::Done);
+    until_groups(&[]);
+}
+
+/// Waits until the shell was last told exactly these groups, as (group, unread, to you).
+fn until_groups(wanted: &[(&str, u64, u64)]) {
+    let told = || -> Option<Vec<(String, u64, u64)>> {
+        GROUPS.lock().expect("a panicking test poisoned the log").as_ref().map(|told| {
+            told.groups
+                .iter()
+                .map(|group| (group.group.clone(), group.unread, group.to_you))
+                .collect()
+        })
+    };
+    let wanted: Vec<(String, u64, u64)> = wanted
+        .iter()
+        .map(|(group, unread, to_you)| (group.to_string(), *unread, *to_you))
+        .collect();
+    until(
+        "the shell to be told the human's groups",
+        || told().as_ref() == Some(&wanted),
+        || format!("it was last told {:?}", told()),
+    );
 }
 
 /// Messages for the human wait while no window is open, and notify when one opens.
@@ -234,6 +286,12 @@ fn reached(posted: &daemon_proto::MsgAnswer) -> Vec<(String, msg_answer::Reach)>
     }
 }
 
+/// Whether the daemon says nothing waits for the human in any group: the groups they are in are
+/// still listed, each at 0.
+fn nothing_waits(control: &mut Control) -> bool {
+    snapshot(control).human.iter().all(|notice| notice.count == 0)
+}
+
 /// What the pane runs, as its daemon has it.
 fn command_of(control: &mut Control, pane: &str) -> String {
     let snapshot = snapshot(control);
@@ -290,12 +348,21 @@ fn asked_of(group: &str) -> Vec<AttentionChanged> {
 
 static ASKED: Mutex<Vec<AttentionChanged>> = Mutex::new(Vec::new());
 
+/// What the shell was last told of the human's groups.
+static GROUPS: Mutex<Option<GroupsChanged>> = Mutex::new(None);
+
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
     let event = Event::decode(bytes).expect("the core emits events this build can decode");
-    if let Some(event::Payload::AttentionChanged(asked)) = event.payload {
-        ASKED.lock().expect("a panicking test poisoned the log").push(asked);
+    match event.payload {
+        Some(event::Payload::AttentionChanged(asked)) => {
+            ASKED.lock().expect("a panicking test poisoned the log").push(asked);
+        }
+        Some(event::Payload::GroupsChanged(groups)) => {
+            *GROUPS.lock().expect("a panicking test poisoned the log") = Some(groups);
+        }
+        _ => {}
     }
 }

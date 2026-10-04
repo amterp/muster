@@ -103,6 +103,18 @@ pub struct HumanNotice {
     pub count: u64,
     pub to_you: u64,
     pub from: Vec<String>,
+    /// Whether the human is in the group: one they read to the end is still theirs, one they
+    /// left is not.
+    pub member: bool,
+}
+
+impl HumanNotice {
+    /// Whether a window keeps the group listed: the human is in it, or something in it waits
+    /// for them - which a daemon too old to say `member` still says.
+    #[must_use]
+    pub fn listed(&self) -> bool {
+        self.member || self.count > 0
+    }
 }
 
 /// What a program's notification said (OSC 9 or OSC 777).

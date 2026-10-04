@@ -234,6 +234,11 @@ public final class MusterWindow: NSObject {
     sidebar.onMachinePicked = { [weak self] daemon in
       self?.speaking { Core.createTab(daemonID: daemon) }
     }
+    // The same request a message's notification and `muster msg open` send.
+    sidebar.onGroupPicked = { [weak self] daemon, group in
+      self?.speaking { Core.openTranscript(daemonID: daemon, group: group) }
+    }
+    sidebar.groups = Core.messageGroups
     sidebar.onPaneArranged = { [weak self] pane, onto in
       self?.speaking { Core.arrange(pane: pane, onto: onto) }
     }
@@ -719,6 +724,12 @@ public final class MusterWindow: NSObject {
   /// Both, because the roster is the only one that can carry a sentence and it is not always on
   /// screen. A window narrowed below the width a list needs would otherwise report a broken
   /// config exactly the way Muster used to: not at all.
+  /// The human's groups, which the list draws under its tabs.
+  public func apply(groups: [SidebarModel.MessageGroup]) {
+    sidebar.groups = groups
+    sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
+  }
+
   public func apply(problems: [Problem]) {
     outstanding = problems
     sidebar.apply(problems: problems)
@@ -1065,7 +1076,7 @@ extension MusterWindow {
       return ContextMenus.tab(
         row.tab, firstPane: first, machines: speaking { Core.machines() }.map(\.daemon),
         window: name, rename: { [weak self] in self?.rename(tab: $0) })
-    case .machine:
+    case .machine, .messages, .group:
       return nil
     }
   }

@@ -1532,6 +1532,60 @@
           "humanNoticed:g3"
         ]
       }
+    },
+    {
+      "name": "a group the human read stays listed with nothing waiting, and one they left does not",
+      "why": "The sidebar lists the human's groups, not only those with something unread (MIP-4, Decision 1b), and a count of 0 is the same word whether they read a group or left it. A daemon says which with `member`; one too old to say it leaves it false, and its groups are listed while something in them waits.",
+      "given": {
+        "snapshot": {
+          "human": {
+            "g1": {
+              "last": 4,
+              "count": 1,
+              "to_you": 1,
+              "from": [
+                "a"
+              ],
+              "member": true
+            },
+            "g2": {
+              "last": 3,
+              "count": 0,
+              "member": true
+            }
+          }
+        },
+        "events": [
+          {
+            "kind": "humanNotice",
+            "group": "g1",
+            "count": 0,
+            "member": true
+          },
+          {
+            "kind": "humanNotice",
+            "group": "g2",
+            "count": 0,
+            "member": false
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "paneTabs": {},
+        "agentStates": {},
+        "layouts": {},
+        "health": "connected",
+        "restoring": false,
+        "human": {
+          "g1": "x0 last #0 from "
+        },
+        "changes": [
+          "humanNoticed:g1",
+          "humanNoticed:g2"
+        ]
+      }
     }
   ]
 }

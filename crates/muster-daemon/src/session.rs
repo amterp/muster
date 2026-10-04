@@ -1090,7 +1090,7 @@ impl Session {
             human: self
                 .human
                 .values()
-                .filter(|(_, notice)| notice.count > 0)
+                .filter(|(_, notice)| notice.count > 0 || notice.member)
                 .map(|(_, notice)| notice.clone())
                 .collect(),
         }
@@ -1118,7 +1118,9 @@ impl Session {
             let told = self.human.get(&notice.group);
             let unchanged = match told {
                 Some((at, told)) => *at > order || *told == notice,
-                None => notice.count == 0,
+                // A group the human just joined is news with nothing waiting in it; one they
+                // were never heard of in is not.
+                None => notice.count == 0 && !notice.member,
             };
             if unchanged {
                 continue;

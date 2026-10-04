@@ -2205,7 +2205,7 @@ impl<S: Store> Messaging<S> {
     /// a change other than a message or a read that can move it, since a policy decides which
     /// messages ring the human (MIP-4, sections 8 and 10).
     pub fn human_notice(&self, group: &str) -> Notice {
-        let member = self.groups.get(group).is_some_and(|kept| kept.members.contains(HUMAN));
+        let member = self.human_is_in(group);
         member.then(|| self.notice(HUMAN, group)).flatten().unwrap_or_else(|| Notice {
             group: group.to_string(),
             first: 0,
@@ -2218,14 +2218,28 @@ impl<S: Store> Messaging<S> {
         })
     }
 
-    /// What waits for the human in each group it is in, for a host that is starting to tell
-    /// the windows (MIP-4, section 10).
+    /// What waits for the human in each group it is in, a count of 0 where nothing does, for a
+    /// host that is starting to tell the windows (MIP-4, section 10).
     pub fn human_notices(&self) -> Vec<Notice> {
         self.groups
             .iter()
             .filter(|(_, group)| group.members.contains(HUMAN))
-            .filter_map(|(name, _)| self.notice(HUMAN, name))
+            .map(|(name, _)| self.human_notice(name))
             .collect()
+    }
+
+    /// The groups this machine's human is in.
+    pub fn human_groups(&self) -> BTreeSet<String> {
+        self.groups
+            .iter()
+            .filter(|(_, group)| group.members.contains(HUMAN))
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// Whether this machine's human is in `group`.
+    pub fn human_is_in(&self, group: &str) -> bool {
+        self.groups.get(group).is_some_and(|kept| kept.members.contains(HUMAN))
     }
 
     /// A wake for every group an agent in a pane was woken for and has not read: what a host

@@ -230,6 +230,7 @@ fn messaged(run: &mut Run, event: &Value, message: &Value) -> Result<(), CaseErr
             .flatten()
             .filter_map(|from| from.as_str().map(str::to_string))
             .collect(),
+        member: message.get("member").and_then(Value::as_bool).unwrap_or_default(),
     };
     let looking = event.get("looking").and_then(Value::as_bool).unwrap_or_default();
     match run.attention.messaged(&group, Some(notice), looking) {

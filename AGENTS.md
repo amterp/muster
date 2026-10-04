@@ -20,10 +20,10 @@ that takes you to the pane that asked, a second daemon on an SSH machine in the 
 laptop pane beside a devenv pane - several windows that each hold their own tabs and hand them to each other, a newer
 Muster taking over an older daemon's panes with their agents still running, agents posting messages to each other and
 being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to
-both, a message for you raising a notification that opens the conversation, and compacting an agent's context when
-asked or once it is full enough. Not built, and worth knowing before you install rather than after: a pane sits beside
-another machine's panes only as that machine's part of the tab, to their left or right - a laptop pane cannot go above
-a devenv one.
+both, a message for you raising a notification that opens the conversation, the groups you are in listed in the
+sidebar with what is unread in each, and compacting an agent's context when asked or once it is full enough. Not
+built, and worth knowing before you install rather than after: a pane sits beside another machine's panes only as
+that machine's part of the tab, to their left or right - a laptop pane cannot go above a devenv one.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.

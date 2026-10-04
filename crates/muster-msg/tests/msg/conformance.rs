@@ -383,9 +383,11 @@ fn attend(sessions: &Sessions, attending: bool) -> String {
     if attending { "attended" } else { "unattended" }.to_string()
 }
 
-/// What the windows would be told waits for the human.
+/// What the windows would be told waits for the human: the groups where anything does, of
+/// those the human is in.
 fn waits_for_the_human(service: &Messaging<Memory>) -> String {
-    let notices = service.human_notices();
+    let mut notices = service.human_notices();
+    notices.retain(|notice| notice.count > 0);
     if notices.is_empty() {
         return "nothing waits for @human".to_string();
     }
