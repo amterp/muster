@@ -6218,16 +6218,6 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
     })));
 }
 
-/// Whether this window is the one to tell somebody a pane needs them.
-///
-/// A window speaks for its own tabs. Another open window speaks for its own, so two windows never
-/// post one agent twice. A closed window cannot speak at all, and its agents are still running -
-/// so the open window that came to the front most recently speaks for it, and clicking what it
-/// posts reopens that window onto the tab (kan a_2Mhi0EZlv). A tab nobody holds yet is the same
-/// case: every window hears its agents, and only the one in front says so.
-///
-/// Asked only when a pane starts asking for somebody, which is rare next to everything else a
-/// window hears - so dialing the other windows here costs nothing anybody will notice.
 /// What waits for the human in a group moved: a message arrived for them, or they read it
 /// (MIP-4, section 10). Somebody already reading the group's transcript is the human reading
 /// it, so the daemon is told that instead of anybody being interrupted.

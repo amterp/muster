@@ -1128,19 +1128,18 @@ message FocusTab {
 // Puts the keyboard on the pane asking for somebody that is most urgent: blocked before a
 // program's notification before done, and within each, the one that has asked longest.
 //
-// Like a banner click, it surfaces the pane's tab, and it reaches the panes a banner from this
-// window would: its own tabs and a closed window's, not another open window's. Landing there
-// is looking at the pane only while the window has the OS's focus, which takes back what it
-// asked, so pressing again goes to the next one; asked from behind another app, it lands on
-// the same pane again.
+// Like a banner click, it surfaces the pane's tab in whichever window holds it: another open
+// window is brought forward, and a closed one is asked back onto the pane. Landing there is
+// looking at the pane only while Muster has the OS's focus, which takes back what it asked, so
+// pressing again goes to the next one; asked from behind another app, it lands on the same pane
+// again.
 message FocusAsking {}
 
 // What a FocusAsking would go to now, answered with an Asking and moving nothing.
 //
 // For a menu item that greys itself out while nothing asks. Asked as the menu opens or its chord
-// is pressed rather than carried in the view, because deciding needs to know whether other
-// windows are open, and asking that on every publish would be work per event for an answer read
-// a few times a day.
+// is pressed rather than carried in the view, because working it out on every publish would be
+// work per event for an answer read a few times a day.
 message ReadAsking {}
 
 // Where a FocusAsking went, or would go for a ReadAsking: all empty when nothing was asking,

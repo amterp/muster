@@ -251,9 +251,9 @@ not a press of `cmd+1` to `cmd+9`, whose meaning depends on the press before it.
 first. It prints the pane it went to, and nothing when nothing is asking, which still exits 0.
 A recognized agent's own notifications are its state asking twice, so they do not count.
 
-It reaches the panes this window would post a notification for: its own tabs, and those of a
-window that is closed. A pane in another open window is that window's to go to, from there.
-Going to a pane counts as looking at it only while the window is in front, so run it again for
+It reaches a pane in any window: one in another open window brings that window forward, and one
+in a closed window's tab opens that window again onto it, as clicking the pane's notification
+does. Going to a pane counts as looking at it only while Muster is in front, so run it again for
 the next one there; with another app in front, it goes back to the same pane.
 
 `--back` goes to the pane the keyboard was on before and `--forward` goes again, through the same

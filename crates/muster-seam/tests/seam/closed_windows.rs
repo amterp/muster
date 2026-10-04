@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use muster::proto::{
-    AttentionChanged, CloseTab, CreateTab, Event, FocusTab, MoveTab, OpenWindow, ReadWindow,
-    ReopenWindow, Request, Response, Startup, event, request, response,
+    AttentionChanged, CloseTab, CreateTab, Event, FocusAsking, FocusTab, MoveTab, OpenWindow,
+    ReadWindow, ReopenWindow, Request, Response, Startup, event, request, response,
 };
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, Holders, WindowName};
@@ -165,6 +165,38 @@ fn a_closed_windows_blocked_agent_is_announced() {
         },
         || format!("the window says {:?}", state_of(&pane)),
     );
+}
+
+/// Going to the agent asking for somebody reaches one in a closed window's tab, by asking for that
+/// window back onto its pane, as clicking its notification does.
+#[test]
+fn going_to_an_agent_asking_in_a_closed_window_reopens_that_window() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_detecting();
+    let ours = open_beside_closed(&daemon, "window-1", "window-8");
+    let closed = a_second_tab_given_to(&ours, "window-8");
+    let pane = pane_of(&closed);
+    daemon.run_agent(&pane);
+    daemon.set_agent_state(&pane, AgentState::Blocked);
+    until(
+        "the window to see the agent in the closed window's tab blocked",
+        || state_of(&pane).as_deref() == Some("blocked"),
+        || format!("the window says {:?}", state_of(&pane)),
+    );
+    REOPENED.lock().expect("a panicking test poisoned the log").clear();
+
+    let answer = ask(&ours, request::Payload::FocusAsking(FocusAsking {}));
+    match answer.payload {
+        Some(response::Payload::Asking(asking)) => assert_eq!(asking.pane_id, pane),
+        other => panic!("going to the agent asking answered {other:?}"),
+    }
+    let reopened = REOPENED.lock().expect("a panicking test poisoned the log").clone();
+    assert_eq!(
+        reopened.iter().map(|asked| (asked.name.as_str(), asked.show.as_str())).collect::<Vec<_>>(),
+        vec![("window-8", pane.as_str())],
+        "going to the agent asking did not ask for its window back onto it"
+    );
+    assert!(!listed().contains(&closed), "the closed window's tab was brought here instead");
 }
 
 /// A window opened to show something shows it.

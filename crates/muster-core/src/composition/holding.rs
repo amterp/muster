@@ -231,9 +231,7 @@ impl Holders {
 
     /// The open window following this machine that came to the front most recently.
     ///
-    /// Who a tab nobody holds joins, and who speaks for a tab no open window holds: a blocked
-    /// agent there is announced by the window somebody is most likely looking at, and by that
-    /// one only, so two open windows do not both post it.
+    /// Who a tab nobody holds joins: the window somebody is most likely looking at.
     pub fn in_front(
         &self,
         daemon: &DaemonId,
