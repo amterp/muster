@@ -1207,6 +1207,15 @@ fn a_window_asked_for_onto_a_tab_takes_it() {
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     let daemon = Daemon::start_built();
     let (first, second) = two_windows(&daemon);
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::CreateTab(CreateTab { take_focus: true, ..CreateTab::default() }),
+    )));
+    until(
+        "the first window to hold a second tab",
+        || listed("window-1").len() == 2,
+        || format!("window-1 lists {:?}", listed("window-1")),
+    );
 
     assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow {
         state_path: arrangement(&daemon, "window-3").to_string_lossy().into_owned(),
@@ -1221,7 +1230,36 @@ fn a_window_asked_for_onto_a_tab_takes_it() {
     );
     assert_eq!(listed("window-3"), vec![first.clone()], "it made a tab of its own as well");
     assert!(!listed("window-1").contains(&first), "the tab stayed in the window it left");
+    assert_eq!(listed("window-1").len(), 1, "the window it left lost more than that tab");
     assert_eq!(listed("window-2"), vec![second]);
+}
+
+/// A window's only tab is not taken for a new window: the window it left would show nothing, and
+/// the tab is in a window of its own already.
+#[test]
+fn a_window_onto_another_windows_only_tab_is_refused() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, _) = two_windows(&daemon);
+
+    let answered = answer(&Request::new(request::Payload::AskForWindow(AskForWindow {
+        install: muster_daemon_proto::install::INSTALL.to_string(),
+        fresh: true,
+        tab: first.clone(),
+        ..AskForWindow::default()
+    })));
+
+    match answered.payload {
+        Some(response::Payload::Failure(failure)) => assert!(
+            failure.reason.contains("only tab") && failure.reason.contains("window-1"),
+            "the refusal does not say why: {}",
+            failure.reason
+        ),
+        other => panic!("a window was asked for onto another window's only tab: {other:?}"),
+    }
+    assert!(asked_for().is_empty(), "the shell was asked for a window");
+    assert_eq!(listed("window-1"), vec![first]);
 }
 
 /// A machine or a tab the app has not got is refused before the shell is asked for a window.

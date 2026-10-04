@@ -3725,6 +3725,19 @@ pub(crate) fn cannot_open_onto(daemon: &str, tab: &str) -> Option<String> {
              `muster window` lists the tabs there are."
         ));
     }
+    if !tab.is_empty() {
+        let session = poison::lock(&SESSION, "session");
+        let holder = session.window_holding(&TabId::new(tab));
+        if let Some(holder) = holder
+            && session.windows[holder].composition.tabs().count() == 1
+        {
+            let name = session.windows[holder].name.to_string();
+            return Some(format!(
+                "{tab} is the only tab {name} holds, so no window was opened: taking it would \
+                 leave {name} showing nothing. It is already in a window of its own."
+            ));
+        }
+    }
     None
 }
 

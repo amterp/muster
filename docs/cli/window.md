@@ -115,7 +115,8 @@ another window's, so it asks the first machine the config names for a new tab. `
 that machine instead, by its id as `daemons[]` names it; one still attaching opens the window
 empty, and its tab arrives when the machine answers. `--tab TAB` opens the window onto that tab,
 which moves out of whichever window held it, open or closed, and no new tab is made. A machine or
-a tab the app has not got is refused. With no app running, Muster is started as a plain launch
+a tab the app has not got is refused, and so is an open window's only tab, which would leave that
+window showing nothing. With no app running, Muster is started as a plain launch
 would start it, reopening its windows, and then asked.
 
 `muster window close NAME` closes a window as its close button does: it keeps its tabs, its agents
