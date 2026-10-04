@@ -16,7 +16,7 @@ use muster::proto::{
     WindowFocus, event, request, response, view_node,
 };
 use muster_core::composition::holding::from_toml;
-use muster_daemon_proto::AgentState;
+use muster_daemon_proto::{self as daemon_proto, AgentState, session_request};
 use muster_harness::requests::{create, in_new_tab, make};
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -1043,6 +1043,57 @@ fn a_window_asked_for_on_a_machine_opens_its_first_tab_there() {
         || machine_showing_in("window-2").as_deref() == Some(other),
         || format!("window-2 shows a tab on {:?}", machine_showing_in("window-2")),
     );
+}
+
+/// A window with nothing to show starts on the first machine the config names, waited for while
+/// it attaches, rather than on whichever answered first.
+#[test]
+fn a_first_window_starts_on_the_machine_the_config_names_first() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let (first, second) = (Daemon::start_built(), Daemon::start_built());
+    let slow = first.delaying_answers_where(subscribes, std::time::Duration::from_millis(800));
+    let config = first.root().join("two-machines.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "[[daemon]]\nid = \"second-named\"\nsocket = {:?}\n\n[[daemon]]\nid = \"a-first\"\n\
+             socket = {:?}\n",
+            slow.socket_path().to_string_lossy(),
+            second.socket_path().to_string_lossy()
+        ),
+    )
+    .expect("the harness root is writable");
+    forget_events();
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(&Request::new(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: arrangement(&first, "window-1").to_string_lossy().into_owned(),
+        tab_holders_path: record(&first).to_string_lossy().into_owned(),
+        ..Startup::default()
+    }))));
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow::default()))));
+
+    until(
+        "the window to open onto a tab",
+        || machine_showing_in("window-1").is_some(),
+        || format!("views arrived for {:?}", shown_windows()),
+    );
+    assert_eq!(
+        machine_showing_in("window-1").as_deref(),
+        Some("second-named"),
+        "the window started on the machine that answered first, not the one the config names first"
+    );
+}
+
+/// The window's subscribe, whose answer carries the daemon's state.
+fn subscribes(request: &daemon_proto::Request) -> bool {
+    matches!(
+        &request.service,
+        Some(daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
+            request: Some(session_request::Request::Subscribe(_)),
+        }))
+    )
 }
 
 /// `muster window new --tab` opens a window onto a tab another window holds, which moves into it,

@@ -5350,8 +5350,8 @@ pub(crate) fn described(daemon: &Daemon) -> String {
 ///
 /// The one rule that makes a window out of nothing, and the only one left: a window is not a
 /// window if it is showing nothing, so something has to fill it. It picks the first local
-/// machine, because a remote one is somebody else's and choosing it uninvited is a bigger claim
-/// than filling a window.
+/// machine the config names, waiting for it while it attaches, because a remote one is somebody
+/// else's and choosing it uninvited is a bigger claim than filling a window.
 ///
 /// **Once per launch, per machine, and never again.** Nothing takes a machine back out of
 /// `tabs_asked_of`, so a machine whose panes all close later stays empty - which is the
@@ -5373,7 +5373,8 @@ fn open_a_tab_if_the_window_is_empty(window: WindowId) {
     }
 
     let asked_for = poison::lock(&SESSION, "session").windows[window].first_tab_on.clone();
-    let Some(daemon) = asked_for.or_else(|| first_local_daemon(window)).filter(has_spoken) else {
+    let Some(daemon) = asked_for.or_else(|| local_daemon_to_fill_from(window)).filter(has_spoken)
+    else {
         log::info(
             "window.empty",
             fields! {
@@ -5460,14 +5461,58 @@ fn has_spoken(daemon: &DaemonId) -> bool {
     })
 }
 
-/// The first attached daemon on this machine, in the order the config named them.
+/// The first attached daemon on this machine, in the order the config named them, then any the
+/// config does not name - the `local` Muster finds for itself.
 pub(crate) fn first_local_daemon(window: WindowId) -> Option<DaemonId> {
-    let session = poison::lock(&SESSION, "session");
-    session.windows[window]
-        .composition
-        .daemons()
-        .find(|daemon| matches!(daemon.endpoint, Endpoint::Local { .. }))
+    local_daemons_in_order(window)
+        .into_iter()
+        .find_map(|(daemon, attached)| attached.then_some(daemon))
+}
+
+/// The daemon on this machine a window with nothing to show asks for its first tab: the first the
+/// config names, waited for while it is still attaching, so which machine a window starts on does
+/// not depend on which answered first. `None` while it waits; a daemon that failed to attach is
+/// passed over.
+fn local_daemon_to_fill_from(window: WindowId) -> Option<DaemonId> {
+    for (daemon, attached) in local_daemons_in_order(window) {
+        if attached {
+            return Some(daemon);
+        }
+        if is_attaching(&daemon) {
+            return None;
+        }
+    }
+    None
+}
+
+/// The daemons on this machine, configured ones first in the config's order, each with whether
+/// this window is attached to it.
+fn local_daemons_in_order(window: WindowId) -> Vec<(DaemonId, bool)> {
+    let configured: Vec<DaemonId> = poison::lock(&CONFIGURED_DAEMONS, "settings")
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .filter(|daemon| matches!(daemon.endpoint, Endpoint::Local { .. }))
         .map(|daemon| daemon.id.clone())
+        .collect();
+    let attached: Vec<DaemonId> = {
+        let session = poison::lock(&SESSION, "session");
+        session.windows[window]
+            .composition
+            .daemons()
+            .filter(|daemon| matches!(daemon.endpoint, Endpoint::Local { .. }))
+            .map(|daemon| daemon.id.clone())
+            .collect()
+    };
+    let mut ordered: Vec<(DaemonId, bool)> =
+        configured.iter().map(|daemon| (daemon.clone(), attached.contains(daemon))).collect();
+    ordered.extend(
+        attached
+            .into_iter()
+            .filter(|daemon| !configured.contains(daemon))
+            .map(|daemon| (daemon, true)),
+    );
+    ordered
 }
 
 /// The first daemon this window is attached to at all, local or not.
