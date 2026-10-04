@@ -210,13 +210,54 @@ enum Failed {
 }
 use Failed::{Sent, Unsent};
 
+/// A hang-up before the app said anything counts as unsent. The app answers every request it
+/// reads (`command.rs`), so one that hung up without a byte never read it: it quit with the
+/// connection still in its backlog, or died while answering, and either way its lock comes back
+/// to this launch. A write the app stopped reading half way is the same. A timeout is not: an
+/// app slow to answer may still act.
 fn exchange(socket: &str, request: &Request) -> Result<Response, Failed> {
     let mut stream = UnixStream::connect(socket).map_err(|error| Unsent(error.to_string()))?;
     let _ = stream.set_read_timeout(Some(PATIENCE));
     let _ = stream.set_write_timeout(Some(PATIENCE));
-    write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| Sent(error.to_string()))?;
-    let reply = read_frame(&mut stream, LARGEST_MESSAGE).map_err(Sent)?;
+    write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| {
+        if hung_up(error.kind()) { Unsent(error.to_string()) } else { Sent(error.to_string()) }
+    })?;
+    let mut reading = Reading { stream, read: 0, failed: None };
+    let reply = read_frame(&mut reading, LARGEST_MESSAGE).map_err(|failure| {
+        let silent = reading.read == 0 && reading.failed.is_none_or(hung_up);
+        if silent { Unsent(failure) } else { Sent(failure) }
+    })?;
     Response::decode(reply.as_slice()).map_err(|error| Sent(error.to_string()))
+}
+
+/// The ways a peer that closed its end shows up. macOS reports a closed unix socket as any of
+/// the three, depending on whether the app had read anything and how far the write got.
+fn hung_up(kind: std::io::ErrorKind) -> bool {
+    use std::io::ErrorKind::{BrokenPipe, ConnectionReset, NotConnected};
+    matches!(kind, BrokenPipe | ConnectionReset | NotConnected)
+}
+
+/// The reply's stream, counting what arrived and keeping why it stopped, which is how a hang-up
+/// before any answer is told from one part way through, or from a timeout.
+struct Reading {
+    stream: UnixStream,
+    read: usize,
+    failed: Option<std::io::ErrorKind>,
+}
+
+impl Read for Reading {
+    fn read(&mut self, into: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.stream.read(into);
+        match &read {
+            Ok(count) => self.read += count,
+            // `read_frame` reads again after an interruption, so that is not why it stopped.
+            Err(error) if error.kind() != std::io::ErrorKind::Interrupted => {
+                self.failed = Some(error.kind());
+            }
+            Err(_) => {}
+        }
+        read
+    }
 }
 
 /// Moves what every install kept in one place into the release's own state directory, once.
@@ -419,8 +460,9 @@ mod tests {
         assert!(refused.contains("app-i1.lock") && refused.contains("did not answer"), "{refused}");
     }
 
-    /// An app that took the request and did not answer may have acted on it, so the launch says
-    /// so rather than asking again - which could open a second window.
+    /// An app that took the request and is slow to answer may act on it yet, so the launch says
+    /// so rather than asking again - which could open a second window. Costs `PATIENCE`, the
+    /// read timeout this is about.
     #[test]
     fn a_request_taken_and_not_answered_is_not_sent_again() {
         let home = home();
@@ -430,11 +472,14 @@ mod tests {
         let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counting = std::sync::Arc::clone(&asked);
         std::thread::spawn(move || {
+            // Held open, unanswered: a hang-up would be an app that never read the request.
+            let mut taken = Vec::new();
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { return };
                 if read_frame(&mut stream, LARGEST_MESSAGE).is_ok() {
                     counting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 }
+                taken.push(stream);
             }
         });
 
