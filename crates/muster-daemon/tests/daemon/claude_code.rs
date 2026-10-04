@@ -80,8 +80,16 @@ fn the_statusline_says_what_the_session_is_called_and_when_it_has_no_name() {
     let scratch = Scratch::new("statusline-name");
     let said = scratch.0.join("said");
     let daemon = scratch.0.join("daemon");
-    std::fs::write(&daemon, format!("#!/bin/sh\nprintf '[%s]' \"$@\" > '{}'\n", said.display()))
-        .unwrap();
+    // Written aside and moved into place: a test waits for the file to appear, and a redirect
+    // makes it before printf fills it.
+    std::fs::write(
+        &daemon,
+        format!(
+            "#!/bin/sh\nprintf '[%s]' \"$@\" > '{0}.part' && mv '{0}.part' '{0}'\n",
+            said.display()
+        ),
+    )
+    .unwrap();
     std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
     let run = |status: &str| {
         let _ = std::fs::remove_file(&said);

@@ -102,9 +102,14 @@ fn reported_in(shell: &str, command: &str, scratch: &Scratch) -> String {
     let arguments = scratch.0.join("arguments");
     let _ = std::fs::remove_file(&arguments);
     let daemon = scratch.0.join("daemon");
+    // Written aside and moved into place: a test waits for the file to appear, and a redirect
+    // makes it before printf fills it.
     std::fs::write(
         &daemon,
-        format!("#!/bin/sh\nprintf '[%s]' \"$@\" > '{}'\n", arguments.display()),
+        format!(
+            "#!/bin/sh\nprintf '[%s]' \"$@\" > '{0}.part' && mv '{0}.part' '{0}'\n",
+            arguments.display()
+        ),
     )
     .unwrap();
     std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -197,9 +202,14 @@ fn codexs_hooks_report_its_context_from_its_transcripts_last_token_count() {
     let scratch = Scratch::new("codex-context");
     let arguments = scratch.0.join("arguments");
     let daemon = scratch.0.join("daemon");
+    // Written aside and moved into place: a test waits for the file to appear, and a redirect
+    // makes it before printf fills it.
     std::fs::write(
         &daemon,
-        format!("#!/bin/sh\nprintf '[%s]' \"$@\" > '{}'\n", arguments.display()),
+        format!(
+            "#!/bin/sh\nprintf '[%s]' \"$@\" > '{0}.part' && mv '{0}.part' '{0}'\n",
+            arguments.display()
+        ),
     )
     .unwrap();
     std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
