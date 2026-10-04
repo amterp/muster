@@ -1586,6 +1586,313 @@
           "humanNoticed:g2"
         ]
       }
+    },
+    {
+      "name": "a new run that brought every pane back from its file says each was started again",
+      "why": "Every check on the connection passes after a daemon restarts: it answers and its tabs come back. What does not come back is every process in them, and only the mirror knows what was there, so a snapshot from a different run, restored from the file, is reported with what it cost - including the agent that was running in p1.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2,
+          "restoredFromFile": true,
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "unknown",
+              "cwd": "/src/api"
+            },
+            {
+              "id": "p2",
+              "agentState": "unknown",
+              "cwd": "/src/web"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "panes": [
+          "p1",
+          "p2"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1",
+          "p2": "t1"
+        },
+        "agentStates": {
+          "p1": "unknown",
+          "p2": "unknown"
+        },
+        "layouts": {
+          "t1": "columns(p1, p2@0.5)"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "agentStateChanged:p1:idle->unknown",
+          "paneRelabelled:p1",
+          "agentStateChanged:p2:idle->unknown",
+          "restarted:again=2:lost=[]:agents=[p1]"
+        ]
+      }
+    },
+    {
+      "name": "a new run that took the panes over running reports nothing",
+      "why": "A handover starts a new daemon run with every process still running, so a new instance alone is not a restart. Only a run that brought its panes back from its file started them again.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2,
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "panes": [
+          "p1",
+          "p2"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1",
+          "p2": "t1"
+        },
+        "agentStates": {
+          "p1": "idle",
+          "p2": "idle"
+        },
+        "layouts": {
+          "t1": "columns(p1, p2@0.5)"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": []
+      }
+    },
+    {
+      "name": "a new run with nothing saved reports every pane lost",
+      "why": "A daemon that could not read what it saved starts empty, and rendering that as though somebody closed everything is the worst available answer. The mirror is the only thing left that knows what was there.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2
+        }
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "layouts": {},
+        "agentStates": {},
+        "paneTabs": {},
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "tabRemoved:t1",
+          "paneRemoved:p1",
+          "paneRemoved:p2",
+          "restarted:again=0:lost=[p1,p2]:agents=[p1]"
+        ]
+      }
+    },
+    {
+      "name": "a new run still restoring is judged once it says it has finished",
+      "why": "A snapshot taken mid-restore holds only the panes back so far, so judging it then would call the rest lost. The mirror waits for the run to say it has finished; p2 did not come back.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p2"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src/api",
+              "agent": "claude"
+            },
+            {
+              "id": "p2",
+              "agentState": "idle",
+              "cwd": "/src/web"
+            }
+          ],
+          "instance": 1
+        },
+        "resnapshot": {
+          "instance": 2,
+          "restoring": true,
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "unknown",
+              "cwd": "/src/api"
+            }
+          ]
+        },
+        "afterEvents": [
+          {
+            "kind": "restored",
+            "lostPanes": [
+              "p2"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "p1"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1"
+        },
+        "agentStates": {
+          "p1": "unknown"
+        },
+        "layouts": {
+          "t1": "p1"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "agentStateChanged:p1:idle->unknown",
+          "paneRelabelled:p1",
+          "paneRemoved:p2",
+          "layoutChanged:t1",
+          "restored:lost=[p2]:saving=on",
+          "restarted:again=1:lost=[p2]:agents=[p1]"
+        ]
+      }
     }
   ]
 }

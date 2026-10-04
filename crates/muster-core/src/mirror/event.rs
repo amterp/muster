@@ -119,6 +119,9 @@ pub enum Change {
     /// The daemon finished restoring. A daemon still restoring is not an empty one, so
     /// nothing asks it for a first tab until this arrives.
     Restored(Restored),
+    /// The daemon answering is a different run from the one the mirror held, and some of what
+    /// it held did not carry on: its processes were started again, or it did not come back.
+    Restarted(crate::mirror::restart::Restart),
     /// A paste is waiting for somebody to confirm it. Passed through rather than held: the
     /// mirror is what the daemon holds, and this is a question for whoever is looking.
     PasteHeld {
@@ -164,6 +167,7 @@ impl Change {
             Change::TabRemoved(_) => "tab_removed",
             Change::LayoutChanged(_) => "layout_changed",
             Change::Restored(_) => "restored",
+            Change::Restarted(_) => "restarted",
             Change::PasteHeld { .. } => "paste_held",
             Change::ClipboardWrite { .. } => "clipboard_write",
             Change::Rang(_) => "rang",

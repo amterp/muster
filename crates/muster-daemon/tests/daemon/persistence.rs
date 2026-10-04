@@ -212,11 +212,13 @@ fn a_crash_keeps_what_was_written_shortly_before_it() {
     let mut daemon = daemon();
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
+    assert!(!snapshot(&mut control).restored_from_file, "p1 was made by this run");
     until_saved(&daemon, "\"p1\"");
     daemon.kill();
     daemon.restart();
     let mut control = daemon.connect();
-    until_restored(&mut control, 1);
+    let after = until_restored(&mut control, 1);
+    assert!(after.restored_from_file, "a window has to learn p1's processes are new");
 }
 
 #[test]
@@ -259,7 +261,9 @@ fn a_damaged_file_is_moved_aside_and_the_daemon_starts_empty() {
 
     daemon.restart();
     let mut control = daemon.connect();
-    assert!(snapshot(&mut control).tabs.is_empty());
+    let started = snapshot(&mut control);
+    assert!(started.tabs.is_empty());
+    assert!(!started.restored_from_file, "nothing came back from a file it could not read");
     let aside = moved_aside(daemon.root()).expect("the damaged file was kept");
     assert_eq!(bytes_in(&aside), damaged);
     assert!(written(&daemon.root().join("daemon.log")).contains("daemon.state.corrupt"));

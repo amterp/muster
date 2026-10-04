@@ -483,6 +483,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
             zoomed: None,
         }],
         panes: ids.iter().map(|id| agent_pane(id, &tab)).collect(),
+        restored_from_file: false,
         restoring: false,
         human: std::collections::BTreeMap::new(),
     });

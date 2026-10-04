@@ -58,6 +58,7 @@ pub(crate) fn read_snapshot(given: &Value) -> Snapshot {
         tabs: collect(given, "tabs", read_tab),
         panes: collect(given, "panes", read_pane),
         restoring: given.get("restoring").and_then(Value::as_bool).unwrap_or(false),
+        restored_from_file: given.get("restoredFromFile").and_then(Value::as_bool).unwrap_or(false),
         human: given
             .get("human")
             .and_then(Value::as_object)

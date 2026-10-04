@@ -390,6 +390,10 @@ attached has none yet, and with nothing attached at all the plain answer says so
 - `state` is `connected`, `stale` or `disconnected`, and `detail` says why for the two that are
   not `connected`. Read this before acting on the rest: everything above comes from Muster's
   picture of each daemon, and an hour-old picture looks exactly like a current one without it.
+  A `connected` daemon that restarted while this window was attached says so in `detail` -
+  `restarted: 3 panes started again, 1 lost, 2 agents stopped` - because every process in its
+  panes is new, though nothing about the connection is wrong. The window's problem list says the
+  same in full, naming the panes and agents.
 - `host` is where it runs, empty for this machine.
 - `socket` is the path this window reaches it on. Over SSH that is the near end of the forward
   rather than the path over there, because it is the one you could dial from here.

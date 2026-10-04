@@ -202,6 +202,7 @@ impl Shared {
                     log,
                     stopping: false,
                     restoring,
+                    restored_from_file: false,
                     replacing: Replacing::No,
                     stop_deferred: false,
                 }),
@@ -324,6 +325,7 @@ impl Deferred {
     }
 }
 
+#[expect(clippy::struct_excessive_bools, reason = "independent facts about one daemon run")]
 pub(crate) struct Session {
     instance: u64,
     /// The last event's sequence number.
@@ -378,6 +380,9 @@ pub(crate) struct Session {
     stopping: bool,
     /// Set while the tabs a previous run saved are coming back.
     restoring: bool,
+    /// Whether a pane this run holds came back from the file a previous run wrote, so that
+    /// every process in it was started by this run ([`proto::Snapshot::restored_from_file`]).
+    restored_from_file: bool,
     replacing: Replacing,
     /// Set when a stop was asked for while a handoff ran, to be carried out if it fails.
     stop_deferred: bool,
@@ -1091,6 +1096,7 @@ impl Session {
             panes: self.panes.iter().map(|pane| pane.record.clone()).collect(),
             settings: Some(self.settings.clone()),
             restoring: self.restoring,
+            restored_from_file: self.restored_from_file,
             human: self
                 .human
                 .values()
@@ -2492,6 +2498,7 @@ impl Session {
                     self.panes[index].session_id = Some(resume.session.clone());
                     self.panes[index].resume = Some(resume);
                 }
+                self.restored_from_file = true;
                 back.insert(name);
             } else {
                 lost.panes.push(name);

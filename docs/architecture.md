@@ -1044,9 +1044,19 @@ Sessions survive anything Muster does: a broken Muster must never strand a sessi
 one we knew.** A daemon that restarts brings back every tab, name and directory from its saved state, with a new shell
 in each pane and none of the old processes, and says in a `restored` event what it could not bring back; a daemon
 whose saved state it could not read starts empty (MIP-3, section 2). Every test for "connected" passes in each case,
-and rendering an empty session as though the user closed everything is the worst available answer. This is a distinct
-state with a distinct response - say what was there, offer to rebuild it - and it belongs to Muster because no daemon
-can know what a window was showing.
+and rendering an empty session as though the user closed everything is the worst available answer. It belongs to
+Muster because no daemon can know what a window was showing.
+
+So the mirror keeps which run of the daemon it holds (`instance`), and a snapshot from a different run is compared with
+the panes it held: a pane back under its name was started again if that run brought its panes back from its file
+(`restored_from_file`, which a run keeps for its whole life so a window that reconnects late still learns it), and one
+missing was lost. A handover is a new run too, with every process still running, and says nothing. A run still
+restoring is judged once it says it has finished, or every pane not back yet would read as lost
+(`crates/muster-core/src/mirror/restart.rs`). What it cost - how many panes started again, which were lost, which had
+an agent running - becomes a warning in the window's problem list and the machine's `detail` in `muster window`, once
+per restart rather than on every reconnect, and the connection itself stays `connected`, because it is. Rebuilding is
+the daemon's file and `resume_agents` already doing it; Muster says what they could not bring back rather than keeping
+a second copy to restore from.
 
 **A connection dropping costs a pane its bridge, and the bridge is what has to come back.** The row below saying a
 dropped connection loses nothing is about the daemon, which keeps running with the agent in it; the near side gives
@@ -1115,7 +1125,7 @@ and because the layer that can honestly answer each is different.
 |---|---|---|
 | Muster quits or crashes | nothing | nobody needs to; the daemon owns the PTYs, and holds the panes' permissions with them |
 | the connection drops (VPN, lid, SSH) | nothing; the view goes stale and resyncs | the degradation model above |
-| the daemon restarts | every process; scrollback; titles | the daemon restores its tabs, names and directories |
+| the daemon restarts | every process; scrollback; titles | the daemon restores its tabs, names and directories; the window says what was lost |
 | the machine reboots | the same, plus the daemon must come back | as above |
 | the machine is gone | local work only | remote daemons keep running |
 

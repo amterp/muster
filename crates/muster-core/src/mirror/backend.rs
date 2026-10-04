@@ -281,6 +281,9 @@ pub struct Snapshot {
     /// The daemon is still bringing back its saved tabs, which arrive as events. Until it
     /// says it has finished, a daemon holding nothing is not an empty one.
     pub restoring: bool,
+    /// This run brought its panes back from what a previous run saved, so every process in them
+    /// is new. False for a run that took its panes over running, or had nothing saved.
+    pub restored_from_file: bool,
     /// What waits for the human, by group, in each group with anything waiting (MIP-4,
     /// section 10). Empty from a daemon over ssh, since the human is homed where the app runs.
     pub human: BTreeMap<String, HumanNotice>,

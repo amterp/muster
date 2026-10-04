@@ -15,6 +15,7 @@ use crate::attention::HumanNotice;
 use crate::mirror::backend::{Health, LayoutNode, Pane, PaneId, Progress, Snapshot, Tab, TabId};
 use crate::mirror::event::{BackendEvent, Change};
 use crate::mirror::ordered::Ordered;
+use crate::mirror::restart::Restart;
 
 /// What the daemon says is true, as far as this mirror knows.
 ///
@@ -48,6 +49,13 @@ pub struct Mirror {
     /// read has to answer a caller that was not. "stale" alone tells somebody their picture
     /// might be wrong and nothing about whether to wait or go looking.
     health_detail: String,
+    /// Which run of the daemon the mirror holds, once it has held one.
+    instance: Option<u64>,
+    /// The panes a previous run held, kept while a new run is still restoring: what came back
+    /// can only be told once it has finished.
+    before_restart: Option<Vec<Pane>>,
+    /// What the daemon's last restart cost, kept for anybody who asks later.
+    last_restart: Option<Restart>,
 }
 
 impl Mirror {
@@ -66,6 +74,9 @@ impl Mirror {
         self.unplaced.clear();
         let previous_progress = std::mem::take(&mut self.progress);
         let previous_human = std::mem::replace(&mut self.human, snapshot.human);
+        let new_run = self.instance.is_some_and(|held| held != snapshot.instance);
+        self.instance = Some(snapshot.instance);
+        let restored_from_file = snapshot.restored_from_file;
         self.restoring = snapshot.restoring;
         self.health = Health::Connected;
         self.health_detail.clear();
@@ -129,6 +140,15 @@ impl Mirror {
                 changes.push(Change::PaneRemoved(id.clone()));
             }
         }
+        if new_run {
+            let before: Vec<Pane> = previous_panes.values().cloned().collect();
+            if self.restoring {
+                self.before_restart = Some(before);
+            } else {
+                self.before_restart = None;
+                changes.extend(self.restarted(&before, restored_from_file));
+            }
+        }
         // After the panes, because a tree names them: a reader told the arrangement first
         // would be handed a tree referring to a pane it has not been told exists. A tab that
         // went away is a TabRemoved and needs no second announcement about its tree.
@@ -186,7 +206,12 @@ impl Mirror {
             },
             BackendEvent::Restored(restored) => {
                 self.restoring = false;
-                vec![Change::Restored(restored)]
+                let mut changes = vec![Change::Restored(restored)];
+                // Only a restore says it has finished, so the panes came back from the file.
+                if let Some(before) = self.before_restart.take() {
+                    changes.extend(self.restarted(&before, true));
+                }
+                changes
             }
             BackendEvent::PasteHeld { pane, text } => vec![Change::PasteHeld { pane, text }],
             BackendEvent::ClipboardWrite { pane, text } => {
@@ -349,6 +374,22 @@ impl Mirror {
     /// What a pane's program last said of its progress, if it is still saying anything.
     pub fn progress(&self, id: &PaneId) -> Option<Progress> {
         self.progress.get(id).copied()
+    }
+
+    /// What the daemon's last restart cost, if the mirror has seen one.
+    pub fn last_restart(&self) -> Option<&Restart> {
+        self.last_restart.as_ref()
+    }
+
+    /// Works out what a restart cost against the panes held before it, and keeps it.
+    fn restarted(&mut self, before: &[Pane], from_file: bool) -> Option<Change> {
+        let restart = Restart::between(
+            before,
+            |pane| self.panes.contains_key(pane) || self.unplaced.contains_key(pane),
+            from_file,
+        )?;
+        self.last_restart = Some(restart.clone());
+        Some(Change::Restarted(restart))
     }
 
     pub fn agent_state(&self, id: &PaneId) -> Option<AgentState> {

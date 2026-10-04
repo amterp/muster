@@ -33,6 +33,7 @@ mod remembered_names;
 mod reopen;
 mod republish;
 mod respawn;
+mod restarted;
 mod stalled;
 mod surface_input;
 mod text_size;

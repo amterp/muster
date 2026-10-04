@@ -30,6 +30,7 @@ pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
     let converted = Snapshot {
         seq: snapshot.seq,
         instance: snapshot.instance,
+        restored_from_file: snapshot.restored_from_file,
         tabs,
         panes: snapshot.panes.into_iter().map(pane).collect(),
         restoring: snapshot.restoring,

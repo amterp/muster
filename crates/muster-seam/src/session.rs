@@ -35,7 +35,7 @@ use muster_core::intent::{
 };
 use muster_core::message_groups::{self, MessageGroup};
 use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
-use muster_core::mirror::{Change, Health, Mirror, Restored};
+use muster_core::mirror::{Change, Health, Mirror, Restart, Restored};
 use muster_core::names::Minter;
 use muster_core::pane_focus::PaneFocus;
 use muster_core::pane_text::{PaneText, Scope};
@@ -3925,6 +3925,15 @@ pub(crate) fn daemon_health() -> Vec<DaemonHealth> {
         .collect()
 }
 
+/// What a machine's line in `muster window` says beside its health: why it is not connected, or
+/// for a connected one, what its last restart cost.
+fn machine_detail(mirror: &Mirror) -> String {
+    match (mirror.health_detail(), mirror.last_restart()) {
+        ("", Some(restart)) => restart.summary(),
+        (detail, _) => detail.to_string(),
+    }
+}
+
 /// How big each pane's terminal is, for a caller describing the layout.
 ///
 /// Asked of each daemon with the session let go, as `read_pane` asks for text: a daemon slow to
@@ -3980,7 +3989,7 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
             socket_path: backend.socket_path.clone(),
             started: backend.started,
             health: mirror.health(),
-            detail: mirror.health_detail().to_string(),
+            detail: machine_detail(&mirror),
             directories,
             panes,
         });
@@ -6108,6 +6117,9 @@ fn report(daemon: &DaemonId, change: &Change) {
     if let Change::Restored(restored) = change {
         restored_from_disk(daemon, restored);
     }
+    if let Change::Restarted(restart) = change {
+        restarted(daemon, restart);
+    }
     if let Change::ClipboardWrite { pane, text } = change {
         let allowed = clipboard_writes_allowed();
         log::info(
@@ -6291,6 +6303,31 @@ fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
     if poison::lock(&SESSION, "session").windows.values().any(Window::is_open) {
         settle_what_every_window_shows();
     }
+}
+
+/// Says that a daemon answering is a new run, and what that cost the panes it held.
+///
+/// A warning rather than an error: nothing is broken now, and the roster is not forced open over
+/// somebody's work. It stays for the window's run, and the next restart replaces it.
+fn restarted(daemon: &DaemonId, restart: &Restart) {
+    log::warn(
+        "daemon.restarted",
+        fields! {
+            "daemon" => daemon.to_string(),
+            "started_again" => restart.started_again.to_string(),
+            "lost" => restart.lost.len().to_string(),
+            "agents" => restart.agents.iter().map(|(pane, _, agent)| format!("{pane}:{agent}")).collect::<Vec<_>>().join(" "),
+            "impact" => "every process in its panes is new: shells start again in their \
+                         directories, and an agent runs again only if the daemon resumed it",
+            "check" => "why the daemon stopped, in its own log beside its socket; a crash \
+                        there is a bug",
+        },
+    );
+    raise_problem(
+        &format!("restarted:{daemon}"),
+        Severity::Warning,
+        &restart.describe(daemon.as_str()),
+    );
 }
 
 /// Renames this machine's part of each grouped tab whose name is behind another part's.
