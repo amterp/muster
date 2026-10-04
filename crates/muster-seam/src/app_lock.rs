@@ -451,6 +451,67 @@ mod tests {
         assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1, "asked more than once");
     }
 
+    /// An app that took the connection and quit without reading it - the request sat in its
+    /// backlog - never saw the request, so the launch takes the lock once it is let go rather
+    /// than giving up on an app that may have acted.
+    #[test]
+    fn a_holder_that_quits_with_the_request_unread_hands_the_lock_on() {
+        let home = home();
+        let socket = home.join("quitting.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).expect("binds");
+        let held = lock(&home, "i1", &socket.display().to_string()).expect("the lock opens");
+        let quitting = std::thread::spawn(move || {
+            let accepted = listener.accept().map(|(stream, _)| stream);
+            drop(accepted);
+            drop(listener);
+            drop(held);
+        });
+
+        let handed = hand_over(
+            &home,
+            "i1",
+            "/s/command-2.sock",
+            AskForWindow::default(),
+            Duration::from_secs(5),
+        );
+
+        quitting.join().expect("the holder quit");
+        assert!(matches!(handed, Ok(Handed::Back(_))), "{handed:?}");
+    }
+
+    /// An app that hangs up without a word was never in a position to have answered, so the
+    /// request is sent again until it answers or patience runs out - and the launch then says
+    /// the app did not answer, not that it may have acted.
+    #[test]
+    fn a_holder_that_hangs_up_unanswered_is_asked_again() {
+        let home = home();
+        let socket = home.join("hanging-up.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).expect("binds");
+        let _held = lock(&home, "i1", &socket.display().to_string()).expect("the lock opens");
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counting = std::sync::Arc::clone(&asked);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                if read_frame(&mut stream, LARGEST_MESSAGE).is_ok() {
+                    counting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+        });
+
+        let refused = hand_over(
+            &home,
+            "i1",
+            "/s/command-2.sock",
+            AskForWindow::default(),
+            Duration::from_secs(1),
+        )
+        .expect_err("handed over");
+
+        assert!(refused.contains("did not answer") && refused.contains("app-i1.lock"), "{refused}");
+        assert!(asked.load(std::sync::atomic::Ordering::SeqCst) > 1, "asked only once");
+    }
+
     /// An app that quits while a launch is handing to it leaves the lock to that launch, rather
     /// than the launch reporting an app that never answered.
     #[test]
