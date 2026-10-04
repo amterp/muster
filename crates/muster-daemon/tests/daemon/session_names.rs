@@ -188,3 +188,17 @@ fn a_session_name_too_long_to_keep_leaves_the_rest_of_its_report() {
     assert_eq!(record.facts.and_then(|facts| facts.context_used), Some(42.0));
     assert_eq!(record.label, None, "the name was not taken");
 }
+
+/// A rename left unsent in the prompt - Claude Code drops the Return of what is typed while it
+/// starts - and the pane renamed again before it was seen taken: the first is sent, and then the
+/// second, rather than the second waiting for good on a prompt the first still fills.
+#[test]
+fn a_pane_renamed_again_while_its_last_rename_sits_unsent_names_the_session_both_times() {
+    let mut p1 = Pane::named(None);
+    p1.daemon.run_starting_agent("p1");
+    p1.renamed("first");
+    until_text(&mut p1.control, "p1", "PROBE-PROMPT> /rename first");
+    p1.renamed("second");
+    p1.until_renamed("/rename second");
+    assert_eq!(p1.renames_heard(), ["/rename first", "/rename second"]);
+}

@@ -95,9 +95,11 @@ fn second_looks(
 ) {
     let mut taken = Vec::new();
     typing.retain(|pane, typed| {
-        // Gone with its agent, or the pane renamed again, or the harness already said the name.
+        // Gone with its agent, or nothing more to type: the harness already said the name. A pane
+        // renamed again still has this one seen through first, since it may sit unsent in the
+        // prompt, where the next would wait on it for good.
         let Some(seen) = panes.get(pane) else { return false };
-        if seen.rename.as_ref().is_none_or(|rename| rename.name != typed.name) {
+        if seen.rename.is_none() {
             return false;
         }
         let due = typed.at + doorbell::SETTLE;
