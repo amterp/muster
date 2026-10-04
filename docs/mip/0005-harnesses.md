@@ -302,7 +302,8 @@ sections 6 to 9):
   instead and the session's id forgotten. A message Codex kept may then arrive too, a wake too
   many rather than one lost. A command that fails is rung as usual; one that refused - exited
   non-zero, or could not start - is not run for that session again, while one that only took
-  longer than five seconds, as a loaded machine can make it, is tried again for the next wake.
+  longer than five seconds, as a loaded machine can make it, has that wake typed and is tried
+  again for the next; a second time, it is not run for that session again either.
   It runs through a login shell, which reads `.zprofile` but not `.zshrc`, so `codex` must be on
   the `PATH` a login shell sets.
 

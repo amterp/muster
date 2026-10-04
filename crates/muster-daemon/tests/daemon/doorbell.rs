@@ -773,6 +773,18 @@ fn a_command_wake_nobody_takes_is_typed_instead() {
     assert_eq!(agent.woken().len(), 1, "the command was run again");
 }
 
+/// A command that outlasts the daemon's patience - a login shell slow to start on a loaded machine -
+/// is given up, and that wake typed instead rather than tried by command again.
+#[test]
+fn a_stalled_wake_command_is_typed_instead() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("slow");
+    std::thread::sleep(QUIET);
+    agent.post("p1", "a brief");
+    agent.until_rung(1);
+    assert_eq!(agent.woken(), ["slow"], "the command was run again for the same wake");
+}
+
 /// Codex reports its session's id only as the session starts, so a daemon taking the pane over
 /// could not learn it again: it is handed over with the pane.
 #[test]

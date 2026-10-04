@@ -19,7 +19,7 @@ mod wire;
 pub(crate) use doorbell::Doorbell;
 pub(crate) use peer::Peers;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -60,6 +60,10 @@ pub(crate) struct Messages {
     rung: Vec<doorbell::Rung>,
     /// Wakes handed to their sessions by command that their agents have not yet taken.
     commanded: Vec<doorbell::Commanded>,
+    /// Wakes whose command took too long, by participant and group, to be typed instead.
+    type_instead: HashSet<(String, String)>,
+    /// Panes whose wake command has taken too long once: a second time ends the route.
+    stalled: HashSet<String>,
     /// Agents whose hooks fetch their messages, seen idle with none fetching, and when the
     /// doorbell may ring them: a `Stop` hook's wait may connect just after its turn ends.
     hook_grace: HashMap<String, Instant>,
@@ -99,6 +103,8 @@ impl Messages {
             pending: service.outstanding(),
             rung: Vec::new(),
             commanded: Vec::new(),
+            type_instead: HashSet::new(),
+            stalled: HashSet::new(),
             hook_grace: HashMap::new(),
             left: HashMap::new(),
             service,
@@ -495,6 +501,11 @@ struct Rang {
 }
 
 impl Messages {
+    /// Whether `wake` is to be typed, its command having taken too long.
+    fn types(&self, wake: &Wake) -> bool {
+        self.type_instead.contains(&(wake.name.clone(), wake.notice.group.clone()))
+    }
+
     /// Ends each answered wait with what it was told.
     pub(crate) fn end_waits(&mut self, answered: &[AnsweredWait]) {
         for answered in answered {
@@ -543,8 +554,9 @@ impl Messages {
             });
             // A pane whose agent has not been found yet waits for it like a busy one.
             let urgent = doorbell::is_urgent(wake);
-            let ringing =
-                panes.get(pane).map(|seen| (doorbell::reach(seen, now, urgent, None), seen));
+            let ringing = panes
+                .get(pane)
+                .map(|seen| (doorbell::reach(seen, now, urgent, None, self.types(wake)), seen));
             let until = match ringing {
                 // The doorbell's thread runs the command, nudged once this lock is let go.
                 Some((By::Command, _)) => {

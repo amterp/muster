@@ -230,7 +230,10 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                 rang(&wake, took);
                 if took {
                     let at = Instant::now();
-                    shared.messages().left.remove(pane_of(&wake));
+                    let mut messages = shared.messages();
+                    messages.left.remove(pane_of(&wake));
+                    messages.type_instead.remove(&(wake.name.clone(), wake.notice.group.clone()));
+                    drop(messages);
                     rung.push(Rung {
                         wake,
                         typed: at,
@@ -289,8 +292,15 @@ pub(crate) enum By {
     Typing(Now),
 }
 
-pub(crate) fn reach(seen: &Seen, now: Instant, urgent: bool, moving: Option<Instant>) -> By {
-    if seen.session.is_some() && waits_for(seen.activity, false).is_none() {
+/// `typed` for a wake whose command took too long once already.
+pub(crate) fn reach(
+    seen: &Seen,
+    now: Instant,
+    urgent: bool,
+    moving: Option<Instant>,
+    typed: bool,
+) -> By {
+    if !typed && seen.session.is_some() && waits_for(seen.activity, false).is_none() {
         By::Command
     } else {
         By::Typing(may_ring(seen, now, urgent, moving))
@@ -345,6 +355,7 @@ fn command_all(shared: &Shared, commanding: Reaching) -> Vec<Came> {
                         "via" => "command",
                     },
                 );
+                shared.messages().stalled.remove(&pane);
                 handed.push(Commanded { wake, session, at: Instant::now() });
                 came.push(Came::Rang);
             }
@@ -359,14 +370,19 @@ fn command_all(shared: &Shared, commanding: Reaching) -> Vec<Came> {
                         "why" => failed.why(),
                         "refused" => refused,
                         "impact" => "the wake is typed into the pane instead, once its prompt is \
-                                     empty; a command that refused it is not tried again until \
-                                     the agent reports its session anew",
+                                     empty; a command that refused it, or took too long twice, is \
+                                     not tried again until the agent reports its session anew",
                         "check" => "whether the harness's command is on the PATH a login shell \
                                     gives, and whether the session the agent reported is still \
                                     running",
                     },
                 );
-                if refused {
+                let mut messages = shared.messages();
+                let again = !refused && !messages.stalled.insert(pane.clone());
+                messages.type_instead.insert((wake.name.clone(), wake.notice.group.clone()));
+                drop(messages);
+                if refused || again {
+                    shared.messages().stalled.remove(&pane);
                     shared.lock().forget_session_id(&pane, &session);
                 }
                 waiting.push(wake);
@@ -576,7 +592,7 @@ fn look(
             let dropped = match (panes.get(pane), panes.doorbell(pane)) {
                 (Some(seen), Ringable::Rings) => {
                     let since = moving_since(moving, pane, seen, now);
-                    match reach(seen, now, is_urgent(&wake), since) {
+                    match reach(seen, now, is_urgent(&wake), since, messages.types(&wake)) {
                         By::Command => commanding.push((wake, seen.clone())),
                         By::Typing(Now::Ring) => ringing.push((wake, seen.clone())),
                         By::Typing(Now::At(at)) => {
