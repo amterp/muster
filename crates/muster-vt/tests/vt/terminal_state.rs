@@ -160,6 +160,23 @@ fn lowering_scrollback_drops_history_at_once() {
     let lines: Vec<u8> = (0..20_000).flat_map(|n| format!("line {n}\r\n").into_bytes()).collect();
     terminal.write(&lines);
     assert!(terminal.scrollback_rows() > 19_000);
+    assert_eq!(terminal.rows_trimmed(), 0);
     terminal.set_scrollback_bytes(0).expect("the limit takes");
     assert_eq!(terminal.scrollback_rows(), 0);
+    assert!(terminal.rows_trimmed() > 19_000, "what lowering the limit dropped is counted");
+}
+
+/// Rows pruned to fit the scrollback limit are counted, so the oldest row held plus the count
+/// is where that row sits in everything the terminal was ever sent.
+#[test]
+fn rows_pruned_to_the_scrollback_limit_are_counted() {
+    let mut terminal = Terminal::new(20, 4).expect("libghostty-vt gives us a terminal");
+    terminal.set_scrollback_bytes(1).expect("the limit takes");
+    assert_eq!(terminal.rows_trimmed(), 0);
+    let lines: Vec<u8> = (0..20_000).flat_map(|n| format!("line {n}\r\n").into_bytes()).collect();
+    terminal.write(&lines);
+    let trimmed = terminal.rows_trimmed();
+    assert!(trimmed > 0, "a full history was pruned");
+    let oldest = terminal.screen_text(0, 0);
+    assert_eq!(oldest, format!("line {trimmed}"), "the oldest row held is row {trimmed}");
 }

@@ -1,0 +1,183 @@
+PageList: count the rows that leave the top of history
+
+Muster numbers a pane's rows for reading them back by line (`muster pane
+read`). Counted from the oldest row a screen still holds, a number moves
+every time history is pruned to the scrollback limit, so a row number a
+reader saved points at other text on the next read. Nothing in the
+PageList says how many rows have gone: total_rows only says how many
+are left.
+
+This adds PageList.rows_trimmed, which never decreases, counting the rows
+that leave the top of the list at the four places that remove them, each
+of which already knows how many:
+
+- grow, pruning the first page to stay inside the byte limit;
+- Limits.enforce, pruning first pages to stay inside the line limit;
+- eraseRows from the start of history (eraseHistory: ED 3, and the
+  history half of clearing the screen);
+- reset, which discards every row.
+
+A row's index from the oldest row held, plus the count, then numbers it
+from the start of the screen's history. A reflow rewraps rows and
+eraseActive removes rows below history that remains, and neither is
+counted: no single count can renumber what they move.
+
+ghostty_terminal_rows_trimmed, beside Muster's other additions in
+src/terminal/c/muster.zig and include/ghostty/vt/muster.h, reads it for
+the active screen.
+
+Additive only: one field, one function, no existing behavior changed.
+Muster carries this for good rather than sending it upstream. The Zig
+test at the end of src/terminal/c/muster.zig covers it.
+
+diff --git a/include/ghostty/vt/muster.h b/include/ghostty/vt/muster.h
+index 150eb755..c80dcddc 100644
+--- a/include/ghostty/vt/muster.h
++++ b/include/ghostty/vt/muster.h
+@@ -107,6 +107,20 @@ GHOSTTY_API GhosttyResult ghostty_terminal_kitty_image_loading_bytes(
+ GHOSTTY_API GhosttyResult ghostty_terminal_kitty_image_drop_loading(
+     GhosttyTerminal terminal);
+ 
++/**
++ * How many rows have left the top of the active screen's history since
++ * the screen was made: pruned to the scrollback limit, erased, or
++ * discarded by a reset. A row's index counted from the oldest row held,
++ * plus this, numbers it from the start of the screen's history, which
++ * rows leaving the top do not change. A reflow rewraps rows without
++ * counting them.
++ *
++ * @return GHOSTTY_SUCCESS, or GHOSTTY_INVALID_VALUE for a NULL argument
++ */
++GHOSTTY_API GhosttyResult ghostty_terminal_rows_trimmed(
++    GhosttyTerminal terminal,
++    uint64_t* out);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/lib_vt.zig b/src/lib_vt.zig
+index 5ed7391c..f31f41d5 100644
+--- a/src/lib_vt.zig
++++ b/src/lib_vt.zig
+@@ -274,6 +274,7 @@ comptime {
+         @export(&c.muster_kitty_image_loading, .{ .name = "ghostty_terminal_kitty_image_loading" });
+         @export(&c.muster_kitty_image_loading_bytes, .{ .name = "ghostty_terminal_kitty_image_loading_bytes" });
+         @export(&c.muster_kitty_image_drop_loading, .{ .name = "ghostty_terminal_kitty_image_drop_loading" });
++        @export(&c.muster_rows_trimmed, .{ .name = "ghostty_terminal_rows_trimmed" });
+         @export(&c.terminal_selection_format_buf, .{ .name = "ghostty_terminal_selection_format_buf" });
+         @export(&c.terminal_selection_format_alloc, .{ .name = "ghostty_terminal_selection_format_alloc" });
+         @export(&c.render_state_new, .{ .name = "ghostty_render_state_new" });
+diff --git a/src/terminal/PageList.zig b/src/terminal/PageList.zig
+index 429a3633..1ccca028 100644
+--- a/src/terminal/PageList.zig
++++ b/src/terminal/PageList.zig
+@@ -419,6 +419,14 @@ limits: Limits,
+ /// specifically for scrollbar information so we can have the total size.
+ total_rows: usize,
+ 
++/// How many rows have left the top of this PageList since it was made:
++/// history pruned to fit the scrollback limits, history erased, and every
++/// row a reset discarded. Never decreases, so a row's index plus this is a
++/// number for it that stays put as rows above it go. Rows that a reflow
++/// rewraps or that erasing the active area removes are not counted: no
++/// count can renumber them.
++rows_trimmed: usize = 0,
++
+ /// The list of tracked pins. These are kept up to date automatically.
+ tracked_pins: PinSet,
+ 
+@@ -1015,6 +1023,7 @@ pub fn reset(self: *PageList) void {
+     ) catch @panic("initPages failed");
+ 
+     // Our total rows always goes back to the default
++    self.rows_trimmed += self.total_rows;
+     self.total_rows = self.rows;
+ 
+     // Update all our tracked pins to point to our first page top-left
+@@ -3956,6 +3965,7 @@ pub fn grow(self: *PageList) Allocator.Error!?*List.Node {
+             self.total_rows += first.rows();
+             break :prune;
+         }
++        self.rows_trimmed += first.rows();
+ 
+         // If we have a pin viewport cache then we need to update it.
+         if (self.viewport == .pin) viewport: {
+@@ -5426,6 +5436,7 @@ fn eraseRows(
+ 
+     // Update our total row count
+     self.total_rows -= erased;
++    if (tl_pt == .history) self.rows_trimmed += erased;
+ 
+     // If we deleted active, we need to regrow because one of our invariants
+     // is that we always have full active space.
+@@ -6859,6 +6870,7 @@ const Limits = struct {
+             // by paths that already adjusted total_rows.
+             pagelist.erasePage(first);
+             pagelist.total_rows -= first_rows;
++            pagelist.rows_trimmed += first_rows;
+             removed += first_rows;
+         }
+ 
+diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
+index 57950c56..a4e8aa2f 100644
+--- a/src/terminal/c/main.zig
++++ b/src/terminal/c/main.zig
+@@ -92,6 +92,7 @@ pub const muster_clear_screen = muster.clear_screen;
+ pub const muster_kitty_image_loading = muster.kitty_image_loading;
+ pub const muster_kitty_image_loading_bytes = muster.kitty_image_loading_bytes;
+ pub const muster_kitty_image_drop_loading = muster.kitty_image_drop_loading;
++pub const muster_rows_trimmed = muster.rows_trimmed;
+ 
+ pub const render_state_new = render.new;
+ pub const render_state_free = render.free;
+diff --git a/src/terminal/c/muster.zig b/src/terminal/c/muster.zig
+index ce044226..95afeb1f 100644
+--- a/src/terminal/c/muster.zig
++++ b/src/terminal/c/muster.zig
+@@ -142,6 +142,19 @@ pub fn kitty_image_loading_bytes(
+ /// Drops the kitty images still arriving on both screens, as a full reset does. Nothing else
+ /// does: a program cut off between two chunks leaves its image arriving until another
+ /// transmission ends it, and that one is appended to it.
++/// How many rows have left the top of the active screen's history since the screen was made:
++/// pruned to the scrollback limit, erased, or discarded by a reset. A row's index counted from
++/// the oldest row held, plus this, numbers it from the start of the screen's history, which
++/// rows leaving the top do not change.
++pub fn rows_trimmed(
++    terminal_: terminal_c.Terminal,
++    out: ?*u64,
++) callconv(lib.calling_conv) Result {
++    const t = (terminal_ orelse return .invalid_value).terminal;
++    (out orelse return .invalid_value).* = @intCast(t.screens.active.pages.rows_trimmed);
++    return .success;
++}
++
+ pub fn kitty_image_drop_loading(terminal_: terminal_c.Terminal) callconv(lib.calling_conv) Result {
+     const t = (terminal_ orelse return .invalid_value).terminal;
+     if (comptime build_options.kitty_graphics) {
+@@ -295,3 +308,26 @@ test "clear_screen leaves the alternate screen alone" {
+     defer testing.allocator.free(text);
+     try testing.expectEqualStrings("vim\nhere", text);
+ }
++
++test "rows_trimmed counts the history erased and the rows a reset discards" {
++    var t: terminal_c.Terminal = null;
++    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 3));
++    defer terminal_c.free(t);
++
++    var trimmed: u64 = 9;
++    try testing.expectEqual(Result.success, rows_trimmed(t, &trimmed));
++    try testing.expectEqual(@as(u64, 0), trimmed);
++
++    const input = "a\r\nb\r\nc\r\nd\r\ne";
++    terminal_c.vt_write(t, input, input.len);
++    try testing.expectEqual(Result.success, rows_trimmed(t, &trimmed));
++    try testing.expectEqual(@as(u64, 0), trimmed);
++
++    terminal_c.vt_write(t, "\x1b[3J", 4);
++    try testing.expectEqual(Result.success, rows_trimmed(t, &trimmed));
++    try testing.expectEqual(@as(u64, 2), trimmed);
++
++    terminal_c.vt_write(t, "\x1bc", 2);
++    try testing.expectEqual(Result.success, rows_trimmed(t, &trimmed));
++    try testing.expectEqual(@as(u64, 5), trimmed);
++}

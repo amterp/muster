@@ -593,3 +593,20 @@ surface's threads, and those threads can themselves be waiting on the full app m
 Each needs 64 main-thread pushes into one blocked surface between two ticks, which is far less
 likely than a free, but it is the same deadlock. A frozen window whose main thread is in one of
 those pushes is this section again.
+
+## 16. A screen says how many rows it holds, and not how many it has dropped
+
+`PageList` keeps `total_rows`, the rows it holds now, and nothing that counts the rows that have
+left its top. Rows leave the top in four places, read from the source at the pin: `grow` pruning
+its first page to stay inside the byte limit, `Limits.enforce` pruning first pages to stay inside
+the line limit (which lowering `scrollback-limit` runs at once), `eraseRows` from the start of
+history (ED 3, and the history half of clearing the screen), and `reset`, which discards every
+row. Each already knows how many rows it removed. A full reset (RIS) counts the blank screen a
+new terminal starts with, which matters to a replay: one begins with a reset.
+
+So a row's index from the oldest row held moves every time history is pruned, and a caller that
+numbers rows for reading them back later cannot keep them still. `deps/ghostty-patches/0003`
+counts them at those four places, as `PageList.rows_trimmed`, and
+`ghostty_terminal_rows_trimmed` reads it for the active screen. Two things move rows without
+leaving the top, and are not counted: a reflow rewraps them, and `eraseActive` takes rows out
+below history that stays.

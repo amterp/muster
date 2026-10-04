@@ -235,6 +235,18 @@ impl Terminal {
         bytes
     }
 
+    /// How many rows have left the top of the active screen's history since it was made: pruned
+    /// to the scrollback limit, erased, or discarded by a reset. Added to a row's index from the
+    /// oldest row held, it numbers the row from the start of the history, which rows leaving
+    /// the top do not change. A rewrap is not counted.
+    pub fn rows_trimmed(&self) -> u64 {
+        let mut trimmed = 0u64;
+        // SAFETY: the terminal is live for as long as self, and the out pointer is a local the
+        // call writes a u64 to, as muster.h documents.
+        unsafe { ffi::ghostty_terminal_rows_trimmed(self.terminal, &raw mut trimmed) };
+        trimmed
+    }
+
     /// Drops the kitty images still arriving, as a full reset does, for one whose program
     /// stopped sending: nothing else ends it but another transmission, which is appended to it.
     pub fn drop_kitty_image_loading(&mut self) {
