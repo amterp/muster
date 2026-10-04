@@ -78,6 +78,7 @@ fn a_numbered_chord_lands_on_the_row_carrying_it() {
         reason.contains("2 tabs") && reason.contains("no tab 9"),
         "a press past the end should say how many tabs there are, and said: {reason}"
     );
+    assert!(!reason.contains("daemon"), "a press no daemon heard blamed one: {reason}");
     assert!(
         showing(&hidden),
         "a refused chord moved the keyboard, so it did something rather than nothing"

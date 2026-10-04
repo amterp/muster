@@ -1646,10 +1646,12 @@ fn made_or_ok(made: Option<PaneId>) -> Response {
     }
 }
 
+/// The answer to a verb the core carries out alone - a focus, a step, a font size - which asks no
+/// daemon anything, so its refusal is the core's own reason and says nothing about a daemon.
 fn answer(outcome: Result<(), String>) -> Response {
     match outcome {
         Ok(()) => Response::ok(),
-        Err(refusal) => refused(&refusal),
+        Err(refusal) => Response::failure(refusal),
     }
 }
 
