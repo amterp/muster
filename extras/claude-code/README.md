@@ -12,7 +12,8 @@ listens. Outside a Muster pane neither is set, and nothing here does anything.
 
 ## The hooks: working, waiting on you, idle, and sub-agents
 
-Install them as a Claude Code plugin, from this checkout:
+`muster harness install claude-code` installs them as a Claude Code plugin, from the adapters
+the running Muster carries, and prints the statusline step below. By hand, from this checkout:
 
 ```sh
 claude plugin marketplace add /path/to/muster/extras

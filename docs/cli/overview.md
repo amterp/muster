@@ -177,7 +177,8 @@ unless somebody gave it one, and the machine is called by its host name. The oth
 exactly what they print through a window, since their answer means the same thing either way.
 With no window there is no keyboard, so a pane is named with `--pane` or `$MUSTER_PANE`.
 
-Every other verb needs a window, and says so. Making, splitting, arranging, resizing, zooming and
+Every other verb needs a window, and says so, except `muster msg`, which asks the daemon (`muster
+docs msg`), and `harness install`, `docs` and `completions`, which ask neither. Making, splitting, arranging, resizing, zooming and
 moving panes and tabs is laying out a window's tabs, which a window composes from its regions;
 focus, the asking chord, font, the sidebar and reload are about what a window shows; which window
 holds a tab is a window's record; and `muster daemons` marks which daemons that window is using.

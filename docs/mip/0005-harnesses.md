@@ -431,6 +431,28 @@ Not built, and why:
   measured. It names each session itself from its first request, as Codex does, so the pane would
   not take OpenCode's names for the same reason it does not take Codex's.
 
+### 12. Knowing whether an adapter reports, and installing one
+
+A person had to find an adapter in Muster's source, and nothing said whether one was running.
+
+- **Knowing.** The daemon's pane record carries `adapter`: reporting once the pane's agent has
+  reported, silent once it ended a turn having reported nothing, unsaid before either and again
+  when the agent changes or leaves. A turn's end rather than a timeout, because every adapter
+  reports by then and Codex reports nothing until it is first prompted, so a fresh, hooked Codex
+  would otherwise read as missing its adapter. `muster window --json` says `reporting`, `silent`
+  or `none` - `none` when the harness has no adapter in `extras/`, which
+  `muster_core::harnesses` lists and a test holds to that directory - and the plain row and the
+  agent list's tooltip note only `silent`, the one that has a fix.
+- **Installing.** `muster harness install <harness>` runs the harness's own plugin commands
+  against the adapters this Muster carries, never editing a harness's configuration, since a
+  person's may be managed by a tool that rewrites hand edits; `--dry-run` prints the commands.
+  What no harness command can do, Claude Code's statusline and trusting Codex's hooks, is
+  printed. OpenCode's `plugin` command installs npm modules, so for OpenCode the verb only
+  prints the link to make.
+- **Where adapters are.** The bundle carries `extras/` in its Resources and `./dev` stages it
+  beside the CLI. A remote install sends it and links `~/.muster/extras` at it, a path that
+  outlives the version, since Claude Code loads a directory marketplace in place.
+
 ## Delivery
 
 - **Stage one**, built 2026-10-03: this MIP; detection engine 7 and Codex's prompt rule, with
@@ -448,6 +470,7 @@ Not built, and why:
   for an idle agent.
 - **OpenCode's plugin**, built 2026-10-04 (section 11): `extras/opencode`, reporting its state,
   context, cost and session id.
+- **Knowing and installing an adapter**, built 2026-10-04 (section 12).
 - **Later**: the rest of section 10.
 
 ## Rationale
@@ -507,8 +530,6 @@ harness that allows less must not break anything.
 - Whether `codex queue` should also wake a Codex at work for a post that is not urgent, rather
   than wait for idle as the doorbell does: Codex holds it until the turn ends, unless the turn
   meets an approval prompt first, which was not measured.
-- Whether a person will want `muster` to install an adapter (`muster setup codex`) rather than
-  run the harness's own plugin commands.
 
 ## References
 
@@ -534,3 +555,5 @@ harness that allows less must not break anything.
   (section 11).
 - 2026-10-04 Compaction asked for (section 10): `[session] compact` behind engine 11, `muster
   pane compact`, and `compact_at`.
+- 2026-10-04 Whether an adapter reports, and `muster harness install` (section 12, kan
+  `a_2Y6bsEGtg`), answering the open question about Muster installing an adapter.

@@ -21,7 +21,9 @@ laptop pane beside a devenv pane - several windows that each hold their own tabs
 Muster taking over an older daemon's panes with their agents still running, agents posting messages to each other and
 being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to
 both, a message for you raising a notification that opens the conversation, the groups you are in listed in the
-sidebar with what is unread in each, and compacting an agent's context when asked or once it is full enough. Not
+sidebar with what is unread in each, compacting an agent's context when asked or once it is full enough, and
+installing a harness's adapter through the harness's own plugin command, with `muster window` saying whose adapter
+is not reporting. Not
 built, and worth knowing before you install rather than after: a pane sits beside another machine's panes only as
 that machine's part of the tab, to their left or right - a laptop pane cannot go above a devenv one.
 

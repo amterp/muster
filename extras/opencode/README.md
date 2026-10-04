@@ -11,7 +11,9 @@ plugin does nothing.
 
 ## Installing
 
-Copy or link `plugin/muster.js` into OpenCode's plugin folder, for every project:
+Copy or link `plugin/muster.js` into OpenCode's plugin folder, for every project. `muster
+harness install opencode` prints these lines with the path of the plugin the running Muster
+carries, and runs nothing: OpenCode's own `plugin` command installs npm modules, not a file.
 
 ```sh
 mkdir -p ~/.config/opencode/plugin

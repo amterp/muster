@@ -2,8 +2,18 @@
 
 Muster runs whatever coding agent you already run. It calls the program an agent runs in a
 harness - Claude Code, Codex, Gemini - and gets from each what that harness allows. Every pane
-running one shows its state; the rest depends on the harness, and on whether you installed the
-small adapter Muster ships for it (`extras/` in Muster's source).
+running one shows its state, read off its screen. Most of the rest needs the harness's adapter:
+hooks or a plugin that Muster ships for Claude Code, Codex and OpenCode, and installs with the
+harness's own plugin command:
+
+    muster harness install claude-code
+    muster harness install codex --dry-run    # print the commands instead
+
+With an adapter, an agent reports its own state, its context, model and cost, and its session,
+which is what `compact_at` acts on and what brings a session back after a restart. `muster
+window` says whether each agent's adapter reports, in `adapter`, and notes `(adapter not
+reporting)` on the row of an agent whose harness has one that is not reporting (`muster docs
+window`).
 
 | Capability | Claude Code | Codex | OpenCode | Every other harness |
 |---|---|---|---|---|
@@ -88,27 +98,42 @@ a post: the post says its prompt cannot be read, and exits 6 when nobody else he
 
 ## Installing an adapter
 
-**Claude Code**: a plugin for its hooks, a statusline, and optional messaging hooks.
+`muster harness install <harness>` installs the adapter on the machine it runs on: from a pane on
+an SSH machine, on that machine. It never edits a harness's configuration files: it runs the
+harness's own commands against the adapters this Muster carries, and prints what no command of
+the harness's can do. `--dry-run` prints the commands without running them, and the hand steps
+as shell comments, so its answer pastes into a shell. Sessions already running take an adapter
+up when they restart.
 
-    claude plugin marketplace add /path/to/muster/extras
+The adapters are in `Muster.app/Contents/Resources/extras/`. An SSH machine Muster installed a
+daemon on has them too, linked at `~/.muster/extras`, which keeps its path across an update. From
+a source checkout, they are its `extras/`.
+
+**Claude Code**: a plugin for its hooks, then a statusline and optional messaging hooks by hand,
+since Claude Code takes a statusline only from its settings.
+
+    claude plugin marketplace add <extras>
     claude plugin install muster@muster
 
 `extras/claude-code/README.md` has the statusline and the messaging hooks.
 
 **Codex**: a plugin for its hooks, and optional messaging hooks.
 
-    codex plugin marketplace add /path/to/muster/extras
+    codex plugin marketplace add <extras>
     codex plugin add muster-codex@muster
 
-Codex runs a hook only once you trust it, in `/hooks`. Its sandbox refuses a command connecting to
-Muster's daemon, so a sandboxed Codex cannot run `muster msg read` or `post` itself unless its
-sandbox may use the network; the messaging hooks hand it what it is sent regardless.
-`extras/codex/README.md` has both, and the setting's cost.
+Codex runs a hook only once you trust it, in `/hooks`. Codex records the marketplace by its
+resolved path, so after Muster is updated on an SSH machine, installing again is refused as
+"already added from a different source": `codex plugin marketplace remove muster` and install
+again. Its sandbox refuses a command connecting to Muster's daemon, so a sandboxed Codex cannot
+run `muster msg read` or `post` itself unless its sandbox may use the network; the messaging hooks
+hand it what it is sent regardless. `extras/codex/README.md` has both, and the setting's cost.
 
-**OpenCode**: a plugin for its state, context and cost.
+**OpenCode**: a plugin for its state, context and cost. OpenCode's `plugin` command installs npm
+modules rather than a file, so `muster harness install opencode` runs nothing and prints these:
 
     mkdir -p ~/.config/opencode/plugin
-    ln -s /path/to/muster/extras/opencode/plugin/muster.js ~/.config/opencode/plugin/
+    ln -s <extras>/opencode/plugin/muster.js ~/.config/opencode/plugin/
 
 `extras/opencode/README.md` has what it reports, and what it does not yet.
 

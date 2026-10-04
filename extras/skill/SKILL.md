@@ -63,6 +63,13 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   full.
 - **Read a finished agent's report with `muster pane read --pane X --turn`**: what it printed
   since it last went to work, without the turn before or your brief. Do not guess `--rows`.
+- **Check that your own adapter reports** before relying on what it gives: your state, your
+  context for `pane compact` and `compact_at`, your session coming back after a restart.
+  `muster window --json | jq -r '.panes[] | select(.pane == env.MUSTER_PANE) | .adapter'` says
+  `reporting`, `silent` (your harness has an adapter that is not installed or not running),
+  `none` (it has no adapter), or `null` before your first turn has ended. For `silent`, tell the
+  person: `muster harness install <harness>` changes their harness's configuration, so it is
+  theirs to run, and a session takes it up when restarted.
 - **Compact a worker before it runs out of context**, rather than letting it hit the limit
   mid-task: `muster pane compact --pane X keep <what the summary must keep>`. It is typed once
   the agent is idle, never mid-turn. To compact yourself, run `muster pane compact <focus>` with

@@ -12,7 +12,8 @@ the session's environment, so they reach the daemon whatever sandbox the session
 
 ## Installing
 
-As a Codex plugin, from this checkout:
+`muster harness install codex` installs it as a Codex plugin, from the adapters the running
+Muster carries. By hand, from this checkout:
 
 ```sh
 codex plugin marketplace add /path/to/muster/extras

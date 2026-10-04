@@ -17,7 +17,8 @@ out what it did.
 
 After a pane's label come what its agent says about itself and anything else worth a glance:
 how full its context is, its sub-agents, `(cannot read the screen)` when Muster's rules have
-stopped reading the agent, `(bell)` for a bell nobody has looked at since, and a program's own
+stopped reading the agent, `(adapter not reporting)` when the agent's harness has an adapter that
+is not installed or not running (`muster docs harnesses`), `(bell)` for a bell nobody has looked at since, and a program's own
 progress, `(40% done)` or `(progress failed)`. A waiting agent's second line is what it waits on.
 The model and the cost are in `--json`.
 
@@ -165,6 +166,12 @@ One entry per pane every followed daemon holds, on screen or not.
   `state` is `running`, `error`, `indeterminate` or `paused`; `percent` is `null` when the program
   gave none.
 - `rang` - whether a program in the pane rang the bell and nobody has looked at the pane since.
+- `adapter` - whether the agent reports itself through its harness's adapter: `reporting` once it
+  has; `silent` once it has ended a turn without reporting, for a harness Muster ships an adapter
+  for, which `muster harness install` installs; `none`, the same for a harness it has none for.
+  `null` until there is something to say: no agent, or one that has not yet ended a turn - Codex
+  reports nothing until it is first prompted, so a fresh agent is not called silent. An agent
+  that changes or leaves takes it with it.
 - `since` - when the agent last changed state, in seconds since the epoch to the millisecond, so
   `now - .since` in jq is how long it has been in it. Two reads that say `working` with the same
   `since` are one turn; a different `since` is a finish and a new turn in between. Looking at a
