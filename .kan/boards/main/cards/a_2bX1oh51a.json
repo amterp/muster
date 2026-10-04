@@ -5,16 +5,17 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791094219104,
   "creator": "Alexander Terp",
   "description": "Contract tier, 2026-10-03: failed once after stage 3b, when a bridge from the first app logged bridge.link.failed into the relaunch's run log; passed 3 reruns and the full run. Either a teardown-ordering bug (a quitting app's bridge outliving it) or an expected event the check should name.",
   "id": "a_2bX1oh51a",
-  "position": "!!!!!!!7",
+  "position": "Yyf",
   "title": "🎲 every_window_open_at_quit_comes_back logs a quitting app's bridge.link.failed into the relaunch",
   "type": "bug",
-  "updated_at_millis": 1791094219104,
+  "updated_at_millis": 1791096899216,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791094219104}
+    {"field":"column","value":"backlog-hi","at":1791094219104},
+    {"field":"column","value":"done","at":1791096899216}
   ]
 }

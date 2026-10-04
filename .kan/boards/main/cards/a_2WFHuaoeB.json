@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790313121964,
   "creator": "Alexander Terp",
   "description": "Found by hand in round 1 (2026-09-25). Outside any pane with two windows open, muster daemons fans out to every window and prints 'a list of daemons' under each window heading instead of the daemons: the fan-out renders only window answers (crates/muster-cli/src/render.rs named_or_empty, from 2026-09-01). daemons is about the machine, not a window, so it should ask one window rather than fan out.",
   "id": "a_2WFHuaoeB",
-  "position": "aO",
+  "position": "Yyh",
   "title": "muster daemons outside a pane with two windows prints a placeholder per window",
   "type": "bug",
-  "updated_at_millis": 1790313121964,
+  "updated_at_millis": 1791096899053,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790313121964}
+    {"field":"column","value":"backlog-lo","at":1790313121964},
+    {"field":"column","value":"done","at":1791096899053}
   ]
 }

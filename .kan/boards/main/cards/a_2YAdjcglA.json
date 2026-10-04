@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "muster-pane-read-and",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790597571151,
   "creator": "Alexander Terp",
   "description": "Run outside a pane with several windows open, both ask every window and print only 'a pane's text' or 'a list of daemons' per window (JSON 'unreadable'): crates/muster-cli/src/render.rs answers() renders only Window payloads, and muster_proto::only_reads includes both requests. The docs now tell a caller to pass --socket. A pane read names one pane, so it arguably belongs to the one window holding it.",
   "id": "a_2YAdjcglA",
-  "position": "aw",
+  "position": "Yyi",
   "title": "muster pane read and muster daemons print a placeholder with several windows open",
   "type": "bug",
-  "updated_at_millis": 1790597571151,
+  "updated_at_millis": 1791096898941,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790597571151}
+    {"field":"column","value":"backlog-lo","at":1790597571151},
+    {"field":"column","value":"done","at":1791096898941}
   ]
 }

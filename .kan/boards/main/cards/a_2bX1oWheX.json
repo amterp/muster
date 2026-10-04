@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791094218995,
   "creator": "Alexander Terp",
   "description": "Since one app holds every window (MIP-6 stage 3b), a window can be closed only from the GUI (⌘⇧W, the red button), so the contract tier cannot cover closing, the Reopen submenu or Reopen Closed Window. Add the verb through the one shared path, and a check: two windows, close one, list --closed shows it, reopen brings it back on its own tabs, one pid throughout. Raised 2026-10-03 when stage 4 landed.",
   "id": "a_2bX1oWheX",
-  "position": "!!!!!!!F",
+  "position": "Yyg",
   "title": "🪟 muster window close [NAME], so closing and reopening a window has a contract check",
   "type": "feature",
-  "updated_at_millis": 1791094218995,
+  "updated_at_millis": 1791096899134,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791094218995}
+    {"field":"column","value":"backlog-hi","at":1791094218995},
+    {"field":"column","value":"done","at":1791096899134}
   ]
 }
