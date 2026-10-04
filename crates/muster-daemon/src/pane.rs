@@ -839,7 +839,7 @@ impl Pane {
                 reports_directory: false,
                 unsent: None,
             },
-            published: first_published(watching.detection.is_some()),
+            published: first_published(watching.detection),
             detection,
             detecting: Arc::clone(watching.detecting),
             unsent: None,
@@ -969,11 +969,14 @@ fn retry_due(due: Option<Instant>, heard: &Heard, now: Instant) -> Option<Instan
     due.or_else(|| heard.unsent.is_some().then(|| now + CWD_CADENCE))
 }
 
-/// The agent state a pane's reader starts from. An agent taken over mid-turn is not marked at the
-/// first state it is seen in: its turn began before this daemon was watching, and is not read
-/// until the next one.
-fn first_published(resumed: bool) -> proto::AgentState {
-    if resumed { proto::AgentState::Working } else { proto::AgentState::Unknown }
+/// The agent state a pane's reader starts from: what the daemon it was taken over from last
+/// published, which a resumed detector does not publish again. So an agent taken over idle has its
+/// next turn marked, and one taken over mid-turn does not have the rest of that turn taken for
+/// the whole of it.
+fn first_published(carried: Option<&proto::handoff::Detection>) -> proto::AgentState {
+    carried
+        .filter(|carried| carried.emitted)
+        .map_or(proto::AgentState::Unknown, proto::handoff::Detection::emitted_state)
 }
 
 struct Reader {

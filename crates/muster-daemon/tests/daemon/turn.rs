@@ -79,3 +79,26 @@ fn a_dialog_in_the_middle_of_a_turn_keeps_what_came_before_it() {
     };
     assert!(text.text.starts_with("before the dialog\nafter the dialog"), "{text:?}");
 }
+
+/// A daemon that took the pane over in a handoff marks the agent's next turn: it starts from the
+/// state the daemon before it last published, which its detector does not publish again.
+#[test]
+fn the_first_turn_after_a_handoff_is_read() {
+    let mut daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    say(&daemon, &mut control, "before the handoff");
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    let mut control = daemon.connect();
+
+    daemon.unblock_agent_unasked();
+    daemon.until_agent("p1", proto::AgentState::Working);
+    say(&daemon, &mut control, "after the handoff");
+    let read = expect(&mut control, turn_request("p1"), proto::Outcome::Done);
+    let Some(proto::answer::Detail::Text(text)) = read.answer.detail else {
+        panic!("a turn read answered {:?}", read.answer)
+    };
+    assert!(text.text.starts_with("after the handoff"), "{text:?}");
+}
