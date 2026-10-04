@@ -1224,6 +1224,7 @@ impl<S: Store> Messaging<S> {
     fn drop_group(&mut self, group: &str) -> Vec<u64> {
         self.groups.remove(group);
         self.unanswered.remove(group);
+        self.lately_reached.remove(group);
         for participant in self.participants.values_mut() {
             participant.cursors.remove(group);
             participant.woken.remove(group);
