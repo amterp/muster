@@ -18,6 +18,9 @@ use crate::pty;
 /// meanwhile; `codex queue` answers in well under a second.
 const PATIENCE: Duration = Duration::from_secs(5);
 
+/// How much of what a failed command printed is kept, for the log.
+const SAID: usize = 4096;
+
 /// Runs `arguments` as a login shell of the user's would, so it finds the harness a pane finds:
 /// a daemon started by launchd has a PATH without Homebrew's directory in it. The arguments are
 /// handed to the shell as arguments, never as script, so the message is never read as one.
@@ -34,6 +37,22 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), Failed> {
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| Failed::Refused(format!("could not start {shell}: {error}")))?;
+    // Read as it is written: a command saying more than a pipe holds would otherwise wait for us
+    // to read it, and be killed as stalled. The start is kept for the log, the rest dropped.
+    let stderr = child.stderr.take().map(|mut stderr| {
+        std::thread::spawn(move || {
+            let mut kept = Vec::new();
+            let mut chunk = [0; 4096];
+            while let Ok(read) = stderr.read(&mut chunk) {
+                if read == 0 {
+                    break;
+                }
+                let room = SAID.saturating_sub(kept.len());
+                kept.extend_from_slice(&chunk[..read.min(room)]);
+            }
+            String::from_utf8_lossy(&kept).into_owned()
+        })
+    });
     let started = Instant::now();
     let status = loop {
         if let Some(status) =
@@ -54,10 +73,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), Failed> {
     if status.success() {
         return Ok(());
     }
-    let mut said = String::new();
-    if let Some(mut stderr) = child.stderr.take() {
-        drop(stderr.read_to_string(&mut said));
-    }
+    let said = stderr.and_then(|reading| reading.join().ok()).unwrap_or_default();
     let said = said.trim();
     let said = said.char_indices().nth(300).map_or(said, |(at, _)| &said[..at]);
     Err(Failed::Refused(format!("it exited with {status}: {said}")))
@@ -108,6 +124,15 @@ mod tests {
         let failed = run(&failing).unwrap_err();
         assert!(matches!(failed, Failed::Refused(_)), "{failed:?}");
         assert!(failed.why().contains("nobody there"), "{failed:?}");
+
+        // More than a pipe holds, then a failure: refused at once, not killed as stalled.
+        let chatty = [
+            "/bin/sh".to_string(),
+            "-c".into(),
+            "head -c 200000 /dev/zero | tr '\\0' x >&2; exit 1".into(),
+        ];
+        let failed = run(&chatty).unwrap_err();
+        assert!(matches!(failed, Failed::Refused(_)), "{failed:?}");
         drop(std::fs::remove_dir_all(&scratch));
     }
 }
