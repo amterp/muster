@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "split-seam-session-rs",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "in-progress",
+  "created_at_millis": 1791127434115,
+  "creator": "Alexander Terp",
+  "description": "Follow-up to a_2bjungwna (launch configuration and problems moved out on 2026-10-04): move the daemon attaching block (follow_configured through attach_daemon_in, Attaches/ATTACHES) and the window lifecycle block (open, close_window, window_to_open, reopen_what_was_left, open_a_tab_if_the_window_is_empty) into session/ modules, as pure moves.",
+  "id": "a_2bkxt9BLA",
+  "position": "Zj",
+  "title": "Split seam session.rs: daemon attaching and window lifecycle",
+  "type": "chore",
+  "updated_at_millis": 1791127434115,
+  "history": [
+    {"field":"column","value":"in-progress","at":1791127434115}
+  ]
+}
