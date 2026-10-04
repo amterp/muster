@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791102578676,
   "creator": "Alexander Terp",
   "description": "2026-10-04 review (traced, unrun): in group_delete the log is gone and drop_group has removed the waiters before save(); a failing save (disk full) returns Err before Deleted.ended reaches the host, so deleting never lets go of waiters, tells windows or calls peer::forget. Return Deleted even when the save fails, or end the waits on the error path.",
   "id": "a_2baXHsul5",
-  "position": "b0Z",
+  "position": "YyF",
   "title": "group delete leaves waiters hung and peers untold when the state save fails",
   "type": "bug",
-  "updated_at_millis": 1791102578676,
+  "updated_at_millis": 1791120541055,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791102578676}
+    {"field":"column","value":"backlog-lo","at":1791102578676},
+    {"field":"column","value":"done","at":1791120541055}
   ]
 }

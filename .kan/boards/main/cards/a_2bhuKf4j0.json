@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "which-environment",
+  "alias_explicit": false,
+  "column": "uncommitted",
+  "created_at_millis": 1791120147483,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-04 while scoping a_2YACcy3xg (msg verbs start a daemon when none runs). The app starts its daemon with environment::for_daemon(inherited, platform_locale(), commands_path()), where the locale and commands path come from the shell. A daemon started by `muster msg` from an agent's pane or a plain terminal would hand that process's environment to every pane it later makes, for the daemon's whole life. Options: inherit the caller's (simplest, surprising), rebuild a login environment the way the app's launch does, or refuse to start one and keep exit 3. Also found: muster-daemon-client pulls muster-detect, muster-ssh, sha2 and tar into the CLI (size unmeasured). Decide before building a_2YACcy3xg.",
+  "id": "a_2bhuKf4j0",
+  "position": "aQ",
+  "title": "Which environment does a daemon started by muster msg give its panes?",
+  "type": "chore",
+  "updated_at_millis": 1791120147483,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1791120147483}
+  ]
+}

@@ -5,18 +5,19 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1791101860990,
   "creator": "Alexander Terp",
   "description": "2026-10-04: codex queue wakes run serially on the doorbell thread, up to 5 s each, so a slow login shell stalls renames and typed rings for every pane.",
   "id": "a_2baEcKAbF",
-  "position": "a0",
+  "position": "YyH",
   "title": "Doorbell: run command wakes off its thread",
   "type": "enhancement",
-  "updated_at_millis": 1791118929473,
+  "updated_at_millis": 1791120540902,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791101860990},
     {"field":"column","value":"next","at":1791102590160},
-    {"field":"column","value":"in-progress","at":1791118929473}
+    {"field":"column","value":"in-progress","at":1791118929473},
+    {"field":"column","value":"done","at":1791120540902}
   ]
 }
