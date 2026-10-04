@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "msg-verbs-start-a",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -16,11 +16,12 @@
   "description": "MIP-4 section 1 says any msg verb starts a daemon the way the app does (Launch Services on the Mac, setsid on Linux) when none is running. Stage 1 deferred it: the launch code lives in muster-daemon-client, which links libghostty-vt, and the CLI must not. It needs the launch code moved into a pure crate. Today a msg verb with no daemon exits 3 and says how to start one.",
   "id": "a_2YACcy3xg",
   "parent": "a_2Y3ODvuwa",
-  "position": "an",
+  "position": "Zy",
   "title": "msg verbs start a daemon when none runs",
   "type": "feature",
-  "updated_at_millis": 1791101236058,
+  "updated_at_millis": 1791102590083,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790596529148}
+    {"field":"column","value":"backlog-lo","at":1790596529148},
+    {"field":"column","value":"next","at":1791102590083}
   ]
 }
