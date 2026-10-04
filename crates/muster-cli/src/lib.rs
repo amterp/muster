@@ -47,6 +47,9 @@ pub enum Trouble {
     /// A window took the request and this command cannot say what came of it - because the
     /// window never answered, or because the daemon behind it never answered the window.
     Unanswered(String),
+    /// [`Trouble::Unanswered`], for a request that makes a pane: the pane it may have made, under
+    /// the name the window gave it, so a caller can find it or close it rather than make another.
+    MayHaveMade { reason: String, pane: String },
     /// A wait ran out before what it was waiting for happened. Waiting changes nothing, so
     /// waiting again is harmless.
     TimedOut(String),
@@ -67,7 +70,7 @@ impl Trouble {
         match self {
             Trouble::Refused(_) => 1,
             Trouble::Unreachable(_) => 3,
-            Trouble::Unanswered(_) => 4,
+            Trouble::Unanswered(_) | Trouble::MayHaveMade { .. } => 4,
             Trouble::TimedOut(_) => 5,
             Trouble::Unheard(_) => 6,
         }
@@ -78,6 +81,7 @@ impl Trouble {
             Trouble::Refused(detail)
             | Trouble::Unreachable(detail)
             | Trouble::Unanswered(detail)
+            | Trouble::MayHaveMade { reason: detail, .. }
             | Trouble::TimedOut(detail)
             | Trouble::Unheard(detail) => detail,
         }
@@ -504,7 +508,11 @@ fn read_text(from: &args::TextSource, input: &mut impl Read) -> Result<String, T
 /// worse off than one that got nothing and a non-zero exit.
 fn report(trouble: &Trouble, json: bool, errors: &mut impl Write) -> i32 {
     if json {
-        let _ = writeln!(errors, "{}", serde_json::json!({ "error": trouble.detail() }));
+        let mut error = serde_json::json!({ "error": trouble.detail() });
+        if let Trouble::MayHaveMade { pane, .. } = trouble {
+            error["pane"] = pane.clone().into();
+        }
+        let _ = writeln!(errors, "{error}");
     } else {
         let _ = writeln!(
             errors,

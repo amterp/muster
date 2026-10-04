@@ -355,7 +355,7 @@ starts gets its line first, ahead of every pane, because what the window holds f
 guess. A watch on a window whose daemons are all answering prints only panes.
 
 Under `--json` each line is an object: `{"pane", "daemon", "state", "since", "label"}` for a
-state, with `since` and `label` as in `panes[]`, `{"pane", "daemon", "closed": true}` for a pane that went, and
+state, with `since` and `label` as in `panes[]` and `label` left out when there is none, `{"pane", "daemon", "closed": true}` for a pane that went, and
 `{"daemon", "state", "detail"}` for a daemon, as in `daemons[]` - the one line with no `pane`.
 
 The watch holds one connection to one Muster, so outside every pane with two installs listening

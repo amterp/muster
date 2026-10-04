@@ -33,6 +33,12 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         Some(response::Payload::Failure(failure)) => Err(Trouble::Refused(failure.reason.clone())),
         // The same exit as a window that took the request and never answered, one hop further
         // in: the window's daemon took it and never answered, so a retry may repeat it.
+        Some(response::Payload::Unanswered(unanswered)) if !unanswered.pane_id.is_empty() => {
+            Err(Trouble::MayHaveMade {
+                reason: unanswered.reason.clone(),
+                pane: unanswered.pane_id.clone(),
+            })
+        }
         Some(response::Payload::Unanswered(unanswered)) => {
             Err(Trouble::Unanswered(unanswered.reason.clone()))
         }
@@ -80,14 +86,17 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         // One line each, because a watch is read a line at a time as it arrives. The pane's name
         // first, so `grep --line-buffered p1w3r07bsd` is a filter.
         Some(response::Payload::PaneState(agent)) => Ok(if json {
-            json!({
+            let mut value = json!({
                 "pane": agent.pane_id,
                 "daemon": agent.daemon_id,
                 "state": agent.state,
                 "since": since_json(agent.since_ms),
-                "label": agent.label,
-            })
-            .to_string()
+            });
+            // Left out rather than empty: an empty string is not something to call a pane.
+            if !agent.label.is_empty() {
+                value["label"] = agent.label.clone().into();
+            }
+            value.to_string()
         } else {
             // The label last, since it is the one field that can hold a space.
             let state = styled(&agent.state, agent_style(&agent.state));
@@ -1371,6 +1380,24 @@ mod tests {
         Others, QUIET, agent_style, daemons_text, held_for, window_json, window_text, windows,
     };
     use anstyle::{AnsiColor, Color, Style};
+
+    /// A `pane new` nobody answered names the pane it may have made as a field, so a `--json`
+    /// caller finds it without reading the sentence; any other unanswered request has none.
+    #[test]
+    fn an_unanswered_request_that_makes_a_pane_carries_its_name() {
+        use muster_proto::{Response, Unanswered, response};
+        let unanswered = |pane: &str| Response {
+            payload: Some(response::Payload::Unanswered(Unanswered {
+                reason: "the daemon did not answer".to_string(),
+                pane_id: pane.to_string(),
+            })),
+        };
+        match super::answer(&unanswered("p1w3r07bsd"), true) {
+            Err(crate::Trouble::MayHaveMade { pane, .. }) => assert_eq!(pane, "p1w3r07bsd"),
+            other => panic!("answered {other:?}"),
+        }
+        assert!(matches!(super::answer(&unanswered(""), true), Err(crate::Trouble::Unanswered(_))));
+    }
 
     /// An app that would not say what it holds is still a row with every key the others have,
     /// so a filter over `.windows[]` reads it without a special case.
