@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "one-typist-for-lines",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791120807199,
   "creator": "Alexander Terp",
   "description": "crates/muster-daemon/src/messages/renames.rs and compacts.rs share their type-then-second-look logic (about 60 lines copied, deliberately, while renames.rs was being changed by another stream). Fold them into one module; both take the busy set of panes whose wake command is running.",
   "id": "a_2biBUihpx",
-  "position": "b0d",
+  "position": "Yy5",
   "title": "One typist for lines typed at an idle prompt",
   "type": "chore",
-  "updated_at_millis": 1791120807199,
+  "updated_at_millis": 1791122484469,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791120807199}
+    {"field":"column","value":"backlog-lo","at":1791120807199},
+    {"field":"column","value":"done","at":1791122484469}
   ]
 }

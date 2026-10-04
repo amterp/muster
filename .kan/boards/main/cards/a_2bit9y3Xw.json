@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "measure-whether",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1791122485720,
+  "creator": "Alexander Terp",
+  "description": "Since 2026-10-04 the daemon refuses a state report whose nearest agent ancestor is in a different process group from the pane's agent (measured: Claude Code's Bash tool runs its shell in a group of its own, so a nested claude -p is refused). Not measured for Codex's and OpenCode's shell tools (no Codex runs allowed; no OpenCode 1.18 here). If they leave the group, their READMEs can drop the env -u MUSTER_DAEMON advice; if not, nested codex exec / opencode run reports still land in the outer pane.",
+  "id": "a_2bit9y3Xw",
+  "position": "b0g",
+  "title": "Measure whether Codex's and OpenCode's shell tools leave the agent's process group",
+  "type": "chore",
+  "updated_at_millis": 1791122485720,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791122485720}
+  ]
+}

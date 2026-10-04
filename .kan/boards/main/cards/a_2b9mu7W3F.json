@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791038830432,
   "creator": "Alexander Terp",
   "description": "The Select Pane Asking menu item is greyed out while nothing asks by sending ReadAsking on each menu validation. Once windows share one process (MIP-6), the view could carry it and the per-validation request goes. Raised 2026-10-03.",
   "id": "a_2b9mu7W3F",
-  "position": "b0K",
+  "position": "Yy3",
   "title": "Carry whether anything is asking in the view",
   "type": "chore",
-  "updated_at_millis": 1791038830432,
+  "updated_at_millis": 1791122484699,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791038830432}
+    {"field":"column","value":"backlog-lo","at":1791038830432},
+    {"field":"column","value":"done","at":1791122484699}
   ]
 }
