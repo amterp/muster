@@ -290,7 +290,7 @@ fn asked(socket: &Path) -> Result<Response, muster_cli::Trouble> {
 }
 
 fn socket_at(named: &str) -> PathBuf {
-    let root = PathBuf::from("/tmp/muster-cli").join("exit-codes");
+    let root = PathBuf::from("/tmp/muster-cli").join(format!("{}-exit-codes", std::process::id()));
     std::fs::create_dir_all(&root).expect("/tmp is writable");
     let path = root.join(format!("{named}.sock"));
     let _ = std::fs::remove_file(&path);

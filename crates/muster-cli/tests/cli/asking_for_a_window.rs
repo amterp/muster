@@ -172,14 +172,15 @@ impl App {
     }
 }
 
-/// A home of its own per test, under `/tmp` so a socket path fits in the hundred bytes it has.
+/// A home of its own per test and per process, under `/tmp` so a socket path fits in the hundred
+/// bytes it has.
 struct Scratch {
     root: PathBuf,
 }
 
 impl Scratch {
     fn new(named: &str) -> Scratch {
-        let root = PathBuf::from("/tmp/muster-cli").join(named);
+        let root = PathBuf::from("/tmp/muster-cli").join(format!("{}-{named}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("state")).expect("/tmp is writable");
         Scratch { root }

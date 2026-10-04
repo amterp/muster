@@ -367,7 +367,8 @@ fn answering(home: &Path, pid: u32, name: &str, others: Vec<OtherWindow>) {
     });
 }
 
-/// A home of its own per test, since the CLI finds windows by reading one directory.
+/// A home of its own per test, since the CLI finds windows by reading one directory, and per
+/// process: two checkouts running the suite at once would otherwise delete each other's sockets.
 ///
 /// Under `/tmp` rather than under the platform's temporary directory, and named as briefly as
 /// this reads: a unix socket path has about a hundred bytes to spend, and macOS hands out
@@ -379,7 +380,7 @@ struct Scratch {
 
 impl Scratch {
     fn new(named: &str) -> Scratch {
-        let root = PathBuf::from("/tmp/muster-cli").join(named);
+        let root = PathBuf::from("/tmp/muster-cli").join(format!("{}-{named}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("state")).expect("/tmp is writable");
         Scratch { root }
