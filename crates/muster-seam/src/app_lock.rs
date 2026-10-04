@@ -328,14 +328,17 @@ fn adopt_record(
 mod tests {
     use super::*;
 
+    /// A home of the test's own. Counted rather than timed: macOS keeps the clock to the
+    /// microsecond, so two tests starting together were handed one home and took each other's
+    /// lock.
     fn home() -> PathBuf {
+        static MADE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let home = std::env::temp_dir().join(format!(
             "muster-app-lock-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |since| since.as_nanos())
+            MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
+        let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).expect("a scratch home");
         home
     }
