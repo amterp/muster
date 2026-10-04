@@ -18,6 +18,12 @@
       "body": "2026-10-04 03:00, ruled out (from code): typed input lost (/bin/sh has no shell integration; readline uses TCSADRAIN); the first probe landing before exec with the acquisition window never opening (the agent's first paint lands on a later tick, whose screen change opens it); a dropped publication (publish_agent re-sends unsent every tick); pty/process limits (60/511 ptys, 544/2666 procs, $ prompt showed). 25 more runs at load 20-30 did not reproduce. Detection probes the foreground group on group change and in an 8 s acquisition window (500 ms for 1.5 s, then 2 s); after it, an unidentified pane is not probed until group or screen changes. Waits now print the pane's screen on timeout, so the next failure says whether the command ran.",
       "created_at_millis": 1791101235930,
       "id": "c_2bZyMDu6u"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-04: fixed a real gap (ef95e096): a job that execs after the acquisition window's last probe (7.5 s) and paints before it closes (8 s) was never probed again, so detection reported no agent for good - matching 'it was None Unknown'. Deterministic test in detector/tests.rs. Not confirmed under real load as the timeout's cause; if the test times out again, the screen it prints says whether the agent had painted. Reopen then.",
+      "created_at_millis": 1791124959891,
+      "id": "c_2bjvWfFvB"
     }
   ],
   "created_at_millis": 1791040070378,
@@ -27,7 +33,7 @@
   "position": "Yxy",
   "title": "🎲 a_wait_outlasts_a_working_report_after_the_turn_that_declared_it timed out under load",
   "type": "bug",
-  "updated_at_millis": 1791124369964,
+  "updated_at_millis": 1791124959891,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791040070378},
     {"field":"column","value":"next","at":1791042630131},
