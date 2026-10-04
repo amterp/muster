@@ -14,6 +14,7 @@ small adapter Muster ships for it (`extras/` in Muster's source).
 | Rung at an empty prompt | yes | yes | yes | no |
 | Rung while it works, for an urgent post | yes | yes | no | no |
 | Messages fetched by its hooks | yes | yes | no | no |
+| Woken by its own command, typing nothing | no | yes | no | no |
 | Its session named after the pane | yes | yes | no | no |
 | The pane named after its session | yes | no | no | no |
 
@@ -43,6 +44,12 @@ kimi, kiro, maki, pi, qodercli.
   when a turn ends, by a hook waiting in the background. Codex has no such hook, so between turns
   it is rung, and its hooks hand it what it was rung for as the ring's turn starts - which reaches
   a sandboxed Codex that cannot run `muster` itself.
+- **Woken by its own command, typing nothing**: a post to an idle agent runs the harness's own
+  command to start a turn in its session, rather than typing a wake into its pane, so it reaches
+  an agent holding a draft and never mixes with what a person is typing. Codex's is `codex queue`,
+  by the session id its adapter's hooks report as each session starts; until then, and whenever
+  the command fails, it is rung as usual. An agent at work or at a dialog is not woken this way:
+  Codex holds a queued message until its turn ends, and at an approval prompt never sends it.
 - **Its session named after the pane**: naming a pane - the chord, the menu, `muster pane rename`,
   or `pane new --name` once its agent starts - types `/rename <name>` into the agent's prompt once
   it is idle at an empty prompt, as a ring is typed, so the session goes by the pane's name in

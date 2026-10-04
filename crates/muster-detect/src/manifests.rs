@@ -281,6 +281,12 @@ impl Manifests {
         self.entry(agent)?.manifest.session_rename(name)
     }
 
+    /// The command that hands the agent's session `session` the message `message`, typing
+    /// nothing into its pane; none when its manifest names none.
+    pub fn session_wake(&self, agent: &Agent, session: &str, message: &str) -> Option<Vec<String>> {
+        self.entry(agent)?.manifest.session_wake(session, message)
+    }
+
     fn entry(&self, agent: &Agent) -> Option<&Entry> {
         self.entries.iter().find(|entry| &entry.agent == agent)
     }

@@ -483,6 +483,7 @@ pub(crate) struct Handing {
 pub(crate) struct Resuming<'a> {
     pub(crate) detection: Option<&'a proto::handoff::Detection>,
     pub(crate) turns: Turns,
+    pub(crate) session_id: Option<&'a str>,
 }
 
 pub(crate) struct HandedPane {
@@ -490,6 +491,7 @@ pub(crate) struct HandedPane {
     pub(crate) process: Option<i32>,
     pub(crate) io: Arc<PaneIo>,
     pub(crate) turns: Turns,
+    pub(crate) session_id: Option<String>,
 }
 
 /// Why a daemon being replaced refuses a request that changes anything. A caller that means to
@@ -1408,6 +1410,13 @@ impl Session {
             );
             session_name = None;
         }
+        let session_id = report.session_id.take();
+        if session_id.is_some() && agent.is_empty() {
+            return Reply::refused("a session's id needs the name of the agent reporting it");
+        }
+        if let Some(why) = session_id.as_deref().and_then(|id| facts::session_id(id).err()) {
+            return Reply::refused(why);
+        }
         let cleared = report.clear;
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
         let record = &mut self.panes[index].record;
@@ -1438,6 +1447,7 @@ impl Session {
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
         let renamed = self.session_named(index, cleared, &agent, session_name.as_deref());
+        let identified = self.session_identified(index, &agent, session_id);
         let pane = &mut self.panes[index];
         if says_waiting {
             pane.turns.wait_declared = true;
@@ -1466,7 +1476,42 @@ impl Session {
             return Reply::done();
         }
         // Said again, a wait outlasts one more turn, which is a change even in the same words.
-        if facts_changed || says_waiting || renamed { Reply::done() } else { Reply::already() }
+        if facts_changed || says_waiting || renamed || identified {
+            Reply::done()
+        } else {
+            Reply::already()
+        }
+    }
+
+    /// Forgets the session id a pane's agent reported, if it is still `id`: a wake the command
+    /// could not deliver by it is typed instead, until the agent reports one again.
+    pub(crate) fn forget_session_id(&mut self, pane: &str, id: &str) {
+        if let Some(index) = self.pane_index(pane)
+            && self.panes[index].session_id.as_deref() == Some(id)
+        {
+            self.panes[index].session_id = None;
+        }
+    }
+
+    /// Keeps the session id a report says, while its agent is the pane's or before detection has
+    /// found one, as a session's name counts; true when it changed. Not forgotten by `--clear`,
+    /// which a harness sends as a session starts, perhaps after the new session's id.
+    fn session_identified(&mut self, index: usize, agent: &str, said: Option<String>) -> bool {
+        let pane = &mut self.panes[index];
+        let Some(said) = said else { return false };
+        if pane.record.agent.as_deref().is_some_and(|found| found != agent) {
+            return false;
+        }
+        let id = Some(said).filter(|id| !id.is_empty());
+        if pane.session_id == id {
+            return false;
+        }
+        log::debug(
+            "session.id.reported",
+            fields! { "pane" => pane.record.pane, "agent" => agent, "known" => id.is_some() },
+        );
+        pane.session_id = id;
+        true
     }
 
     /// What a report says of the session's name, kept in step with the pane's
@@ -1590,6 +1635,7 @@ impl Session {
                 if replaced {
                     record.facts = None;
                     pane.turns.reports_turns = false;
+                    pane.session_id = None;
                 }
                 if replaced || (record.agent.is_none() && agent.is_some()) {
                     pane.session_name.agent_changed(&name, replaced, record.label.as_deref());
@@ -2207,6 +2253,7 @@ impl Session {
                     process: pane.process(),
                     io: Arc::clone(&pane.io),
                     turns: pane.turns,
+                    session_id: pane.session_id.clone(),
                 })
                 .collect(),
             persister: Arc::clone(&self.persister),
@@ -2310,7 +2357,7 @@ impl Session {
             turns: resuming.turns,
         };
         let name = record.pane.clone();
-        let pane = Pane::start(
+        let mut pane = Pane::start(
             record,
             self.next_serial,
             master,
@@ -2320,6 +2367,7 @@ impl Session {
             &watching,
         )
         .map_err(|error| format!("pane {name}: {error}"))?;
+        pane.session_id = resuming.session_id.map(str::to_string);
         self.panes.push(pane);
         Ok(())
     }

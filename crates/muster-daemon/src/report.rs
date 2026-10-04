@@ -25,7 +25,7 @@ const PATIENCE: Duration = Duration::from_secs(2);
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
     [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT] [--clear] \
-    [--agent NAME [--state working|blocked|idle] [--session-name NAME]]\n\n\
+    [--agent NAME [--state working|blocked|idle] [--session-name NAME] [--session-id ID]]\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
@@ -38,7 +38,9 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     as its detection manifest does (claude), and the state counts only while that agent is \
     the pane's. --session-name is what the agent's harness calls its session, empty for no \
     name: the pane takes a name the session is given once it has started, and gives the \
-    session the pane's own name otherwise. It needs --agent, as --state does.";
+    session the pane's own name otherwise. It needs --agent, as --state does. --session-id is \
+    the harness's id for its session, which the daemon names it by to reach it through the \
+    harness's own command, where its manifest says how; empty forgets it. It needs --agent too.";
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     let report = match parse(arguments, |name| std::env::var(name).ok()) {
@@ -127,6 +129,7 @@ fn parse(
             "--waiting" => report.waiting = Some(value("--waiting")?),
             "--clear" => report.clear = true,
             "--session-name" => report.session_name = Some(value("--session-name")?),
+            "--session-id" => report.session_id = Some(value("--session-id")?),
             "--agent" => report.agent = value("--agent")?,
             "--state" => {
                 let given = value("--state")?;
@@ -146,6 +149,9 @@ fn parse(
     }
     if report.session_name.is_some() && report.agent.is_empty() {
         return Err("--session-name needs --agent, naming the agent that is reporting".to_string());
+    }
+    if report.session_id.is_some() && report.agent.is_empty() {
+        return Err("--session-id needs --agent, naming the agent that is reporting".to_string());
     }
     report.facts = facts;
     report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(
@@ -267,6 +273,13 @@ mod tests {
         assert_eq!(unnamed.session_name.as_deref(), Some(""), "no name is said, not left out");
         let alone = parsed(&["--session-name", "A"], Some("p1"));
         assert!(alone.unwrap_err().contains("--agent"));
+    }
+
+    #[test]
+    fn a_session_id_is_reported_with_the_agent_reporting_it() {
+        let given = parsed(&["--agent", "codex", "--session-id", "019a-b"], Some("p1")).unwrap();
+        assert_eq!(given.session_id.as_deref(), Some("019a-b"));
+        assert!(parsed(&["--session-id", "019a-b"], Some("p1")).unwrap_err().contains("--agent"));
     }
 
     #[test]

@@ -245,6 +245,44 @@ fn codexs_hooks_report_its_context_from_its_transcripts_last_token_count() {
     }
 }
 
+/// Codex is woken through `codex queue` by its session's id, which only its hooks are handed:
+/// `SessionStart` reports it, and says nothing to the model doing so.
+#[test]
+fn codexs_session_start_reports_its_session_id() {
+    let scratch = Scratch::new("codex-session-id");
+    let arguments = scratch.0.join("arguments");
+    let daemon = scratch.0.join("daemon");
+    std::fs::write(
+        &daemon,
+        format!("#!/bin/sh\nprintf '[%s]' \"$@\" >> '{}'\n", arguments.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let input = serde_json::json!({ "session_id": "019a-b c", "source": "startup" });
+    let reporting = commands(&CODEX, "SessionStart")
+        .into_iter()
+        .find(|command| command.contains("--session-id"))
+        .expect("a SessionStart hook reports the session's id");
+    for shell in shells() {
+        let _ = std::fs::remove_file(&arguments);
+        let mut hook = Command::new(shell)
+            .args(["-c", &reporting])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("MUSTER_DAEMON", &daemon)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        hook.stdin.take().unwrap().write_all(input.to_string().as_bytes()).unwrap();
+        let output = hook.wait_with_output().unwrap();
+        assert!(output.status.success(), "a hook never fails a session");
+        assert!(output.stdout.is_empty(), "{shell}: what it prints reaches the model");
+        let said = std::fs::read_to_string(&arguments).unwrap_or_default();
+        assert_eq!(said, "[report][--agent][codex][--session-id][019a-b c]", "in {shell}");
+    }
+}
+
 const CODEX_MESSAGING: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/codex/messaging-hooks.json"));
 

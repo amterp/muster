@@ -1,12 +1,16 @@
 id = "codex"
-version = "2026.10.03.3"
-min_engine_version = 8
-updated_at = "2026-10-03T00:00:00Z"
+version = "2026.10.04.1"
+min_engine_version = 10
+updated_at = "2026-10-04T00:00:00Z"
 
 # Typed at an empty composer with a Return; Codex takes the name inline, before its first turn
 # as well as after (docs/observations/codex-0.154.0.md, section 5).
 [session]
 rename = "/rename {name}"
+# Starts a turn in the running session as if the message were typed there, without typing into
+# the pane, by the id its hooks report, and leaves a draft in the composer alone
+# (docs/observations/codex-0.154.0.md, section 9).
+wake = ["codex", "queue", "--thread", "{session}", "--message", "{message}"]
 
 [[rules]]
 id = "osc_title_blocked"

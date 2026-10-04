@@ -670,3 +670,105 @@ fn an_urgent_post_waits_out_a_menu_opened_while_the_agent_works() {
     agent.type_in("nomenu", true);
     agent.until_rung(1);
 }
+
+impl Agent {
+    /// The agent's hooks reporting its session's id, as Codex's `SessionStart` does.
+    fn reports_session(&mut self, id: &str) {
+        let report = proto::pane_request::Report {
+            pane: "p1".to_string(),
+            agent: "claude".to_string(),
+            session_id: Some(id.to_string()),
+            ..Default::default()
+        };
+        let asked = self.control.ask(pane(proto::pane_request::Request::Report(report)));
+        assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+    }
+
+    /// What the fake agent's `[session] wake` command was run with, a line per run.
+    fn woken(&self) -> Vec<String> {
+        std::fs::read_to_string(self.daemon.root().join("home/fake-agent-woken"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+/// A session whose agent reported its id is woken by the command its manifest names, as Codex is
+/// by `codex queue`: nothing is typed into the pane, so a draft there neither holds the wake back
+/// nor is touched.
+#[test]
+fn a_session_with_its_id_reported_is_woken_by_its_command_without_typing() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("019a-s1");
+    agent.type_in("half typed", false);
+    agent.post("p1", "a brief");
+    let woken = until_some("the wake command to run", || {
+        let woken = agent.woken();
+        (!woken.is_empty()).then_some(woken)
+    });
+    assert_eq!(
+        woken,
+        [
+            "019a-s1|[muster] integrator+p1: 1 new (#4), 1 to you, from integrator. Read: muster msg read --group integrator+p1"
+        ]
+    );
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rung(), Vec::<String>::new(), "the wake was typed as well");
+    assert_eq!(agent.woken().len(), 1);
+}
+
+/// A post to an agent that could be rung at once, quiet and at an empty prompt, is not typed
+/// into its pane either: the post hands it to the command just the same.
+#[test]
+fn a_quiet_session_with_its_id_reported_is_woken_by_its_command_from_the_post() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("019a-s1");
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    let posted = agent.post("p1", "a brief");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Woken);
+    until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
+    std::thread::sleep(QUIET);
+    assert_eq!(agent.rung(), Vec::<String>::new(), "the wake was typed as well");
+}
+
+/// The command is used only where a ring would reach the agent idle: a blocked agent is at a
+/// dialog, where Codex stores a queued message and never submits it.
+#[test]
+fn a_blocked_session_is_not_woken_by_its_command_until_it_is_idle() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("019a-s1");
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+    agent.post("p1", "a brief");
+    std::thread::sleep(QUIET);
+    assert_eq!(agent.woken(), Vec::<String>::new(), "woken at a dialog");
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
+    assert_eq!(agent.rung(), Vec::<String>::new());
+}
+
+/// A command that fails leaves the wake to the doorbell, which types it once the prompt allows,
+/// and is not tried again for that session.
+#[test]
+fn a_wake_command_that_fails_is_typed_instead() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("gone");
+    agent.post("p1", "a brief");
+    agent.until_rung(1);
+    assert_eq!(agent.woken(), Vec::<String>::new());
+}
+
+/// Codex reports its session's id only as the session starts, so a daemon taking the pane over
+/// could not learn it again: it is handed over with the pane.
+#[test]
+fn a_reported_session_id_is_handed_over_with_its_pane() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("019a-s1");
+    let answer = agent.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    agent.control = agent.daemon.connect();
+    agent.post("p1", "a brief");
+    until_some("the wake command to run", || {
+        agent.woken().iter().any(|woken| woken.starts_with("019a-s1|")).then_some(())
+    });
+}

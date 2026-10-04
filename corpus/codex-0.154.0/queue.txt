@@ -12,3 +12,32 @@ The session, with nothing typed into its terminal:
     › Say the word GRAPE.
     • GRAPE
 A message queued by the session's name started a turn in the idle session, as if typed there.
+
+Recorded 2026-10-04, the same way, with a scratch SessionStart and UserPromptSubmit hook writing
+its input to a file, in one session. Each `codex queue` was run from another process:
+
+By the session id a hook was handed (session_id), not its name:
+    $ codex queue --thread <session id> --message "Say the word GRAPE."
+    Queued message <message id> for thread <session id>.    (exit 0)
+    UserPromptSubmit "Say the word GRAPE.", and the turn answered GRAPE
+
+At an idle composer holding "half typed", nobody's Return pressed:
+    queued "Say the word MELON." (exit 0)
+    › Say the word MELON.   • MELON
+    the composer held "half typed" again once the turn ended
+
+While Codex ran "sleep 15" for a turn of its own:
+    queued "Say the word LEMON." (exit 0); nothing changed on screen while the turn ran
+    once it ended: UserPromptSubmit "Say the word LEMON.", a turn of its own
+
+At its approval prompt for "echo hi > made.txt":
+    queued "Say the word PEACH." (exit 0)
+    six seconds later the approval prompt was still up and made.txt did not exist
+    Esc; the turn ended; "Say the word PEACH." was never submitted
+
+An unknown thread:
+    $ codex queue --thread no-such-thread-xyz --message ...
+    Error: No active session found matching 'no-such-thread-xyz'.    (exit 1)
+
+The same session id once that Codex had exited:
+    Queued message <message id> for thread <session id>.    (exit 0)

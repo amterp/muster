@@ -21,6 +21,7 @@ struct Supplied {
     context: bool,
     subagents: bool,
     fetches_messages: bool,
+    woken_by_command: bool,
     takes_pane_name: bool,
     names_pane: bool,
 }
@@ -28,13 +29,14 @@ struct Supplied {
 /// A capability's row: its name on the page, and how it is read off what a harness supplies.
 type Row = (&'static str, fn(&Supplied) -> bool);
 
-const ROWS: [Row; 8] = [
+const ROWS: [Row; 9] = [
     ("Its own report of its state", |supplied| supplied.reported_state),
     ("Context used, model and cost", |supplied| supplied.context),
     ("Sub-agents counted", |supplied| supplied.subagents),
     ("Rung at an empty prompt", |supplied| supplied.prompt),
     ("Rung while it works, for an urgent post", |supplied| supplied.prompt_at_work),
     ("Messages fetched by its hooks", |supplied| supplied.fetches_messages),
+    ("Woken by its own command, typing nothing", |supplied| supplied.woken_by_command),
     ("Its session named after the pane", |supplied| supplied.takes_pane_name),
     ("The pane named after its session", |supplied| supplied.names_pane),
 ];
@@ -85,6 +87,8 @@ fn supplied(manifests: &Manifests, extras: &[(Agent, String)], agent: &Agent) ->
         context: wiring.contains("--context-used"),
         subagents: wiring.contains("--subagent-started"),
         fetches_messages: wiring.contains("msg read --if-unread"),
+        woken_by_command: manifests.session_wake(agent, "id", "wake").is_some()
+            && wiring.contains("--session-id"),
         takes_pane_name: manifests.session_rename(agent, "name").is_some(),
         names_pane: wiring.contains("--session-name"),
     }

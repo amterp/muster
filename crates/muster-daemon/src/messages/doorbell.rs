@@ -39,8 +39,10 @@ use std::time::{Duration, Instant};
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_daemon_proto::messaging;
+use muster_detect::Agent;
 use muster_msg::{Activity, Presence, Ringable, Via, Wake};
 
+use super::command;
 use super::presence::{Panes, Seen};
 use super::prompt::{self, AtPrompt};
 use super::renames::{self, Typing};
@@ -275,6 +277,78 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
     came
 }
 
+/// Wakes to reach now, each with the pane its agent was seen in.
+type Reaching = Vec<(Wake, Seen)>;
+
+/// How a wake reaches a pane's agent now.
+pub(crate) enum By {
+    /// The command its manifest names, given the session's id its agent reported ([`command`]).
+    /// Typing nothing, it needs no empty prompt and no pause in anyone's typing, and it is used
+    /// only where a ring would reach the agent idle.
+    Command,
+    Typing(Now),
+}
+
+pub(crate) fn reach(seen: &Seen, now: Instant, urgent: bool, moving: Option<Instant>) -> By {
+    if seen.session.is_some() && waits_for(seen.activity, false).is_none() {
+        By::Command
+    } else {
+        By::Typing(may_ring(seen, now, urgent, moving))
+    }
+}
+
+/// Hands each wake to its session through the command its agent's manifest names, with no lock
+/// held. A wake whose command fails is put back to be rung by typing, its session's id forgotten
+/// so that it is, and the doorbell looks again at once.
+fn command_all(shared: &Shared, commanding: Reaching) {
+    let mut failed = Vec::new();
+    for (wake, seen) in commanding {
+        let pane = pane_of(&wake).to_string();
+        let Some(session) = seen.session.as_deref() else { continue };
+        let text = messaging::wake_text(&notice_of(&wake.notice));
+        let arguments = shared
+            .detecting
+            .manifests()
+            .and_then(|manifests| manifests.session_wake(&Agent::new(&seen.agent), session, &text));
+        let outcome = arguments.ok_or_else(|| "its manifest no longer names a command".to_string());
+        match outcome.and_then(|arguments| command::run(&arguments)) {
+            Ok(()) => log::info(
+                "msg.rang",
+                fields! {
+                    "name" => wake.name,
+                    "pane" => pane,
+                    "group" => wake.notice.group,
+                    "again" => wake.notice.again,
+                    "via" => "command",
+                },
+            ),
+            Err(why) => {
+                log::warn(
+                    "msg.ring.command_failed",
+                    fields! {
+                        "name" => wake.name,
+                        "pane" => pane,
+                        "agent" => seen.agent,
+                        "why" => why,
+                        "impact" => "the wake is typed into the pane instead, once its prompt is \
+                                     empty, and the command is not tried again until the agent \
+                                     reports its session anew",
+                        "check" => "whether the harness's command is on the PATH a login shell \
+                                    gives, and whether the session the agent reported is still \
+                                    running",
+                    },
+                );
+                shared.lock().forget_session_id(&pane, session);
+                failed.push(wake);
+            }
+        }
+    }
+    if !failed.is_empty() {
+        shared.messages().pending.extend(failed);
+        shared.doorbell.nudge();
+    }
+}
+
 /// Sends a ring an earlier one gave up and left in the prompt, when the prompt holds exactly that
 /// and nobody has typed into the pane since: otherwise the prompt reads as a draft for good, and
 /// nothing is rung there again. The wake waiting meanwhile is rung once the prompt is empty.
@@ -371,7 +445,7 @@ fn look(
         return until(next, false);
     }
     let now = Instant::now();
-    let mut ringing: Vec<(Wake, Seen)> = Vec::new();
+    let (mut ringing, mut commanding) = (Reaching::new(), Reaching::new());
     let pressing;
     let mut unfound = false;
     {
@@ -415,13 +489,14 @@ fn look(
             let dropped = match (panes.get(pane), panes.doorbell(pane)) {
                 (Some(seen), Ringable::Rings) => {
                     let since = moving_since(moving, pane, seen, now);
-                    match may_ring(seen, now, is_urgent(&wake), since) {
-                        Now::Ring => ringing.push((wake, seen.clone())),
-                        Now::At(at) => {
+                    match reach(seen, now, is_urgent(&wake), since) {
+                        By::Command => commanding.push((wake, seen.clone())),
+                        By::Typing(Now::Ring) => ringing.push((wake, seen.clone())),
+                        By::Typing(Now::At(at)) => {
                             sooner(&mut next, at);
                             messages.pending.push(wake);
                         }
-                        Now::AtIdle | Now::Unblocked => messages.pending.push(wake),
+                        By::Typing(Now::AtIdle | Now::Unblocked) => messages.pending.push(wake),
                     }
                     continue;
                 }
@@ -443,6 +518,7 @@ fn look(
         }
         pressing = unanswered_rings(&mut messages, &panes, now, moving, &mut next);
     }
+    command_all(shared, commanding);
     let came = ring_all(shared, ringing);
     // A ring is looked at again once it is due its Return, or a Return pressed again; nothing
     // announces a draft being cleared, so a prompt that held one is looked at again too.

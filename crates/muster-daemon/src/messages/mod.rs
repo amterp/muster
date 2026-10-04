@@ -6,6 +6,7 @@
 //! that lock let go, so a session slow to take one delays only the post that woke it.
 
 mod carry;
+mod command;
 mod doorbell;
 mod inbox;
 pub(crate) mod peer;
@@ -38,7 +39,7 @@ use proto::msg_answer::{self, Answer};
 use proto::msg_request::Request as Asked;
 
 use crate::session::{HANDING_OVER, Reply, Shared};
-use doorbell::Now;
+use doorbell::{By, Now};
 use presence::Panes;
 use store::Files;
 
@@ -481,15 +482,20 @@ impl Messages {
             // A pane whose agent has not been found yet waits for it like a busy one.
             let urgent = doorbell::is_urgent(wake);
             let ringing =
-                panes.get(pane).map(|seen| (doorbell::may_ring(seen, now, urgent, None), seen));
+                panes.get(pane).map(|seen| (doorbell::reach(seen, now, urgent, None), seen));
             let until = match ringing {
-                Some((Now::Ring, seen)) => {
+                // The doorbell's thread runs the command, nudged once this lock is let go.
+                Some((By::Command, _)) => {
+                    self.pending.push(wake.clone());
+                    continue;
+                }
+                Some((By::Typing(Now::Ring), seen)) => {
                     holding.ringing.push((wake.clone(), seen.clone()));
                     continue;
                 }
-                Some((Now::AtIdle, _)) => msg_answer::Until::Idle,
-                Some((Now::Unblocked, _)) => msg_answer::Until::Unblocked,
-                Some((Now::At(_), _)) => msg_answer::Until::Prompt,
+                Some((By::Typing(Now::AtIdle), _)) => msg_answer::Until::Idle,
+                Some((By::Typing(Now::Unblocked), _)) => msg_answer::Until::Unblocked,
+                Some((By::Typing(Now::At(_)), _)) => msg_answer::Until::Prompt,
                 None => msg_answer::Until::Agent,
             };
             holding.deferred.push((wake.name.clone(), until));

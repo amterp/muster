@@ -28,6 +28,9 @@ pub(crate) struct Seen {
     /// The pane's name, still to be given to its agent's session, and the line its manifest
     /// says to type for it.
     pub(crate) rename: Option<Rename>,
+    /// The id its agent reported for its session, when its manifest names a command that wakes
+    /// the session by it (`super::command`).
+    pub(crate) session: Option<String>,
     pub(crate) io: Arc<PaneIo>,
 }
 
@@ -82,12 +85,18 @@ impl Panes {
                     let line = manifests.as_ref()?.session_rename(&found, name)?;
                     Some(Rename { name: name.to_string(), line })
                 });
+                let session = pane.session_id.clone().filter(|id| {
+                    manifests
+                        .as_ref()
+                        .is_some_and(|manifests| manifests.session_wake(&found, id, "").is_some())
+                });
                 Seen {
                     activity: activity(record),
                     rings: manifests
                         .as_ref()
                         .is_some_and(|manifests| manifests.reads_prompt(&found)),
                     rename,
+                    session,
                     agent,
                     io: io.clone(),
                 }
@@ -159,7 +168,7 @@ impl Presence for Panes {
 
     fn doorbell(&self, pane: &str) -> Ringable {
         match (self.agents.get(pane), self.open.get(pane)) {
-            (Some(seen), _) if seen.rings => Ringable::Rings,
+            (Some(seen), _) if seen.rings || seen.session.is_some() => Ringable::Rings,
             (Some(_), _) => Ringable::NoPrompt,
             (None, Some(true)) => Ringable::AgentToCome,
             (None, _) => Ringable::NoAgent,

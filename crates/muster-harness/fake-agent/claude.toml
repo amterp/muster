@@ -9,13 +9,17 @@
 # claude session.
 
 id = "claude"
-version = "2026.10.03.2"
-min_engine_version = 8
+version = "2026.10.04.1"
+min_engine_version = 10
 
 # What renames a session, as Claude Code's own manifest says it: the fake writes down every line
 # it reads, so a test sees the rename typed.
 [session]
 rename = "/rename {name}"
+# What wakes a session without typing into its pane, as Codex's manifest names `codex queue`. It
+# runs only once a session id is reported: it writes down the id and the message, and fails for a
+# session called "gone".
+wake = ["/bin/sh", "-c", "[ \"$0\" != gone ] || exit 3; printf '%s|%s\\n' \"$0\" \"$1\" >> \"$HOME/fake-agent-woken\"", "{session}", "{message}"]
 
 # At work, its prompt still takes a line, as Claude Code's box does: what an urgent ring reads.
 [[rules]]

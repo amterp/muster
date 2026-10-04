@@ -614,6 +614,10 @@ pub(crate) struct Pane {
     /// The pane's name and its agent's session name, kept in step. Not handed over: a daemon
     /// that took the pane over hears the session's name again from its next report.
     pub(crate) session_name: SessionName,
+    /// The harness's id for the session its agent runs, as the agent reported it; forgotten when
+    /// that agent leaves the pane. A wake reaches the session by it, through the command the
+    /// agent's manifest names (`messages::command`).
+    pub(crate) session_id: Option<String>,
 }
 
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
@@ -796,6 +800,7 @@ impl Pane {
             adopted: !child && process.is_some(),
             turns: watching.turns,
             session_name: SessionName::default(),
+            session_id: None,
         })
     }
 

@@ -118,6 +118,18 @@ the window would say 93% (`context.txt`).
 `codex queue --thread <name or id> --message <text>` handed an idle session, running in a terminal,
 a message it took as a new turn, with nothing typed into the terminal (`queue.txt`).
 
+Measured further on 2026-10-04 (`queue.txt`):
+
+- The session's id, as its hooks are handed it in `session_id`, names it as well as its name does.
+- At an idle composer holding a draft, the queued message started a turn, and the draft was in the
+  composer again once the turn ended.
+- While Codex works, a queued message waits for the running turn to end and starts one of its
+  own; it does not join the running turn, as a line typed at work does.
+- At an approval prompt it did not answer the prompt, but it was never submitted either, even
+  after the turn ended.
+- An unknown thread exits 1, "No active session found". A session whose Codex has exited still
+  exits 0, so a success says the message was stored, not that a running Codex took it.
+
 ## 10. An unreachable model keeps the turn open, retrying
 
 With its model provider pointed at an address nothing listens on, Codex fired `UserPromptSubmit`
@@ -154,8 +166,10 @@ not reached.
 - While Codex retries an unreachable model it reads working, by its title, which is what it is
   doing; no wait it declared earlier stands meanwhile, since `UserPromptSubmit` clears it
   (section 10).
-- `codex queue` could reach a Codex without typing into its pane (section 9); Muster does not use
-  it yet, since that needs the session's id reported, which nothing does so far.
+- `codex queue` wakes an idle Codex without typing into its pane, by the session id its
+  `SessionStart` hook reports, and leaves its draft alone (section 9). It is not used at an
+  approval prompt, where the message would be lost, nor for an urgent post at work, which typing
+  delivers into the running turn.
 - A pane's name reaches the session as `/rename <name>` at an idle empty composer, which
   `codex.toml`'s `[session]` table says. The session's name does not reach the pane: the one place
   Codex keeps it cannot tell Codex's own name for a session from a person's, and taking Codex's

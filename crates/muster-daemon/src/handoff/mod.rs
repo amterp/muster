@@ -344,6 +344,7 @@ fn handed(
                 detection: pane.io.carried_detection(),
                 wait_declared: Some(pane.turns.wait_declared),
                 reports_turns: pane.turns.reports_turns,
+                session_id: pane.session_id.clone(),
             })),
         )?;
         for piece in replay.chunks(PIECE) {
@@ -711,6 +712,7 @@ fn adopt_panes(link: &mut UnixStream, shared: &Shared, panes: u32) -> Result<(),
                     wait_declared: pane.wait_declared.unwrap_or(Turns::default().wait_declared),
                     reports_turns: pane.reports_turns,
                 },
+                session_id: pane.session_id.as_deref(),
             },
         );
         if let Err(problem) = adopted {

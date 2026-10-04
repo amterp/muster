@@ -95,8 +95,7 @@ That lets every command the model runs reach the network, not only the daemon.
 
 ## Not here yet
 
-`codex queue --thread <id>` hands a message to a running Codex session without typing into its
-pane, and Muster does not use it yet. A `codex exec` that Codex starts from its shell inherits
+A `codex exec` that Codex starts from its shell inherits
 `$MUSTER_PANE`, and with the plugin installed its own hooks report into that pane; start it as
 `env -u MUSTER_DAEMON codex exec ...` and they do nothing.
 

@@ -428,6 +428,26 @@ fn a_session_table_says_how_to_rename_the_session_and_needs_engine_eight() {
 }
 
 #[test]
+fn a_session_wake_fills_whole_arguments_and_needs_engine_ten() {
+    let with = |engine: u32, wake: &str| {
+        format!("{}\n[session]\nwake = {wake}\n", with_prompt(engine, "idle", "whole_recent"))
+    };
+    let queue = r#"["codex", "queue", "--thread", "{session}", "--message", "{message}"]"#;
+    let manifest = Manifest::parse(&with(10, queue)).unwrap();
+    assert_eq!(
+        manifest.session_wake("019a", "say {session} \"hi\"; $(echo x)").unwrap(),
+        ["codex", "queue", "--thread", "019a", "--message", "say {session} \"hi\"; $(echo x)"],
+        "the message is one argument, as it was sent"
+    );
+    assert!(Manifest::parse(&with(9, queue)).is_err(), "below engine 10");
+    assert!(Manifest::parse(&with(10, r#"["codex", "{session}"]"#)).is_err(), "no message");
+    assert!(Manifest::parse(&with(10, r#"["codex", "--thread={session}", "{message}"]"#)).is_err());
+    assert!(Manifest::parse(&with(10, r#"["", "{session}", "{message}"]"#)).is_err(), "no program");
+    let without = Manifest::parse(&with_prompt(10, "idle", "whole_recent")).unwrap();
+    assert_eq!(without.session_wake("019a", "hi"), None);
+}
+
+#[test]
 fn versions_compare_numerically_with_trailing_zeros_insignificant() {
     let v = |text| Version::parse(text).unwrap();
     assert!(v("2026.06.10.1") < v("2026.07.1"));

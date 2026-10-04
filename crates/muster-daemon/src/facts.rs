@@ -78,6 +78,12 @@ pub(crate) fn session_name(name: &str) -> Result<(), String> {
     text("session_name", name, SESSION_NAME_BYTES)
 }
 
+/// Why a session's id, as an agent reports it, is refused, if it is. It is handed to a command
+/// as an argument of its own, so it only has to be short and hold nothing a terminal acts on.
+pub(crate) fn session_id(id: &str) -> Result<(), String> {
+    text("session_id", id, SESSION_NAME_BYTES)
+}
+
 fn text(what: &str, text: &str, most: usize) -> Result<(), String> {
     if text.len() > most {
         return Err(format!("{what} is {} bytes, and may be at most {most}", text.len()));

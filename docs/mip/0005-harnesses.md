@@ -36,7 +36,8 @@ one, built with this MIP: the doorbell, which wakes an idle agent by typing into
 (MIP-4), can read Codex's prompt, using a new detection engine version, 7; Codex's hooks report
 its state; its screens are recorded; and `./dev --codex` checks all of it against the installed
 Codex. Stage two adds the rest of what Codex allows: its prompt while it works, fetching messages
-from its hooks and the context it has used, leaving a route through `codex queue` for later.
+from its hooks and the context it has used, and a route through `codex queue` that wakes an
+idle Codex without typing into its pane.
 
 ## Decisions for amterp
 
@@ -169,7 +170,9 @@ alias of it (`claude-code` for `claude`), and `<id>` for the manifest id itself.
 | Inbox | A wake written to the harness's own socket, for a session the doorbell cannot ring | A session outside a pane is not woken | Rust: Claude Code's wire format |
 | Session named after the pane | Naming a pane types the harness's rename at the agent's idle, empty prompt | The session keeps its own name | A manifest's `[session] rename` (detection engine 8) |
 | Pane named after the session | A session renamed in its harness renames the pane | The pane keeps the name it has | A statusline or hook calling `report --agent <id> --session-name` |
-| Session reference, resume, compaction reported | Not yet used | - | To come (section 10) |
+| Session reference | Wakes the session through the harness's own command | - | Hooks calling `report --agent <id> --session-id` |
+| Woken by its own command | A wake to an idle agent runs a command that starts a turn in its session, typing nothing into its pane | It is rung | A manifest's `[session] wake` (detection engine 10), with the session reference |
+| Resume, compaction reported | Not yet used | - | To come (section 10) |
 
 The table in `muster docs harnesses` (section 5) says which harness has which.
 
@@ -181,7 +184,8 @@ The table in `muster docs harnesses` (section 5) says which harness has which.
   region of the screen, and the regions and gates a rule can use are detection's engine, which
   grows when a harness draws something no region reads: engine 7 adds `current_prompt` for
   Codex's composer. A manifest can also say what to type to rename the session, a `[session]`
-  table that engine 8 adds. So "data, not code" means data in a
+  table that engine 8 adds, and the command that wakes a session, `wake` in that table, which
+  engine 10 adds. So "data, not code" means data in a
   vocabulary the engine extends, with each extension behind an engine version.
 - **`extras/<harness>/`**: what runs inside the harness - hooks, a statusline, the plugin and
   marketplace files that install them. Everything there calls only Muster's own verbs,
@@ -274,9 +278,23 @@ sections 6 to 9):
   12,000-token baseline, and report it with the model, in the background. Codex runs hook commands
   in the user's shell, so they are written to mean the same in zsh as in sh, and the hook tests run
   every harness's hooks in both.
-- **A route that types nothing**, left for later. `codex queue --thread <name or id>` starts a
-  turn in a running session without typing into its pane. Using it needs the session's id
-  reported - the session reference of section 10 - and a choice of when it beats the doorbell.
+- **A route that types nothing**, built 2026-10-04. `codex queue --thread <id> --message <text>`
+  starts a turn in a running session without typing into its pane, and leaves a draft in the
+  composer alone. The plugin's `SessionStart` hook reports the session's id with `report --agent
+  codex --session-id`, which the daemon keeps on the pane, forgets when the agent leaves it, and
+  hands over with it, since Codex says it only as a session starts. `codex.toml` names the command
+  as `[session] wake`, with `{session}` and `{message}` each standing for one whole argument, run
+  through the user's login shell so that it finds the `codex` a pane finds.
+
+  It is chosen over the doorbell exactly where the doorbell would ring the agent idle: idle or
+  waiting, with no wait for an empty prompt or a pause in anyone's typing, since it types
+  nothing. Measured first (`docs/observations/codex-0.154.0.md`, section 9): at an approval
+  prompt Codex stores a queued message and never submits it, so a blocked Codex waits as it does
+  for the doorbell; and at work Codex holds one until the turn ends, where an urgent ring typed
+  into the composer joins the running turn, so an urgent post at work is still typed. A command
+  that fails is given up for that session, and the wake is rung as usual. A command that succeeds
+  says only that Codex stored the message, as it does for a session whose Codex has exited, so
+  it counts as a ring does: the agent is woken once more if it goes idle with the message unread.
 
 ### 8. Recordings and tiers
 
@@ -312,12 +330,15 @@ Only an engine extension, when one is needed, touches Rust outside the tests.
 
 ### 10. Capabilities still to come
 
-Three capabilities are named here so that work on them follows this MIP's structure: a session
-reference (the harness's id for the session), resuming that session after a daemon restart, and
-compaction reported. Each is a capability an adapter supplies: a report field its hooks fill
-(both harnesses' hooks are handed the session's id), or a manifest table the daemon reads - how
-to resume - behind an engine version. The daemon code that acts on the answer will be generic,
-and a new protocol field is added as a minor version, per `proto/muster_daemon.proto`'s rules.
+Two capabilities are named here so that work on them follows this MIP's structure: resuming a
+session after a daemon restart, and compaction reported. Each is a capability an adapter
+supplies: a report field its hooks fill, or a manifest table the daemon reads - how to resume -
+behind an engine version. The daemon code that acts on the answer will be generic, and a new
+protocol field is added as a minor version, per `proto/muster_daemon.proto`'s rules.
+
+A session reference, the third, is built in exactly those two forms for Codex (section 7): a
+report field, `--session-id`, and a manifest's `[session] wake`. Claude Code's hooks are handed
+its session's id too, and do not report it until something acts on it for Claude Code.
 
 The fourth, a session name kept in step with the pane's, is built, both ways, in exactly those
 two forms:
@@ -387,6 +408,9 @@ Not built, and why:
   reporting it.
 - **OpenCode**, built 2026-10-04 (section 11): detection engine 9 and OpenCode's prompt rule, with
   recorded screens of 1.18.34; its plugin events measured.
+- **Codex woken by `codex queue`**, built 2026-10-04 (section 7): the session reference reported
+  and handed over, detection engine 10 and `[session] wake`, the doorbell choosing the command
+  for an idle agent.
 - **Later**: the rest of section 10, and `extras/opencode`.
 
 ## Rationale
@@ -442,9 +466,9 @@ harness that allows less must not break anything.
   Code's do; the hooks are wired and were not seen firing.
 - Whether an OpenCode plugin can hand the model its messages mid-turn, as Codex's hooks do, and
   whether OpenCode renames a session from its prompt (section 11).
-- When a `codex queue` route should be chosen over the doorbell for a Codex in a pane, once the
-  session's id is reported: it types nothing, so it reaches a Codex at a dialog, and what it does
-  to a Codex at work was not measured.
+- Whether `codex queue` should also wake a Codex at work for a post that is not urgent, rather
+  than wait for idle as the doorbell does: Codex holds it until the turn ends, unless the turn
+  meets an approval prompt first, which was not measured.
 - Whether a person will want `muster` to install an adapter (`muster setup codex`) rather than
   run the harness's own plugin commands.
 
@@ -466,3 +490,5 @@ harness that allows less must not break anything.
   used built; `codex queue` measured and left for later.
 - 2026-10-04 OpenCode as the third harness (section 11): its prompt read behind engine 9, its
   plugin events measured, its adapter's plugin left for later.
+- 2026-10-04 Codex woken through `codex queue` (kan `a_2bEEFlerm`): the session reference built
+  as section 10 described, and when the command beats the doorbell decided from measurements.

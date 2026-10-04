@@ -25,9 +25,10 @@ use region::Region;
 /// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`, 5 adds a
 /// rule's `prompt`, 6 lets a working rule carry one, read where its `prompt_region` says, and
 /// 7 adds the `current_prompt` region, Codex's composer alone, 8 a `[session]` table saying
-/// how to rename the harness's session, and 9 the `bar_prompt` region, a prompt box drawn with a
-/// bar down its left side, with a rule's `prompt_margin` and `prompt_placeholder`.
-pub const ENGINE_VERSION: u32 = 9;
+/// how to rename the harness's session, 9 the `bar_prompt` region, a prompt box drawn with a
+/// bar down its left side, with a rule's `prompt_margin` and `prompt_placeholder`, and 10 a
+/// `[session]` `wake`, the command that hands a running session a message.
+pub const ENGINE_VERSION: u32 = 10;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -44,6 +45,13 @@ const SESSION_ENGINE_VERSION: u32 = 8;
 /// The engine version that introduced the `bar_prompt` region, `prompt_margin` and
 /// `prompt_placeholder`.
 const BAR_PROMPT_ENGINE_VERSION: u32 = 9;
+
+/// The engine version that introduced `[session]` `wake`.
+const WAKE_ENGINE_VERSION: u32 = 10;
+
+/// What a `[session]` wake's arguments are filled in with: the session's id, and the message.
+const SESSION_PLACEHOLDER: &str = "{session}";
+const MESSAGE_PLACEHOLDER: &str = "{message}";
 
 /// What a `[session]` rename's template is filled in with.
 const NAME_PLACEHOLDER: &str = "{name}";
@@ -116,6 +124,8 @@ pub struct Manifest {
     rules: Vec<Rule>,
     /// What typed at the agent's empty prompt renames its session, with `{name}` for the name.
     rename: Option<String>,
+    /// The command that hands the agent's running session a message, as arguments.
+    wake: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -216,6 +226,19 @@ impl Manifest {
     /// `name`; none when the manifest does not say how.
     pub fn session_rename(&self, name: &str) -> Option<String> {
         self.rename.as_ref().map(|template| template.replace(NAME_PLACEHOLDER, name))
+    }
+
+    /// The command, as arguments, that hands the session with id `session` the message
+    /// `message` without typing into the agent's pane; none when the manifest names none. Each
+    /// placeholder is filled where it stands as a whole argument, so the message is never split
+    /// or read by a shell.
+    pub fn session_wake(&self, session: &str, message: &str) -> Option<Vec<String>> {
+        let fill = |argument: &String| match argument.as_str() {
+            SESSION_PLACEHOLDER => session.to_string(),
+            MESSAGE_PLACEHOLDER => message.to_string(),
+            _ => argument.clone(),
+        };
+        self.wake.as_ref().map(|arguments| arguments.iter().map(fill).collect())
     }
 
     /// What the agent's prompt holds, when the rule that decides the screen is one that says
@@ -408,6 +431,7 @@ struct RawManifest {
 #[serde(deny_unknown_fields)]
 struct RawSession {
     rename: Option<String>,
+    wake: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -572,6 +596,9 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
              {SESSION_ENGINE_VERSION}"
         ));
     }
+    if let Some(wake) = &session.wake {
+        validate_wake(manifest, wake)?;
+    }
     let Some(rename) = &session.rename else { return Ok(()) };
     if !rename.contains(NAME_PLACEHOLDER) {
         return Err(format!(
@@ -580,6 +607,28 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     }
     if rename.chars().any(char::is_control) {
         return Err("[session] rename holds a control character".to_string());
+    }
+    Ok(())
+}
+
+/// A wake is a program and its arguments, run without a shell: the session's id and the message
+/// each fill one whole argument, and both have to be somewhere.
+fn validate_wake(manifest: &RawManifest, wake: &[String]) -> Result<(), String> {
+    if manifest.min_engine_version.unwrap_or(0) < WAKE_ENGINE_VERSION {
+        return Err(format!(
+            "[session] wake needs min_engine_version {WAKE_ENGINE_VERSION} or later"
+        ));
+    }
+    if wake.first().is_none_or(|program| program.trim().is_empty()) {
+        return Err("[session] wake names no program".to_string());
+    }
+    for placeholder in [SESSION_PLACEHOLDER, MESSAGE_PLACEHOLDER] {
+        if !wake.iter().any(|argument| argument == placeholder) {
+            return Err(format!("[session] wake has no argument that is exactly {placeholder}"));
+        }
+    }
+    if wake.iter().any(|argument| argument.chars().any(char::is_control)) {
+        return Err("[session] wake holds a control character".to_string());
     }
     Ok(())
 }
@@ -841,7 +890,8 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         aliases: raw.aliases,
         script_paths: raw.script_paths,
         rules,
-        rename: raw.session.and_then(|session| session.rename),
+        rename: raw.session.as_ref().and_then(|session| session.rename.clone()),
+        wake: raw.session.and_then(|session| session.wake),
     })
 }
 

@@ -1,5 +1,5 @@
 {
-  "description": "Tells the Muster daemon that owns this pane what Codex is doing: working, waiting on you or idle, how many sub-agents it runs, its model and how full its context is.",
+  "description": "Tells the Muster daemon that owns this pane what Codex is doing: working, waiting on you or idle, how many sub-agents it runs, its model and how full its context is, and the session's id, by which Muster wakes it through `codex queue`.",
   "hooks": {
     "SessionStart": [
       {
@@ -16,6 +16,14 @@
           {
             "type": "command",
             "command": "[ -z \"$MUSTER_PANE\" ] || [ -z \"$MUSTER_DAEMON\" ] || echo 'In Muster: if you end a turn to wait on work you started, first run \"$MUSTER_DAEMON\" report --waiting \"<what>\".'"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$MUSTER_DAEMON\" ] && command -v jq >/dev/null 2>&1 || exit 0; id=$(jq -r '.session_id // empty' 2>/dev/null); [ -z \"$id\" ] || \"$MUSTER_DAEMON\" report --agent codex --session-id \"$id\" >/dev/null 2>&1 || true"
           }
         ]
       }

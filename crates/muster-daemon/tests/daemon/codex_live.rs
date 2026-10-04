@@ -457,3 +457,58 @@ fn a_sandboxed_codex_with_messaging_hooks_is_handed_its_message() {
     eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
     assert!(replied, "the worker never replied with the word it was sent");
 }
+
+/// A Codex whose hooks reported its session's id is woken through `codex queue`, typing nothing:
+/// a draft left in its composer, which the doorbell would wait out for good, neither holds the
+/// message back nor is sent with it, and is still in the composer once the turn ends.
+#[test]
+#[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
+fn a_codex_holding_a_draft_is_woken_by_codex_queue_and_keeps_the_draft() {
+    if !asked_for("Codex is woken through codex queue, typing nothing") {
+        return;
+    }
+    let muster = built_muster();
+    let daemon = codex_daemon();
+    let mut control = daemon.connect();
+    let networked = [
+        "-a",
+        "never",
+        "-s",
+        "workspace-write",
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+    ];
+    let (folder, command) = project(&daemon, "worker", true, &networked);
+    make_pane(&mut control, "worker", &folder, with_muster_on_path(&muster, &command), true);
+    let mut input = Input::connect(daemon.socket_path());
+    until_ready(&mut control, "worker");
+    std::thread::sleep(Duration::from_secs(4));
+    // A first turn starts the session, and its SessionStart hook reports the session's id.
+    type_line(&mut input, "worker", "Reply with the single word ready.");
+    let settled = until_turns(TURN, "the first turn", || {
+        read_text(&mut control, "worker", 0, 0).text.contains("• ready")
+    });
+    assert!(settled, "worker: {}", read_text(&mut control, "worker", 0, 0).text);
+    std::thread::sleep(Duration::from_secs(4));
+    input.send(
+        "worker",
+        Event::Send(input_event::Send { text: "half typed".to_string(), enter: false }),
+    );
+
+    let nonce = format!("q{}", std::process::id());
+    assert!(
+        as_integrator(&muster, &daemon, &["msg", "join", "--name", "integrator"]).status.success()
+    );
+    let body = format!("The word for today is {nonce}. Reply with it, and do nothing else.");
+    let posted = as_integrator(&muster, &daemon, &["msg", "post", "--to", "worker", &body]);
+    assert!(posted.status.success());
+
+    let replied = until_turns(TURN, "the worker replying with the word", || {
+        let screen = read_text(&mut control, "worker", 0, 0).text;
+        let composer = screen.lines().rev().find(|line| line.starts_with('›')).unwrap_or_default();
+        composer.contains("half typed")
+            && screen.lines().any(|line| line.starts_with('•') && line.contains(&nonce))
+    });
+    eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
+    assert!(replied, "the worker never replied with the word, or its draft was lost");
+}
