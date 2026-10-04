@@ -11,7 +11,6 @@
 
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -369,17 +368,11 @@ fn spawn(launch: &Launch, errors: &Path, marker: &str) -> std::io::Result<Child>
         // What the daemon says before its own log is open: a socket path too long to bind, a
         // data directory that is incomplete.
         .stderr(errors);
-    // SAFETY: setsid is async-signal-safe and touches nothing the parent shares.
-    unsafe {
-        // A session of its own, so neither the app quitting nor the terminal it was launched
-        // from closing takes every agent with it.
-        command.pre_exec(|| {
-            if libc::setsid() == -1 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
+    // The daemon puts itself in a session of its own when given --launch. Doing it here in a
+    // pre_exec would make std fork rather than posix_spawn, and on macOS the pipe a forked child
+    // reports its exec through cannot be made close-on-exec atomically: a child another thread
+    // starts at that moment can inherit it, and if that child is a daemon that lives on, this
+    // spawn waits for good.
     command.spawn()
 }
 

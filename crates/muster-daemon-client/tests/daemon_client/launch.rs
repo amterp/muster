@@ -67,6 +67,19 @@ fn a_daemon_is_started_once_and_adopted_after() {
     assert_eq!((adopted.instance, adopted.pid), (started.instance, started.pid));
 }
 
+/// A started daemon leads a session of its own, so the app quitting or the terminal it was
+/// started from closing cannot take its agents with it.
+#[test]
+fn a_started_daemon_leads_a_session_of_its_own() {
+    let scratch = Scratch::new();
+    let (reached, started) = ensure_running(&scratch.launch()).unwrap();
+    assert_eq!(reached, Reached::Started);
+    let pid = libc::pid_t::try_from(started.pid).unwrap();
+    // SAFETY: getsid only reads another process's session id.
+    let session = unsafe { libc::getsid(pid) };
+    assert_eq!(session, pid, "the daemon leads its own session");
+}
+
 #[test]
 fn the_first_daemon_on_a_machine_makes_its_own_directory() {
     let mut scratch = Scratch::new();

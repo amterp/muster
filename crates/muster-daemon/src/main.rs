@@ -105,7 +105,10 @@ fn main() -> ExitCode {
                 None => return usage("--data needs a directory"),
             },
             "--launch" => match arguments.next() {
-                Some(token) => server::set_launch(token),
+                Some(token) => {
+                    server::set_launch(token);
+                    own_session();
+                }
                 None => return usage("--launch needs a token"),
             },
             // Given only by a daemon starting its successor (`handoff.rs`).
@@ -152,6 +155,18 @@ fn main() -> ExitCode {
             log::error("daemon.failed", fields! { "error" => message });
             ExitCode::FAILURE
         }
+    }
+}
+
+/// A daemon a client started takes a session of its own, so neither the app quitting nor the
+/// terminal it was started from closing takes every agent with it. Here rather than in the
+/// client, whose spawn must stay free of `pre_exec` (`muster-daemon-client`'s `launch::spawn`
+/// says why). One that already leads a session - started by Launch Services, or by `setsid`
+/// over ssh - is refused with EPERM, and is already where this would put it.
+fn own_session() {
+    // SAFETY: setsid takes no pointers and changes only this process's session.
+    unsafe {
+        libc::setsid();
     }
 }
 
