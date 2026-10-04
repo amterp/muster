@@ -23,6 +23,8 @@ function initial() {
     costs: new Map(),
     // The last usage reported: OpenCode updates a message several times with the same counts.
     usage: null,
+    // The top-level session the pane shows.
+    session: undefined,
   };
 }
 
@@ -36,7 +38,26 @@ function reports(event, seen, window = () => undefined) {
     seen.children.add(info.id);
   }
   if (session !== undefined && seen.children.has(session)) {
-    return [];
+    // A sub-agent's turn is inside the main session's, but its permission prompt holds the whole
+    // session up, and what it spends is the session's spend.
+    if (event.type === "message.updated") {
+      return spend(info, seen);
+    }
+    if (!event.type.startsWith("permission.")) {
+      return [];
+    }
+  }
+  const switched = [];
+  if (
+    (event.type === "session.status" || event.type === "message.updated") &&
+    session !== undefined &&
+    seen.session !== undefined &&
+    session !== seen.session &&
+    !seen.children.has(session)
+  ) {
+    // Switching to an earlier session publishes no `session.created`: its events say it.
+    start(seen, session);
+    switched.push(["--agent", "opencode", "--session-id", session]);
   }
   const state = (said) => {
     if (seen.state === said) {
@@ -45,11 +66,24 @@ function reports(event, seen, window = () => undefined) {
     seen.state = said;
     return [["--agent", "opencode", "--state", said]];
   };
+  return [...switched, ...said(event, seen, state, window)];
+}
+
+// The session the pane now shows, from scratch.
+function start(seen, session) {
+  seen.session = session;
+  seen.state = null;
+  seen.permissions.clear();
+  seen.costs.clear();
+  seen.usage = null;
+}
+
+function said(event, seen, state, window) {
+  const properties = event.properties ?? {};
+  const info = properties.info ?? {};
   switch (event.type) {
     case "session.created":
-      seen.state = null;
-      seen.permissions.clear();
-      seen.costs.clear();
+      start(seen, info.id);
       return [["--clear"], ["--agent", "opencode", "--session-id", info.id]];
     case "session.status":
       if (properties.status?.type === "idle" || seen.permissions.size > 0) {
@@ -84,11 +118,30 @@ function usage(message, seen, window) {
     const used = Math.min(100, (total * 100) / limit);
     said.unshift("--context-used", used.toFixed(2));
   }
-  if (typeof message.cost === "number") {
-    seen.costs.set(message.id, message.cost);
-    const spent = [...seen.costs.values()].reduce((sum, cost) => sum + cost, 0);
-    said.push("--cost-usd", spent.toFixed(4));
+  return once([...said, ...spent(message, seen)], seen);
+}
+
+// A sub-agent's message: its cost, and nothing of its context, which is not the session's.
+function spend(message, seen) {
+  if (message.role !== "assistant" || !message.tokens?.total) {
+    return [];
   }
+  const cost = spent(message, seen);
+  return cost.length > 0 ? once(cost, seen) : [];
+}
+
+// The session's spend so far, counting this message.
+function spent(message, seen) {
+  if (typeof message.cost !== "number") {
+    return [];
+  }
+  seen.costs.set(message.id, message.cost);
+  const total = [...seen.costs.values()].reduce((sum, cost) => sum + cost, 0);
+  return ["--cost-usd", total.toFixed(4)];
+}
+
+// `said` as one report, unless it says what the last one did.
+function once(said, seen) {
   const key = said.join(" ");
   if (seen.usage === key) {
     return [];

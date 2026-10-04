@@ -341,11 +341,21 @@ for (const line of readFileSync(process.argv[3], "utf8").split("\n").filter(Bool
 }
 "#;
 
-/// What OpenCode's plugin reports for the recorded events in `corpus/opencode-1.18.34/<events>`,
-/// a line of bracketed arguments per report, with `$MUSTER_DAEMON` set or not.
-fn opencode_reports(events: &str, in_a_pane: bool) -> Vec<String> {
+/// The events OpenCode 1.18.34 was recorded publishing, a JSON line each.
+const TURNS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../corpus/opencode-1.18.34/plugin-events-turns.jsonl"
+));
+const SUBAGENT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../corpus/opencode-1.18.34/plugin-events-subagent.jsonl"
+));
+
+/// What OpenCode's plugin reports for `events`, a JSON line each, a line of bracketed arguments
+/// per report, with `$MUSTER_DAEMON` set or not. `name` keeps each test's run apart.
+fn opencode_reports(name: &str, events: &str, in_a_pane: bool) -> Vec<String> {
     // A folder per run: the tests run at once, and each counts its own reports.
-    let scratch = Scratch::new(&format!("opencode-{}-{in_a_pane}", events.replace('.', "-")));
+    let scratch = Scratch::new(&format!("opencode-{name}-{in_a_pane}"));
     let said = scratch.0.join("said");
     let daemon = scratch.0.join("daemon");
     std::fs::write(
@@ -360,9 +370,10 @@ fn opencode_reports(events: &str, in_a_pane: bool) -> Vec<String> {
     // file's name, as Debian's 18 in the Linux suite's container does.
     let plugin = scratch.0.join("muster.mjs");
     std::fs::copy(OPENCODE_PLUGIN, &plugin).unwrap();
-    let events = format!("{}/../../corpus/opencode-1.18.34/{events}", env!("CARGO_MANIFEST_DIR"));
+    let events_file = scratch.0.join("events.jsonl");
+    std::fs::write(&events_file, events).unwrap();
     let mut node = Command::new("node");
-    node.arg(&driver).arg(&plugin).arg(events).env_remove("MUSTER_DAEMON");
+    node.arg(&driver).arg(&plugin).arg(&events_file).env_remove("MUSTER_DAEMON");
     if in_a_pane {
         node.env("MUSTER_DAEMON", &daemon);
     }
@@ -382,7 +393,7 @@ fn opencode_reports(events: &str, in_a_pane: bool) -> Vec<String> {
 #[test]
 fn opencodes_plugin_reports_what_each_recorded_event_means() {
     assert_eq!(
-        opencode_reports("plugin-events-turns.jsonl", true),
+        opencode_reports("turns", TURNS, true),
         [
             "[report][--clear]",
             "[report][--agent][opencode][--session-id][ses_efa44b0b5ffejqYaVzzLoccB84]",
@@ -401,15 +412,17 @@ fn opencodes_plugin_reports_what_each_recorded_event_means() {
 }
 
 /// A sub-agent runs in a session of its own, which starts and goes idle inside the main
-/// session's turn: reported, it would read the pane idle while its agent works.
+/// session's turn: reported, it would read the pane idle while its agent works. Only what it
+/// spends counts.
 #[test]
 fn opencodes_plugin_leaves_a_sub_agents_session_out() {
     assert_eq!(
-        opencode_reports("plugin-events-subagent.jsonl", true),
+        opencode_reports("subagent", SUBAGENT, true),
         [
             "[report][--clear]",
             "[report][--agent][opencode][--session-id][ses_efa286cb7ffexqbZM4JCqf5tgd]",
             "[report][--agent][opencode][--state][working]",
+            "[report][--cost-usd][0.0000]",
             "[report][--context-used][9.28][--model][opencode/big-pickle][--cost-usd][0.0000]",
             "[report][--agent][opencode][--state][idle]",
         ]
@@ -419,5 +432,62 @@ fn opencodes_plugin_leaves_a_sub_agents_session_out() {
 /// Outside a Muster pane there is no daemon to tell, and the plugin hooks nothing.
 #[test]
 fn opencodes_plugin_does_nothing_outside_a_pane() {
-    assert_eq!(opencode_reports("plugin-events-turns.jsonl", false), Vec::<String>::new());
+    assert_eq!(opencode_reports("outside", TURNS, false), Vec::<String>::new());
+}
+
+/// A sub-agent's permission prompt holds the whole session up as the main session's does, and what
+/// a sub-agent spends is the session's spend: those of its events count. Authored, in the shapes the
+/// recordings show, since none recorded a sub-agent asking.
+#[test]
+fn opencodes_plugin_counts_a_sub_agents_permission_prompt_and_spend() {
+    let events = [
+        r#"{"type":"session.created","properties":{"sessionID":"ses_main","info":{"id":"ses_main"}}}"#,
+        r#"{"type":"session.status","properties":{"sessionID":"ses_main","status":{"type":"busy"}}}"#,
+        r#"{"type":"session.created","properties":{"sessionID":"ses_child","info":{"id":"ses_child","parentID":"ses_main"}}}"#,
+        r#"{"type":"permission.asked","properties":{"id":"per_1","sessionID":"ses_child"}}"#,
+        r#"{"type":"permission.replied","properties":{"sessionID":"ses_child","requestID":"per_1","reply":"once"}}"#,
+        r#"{"type":"message.updated","properties":{"info":{"id":"msg_c","sessionID":"ses_child","role":"assistant","tokens":{"total":9000},"cost":0.25,"modelID":"big-pickle","providerID":"opencode"}}}"#,
+        r#"{"type":"session.idle","properties":{"sessionID":"ses_child"}}"#,
+        r#"{"type":"message.updated","properties":{"info":{"id":"msg_m","sessionID":"ses_main","role":"assistant","tokens":{"total":20000},"cost":0.5,"modelID":"big-pickle","providerID":"opencode"}}}"#,
+        r#"{"type":"session.idle","properties":{"sessionID":"ses_main"}}"#,
+    ]
+    .join("\n");
+    assert_eq!(
+        opencode_reports("subagent-asks", &events, true),
+        [
+            "[report][--clear]",
+            "[report][--agent][opencode][--session-id][ses_main]",
+            "[report][--agent][opencode][--state][working]",
+            "[report][--agent][opencode][--state][blocked]",
+            "[report][--agent][opencode][--state][working]",
+            "[report][--cost-usd][0.2500]",
+            "[report][--context-used][10.00][--model][opencode/big-pickle][--cost-usd][0.7500]",
+            "[report][--agent][opencode][--state][idle]",
+        ]
+    );
+}
+
+/// Switching to an earlier session publishes no `session.created`; the first event of another
+/// top-level session says the session changed, so its id is reported and the last one's spend is
+/// not carried over.
+#[test]
+fn opencodes_plugin_follows_a_switch_to_another_session() {
+    let events = [
+        r#"{"type":"session.created","properties":{"sessionID":"ses_a","info":{"id":"ses_a"}}}"#,
+        r#"{"type":"message.updated","properties":{"info":{"id":"msg_a","sessionID":"ses_a","role":"assistant","tokens":{"total":20000},"cost":0.5,"modelID":"big-pickle","providerID":"opencode"}}}"#,
+        r#"{"type":"session.status","properties":{"sessionID":"ses_b","status":{"type":"busy"}}}"#,
+        r#"{"type":"message.updated","properties":{"info":{"id":"msg_b","sessionID":"ses_b","role":"assistant","tokens":{"total":20000},"cost":0.25,"modelID":"big-pickle","providerID":"opencode"}}}"#,
+    ]
+    .join("\n");
+    assert_eq!(
+        opencode_reports("switch", &events, true),
+        [
+            "[report][--clear]",
+            "[report][--agent][opencode][--session-id][ses_a]",
+            "[report][--context-used][10.00][--model][opencode/big-pickle][--cost-usd][0.5000]",
+            "[report][--agent][opencode][--session-id][ses_b]",
+            "[report][--agent][opencode][--state][working]",
+            "[report][--context-used][10.00][--model][opencode/big-pickle][--cost-usd][0.2500]",
+        ]
+    );
 }

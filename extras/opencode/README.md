@@ -42,8 +42,10 @@ by refusing a permission. So a turn interrupted reads idle at once. A new sessio
 one's facts, and reports its id.
 
 A sub-agent runs in a session of its own, which starts and goes idle inside the main session's
-turn. The plugin leaves those sessions out, so the pane reads working until the main session is
-done.
+turn. The plugin leaves those sessions' turns out, so the pane reads working until the main
+session is done, but counts a sub-agent's permission prompt, which holds the whole session up, and
+what it spends. Switching to an earlier session reports that session's id and starts its spend
+afresh.
 
 After each assistant message it reports the model, the context used as a share of the model's
 window, which OpenCode's own provider list gives, and what the session has cost so far. A free
