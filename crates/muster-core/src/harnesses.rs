@@ -10,6 +10,9 @@ use crate::mirror::backend::Adapter;
 /// A harness with an adapter in `extras/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Harness {
+    /// Which one, for code that does something different for each: matched without a wildcard,
+    /// a harness added here does not compile until each of those says what it does for it.
+    pub kind: Kind,
     /// Its detection manifest's id, as `muster window` and `report --agent` name it.
     pub id: &'static str,
     /// Its adapter's directory under `extras/`, which is also what a person types for it.
@@ -18,12 +21,30 @@ pub struct Harness {
     pub name: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    ClaudeCode,
+    Codex,
+    OpenCode,
+}
+
 /// Every harness Muster ships an adapter for. A test holds this to `extras/`.
 pub const WITH_ADAPTERS: [Harness; 3] = [
-    Harness { id: "claude", dir: "claude-code", name: "Claude Code" },
-    Harness { id: "codex", dir: "codex", name: "Codex" },
-    Harness { id: "opencode", dir: "opencode", name: "OpenCode" },
+    Harness { kind: Kind::ClaudeCode, id: "claude", dir: "claude-code", name: "Claude Code" },
+    Harness { kind: Kind::Codex, id: "codex", dir: "codex", name: "Codex" },
+    Harness { kind: Kind::OpenCode, id: "opencode", dir: "opencode", name: "OpenCode" },
 ];
+
+/// What a person calls every harness with an adapter, as a sentence lists them: "Claude Code,
+/// Codex and OpenCode".
+pub fn names() -> String {
+    let names: Vec<&str> = WITH_ADAPTERS.iter().map(|harness| harness.name).collect();
+    match names.split_last() {
+        Some((last, [])) => (*last).to_string(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        None => String::new(),
+    }
+}
 
 /// The harness a person or a manifest named, by its adapter's directory or its manifest id.
 pub fn named(name: &str) -> Option<Harness> {
@@ -103,6 +124,7 @@ mod tests {
         assert_eq!(named("claude-code"), named("claude"));
         assert_eq!(named("claude").map(|harness| harness.dir), Some("claude-code"));
         assert_eq!(named("gemini"), None);
+        assert_eq!(names(), "Claude Code, Codex and OpenCode");
     }
 
     #[test]

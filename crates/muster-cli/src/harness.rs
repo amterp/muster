@@ -5,11 +5,13 @@
 //! agree on. What no command of the harness's can do is printed for the person to do by hand.
 
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
-use muster_core::harnesses::{self, Harness};
+use muster_core::harnesses::{self, Harness, Kind};
 use serde_json::json;
 
 use crate::Trouble;
@@ -47,8 +49,8 @@ pub fn plan(harness: Harness, extras: &Path) -> Plan {
     let readme = shell_word(&extras.join(harness.dir).join("README.md").display().to_string());
     let words = |words: &[&str]| words.iter().map(ToString::to_string).collect::<Vec<_>>();
     let extras_path = extras.display().to_string();
-    match harness.dir {
-        "claude-code" => Plan {
+    match harness.kind {
+        Kind::ClaudeCode => Plan {
             commands: vec![
                 words(&["claude", "plugin", "marketplace", "add", &extras_path]),
                 words(&["claude", "plugin", "install", "muster@muster"]),
@@ -61,13 +63,15 @@ pub fn plan(harness: Harness, extras: &Path) -> Plan {
                 format!(
                     "  \"statusLine\": {{\"type\": \"command\", \"refreshInterval\": 2, \
                      \"command\": {}}}",
-                    json!(extras.join("claude-code").join("statusline.sh").display().to_string())
+                    json!(shell_word(
+                        &extras.join("claude-code").join("statusline.sh").display().to_string()
+                    ))
                 ),
                 "Sessions already running take the plugin up when they restart.".to_string(),
                 format!("{readme} has the statusline and the messaging hooks."),
             ],
         },
-        "codex" => Plan {
+        Kind::Codex => Plan {
             commands: vec![
                 words(&["codex", "plugin", "marketplace", "add", &extras_path]),
                 words(&["codex", "plugin", "add", "muster-codex@muster"]),
@@ -79,7 +83,7 @@ pub fn plan(harness: Harness, extras: &Path) -> Plan {
                 format!("{readme} has the messaging hooks and what its sandbox needs."),
             ],
         },
-        _ => Plan {
+        Kind::OpenCode => Plan {
             commands: Vec::new(),
             then: vec![
                 "OpenCode installs plugins from npm, not from a file, and Muster does not write \
@@ -175,17 +179,27 @@ pub fn install(
             let _ = writeln!(out, "$ {}", line(command));
         }
         let left = || plan.printed()[done..].join("\n  ");
-        let ran = Command::new(&command[0])
-            .args(&command[1..])
-            .env_clear()
-            .envs(environment)
-            .output()
+        let mut running = Command::new(&command[0]);
+        running.args(&command[1..]).env_clear().envs(environment);
+        let ran = run_within(&mut running, PATIENCE)
             .map_err(|error| {
                 Trouble::Refused(format!(
                     "`{}` could not be run ({error}), so {}'s adapter is not installed. Install \
                      {} or put it on this PATH, then run:\n  {}",
                     command[0],
                     harness.name,
+                    harness.name,
+                    left()
+                ))
+            })?
+            .ok_or_else(|| {
+                Trouble::Refused(format!(
+                    "`{}` had not finished after {}s and was stopped, so {}'s adapter may be \
+                     only partly installed. A harness asking a question on its terminal, or \
+                     waiting on the network, holds a command this long; run what is left \
+                     yourself, where you can see it:\n  {}",
+                    line(command),
+                    PATIENCE.as_secs(),
                     harness.name,
                     left()
                 ))
@@ -210,6 +224,77 @@ pub fn install(
     Ok(())
 }
 
+/// How long one of a harness's install commands may take. A local plugin installs in a second or
+/// two, so this is far past anything but a command waiting on something that will not come.
+const PATIENCE: Duration = Duration::from_mins(2);
+
+/// Runs `command` to its end and says what it printed, or stops it and says nothing once it has
+/// run for `limit`.
+fn run_within(command: &mut Command, limit: Duration) -> std::io::Result<Option<Output>> {
+    let mut child =
+        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            bytes
+        })
+    };
+    let stdout = drain(child.stdout.take().map(|pipe| Box::new(pipe) as Box<dyn Read + Send>));
+    let stderr = drain(child.stderr.take().map(|pipe| Box::new(pipe) as Box<dyn Read + Send>));
+    let began = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break Some(status);
+        }
+        if began.elapsed() >= limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let (stdout, stderr) = (stdout.join().unwrap_or_default(), stderr.join().unwrap_or_default());
+    Ok(status.map(|status| Output { status, stdout, stderr }))
+}
+
 fn line(command: &[String]) -> String {
     command.iter().map(|word| shell_word(word)).collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_command_that_does_not_finish_in_time_is_stopped() {
+        let began = Instant::now();
+        let ran = run_within(
+            Command::new("/bin/sh").args(["-c", "sleep 30"]),
+            Duration::from_millis(200),
+        );
+        assert!(ran.unwrap().is_none());
+        assert!(began.elapsed() < Duration::from_secs(5), "it was stopped, not waited for");
+        let said =
+            run_within(Command::new("/bin/sh").args(["-c", "echo hi; echo there >&2"]), PATIENCE);
+        let said = said.unwrap().expect("it finished");
+        assert_eq!(
+            (said.stdout.as_slice(), said.stderr.as_slice()),
+            (&b"hi\n"[..], &b"there\n"[..])
+        );
+    }
+
+    #[test]
+    fn the_statusline_path_is_one_shell_word_inside_its_json() {
+        let plan = plan(harnesses::WITH_ADAPTERS[0], Path::new("/Users/Jo Smith/.muster/extras"));
+        assert!(
+            plan.then.iter().any(|line| line.contains(
+                r#""command": "'/Users/Jo Smith/.muster/extras/claude-code/statusline.sh'""#
+            )),
+            "{:?}",
+            plan.then
+        );
+    }
 }

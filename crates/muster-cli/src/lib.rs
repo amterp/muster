@@ -443,9 +443,10 @@ fn context_unsaid(
                 )
             } else {
                 format!(
-                    "{pane_id} has not said how full its context is. Claude Code, Codex and \
-                     OpenCode say it once Muster's adapter is installed (`muster docs \
-                     harnesses`); until {pane_id} does, --context cannot end this wait."
+                    "{pane_id} has not said how full its context is. {} say it once \
+                     Muster's adapter is installed (`muster docs harnesses`); until {pane_id} \
+                     does, --context cannot end this wait.",
+                    muster_core::harnesses::names()
                 )
             }
         })

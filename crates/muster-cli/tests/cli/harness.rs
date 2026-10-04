@@ -169,3 +169,13 @@ fn the_json_answer_lists_the_commands_and_whether_they_ran() {
     assert_eq!(answer["commands"][1], "claude plugin install muster@muster");
     assert_eq!(answer["extras"], Path::new(&home.extras()).display().to_string());
 }
+
+/// The help names every harness there is an adapter for, though clap's text is written by hand.
+#[test]
+fn the_help_names_every_harness_with_an_adapter() {
+    let home = Home::new("help");
+    let help = text(&home.muster(&["harness", "install", "--help"]).stdout);
+    for harness in muster_core::harnesses::WITH_ADAPTERS {
+        assert!(help.contains(harness.dir), "the help leaves out {}: {help}", harness.dir);
+    }
+}
