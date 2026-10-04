@@ -170,3 +170,15 @@ private func open(
 
   #expect(open(home, named: "window-1", open: [held]) != held)
 }
+
+@Test func aNameLeftInTheSharedDirectoryIsNotGivenToANewWindow() {
+  // A window process from before one app per install that would not quit keeps its arrangement
+  // in the directory every install shared, until a later launch adopts it under its name. A new
+  // window named the same would take its row in the record, and its tabs with it.
+  let home = scratch("left-behind")
+  let shared = URL(fileURLWithPath: home).appendingPathComponent("state/windows")
+  try? FileManager.default.createDirectory(at: shared, withIntermediateDirectories: true)
+  publish(shared.appendingPathComponent("window-1.toml").path)
+
+  #expect(open(home, fresh: true) == "\(home)/state/i/windows/window-2.toml")
+}

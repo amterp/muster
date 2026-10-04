@@ -115,11 +115,19 @@ public enum Arrangements {
   ///
   /// The oldest are dropped once there are more than `kept`. A record is a few hundred bytes, so
   /// this is about a directory somebody opens rather than about space.
+  ///
+  /// A name an arrangement still has in the directory every install shared is taken too. One is
+  /// left there while a window process from before one app per install would not quit, and is
+  /// adopted under its name once it has (`app_lock.rs`); a new window given that name meanwhile
+  /// would take over its row in the record, and with it that window's tabs.
   private static func mint(in directory: URL, slots: [Slot]) -> URL {
     for old in slots.dropFirst(kept - 1) where !old.open {
       try? FileManager.default.removeItem(at: old.record)
     }
-    let taken = Set(slots.filter { $0.open || $0.written != nil }.map(\.stem))
+    let shared = directory.deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("windows", isDirectory: true)
+    let leftBehind = Self.slots(in: shared).map(\.stem)
+    let taken = Set(slots.filter { $0.open || $0.written != nil }.map(\.stem) + leftBehind)
     var number = 1
     while taken.contains("window-\(number)") { number += 1 }
     return directory.appendingPathComponent("window-\(number).toml")

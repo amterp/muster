@@ -326,8 +326,24 @@ pub(crate) fn adopt(home: &Path, install: &str) {
             {
                 continue;
             }
+            let into = windows.join(entry.file_name());
+            // A rename replaces what it lands on, and what is there is a window of this install.
+            if into.exists() {
+                log::warn(
+                    "state.adopt.taken",
+                    fields! {
+                        "arrangement" => path.display(),
+                        "into" => into.display(),
+                        "impact" => "the window remembered in the old directory is not adopted, \
+                                     so it does not reopen, and its tabs join an open window",
+                        "check" => "which of the two files is the window wanted; move the other \
+                                    aside and relaunch to adopt the old one",
+                    },
+                );
+                continue;
+            }
             let _ = std::fs::create_dir_all(&windows);
-            if std::fs::rename(&path, windows.join(entry.file_name())).is_ok() {
+            if std::fs::rename(&path, &into).is_ok() {
                 let _ = std::fs::remove_file(path.with_extension("held"));
                 moved.insert(entry.file_name());
             }
@@ -642,6 +658,24 @@ mod tests {
             "{adopted}"
         );
         assert!(old.join("window-4.toml").exists(), "another install's arrangement was taken");
+    }
+
+    /// An arrangement is never adopted over one of this install's own by the same name: a rename
+    /// would replace a window this install already has.
+    #[test]
+    fn an_arrangement_is_not_adopted_over_one_already_here() {
+        let home = home();
+        let old = home.join("state/windows");
+        let own = home.join("state/release/windows");
+        std::fs::create_dir_all(&old).expect("the old windows directory");
+        std::fs::create_dir_all(&own).expect("the install's windows directory");
+        std::fs::write(old.join("window-1.toml"), "old").expect("written");
+        std::fs::write(own.join("window-1.toml"), "own").expect("written");
+
+        adopt(&home, "release");
+
+        assert_eq!(std::fs::read_to_string(own.join("window-1.toml")).ok().as_deref(), Some("own"));
+        assert!(old.join("window-1.toml").exists(), "the old arrangement was lost");
     }
 
     /// A claim whose process has gone - a crash, a kill, a reboot under a build from before - is
