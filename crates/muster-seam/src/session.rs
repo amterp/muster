@@ -1533,6 +1533,7 @@ pub(crate) fn reset() {
         let mut attaches = poison::lock(&ATTACHES, "attaches");
         attaches.generation += 1;
         attaches.under_way.clear();
+        attaches.failed_once.clear();
         poison::lock(&APPLIED_DAEMONS, "applied-daemons").clear();
     }
     ATTACH_ENDED.notify_all();
@@ -4112,6 +4113,11 @@ pub(crate) fn is_attaching(daemon: &DaemonId) -> bool {
     !is_following(daemon) && poison::lock(&ATTACHES, "attaches").under_way.contains(daemon)
 }
 
+/// Whether a daemon is being attached and has not yet failed to be: one worth waiting for.
+fn on_its_first_attempt(daemon: &DaemonId) -> bool {
+    is_attaching(daemon) && !poison::lock(&ATTACHES, "attaches").failed_once.contains(daemon)
+}
+
 /// Every daemon this window is following, in the order the window shows them.
 ///
 /// For naming the machines there are when somebody has named one there is not. The window's
@@ -4500,6 +4506,9 @@ struct Attaches {
     /// attached starts another, and the one before stops at its next look.
     latest: BTreeMap<DaemonId, u64>,
     issued: u64,
+    /// Those under way whose first attempt has failed: still retried, and no longer waited for
+    /// by anything that would rather have them first.
+    failed_once: BTreeSet<DaemonId>,
 }
 
 impl Attaches {
@@ -4526,6 +4535,7 @@ static ATTACHES: Mutex<Attaches> = Mutex::new(Attaches {
     under_way: BTreeSet::new(),
     latest: BTreeMap::new(),
     issued: 0,
+    failed_once: BTreeSet::new(),
 });
 
 /// Told whenever an attach ends, for a caller waiting on the ones under way.
@@ -4649,6 +4659,10 @@ fn keep_attaching(daemon: &Daemon, ticket: Ticket) {
                 // every attempt after it.
                 if attempts.failures() == 1 {
                     raise_problem(&key, Severity::Warning, &never_attached(daemon, &refusal));
+                    // A window waiting for this machine to fill it waits no longer: the next one
+                    // the config names may fill it now.
+                    poison::lock(&ATTACHES, "attaches").failed_once.insert(daemon.id.clone());
+                    settle_what_every_window_shows();
                 }
                 std::thread::sleep(std::time::Duration::from_nanos(retry.after));
                 if !attach_current(&daemon.id, ticket) {
@@ -5546,15 +5560,15 @@ pub(crate) fn first_local_daemon(window: WindowId) -> Option<DaemonId> {
 }
 
 /// The daemon on this machine a window with nothing to show asks for its first tab: the first the
-/// config names, waited for while it is still attaching, so which machine a window starts on does
-/// not depend on which answered first. `None` while it waits; a daemon that failed to attach is
-/// passed over.
+/// config names, waited for while its first attempt to attach is under way, so which machine a
+/// window starts on does not depend on which answered first. `None` while it waits; a daemon
+/// whose attach has failed once is passed over, though it is still retried.
 fn local_daemon_to_fill_from(window: WindowId) -> Option<DaemonId> {
     for (daemon, attached) in local_daemons_in_order(window) {
         if attached {
             return Some(daemon);
         }
-        if is_attaching(&daemon) {
+        if on_its_first_attempt(&daemon) {
             return None;
         }
     }

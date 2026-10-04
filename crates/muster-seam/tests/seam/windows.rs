@@ -1153,6 +1153,42 @@ fn a_pane_asked_for_before_any_window_opens_is_kept_for_the_one_that_does() {
     assert_eq!(asked_for(), vec![(String::new(), "p-later".to_string(), false)]);
 }
 
+/// A first-named machine that will not attach is waited for only until its first attempt fails;
+/// the window then starts on the next machine the config names, while the first is retried.
+#[test]
+fn a_first_window_passes_over_a_machine_that_failed_to_attach() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let working = Daemon::start_built();
+    let nothing = working.root().join("nothing.sock");
+    let config = working.root().join("first-missing.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "[[daemon]]\nid = \"missing\"\nsocket = {:?}\n\n[[daemon]]\nid = \"working\"\n\
+             socket = {:?}\n",
+            nothing.to_string_lossy(),
+            working.socket_path().to_string_lossy()
+        ),
+    )
+    .expect("the harness root is writable");
+    forget_events();
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(&Request::new(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: arrangement(&working, "window-1").to_string_lossy().into_owned(),
+        tab_holders_path: record(&working).to_string_lossy().into_owned(),
+        ..Startup::default()
+    }))));
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow::default()))));
+
+    until(
+        "the window to start on the machine that attached",
+        || machine_showing_in("window-1").as_deref() == Some("working"),
+        || format!("window-1 shows a tab on {:?}", machine_showing_in("window-1")),
+    );
+}
+
 /// The window's subscribe, whose answer carries the daemon's state.
 fn subscribes(request: &daemon_proto::Request) -> bool {
     matches!(
