@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "window-s-opened",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791101272552,
+  "creator": "Alexander Terp",
+  "description": "2026-10-04: crates/muster-seam/src/session.rs Window carries opened, closed and closing as bools (clippy struct_excessive_bools allowed with a note). They are one lifecycle: unopened, open, closing, closed. An enum would make impossible combinations unrepresentable.",
+  "id": "a_2bZzJ9uwz",
+  "position": "b0U",
+  "title": "Window's opened/closed/closing flags should be one lifecycle enum",
+  "type": "chore",
+  "updated_at_millis": 1791101272552,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791101272552}
+  ]
+}

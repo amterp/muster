@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "a-replica-batch-with",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790651396475,
   "creator": "Alexander Terp",
   "description": "A replica applies a catch-up batch in order, but the log does not record the policy each message was posted under, so messages between two SetPolicy entries are read under the final policy. Fixing it means recording the policy (or its ring set) in the log entry, a log format change.",
   "id": "a_2YXDyeRc5",
   "parent": "a_2Y3ODvuwa",
-  "position": "b09",
+  "position": "YyM",
   "title": "A replica batch with two policy changes reads messages between them under the last",
   "type": "bug",
-  "updated_at_millis": 1790651396475,
+  "updated_at_millis": 1791101271320,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790651396475}
+    {"field":"column","value":"backlog-lo","at":1790651396475},
+    {"field":"column","value":"done","at":1791101271320}
   ]
 }

@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "muster-msg-group",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790617332993,
   "creator": "Alexander Terp",
   "description": "Groups can be created, set and paused, but no verb deletes one; MIP-4 proposes a group stays until deleted.",
   "id": "a_2YIvpY9di",
   "parent": "a_2Y3ODvuwa",
-  "position": "b03",
+  "position": "YyP",
   "title": "muster msg group delete",
   "type": "feature",
-  "updated_at_millis": 1790617332993,
+  "updated_at_millis": 1791101235488,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790617332993}
+    {"field":"column","value":"backlog-lo","at":1790617332993},
+    {"field":"column","value":"done","at":1791101235488}
   ]
 }

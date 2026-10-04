@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "occlude-surfaces",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790597571254,
   "creator": "Alexander Terp",
   "description": "Hidden windows now tell libghostty their surfaces are occluded, so they stop rendering at full rate. Panes in tabs no region shows, inside a visible window, still render into a hidden view.",
   "id": "a_2YAdjmyoJ",
-  "position": "ax",
+  "position": "YyJ",
   "title": "Occlude surfaces parked in a visible window",
   "type": "feature",
-  "updated_at_millis": 1790597571254,
+  "updated_at_millis": 1791101272146,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790597571254}
+    {"field":"column","value":"backlog-lo","at":1790597571254},
+    {"field":"column","value":"done","at":1791101272146}
   ]
 }
