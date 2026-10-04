@@ -352,6 +352,30 @@ pub struct Applied {
     pub more: Option<u64>,
 }
 
+/// Whom a replica's last batch of new entries reached, and which entries those were.
+///
+/// A link coming up refetches every replica, and a refetch that runs late takes a post before its
+/// home sends it on: the home's send then finds every entry held already and would answer that it
+/// reached nobody. Remembered so that answer says whom the entries reached when they were taken.
+#[derive(Debug, Clone)]
+pub(crate) struct Lately {
+    from: u64,
+    to: u64,
+    reached: Vec<(String, Reach)>,
+}
+
+/// Whom the entries of a batch held already reached when they were taken, as far as the replica's
+/// last batch says.
+fn reached_before(lately: Option<&Lately>, head: u64, entries: &[Entry]) -> Vec<(String, Reach)> {
+    let taken = entries.iter().map(|entry| entry.seq).filter(|seq| *seq <= head);
+    match lately {
+        Some(lately) if taken.into_iter().any(|seq| (lately.from..=lately.to).contains(&seq)) => {
+            lately.reached.clone()
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// A request answered by another machine, as it ends on this one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settled {
@@ -762,6 +786,7 @@ impl<S: Store> Messaging<S> {
         let ring_before = self.groups.get(&key).map(|group| group.policy.ring.clone());
         let group = self.groups.entry(key.clone()).or_insert_with(|| Group::replica(&peer.name));
         let head = group.head();
+        let earlier = reached_before(self.lately_reached.get(&key), head, &caught.entries);
         let fresh: Vec<Entry> =
             caught.entries.into_iter().filter(|entry| entry.seq > head).collect();
         if fresh.first().is_some_and(|first| first.seq != head + 1) {
@@ -779,12 +804,13 @@ impl<S: Store> Messaging<S> {
             author: String::new(),
             group: key.clone(),
             seq: head,
-            reached: Vec::new(),
+            reached: earlier,
             wakes: Vec::new(),
             answered: Vec::new(),
             tell: Vec::new(),
             unsaved: None,
         };
+        let carried = posted.reached.len();
         let mut resumed = None;
         // Reached once the batch is in, and only those still members then: a replica refetched
         // from nothing replays its whole log, and a member who left since was woken for it
@@ -835,19 +861,13 @@ impl<S: Store> Messaging<S> {
             }
         }
         self.reach_batch(&key, targets, forgotten, &mut posted, presence, now_ms);
+        self.remember_reached(&key, head, &posted.reached[carried..]);
         if let Some(by) = resumed
             && !self.groups[&key].policy.paused
         {
             self.wake_resumed(&key, &by, &mut posted, presence, now_ms);
         }
-        // What the windows show for the human may be stale: nothing waits once it has left, and
-        // a new ring set there may ring it for what is already unread, or no longer.
-        let human_here = self.groups[&key].members.contains(HUMAN);
-        let rings_otherwise = ring_before.is_some_and(|ring| ring != self.groups[&key].policy.ring);
-        if (human_left && !human_here) || (rings_otherwise && human_here) {
-            let notice = self.human_notice(&key);
-            posted.wakes.push(Wake { name: HUMAN.to_string(), via: Via::Human, notice });
-        }
+        self.tell_the_human_if_changed(&key, human_left, ring_before.as_ref(), &mut posted);
         keep_last_human_wake(&mut posted.wakes);
         self.unanswered.remove(&key);
         let more = more.then(|| self.groups[&key].head());
@@ -866,6 +886,32 @@ impl<S: Store> Messaging<S> {
             unsaved,
             more,
         })
+    }
+
+    /// What the windows show for the human may be stale after a batch: nothing waits once it
+    /// has left, and a new ring set there may ring it for what is already unread, or no longer.
+    fn tell_the_human_if_changed(
+        &self,
+        key: &str,
+        human_left: bool,
+        ring_before: Option<&BTreeMap<String, Vec<String>>>,
+        posted: &mut Posted,
+    ) {
+        let human_here = self.groups[key].members.contains(HUMAN);
+        let rings_otherwise = ring_before.is_some_and(|ring| *ring != self.groups[key].policy.ring);
+        if (human_left && !human_here) || (rings_otherwise && human_here) {
+            let notice = self.human_notice(key);
+            posted.wakes.push(Wake { name: HUMAN.to_string(), via: Via::Human, notice });
+        }
+    }
+
+    /// Remembers whom the entries a batch added after `head` reached, if it added any.
+    fn remember_reached(&mut self, key: &str, head: u64, reached: &[(String, Reach)]) {
+        let to = self.groups[key].head();
+        if to > head {
+            let lately = Lately { from: head + 1, to, reached: reached.to_vec() };
+            self.lately_reached.insert(key.to_string(), lately);
+        }
     }
 
     /// Reaches this machine's members a replica's new messages are for, each under the policy

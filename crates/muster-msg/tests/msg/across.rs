@@ -491,6 +491,31 @@ fn a_replica_catches_up_when_the_link_returns() {
     );
 }
 
+/// A refetch that took a post before the home sent it on does not leave the home's answer saying
+/// it reached nobody: the replica says whom it reached for entries it already took.
+#[test]
+fn a_post_a_refetch_took_first_still_says_whom_it_reached() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let posted = laptop.post(&builder, None, &[], "rebase first", sessions, now).unwrap();
+    // The devenv's link-up refetch, run late, fetches the post before the laptop sends it on.
+    for (group, head) in wire.devenv.replicas_of("lap") {
+        wire.send(Side::Devenv, &Call::Since { group, after: head }).expect("the link is up");
+    }
+    let reached = wire.tell(Side::Laptop, &posted.tell);
+
+    assert_eq!(
+        reached,
+        [("critic@devenv".to_string(), Reach::Woken)],
+        "the home's answer does not say the critic was reached"
+    );
+}
+
 /// `review` is the group kept here when there is one, and `review@lap` the laptop's.
 #[test]
 fn a_bare_group_name_is_the_one_kept_here() {
@@ -661,8 +686,8 @@ fn a_group_kept_elsewhere_is_held_from_the_start_after_a_restart() {
     );
 }
 
-/// The same entries twice change nothing; entries after a gap are refused with the head the
-/// gap follows.
+/// The same entries twice wake nobody again, and say whom they reached when they were taken;
+/// entries after a gap are refused with the head the gap follows.
 #[test]
 fn applying_skips_what_it_has_and_reports_a_gap() {
     let mut wire = Wire::new();
@@ -674,7 +699,8 @@ fn applying_skips_what_it_has_and_reports_a_gap() {
     let whole = wire.laptop.since("review", 0).unwrap();
     let (devenv, sessions) = wire.split(Side::Devenv);
     let again = devenv.apply(&Side::Devenv.peer(), whole.clone(), sessions, 70).unwrap();
-    assert!(again.reached.is_empty(), "{again:?}");
+    assert!(again.wakes.is_empty(), "the same entries woke somebody again: {again:?}");
+    assert_eq!(again.reached, [("critic".to_string(), Reach::Woken)], "{again:?}");
 
     let head = whole.entries.last().unwrap().seq;
     let mut ahead = whole;

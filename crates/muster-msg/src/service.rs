@@ -406,6 +406,9 @@ pub struct Messaging<S: Store> {
     pub(crate) unanswered: BTreeSet<String>,
     /// Where the human is homed, once a daemon there has dialed this one.
     pub(crate) human_home: Option<HumanHome>,
+    /// Whom each replica's last batch of new entries reached, for a later batch carrying the
+    /// same entries (`across::Lately`). Not kept: it answers a race between two deliveries.
+    pub(crate) lately_reached: BTreeMap<String, crate::across::Lately>,
 }
 
 impl<S: Store> Messaging<S> {
@@ -474,6 +477,7 @@ impl<S: Store> Messaging<S> {
             met: BTreeSet::new(),
             called: BTreeSet::new(),
             unanswered: BTreeSet::new(),
+            lately_reached: BTreeMap::new(),
             human_home: saved.human_home,
         };
         messaging.kept = messaging.snapshot();
