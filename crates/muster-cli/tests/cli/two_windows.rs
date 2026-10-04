@@ -270,7 +270,6 @@ fn open_window() -> OtherWindow {
     OtherWindow { name: "window-2".to_string(), pid: 632, tabs: Vec::new() }
 }
 
-/// A listener answering as a window with other windows beside it.
 /// A pane's text read with two apps listening is the text, from the app holding the pane, rather
 /// than a heading per app and a word for what each answered.
 #[test]
@@ -345,6 +344,7 @@ fn reading(home: &Path, pid: u32, holds: &str) {
     });
 }
 
+/// A listener answering as a window with other windows beside it.
 fn answering(home: &Path, pid: u32, name: &str, others: Vec<OtherWindow>) {
     let path = first_socket(home, pid);
     let listener = UnixListener::bind(&path).expect("the temporary directory is writable");

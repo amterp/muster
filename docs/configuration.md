@@ -553,6 +553,9 @@ daemons the file names, opens the window without any that have not answered by t
 panes arrive when they do. A daemon that cannot be reached is tried again, on the same backoff as a
 dropped connection, for as long as Muster runs; the window says which one is missing and why from
 the first failed attempt, and takes that back when it answers, so there is no need to relaunch.
+The exception is a daemon that can never start, such as one whose binary is not there: another
+attempt would fail the same way, so it is reported once, as an error naming what to change, and
+not tried again until Muster is relaunched.
 
 **Each machine has a color, and its rows in the agent list carry a swatch of it** while the
 window is attached to more than one, so a laptop pane and a devenv pane can be told apart
@@ -572,11 +575,13 @@ reach panes opened afterwards too, and for the same shape of reason: the daemon 
 it builds a pane, so a pane you are already typing in keeps what it was made with.
 
 `[[daemon]]` is half an exception. A block added is attached as soon as the file is saved, and
-that machine's panes arrive in the window. A block taken out, or one whose `host` or `socket`
-changed, is not acted on until Muster is relaunched: the agents on that machine keep running
-whatever the file says, and detaching it would take their tabs out of the window, which reads as
-agents gone. So it stays attached, and a warning at the foot of the agent list says it is waiting
-for a relaunch. A file that will not parse changes nothing at all, which means an editor that saves halfway
+that machine's panes arrive in the window. A block whose machine never attached - still being
+tried, or given up on - has nothing to keep, so correcting its `host`, `socket` or `ssh_options`
+attaches it from the corrected one at once. A block taken out, or changed in any of those once its
+machine is attached, is not acted on until Muster is relaunched: the agents on that machine keep
+running whatever the file says, and detaching it would take their tabs out of the window, which
+reads as agents gone. So it stays attached, and a warning at the foot of the agent list says it is
+waiting for a relaunch. A file that will not parse changes nothing at all, which means an editor that saves halfway
 through a thought cannot leave you running half a config.
 
 **A refused file says so at the foot of the agent list**, in the words the refusal itself used,

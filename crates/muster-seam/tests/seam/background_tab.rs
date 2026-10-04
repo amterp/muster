@@ -154,7 +154,11 @@ fn a_tab_nothing_is_showing_is_described_with_its_panes_sizes() {
         side: "right".to_string(),
         ..SplitPane::default()
     })));
-    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    // With the keyboard, so the split tab is the one behind: the case this test is for.
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        take_focus: true,
+        ..CreateTab::default()
+    })));
     until(
         "the first tab to be behind a second, holding both its panes",
         || tabs().len() == 2 && panes_in(&background) == 2,
@@ -275,10 +279,17 @@ fn closing_a_tab_ends_it_whether_or_not_it_is_the_one_on_screen() {
     );
     let first = panes_of_tabs()[0].0.clone();
 
-    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    // With the keyboard, so the first tab is the one behind, which is what the close below
+    // names outright.
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        take_focus: true,
+        ..CreateTab::default()
+    })));
     // A request returns with its effect already in the window, so this is true on the answer.
     assert!(
-        tabs().len() == 2 && tabs().iter().filter(|(_, on_screen)| *on_screen).count() == 1,
+        tabs().len() == 2
+            && tabs().iter().filter(|(_, on_screen)| *on_screen).count() == 1
+            && tabs().iter().any(|(tab, on_screen)| *on_screen && tab != &first),
         "the new tab was not on screen with the first one behind it when the request returned: \
          {:?}",
         tabs()

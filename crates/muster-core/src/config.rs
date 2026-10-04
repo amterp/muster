@@ -113,7 +113,8 @@ pub struct Appearance {
     /// Only the machines whose block names one: every other machine takes the color
     /// [`crate::roster::machine_color`] draws from its name. Here rather than on the daemon
     /// itself because it describes the window and not the session, so saving it reloads like
-    /// any other color instead of asking for the relaunch a change to `[[daemon]]` needs.
+    /// any other color instead of asking for the relaunch a changed endpoint of an attached
+    /// machine needs.
     pub machine_colors: BTreeMap<DaemonId, Rgb>,
 }
 

@@ -171,12 +171,6 @@ fn a_wait_exits_when_the_agent_finishes(open: &Open) {
     );
 }
 
-/// A pane is waited on straight after it is made.
-///
-/// `muster pane wait --pane "$(muster pane new)"` is the line a script writes, and it asks about
-/// the pane in the same instant `pane new` names it. The window holds the daemon's description of
-/// a new pane before it answers the request that made it; a wait refusing the name would mean
-/// that order had broken, and the caller would lose a race it cannot see.
 /// `window --watch --layout --json` prints the layout, then the layout again each time the
 /// arrangement moves, and nothing for an agent changing state.
 ///
@@ -211,6 +205,12 @@ fn a_layout_watch_draws_again_when_the_arrangement_moves(open: &Open) {
     assert!(closed.status.success(), "{}", String::from_utf8_lossy(&closed.stderr));
 }
 
+/// A pane is waited on straight after it is made.
+///
+/// `muster pane wait --pane "$(muster pane new)"` is the line a script writes, and it asks about
+/// the pane in the same instant `pane new` names it. The window holds the daemon's description of
+/// a new pane before it answers the request that made it; a wait refusing the name would mean
+/// that order had broken, and the caller would lose a race it cannot see.
 fn a_pane_just_made_can_be_waited_on(open: &Open) {
     let made = muster(open, &["pane", "new", "--pane", &open.pane, "--down"]);
     let made = String::from_utf8_lossy(&made.stdout).trim().to_string();
