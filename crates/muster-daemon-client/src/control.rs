@@ -317,6 +317,12 @@ impl Control {
         })))
     }
 
+    pub fn set_resume_agents(&self, resume: bool) -> Pending {
+        self.ask(session(session_request::Request::SetResumeAgents(proto::SetResumeAgents {
+            resume,
+        })))
+    }
+
     pub fn set_compact_at(&self, percent: Option<f32>) -> Pending {
         self.ask(session(session_request::Request::SetCompactAt(proto::SetCompactAt { percent })))
     }

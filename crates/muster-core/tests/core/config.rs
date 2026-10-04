@@ -145,6 +145,9 @@ fn panes(panes: &config::Panes) -> Vec<String> {
     if !panes.name_sessions {
         set.push("name_sessions=false".to_string());
     }
+    if !panes.resume_agents {
+        set.push("resume_agents=false".to_string());
+    }
     if let Some(percent) = panes.compact_at {
         set.push(format!("compact_at={percent}"));
     }

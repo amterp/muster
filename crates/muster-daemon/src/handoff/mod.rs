@@ -11,6 +11,7 @@
 
 mod fds;
 
+use std::collections::HashMap;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -534,12 +535,12 @@ pub(crate) fn take_over(
     send(&mut link, handoff::Message::Accept(accept))?;
     faults.pause("after-accept", socket);
 
-    let Built { shared, stopping, stop, persister, tabs, app_manifests } =
+    let Built { shared, stopping, stop, persister, tabs, resumes, app_manifests } =
         build(&mut link, socket, data, log)?;
     if !app_manifests.is_empty() {
         shared.adopt_manifests(app_manifests);
     }
-    adopt_panes(&mut link, &shared, offer.panes)?;
+    adopt_panes(&mut link, &shared, offer.panes, &resumes)?;
     let tabs = shared.lock().adopt_tabs(tabs);
     if let Err(problem) = tabs {
         return refuse(&mut link, problem);
@@ -606,6 +607,8 @@ struct Built {
     stop: Receiver<Stop>,
     persister: Arc<Persister>,
     tabs: Vec<persist::Tab>,
+    /// What starts each pane's agent session again, by pane, from the state handed over.
+    resumes: HashMap<String, persist::Resume>,
     app_manifests: Vec<proto::Manifest>,
 }
 
@@ -671,12 +674,22 @@ fn build(
         stop,
         persister,
         tabs: state.tabs,
+        resumes: state
+            .panes
+            .into_iter()
+            .filter_map(|pane| Some((pane.name, pane.resume?)))
+            .collect(),
         app_manifests: session.app_manifests,
     })
 }
 
 /// Takes each pane as it arrives, and refuses the handoff at one this daemon cannot take.
-fn adopt_panes(link: &mut UnixStream, shared: &Shared, panes: u32) -> Result<(), String> {
+fn adopt_panes(
+    link: &mut UnixStream,
+    shared: &Shared,
+    panes: u32,
+    resumes: &HashMap<String, persist::Resume>,
+) -> Result<(), String> {
     for _ in 0..panes {
         let master = fds::receive(link, 1)
             .map_err(|error| format!("a pane's terminal did not arrive: {error}"))?
@@ -700,6 +713,7 @@ fn adopt_panes(link: &mut UnixStream, shared: &Shared, panes: u32) -> Result<(),
             height_px: u16::try_from(grid.height_px).unwrap_or(u16::MAX),
         };
         let record = pane.record.unwrap_or_default();
+        let resume = resumes.get(&record.pane);
         let adopted = shared.lock().adopt(
             record,
             grid,
@@ -713,6 +727,7 @@ fn adopt_panes(link: &mut UnixStream, shared: &Shared, panes: u32) -> Result<(),
                     reports_turns: pane.reports_turns,
                 },
                 session_id: pane.session_id.as_deref(),
+                resume,
             },
         );
         if let Err(problem) = adopted {

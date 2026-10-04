@@ -141,6 +141,12 @@ enum Language {
     Fish,
 }
 
+/// `argv` as a command line for the shell at `shell` to run, every word quoted for that shell.
+pub(crate) fn command_line(shell: &str, argv: &[String]) -> String {
+    let language = Language::of(shell);
+    argv.iter().map(|word| language.quote(word)).collect::<Vec<_>>().join(" ")
+}
+
 impl Language {
     fn of(shell: &str) -> Language {
         match shell.rsplit('/').next() {

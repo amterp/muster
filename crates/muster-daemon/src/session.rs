@@ -509,6 +509,7 @@ pub(crate) struct Resuming<'a> {
     pub(crate) detection: Option<&'a proto::handoff::Detection>,
     pub(crate) turns: Turns,
     pub(crate) session_id: Option<&'a str>,
+    pub(crate) resume: Option<&'a persist::Resume>,
 }
 
 pub(crate) struct HandedPane {
@@ -606,6 +607,8 @@ struct Restoring {
 #[derive(Debug)]
 struct RestoringPane {
     saved: persist::Pane,
+    /// What starts its agent's session again, when it starts with that rather than a shell.
+    resume: Option<persist::Resume>,
     /// The configured shell.
     launch: Launched,
     /// The default shell, for when the configured one will not start.
@@ -618,12 +621,15 @@ struct Restarted {
     cwd: PathBuf,
     program: String,
     started: Started,
+    /// Whether what started is the pane's agent session resumed, rather than a shell.
+    resumed: bool,
 }
 
 impl Restoring {
     /// Starts each pane's shell in its saved directory, or at home when that is gone. A shell
     /// and never the command a pane was made with: an agent started afresh in every pane is not
-    /// what anybody asked for.
+    /// what anybody asked for. A pane whose agent reported its session starts that session
+    /// again instead, through the shell it drops back to when the agent exits.
     ///
     /// A shell that will not start there - a configured shell since uninstalled, a directory it
     /// may not enter - is tried again as the default shell, in the same directory and then at
@@ -665,7 +671,8 @@ impl Restoring {
                         self.home.clone()
                     }
                 };
-                let first = start_launched(&pane.launch, &cwd, pane.saved.grid);
+                let mut first = start_launched(&pane.launch, &cwd, pane.saved.grid);
+                first.resumed = pane.resume.is_some();
                 let Err(error) = first.started else { return first };
                 log::warn(
                     "daemon.state.fallback",
@@ -734,7 +741,12 @@ fn probe_directories(
 
 fn start_launched((argv, environment): &Launched, cwd: &Path, grid: Grid) -> Restarted {
     let launch = Launch { argv, environment, cwd, grid };
-    Restarted { cwd: cwd.to_path_buf(), program: argv[0].clone(), started: pty::start(&launch) }
+    Restarted {
+        cwd: cwd.to_path_buf(),
+        program: argv[0].clone(),
+        started: pty::start(&launch),
+        resumed: false,
+    }
 }
 
 /// What a restore could not bring back, as [`proto::Restored`] names it.
@@ -968,6 +980,7 @@ impl Session {
                 S::SetCursor(set) => self.set_cursor(set),
                 S::SetScrollMultiplier(set) => self.set_scroll_multiplier(set.multiplier),
                 S::SetNameSessions(set) => self.set_name_sessions(set.name),
+                S::SetResumeAgents(set) => self.set_resume_agents(set.resume),
                 S::SetHumanName(set) => self.set_human_name(set.name),
                 S::SetCompactAt(set) => self.set_compact_at(set.percent),
                 S::ReadGrids(_) => self.grids(),
@@ -1600,6 +1613,7 @@ impl Session {
             && self.panes[index].session_id.as_deref() == Some(id)
         {
             self.panes[index].session_id = None;
+            self.resume_changed(index, None);
         }
     }
 
@@ -1620,8 +1634,43 @@ impl Session {
             "session.id.reported",
             fields! { "pane" => pane.record.pane, "agent" => agent, "known" => id.is_some() },
         );
-        pane.session_id = id;
+        pane.session_id.clone_from(&id);
+        let resume = id.and_then(|session| self.resume_of(index, agent, &session));
+        self.resume_changed(index, resume);
         true
+    }
+
+    /// The command that starts the session `session` of the pane's agent again after a restart:
+    /// its manifest's resume, with the arguments the agent process is running with now, read off
+    /// the pane's foreground job. Read now because a session is reported from inside the agent,
+    /// so it is running; after a restart there is nothing left to read. None when the manifest
+    /// does not say how, or the agent's process will not say what it was started with.
+    fn resume_of(&self, index: usize, agent: &str, session: &str) -> Option<persist::Resume> {
+        use muster_detect::Processes as _;
+        let manifests = self.detecting.manifests()?;
+        let io = &self.panes[index].io;
+        let group = u32::try_from(io.foreground_group()?).ok()?;
+        let shell = io.shell().and_then(|shell| u32::try_from(shell).ok()).unwrap_or(group);
+        let job = muster_detect::System.job(shell, group)?;
+        let (found, arguments) = muster_detect::agent_arguments(&job, &manifests)?;
+        if found != muster_detect::Agent::new(agent) {
+            return None;
+        }
+        let resume = manifests.session_resume(&found, session, &arguments)?;
+        Some(persist::Resume {
+            agent: agent.to_string(),
+            session: session.to_string(),
+            command: resume.command,
+            uncarried: resume.uncarried,
+        })
+    }
+
+    /// Keeps what starts the pane's agent session again, saving it when it changed.
+    fn resume_changed(&mut self, index: usize, resume: Option<persist::Resume>) {
+        if self.panes[index].resume != resume {
+            self.panes[index].resume = resume;
+            self.persister.changed();
+        }
     }
 
     /// What a report says of the session's name, kept in step with the pane's
@@ -1746,6 +1795,9 @@ impl Session {
                     record.facts = None;
                     pane.turns.reports_turns = false;
                     pane.session_id = None;
+                    if pane.resume.take().is_some() {
+                        self.persister.changed();
+                    }
                     pane.compaction.cleared();
                 }
                 if replaced || (record.agent.is_none() && agent.is_some()) {
@@ -2044,6 +2096,19 @@ impl Session {
         self.settings_changed()
     }
 
+    fn set_resume_agents(&mut self, resume: bool) -> Reply {
+        if self.resumes_agents() == resume {
+            return Reply::already();
+        }
+        self.settings.resume_agents = Some(resume);
+        self.settings_changed()
+    }
+
+    /// Whether a restart brings a pane back running its agent's session (`SetResumeAgents`).
+    pub(crate) fn resumes_agents(&self) -> bool {
+        self.settings.resume_agents.unwrap_or(true)
+    }
+
     fn set_name_sessions(&mut self, name: bool) -> Reply {
         if self.names_sessions() == name {
             return Reply::already();
@@ -2273,6 +2338,7 @@ impl Session {
                     label: pane.record.label.clone(),
                     cwd: PathBuf::from(&pane.record.cwd),
                     grid: pane.io.grid(),
+                    resume: pane.resume.clone(),
                 })
                 .collect(),
         }
@@ -2327,10 +2393,17 @@ impl Session {
                 continue;
             }
             let shell = self.settings.shell.clone().unwrap_or_default();
-            let launch = self.launch_with(&shell, name, None, &HashMap::new());
+            let resume = pane.resume.clone().filter(|_| self.resumes_agents());
+            let command = resume.as_ref().map(|resume| {
+                spawn::command_line(
+                    &pty::shell(shell.command.as_deref(), &self.inherited),
+                    &resume.command,
+                )
+            });
+            let launch = self.launch_with(&shell, name, command.as_deref(), &HashMap::new());
             let fallback = proto::Shell { command: None, ..shell };
             let fallback = self.launch_with(&fallback, name, None, &HashMap::new());
-            panes.push(RestoringPane { saved: pane.clone(), launch, fallback });
+            panes.push(RestoringPane { saved: pane.clone(), resume, launch, fallback });
         }
         self.reserved.insert(tab.name.clone());
         for pane in &panes {
@@ -2348,7 +2421,7 @@ impl Session {
             self.reserved.remove(&pane.saved.name);
         }
         let mut back = HashSet::new();
-        for (pane, Restarted { cwd, program, started }) in panes.into_iter().zip(started) {
+        for (pane, Restarted { cwd, program, started, resumed }) in panes.into_iter().zip(started) {
             let program = &program;
             let name = pane.saved.name;
             let (master, child) = match started {
@@ -2364,13 +2437,21 @@ impl Session {
                 pty::abandon(child.id().cast_signed());
                 continue;
             }
+            let resume = pane.resume.filter(|_| resumed);
             let record = proto::Pane {
                 pane: name.clone(),
                 label: pane.saved.label,
                 cwd: cwd.display().to_string(),
+                command: resume.as_ref().map(|resume| resume.command.join(" ")),
                 ..proto::Pane::default()
             };
             if self.open(record, pane.saved.grid, master, child, program).is_ok() {
+                if let Some(resume) = resume {
+                    Self::resumed(&name, &resume);
+                    let index = self.pane_index(&name).expect("the pane just opened");
+                    self.panes[index].session_id = Some(resume.session.clone());
+                    self.panes[index].resume = Some(resume);
+                }
                 back.insert(name);
             } else {
                 lost.panes.push(name);
@@ -2407,6 +2488,21 @@ impl Session {
         let record = tab.record();
         self.tabs.push(tab);
         self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
+    }
+
+    /// Says which pane came back running its agent's session, and every word it was started
+    /// with, so a person can see exactly what was relaunched on their behalf.
+    fn resumed(pane: &str, resume: &persist::Resume) {
+        log::info(
+            "daemon.state.resumed",
+            fields! {
+                "pane" => pane,
+                "agent" => resume.agent,
+                "session" => resume.session,
+                "command" => resume.command.join(" "),
+                "arguments" => resume.uncarried.as_deref().unwrap_or("carried"),
+            },
+        );
     }
 
     // -----------------------------------------------------------------------------------------
@@ -2583,6 +2679,7 @@ impl Session {
         )
         .map_err(|error| format!("pane {name}: {error}"))?;
         pane.session_id = resuming.session_id.map(str::to_string);
+        pane.resume = resuming.resume.cloned();
         self.panes.push(pane);
         Ok(())
     }

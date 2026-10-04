@@ -1,7 +1,9 @@
 //! What a daemon restart needs, kept on disk (MIP-3 section 2): the shape of every tab, each
-//! pane's name and directory, and the settings an app last gave. Never a title, an agent's
-//! state or facts, a command or whether a process is alive: those are observations, and a
-//! restarted daemon observes them afresh.
+//! pane's name and directory, the command that starts its agent's session again, and the
+//! settings an app last gave. Never a title, an agent's state or facts, or whether a process is
+//! alive: those are observations, and a restarted daemon observes them afresh. The resume
+//! command is not one: it is built from the session id the agent's harness reported and the
+//! arguments the agent was started with, both of which a restarted daemon could never learn.
 //!
 //! One JSON file beside the daemon's socket, written whole to a temporary file, synced and
 //! renamed over the last, so a crash at any point leaves either the old file or the new one. The
@@ -75,6 +77,22 @@ pub(crate) struct Pane {
     pub(crate) cwd: PathBuf,
     /// The size it was last shown at, so its shell starts at that size.
     pub(crate) grid: Grid,
+    /// What starts its agent's session again, when its agent reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) resume: Option<Resume>,
+}
+
+/// The command that starts a pane's agent session again after a restart: the agent's manifest's
+/// `[session] resume`, filled in with the session's id and the arguments the agent was running
+/// with, as they were when the session was reported (`muster_detect::Resume`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Resume {
+    pub(crate) agent: String,
+    pub(crate) session: String,
+    pub(crate) command: Vec<String>,
+    /// Why the arguments did not go along, when they did not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) uncarried: Option<String>,
 }
 
 /// The file beside a daemon's socket: `~/.muster/daemon/<install>.state.json`.
@@ -614,6 +632,7 @@ mod tests {
             label: None,
             cwd: PathBuf::from("/tmp"),
             grid: Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 },
+            resume: None,
         }
     }
 
@@ -771,12 +790,14 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 5] = [
+    const FIXTURES: [(&str, &[&str]); 6] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
         ("state-v1-human-name.json", &["human_name"]),
         ("state-v1-compact-at.json", &["compact_at"]),
+        // Also the first to hold a pane's resume.
+        ("state-v1-resume-agents.json", &["resume_agents"]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -797,6 +818,7 @@ mod tests {
             label: label.map(str::to_string),
             cwd: PathBuf::from("/tmp"),
             grid,
+            resume: None,
         };
         let split = |axis, ratio, first: &str, second: &str| Node::Split {
             axis,

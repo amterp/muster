@@ -83,6 +83,11 @@ impl Daemon {
         self.run_agent_with(pane, " placeholder", proto::AgentState::Idle);
     }
 
+    /// [`Daemon::run_agent`], started with `arguments` as an agent is started with its flags.
+    pub fn run_agent_with_arguments(&self, pane: &str, arguments: &str) {
+        self.run_agent_with(pane, &format!(" {arguments}"), proto::AgentState::Idle);
+    }
+
     fn run_agent_with(&self, pane: &str, arguments: &str, state: proto::AgentState) {
         let agent = self.root().join("home/.muster/bin").join(AGENT_NAME);
         assert!(agent.exists(), "run_agent needs a daemon from Daemon::start_detecting");

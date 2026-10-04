@@ -28,6 +28,7 @@ mod opencode_live;
 mod panes;
 mod persistence;
 mod relay;
+mod resume;
 mod session_names;
 mod ssh_terminfo;
 mod streams;

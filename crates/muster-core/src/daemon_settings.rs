@@ -34,6 +34,9 @@ pub struct DaemonSettings {
     pub name_sessions: bool,
     /// How full an agent's context gets before the daemon compacts it; none for never.
     pub compact_at: Option<u8>,
+    /// Whether a pane whose agent reported its session comes back running that session after a
+    /// restart, rather than as a shell.
+    pub resume_agents: bool,
     /// What messages call the human, as the file names it; none for the login name, which
     /// only the side that sends this can look up.
     pub human_name: Option<String>,
@@ -87,6 +90,7 @@ impl DaemonSettings {
             scroll_multiplier: config.feel.scroll_multiplier,
             name_sessions: config.panes.name_sessions,
             compact_at: config.panes.compact_at,
+            resume_agents: config.panes.resume_agents,
             human_name: config.human_name.clone(),
         }
     }

@@ -429,6 +429,11 @@ pub struct Panes {
     /// typing the harness's compact command at its idle, empty prompt (MIP-5, section 10).
     /// `None`, the default, compacts nothing unasked.
     pub compact_at: Option<u8>,
+
+    /// Whether a pane whose agent reported its session starts that session again when a daemon
+    /// restart or a reboot brings the pane back, with the arguments the agent was running with.
+    /// On unless the file says `false`, which brings such a pane back as a shell.
+    pub resume_agents: bool,
 }
 
 impl Default for Panes {
@@ -439,6 +444,7 @@ impl Default for Panes {
             clipboard_write: ClipboardWrite::default(),
             name_sessions: true,
             compact_at: None,
+            resume_agents: true,
         }
     }
 }
@@ -562,7 +568,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 5] = ["id", "socket", "host", "ssh_options", "color"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 19] = [
+const ROOT_KEYS: [&str; 20] = [
     "daemon",
     "keymap",
     "text",
@@ -576,6 +582,7 @@ const ROOT_KEYS: [&str; 19] = [
     "clipboard_write",
     "name_sessions",
     "compact_at",
+    "resume_agents",
     "human_name",
     "font",
     "colors",
@@ -739,7 +746,8 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
     Ok(notifications)
 }
 
-/// `scrollback_bytes`, `clipboard_write`, `name_sessions`, `compact_at` and `[shell]`.
+/// `scrollback_bytes`, `clipboard_write`, `name_sessions`, `compact_at`, `resume_agents` and
+/// `[shell]`.
 fn read_panes(root: &toml::Table) -> Result<Panes, String> {
     let mut panes = Panes {
         shell: read_shell(block(root, "shell", &SHELL_KEYS)?.as_ref())?,
@@ -750,6 +758,16 @@ fn read_panes(root: &toml::Table) -> Result<Panes, String> {
         panes.name_sessions = value.as_bool().ok_or_else(|| {
             format!(
                 "`name_sessions` in the config file is {}, and it has to be true or false. None \
+                 of the file was applied.",
+                described(value)
+            )
+        })?;
+    }
+
+    if let Some(value) = root.get("resume_agents") {
+        panes.resume_agents = value.as_bool().ok_or_else(|| {
+            format!(
+                "`resume_agents` in the config file is {}, and it has to be true or false. None \
                  of the file was applied.",
                 described(value)
             )

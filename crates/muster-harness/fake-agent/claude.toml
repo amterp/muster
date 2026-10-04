@@ -9,8 +9,8 @@
 # claude session.
 
 id = "claude"
-version = "2026.10.04.2"
-min_engine_version = 11
+version = "2026.10.04.3"
+min_engine_version = 12
 
 # What renames a session, as Claude Code's own manifest says it: the fake writes down every line
 # it reads, so a test sees the rename typed.
@@ -18,6 +18,11 @@ min_engine_version = 11
 rename = "/rename {name}"
 # What compacts a session, as Claude Code's own manifest says it, written down the same way.
 compact = "/compact {focus}"
+# What starts the session again after a restart, as Claude Code's manifest spells it, but running
+# this fake from where the harness installed it rather than a `claude` on the PATH.
+resume = ["/bin/sh", "-c", "exec \"$HOME/.muster/bin/claude\" \"$@\"", "claude", "{args}", "--resume", "{session}"]
+resume_drops = ["-p", "--print", "--resume"]
+resume_values = ["--model", "--effort", "--resume"]
 # What wakes a session without typing into its pane, as Codex's manifest names `codex queue`. It
 # runs only once a session id is reported: it writes down the id and the message and puts the
 # agent to work, as Codex starts the queued turn. A session called "gone" refuses it, as a missing

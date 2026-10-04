@@ -1050,7 +1050,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, compact_at, human_name, font, colors, cursor, shell, notifications."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, compact_at, resume_agents, human_name, font, colors, cursor, shell, notifications."
       }
     },
     {
@@ -1463,6 +1463,36 @@
       },
       "expect": {
         "refused": "`name_sessions` in the config file is a string, and it has to be true or false. None of the file was applied."
+      }
+    },
+    {
+      "name": "agents can be left as shells after a restart",
+      "why": "Resuming relaunches an agent unasked after a daemon restart or a reboot, with the flags it was started with, `--permission-mode bypassPermissions` among them; `false` brings its pane back as a shell instead. A root key, since the subject has one answer.",
+      "given": {
+        "file": [
+          "resume_agents = false"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "resume_agents=false"
+        ]
+      }
+    },
+    {
+      "name": "resuming agents is true or false",
+      "why": "A string where a bool belongs is the likely mistake; a file that guessed would leave somebody who wrote \"off\" with agents relaunched on their behalf.",
+      "given": {
+        "file": [
+          "resume_agents = \"off\""
+        ]
+      },
+      "expect": {
+        "refused": "`resume_agents` in the config file is a string, and it has to be true or false. None of the file was applied."
       }
     },
     {

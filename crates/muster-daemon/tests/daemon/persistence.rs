@@ -14,7 +14,7 @@ fn state_file(daemon: &Daemon) -> PathBuf {
     daemon.root().join("daemon.state.json")
 }
 
-fn stop(daemon: &mut Daemon, control: &mut Control) {
+pub(crate) fn stop(daemon: &mut Daemon, control: &mut Control) {
     expect(
         control,
         session(session_request::Request::Stop(session_request::Stop {})),
@@ -34,18 +34,18 @@ fn directory(daemon: &Daemon, name: &str) -> PathBuf {
 }
 
 /// Waits until a restarted daemon has brought back `panes` panes.
-fn until_restored(control: &mut Control, panes: usize) -> proto::Snapshot {
+pub(crate) fn until_restored(control: &mut Control, panes: usize) -> proto::Snapshot {
     until_some(&format!("{panes} panes to be restored"), || {
         let snapshot = snapshot(control);
         (snapshot.panes.len() == panes).then_some(snapshot)
     })
 }
 
-fn record<'a>(snapshot: &'a proto::Snapshot, pane: &str) -> &'a proto::Pane {
+pub(crate) fn record<'a>(snapshot: &'a proto::Snapshot, pane: &str) -> &'a proto::Pane {
     snapshot.panes.iter().find(|record| record.pane == pane).unwrap_or_else(|| panic!("no {pane}"))
 }
 
-fn until_saved(daemon: &Daemon, needle: &str) {
+pub(crate) fn until_saved(daemon: &Daemon, needle: &str) {
     until(
         &format!("the state file to hold {needle}"),
         || written(&state_file(daemon)).contains(needle),

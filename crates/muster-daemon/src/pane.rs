@@ -673,6 +673,9 @@ pub(crate) struct Pane {
     /// that agent leaves the pane. A wake reaches the session by it, through the command the
     /// agent's manifest names (`messages::command`).
     pub(crate) session_id: Option<String>,
+    /// What starts that session again after a restart, built when the session was reported;
+    /// forgotten with it.
+    pub(crate) resume: Option<crate::persist::Resume>,
     /// A compaction of its agent's context still to be typed, and where that context stands
     /// against `compact_at`. Not handed over: a daemon that took the pane over hears the
     /// context again from its next report.
@@ -864,6 +867,7 @@ impl Pane {
             session_name: SessionName::default(),
             compaction: Compaction::default(),
             session_id: None,
+            resume: None,
         })
     }
 
