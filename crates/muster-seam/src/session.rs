@@ -1572,6 +1572,17 @@ impl Session {
     /// Returns the daemon's connection, for the caller to wait on its first snapshot once it
     /// has let go of the session: the follower applies it on its own thread, and announcing it
     /// takes this lock.
+    /// Stops following a daemon that never sent its state, so it holds no panes anybody sees.
+    /// The backend comes back to be dropped with the lock released: dropping a follower joins
+    /// its thread, which can be part way through connecting.
+    fn let_go_of(&mut self, daemon: &DaemonId) -> Option<Backend> {
+        for window in self.windows.values_mut() {
+            window.composition.detach_daemon(daemon);
+        }
+        self.peering.retain(|(near, far), _| near != daemon && far != daemon);
+        self.backends.remove(daemon)
+    }
+
     fn follow(
         &mut self,
         daemon: &Daemon,
@@ -4374,19 +4385,50 @@ static APPLIED_DAEMONS: Mutex<Vec<Daemon>> = Mutex::new(Vec::new());
 /// daemon whatever the file says, and detaching it would take their tabs out of every window,
 /// which reads as agents gone - so it waits for a relaunch, and the caller says so. A block
 /// whose id stays and whose endpoint changes is both at once, and waits whole.
+///
+/// A block whose daemon never attached - still being tried, or given up on - has no panes to
+/// keep, so a changed endpoint is taken at once: its attach starts again from the new one, and
+/// the one still retrying the old endpoint stops. Fixing a mistyped host is the usual reason.
 pub(crate) fn follow_changed(config: &Config) -> Vec<Daemon> {
+    // Asked first: the session's lock is taken before the attaches' everywhere else.
+    let following: BTreeSet<DaemonId> = config
+        .daemons
+        .iter()
+        .filter(|daemon| is_following(&daemon.id))
+        .map(|daemon| daemon.id.clone())
+        .collect();
     let added: Vec<Daemon> = {
+        let mut attaches = poison::lock(&ATTACHES, "attaches");
         let mut applied = poison::lock(&APPLIED_DAEMONS, "applied-daemons");
-        let added: Vec<Daemon> = config
+        let mut added: Vec<Daemon> = config
             .daemons
             .iter()
             .filter(|daemon| applied.iter().all(|held| held.id != daemon.id))
-            .filter(|daemon| !is_following(&daemon.id) && !attaching(&daemon.id))
+            .filter(|daemon| {
+                !following.contains(&daemon.id) && !attaches.under_way.contains(&daemon.id)
+            })
             .cloned()
             .collect();
         applied.extend(added.iter().cloned());
+        for daemon in &config.daemons {
+            let Some(held) = applied.iter_mut().find(|held| held.id == daemon.id) else { continue };
+            let unattached =
+                attaches.under_way.contains(&daemon.id) || !following.contains(&daemon.id);
+            if held != daemon && unattached {
+                daemon.clone_into(held);
+                // The attach under way, if any, is no longer current, and stops.
+                attaches.under_way.remove(&daemon.id);
+                added.push(daemon.clone());
+            }
+        }
         added
     };
+    // An attach waiting for the old endpoint's state has a backend for it, which the new attach
+    // would otherwise take for its own.
+    for daemon in added.iter().filter(|daemon| following.contains(&daemon.id)) {
+        let removed = poison::lock(&SESSION, "session").let_go_of(&daemon.id);
+        drop(removed);
+    }
     if !added.is_empty() {
         log::info(
             "config.reload.daemons.attaching",
@@ -4403,24 +4445,21 @@ pub(crate) fn follow_changed(config: &Config) -> Vec<Daemon> {
         .collect()
 }
 
-/// Whether a daemon is still being attached by a launch or a reload.
-fn attaching(daemon: &DaemonId) -> bool {
-    poison::lock(&ATTACHES, "attaches").under_way.contains(daemon)
-}
-
 /// Attaches each daemon on a thread of its own, retried until it answers, and waits at most
 /// [`GRACE`] for them, as [`follow_configured`] says.
 fn follow_in_background(daemons: &[Daemon]) {
-    let generation = {
+    let (generation, tickets) = {
         let mut attaches = poison::lock(&ATTACHES, "attaches");
         attaches.under_way.extend(daemons.iter().map(|daemon| daemon.id.clone()));
-        attaches.generation
+        let tickets: Vec<Ticket> =
+            daemons.iter().map(|daemon| attaches.issue(&daemon.id)).collect();
+        (attaches.generation, tickets)
     };
-    for daemon in daemons {
+    for (daemon, ticket) in daemons.iter().zip(tickets) {
         let attaching = daemon.clone();
         let spawned = std::thread::Builder::new()
             .name(format!("muster-attach-{}", daemon.id))
-            .spawn(move || keep_attaching(&attaching, generation));
+            .spawn(move || keep_attaching(&attaching, ticket));
         if let Err(error) = spawned {
             log::error(
                 "daemon.unavailable",
@@ -4432,7 +4471,7 @@ fn follow_in_background(daemons: &[Daemon]) {
                     "check" => "whether this process has run out of threads",
                 },
             );
-            attach_ended(&daemon.id, generation);
+            attach_ended(&daemon.id, ticket);
         }
     }
     let attaches = poison::lock(&ATTACHES, "attaches");
@@ -4457,22 +4496,49 @@ const GRACE: std::time::Duration = std::time::Duration::from_secs(1);
 struct Attaches {
     generation: u64,
     under_way: BTreeSet<DaemonId>,
+    /// The latest attach of each daemon. A reload that changes a block whose daemon never
+    /// attached starts another, and the one before stops at its next look.
+    latest: BTreeMap<DaemonId, u64>,
+    issued: u64,
 }
 
-static ATTACHES: Mutex<Attaches> =
-    Mutex::new(Attaches { generation: 0, under_way: BTreeSet::new() });
+impl Attaches {
+    fn issue(&mut self, daemon: &DaemonId) -> Ticket {
+        self.issued += 1;
+        self.latest.insert(daemon.clone(), self.issued);
+        Ticket { generation: self.generation, attach: self.issued }
+    }
+
+    fn current(&self, daemon: &DaemonId, ticket: Ticket) -> bool {
+        self.generation == ticket.generation && self.latest.get(daemon) == Some(&ticket.attach)
+    }
+}
+
+/// Which attach of a daemon a thread is running: of which launch, and which of that daemon's.
+#[derive(Debug, Clone, Copy)]
+struct Ticket {
+    generation: u64,
+    attach: u64,
+}
+
+static ATTACHES: Mutex<Attaches> = Mutex::new(Attaches {
+    generation: 0,
+    under_way: BTreeSet::new(),
+    latest: BTreeMap::new(),
+    issued: 0,
+});
 
 /// Told whenever an attach ends, for a caller waiting on the ones under way.
 static ATTACH_ENDED: std::sync::Condvar = std::sync::Condvar::new();
 
-/// Whether an attach begun in `generation` still belongs to the session there is now.
-fn attach_current(generation: u64) -> bool {
-    poison::lock(&ATTACHES, "attaches").generation == generation
+/// Whether an attach still belongs to the session there is now, and is its daemon's latest.
+fn attach_current(daemon: &DaemonId, ticket: Ticket) -> bool {
+    poison::lock(&ATTACHES, "attaches").current(daemon, ticket)
 }
 
-fn attach_ended(daemon: &DaemonId, generation: u64) {
+fn attach_ended(daemon: &DaemonId, ticket: Ticket) {
     let mut attaches = poison::lock(&ATTACHES, "attaches");
-    if attaches.generation == generation {
+    if attaches.current(daemon, ticket) {
         attaches.under_way.remove(daemon);
     }
     ATTACH_ENDED.notify_all();
@@ -4528,19 +4594,18 @@ fn link_daemons() {
 /// dropped connection: each attempt has already waited out its own patience, ten seconds for a
 /// daemon's state and more for an ssh host, so one failure is already a machine missing from the
 /// window for longer than anybody would wait without being told why.
-fn keep_attaching(daemon: &Daemon, generation: u64) {
+fn keep_attaching(daemon: &Daemon, ticket: Ticket) {
     let key = reconnect::key(daemon.id.as_str());
     let mut attempts = reconnect::Attempts::new();
     loop {
         connecting(&daemon.id);
-        match attach_daemon_in(daemon, generation) {
+        match attach_daemon_in(daemon, ticket) {
             Ok(()) => {
                 health(&daemon.id, Health::Connected, "");
                 link_daemons();
-                if attempts.failures() > 0 {
-                    clear_problem(&key, "attached");
-                }
-                attach_ended(&daemon.id, generation);
+                // Whatever the attempts before said, this one's or an attach it replaced.
+                clear_problem(&key, "attached");
+                attach_ended(&daemon.id, ticket);
                 restore_late(&daemon.id);
                 return;
             }
@@ -4560,7 +4625,7 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
                 );
                 health(&daemon.id, Health::Disconnected, &refusal);
                 raise_problem(&key, Severity::Error, &stopped_attaching(daemon, &refusal));
-                attach_ended(&daemon.id, generation);
+                attach_ended(&daemon.id, ticket);
                 return;
             }
             Err(Unattached::Failed(refusal)) => {
@@ -4586,7 +4651,7 @@ fn keep_attaching(daemon: &Daemon, generation: u64) {
                     raise_problem(&key, Severity::Warning, &never_attached(daemon, &refusal));
                 }
                 std::thread::sleep(std::time::Duration::from_nanos(retry.after));
-                if !attach_current(generation) {
+                if !attach_current(&daemon.id, ticket) {
                     return;
                 }
             }
@@ -4775,14 +4840,14 @@ const FIRST_SNAPSHOT: std::time::Duration = std::time::Duration::from_secs(10);
 /// Attaches a daemon for the session there is now, waiting for it: the daemon Muster finds for
 /// itself when the config names none, which a window cannot open without.
 fn attach_daemon(daemon: &Daemon) -> Result<(), String> {
-    let generation = poison::lock(&ATTACHES, "attaches").generation;
-    attach_daemon_in(daemon, generation).map_err(|unattached| match unattached {
+    let ticket = poison::lock(&ATTACHES, "attaches").issue(&daemon.id);
+    attach_daemon_in(daemon, ticket).map_err(|unattached| match unattached {
         Unattached::Failed(refusal) | Unattached::Lasting(refusal) => refusal,
         Unattached::Abandoned => "the window was reset while its daemon attached".to_string(),
     })
 }
 
-fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> {
+fn attach_daemon_in(daemon: &Daemon, ticket: Ticket) -> Result<(), Unattached> {
     let mut reached = reach(&daemon.id, &daemon.endpoint)?;
     let handover = reached.handover.take();
     let socket = reached.socket_path.clone();
@@ -4799,7 +4864,7 @@ fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> 
         let mut session = poison::lock(&SESSION, "session");
         // Asked under the session's lock, which `reset` takes after it moves the generation on,
         // so a daemon either lands in the session that asked for it or not at all.
-        if !attach_current(generation) {
+        if !attach_current(&daemon.id, ticket) {
             return Err(Unattached::Abandoned);
         }
         session.follow(daemon, reached).map_err(Unattached::Failed)?
@@ -4814,14 +4879,10 @@ fn attach_daemon_in(daemon: &Daemon, generation: u64) -> Result<(), Unattached> 
         // saying which of them did not answer. The next attempt reaches it afresh.
         let removed = {
             let mut session = poison::lock(&SESSION, "session");
-            if !attach_current(generation) {
+            if !attach_current(&daemon.id, ticket) {
                 return Err(Unattached::Abandoned);
             }
-            for window in session.windows.values_mut() {
-                window.composition.detach_daemon(&daemon.id);
-            }
-            session.peering.retain(|(near, far), _| *near != daemon.id && *far != daemon.id);
-            session.backends.remove(&daemon.id)
+            session.let_go_of(&daemon.id)
         };
         // Dropped with the lock released: dropping a follower joins its thread, which can be
         // part way through connecting, and every other daemon's events need the lock meanwhile.

@@ -152,6 +152,59 @@ fn a_machine_added_to_the_config_is_attached_and_one_taken_out_waits_for_a_relau
     assert!(pane_on("laptop").is_some(), "the laptop's pane left the window: {:?}", rows());
 }
 
+/// A machine added with a mistake in its block never attaches, so it has no panes to keep:
+/// correcting the block and saving again attaches it from the corrected endpoint, rather than
+/// leaving it waiting for a relaunch that the old attach, still retrying the wrong one, needs.
+#[test]
+fn a_machine_that_never_attached_is_attached_once_its_block_is_corrected() {
+    let _turn = muster::testing::fresh_session();
+    let laptop = Daemon::start_built();
+    let second = Daemon::start_built();
+    a_tab_holding_one_named_pane(&laptop, LAPTOP_TAB, LAPTOP_PANE, ON_LAPTOP);
+    a_tab_holding_one_named_pane(&second, DEVENV_TAB, DEVENV_PANE, ON_DEVENV);
+    let both =
+        std::fs::read_to_string(laptop.muster_config_naming("laptop", &[("devenv", &second)]))
+            .expect("the config was written");
+    let socket = second.socket_path().to_string_lossy().into_owned();
+    assert!(both.contains(&socket), "the config names the devenv's socket: {both}");
+    let mistyped = both.replace(&socket, &format!("{socket}.mistyped"));
+    let config = laptop.muster_config_naming("laptop", &[]);
+    watch();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the laptop's pane to be listed",
+        || pane_on("laptop").is_some(),
+        || format!("the list holds {:?}", rows()),
+    );
+
+    std::fs::write(&config, &mistyped).expect("the config can be written");
+    assert_ok(&answer(request::Payload::ReloadConfig(muster::proto::ReloadConfig {})));
+    std::fs::write(&config, &both).expect("the config can be written");
+    assert_ok(&answer(request::Payload::ReloadConfig(muster::proto::ReloadConfig {})));
+    until(
+        "the corrected devenv to be attached, with its pane",
+        || pane_on("devenv").is_some(),
+        || {
+            let problems = PROBLEMS.lock().expect("a panicking reader poisoned the problems");
+            format!("the list holds {:?}, and the problems {:?}", rows(), problems.clone())
+        },
+    );
+    let problems = PROBLEMS
+        .lock()
+        .expect("a panicking reader poisoned the problems")
+        .clone()
+        .map(|changed| changed.problems)
+        .unwrap_or_default();
+    assert!(
+        problems.iter().all(|problem| problem.key != "config.daemons"),
+        "a corrected block was said to wait for a relaunch: {problems:?}"
+    );
+}
+
 /// One tab holding one pane, made on the daemon before Muster has heard of any of it, which is
 /// what a machine somebody has been working on looks like.
 fn a_tab_holding_one_named_pane(daemon: &Daemon, tab: &str, pane: &str, given: &str) {
