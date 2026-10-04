@@ -582,6 +582,20 @@ fn an_idle_agent_whose_screen_keeps_moving_is_still_rung() {
     agent.type_in("still", true);
 }
 
+/// A ring whose Return was dropped, in a pane whose screen never stops moving, still has Return
+/// pressed again: the stillness the first ring waited out bounded is bounded for the presses too.
+#[test]
+fn a_ring_left_unsent_in_a_pane_that_keeps_moving_is_pressed_again() {
+    let mut agent = Agent::to_come();
+    agent.daemon.run_starting_agent_animated("p1");
+    agent.until_shows("frame ");
+    std::thread::sleep(QUIET);
+
+    agent.post("p1", "hello");
+    let rung = agent.until_rung(1);
+    assert!(rung[0].starts_with("[muster] integrator+p1"), "{rung:?}");
+}
+
 /// A ring typed at work has its Return about a second later, once the screen shows it: the
 /// window a dialog can open in is that second, not the quiet period that the ring's own typing
 /// would start.

@@ -441,7 +441,7 @@ fn look(
                 fields! { "name" => wake.name, "pane" => pane, "why" => dropped },
             );
         }
-        pressing = unanswered_rings(&mut messages, &panes, now, &mut next);
+        pressing = unanswered_rings(&mut messages, &panes, now, moving, &mut next);
     }
     let came = ring_all(shared, ringing);
     // A ring is looked at again once it is due its Return, or a Return pressed again; nothing
@@ -521,6 +521,7 @@ fn unanswered_rings(
     messages: &mut Messages,
     panes: &Panes,
     now: Instant,
+    moving: &mut Moving,
     next: &mut Option<Instant>,
 ) -> Vec<(Rung, Seen)> {
     let mut pressing = Vec::new();
@@ -540,7 +541,11 @@ fn unanswered_rings(
         }
         // A ring's own typing starts the quiet period; before its Return, anybody else's ends it
         // ([`press_again`]), so it is not waited out.
-        let settled = if rung.returned { may_ring(seen, now, urgent, None) } else { Now::Ring };
+        let settled = if rung.returned {
+            may_ring(seen, now, urgent, moving_since(moving, pane, seen, now))
+        } else {
+            Now::Ring
+        };
         let at = if due > now {
             due
         } else if let Now::At(quiet) = settled {

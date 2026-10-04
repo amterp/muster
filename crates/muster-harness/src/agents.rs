@@ -65,6 +65,12 @@ impl Daemon {
         self.run_agent_with(pane, " starting unechoed", proto::AgentState::Idle);
     }
 
+    /// [`Daemon::run_starting_agent`], with a line of its screen redrawn five times a second from
+    /// its first frame, as an animated statusline is: a screen that is never still.
+    pub fn run_starting_agent_animated(&self, pane: &str) {
+        self.run_agent_with(pane, " starting animated", proto::AgentState::Idle);
+    }
+
     /// [`Daemon::run_agent`], with the agent blocked at a question from its first frame, and
     /// waiting until detection has read it so.
     pub fn run_agent_at_a_dialog(&self, pane: &str) {
