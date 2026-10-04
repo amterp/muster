@@ -1660,6 +1660,11 @@ message Failure {
 message Unanswered {
   // What went missing and what to look at, in the same register as Failure's reason.
   string reason = 1;
+
+  // The pane a request that makes one may have made, under the name it was made with: the window
+  // names a pane in the request that makes it, so a caller can find it or close it rather than
+  // make a second one. Empty for every other request.
+  string pane_id = 2;
 }
 
 // What the core cannot work out for itself, handed over once at launch.

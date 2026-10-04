@@ -41,11 +41,9 @@ fn a_pane_made_by_a_split_answered_too_late_keeps_its_name() {
         side: "right".to_string(),
         ..SplitPane::default()
     }));
-    assert!(
-        matches!(answer.payload, Some(response::Payload::Unanswered(_))),
-        "a split whose answer never came back answered {:?}",
-        answer.payload
-    );
+    let Some(response::Payload::Unanswered(unanswered)) = answer.payload else {
+        panic!("a split whose answer never came back answered {:?}", answer.payload);
+    };
 
     // Read out of the pane's own environment, around the relay, because that is the name
     // everything run inside it will use.
@@ -53,6 +51,10 @@ fn a_pane_made_by_a_split_answered_too_late_keeps_its_name() {
         daemon_panes(&daemon).into_iter().find(|pane| !before.contains(pane))
     });
     let told = told_its_name(&daemon, &made);
+    // Named in the answer too, so the caller told the split may have happened can find the pane
+    // or close it rather than make a second one (kan a_2XO9Xo1DE).
+    assert_eq!(unanswered.pane_id, told, "the unanswered split names the pane it may have made");
+    assert!(unanswered.reason.contains(&told), "and says so: {}", unanswered.reason);
 
     until(
         "the window to list the new pane under the name it was told",
