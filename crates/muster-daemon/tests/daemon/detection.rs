@@ -253,6 +253,27 @@ fn an_agent_whose_manifest_is_deleted_is_published_as_no_agent() {
     until_detected(&mut control, "p1", None, proto::AgentState::Unknown);
 }
 
+/// An override saved while the daemon runs applies without the app connecting again: an agent
+/// nothing named is detected once a manifest naming it is written, and is no agent once it is
+/// removed.
+#[test]
+fn an_override_saved_while_the_daemon_runs_applies() {
+    let home = Home::new("saved", &[], &["sprite"]);
+    let daemon = daemon_with(&[
+        ("MUSTER_HOME", home.0.to_str().unwrap()),
+        ("MUSTER_DAEMON_OVERRIDES_LOOK_MS", "100"),
+    ]);
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("sprite"));
+
+    std::fs::write(home.overrides().join("sprite.toml"), SPRITE).unwrap();
+    until_detected(&mut control, "p1", Some("sprite"), proto::AgentState::Idle);
+
+    std::fs::remove_file(home.overrides().join("sprite.toml")).unwrap();
+    until_detected(&mut control, "p1", None, proto::AgentState::Unknown);
+}
+
 /// Loading manifests reads the override directory, which can sit on a mount that hangs. A FIFO
 /// stands in for one: reading it waits until somebody opens its other end.
 #[test]

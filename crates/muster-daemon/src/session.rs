@@ -136,6 +136,18 @@ impl Shared {
                 );
             }
             persister.start(shared.clone());
+            if let Some(overrides) = overrides.clone() {
+                let (stopping, reloading) = (shared.clone(), shared.clone());
+                detect::watch_overrides(
+                    overrides,
+                    move || stopping.upgrade().is_none_or(|shared| shared.lock().stopping),
+                    move || {
+                        if let Some(shared) = reloading.upgrade() {
+                            shared.reload_overrides();
+                        }
+                    },
+                );
+            }
             let shared = shared.clone();
             let ended: Ended = Arc::new(move |serial, status| {
                 if let Some(shared) = shared.upgrade() {
@@ -224,6 +236,19 @@ impl Shared {
         let Some(executable) = executable else { return };
         let daemon = crate::server::point_link(&socket, &executable);
         self.lock().reachable.daemon = Some(daemon);
+    }
+
+    /// Compiles the manifests again with the app's last ones, after a person's override directory
+    /// changed: the same path the app's own send takes, so only the panes whose agent is detected
+    /// differently now start over.
+    pub(crate) fn reload_overrides(&self) {
+        let manifests = self
+            .lock()
+            .app_manifests
+            .iter()
+            .map(|(agent, toml)| proto::Manifest { agent: agent.clone(), toml: toml.clone() })
+            .collect();
+        self.adopt_manifests(manifests);
     }
 
     /// Puts in use the manifests the app sent the daemon this one replaced.

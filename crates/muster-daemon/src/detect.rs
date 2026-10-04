@@ -79,6 +79,90 @@ impl Detecting {
     }
 }
 
+/// How often the override directory is looked at for a change.
+///
+/// A person saving an override expects it to apply about as soon as Muster's own config does,
+/// and a look is a handful of `stat`s on one thread, so a couple of seconds costs nothing worth
+/// counting and needs no file-watching API on either platform the daemon runs on.
+const OVERRIDES_LOOK: Duration = Duration::from_secs(2);
+
+/// A debug build's [`OVERRIDES_LOOK`] in milliseconds, when set, so a test need not wait for it.
+const OVERRIDES_LOOK_SAID: &str = "MUSTER_DAEMON_OVERRIDES_LOOK_MS";
+
+fn overrides_look() -> Duration {
+    if cfg!(debug_assertions)
+        && let Ok(said) = std::env::var(OVERRIDES_LOOK_SAID)
+        && let Ok(millis) = said.trim().parse::<u64>()
+    {
+        return Duration::from_millis(millis);
+    }
+    OVERRIDES_LOOK
+}
+
+/// What the override directory holds, as far as telling a change goes: each manifest's name,
+/// size and when it was last written. Empty for a directory that is not there.
+fn fingerprint(
+    overrides: &std::path::Path,
+) -> Vec<(std::ffi::OsString, u64, Option<std::time::SystemTime>)> {
+    let Ok(entries) = std::fs::read_dir(overrides) else { return Vec::new() };
+    let mut seen: Vec<_> = entries
+        .flatten()
+        .filter(|entry| entry.path().extension().is_some_and(|extension| extension == "toml"))
+        .map(|entry| {
+            let metadata = entry.metadata().ok();
+            (
+                entry.file_name(),
+                metadata.as_ref().map_or(0, std::fs::Metadata::len),
+                metadata.and_then(|metadata| metadata.modified().ok()),
+            )
+        })
+        .collect();
+    seen.sort();
+    seen
+}
+
+/// Looks at a person's override directory every [`OVERRIDES_LOOK`], and calls `changed` when what
+/// it holds has changed since the last look. On a thread of its own, never joined: the directory
+/// can sit on a mount that hangs, and a look that hangs costs only this thread. Ends once
+/// `stopped` says so.
+pub(crate) fn watch_overrides(
+    overrides: PathBuf,
+    stopped: impl Fn() -> bool + Send + 'static,
+    changed: impl Fn() + Send + 'static,
+) {
+    let watching =
+        std::thread::Builder::new().name("detect overrides".to_string()).spawn(move || {
+            let look = overrides_look();
+            let mut last = fingerprint(&overrides);
+            loop {
+                std::thread::sleep(look);
+                if stopped() {
+                    return;
+                }
+                let now = fingerprint(&overrides);
+                if now != last {
+                    last = now;
+                    log::info(
+                        "daemon.detect.overrides_changed",
+                        fields! { "directory" => overrides.display() },
+                    );
+                    changed();
+                }
+            }
+        });
+    if let Err(error) = watching {
+        log::warn(
+            "daemon.detect.overrides_unwatched",
+            fields! {
+                "error" => error,
+                "impact" => "an override saved while this daemon runs applies only when the app \
+                             next connects",
+                "check" => "whether the daemon is out of threads",
+            },
+        );
+    }
+}
+
 fn load(app: &[(String, String)], overrides: Option<&std::path::Path>) -> Manifests {
     let started = Instant::now();
     let (manifests, warnings) = Manifests::load(app, overrides);
