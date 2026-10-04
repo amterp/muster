@@ -1517,13 +1517,7 @@ impl Session {
             Err(why) => return Reply::refused(why),
         };
         let facts_changed = record.facts != facts;
-        // A report naming another agent than the one detected is not this agent's adapter.
-        let own = agent.is_empty()
-            || record.agent.as_deref().is_none_or(|detected| detected == agent.as_str());
-        let heard = own && record.adapter() != proto::Adapter::Reporting;
-        if heard {
-            record.set_adapter(proto::Adapter::Reporting);
-        }
+        let heard = adapter_heard(record, &agent);
         if facts_changed {
             let declared = is_waiting(facts.as_ref()) && !is_waiting(record.facts.as_ref());
             let withdrawn = !is_waiting(facts.as_ref()) && is_waiting(record.facts.as_ref());
@@ -2955,6 +2949,17 @@ impl Turn {
             _ => Turn::Neither,
         }
     }
+}
+
+/// Marks the pane's agent as reporting through its adapter, saying whether that is news. A report
+/// naming another agent than the one detected is not this agent's adapter.
+fn adapter_heard(record: &mut proto::Pane, agent: &str) -> bool {
+    let own = agent.is_empty() || record.agent.as_deref().is_none_or(|detected| detected == agent);
+    let heard = own && record.adapter() != proto::Adapter::Reporting;
+    if heard {
+        record.set_adapter(proto::Adapter::Reporting);
+    }
+    heard
 }
 
 fn is_waiting(facts: Option<&proto::AgentFacts>) -> bool {
