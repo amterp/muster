@@ -398,7 +398,7 @@ impl std::fmt::Display for ResizeStep {
 /// Absent means the daemon's own default, on the same terms as an absent colour meaning the
 /// renderer's: Muster has no opinion about which shell somebody uses, and a scrollback depth
 /// written down here would be a transcription of somebody else's answer.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Panes {
     /// How much of a pane's history the daemon keeps, in bytes.
     ///
@@ -414,6 +414,22 @@ pub struct Panes {
     /// says `deny`, which is Ghostty's default too: a program that copies is doing what it was
     /// asked, and one that may not reads as broken.
     pub clipboard_write: ClipboardWrite,
+
+    /// Whether naming a pane names its agent's session too, by typing the harness's rename at
+    /// the agent's prompt (MIP-5, section 10). On unless the file says `false`. A session renamed
+    /// in its harness renames the pane either way, since that types nothing.
+    pub name_sessions: bool,
+}
+
+impl Default for Panes {
+    fn default() -> Panes {
+        Panes {
+            scrollback_bytes: None,
+            shell: Shell::default(),
+            clipboard_write: ClipboardWrite::default(),
+            name_sessions: true,
+        }
+    }
 }
 
 /// `clipboard_write`: Ghostty's two answers to the same question, by Ghostty's names.
@@ -535,7 +551,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 5] = ["id", "socket", "host", "ssh_options", "color"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 16] = [
+const ROOT_KEYS: [&str; 17] = [
     "daemon",
     "keymap",
     "text",
@@ -547,6 +563,7 @@ const ROOT_KEYS: [&str; 16] = [
     "pane_padding",
     "scrollback_bytes",
     "clipboard_write",
+    "name_sessions",
     "font",
     "colors",
     "cursor",
@@ -677,13 +694,22 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
     Ok(notifications)
 }
 
-/// `scrollback_bytes`, `clipboard_write` and `[shell]`.
+/// `scrollback_bytes`, `clipboard_write`, `name_sessions` and `[shell]`.
 fn read_panes(root: &toml::Table) -> Result<Panes, String> {
     let mut panes = Panes {
-        scrollback_bytes: None,
         shell: read_shell(block(root, "shell", &SHELL_KEYS)?.as_ref())?,
-        clipboard_write: ClipboardWrite::default(),
+        ..Panes::default()
     };
+
+    if let Some(value) = root.get("name_sessions") {
+        panes.name_sessions = value.as_bool().ok_or_else(|| {
+            format!(
+                "`name_sessions` in the config file is {}, and it has to be true or false. None \
+                 of the file was applied.",
+                described(value)
+            )
+        })?;
+    }
 
     if let Some(value) = root.get("clipboard_write") {
         let refused = |what: String| {

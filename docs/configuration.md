@@ -22,6 +22,7 @@ resize_step = "20c"            # per resize chord: cells (c) or points (px). Omi
 scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
 hide_pointer_while_typing = true  # until the mouse moves; off by default, as in Ghostty
 clipboard_write = "deny"       # allow (the default) | deny: may a program set the clipboard
+name_sessions = false          # the default true: naming a pane names its agent's session
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
 
@@ -462,6 +463,15 @@ remembers the answer - System Settings > Notifications > Muster is where to chan
 Muster run as a bare binary out of `.build` has no bundle identifier to be granted permission
 against and notifies nothing; it says so in the run log, and `./dev --bundle` is the fix.
 
+`name_sessions` decides whether naming a pane - the chord, the menu, `muster pane rename` or `pane
+new --name` - also names the session of the agent running in it, which Muster does by typing the
+harness's own rename, `/rename <name>`, at the agent's prompt once it is idle (`muster docs
+harnesses`). It is on because a pane and its session going by one name is the point of naming
+either; `false` keeps the pane's name in Muster, for anyone who would rather nothing were typed
+into their agents unasked. It stops only that direction: a session renamed in its harness still
+renames the pane, since nothing is typed for that. The daemon is the one that types, so it is
+handed the answer as a setting, as `scrollback_bytes` is below.
+
 `[shell]` and `scrollback_bytes` are the two Muster does not act on at all. What a pane runs
 and how much of it you can scroll back through belong to the daemon that makes the pane - so
 Muster hands them to the daemon as settings over its own connection, as it hands `[font]` and
@@ -547,7 +557,7 @@ drawn when it is unreachable or holds no panes, carries the same swatch.
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `hide_pointer_while_typing`, `clipboard_write`,
-`[notifications]` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
+`[notifications]`, `name_sessions` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

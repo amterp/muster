@@ -278,14 +278,16 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
     log::info("daemon.connection.closed", fields! { "connection" => outbox.id });
 }
 
-/// Handles a request under the session's lock. One that renames a pane, or reports a session's
-/// name, may leave a pane's name to type into its agent's session, which the doorbell's thread
+/// Handles a request under the session's lock. One that renames a pane, reports a session's
+/// name or turns naming sessions on may leave a pane's name to type into its agent's session, which the doorbell's thread
 /// does - but only if it changed something: a statusline repeats its report every few seconds.
 fn handle(session: &mut Session, service: Service, outbox: &Outbox, shared: &Shared) -> Handled {
     let names = matches!(
         &service,
         Service::Pane(proto::PaneRequest {
             request: Some(pane_request::Request::Rename(_) | pane_request::Request::Report(_))
+        }) | Service::Session(proto::SessionRequest {
+            request: Some(session_request::Request::SetNameSessions(_))
         })
     );
     let handled = session.handle(service, outbox);

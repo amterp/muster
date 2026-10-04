@@ -326,7 +326,8 @@ two forms:
   Codex, which the doorbell's thread types at the agent's idle, empty prompt under an idle ring's
   rules, and never while it works, since a Return typed at work can answer a dialog. It is taken
   once the prompt is empty again; one that is not is given up and not retyped until the pane is
-  renamed.
+  renamed. `name_sessions = false` in Muster's config turns this direction off, handed to the
+  daemon as a setting since the daemon is what types; the other direction types nothing and stays.
 - **Session to pane**: `report --agent <id> --session-name <name>`, empty for no name, which
   Claude Code's statusline sends on every run. Claude Code does not run its statusline on a
   rename, so its `refreshInterval` decides how soon the pane follows. Codex has no statusline, and

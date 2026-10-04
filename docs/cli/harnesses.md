@@ -45,7 +45,8 @@ kimi, kiro, maki, opencode, pi, qodercli.
 - **Its session named after the pane**: naming a pane - the chord, the menu, `muster pane rename`,
   or `pane new --name` once its agent starts - types `/rename <name>` into the agent's prompt once
   it is idle at an empty prompt, as a ring is typed, so the session goes by the pane's name in
-  `/resume` and wherever else the harness shows it. Needs no adapter.
+  `/resume` and wherever else the harness shows it. Needs no adapter. `name_sessions = false` in
+  the config file turns it off (`docs/configuration.md`).
 - **The pane named after its session**: renaming the session in the harness renames the pane.
   Claude Code hands its statusline the session's name, so this needs the adapter's statusline,
   and its `refreshInterval` for the pane to follow within seconds rather than at the next message.

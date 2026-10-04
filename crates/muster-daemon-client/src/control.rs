@@ -311,6 +311,12 @@ impl Control {
         })))
     }
 
+    pub fn set_name_sessions(&self, name: bool) -> Pending {
+        self.ask(session(session_request::Request::SetNameSessions(proto::SetNameSessions {
+            name,
+        })))
+    }
+
     pub fn set_scroll_multiplier(&self, multiplier: f64) -> Pending {
         self.ask(session(session_request::Request::SetScrollMultiplier(
             proto::SetScrollMultiplier { multiplier },

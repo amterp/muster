@@ -568,6 +568,9 @@ fn send_settings(
     }) {
         sent.push(control.set_scroll_multiplier(settings.scroll_multiplier));
     }
+    if previous.is_none_or(|previous| previous.name_sessions != settings.name_sessions) {
+        sent.push(control.set_name_sessions(settings.name_sessions));
+    }
     sent
 }
 

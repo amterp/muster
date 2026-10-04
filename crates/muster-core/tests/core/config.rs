@@ -142,6 +142,9 @@ fn panes(panes: &config::Panes) -> Vec<String> {
     if !panes.clipboard_write.allowed() {
         set.push("clipboard_write=deny".to_string());
     }
+    if !panes.name_sessions {
+        set.push("name_sessions=false".to_string());
+    }
     set
 }
 

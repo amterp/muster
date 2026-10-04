@@ -926,6 +926,7 @@ impl Session {
                 S::SetClipboardWrite(set) => self.set_clipboard_write(set),
                 S::SetCursor(set) => self.set_cursor(set),
                 S::SetScrollMultiplier(set) => self.set_scroll_multiplier(set.multiplier),
+                S::SetNameSessions(set) => self.set_name_sessions(set.name),
                 S::ReadGrids(_) => self.grids(),
                 S::FollowLog(follow) => self.follow_log(asker, follow.after),
                 S::Replace(replace) => return self.replace(replace),
@@ -1886,6 +1887,19 @@ impl Session {
         self.settings_changed()
     }
 
+    fn set_name_sessions(&mut self, name: bool) -> Reply {
+        if self.names_sessions() == name {
+            return Reply::already();
+        }
+        self.settings.name_sessions = Some(name);
+        self.settings_changed()
+    }
+
+    /// Whether a pane's name is typed into its agent's session (`SetNameSessions`).
+    pub(crate) fn names_sessions(&self) -> bool {
+        self.settings.name_sessions.unwrap_or(true)
+    }
+
     fn set_scroll_multiplier(&mut self, multiplier: f64) -> Reply {
         if !multiplier.is_finite() || multiplier <= 0.0 {
             return Reply::refused(format!(
@@ -2362,6 +2376,9 @@ impl Session {
     /// agent whose manifest says how. A named pane whose agent's harness cannot be renamed keeps
     /// its name wanted, and must not keep the doorbell's thread looking.
     pub(crate) fn wants_session_names(&self) -> bool {
+        if !self.names_sessions() {
+            return false;
+        }
         let Some(manifests) = self.detecting.manifests() else { return false };
         self.panes.iter().any(|pane| {
             let (Some(name), Some(agent)) =

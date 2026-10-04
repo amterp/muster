@@ -30,6 +30,8 @@ pub struct DaemonSettings {
     /// How far a wheel turn scrolls a program, which the daemon applies after rounding a notch
     /// up to one, as the surface applies it to its own scrolling.
     pub scroll_multiplier: f64,
+    /// Whether the daemon types a pane's name into its agent's session as its name.
+    pub name_sessions: bool,
 }
 
 /// The colours programs are told the terminal has, when they ask.
@@ -78,6 +80,7 @@ impl DaemonSettings {
             cursor: config.appearance.cursor,
             clipboard_write: config.panes.clipboard_write,
             scroll_multiplier: config.feel.scroll_multiplier,
+            name_sessions: config.panes.name_sessions,
         }
     }
 }

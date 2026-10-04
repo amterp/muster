@@ -71,12 +71,14 @@ impl Panes {
         // agent is found yet and one may still come to any pane.
         let manifests = shared.detecting.manifests();
         let loaded = manifests.is_some();
-        let read = shared.lock().each_pane(|pane| {
+        let session = shared.lock();
+        let naming = session.names_sessions();
+        let read = session.each_pane(|pane| {
             let (record, io) = (&pane.record, &pane.io);
             let agent = record.agent.clone().filter(|_| loaded && !io.is_closed());
             let seen = agent.map(|agent| {
                 let found = Agent::new(&agent);
-                let rename = pane.session_name.wanted().and_then(|name| {
+                let rename = pane.session_name.wanted().filter(|_| naming).and_then(|name| {
                     let line = manifests.as_ref()?.session_rename(&found, name)?;
                     Some(Rename { name: name.to_string(), line })
                 });
@@ -92,7 +94,8 @@ impl Panes {
             });
             (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME)
         });
-        let mut panes = Panes { attended: shared.lock().attended(), ..Panes::default() };
+        let mut panes = Panes { attended: session.attended(), ..Panes::default() };
+        drop(session);
         for (pane, seen, young) in read {
             if let Some(seen) = seen {
                 panes.agents.insert(pane.clone(), seen);

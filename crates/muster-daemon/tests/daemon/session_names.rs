@@ -202,3 +202,26 @@ fn a_pane_renamed_again_while_its_last_rename_sits_unsent_names_the_session_both
     p1.until_renamed("/rename second");
     assert_eq!(p1.renames_heard(), ["/rename first", "/rename second"]);
 }
+
+/// With `name_sessions = false` a pane's name is never typed into its agent's session, while a
+/// session renamed in its harness still renames the pane, which types nothing.
+#[test]
+fn with_naming_off_nothing_is_typed_and_the_session_still_names_the_pane() {
+    let mut p1 = Pane::named(None);
+    let off =
+        proto::session_request::Request::SetNameSessions(proto::SetNameSessions { name: false });
+    expect(&mut p1.control, session(off), proto::Outcome::Done);
+    p1.daemon.run_agent("p1");
+    p1.renamed("builder");
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.renames_heard(), Vec::<String>::new(), "typed with naming off");
+    p1.reports("");
+    p1.reports("critic");
+    assert_eq!(p1.label().as_deref(), Some("critic"));
+
+    let on =
+        proto::session_request::Request::SetNameSessions(proto::SetNameSessions { name: true });
+    expect(&mut p1.control, session(on), proto::Outcome::Done);
+    p1.renamed("reviewer");
+    p1.until_renamed("/rename reviewer");
+}

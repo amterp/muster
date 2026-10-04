@@ -607,10 +607,16 @@
       },
       "expect": {
         "daemons": [],
-        "keymap": ["clear_screen=(unbound)"],
+        "keymap": [
+          "clear_screen=(unbound)"
+        ],
         "option_as_alt": "never",
-        "text": ["super+KeyK=0c"],
-        "given_up": ["clear_screen=super+KeyK to [text]"]
+        "text": [
+          "super+KeyK=0c"
+        ],
+        "given_up": [
+          "clear_screen=super+KeyK to [text]"
+        ]
       }
     },
     {
@@ -624,10 +630,15 @@
       },
       "expect": {
         "daemons": [],
-        "keymap": ["find=super+KeyK", "clear_screen=(unbound)"],
+        "keymap": [
+          "find=super+KeyK",
+          "clear_screen=(unbound)"
+        ],
         "option_as_alt": "never",
         "text": [],
-        "given_up": ["clear_screen=super+KeyK to find"]
+        "given_up": [
+          "clear_screen=super+KeyK to find"
+        ]
       }
     },
     {
@@ -1039,7 +1050,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, font, colors, cursor, shell, notifications."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, font, colors, cursor, shell, notifications."
       }
     },
     {
@@ -1407,6 +1418,51 @@
       },
       "expect": {
         "refused": "`clipboard_write` in the config file is \"ask\", and it has to be one of `allow`, `deny`. None of the file was applied."
+      }
+    },
+    {
+      "name": "a pane's name can be kept out of its agent's session",
+      "why": "Naming a pane types the harness's rename at its agent's prompt, which is Muster typing into somebody's agent unasked; `false` keeps the pane's name in Muster. A root key, since the subject has one answer.",
+      "given": {
+        "file": [
+          "name_sessions = false"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "name_sessions=false"
+        ]
+      }
+    },
+    {
+      "name": "naming sessions is the same as leaving the key out",
+      "why": "On is the default, so writing it out lands where a file that never mentioned it lands.",
+      "given": {
+        "file": [
+          "name_sessions = true"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": []
+      }
+    },
+    {
+      "name": "naming sessions is true or false",
+      "why": "A string where a bool belongs is the likely mistake; a file that guessed would leave somebody who wrote \"off\" with names still typed into their agents.",
+      "given": {
+        "file": [
+          "name_sessions = \"off\""
+        ]
+      },
+      "expect": {
+        "refused": "`name_sessions` in the config file is a string, and it has to be true or false. None of the file was applied."
       }
     },
     {
