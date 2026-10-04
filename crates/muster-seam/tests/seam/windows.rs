@@ -12,8 +12,8 @@ use std::sync::Mutex;
 use muster::proto::{
     AskForWindow, AskToCloseWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking,
     FocusHistory, FocusPane, FocusTab, MoveTab, OpenWindow, Quitting, ReadAsking, ReadReopening,
-    ReadWindow, ReattachPane, Request, Response, SplitPane, Startup, ToggleSidebar, ViewNode,
-    WindowFocus, event, request, response, view_node,
+    ReadWindow, ReattachPane, Request, Response, SplitPane, Startup, StillOpen, ToggleSidebar,
+    ViewNode, WindowFocus, event, request, response, view_node,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::{self as daemon_proto, AgentState, session_request};
@@ -923,6 +923,49 @@ fn two_closes_asked_at_once_leave_a_window_open() {
         windows_sent(|payload| matches!(payload, event::Payload::ShutWindow(_))),
         vec!["window-2".to_string()]
     );
+}
+
+/// A close the shell could not carry out - a sheet up in the window - leaves the window open
+/// rather than closing for good: it can be asked again, and the window beside it is not refused
+/// as the last one open.
+#[test]
+fn a_close_the_shell_could_not_carry_out_leaves_the_window_open() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    let shut = || {
+        let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        events
+            .iter()
+            .filter(|event| matches!(event.payload, Some(event::Payload::ShutWindow(_))))
+            .map(|event| event.window.clone())
+            .collect::<Vec<_>>()
+    };
+
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::AskToCloseWindow(AskToCloseWindow {}),
+    )));
+    assert_ok(&answer(&in_window("window-2", request::Payload::StillOpen(StillOpen {}))));
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::AskToCloseWindow(AskToCloseWindow {}),
+    )));
+    assert_eq!(
+        shut(),
+        vec!["window-2".to_string(), "window-2".to_string()],
+        "a window whose close did not happen was not asked to close again"
+    );
+
+    assert_ok(&answer(&in_window("window-2", request::Payload::StillOpen(StillOpen {}))));
+    let beside =
+        answer(&in_window("window-1", request::Payload::AskToCloseWindow(AskToCloseWindow {})));
+    assert!(
+        !matches!(beside.payload, Some(response::Payload::Failure(_))),
+        "with window-2 still open, closing window-1 was refused as the last window: {beside:?}"
+    );
+    assert_eq!(shut().last().map(String::as_str), Some("window-1"));
 }
 
 /// Going to a closed window's tab asks for that window back, and opening its arrangement again

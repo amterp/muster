@@ -86,6 +86,7 @@ message Request {
     AdoptOldState adopt_old_state = 66;
     AskToCloseWindow ask_to_close_window = 67;
     CompactPane compact_pane = 68;
+    StillOpen still_open = 69;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -663,6 +664,12 @@ message CloseWindow {}
 // asked for a window already closed. The last window open is refused rather than asked for:
 // closing it is a quit, and a script that meant one window should not end every one.
 message AskToCloseWindow {}
+
+// The shell was asked to close a window (ShutWindow) and it is still open: a sheet was up in it,
+// which disables its close button, or the shell has no window by that name. The window is the
+// one the request names. A window the core counted as closing counts as open again, so it can be
+// asked to close once more and a close of the window beside it is not refused as the last.
+message StillOpen {}
 
 // Which windows the next launch should open: the arrangements of this install's windows that were
 // open when Muster last quit or was killed.
