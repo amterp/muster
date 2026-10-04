@@ -2894,7 +2894,6 @@ fn node_record(node: &Node) -> proto::Node {
     proto::Node { node: Some(node) }
 }
 
-/// Says once, when it starts, that detection's rules have stopped reading a pane's agent.
 /// Whether `agent` can be compacted from its prompt, by the manifests in use.
 fn agent_compacts(manifests: Option<&Manifests>, agent: Option<&str>) -> bool {
     manifests
@@ -2902,6 +2901,7 @@ fn agent_compacts(manifests: Option<&Manifests>, agent: Option<&str>) -> bool {
         .is_some_and(|(manifests, agent)| manifests.compacts(&muster_detect::Agent::new(agent)))
 }
 
+/// Says once, when it starts, that detection's rules have stopped reading a pane's agent.
 fn unreadable_warning(pane: &str, agent: Option<&str>) {
     log::warn(
         "daemon.detection.unreadable",

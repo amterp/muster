@@ -294,18 +294,18 @@ impl Attention {
             .collect()
     }
 
-    /// Every pane asking for somebody, the one being waited on first.
-    ///
-    /// The ordering is the urgency ordering rather than an incidental one: `blocked` is
-    /// somebody held up right now and `done` is somebody who was held up at some point, so a
-    /// reader working down this list works down it in the order that costs least. Within one
-    /// alert, the pane that started asking first comes first, having waited longest.
     /// Whether anything is asking at all: what [`Attention::asking`] would say is not empty,
     /// without sorting anything to say it.
     pub fn anything_asking(&self) -> bool {
         !self.raised.is_empty() || !self.messages.is_empty()
     }
 
+    /// Every pane asking for somebody, the one being waited on first.
+    ///
+    /// The ordering is the urgency ordering rather than an incidental one: `blocked` is
+    /// somebody held up right now and `done` is somebody who was held up at some point, so a
+    /// reader working down this list works down it in the order that costs least. Within one
+    /// alert, the pane that started asking first comes first, having waited longest.
     pub fn asking(&self) -> Vec<(Asker, Alert)> {
         let panes = self.raised.iter().map(|(pane, raised)| (Asker::Pane(pane.clone()), raised));
         let groups =

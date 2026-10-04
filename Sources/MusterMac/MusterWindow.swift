@@ -719,17 +719,17 @@ public final class MusterWindow: NSObject {
     window.performClose(nil)
   }
 
-  /// Everything wrong with the window, for the roster to say properly and the title to count.
-  ///
-  /// Both, because the roster is the only one that can carry a sentence and it is not always on
-  /// screen. A window narrowed below the width a list needs would otherwise report a broken
-  /// config exactly the way Muster used to: not at all.
   /// The human's groups, which the list draws under its tabs.
   public func apply(groups: [SidebarModel.MessageGroup]) {
     sidebar.groups = groups
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
   }
 
+  /// Everything wrong with the window, for the roster to say properly and the title to count.
+  ///
+  /// Both, because the roster is the only one that can carry a sentence and it is not always on
+  /// screen. A window narrowed below the width a list needs would otherwise report a broken
+  /// config exactly the way Muster used to: not at all.
   public func apply(problems: [Problem]) {
     outstanding = problems
     sidebar.apply(problems: problems)
