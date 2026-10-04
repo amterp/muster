@@ -776,16 +776,19 @@ public final class MusterWindow: NSObject {
 /// and the agent that finished underneath was no more seen than if the app were hidden.
 extension MusterWindow: NSMenuItemValidation {
   /// Greys out Select Pane Asking while nothing asks, so the menu says there is nowhere to go
-  /// before anybody tries. AppKit asks as the menu opens and as the item's chord is pressed; the
-  /// answer is the one the core last sent, which it sends whenever it changes. Every other item
-  /// this window targets is always available.
+  /// before anybody tries, and Compact Agent while the keyboard's pane has no agent its daemon
+  /// can compact. AppKit asks as the menu opens and as the item's chord is pressed; both answers
+  /// are ones the core already sent, so validating asks it nothing. Every other item this window
+  /// targets is always available.
   public func validateMenuItem(_ item: NSMenuItem) -> Bool {
-    Self.isAvailable(item.action)
+    Self.isAvailable(item.action, keyboard: namedPane(keyboardKey))
   }
 
-  static func isAvailable(_ action: Selector?) -> Bool {
+  /// `keyboard` is the roster's row for the pane the keyboard is on, if the roster has one.
+  static func isAvailable(_ action: Selector?, keyboard: Roster.Pane? = nil) -> Bool {
     switch action {
     case #selector(focusPaneAsking(_:)): Core.anythingAsking
+    case #selector(compactAgent(_:)): keyboard?.compactable ?? false
     default: true
     }
   }
@@ -957,6 +960,11 @@ extension MusterWindow {
     }
   }
 
+  /// Compacts the agent in the pane the keyboard is on. Which pane that is is the core's.
+  @objc public func compactAgent(_ sender: Any?) {
+    Core.compactPane()
+  }
+
   /// Names the tab the keyboard's pane is in, having asked what to call it.
   @objc public func renameTab(_ sender: Any?) {
     askToName(subject: "tab", current: tabHolding(keyboardKey)?.givenName ?? "") { name in
@@ -1058,7 +1066,8 @@ extension MusterWindow {
   func menu(forPane pane: PaneKey) -> NSMenu? {
     ContextMenus.pane(
       pane, surface: surfaces.chrome(for: pane)?.surface,
-      machines: speaking { Core.machines() }.map(\.daemon), window: name,
+      machines: speaking { Core.machines() }.map(\.daemon),
+      canCompact: namedPane(pane)?.compactable ?? false, window: name,
       rename: { [weak self] in self?.rename(pane: $0) })
   }
 
@@ -1069,7 +1078,8 @@ extension MusterWindow {
     case .pane:
       guard let pane = row.pane else { return nil }
       return ContextMenus.agentRow(
-        pane, onScreen: row.onScreen, window: name,
+        pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
+        window: name,
         rename: { [weak self] in self?.rename(pane: $0) })
     case .tab:
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key

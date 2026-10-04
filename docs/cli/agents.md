@@ -178,6 +178,9 @@ What follows the command is a focus, one line, for a harness that takes one. A h
 no way to compact it from its prompt, or takes no focus when given one, is refused with the reason
 (`muster docs harnesses` has which), and so is a pane running no agent.
 
+The window asks the same, with no focus: Compact Agent in the Pane menu, in a pane's and an agent
+row's right-click menu, and on the `compact_pane` action, which ships with no chord.
+
 With `compact_at = 80` in the config file, Muster also compacts an agent once it reports its
 context 80% full, once each time it crosses that line. It is off unless the file says so
 (`docs/configuration.md`). `pane wait --context`, above, is the way to choose the moment yourself.

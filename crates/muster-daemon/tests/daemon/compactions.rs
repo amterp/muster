@@ -141,3 +141,18 @@ fn turning_compact_at_off_takes_back_its_compaction_not_yet_typed() {
     std::thread::sleep(WOULD_HAVE_TYPED);
     assert_eq!(p1.compactions_heard(), Vec::<String>::new());
 }
+
+/// A view offers compacting on the record's word rather than a manifest of its own, so the
+/// record says it of the agent this daemon detected, and of nothing else.
+#[test]
+fn a_panes_record_says_whether_its_agent_compacts() {
+    let mut p1 = Pane::with_an_agent();
+    make(&mut p1.control, create("p2", in_new_tab("t2")));
+
+    let records = snapshot(&mut p1.control).panes;
+    let compacts = |name: &str| {
+        records.iter().find(|record| record.pane == name).map(|record| record.agent_compacts)
+    };
+    assert_eq!(compacts("p1"), Some(true), "claude's manifest gives `/compact`");
+    assert_eq!(compacts("p2"), Some(false), "a shell has no agent to compact");
+}

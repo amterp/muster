@@ -78,6 +78,12 @@ pub enum Action {
     /// arrives as an ordinary rename request afterwards. A CLI naming a pane outright sends
     /// that request and never this.
     RenamePane,
+    /// Compacts the context of the agent in the pane the keyboard is on, at its next idle,
+    /// empty prompt - the CLI's `pane compact` with no focus.
+    ///
+    /// No focus, unlike the CLI, because a chord cannot carry one and a sheet asking for one
+    /// would stand in front of every compaction when most want none.
+    CompactPane,
     RenameTab,
     /// Closes the tab the keyboard is in, and every pane in it.
     ///
@@ -177,7 +183,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 58] = [
+    pub const ALL: [Action; 59] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -191,6 +197,7 @@ impl Action {
         Action::SplitLeft,
         Action::SplitUp,
         Action::RenamePane,
+        Action::CompactPane,
         Action::MovePaneToNewTab,
         Action::ClosePane,
         Action::NextPane,
@@ -251,6 +258,7 @@ impl Action {
             Action::SplitLeft => "split_left",
             Action::SplitUp => "split_up",
             Action::RenamePane => "rename_pane",
+            Action::CompactPane => "compact_pane",
             Action::RenameTab => "rename_tab",
             Action::CloseTab => "close_tab",
             Action::MovePaneToNewTab => "move_pane_to_new_tab",
@@ -338,15 +346,16 @@ impl Action {
             Action::SplitDown => Some(Chord::new(Key::KeyD, shifted)),
             // Unbound, each for its own reason. The two splits are Ghostty parity - it ships
             // `new_split:left` and `new_split:up` with no chord, so Muster invents none
-            // either. Pulling a pane into a tab of its own is the newest of them, and a chord
-            // invented for it would be one nobody asked for. Ending the sessions is the odd
-            // one out and is unbound for safety rather than for parity: every other action
-            // here is undone by doing it again, and that one ends processes holding
-            // somebody's work. `[keymap]` is one line away for anybody who disagrees with any
-            // of them.
+            // either. Pulling a pane into a tab of its own and compacting an agent are Muster's
+            // own, and a chord invented for either would be one nobody asked for. Ending the
+            // sessions is the odd one out and is unbound for safety rather than for parity:
+            // every other action here is undone by doing it again, and that one ends processes
+            // holding somebody's work. `[keymap]` is one line away for anybody who disagrees
+            // with any of them.
             Action::SplitLeft
             | Action::SplitUp
             | Action::MovePaneToNewTab
+            | Action::CompactPane
             | Action::CloseTab
             | Action::ReopenWindow
             | Action::QuitAndCloseSessions

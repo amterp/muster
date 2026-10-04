@@ -130,7 +130,8 @@ extension Roster.Pane {
       label: pane.label,
       subtitle: pane.subtitle,
       givenName: pane.givenName,
-      onScreen: pane.onScreen)
+      onScreen: pane.onScreen,
+      compactable: pane.compactable)
   }
 }
 

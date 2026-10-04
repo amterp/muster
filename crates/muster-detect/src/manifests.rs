@@ -291,6 +291,11 @@ impl Manifests {
         self.entry(agent)?.manifest.session_compact(focus)
     }
 
+    /// Whether the agent's manifest says how to compact its session from its prompt.
+    pub fn compacts(&self, agent: &Agent) -> bool {
+        self.entry(agent).is_some_and(|entry| entry.manifest.session_compact(None).is_some())
+    }
+
     /// The command that hands the agent's session `session` the message `message`, typing
     /// nothing into its pane; none when its manifest names none.
     pub fn session_wake(&self, agent: &Agent, session: &str, message: &str) -> Option<Vec<String>> {

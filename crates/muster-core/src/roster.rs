@@ -208,6 +208,9 @@ pub struct RosterPane {
     /// as long as they disagreed. It is also the thing the list is for - a pane nobody is
     /// showing is the one worth going to.
     pub on_screen: bool,
+    /// Whether its agent can be compacted, as its daemon says: what a menu offering to compact it
+    /// greys itself out on.
+    pub compactable: bool,
 }
 
 /// What the next press names.
@@ -521,6 +524,7 @@ impl Roster {
                             label,
                             given_name: given_name(pane.name.as_deref()),
                             on_screen: showing.contains(&key),
+                            compactable: pane.compactable,
                             key,
                         }
                     })

@@ -35,9 +35,9 @@ public enum ContextMenuModel {
   ///
   /// The machine submenu is left out while one machine is attached. It would list only the
   /// machine the pane is already on, and most windows never attach a second.
-  public static func pane(machines: [String], hasSelection: Bool, canPaste: Bool)
-    -> [ContextEntry]
-  {
+  public static func pane(
+    machines: [String], hasSelection: Bool, canPaste: Bool, canCompact: Bool = false
+  ) -> [ContextEntry] {
     var entries: [ContextEntry] = [
       .item(.copy, enabled: hasSelection),
       .item(.paste, enabled: canPaste),
@@ -56,6 +56,7 @@ public enum ContextMenuModel {
       .item(.action("zoom")),
       .item(.action("move_pane_to_new_tab")),
       .item(.action("rename_pane")),
+      .item(.action("compact_pane"), enabled: canCompact),
       .separator,
       .item(.copyPaneID),
       .separator,
@@ -85,9 +86,13 @@ public enum ContextMenuModel {
   /// No splitting or zooming, which act on a pane somebody is looking at, and the row is very
   /// often for one nobody is. Close is greyed out for such a pane because the core refuses to
   /// close a pane no region shows - the one destructive verb it keeps to what is on screen.
-  public static func agentRow(onScreen: Bool) -> [ContextEntry] {
+  ///
+  /// Compact Agent is greyed out on both menus where the pane's daemon says nothing would be
+  /// typed: no agent, or one whose manifest gives no compact line.
+  public static func agentRow(onScreen: Bool, canCompact: Bool = false) -> [ContextEntry] {
     [
       .item(.action("rename_pane")),
+      .item(.action("compact_pane"), enabled: canCompact),
       .item(.action("move_pane_to_new_tab")),
       .separator,
       .item(.copyPaneID),
@@ -206,13 +211,13 @@ public enum ContextMenus {
   /// A pane's menu. `surface` is the one that was right-clicked, for Copy and Paste, and is nil
   /// only in a test that has none.
   public static func pane(
-    _ pane: PaneKey, surface: SurfaceView?, machines: [String], window: String = "",
-    rename: @escaping @MainActor (PaneKey) -> Void
+    _ pane: PaneKey, surface: SurfaceView?, machines: [String], canCompact: Bool = false,
+    window: String = "", rename: @escaping @MainActor (PaneKey) -> Void
   ) -> NSMenu {
     let pasteboard = surface?.pasteboard ?? .general
     let entries = ContextMenuModel.pane(
       machines: machines, hasSelection: surface?.hasSelection ?? false,
-      canPaste: surface?.canPaste ?? false)
+      canPaste: surface?.canPaste ?? false, canCompact: canCompact)
     return ContextMenu.build(entries, subject: subject(pane), window: window) { choice in
       switch choice {
       case .copy: surface?.copy(nil)
@@ -226,11 +231,13 @@ public enum ContextMenus {
   }
 
   public static func agentRow(
-    _ pane: PaneKey, onScreen: Bool, pasteboard: NSPasteboard = .general, window: String = "",
+    _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false,
+    pasteboard: NSPasteboard = .general, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void
   ) -> NSMenu {
     ContextMenu.build(
-      ContextMenuModel.agentRow(onScreen: onScreen), subject: subject(pane), window: window
+      ContextMenuModel.agentRow(onScreen: onScreen, canCompact: canCompact),
+      subject: subject(pane), window: window
     ) {
       perform($0, on: pane, pasteboard: pasteboard, rename: rename)
     }
@@ -274,6 +281,7 @@ public enum ContextMenus {
     case .action("zoom"): Core.zoom(daemonID: pane.daemon, paneID: pane.pane)
     case .action("move_pane_to_new_tab"): Core.movePaneToNewTab(pane)
     case .action("rename_pane"): rename(pane)
+    case .action("compact_pane"): Core.compactPane(daemonID: pane.daemon, paneID: pane.pane)
     case .action("close_pane"): Core.closePane(daemonID: pane.daemon, paneID: pane.pane)
     case .copyPaneID: copy(pane.pane, "pane", to: pasteboard)
     default: unhandled(choice, menu: "pane")

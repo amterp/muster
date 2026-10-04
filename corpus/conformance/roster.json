@@ -2933,6 +2933,78 @@
           "w1:t1 on=local+devenv place=1 label=\"t1\" given-name=\"t1\" on-screen"
         ]
       }
+    },
+    {
+      "name": "a pane can be compacted when its daemon says its agent compacts",
+      "why": "The agent row's menu offers Compact Agent and greys it out where nothing would be typed: a pane running no agent, or an agent whose manifest gives no compact line. The daemon is the one that types it, from the manifests it holds, so the row carries the daemon's word rather than a guess made from the app's own manifests.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/src/alpha",
+                "agent": "claude",
+                "compactable": true
+              },
+              {
+                "id": "w1:p2",
+                "cwd": "/src/beta",
+                "agent": "gemini"
+              },
+              {
+                "id": "w1:p3",
+                "cwd": "/src/gamma"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "compactable": [
+          "local/w1:p1"
+        ],
+        "machines": [
+          "local connected 3 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha · claude\" hidden",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta · gemini\" hidden",
+          "local/w1:p3 place=3 tab=w1:t1 label=\"gamma\" hidden"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ]
+      }
     }
   ]
 }

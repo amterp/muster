@@ -71,6 +71,40 @@ struct PaneActionTests {
   }
 
   @MainActor
+  @Test("Compact Agent in the menu bar follows the keyboard pane's row, asking the core nothing")
+  func theCompactItemFollowsTheKeyboardsPane() {
+    let compact = #selector(MusterWindow.compactAgent(_:))
+    let core = seam(RecordingDispatcher())
+    let pane = PaneKey(daemon: "laptop", pane: "p1w3r07bsd")
+
+    #expect(!MusterWindow.isAvailable(compact), "no pane has the keyboard")
+    #expect(
+      !MusterWindow.isAvailable(
+        compact, keyboard: Roster.Pane(key: pane, label: "shell", onScreen: true)))
+    #expect(
+      MusterWindow.isAvailable(
+        compact,
+        keyboard: Roster.Pane(key: pane, label: "claude", onScreen: true, compactable: true)))
+    #expect(core.requests.isEmpty, "validating a menu item asked the core something")
+  }
+
+  @MainActor
+  @Test("Compact Agent from the menu bar names no pane, so it means the keyboard's")
+  func compactMeansHere() {
+    let recorder = recorder()
+
+    Core.compactPane()
+
+    guard case .compactPane(let compact) = recorder.requests.last?.payload else {
+      Issue.record("expected a CompactPane, got \(recorder.requests.map(\.payload))")
+      return
+    }
+    #expect(compact.daemonID.isEmpty)
+    #expect(compact.paneID.isEmpty)
+    #expect(compact.focus.isEmpty)
+  }
+
+  @MainActor
   @Test("clicking a pane asks for the keyboard rather than taking it")
   func aClickIsARequest() {
     // Which pane the keyboard feeds is the core's answer, so a click asks and the view that

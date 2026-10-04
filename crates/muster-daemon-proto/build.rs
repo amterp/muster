@@ -46,6 +46,10 @@ fn main() {
         ".muster.daemon.Handoff.Detection",
         "#[expect(clippy::struct_excessive_bools, reason = \"the detector's flags, one each\")]",
     );
+    config.message_attribute(
+        ".muster.daemon.Pane",
+        "#[expect(clippy::struct_excessive_bools, reason = \"independent facts, one each\")]",
+    );
     config.compile_fds(descriptors).expect("the schema generates");
 
     println!("cargo:rerun-if-env-changed=MUSTER_INSTALL");

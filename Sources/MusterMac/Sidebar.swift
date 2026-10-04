@@ -41,9 +41,12 @@ public struct Roster: Equatable {
     /// Whether a region is showing it right now.
     public let onScreen: Bool
 
+    /// Whether its daemon can compact its agent. What Compact Agent greys itself out on.
+    public let compactable: Bool
+
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
-      subtitle: String = "", givenName: String = "", onScreen: Bool
+      subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false
     ) {
       self.key = key
       self.place = place
@@ -53,6 +56,7 @@ public struct Roster: Equatable {
       self.subtitle = subtitle
       self.givenName = givenName
       self.onScreen = onScreen
+      self.compactable = compactable
     }
   }
 

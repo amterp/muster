@@ -356,10 +356,12 @@ impl Mirror {
     }
 }
 
-/// Whether what a pane is called has moved: the things a list of panes names it by.
+/// Whether what a list of panes says of a pane has moved: the things it names it by, and
+/// whether its agent can be compacted, which the list's menus offer on.
 fn relabelled(before: &Pane, now: &Pane) -> bool {
     before.cwd != now.cwd
         || before.agent != now.agent
+        || before.compactable != now.compactable
         || before.name != now.name
         || before.title != now.title
 }

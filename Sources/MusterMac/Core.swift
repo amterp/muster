@@ -525,6 +525,17 @@ public enum Core {
     send(request)
   }
 
+  /// Compacts the context of the agent in a pane, at its next idle, empty prompt. No focus: the
+  /// CLI's `pane compact` is where one is given.
+  public static func compactPane(daemonID: String = "", paneID: String = "") {
+    var compact = Muster_CompactPane()
+    compact.daemonID = daemonID
+    compact.paneID = paneID
+    var request = Muster_Request()
+    request.compactPane = compact
+    send(request)
+  }
+
   /// Calls a tab what somebody wants to call it.
   ///
   /// An empty tab id means the tab the keyboard's pane is in, which is what a menu item means -

@@ -103,6 +103,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         agent_state: AgentState::from_backend(&text(given, "agentState")),
         finished_unseen: given.get("finishedUnseen").and_then(Value::as_bool).unwrap_or_default(),
         agent: optional(given, "agent"),
+        compactable: given.get("compactable").and_then(Value::as_bool).unwrap_or_default(),
         cwd: text(given, "cwd"),
         name: optional(given, "name"),
         title: optional(given, "title"),

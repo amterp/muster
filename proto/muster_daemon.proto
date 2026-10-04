@@ -1206,6 +1206,10 @@ message Pane {
   // reads it, or they read idle while the agent reports working. A harness update that changed
   // its screen is the usual cause; the pane's state then comes only from the agent's reports.
   bool screen_unreadable = 12;
+  // Since 1.3. The pane's agent can be compacted (`PaneRequest.Compact`): its manifest, as this
+  // daemon holds it, says how. False for a pane running no agent. A view offers compacting on
+  // this rather than reading a manifest of its own, which may not be the one this daemon types.
+  bool agent_compacts = 13;
 }
 
 // Facts an agent reports about itself (`PaneRequest.Report`), for a view to render beside its

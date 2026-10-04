@@ -68,6 +68,7 @@ id_type!(
 
 /// One daemon-owned terminal, and what its agent is doing.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(clippy::struct_excessive_bools, reason = "the daemon's record, one fact each")]
 pub struct Pane {
     pub id: PaneId,
     /// The tab whose tree holds this pane. The daemon's record does not carry it, so the
@@ -81,6 +82,9 @@ pub struct Pane {
     /// The harness the daemon recognized, if it recognized one. `None` is not
     /// `AgentState::Unknown`: a pane can run no agent at all and be perfectly idle.
     pub agent: Option<String>,
+    /// Whether the daemon can compact that agent's context from its prompt, by the manifests it
+    /// holds. False for a pane running no agent, and from a daemon older than the answer.
+    pub compactable: bool,
     pub cwd: String,
     /// What a person called this pane, if anybody has. Durable identity: the daemon writes it
     /// down, so it comes back after a daemon restart.

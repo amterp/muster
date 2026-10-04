@@ -98,6 +98,21 @@ fn the_two_splits_ghostty_leaves_unbound_ship_unbound() {
     );
 }
 
+#[test]
+fn compacting_an_agent_is_an_action_with_no_chord() {
+    // Muster's own, so there is no Ghostty chord to keep, and one invented for it would be taken
+    // from whatever wants it later. Published all the same: the menu bar's item is built from it,
+    // and `[keymap]` is one line away.
+    let bindings = Bindings::default();
+
+    assert_eq!(Action::parse("compact_pane"), Some(Action::CompactPane));
+    assert_eq!(bindings.chord(Action::CompactPane), None);
+    assert!(
+        bindings.all().any(|(action, chord)| action == Action::CompactPane && chord.is_none()),
+        "compacting is not offered at all, so nothing can reach it"
+    );
+}
+
 /// A chord as `shift+super+KeyD`: modifiers in bit order, then the key.
 ///
 /// Bit order rather than the order somebody typed them, so the same chord spells one way

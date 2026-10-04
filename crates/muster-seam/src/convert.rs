@@ -146,6 +146,7 @@ pub(crate) fn roster(
                             on_screen: pane.on_screen,
                             subtitle: pane.subtitle.clone().unwrap_or_default(),
                             given_name: pane.given_name.clone().unwrap_or_default(),
+                            compactable: pane.compactable,
                         }
                     })
                     .collect(),

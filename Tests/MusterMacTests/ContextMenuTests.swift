@@ -25,8 +25,8 @@ struct ContextMenuTests {
     #expect(
       titles(menu) == [
         "Copy", "Paste", "-", "Split Right", "Split Down", "Split Left", "Split Up", "-",
-        "Zoom Pane", "Move Pane to New Tab", "Rename Pane…", "-", "Copy Pane ID", "-",
-        "Close Pane",
+        "Zoom Pane", "Move Pane to New Tab", "Rename Pane…", "Compact Agent", "-",
+        "Copy Pane ID", "-", "Close Pane",
       ])
   }
 
@@ -200,6 +200,42 @@ struct ContextMenuTests {
     #expect(renamed == [laptopPane])
   }
 
+  /// Typing a compact line is the daemon's, and it can type none for a pane with no agent or an
+  /// agent whose manifest gives none: a menu should not offer what it will refuse.
+  @Test("Compact Agent is offered only where the pane's daemon says its agent compacts")
+  func compactNeedsAnAgentThatCompacts() {
+    _ = recorder()
+    let menus: [(Bool) -> NSMenu] = [
+      {
+        ContextMenus.pane(laptopPane, surface: nil, machines: [], canCompact: $0, rename: { _ in })
+      },
+      { ContextMenus.agentRow(laptopPane, onScreen: false, canCompact: $0, rename: { _ in }) },
+    ]
+    for menu in menus {
+      #expect(item("Compact Agent", in: menu(false))?.isEnabled == false)
+      #expect(item("Compact Agent", in: menu(true))?.isEnabled == true)
+    }
+  }
+
+  @Test("Compact Agent compacts the pane that was right-clicked, keeping nothing in particular")
+  func compactNamesItsPane() {
+    let recorder = recorder()
+    let menus = [
+      ContextMenus.pane(laptopPane, surface: nil, machines: [], canCompact: true, rename: { _ in }),
+      ContextMenus.agentRow(laptopPane, onScreen: false, canCompact: true, rename: { _ in }),
+    ]
+    let mark = recorder.requests.count
+
+    for menu in menus { choose("Compact Agent", in: menu) }
+
+    let sent = recorder.sent(since: mark) {
+      if case .compactPane = $0.payload { true } else { false }
+    }.map(\.compactPane)
+    #expect(sent.count == 2)
+    #expect(sent.allSatisfy { $0.daemonID == "laptop" && $0.paneID == "p1w3r07bsd" })
+    #expect(sent.allSatisfy { $0.focus.isEmpty })
+  }
+
   /// The core refuses to close a pane no region shows, and a menu should not offer what it will
   /// refuse.
   @Test("an agent row offers Close Pane only for a pane on screen")
@@ -210,7 +246,8 @@ struct ContextMenuTests {
 
     #expect(
       titles(hidden) == [
-        "Rename Pane…", "Move Pane to New Tab", "-", "Copy Pane ID", "-", "Close Pane",
+        "Rename Pane…", "Compact Agent", "Move Pane to New Tab", "-", "Copy Pane ID", "-",
+        "Close Pane",
       ])
     #expect(item("Close Pane", in: hidden)?.isEnabled == false)
     #expect(item("Close Pane", in: shown)?.isEnabled == true)

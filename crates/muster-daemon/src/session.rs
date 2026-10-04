@@ -1833,6 +1833,8 @@ impl Session {
                         record.finished_unseen,
                     );
                 }
+                record.agent_compacts =
+                    agent_compacts(self.detecting.manifests().as_deref(), agent.as_deref());
                 record.agent = agent;
                 record.set_agent_state(state);
                 record.state_reported = reported;
@@ -2290,6 +2292,7 @@ impl Session {
         }
         self.manifests_adopted = loading.load;
         let changed = self.detecting.adopt(loaded);
+        self.say_which_agents_compact();
         let unchanged = changed.is_empty() && loading.app == self.app_manifests;
         self.app_manifests = loading.app;
         if unchanged {
@@ -2308,6 +2311,25 @@ impl Session {
             }
         }
         Reply::done()
+    }
+
+    /// Says again of every pane whether its agent compacts. An override can give an agent a
+    /// compact line or take one away while detection still finds the same agent, and a pane taken
+    /// over from an older daemon arrives saying nothing of it; the app sends its manifests on
+    /// every connect, which brings both here.
+    fn say_which_agents_compact(&mut self) {
+        let manifests = self.detecting.manifests();
+        let mut changed = Vec::new();
+        for pane in &mut self.panes {
+            let compacts = agent_compacts(manifests.as_deref(), pane.record.agent.as_deref());
+            if pane.record.agent_compacts != compacts {
+                pane.record.agent_compacts = compacts;
+                changed.push(pane.record.clone());
+            }
+        }
+        for record in changed {
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -2854,6 +2876,13 @@ fn node_record(node: &Node) -> proto::Node {
 }
 
 /// Says once, when it starts, that detection's rules have stopped reading a pane's agent.
+/// Whether `agent` can be compacted from its prompt, by the manifests in use.
+fn agent_compacts(manifests: Option<&Manifests>, agent: Option<&str>) -> bool {
+    manifests
+        .zip(agent)
+        .is_some_and(|(manifests, agent)| manifests.compacts(&muster_detect::Agent::new(agent)))
+}
+
 fn unreadable_warning(pane: &str, agent: Option<&str>) {
     log::warn(
         "daemon.detection.unreadable",

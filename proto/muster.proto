@@ -2526,6 +2526,11 @@ message RosterPane {
   // the only pane there is and stops, and the ⌘1 after it is the first tab rather than that
   // pane.
   uint32 pane_press = 10;
+
+  // Whether this pane's agent can be compacted (CompactPane), as its daemon says from the
+  // manifests it holds. Carried here so a menu greys its Compact Agent item without asking the
+  // core as it opens; false for a pane running no agent.
+  bool compactable = 11;
 }
 
 // Everything this window is showing, as one message.

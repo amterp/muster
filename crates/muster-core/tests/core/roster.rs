@@ -45,6 +45,14 @@ fn roster_conformance() {
                 pressed.as_ref().map(|(_, numbering)| json!(describe_chords(&roster, numbering))),
             ),
             ("tabs", Some(json!(roster.tabs().map(describe_tab).collect::<Vec<String>>()))),
+            // Only when some pane can be compacted, so the cases about anything else need not
+            // say that none can.
+            (
+                "compactable",
+                Some(compactable(&roster))
+                    .filter(|panes| !panes.is_empty())
+                    .map(|panes| json!(panes)),
+            ),
             // The machines, which the tabs no longer group by. Only the ones with something to
             // say: a machine that is connected and holding panes says it through its panes.
             (
@@ -76,6 +84,16 @@ fn roster_conformance() {
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+/// The panes a menu would offer to compact.
+fn compactable(roster: &Roster) -> Vec<String> {
+    roster
+        .tabs()
+        .flat_map(|tab| tab.panes.iter())
+        .filter(|pane| pane.compactable)
+        .map(|pane| pane.key.to_string())
+        .collect()
 }
 
 /// The window a case describes, built the way a launch onto those daemons would build it.

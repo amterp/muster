@@ -133,6 +133,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         },
         finished_unseen: record.finished_unseen,
         agent: record.agent,
+        compactable: record.agent_compacts,
         cwd: record.cwd,
         name: record.label,
         title: Some(record.title).filter(|title| !title.is_empty()),
