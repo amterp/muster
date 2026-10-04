@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "persist-replace",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791102579046,
+  "creator": "Alexander Terp",
+  "description": "2026-10-04 review: the message store now writes state.json with sync_data (not F_FULLFSYNC on macOS) and no directory sync. After a power loss the rename can land without the data, state.json reads unreadable, and the daemon starts from default: every participant's cursor resets and everything reads unread. Policy and pause come back from the log; cursors do not. Also: across.rs lately_reached is not dropped by drop_group/forget_replica, and home_daemon() picks the first non-tunnel backend by id, so a second local [[daemon]] could take msg open.",
+  "id": "a_2baXITErk",
+  "position": "b0c",
+  "title": "persist::replace after a power loss can leave state.json unreadable, resetting every cursor",
+  "type": "bug",
+  "updated_at_millis": 1791102579046,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791102579046}
+  ]
+}

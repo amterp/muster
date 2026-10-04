@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-window-whose-close",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791102578924,
+  "creator": "Alexander Terp",
+  "description": "2026-10-04 review (speculative): session.rs ~5061 - closed() resets the flag on a real close, but if the shell never closes the window (ShutWindow finds none), it stays closing: it answers Ok without closing and is left out of the staying count, so closing the other of two windows is refused as the only one.",
+  "id": "a_2baXIH7Qm",
+  "position": "b0b",
+  "title": "A window whose close never happens stays 'closing' for good",
+  "type": "bug",
+  "updated_at_millis": 1791102578924,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791102578924}
+  ]
+}
