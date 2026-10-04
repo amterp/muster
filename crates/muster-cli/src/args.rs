@@ -613,8 +613,13 @@ enum Doing {
         pane: Option<String>,
 
         /// How many rows back to ask for. Omit for as far as the window will go
-        #[arg(long, value_name = "N")]
+        #[arg(long, value_name = "N", conflicts_with = "turn")]
         rows: Option<u32>,
+
+        /// Only what the pane's agent printed since it last went to work: its report, without
+        /// the turn before it or the line that started it
+        #[arg(long)]
+        turn: bool,
     },
 
     /// Give a pane a bridge, for one the window has stopped drawing while its agent runs on
@@ -1065,12 +1070,13 @@ fn pane(
             }
         }
         Doing::Wait { pane, until, context, timeout } => wait(pane, until, *context, *timeout),
-        Doing::Read { pane, rows } => send(request::Payload::ReadPane(ReadPane {
+        Doing::Read { pane, rows, turn } => send(request::Payload::ReadPane(ReadPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             // Zero is what the window reads as "as far as you will go", and it is also what
             // proto3 sends for an absent number - so omitting `--rows` and asking for
             // everything are the same request.
             rows: rows.unwrap_or_default(),
+            turn: *turn,
             ..ReadPane::default()
         })),
         Doing::Reattach { pane } => send(request::Payload::ReattachPane(ReattachPane {

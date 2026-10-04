@@ -142,6 +142,18 @@ under them. `--json` adds `rows` and `truncated` beside the text; `truncated` is
 there is history the read did not reach, whether because you asked for fewer rows or because the
 pane holds more than a read can reach.
 
+To collect what an agent reported when its turn ended, read the turn instead of guessing a
+count:
+
+    muster pane read --pane p1w3r0ab2n --turn
+
+That is what the agent printed since it last went to work: from the first row that no longer reads
+as the screen did at that moment, to the last row with anything on it. The turn before it is left
+out, and so is the brief you sent, which the harness echoed before it started. A turn runs until
+the agent is idle again, so a dialog it stopped at along the way does not start another. A pane
+whose agent has not gone to work since its daemon began watching it has no turn to read, and the
+read is refused saying so; `--rows` still answers. `--turn` and `--rows` are one or the other.
+
 How far back the window goes is the daemon's limit rather than a promise made here; see
 `muster docs limits`.
 

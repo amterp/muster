@@ -2194,6 +2194,27 @@
       }
     },
     {
+      "name": "a read can ask for what the agent printed in its last turn",
+      "why": "A caller collecting an agent's report cannot count its rows: too few cut off its top, too many pull in the turn before and the brief the caller sent. The daemon knows where the turn began, so the caller names the turn and not a count.",
+      "given": {
+        "argv": [
+          "pane",
+          "read",
+          "--pane",
+          "p1w3r0ab2n",
+          "--turn"
+        ]
+      },
+      "expect": {
+        "request": {
+          "read_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "turn": true
+          }
+        }
+      }
+    },
+    {
       "name": "windows are listed without naming one",
       "why": "The one read that cannot be narrowed to a window: the question is which windows there are. Every window of an app answers on one socket, so this asks every app under this home - one, unless two installs are running - and lists each window it describes.",
       "given": {

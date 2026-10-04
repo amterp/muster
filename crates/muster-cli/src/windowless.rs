@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use muster_core::composition::{Rect, ViewNode, ViewPane, places_in};
 use muster_core::mirror::backend::{PaneId, SplitAxis};
-use muster_core::pane_text::{self, PaneText};
+use muster_core::pane_text::{self, PaneText, Scope};
 use muster_core::{AgentState, Until};
 use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection};
 use muster_proto::{Request, Response, request, response};
@@ -68,13 +68,15 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         }
         Some(request::Payload::ReadPane(read)) => {
             let pane = named(&read.pane_id, "read")?;
-            respond(match read_pane(&socket, pane, read.rows) {
+            let scope = if read.turn { Scope::Turn } else { Scope::Newest(read.rows) };
+            respond(match read_pane(&socket, pane, scope) {
                 Ok(read) => Response {
                     payload: Some(response::Payload::PaneText(muster_proto::PaneText {
                         rows: u32::try_from(pane_text::rows_of(&read.text).len())
                             .unwrap_or(u32::MAX),
                         text: read.text,
                         truncated: read.truncated,
+                        turn: read.turn,
                     })),
                 },
                 Err(refusal) => failure(refusal),
@@ -159,38 +161,65 @@ fn snapshot(socket: &Path) -> Result<daemon_proto::Snapshot, Trouble> {
     }
 }
 
-/// A pane's last `rows` rows, or everything for zero, read and cut the way a window does.
-fn read_pane(socket: &Path, pane: &str, rows: u32) -> Result<PaneText, String> {
-    let newest = daemon_proto::pane_text::newest(rows, |first_row, last| {
-        let answer = asked(
-            socket,
-            daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
-                request: Some(daemon_proto::pane_request::Request::Read(
-                    daemon_proto::pane_request::Read {
-                        pane: pane.to_string(),
-                        first_row,
-                        rows: 0,
-                        last,
-                    },
-                )),
-            }),
-        )
-        .map_err(|trouble| trouble.detail().to_string())?;
-        match answer.detail {
-            Some(daemon_proto::answer::Detail::Text(text)) => Ok(text),
-            _ if answer.outcome() == daemon_proto::Outcome::NotThere => Err(format!(
-                "the muster-daemon at {} holds no pane called {pane}. Either it closed, or the \
-                 name is from another machine - `muster window` lists the panes this one has.",
+/// A pane's last rows or its agent's last turn, read and cut the way a window does.
+fn read_pane(socket: &Path, pane: &str, scope: Scope) -> Result<PaneText, String> {
+    match scope {
+        Scope::Newest(rows) => {
+            let newest = daemon_proto::pane_text::newest(rows, |first_row, last| {
+                read_page(socket, pane, first_row, last, false)
+            })?;
+            Ok(PaneText { text: newest.text, truncated: newest.truncated, turn: false }.tail(rows))
+        }
+        Scope::Turn => match daemon_proto::pane_text::turn(|| read_page(socket, pane, 0, 0, true))?
+        {
+            Some(turn) => {
+                Ok(PaneText { text: turn.text, truncated: turn.truncated, turn: true }.tail(0))
+            }
+            None => Err(format!(
+                "the muster-daemon at {} predates reading what a pane's agent printed in its \
+                 last turn, and read something else; read the newest rows with --rows instead",
                 socket.display()
             )),
-            _ => Err(format!(
-                "the muster-daemon at {} would not read pane {pane}: {}",
-                socket.display(),
-                answer.reason
+        },
+    }
+}
+
+/// One page of a pane's text from the daemon, as [`daemon_proto::pane_request::Read`] asks.
+fn read_page(
+    socket: &Path,
+    pane: &str,
+    first_row: u64,
+    last: u32,
+    turn: bool,
+) -> Result<daemon_proto::PaneText, String> {
+    let answer = asked(
+        socket,
+        daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
+            request: Some(daemon_proto::pane_request::Request::Read(
+                daemon_proto::pane_request::Read {
+                    pane: pane.to_string(),
+                    first_row,
+                    rows: 0,
+                    last,
+                    turn,
+                },
             )),
-        }
-    })?;
-    Ok(PaneText { text: newest.text, truncated: newest.truncated }.tail(rows))
+        }),
+    )
+    .map_err(|trouble| trouble.detail().to_string())?;
+    match answer.detail {
+        Some(daemon_proto::answer::Detail::Text(text)) => Ok(text),
+        _ if answer.outcome() == daemon_proto::Outcome::NotThere => Err(format!(
+            "the muster-daemon at {} holds no pane called {pane}. Either it closed, or the \
+             name is from another machine - `muster window` lists the panes this one has.",
+            socket.display()
+        )),
+        _ => Err(format!(
+            "the muster-daemon at {} would not read pane {pane}: {}",
+            socket.display(),
+            answer.reason
+        )),
+    }
 }
 
 /// Types into a pane on the daemon's input connection, which answers nothing, then confirms it
@@ -231,7 +260,7 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
         return Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) };
     }
     match pane_text::confirm(pane, &send.text, |rows| {
-        read_pane(socket, pane, rows).map(|read| read.text)
+        read_pane(socket, pane, Scope::Newest(rows)).map(|read| read.text)
     }) {
         Ok(()) => Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) },
         Err(refusal) => failure(refusal),

@@ -33,6 +33,7 @@ use crate::process;
 use crate::pty;
 use crate::pty::Grid;
 use crate::screen::{Cleared, Screen, Settled};
+use crate::session::Turn;
 use crate::session_name::SessionName;
 use crate::stream::{self, Bridge, Refusal, Written};
 use crate::writer::{self, Encoding, Input, OwnedKey, Writer};
@@ -153,6 +154,17 @@ pub(crate) struct PaneIo {
     /// When the writer last wrote input to the program.
     typed: Mutex<Typed>,
     begun: Begun,
+    /// What the screen showed as the pane's agent last went to work.
+    turn: Mutex<Option<TurnMark>>,
+}
+
+/// What a pane's screen showed as its agent went to work, which a read of the turn starts after.
+#[derive(Debug)]
+struct TurnMark {
+    /// The row the screen's top was at, counted from the oldest row held.
+    top: u64,
+    /// The screen's rows then, from its top down.
+    rows: Vec<String>,
 }
 
 /// When input was last written to a pane's program.
@@ -241,6 +253,36 @@ impl PaneIo {
     pub(crate) fn report_state(&self, agent: String, state: muster_detect::State) {
         *poison::lock(&self.self_report, "daemon.pane.self_report") = Some((agent, state));
         self.hold.nudge();
+    }
+
+    /// Notes what the screen shows, as the pane's agent starts a turn.
+    fn mark_turn(&self) {
+        let screen = self.screen();
+        let top = screen.terminal().scrollback_rows() as u64;
+        let (_, total) = screen.rows(0, 0);
+        let (rows, _) =
+            screen.rows(top, u32::try_from(total.saturating_sub(top)).unwrap_or(u32::MAX));
+        drop(screen);
+        *poison::lock(&self.turn, "daemon.pane.turn") = Some(TurnMark { top, rows });
+    }
+
+    /// The row the agent's last turn starts at: the first, from the screen's top when it went to
+    /// work, that no longer reads as it did then. What the screen already showed - the previous
+    /// turn's end, the line that started this one - stays out, and a prompt the agent redrew in
+    /// place with the turn's first lines does not. A rewrap moves the first difference up, so a
+    /// resize costs a few rows too many rather than any missing; rows trimmed off the top of a
+    /// full history move it down, and can cost a long turn its first rows. None before any turn.
+    pub(crate) fn turn_start(&self) -> Option<u64> {
+        let turn = poison::lock(&self.turn, "daemon.pane.turn");
+        let mark = turn.as_ref()?;
+        let (now, total) =
+            self.screen().rows(mark.top, u32::try_from(mark.rows.len()).unwrap_or(u32::MAX));
+        if mark.top >= total {
+            // The history was erased, or trimmed past where the turn began.
+            return Some(0);
+        }
+        let same = mark.rows.iter().zip(&now).take_while(|(then, now)| then == now).count();
+        Some(mark.top + same as u64)
     }
 
     fn take_self_report(&self) -> Option<(String, muster_detect::State)> {
@@ -749,6 +791,7 @@ impl Pane {
             self_report: Mutex::new(None),
             typed: Mutex::default(),
             begun: Begun::new(process),
+            turn: Mutex::new(None),
         });
         let pane = record.pane.clone();
 
@@ -780,6 +823,7 @@ impl Pane {
                 reports_directory: false,
                 unsent: None,
             },
+            published: first_published(watching.detection.is_some()),
             detection,
             detecting: Arc::clone(watching.detecting),
             unsent: None,
@@ -908,6 +952,13 @@ fn retry_due(due: Option<Instant>, heard: &Heard, now: Instant) -> Option<Instan
     due.or_else(|| heard.unsent.is_some().then(|| now + CWD_CADENCE))
 }
 
+/// The agent state a pane's reader starts from. An agent taken over mid-turn is not marked at the
+/// first state it is seen in: its turn began before this daemon was watching, and is not read
+/// until the next one.
+fn first_published(resumed: bool) -> proto::AgentState {
+    if resumed { proto::AgentState::Working } else { proto::AgentState::Unknown }
+}
+
 struct Reader {
     io: Arc<PaneIo>,
     wake: OwnedFd,
@@ -920,6 +971,8 @@ struct Reader {
     detecting: Arc<Detecting>,
     /// What detection published that the queue dropped, to send again at the next tick.
     unsent: Option<Reported>,
+    /// The agent state detection last published.
+    published: proto::AgentState,
 }
 
 impl Reader {
@@ -1023,6 +1076,12 @@ impl Reader {
             let (reported, unreadable) = (publication.reported, publication.unreadable);
             Reported::Agent { agent, state, reported, unreadable }
         });
+        if let Some(Reported::Agent { state, .. }) = &published {
+            if Turn::between(self.published, *state) == Turn::Started {
+                self.io.mark_turn();
+            }
+            self.published = *state;
+        }
         publish_agent(&self.reports, self.io.serial, published, &mut self.unsent);
     }
 
@@ -1147,6 +1206,7 @@ impl PaneIo {
             self_report: Mutex::new(None),
             typed: Mutex::default(),
             begun: Begun::new(None),
+            turn: Mutex::new(None),
         })
     }
 

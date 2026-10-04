@@ -3,8 +3,9 @@
 use muster::proto::{
     OpenWindow, ReadPane, ReadWindow, Request, Response, Startup, request, response,
 };
+use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::input_event;
-use muster_harness::requests::{create, in_new_tab, make, until_text};
+use muster_harness::requests::{create, in_new_tab, make, screen_text, until_text};
 use muster_harness::{Daemon, Input, until_some};
 use prost::Message;
 
@@ -55,6 +56,51 @@ fn a_whole_history_larger_than_a_mebibyte_reaches_its_caller() {
     };
     assert!(text.text.len() > 1 << 20, "{} bytes of a 2 MB history", text.text.len());
     assert!(text.text.contains("LONG-END"), "the read ends at the newest row");
+}
+
+/// A read of the turn reaches the daemon through the window, and comes back saying it is one:
+/// what the agent printed since it went to work, and not what it printed before.
+#[test]
+fn a_read_of_the_last_turn_is_what_the_agent_printed_since_it_went_to_work() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let socket = daemon.root().join("command.sock");
+    for payload in [
+        request::Payload::Startup(Startup {
+            config_path: daemon.muster_config().to_string_lossy().into_owned(),
+            command_socket_path: socket.to_string_lossy().into_owned(),
+            ..Startup::default()
+        }),
+        request::Payload::OpenWindow(OpenWindow::default()),
+    ] {
+        dispatch(payload);
+    }
+    let say = |control: &mut muster_harness::Control, text: &str| {
+        let send = input_event::Send { text: format!("say {text}"), enter: true };
+        Input::connect(daemon.socket_path()).send("p1", input_event::Input::Send(send));
+        until_some(&format!("the agent to print {text:?}"), || {
+            let screen = screen_text(control, "p1");
+            (screen.contains(text) && !screen.contains("say ")).then_some(())
+        });
+    };
+    say(&mut control, "before the turn");
+    daemon.unblock_agent_unasked();
+    daemon.until_agent("p1", daemon_proto::AgentState::Working);
+    say(&mut control, "the report");
+
+    let read = until_some("the window to read the turn", || {
+        let asked = ReadPane { pane_id: "p1".to_string(), turn: true, ..ReadPane::default() };
+        match dialed(&socket, request::Payload::ReadPane(asked)).payload {
+            Some(response::Payload::PaneText(text)) => Some(text),
+            _ => None,
+        }
+    });
+    assert!(read.turn, "the answer does not say it is the turn: {read:?}");
+    assert!(read.text.starts_with("the report"), "{read:?}");
+    assert!(!read.text.contains("before the turn"), "{read:?}");
 }
 
 fn dialed(socket: &std::path::Path, payload: request::Payload) -> Response {

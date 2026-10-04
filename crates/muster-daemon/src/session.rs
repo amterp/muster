@@ -561,12 +561,22 @@ pub(crate) struct Reading {
     rows: u32,
     /// The last rows asked for instead, when not zero.
     last: u32,
+    /// What the pane's agent printed in its last turn asked for instead.
+    turn: bool,
 }
 
 impl Reading {
     pub(crate) fn read(&self) -> Reply {
         let rows = |first, count| self.io.screen().rows(first, count);
-        let text = if self.last > 0 && self.last <= screen::HELD_TAIL {
+        let text = if self.turn {
+            let Some(start) = self.io.turn_start() else {
+                return Reply::refused(
+                    "no turn has started in this pane since this daemon began watching it, so \
+                     there is no last turn to read; read its newest rows with --rows instead",
+                );
+            };
+            proto::PaneText { turn: Some(start), ..screen::since(start, screen::PAGE_BYTES, rows) }
+        } else if self.last > 0 && self.last <= screen::HELD_TAIL {
             let held = self.io.screen();
             screen::last_page(self.last, screen::PAGE_BYTES, |first, count| held.rows(first, count))
         } else if self.last > 0 {
@@ -992,6 +1002,7 @@ impl Session {
                             first_row: read.first_row,
                             rows: read.rows,
                             last: read.last,
+                            turn: read.turn,
                         }));
                     }
                 },
@@ -2749,14 +2760,14 @@ fn finished_unseen(
 /// Where a change of agent state leaves the agent's turn: working or waiting on you after not
 /// doing either is a turn started, and idle after either is one ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Turn {
+pub(crate) enum Turn {
     Started,
     Ended,
     Neither,
 }
 
 impl Turn {
-    fn between(before: proto::AgentState, after: proto::AgentState) -> Turn {
+    pub(crate) fn between(before: proto::AgentState, after: proto::AgentState) -> Turn {
         use proto::AgentState::{Blocked, Idle, Working};
         let busy = |state| matches!(state, Working | Blocked);
         match (busy(before), busy(after)) {

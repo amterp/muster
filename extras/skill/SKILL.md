@@ -61,6 +61,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   `--until working` first. `waiting` is not `idle`: add it to hear of an agent waiting on its own
   build, and give `--timeout`. `--context 80` also ends the wait once the agent's context is that
   full.
+- **Read a finished agent's report with `muster pane read --pane X --turn`**: what it printed
+  since it last went to work, without the turn before or your brief. Do not guess `--rows`.
 - **Compact a worker before it runs out of context**, rather than letting it hit the limit
   mid-task: `muster pane compact --pane X keep <what the summary must keep>`. It is typed once
   the agent is idle, never mid-turn. To compact yourself, run `muster pane compact <focus>` with

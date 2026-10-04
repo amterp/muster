@@ -18,7 +18,7 @@ use muster_core::intent::{
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::names::Minter;
-use muster_core::pane_text::PaneText;
+use muster_core::pane_text::{PaneText, Scope};
 use muster_daemon_proto::{
     self as proto, answer, pane_request, placement, request::Service, session_request, tab_request,
 };
@@ -94,18 +94,20 @@ impl DaemonBackend {
     }
 
     /// One page of a pane's history, up to the daemon's 4 MiB: from `first_row` to the last row,
-    /// or its `last` rows when that is not zero.
+    /// its `last` rows when that is not zero, or its last turn when `turn` is set.
     fn read_page(
         &self,
         pane: &PaneId,
         first_row: u64,
         last: u32,
+        turn: bool,
     ) -> Result<proto::PaneText, Refusal> {
         let answer = self.pane_request(pane_request::Request::Read(pane_request::Read {
             pane: pane.to_string(),
             first_row,
             rows: 0,
             last,
+            turn,
         }))?;
         let Some(answer::Detail::Text(read)) = answer.detail else {
             return Err(Refusal::Declined(format!(
@@ -305,11 +307,28 @@ impl BackendChannel for DaemonBackend {
         }
     }
 
-    fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal> {
-        let newest = muster_daemon_proto::pane_text::newest(rows, |first_row, last| {
-            self.read_page(pane, first_row, last)
-        })?;
-        Ok(PaneText { text: newest.text, truncated: newest.truncated })
+    fn read(&self, pane: &PaneId, scope: Scope) -> Result<PaneText, Refusal> {
+        match scope {
+            Scope::Newest(rows) => {
+                let newest = muster_daemon_proto::pane_text::newest(rows, |first_row, last| {
+                    self.read_page(pane, first_row, last, false)
+                })?;
+                Ok(PaneText { text: newest.text, truncated: newest.truncated, turn: false })
+            }
+            Scope::Turn => {
+                let turn =
+                    muster_daemon_proto::pane_text::turn(|| self.read_page(pane, 0, 0, true))?;
+                let Some(turn) = turn else {
+                    return Err(Refusal::Declined(format!(
+                        "{} predates reading what a pane's agent printed in its last turn, \
+                         and read something else; read the newest rows with --rows instead, \
+                         or let a newer Muster take the daemon over",
+                        self.description
+                    )));
+                };
+                Ok(PaneText { text: turn.text, truncated: turn.truncated, turn: true })
+            }
+        }
     }
 
     fn grids(&self) -> Result<BTreeMap<PaneId, Grid>, Refusal> {

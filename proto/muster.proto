@@ -987,6 +987,12 @@ message ReadPane {
   // up to the 4 MiB it puts in one answer, and keeps the last this many rows of text. So asking
   // for more than there is costs nothing and lies about nothing.
   uint32 rows = 3;
+
+  // Instead of `rows`: what the pane's agent printed since it last went to work, which is what
+  // a caller collecting an agent's report wants and cannot count. The daemon knows where that
+  // starts; an answer without `PaneText.turn` comes from a window that predates this field and
+  // read the newest rows instead.
+  bool turn = 4;
 }
 
 // Makes a tab beside a pane, with one pane in it, and shows it.
@@ -1420,6 +1426,9 @@ message PaneText {
   // than a guess from the row count: a thousand rows back may be all a pane has or a fifth of
   // it, and those are different things to tell somebody.
   bool truncated = 3;
+
+  // Set when the rows are a read of the pane's last turn, as `ReadPane.turn` asked.
+  bool turn = 4;
 }
 
 // Asks which daemons Muster has started on this machine, and whether each is still there.

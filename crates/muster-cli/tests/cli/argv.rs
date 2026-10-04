@@ -334,6 +334,7 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
             "read_pane": fields([
                 ("pane_id", said(&read.pane_id)),
                 ("rows", (read.rows != 0).then_some(json!(read.rows))),
+                ("turn", read.turn.then_some(json!(true))),
             ])
         }),
         request::Payload::WatchPanes(watch) => json!({

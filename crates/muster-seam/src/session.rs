@@ -35,7 +35,7 @@ use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restored};
 use muster_core::names::Minter;
 use muster_core::pane_focus::PaneFocus;
-use muster_core::pane_text::PaneText;
+use muster_core::pane_text::{PaneText, Scope};
 use muster_core::problems::{Problem, Problems, Remedy, Severity};
 use muster_core::reconnect;
 use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
@@ -6920,12 +6920,20 @@ pub(crate) fn send_to_pane(
 /// channel is taken and the lock dropped before the request goes, because a read is a round
 /// trip and holding the session across one stalls every event arriving from every other
 /// daemon.
-pub(crate) fn read_pane(daemon: &DaemonId, pane: &PaneId, rows: u32) -> Result<PaneText, String> {
+pub(crate) fn read_pane(
+    daemon: &DaemonId,
+    pane: &PaneId,
+    scope: Scope,
+) -> Result<PaneText, String> {
     let channel = channel(daemon)?;
+    // Counted here as well, so `rows` is the count `docs/cli/agents.md` promises whatever a
+    // backend handed back: one that cannot read from the end sends everything.
+    let rows = match scope {
+        Scope::Newest(rows) => rows,
+        Scope::Turn => 0,
+    };
     channel
-        .read(pane, rows)
-        // Counted here as well, so `rows` is the count `docs/cli/agents.md` promises whatever a
-        // backend handed back: one that cannot read from the end sends everything.
+        .read(pane, scope)
         .map(|read| read.tail(rows))
         .map_err(|refusal| format!("the daemon {daemon} would not read pane {pane}: {refusal}"))
 }

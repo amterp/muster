@@ -141,6 +141,9 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     assert!(refused.contains("--pane"), "with no window there is no keyboard's pane:\n{refused}");
     let refused = refused_with(&here.muster(&["pane", "read", "--pane", "p9nobody"]), 1);
     assert!(refused.contains("no pane called p9nobody"), "{refused}");
+    // A shell, whose agent never went to work: the daemon was asked for the turn, and said so.
+    let refused = refused_with(&here.muster(&["pane", "read", "--pane", "p1", "--turn"]), 1);
+    assert!(refused.contains("no turn has started"), "{refused}");
 }
 
 /// With no window, `--layout` draws each tab from the daemon's own tree, places each pane in it as

@@ -17,6 +17,18 @@ pub struct PaneText {
     /// set it, because a caller that asked for forty rows out of a hundred did not reach the
     /// other sixty either.
     pub truncated: bool,
+
+    /// Whether these are the rows the pane's agent printed in its last turn ([`Scope::Turn`]).
+    pub turn: bool,
+}
+
+/// Which of a pane's rows a read is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    /// The newest this many rows, or as much as the backend holds for zero.
+    Newest(u32),
+    /// What the pane's agent printed since it last went to work.
+    Turn,
 }
 
 impl PaneText {
@@ -55,6 +67,7 @@ impl PaneText {
             },
             // There is history this answer did not reach, because Muster dropped it.
             truncated: self.truncated || from > 0,
+            turn: self.turn,
         }
     }
 }
@@ -218,7 +231,7 @@ mod tests {
     }
 
     fn read(text: &str, truncated: bool) -> PaneText {
-        PaneText { text: text.to_string(), truncated }
+        PaneText { text: text.to_string(), truncated, turn: false }
     }
 
     /// The bug this exists for, in miniature: a caller asks for fewer rows than the pane holds

@@ -460,7 +460,7 @@ pub(crate) fn page(
         text.push_str(&joined);
         held += u32::try_from(lines.len()).unwrap_or(u32::MAX);
     }
-    proto::PaneText { first_row, text, total_rows, rows: held }
+    proto::PaneText { first_row, text, total_rows, rows: held, turn: None }
 }
 
 /// The last `last` rows ending at the last row with anything on it, stopping short at `limit`
@@ -474,18 +474,44 @@ pub(crate) fn last_page(
     limit: usize,
     mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
 ) -> proto::PaneText {
+    let (end, total_rows) = written_end(&mut read);
+    newest_back_to(end.saturating_sub(u64::from(last)), end, total_rows, limit, read)
+}
+
+/// The rows from `first` to the last row with anything on it, stopping short at `limit` bytes
+/// with the newest rows kept: a turn's output, whose end is what its reader came for.
+pub(crate) fn since(
+    first: u64,
+    limit: usize,
+    mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
+) -> proto::PaneText {
+    let (end, total_rows) = written_end(&mut read);
+    newest_back_to(first.min(end), end, total_rows, limit, read)
+}
+
+/// The row after the last one with anything on it, and the rows held in all.
+fn written_end(read: &mut impl FnMut(u64, u32) -> (Vec<String>, u64)) -> (u64, u64) {
     let (_, total_rows) = read(0, 0);
     let mut end = total_rows;
     while end > 0 {
         let from = end.saturating_sub(u64::from(PAGE_BATCH));
         let (lines, _) = read(from, u32::try_from(end - from).unwrap_or(PAGE_BATCH));
         if let Some(at) = lines.iter().rposition(|line| !line.trim().is_empty()) {
-            end = from + at as u64 + 1;
-            break;
+            return (from + at as u64 + 1, total_rows);
         }
         end = from;
     }
-    let oldest = end.saturating_sub(u64::from(last));
+    (0, total_rows)
+}
+
+/// The rows from `oldest` up to `end`, read backwards so that `limit` cuts the oldest.
+fn newest_back_to(
+    oldest: u64,
+    end: u64,
+    total_rows: u64,
+    limit: usize,
+    mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
+) -> proto::PaneText {
     let mut newest_first: Vec<String> = Vec::new();
     let mut bytes = 0;
     let mut first_row = end;
@@ -504,7 +530,7 @@ pub(crate) fn last_page(
     }
     newest_first.reverse();
     let rows = u32::try_from(newest_first.len()).unwrap_or(u32::MAX);
-    proto::PaneText { first_row, text: newest_first.join("\n"), total_rows, rows }
+    proto::PaneText { first_row, text: newest_first.join("\n"), total_rows, rows, turn: None }
 }
 
 /// One cell's size in pixels, zero while no surface has said.
@@ -670,6 +696,16 @@ mod tests {
         let cut = last_page(1_000, 30, rows_of(9, 1_000));
         assert_eq!(cut.text, "000000997\n000000998\n000000999", "the newest kept, not the oldest");
         assert_eq!(last_page(5, PAGE_BYTES, rows_of(9, 0)).text, "");
+    }
+
+    #[test]
+    fn a_turn_reads_from_its_first_row_and_keeps_the_newest_when_it_is_too_long() {
+        let turn = since(997, PAGE_BYTES, rows_of(9, 1_000));
+        assert_eq!(turn.text, "000000997\n000000998\n000000999");
+        assert_eq!((turn.first_row, turn.rows), (997, 3));
+        let cut = since(0, 30, rows_of(9, 1_000));
+        assert_eq!(cut.first_row, 997, "the newest kept, not the oldest");
+        assert_eq!(since(2_000, PAGE_BYTES, rows_of(9, 1_000)).rows, 0, "a turn past the end");
     }
 
     #[test]

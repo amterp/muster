@@ -214,7 +214,7 @@ fn exchange(
         ))
     })?;
 
-    Response::decode(reply.as_slice()).map_err(|error| {
+    let response = Response::decode(reply.as_slice()).map_err(|error| {
         Trouble::Unanswered(format!(
             "the window at {path} answered with something this muster cannot read ({error}). The \
              two were built from different schemas, so the app and the `muster` on this PATH come \
@@ -222,7 +222,28 @@ fn exchange(
              happened; reach the running app's own copy at ~/.muster/bin/muster rather than \
              sending this again."
         ))
-    })
+    })?;
+    as_asked(path, request, response)
+}
+
+/// Refuses an answer from a window that ignored a field it predates and answered another
+/// question: a read of a pane's last turn answered with its newest rows reads as the report.
+fn as_asked(path: &str, request: &Request, response: Response) -> Result<Response, Trouble> {
+    let asked_turn = matches!(&request.payload,
+        Some(muster_proto::request::Payload::ReadPane(read)) if read.turn);
+    let read_turn = matches!(&response.payload,
+        Some(muster_proto::response::Payload::PaneText(read)) if read.turn);
+    if asked_turn
+        && !read_turn
+        && matches!(&response.payload, Some(muster_proto::response::Payload::PaneText(_)))
+    {
+        return Err(Trouble::Refused(format!(
+            "the window at {path} predates reading what a pane's agent printed in its last turn, \
+             and answered with the pane's newest rows instead. Read with --rows, or with \
+             --no-window to ask the daemon directly."
+        )));
+    }
+    Ok(response)
 }
 
 /// Which window to talk to, and a connection to it.
@@ -423,5 +444,25 @@ mod tests {
         let mut asked = read_window();
         asked.from_pane = "p2".to_string();
         assert_eq!(from_here(&asked, &running_in("p1")).from_pane, "p2");
+    }
+
+    /// A window older than `turn` reads the newest rows instead, and says nothing about it: that
+    /// answer is refused rather than printed as the agent's report.
+    #[test]
+    fn a_turn_read_answered_with_the_newest_rows_is_refused() {
+        use muster_proto::{PaneText, ReadPane, response};
+        let read = |turn| {
+            Request::new(request::Payload::ReadPane(ReadPane { turn, ..ReadPane::default() }))
+        };
+        let text = |turn| Response {
+            payload: Some(response::Payload::PaneText(PaneText { turn, ..PaneText::default() })),
+        };
+        assert!(as_asked("w", &read(true), text(true)).is_ok());
+        assert!(as_asked("w", &read(false), text(false)).is_ok());
+        let refused = as_asked("w", &read(true), text(false)).unwrap_err();
+        assert!(
+            matches!(&refused, Trouble::Refused(why) if why.contains("predates")),
+            "{refused:?}"
+        );
     }
 }

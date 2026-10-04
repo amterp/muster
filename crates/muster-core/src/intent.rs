@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 
 use crate::mirror::backend::{PaneId, TabId};
-use crate::pane_text::PaneText;
+use crate::pane_text::{PaneText, Scope};
 
 /// A direction on screen, as a person means it.
 ///
@@ -439,7 +439,7 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// A read rather than an intent because nothing changes: `BackendIntent` is what Muster
     /// asks a daemon to *do*, and putting a question in it would make `Outcome` - a statement
     /// about a change just made - carry answers to things that changed nothing.
-    fn read(&self, pane: &PaneId, rows: u32) -> Result<PaneText, Refusal>;
+    fn read(&self, pane: &PaneId, scope: Scope) -> Result<PaneText, Refusal>;
 
     /// How big every pane's terminal is, by pane. A read, for the reason [`Self::read`] is.
     ///

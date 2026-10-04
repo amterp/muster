@@ -23,7 +23,7 @@ use muster_core::input::{
 use muster_core::intent::Refusal;
 use muster_core::intent::{BackendIntent, Branch, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
-use muster_core::pane_text::{self, rows_of};
+use muster_core::pane_text::{self, Scope, rows_of};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 use muster_core::transcript;
@@ -373,7 +373,8 @@ fn read_pane(window: WindowId, read: &proto::ReadPane) -> Response {
              an older window - `muster window` lists the panes this one has."
         ));
     };
-    match session::read_pane(&daemon, &pane, read.rows) {
+    let scope = if read.turn { Scope::Turn } else { Scope::Newest(read.rows) };
+    match session::read_pane(&daemon, &pane, scope) {
         Ok(read) => Response {
             payload: Some(response::Payload::PaneText(proto::PaneText {
                 // Counted here rather than by whoever reads the text, and counted the way a
@@ -382,6 +383,7 @@ fn read_pane(window: WindowId, read: &proto::ReadPane) -> Response {
                 rows: u32::try_from(rows_of(&read.text).len()).unwrap_or(u32::MAX),
                 text: read.text,
                 truncated: read.truncated,
+                turn: read.turn,
             })),
         },
         Err(refusal) => Response::failure(refusal),
@@ -2100,7 +2102,7 @@ fn confirm_it_arrived(window: WindowId, send: &proto::SendToPane) -> Response {
         ));
     };
     let confirmed = pane_text::confirm(pane.as_str(), &send.text, |rows| {
-        session::read_pane(&daemon, &pane, rows).map(|read| read.text)
+        session::read_pane(&daemon, &pane, Scope::Newest(rows)).map(|read| read.text)
     });
     match confirmed {
         Ok(()) => Response::ok(),

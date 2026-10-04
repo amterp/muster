@@ -48,6 +48,14 @@ pub fn newest<E>(
     Ok(Newest { text: newest.text, truncated: true })
 }
 
+/// What a pane's agent printed in its last turn, from the one page `read_turn` asks the daemon
+/// for. None when the daemon answered without placing a turn: it predates the request, and read
+/// something else.
+pub fn turn<E>(read_turn: impl FnOnce() -> Result<PaneText, E>) -> Result<Option<Newest>, E> {
+    let page = read_turn()?;
+    Ok(page.turn.map(|start| Newest { truncated: page.first_row > start, text: page.text }))
+}
+
 /// Whether a read that asked for the last `rows` rows got them.
 ///
 /// A daemon that predates reading from the end reads from the first row instead. It gives that
@@ -99,10 +107,22 @@ mod tests {
                 rows: u32::try_from(rows).unwrap(),
                 total_rows: 100,
                 text: format!("rows {from}.."),
+                turn: None,
             })
         })
         .unwrap();
         assert_eq!(read, Newest { text: "rows 60..".to_string(), truncated: true });
         assert_eq!(asked, [(0, 0), (60, 0)]);
+    }
+
+    #[test]
+    fn a_turn_is_cut_short_only_when_its_page_starts_after_it_and_unplaced_when_not_answered() {
+        let at = |first_row: u64, started: Option<u64>| {
+            let page = PaneText { first_row, turn: started, ..PaneText::default() };
+            turn(|| Ok::<_, ()>(page)).unwrap()
+        };
+        assert_eq!(at(40, Some(40)).map(|read| read.truncated), Some(false));
+        assert_eq!(at(55, Some(40)).map(|read| read.truncated), Some(true), "4 MiB cut its top");
+        assert_eq!(at(0, None), None, "a daemon that predates the field read something else");
     }
 }

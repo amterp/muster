@@ -153,6 +153,16 @@ pub fn read_request(name: &str, first_row: u64, rows: u32) -> Service {
         first_row,
         rows,
         last: 0,
+        turn: false,
+    }))
+}
+
+/// A read of what the pane's agent printed in its last turn.
+pub fn turn_request(name: &str) -> Service {
+    pane(pane_request::Request::Read(pane_request::Read {
+        pane: name.to_string(),
+        turn: true,
+        ..pane_request::Read::default()
     }))
 }
 

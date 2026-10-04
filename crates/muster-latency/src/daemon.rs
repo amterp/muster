@@ -149,6 +149,7 @@ impl Daemon {
                 first_row,
                 rows,
                 last,
+                turn: false,
             })),
         }));
         match asked.answer.detail {

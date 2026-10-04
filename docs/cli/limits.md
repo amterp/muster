@@ -49,6 +49,21 @@ those, so a small count costs a small answer however much the pane holds. A daem
 window sends the whole history instead, and the window takes the last N itself: the same answer,
 at the cost of the history on the wire.
 
+## `--turn` is placed by the screen, and a full history can cost it its first rows
+
+`--turn` starts at the first row that no longer reads as the screen did when the agent went to
+work. Row numbers count from the oldest row a pane holds, so they hold still until its history
+reaches the scrollback limit (`scrollback_bytes`, 10 MB by default). From then on, each row
+trimmed from the top moves the rest up by one, and a long turn in a full pane can be read from a
+few rows into it rather than its start. A pane resized during the turn rewraps its rows, which
+moves the start up: a few rows from before the turn come with it, and none of the turn is lost.
+A turn longer than 4 MiB comes back as its newest 4 MiB, with `truncated` set.
+
+The daemon learns where a turn began as it sees the agent go to work, and keeps it in memory: a
+pane taken over by a newer Muster has no turn to read until its agent next goes to work, and a
+daemon older than `--turn` refuses rather than answering with something else. So does a window
+older than it, which says to read with `--no-window` until it is updated.
+
 ## Typing into a pane: a send that exits 0 was queued, not necessarily received
 
 This is about the keyboard. To tell an agent something, post it a message
