@@ -194,13 +194,30 @@ pub fn until_text(control: &mut Control, name: &str, needle: &str) -> String {
 }
 
 /// Events from a subscribed connection until `enough` says the ones gathered suffice.
+///
+/// Waiting for something a request on this connection started? Use [`events_until_from`]
+/// with the request's events: the daemon can publish what the request started before it
+/// answers, and those events arrive in [`Asked::events`], not here.
 pub fn events_until(
     control: &mut Control,
+    what: &str,
+    enough: impl FnMut(&[proto::Event]) -> bool,
+) -> Vec<proto::Event> {
+    events_until_from(control, Vec::new(), what, enough)
+}
+
+/// [`events_until`], counting `heard` as already gathered: the events that arrived while a
+/// request waited for its answer. A pane's program can print before its create is answered,
+/// since the daemon starts the pane and answers under two holds of its lock, and a loaded
+/// machine is where the publisher gets in between.
+pub fn events_until_from(
+    control: &mut Control,
+    heard: Vec<proto::Event>,
     what: &str,
     mut enough: impl FnMut(&[proto::Event]) -> bool,
 ) -> Vec<proto::Event> {
     let deadline = std::time::Instant::now() + PATIENCE;
-    let mut events = Vec::new();
+    let mut events = heard;
     while !enough(&events) {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         assert!(!left.is_zero(), "{what}: not within the suite's patience; heard {events:?}");

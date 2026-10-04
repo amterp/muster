@@ -391,10 +391,11 @@ fn a_name_a_client_took_while_restoring_is_kept_in_a_copy_of_the_file() {
     };
     assert!(first.restoring, "{TABS} tabs take longer than one answer to bring back");
     let taken = format!("p{}", TABS - 1);
-    make(&mut control, create(&taken, in_new_tab("tx")));
+    let made = make(&mut control, create(&taken, in_new_tab("tx")));
 
-    let events =
-        events_until(&mut control, "the restore to end", |events| restored(events).is_some());
+    let events = events_until_from(&mut control, made.events, "the restore to end", |events| {
+        restored(events).is_some()
+    });
     let restored = restored(&events).unwrap();
     assert_eq!(restored.lost_tabs, [format!("t{}", TABS - 1)]);
     assert_eq!(restored.lost_panes, [taken.as_str()]);

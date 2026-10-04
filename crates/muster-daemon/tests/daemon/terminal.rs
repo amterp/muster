@@ -296,7 +296,7 @@ fn what_a_programs_output_asks_for_arrives_as_events() {
     let command = "printf '\\033]2;hello\\033\\\\\\a\\033]9;done\\033\\\\\\033]9;4;1;50\\033\\\\\
                    \\033]52;c;aGk=\\033\\\\\\033]7;file://localhost/private/tmp\\033\\\\'"
         .to_string();
-    make(&mut control, running("p1", "t1", command));
+    let made = make(&mut control, running("p1", "t1", command));
 
     let heard = |events: &[proto::Event]| {
         let mut title = None;
@@ -319,10 +319,15 @@ fn what_a_programs_output_asks_for_arrives_as_events() {
         }
         (title, cwd, shown)
     };
-    let events = events_until(&mut control, "a title, a directory and four effects", |events| {
-        let (title, cwd, shown) = heard(events);
-        title.is_some() && cwd.is_some() && shown.len() >= 4
-    });
+    let events = events_until_from(
+        &mut control,
+        made.events,
+        "a title, a directory and four effects",
+        |events| {
+            let (title, cwd, shown) = heard(events);
+            title.is_some() && cwd.is_some() && shown.len() >= 4
+        },
+    );
     let (title, _, effects) = heard(&events);
     assert_eq!(title.as_deref(), Some("hello"));
 
@@ -351,9 +356,9 @@ fn a_shell_that_does_not_report_its_directory_is_followed_anyway() {
     let elsewhere = daemon.root().join("elsewhere");
     std::fs::create_dir(&elsewhere).expect("a scratch directory");
     let elsewhere = canonical(&elsewhere).display().to_string();
-    make(&mut control, running("p1", "t1", format!("cd {elsewhere} && echo moved")));
+    let made = make(&mut control, running("p1", "t1", format!("cd {elsewhere} && echo moved")));
 
-    events_until(&mut control, "the pane's new directory", |events| {
+    events_until_from(&mut control, made.events, "the pane's new directory", |events| {
         events.iter().any(|event| {
             matches!(event.event.as_ref(), Some(Payload::PaneChanged(changed))
                 if changed.pane.as_ref().is_some_and(|pane| pane.cwd == elsewhere))
@@ -530,14 +535,16 @@ fn xtshiftescape_is_on_the_panes_record() {
     let daemon = daemon();
     let mut control = daemon.connect();
     expect(&mut control, subscribe_request(), proto::Outcome::Done);
-    make(&mut control, running("p1", "t1", "printf '\\033[>1s'; sleep 30".to_string()));
+    let made = make(&mut control, running("p1", "t1", "printf '\\033[>1s'; sleep 30".to_string()));
 
-    let changed = events_until(&mut control, "shift capture on the record", |events| {
-        events.iter().any(|event| {
-            matches!(&event.event, Some(Payload::PaneChanged(changed))
-                if changed.pane.as_ref().is_some_and(|pane| pane.shift_capture == Some(true)))
-        })
-    });
+    let captured = |event: &proto::Event| {
+        matches!(&event.event, Some(Payload::PaneChanged(changed))
+            if changed.pane.as_ref().is_some_and(|pane| pane.shift_capture == Some(true)))
+    };
+    let changed =
+        events_until_from(&mut control, made.events, "shift capture on the record", |events| {
+            events.iter().any(captured)
+        });
     assert!(!changed.is_empty());
     let record = snapshot(&mut control).panes.into_iter().find(|pane| pane.pane == "p1").unwrap();
     assert_eq!(record.shift_capture, Some(true));
