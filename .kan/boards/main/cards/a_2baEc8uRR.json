@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "codex-queue-tell-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791101860868,
+  "creator": "Alexander Terp",
+  "description": "2026-10-04: a codex exec run inside a Codex pane inherits MUSTER_PANE and reports its own session id through the SessionStart hook; a command wake then goes to a session that has ended. Since 4d9eeba1 a wake nobody takes within 5 s is typed instead and the id forgotten, so nothing is lost, but the first wake is wasted. Measure whether the hook input tells the two apart.",
+  "id": "a_2baEc8uRR",
+  "position": "b0X",
+  "title": "codex queue: tell a nested codex exec's SessionStart from the interactive session's",
+  "type": "chore",
+  "updated_at_millis": 1791101860868,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791101860868}
+  ]
+}

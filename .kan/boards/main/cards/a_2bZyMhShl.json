@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "add-member-remove",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791101236280,
   "creator": "Alexander Terp",
   "description": "2026-10-04, unverified: Messaging::add_member and remove_member clear a participant's woken for the group but not rewoken, while read, forget_wakes and unwake clear both. A stale rewoken could suppress the 'still unread' re-wake after someone rejoins.",
   "id": "a_2bZyMhShl",
-  "position": "b0T",
+  "position": "YyI",
   "title": "add_member/remove_member clear woken but not rewoken",
   "type": "bug",
-  "updated_at_millis": 1791101236280,
+  "updated_at_millis": 1791101769076,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791101236280}
+    {"field":"column","value":"backlog-lo","at":1791101236280},
+    {"field":"column","value":"done","at":1791101769076}
   ]
 }

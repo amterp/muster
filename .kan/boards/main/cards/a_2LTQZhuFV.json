@@ -12,6 +12,12 @@
       "body": "2026-10-04 night, three worktrees plus another repo's build at load 13-62, four gate failures on main in a row, each a different test passing alone: (1) two_windows: CLI test homes at a fixed /tmp path, deleted by a concurrent checkout's run - fixed, homes carry the pid; (2) handoff log order: daemon.started logged after accept began - fixed, logged before serving; (3) Codex context hook test read a stub's file between create and write - fixed, stub writes aside and moves; (4) a_spawned_daemon_answers_its_first_request_within_budget: fastest of five 28 ms vs 25 ms at load 62 - not changed, a budget test cannot pass at that load.",
       "created_at_millis": 1791097857380,
       "id": "c_2bYYSwvKl"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-04 ~03:15, slot gates at load 20-34: late_daemon::a_slow_daemon_does_not_hold_the_window_closed read 'stale' where it expected 'connecting' as the first health word (passed alone). The stale notice announced 'stale' before tonight too, so this is timing under load, not the health-word change.",
+      "created_at_millis": 1791101855180,
+      "id": "c_2baET0Stw"
     }
   ],
   "created_at_millis": 1788721423964,
@@ -21,7 +27,7 @@
   "position": "aP",
   "title": "Four worktrees running the gate at once is a load the suite was never sized for",
   "type": "chore",
-  "updated_at_millis": 1791097857380,
+  "updated_at_millis": 1791101855180,
   "history": [
     {"field":"column","value":"backlog-hi","at":1788721423964}
   ]

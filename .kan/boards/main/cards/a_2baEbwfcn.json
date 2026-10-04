@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "opencode-plugin",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791101860751,
+  "creator": "Alexander Terp",
+  "description": "2026-10-04: extras/opencode reports state, permissions, context, model, cost and session id. Not built: declaring a wait and counting sub-agents, which need measuring whether a plugin can add to the model's context (as Claude Code's and Codex's hooks can).",
+  "id": "a_2baEbwfcn",
+  "position": "b0W",
+  "title": "OpenCode plugin: declare a wait and count sub-agents",
+  "type": "feature",
+  "updated_at_millis": 1791101860751,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791101860751}
+  ]
+}
