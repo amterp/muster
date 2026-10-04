@@ -141,17 +141,24 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     assert!(refused.contains("no pane called p9nobody"), "{refused}");
 }
 
-/// With no window, `--layout` draws each tab from the daemon's own tree and asks it for the
-/// sizes, so the shape and the sizes are there and only a window's arithmetic is not.
+/// With no window, `--layout` draws each tab from the daemon's own tree, places each pane in it as
+/// a window would, and asks the daemon for the sizes.
 fn the_layout_is_the_daemons_trees(here: &Here) {
     let laid: Value =
         serde_json::from_str(&ok(&here.muster(&["--json", "window", "--layout"]))).unwrap();
     let layout = &laid["tabs"][0]["regions"][0]["layout"];
     assert_eq!(layout["axis"], json!("columns"), "p2 and p3 went to p1's right: {laid}");
+    let mut widths = 0.0;
     for pane in laid["panes"].as_array().into_iter().flatten() {
         assert!(pane["cells"]["cols"].as_u64().is_some_and(|cols| cols > 0), "{pane}");
-        assert!(pane["frame"].is_null(), "where a pane sits is a window's to work out: {pane}");
+        assert_eq!(
+            pane["frame"]["height"],
+            json!(1.0),
+            "side by side, each the full height: {pane}"
+        );
+        widths += pane["frame"]["width"].as_f64().unwrap_or_default();
     }
+    assert!((widths - 1.0).abs() < 1e-4, "the three frames share the tab's width: {laid}");
     let drawn = ok(&here.muster(&["window", "--layout"]));
     assert!(drawn.contains('┬') && drawn.contains("p3"), "three panes side by side:\n{drawn}");
 }

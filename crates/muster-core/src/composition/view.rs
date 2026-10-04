@@ -381,7 +381,10 @@ impl View {
             let weight = if region.weight.is_finite() { region.weight.max(0.0) } else { 0.0 };
             let width = weight / total;
             if let Some(root) = &region.root {
-                place(root, Rect { x, y: 0.0, width, height: 1.0 }, region.id, &mut found);
+                let rect = Rect { x, y: 0.0, width, height: 1.0 };
+                found.extend(
+                    places_in(root, rect).into_iter().map(|(pane, rect)| (region.id, pane, rect)),
+                );
             }
             x += width;
         }
@@ -460,10 +463,20 @@ impl Rect {
     }
 }
 
-/// Cuts a rectangle up the way a tree says, down to one per pane.
-fn place(node: &ViewNode, rect: Rect, region: RegionId, found: &mut Vec<(RegionId, PaneId, Rect)>) {
+/// Cuts a rectangle up the way a tree says, down to one rectangle per pane.
+///
+/// Public for a tree no window holds: with no window answering, `muster window --layout` places
+/// a daemon's panes in their tab with this, so its fractions are the window's own arithmetic
+/// rather than a copy of it.
+pub fn places_in(root: &ViewNode, rect: Rect) -> Vec<(PaneId, Rect)> {
+    let mut found = Vec::new();
+    place(root, rect, &mut found);
+    found
+}
+
+fn place(node: &ViewNode, rect: Rect, found: &mut Vec<(PaneId, Rect)>) {
     match node {
-        ViewNode::Pane(pane) => found.push((region, pane.id.clone(), rect)),
+        ViewNode::Pane(pane) => found.push((pane.id.clone(), rect)),
         ViewNode::Split { axis, ratio, first, second } => {
             // A ratio is a backend's number and is not this core's to trust. An unusable one
             // splits evenly rather than collapsing a pane to nothing, on the same terms as
@@ -472,15 +485,15 @@ fn place(node: &ViewNode, rect: Rect, region: RegionId, found: &mut Vec<(RegionI
             match axis {
                 SplitAxis::Columns => {
                     let width = rect.width * ratio;
-                    place(first, Rect { width, ..rect }, region, found);
+                    place(first, Rect { width, ..rect }, found);
                     let beyond = Rect { x: rect.x + width, width: rect.width - width, ..rect };
-                    place(second, beyond, region, found);
+                    place(second, beyond, found);
                 }
                 SplitAxis::Rows => {
                     let height = rect.height * ratio;
-                    place(first, Rect { height, ..rect }, region, found);
+                    place(first, Rect { height, ..rect }, found);
                     let beyond = Rect { y: rect.y + height, height: rect.height - height, ..rect };
-                    place(second, beyond, region, found);
+                    place(second, beyond, found);
                 }
             }
         }

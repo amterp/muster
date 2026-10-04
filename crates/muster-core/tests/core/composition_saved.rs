@@ -154,6 +154,32 @@ fn composition_of(given: &Value, key: &str) -> Result<Composition, CaseError> {
 }
 
 #[test]
+fn a_window_not_drawn_is_laid_out_as_its_record_says() {
+    // A closed window is laid out from its file for `muster window --layout`: its tabs come
+    // back with each machine's part in the file's order and at the file's width, whatever order
+    // and widths a fresh composition gave them.
+    let given = json!({
+        "now": [
+            { "tab": "t1", "daemon": "devenv", "weight": 1.0 },
+            { "tab": "t1", "daemon": "local", "weight": 1.0 },
+            { "tab": "t2", "daemon": "local", "weight": 1.0 },
+        ],
+        "saved": [
+            { "tab": "t2", "daemon": "local", "weight": 1.0 },
+            { "tab": "t1", "daemon": "local", "weight": 3.0 },
+            { "tab": "t1", "daemon": "devenv", "weight": 1.0 },
+        ],
+    });
+    let mut now = composition_of(&given, "now").unwrap();
+    let saved = saved_from(&given, "saved").unwrap();
+    now.lay_out_like(&saved);
+    let laid_out = Saved::of(&now, Presentation::default(), &FontSizes::default());
+    let unstarred: Vec<String> =
+        described(&laid_out.tabs).into_iter().map(|tab| tab.replace('*', "")).collect();
+    assert_eq!(unstarred, ["t2 local@1", "t1 local@3 devenv@1"]);
+}
+
+#[test]
 fn what_is_written_is_what_comes_back() {
     // The file is the only thing between one run and the next, so a field that writes and
     // does not read is an arrangement that quietly loses something every restart. Both

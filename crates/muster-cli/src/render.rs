@@ -448,8 +448,8 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
         }
         lines.push(styled(&other_heading(other), NAME));
         for tab in &other.tabs {
-            // Drawn when its window is open and so has a layout; a closed window's tabs are
-            // listed, since nothing is drawing them.
+            // Drawn when the answer laid it out, which a window does for every window's tabs; a
+            // window too old to lay out another window's tabs has them listed.
             match drawing.as_ref().zip(drawing.as_ref().and_then(|d| d.layout(&tab.tab_id))) {
                 Some((drawing, layout)) => {
                     lines.push(drawn_tab_line(&widths, tab, layout));
@@ -1107,9 +1107,8 @@ fn rect_json(place: &muster_proto::PanePlace) -> Value {
 /// size. Only when the layout was asked for, and absent rather than null otherwise, so a size
 /// nobody asked for is never read as a size nobody knows.
 ///
-/// The other windows' panes get a frame and a size too. A frame is a place in the pane's own tab,
-/// so it means the same whichever window holds that tab; a closed window draws nothing, and its
-/// panes' frames are null.
+/// The other windows' panes get a frame and a size too, a closed window's included. A frame is a
+/// place in the pane's own tab, so it means the same whichever window holds that tab.
 fn add_layout(window: &Window, tabs: &mut [Value], panes: &mut [Value], others: &mut [Value]) {
     if window.layouts.is_empty() {
         return;
@@ -1417,10 +1416,10 @@ mod tests {
         assert_eq!(agent_style("done"), hue(AnsiColor::Green), "the window paints done green");
     }
 
-    /// Under `--layout`, a pane in another open window has a frame in its own tab like a pane
-    /// here, and a closed window's pane, which nothing draws, has none.
+    /// Under `--layout`, a pane in another window, open or closed, has a frame in its own tab like
+    /// a pane here, and one in a tab the answer did not lay out has none.
     #[test]
-    fn every_open_windows_panes_are_laid_out() {
+    fn every_windows_panes_are_laid_out() {
         use muster_proto::{
             OtherWindow, PanePlace, RosterChanged, RosterPane, RosterTab, TabLayout, Window,
         };
@@ -1446,15 +1445,15 @@ mod tests {
                 OtherWindow { name: "window-2".to_string(), pid: 7, tabs: vec![tab("t2", "p2")] },
                 OtherWindow { name: "window-3".to_string(), pid: 0, tabs: vec![tab("t3", "p3")] },
             ],
-            layouts: vec![laid_out("t1", "p1"), laid_out("t2", "p2")],
+            layouts: vec![laid_out("t1", "p1"), laid_out("t3", "p3")],
             ..Window::default()
         };
         let json = window_json(&window, Others::All);
         assert_eq!(json["panes"][0]["frame"]["width"], 1.0, "{json}");
-        let other = &json["other_windows"][0]["tabs"][0]["panes"][0];
-        assert_eq!(other["frame"]["height"], 1.0, "another open window's pane: {json}");
         let closed = &json["other_windows"][1]["tabs"][0]["panes"][0];
-        assert!(closed["frame"].is_null(), "a closed window's pane: {json}");
+        assert_eq!(closed["frame"]["height"], 1.0, "a closed window's pane: {json}");
+        let unlaid = &json["other_windows"][0]["tabs"][0]["panes"][0];
+        assert!(unlaid["frame"].is_null(), "a pane in a tab nothing laid out: {json}");
     }
 
     /// A zoomed tab is drawn as the pane filling it, at the size its daemon gives it, and the

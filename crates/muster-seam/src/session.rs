@@ -2228,9 +2228,6 @@ impl Session {
     }
 
     /// Every other window the record knows, with a roster of the tabs each holds.
-    ///
-    /// Built through a composition of its own, holding that window's tabs, so a tab is described
-    /// the same way here as in the window that has it: the same labels, the same pane order.
     fn other_windows(&self, me: WindowId) -> Vec<(HeldWindow, Roster)> {
         let mirrors = self.mirrors();
         let me = &self.windows[me];
@@ -2239,22 +2236,70 @@ impl Session {
             .windows()
             .filter(|window| window.name != me.name)
             .map(|window| {
-                let mut theirs = Composition::new();
-                for daemon in me.composition.daemons() {
-                    theirs.attach_daemon(daemon.clone());
-                }
-                for tab in holders.held_by(&window.name) {
-                    theirs.hold(tab.clone());
-                }
-                for (daemon, mirror) in &mirrors {
-                    theirs.reconcile(daemon, mirror);
-                }
+                let theirs = self.held_composition(window, me, &mirrors);
                 let roster = Roster::of(
                     &theirs,
                     |daemon| mirrors.get(daemon).map(|held| &**held),
                     &BTreeSet::new(),
                 );
                 (window.clone(), roster)
+            })
+            .collect()
+    }
+
+    /// Another window's tabs, in a composition of their own laid out as its record says.
+    ///
+    /// Built as that window would build them on reopening, so a tab is described and drawn the
+    /// same way here as in the window that has it: the same labels and pane order, and each
+    /// machine's part in the order and at the width its file gives. A file that does not read
+    /// leaves the parts as a reconcile opens them, which is equal widths.
+    fn held_composition(
+        &self,
+        window: &HeldWindow,
+        me: &Window,
+        mirrors: &BTreeMap<&DaemonId, MutexGuard<'_, Mirror>>,
+    ) -> Composition {
+        let mut theirs = Composition::new();
+        for daemon in me.composition.daemons() {
+            theirs.attach_daemon(daemon.clone());
+        }
+        for tab in self.holding.holders().held_by(&window.name) {
+            theirs.hold(tab.clone());
+        }
+        for (daemon, mirror) in mirrors {
+            theirs.reconcile(daemon, mirror);
+        }
+        if let Some(saved) = (!window.arrangement.is_empty())
+            .then(|| saved_arrangement_at(&window.arrangement))
+            .flatten()
+        {
+            theirs.lay_out_like(&saved);
+        }
+        theirs
+    }
+
+    /// How every tab a closed window holds is arranged ([`Session::held_composition`]).
+    ///
+    /// No pane in it has a bridge or a font size of its own here, because nothing draws it.
+    fn arranged_closed(&self, window: &HeldWindow, me: WindowId) -> Vec<View> {
+        let mirrors = self.mirrors();
+        let composition = self.held_composition(window, &self.windows[me], &mirrors);
+        composition
+            .tabs()
+            .filter_map(|tab| {
+                View::arranged(
+                    &composition,
+                    &tab.id,
+                    |daemon| mirrors.get(daemon).map(|held| &**held),
+                    |daemon| self.daemon_socket(daemon),
+                    |daemon| self.remote(daemon),
+                    |_, pane| ViewPane {
+                        id: pane.clone(),
+                        link_socket_path: None,
+                        font_size_offset: 0,
+                        bridge_restarts: 0,
+                    },
+                )
             })
             .collect()
     }
@@ -3999,8 +4044,8 @@ pub(crate) struct WindowNow {
     pub name: String,
     /// Every other window, open or closed, with the tabs it holds.
     pub others: Vec<OtherWindow>,
-    /// How every tab an open window holds is arranged, this window's first, when the caller
-    /// asked for the layout.
+    /// How every tab every window holds is arranged, this window's first, when the caller asked
+    /// for the layout. A closed window's are laid out from its record.
     pub layouts: Vec<View>,
     /// How big each pane's terminal is, when the caller asked for the layout.
     pub grids: Vec<(DaemonId, PaneId, Grid)>,
@@ -4167,13 +4212,24 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
             .keys()
             .filter_map(|daemon| Some((daemon.clone(), session.channel_of(daemon)?)))
             .collect();
-        // Every open window's tabs, not only this one's: `panes` lists every pane wherever it
-        // is, and a pane in the window beside this one has a frame in its own tab as much as
-        // one here does. A closed window draws nothing, so its panes have none.
+        // Every window's tabs, not only this one's: `panes` lists every pane wherever it is,
+        // and a pane in another window has a frame in its own tab as much as one here does. A
+        // closed window is laid out from its record, as it would be if it reopened.
         let mut layouts = session.arranged(window);
         for (other, held) in session.windows.iter() {
             if other != window && held.opened {
                 layouts.extend(session.arranged(other));
+            }
+        }
+        let open: BTreeSet<&WindowName> = session
+            .windows
+            .iter()
+            .filter(|(_, held)| held.opened)
+            .map(|(_, held)| &held.name)
+            .collect();
+        for held in session.holding.holders().windows() {
+            if held.name != session.windows[window].name && !open.contains(&held.name) {
+                layouts.extend(session.arranged_closed(held, window));
             }
         }
         (layouts, channels)

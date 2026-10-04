@@ -288,6 +288,41 @@ fn a_windows_layout_covers_the_tabs_of_the_window_beside_it() {
     );
 }
 
+/// A closed window's tabs are laid out too, from its record, so its panes have frames in their
+/// tabs as an open window's do.
+#[test]
+fn a_windows_layout_covers_the_tabs_of_a_closed_window() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (_, second) = two_windows(&daemon);
+    assert_ok(&answer(&in_window("window-2", request::Payload::CloseWindow(CloseWindow {}))));
+
+    let window = match answer(&in_window(
+        "window-1",
+        request::Payload::ReadWindow(ReadWindow { layout: true }),
+    ))
+    .payload
+    {
+        Some(response::Payload::Window(window)) => window,
+        other => panic!("reading the layout answered {other:?}"),
+    };
+    let laid_out: Vec<&str> = window.layouts.iter().map(|layout| layout.tab_id.as_str()).collect();
+    let closed = window
+        .layouts
+        .iter()
+        .find(|layout| layout.tab_id == second)
+        .unwrap_or_else(|| panic!("the closed window's tab is not laid out: {laid_out:?}"));
+    let [place] = closed.places.as_slice() else {
+        panic!("the closed window's one pane is not placed once: {closed:?}");
+    };
+    assert_eq!(
+        (place.x, place.y, place.width, place.height),
+        (0.0, 0.0, 1.0, 1.0),
+        "a tab holding one pane is that pane"
+    );
+}
+
 /// A pane's bridge restarts are counted per window: a tab moved here from the window beside this
 /// one brings none of that window's replacements with it, so its first bridge here takes nothing
 /// over, and a replacement asked for here counts from there.

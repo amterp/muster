@@ -1463,8 +1463,9 @@ message Window {
   // listed too: it keeps its tabs, and its agents are still running.
   repeated OtherWindow windows = 7;
 
-  // How every tab this window holds is arranged, in tab order, whether or not it is on screen.
-  // Empty unless ReadWindow.layout asked.
+  // How every tab is arranged, whether or not it is on screen: this window's in tab order, then
+  // every other window's, a closed window's laid out from its record. Empty unless
+  // ReadWindow.layout asked.
   repeated TabLayout layouts = 8;
 
   // How big each pane's terminal is, for every pane whose daemon could say. Empty unless

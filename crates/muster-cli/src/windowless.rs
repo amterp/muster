@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use muster_core::AgentState;
+use muster_core::composition::{Rect, ViewNode, ViewPane, places_in};
+use muster_core::mirror::backend::{PaneId, SplitAxis};
 use muster_core::pane_text::{self, PaneText};
 use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection};
 use muster_proto::{Request, Response, request, response};
@@ -351,12 +353,13 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
     }
 }
 
-/// Every tab's tree and every pane's size, for a layout asked of the daemon with no window.
+/// Every tab's tree, every pane's place in it and every pane's size, for a layout asked of the
+/// daemon with no window.
 ///
 /// Each tab is one part the whole width, because with no window there is no second machine's
-/// part beside it, and no places: where a pane sits as a fraction of the tab is a window's
-/// arithmetic, and the tree beside it says the same thing. A daemon too old to say its panes'
-/// sizes leaves them unknown.
+/// part beside it. The places are the window's own arithmetic over that one part
+/// ([`places_in`]), so a frame here means what it means from a window. A daemon too old to say
+/// its panes' sizes leaves them unknown.
 fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot, socket: &Path) {
     let machine = window.daemons.first().map(|daemon| daemon.daemon_id.clone()).unwrap_or_default();
     window.layouts = snapshot
@@ -373,6 +376,25 @@ fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot,
                 zoomed: tab.zoomed.is_some(),
                 ..muster_proto::ViewRegion::default()
             }],
+            places: tab
+                .root
+                .as_ref()
+                .and_then(core_node)
+                .map(|root| {
+                    places_in(&root, Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 })
+                        .into_iter()
+                        .map(|(pane, rect)| muster_proto::PanePlace {
+                            daemon_id: machine.clone(),
+                            pane_id: pane.to_string(),
+                            x: rect.x,
+                            y: rect.y,
+                            width: rect.width,
+                            height: rect.height,
+                            ..muster_proto::PanePlace::default()
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
             ..muster_proto::TabLayout::default()
         })
         .collect();
@@ -385,6 +407,27 @@ fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot,
             rows: grid.rows,
         })
         .collect();
+}
+
+/// A daemon's tree as the core places one.
+fn core_node(node: &daemon_proto::Node) -> Option<ViewNode> {
+    Some(match node.node.as_ref()? {
+        daemon_proto::node::Node::Pane(pane) => ViewNode::Pane(ViewPane {
+            id: PaneId::new(pane),
+            link_socket_path: None,
+            font_size_offset: 0,
+            bridge_restarts: 0,
+        }),
+        daemon_proto::node::Node::Split(split) => ViewNode::Split {
+            axis: match split.axis() {
+                daemon_proto::Axis::Rows => SplitAxis::Rows,
+                daemon_proto::Axis::Columns | daemon_proto::Axis::Unspecified => SplitAxis::Columns,
+            },
+            ratio: split.ratio,
+            first: Box::new(core_node(split.first.as_deref()?)?),
+            second: Box::new(core_node(split.second.as_deref()?)?),
+        },
+    })
 }
 
 /// A daemon's tree in a window's vocabulary.

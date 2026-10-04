@@ -538,6 +538,32 @@ impl Composition {
         }
     }
 
+    /// Takes the order and widths `saved` has for the tabs and regions this holds.
+    ///
+    /// How a window this process is not drawing is laid out from its record, as it would be if it
+    /// reopened: each region gets the width of the saved region on its tab and machine, and
+    /// [`Composition::arrange_like`] gives the order. A region `saved` does not name keeps the
+    /// width it has.
+    pub fn lay_out_like(&mut self, saved: &super::saved::Saved) {
+        for tab in &mut self.tabs {
+            let Some(wanted) = saved.tabs.iter().find(|wanted| wanted.id == tab.id) else {
+                continue;
+            };
+            for region in &mut tab.regions {
+                if let Some(weight) = wanted
+                    .regions
+                    .iter()
+                    .find(|saved| saved.daemon == region.daemon)
+                    .map(|saved| saved.weight)
+                    .filter(|weight| weight.is_finite() && *weight > 0.0)
+                {
+                    region.weight = weight;
+                }
+            }
+        }
+        self.arrange_like(saved);
+    }
+
     /// Moves a region to just before or just after another region of the same tab.
     ///
     /// Where a machine joining a tab goes when the split that brought it named a side: to the
