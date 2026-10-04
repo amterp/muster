@@ -7,19 +7,18 @@
 //! click.
 //!
 //! No daemon can hold this, because a daemon does not know which windows exist. So it is
-//! Muster's own record, shared by every window the way pane names are (`crate::shared`), and
-//! the file is the only place the answer lives: a window reads it, changes it and writes it
-//! inside one hold, and another window hears that it moved.
+//! Muster's own record, kept by the one app of an install for all of its windows
+//! (mip/0006-one-process.md): read at launch, changed as tabs move, and written for the next
+//! launch to read.
 //!
 //! A window here is its arrangement record rather than its process (MIP-2): `window-2` holds
 //! its tabs across a quit, which is what lets `muster window reopen` come back onto them and
 //! stops two windows reopening onto one tab. The pid and socket are written when it opens and
-//! cleared when somebody closes it, and a quit or a crash leaves them: a row whose socket no
-//! longer answers is a window that was open when Muster last ended, which the next launch opens
-//! again (mip/0006-one-process.md, section 4).
+//! cleared when somebody closes it, and a quit or a crash leaves them: a row still carrying a pid
+//! at launch is a window that was open when Muster last ended, which the launch opens again
+//! (mip/0006-one-process.md, section 4).
 //!
-//! Pure: no clock, no socket, no file. Whether a window is open is asked of the caller, which
-//! dials its socket, and so is the time.
+//! Pure: no clock, no socket, no file. The time is the caller's to give.
 
 use std::collections::{BTreeMap, BTreeSet};
 

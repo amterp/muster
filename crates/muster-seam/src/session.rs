@@ -2327,7 +2327,7 @@ impl Session {
             theirs.reconcile(daemon, mirror);
         }
         if let Some(saved) = (!window.arrangement.is_empty())
-            .then(|| saved_arrangement_at(&window.arrangement))
+            .then(|| another_windows_arrangement(&window.arrangement))
             .flatten()
         {
             theirs.lay_out_like(&saved);
@@ -5920,6 +5920,35 @@ fn saved_arrangement_at(path: &str) -> Option<Saved> {
                                 arrangement this window settles on",
                 },
             );
+            None
+        }
+    }
+}
+
+/// Another window's arrangement, for laying out its tabs in an answer about it.
+///
+/// Read on every `muster window` and every redraw of a layout watch, so a file that will not read
+/// is said once per file rather than each time, and in the words of a read: no window opens from
+/// it here.
+fn another_windows_arrangement(path: &str) -> Option<Saved> {
+    static SAID: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+    let text = std::fs::read_to_string(path).ok()?;
+    match saved::from_toml(&text) {
+        Ok(saved) => Some(saved),
+        Err(detail) => {
+            if poison::lock(&SAID, "unreadable-arrangements").insert(path.to_string()) {
+                log::warn(
+                    "composition.read.failed",
+                    fields! {
+                        "path" => path,
+                        "detail" => detail,
+                        "impact" => "this window's tabs are described without their layout; \
+                                     when it opens, it opens as a first launch does",
+                        "check" => "the file itself - it is TOML, and it is replaced by the next \
+                                    arrangement that window settles on",
+                    },
+                );
+            }
             None
         }
     }

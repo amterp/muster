@@ -60,8 +60,8 @@ copy the ID `muster` takes for it.
 **More than one window, and `cmd+n` to make one.** Every window is a window of one app, so
 `cmd+q` quits them all - and the next launch brings every one of them back onto its own tabs,
 after a crash as well as a quit. Launching Muster again, from the Dock or with `open -n`, brings
-the running app forward rather than starting a second one. `cmd+shift+w` closes one window, which
-keeps its tabs, and so does `muster window close <name>`: Reopen Closed Window, the Reopen submenu
+the running app forward rather than starting a second one. `cmd+shift+w` or `muster window
+close <name>` closes one window, which keeps its tabs; Reopen Closed Window, the Reopen submenu
 beside it, or `muster window reopen <name>` brings it back. Every tab belongs to one window,
 and each window lists only its own; drag a tab's row, or any row of a window holding one tab,
 into another window, or use Move Tab to Window, and its agents go with it still running. Any

@@ -110,26 +110,28 @@ how many panes and tabs it holds, and `▸` beside the window this command is ru
 `--closed` lists the closed windows instead, which is where the name `muster window reopen NAME`
 takes is found.
 
+    ▸ window-1  4 panes, 2 tabs
+      window-2  1 panes, 1 tabs
+
+Under `--json` it is `{"windows": [...]}`, each with `window`, `open`, `here`, `socket`, `panes`,
+`tabs`, and `keyboard` for the window that answered.
+
+## Opening and closing windows
+
 `muster window new` opens another window and prints its name. A window asked for holds nothing of
-another window's, so it asks the first machine the config names for a new tab. `--daemon ID` asks
-that machine instead, by its id as `daemons[]` names it; one still attaching opens the window
-empty, and its tab arrives when the machine answers. `--tab TAB` opens the window onto that tab,
-which moves out of whichever window held it, open or closed, and no new tab is made. A machine or
-a tab the app has not got is refused, and so is an open window's only tab, which would leave that
-window showing nothing. With no app running, Muster is started as a plain launch
-would start it, reopening its windows, and then asked.
+another window's, so it asks for a new tab on the first machine on this computer that the config
+names. `--daemon ID` asks that machine instead, by its id as `daemons[]` names it; one still
+attaching opens the window empty, and its tab arrives when the machine answers. `--tab TAB` opens
+the window onto that tab, which moves out of whichever window held it, open or closed, and no new
+tab is made. A machine or a tab the app has not got is refused, and so is an open window's only
+tab, which would leave that window showing nothing. With no app running, Muster is started as a
+plain launch would start it, reopening its windows, and then asked.
 
 `muster window close NAME` closes a window as its close button does: it keeps its tabs, its agents
 keep running, and `--closed` lists it. It prints the name once the window has closed. With no name
 it is the window this command is about, as `--window` would name it. Closing a window already
 closed changes nothing and succeeds. The last window open is refused rather than closed, because
 closing it is a quit; `cmd+q` quits, and every window comes back on the next launch.
-
-    ▸ window-1  4 panes, 2 tabs
-      window-2  1 panes, 1 tabs
-
-Under `--json` it is `{"windows": [...]}`, each with `window`, `open`, `here`, `socket`, `panes`,
-`tabs`, and `keyboard` for the window that answered.
 
 ## panes[]
 
