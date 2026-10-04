@@ -125,6 +125,17 @@ impl Agent {
     }
 
     fn posting(&mut self, to: &str, body: &str, urgent: bool) -> msg_answer::Posted {
+        self.posting_as("integrator", to, body, urgent)
+    }
+
+    /// A post from `sender`, which puts it and the pane in a group of their own.
+    fn posting_as(
+        &mut self,
+        sender: &str,
+        to: &str,
+        body: &str,
+        urgent: bool,
+    ) -> msg_answer::Posted {
         let asked = Asked::Post(msg_request::Post {
             body: body.to_string(),
             to: vec![to.to_string()],
@@ -132,7 +143,7 @@ impl Agent {
             ..Default::default()
         });
         let caller = msg_request::Caller {
-            as_name: Some("integrator".to_string()),
+            as_name: Some(sender.to_string()),
             ..msg_request::Caller::default()
         };
         let service =
@@ -811,6 +822,22 @@ fn a_slow_wake_command_holds_no_other_panes_ring() {
     });
     let waited = started.elapsed();
     assert!(waited < Duration::from_secs(3), "p2 was rung {waited:?} after p1's command started");
+}
+
+/// Two groups with something unread for one agent are two wakes for one pane, due in one look. Its
+/// command runs for one at a time: two at once would let the first's end free the pane while the
+/// second still ran, and a line could be typed into it then.
+#[test]
+fn a_pane_due_two_wakes_runs_one_wake_command_at_a_time() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("slow");
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.post("p1", "a brief");
+    agent.posting_as("reviewer", "p1", "a review", false);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(agent.woken(), ["slow"], "a second command ran beside the first");
 }
 
 /// Codex reports its session's id only as the session starts, so a daemon taking the pane over

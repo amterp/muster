@@ -31,7 +31,7 @@
 //! that finds exactly that text there, so a prompt the doorbell filled never reads as somebody's
 //! draft for good.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock, Weak};
 use std::thread::Thread;
 use std::time::{Duration, Instant};
@@ -329,6 +329,13 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
     for (wake, seen) in commanding {
         let pane = pane_of(&wake).to_string();
         let Some(session) = seen.session.clone() else { continue };
+        // One command per pane at a time: a participant in two groups can be due two wakes in
+        // one look, and the second waits for the first's command to end.
+        if shared.messages().commanding.contains(&pane) {
+            waiting.push(wake);
+            came.push(Came::Waits);
+            continue;
+        }
         if let AtPrompt::Not(why) = prompt::look(&seen.io, &seen.agent, &shared.detecting, false) {
             waits(&wake, why);
             waiting.push(wake);
@@ -348,11 +355,13 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
         shared.messages().commanding.insert(pane.clone());
         let ran = Ran { wake, pane, session, agent: seen.agent };
         let unstarted = ran.clone();
-        let weak = Arc::downgrade(shared);
+        let mut unsettled = Unsettled { shared: Arc::downgrade(shared), ran: Some(ran) };
         let started =
             std::thread::Builder::new().name("wake-command".to_string()).spawn(move || {
                 let outcome = command::run(&arguments);
-                if let Some(shared) = weak.upgrade() {
+                if let (Some(ran), Some(shared)) =
+                    (unsettled.ran.take(), unsettled.shared.upgrade())
+                {
                     settle(&shared, ran, outcome);
                 }
             });
@@ -364,6 +373,23 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
     }
     shared.messages().pending.extend(waiting);
     came
+}
+
+/// A wake command's thread's hold on its pane: a thread that ends without settling - a panic in
+/// the command's handling - settles it as stalled, so its pane is not left `commanding` for good,
+/// with nothing ever typed into it again.
+struct Unsettled {
+    shared: Weak<Shared>,
+    ran: Option<Ran>,
+}
+
+impl Drop for Unsettled {
+    fn drop(&mut self) {
+        if let (Some(ran), Some(shared)) = (self.ran.take(), self.shared.upgrade()) {
+            let ended = "its thread ended before saying what came of the command".to_string();
+            settle(&shared, ran, Err(command::Failed::Stalled(ended)));
+        }
+    }
 }
 
 /// A wake whose command was started, with what settling it needs.
@@ -582,9 +608,7 @@ fn look(
     let panes = Panes::of(shared);
     // First, so that a ring looking at the same pane sees the rename's write and waits it out.
     moving.retain(|pane, _| panes.exists(pane));
-    let busy = shared.messages().commanding.clone();
-    renames::look(shared, &panes, &busy, Instant::now(), typing, moving, &mut next);
-    compacts::look(shared, &panes, &busy, Instant::now(), compacting, moving, &mut next);
+    type_lines(shared, &panes, typing, compacting, moving, &mut next);
     if quiet {
         before.clear();
         return until(next, false);
@@ -631,8 +655,12 @@ fn look(
                 );
                 continue;
             }
-            // Its pane's command, ending, nudges the doorbell to look again.
-            if messages.commanding.contains(pane) {
+            // Its pane's command, ending, nudges the doorbell to look again; a line typed there
+            // is looked at again within a second.
+            if messages.commanding.contains(pane)
+                || typing.contains_key(pane)
+                || compacting.contains_key(pane)
+            {
                 messages.pending.push(wake);
                 continue;
             }
@@ -672,6 +700,31 @@ fn look(
     until(next, unfound)
 }
 
+/// Types the panes' names wanted in their sessions and the compactions wanted of their agents.
+///
+/// A pane is typed one line at a time: one whose wake command runs, or that the other kind of
+/// line was typed into and not yet seen through, waits. `queue` writes later, so a line typed this
+/// look is not yet input another look at the same pane could see.
+fn type_lines(
+    shared: &Shared,
+    panes: &Panes,
+    typing: &mut Typing,
+    compacting: &mut Compacting,
+    moving: &mut Moving,
+    next: &mut Option<Instant>,
+) {
+    let commanding = shared.messages().commanding.clone();
+    let busy = also(&commanding, compacting.keys());
+    renames::look(shared, panes, &busy, Instant::now(), typing, moving, next);
+    let busy = also(&commanding, typing.keys());
+    compacts::look(shared, panes, &busy, Instant::now(), compacting, moving, next);
+}
+
+/// `busy` and the panes `typed` names.
+fn also<'a>(busy: &'a HashSet<String>, typed: impl Iterator<Item = &'a String>) -> HashSet<String> {
+    busy.iter().chain(typed).cloned().collect()
+}
+
 /// Runs, rings and presses Return for what a look found due, with no lock held, and says through
 /// `next` when to look again.
 fn deliver(
@@ -701,6 +754,7 @@ fn standing(shared: &Shared) -> (bool, bool) {
     let quiet = messages.pending.is_empty()
         && messages.rung.is_empty()
         && messages.commanded.is_empty()
+        && messages.commanding.is_empty()
         && messages.service.watched().is_empty();
     (quiet, messages.handing_over)
 }

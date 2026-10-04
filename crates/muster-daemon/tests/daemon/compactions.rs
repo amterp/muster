@@ -153,6 +153,33 @@ fn past_compact_at_an_agent_is_compacted_once_per_crossing() {
     assert_eq!(p1.compactions_heard(), ["/compact", "/compact"]);
 }
 
+/// A pane wanting a rename and a compaction gets both, the rename first, and neither is given up
+/// for the other sitting in its prompt.
+#[test]
+fn a_rename_and_a_compaction_are_both_typed_in_turn() {
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.set_agent_state("p1", proto::AgentState::Working);
+    let rename =
+        proto::pane_request::Rename { pane: "p1".to_string(), label: Some("builder".to_string()) };
+    expect(
+        &mut p1.control,
+        pane(proto::pane_request::Request::Rename(rename)),
+        proto::Outcome::Done,
+    );
+    assert_eq!(p1.compact(None), proto::Outcome::Done);
+    p1.daemon.set_agent_state("p1", proto::AgentState::Idle);
+
+    p1.until_heard(1);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    let lines: Vec<String> = std::fs::read_to_string(p1.heard_file())
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| line.starts_with('/'))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(lines, ["/rename builder", "/compact"]);
+}
+
 #[test]
 fn turning_compact_at_off_takes_back_its_compaction_not_yet_typed() {
     let mut p1 = Pane::with_an_agent();
