@@ -105,7 +105,8 @@ Only one app runs per install under one home: launching Muster again, with `open
 Finder, hands what it was asked to do to the app already running. Two installs - a development
 build beside the release - are two apps with a socket each. With both listening, a change that
 names its tab or pane goes to either, a change that names nothing refuses rather than guessing, and
-`muster window` answers for both, headed by which app each answer is from. `--socket PATH` names one
+`muster window` answers for both, headed by which app each answer is from. `muster pane read`
+answers from the app holding the pane, and `muster daemons` answers for both. `--socket PATH` names one
 outright.
 
 `muster window list` lists the open windows under this `MUSTER_HOME`, marking the one this command

@@ -207,7 +207,7 @@ pub fn run(
     // through to `ask`, so the message about there being no window to talk to stays the one that
     // command already wrote.
     if asks_around(&request, named.as_deref(), environment) {
-        let answers = dial::survey_around(environment, &request);
+        let answers = held_by_one(&request, dial::survey_around(environment, &request));
         if answers.len() > 1 {
             let text = render::answers(&answers, json);
             let _ = writeln!(out, "{}", text.trim_end());
@@ -248,6 +248,32 @@ fn about_a_window(
         _ => unreachable!("only the window verbs reach here"),
     }?;
     Ok(serde_json::json!({ "window": opened.window, "socket": opened.socket }))
+}
+
+/// The one answer among several from the app holding what the request names, when exactly one
+/// holds it: a read about one pane or tab is refused by every other app, and the holder's answer
+/// is the answer, as it would be with one app listening. Every answer otherwise.
+fn held_by_one(
+    request: &muster_proto::Request,
+    mut answers: Vec<(String, Result<muster_proto::Response, Trouble>)>,
+) -> Vec<(String, Result<muster_proto::Response, Trouble>)> {
+    let names_one = request.payload.as_ref().is_some_and(|payload| {
+        muster_proto::names(payload).is_some()
+            || matches!(payload, muster_proto::request::Payload::ReadPane(read)
+                if !read.pane_id.is_empty())
+    });
+    if !names_one {
+        return answers;
+    }
+    let holds = |answer: &Result<muster_proto::Response, Trouble>| {
+        answer.as_ref().is_ok_and(|response| {
+            !matches!(response.payload, Some(muster_proto::response::Payload::Failure(_)))
+        })
+    };
+    if answers.iter().filter(|(_, answer)| holds(answer)).count() == 1 {
+        answers.retain(|(_, answer)| holds(answer));
+    }
+    answers
 }
 
 /// Asks the window the caller means, or this machine's daemon when there is no window at all.

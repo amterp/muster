@@ -328,7 +328,14 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
                                 }
                             }
                         }
-                        _ => row["unreadable"] = json!(named_or_empty(response)),
+                        // Any other answer, such as a pane's text or the daemons, as it would be
+                        // answered alone, under `answer`.
+                        _ => match answer_alone(response, true) {
+                            Ok(text) => {
+                                row["answer"] = serde_json::from_str(&text).unwrap_or(json!(text));
+                            }
+                            Err(detail) => row["unreadable"] = json!(detail),
+                        },
                     },
                     Err(trouble) => row["unreadable"] = json!(trouble.detail()),
                 }
@@ -355,7 +362,8 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
                     Some(response::Payload::Window(window)) => {
                         window_text(window, now_ms(), Others::All, true)
                     }
-                    _ => styled(named_or_empty(response), QUIET),
+                    _ => answer_alone(response, false)
+                        .unwrap_or_else(|detail| styled(&detail, QUIET)),
                 },
                 Err(trouble) => styled(trouble.detail(), QUIET),
             };
@@ -365,15 +373,9 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
         .join("\n\n")
 }
 
-/// What a window answered with, when it was not what was asked for.
-///
-/// Listed rather than dropped, on the same terms as `window list`: a window that is there and
-/// answers something else is exactly what somebody running this is trying to find out about.
-fn named_or_empty(response: &Response) -> &'static str {
-    match response.payload.as_ref() {
-        Some(payload) => named(payload),
-        None => "an empty message",
-    }
+/// An answer as it is printed when one app gives it, or why it cannot be.
+fn answer_alone(response: &Response, json: bool) -> Result<String, String> {
+    answer(response, json).map_err(|trouble| trouble.detail().to_string())
 }
 
 fn counted_panes(window: &Window) -> usize {

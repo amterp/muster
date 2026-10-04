@@ -19,7 +19,8 @@ use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
 use muster_proto::{
-    OtherWindow, Response, RosterChanged, RosterPane, RosterTab, Window, frame, response,
+    Daemons, Failure, KnownDaemon, OtherWindow, PaneText, Request, Response, RosterChanged,
+    RosterPane, RosterTab, Window, frame, request, response,
 };
 use prost::Message;
 
@@ -270,6 +271,80 @@ fn open_window() -> OtherWindow {
 }
 
 /// A listener answering as a window with other windows beside it.
+/// A pane's text read with two apps listening is the text, from the app holding the pane, rather
+/// than a heading per app and a word for what each answered.
+#[test]
+fn a_pane_read_with_two_apps_open_is_the_text_from_the_one_holding_it() {
+    let scratch = Scratch::new("read-two");
+    let home = scratch.home();
+    reading(home, 111, "p-here");
+    reading(home, 222, "p-elsewhere");
+
+    let (code, out, errors) = run(&["pane", "read", "--pane", "p-here"], home, None);
+
+    assert_eq!(code, 0, "reading a pane with two apps open failed: {errors}");
+    assert_eq!(out.trim(), "the text of p-here", "the read did not print the pane's text: {out}");
+}
+
+/// The daemons each app follows, asked of two apps, are each app's answer under its heading.
+#[test]
+fn the_daemons_asked_of_two_apps_are_each_apps_answer() {
+    let scratch = Scratch::new("daemons-two");
+    let home = scratch.home();
+    reading(home, 111, "p-here");
+    reading(home, 222, "p-elsewhere");
+
+    let (code, out, errors) = run(&["daemons"], home, None);
+
+    assert_eq!(code, 0, "{errors}");
+    for socket in ["/s/daemon-111.sock", "/s/daemon-222.sock"] {
+        assert!(out.contains(socket), "an app's daemons are missing:\n{out}");
+    }
+    assert!(!out.contains("a list of daemons"), "an app's answer was named, not shown:\n{out}");
+}
+
+/// An app answering reads: a pane's text for the one pane it holds, refusing every other, and
+/// its daemons.
+fn reading(home: &Path, pid: u32, holds: &str) {
+    let listener =
+        UnixListener::bind(first_socket(home, pid)).expect("the temporary directory is writable");
+    let holds = holds.to_string();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let Ok(bytes) = frame::read_frame(&mut stream, frame::LARGEST_MESSAGE) else {
+                continue;
+            };
+            let asked = Request::decode(bytes.as_slice()).unwrap_or_default();
+            let answer = match asked.payload {
+                Some(request::Payload::ReadPane(read)) if read.pane_id == holds => {
+                    response::Payload::PaneText(PaneText {
+                        text: format!("the text of {holds}"),
+                        ..PaneText::default()
+                    })
+                }
+                Some(request::Payload::ReadDaemons(_)) => response::Payload::Daemons(Daemons {
+                    remembered: true,
+                    daemons: vec![KnownDaemon {
+                        socket: format!("/s/daemon-{pid}.sock"),
+                        state: "answering".to_string(),
+                        ..KnownDaemon::default()
+                    }],
+                }),
+                _ => response::Payload::Failure(Failure {
+                    reason: "no window here holds that pane".to_string(),
+                }),
+            };
+            let _ = frame::write_frame(
+                &mut stream,
+                &Response { payload: Some(answer) }.encode_to_vec(),
+            );
+            let mut drained = Vec::new();
+            let _ = stream.read_to_end(&mut drained);
+        }
+    });
+}
+
 fn answering(home: &Path, pid: u32, name: &str, others: Vec<OtherWindow>) {
     let path = first_socket(home, pid);
     let listener = UnixListener::bind(&path).expect("the temporary directory is writable");
