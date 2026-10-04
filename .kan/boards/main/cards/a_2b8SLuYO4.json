@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1791035657161,
   "creator": "Alexander Terp",
   "description": "An urgent post rings a working Claude Code only when the screen rule deciding it is a working rule carrying a prompt (detection engine 6). `live_turn_working` has one; `background_agents_working` (\"Waiting for N background agents\") does not, so an urgent post to an agent in that state waits for idle like an ordinary one. Give that rule a prompt and prompt_region the same way, with a recorded screen. Raised while building urgent posts, 2026-10-03.",
   "id": "a_2b8SLuYO4",
-  "position": "Zy",
+  "position": "Yyo",
   "title": "📨 An urgent post waits while Claude Code waits on background agents",
   "type": "enhancement",
-  "updated_at_millis": 1791094213241,
+  "updated_at_millis": 1791096396500,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791035657161},
-    {"field":"column","value":"next","at":1791094213241}
+    {"field":"column","value":"next","at":1791094213241},
+    {"field":"column","value":"done","at":1791096396500}
   ]
 }

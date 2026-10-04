@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "codex-what-fires",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791096397172,
+  "creator": "Alexander Terp",
+  "description": "2026-10-04: with the model provider at 127.0.0.1:9, Codex 0.154 fired UserPromptSubmit and then no hook for over 3 minutes while showing 'Reconnecting... waiting for network'; Muster reads it working, and no declared wait stands. What it fires once it gives up (Stop, Interrupt, nothing) needs a capture longer than 3 minutes (corpus/codex-0.154.0/api-error.txt, observation section 10).",
+  "id": "a_2bXwThJOw",
+  "position": "b0O",
+  "title": "Codex: what fires when it stops retrying an unreachable model",
+  "type": "chore",
+  "updated_at_millis": 1791096397172,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791096397172}
+  ]
+}
