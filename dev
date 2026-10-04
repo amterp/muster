@@ -97,6 +97,10 @@ PROTO_OUT = "Sources/MusterMac/Generated"
 // Gitignored, beside the code it describes: the hash of the schema that produced it. The
 // Rust side needs no equivalent - cargo tracks the same file itself.
 PROTO_STAMP = "Sources/MusterMac/Generated/.proto.sha256"
+// What the gate's Rust suite printed and the load while it ran, for explaining a red run. Under
+// target/, so each checkout has its own and nothing commits them.
+GATE_RUST_LOG = "target/gate/rust-tests.log"
+GATE_LOAD = "target/gate/load.txt"
 
 // Every command captured here names its targets `stdout`, `stderr` and `code`, and never
 // anything else - not even `_`.
@@ -197,6 +201,43 @@ fn report_machine(cores, fast, load1, load5, load15):
     // Not dim, because at this point the run is sharing every fast core with something else
     // and how long it takes says nothing about the code.
     print(yellow("{line} - the fast cores are already committed, so this run will be slow"))
+
+// What to do about a red suite, said where it ends: the re-run of only what failed, and the
+// machine's load when it was past the fast cores.
+//
+// Not a refusal and not a longer deadline. Parallel worktrees running the gate at once is a
+// normal way to work here, and a test that passes alone and fails at load 30 reads as a broken
+// test unless the run says otherwise - so an agent re-runs the whole gate rather than one test,
+// and learns nothing either way (a_2LTQZhuFV). The load is the highest the run saw: sampled at
+// the start and every five seconds through the Rust suite.
+fn explain_red_suite(suite, fast, start_load):
+    if suite == "Rust":
+        stdout, stderr, code = quiet $`python3 tools/failed-tests.py {GATE_RUST_LOG}` catch:
+            stdout = ""
+        if stdout.trim() != "":
+            print_err(red("\nThe Rust suite failed. Re-run only what failed, on its own:"))
+            for command in stdout.trim().split_lines():
+                print_err("  {command}")
+    peak = peak_load(suite == "Rust" ? GATE_LOAD : "", start_load)
+    if fast == 0 or peak < fast:
+        return
+    print_err(yellow("\nThe machine's load reached {peak:.1} while the {suite} suite ran, past its {fast} performance cores."))
+    print_err(yellow("A test that timed out or saw things out of order may have been starved of CPU rather than"))
+    print_err(yellow("wrong. Run it on its own before reading the failure as a bug - and read the failure either"))
+    print_err(yellow("way, since passing alone shows only that it can pass. ./dev --doctor says what else is running."))
+
+// The highest one-minute load among `start` and the samples in `samples`, if there are any.
+fn peak_load(samples, start):
+    peak = start
+    if samples == "":
+        return peak
+    sampled = read_file(samples) catch:
+        return peak
+    for line in sampled.content.split_lines():
+        load = three_loads(line)[0]
+        if load > peak:
+            peak = load
+    return peak
 
 // What this repo's own tooling has left running, named rather than counted.
 //
@@ -1717,7 +1758,14 @@ if test:
 
     // Every daemon-backed test runs the muster-daemon the build above made, which the harness
     // finds beside the test binaries: the daemon under test is always this commit's.
-    $`cargo test --workspace`
+    //
+    // Through tee so it streams and is kept for explain_red_suite, with pipefail so the exit code
+    // is cargo's rather than tee's. The sampler beside it is this command's own child, ended by
+    // its pid. --no-fail-fast so a red run names every failing test, not the first binary's.
+    $`mkdir -p target/gate`
+    $`( while :; do sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg; sleep 5; done ) > {GATE_LOAD} 2>/dev/null & sampler=$!; set -o pipefail; cargo test --workspace --no-fail-fast 2>&1 | tee {GATE_RUST_LOG}; ended=$?; kill $sampler; exit $ended` catch:
+        explain_red_suite("Rust", fast_cores, load1)
+        exit(1)
 
     stdout, stderr, code = $`swift test list` catch:
         if matches(stderr, "no tests found", partial=true):
@@ -1760,6 +1808,7 @@ if test:
     stdout, stderr, code = $`swift test` catch:
         print(stdout)
         print_err(stderr.trim())
+        explain_red_suite("Swift", fast_cores, load1)
         exit(1)
     print(stdout)
     swift_skipped = stdout.split_lines().filter(fn(line) matches(line, "Test \".*\" skipped:", partial=true))

@@ -127,6 +127,12 @@ Muster's principles, adapted to that evidence:
   measured number and a comment saying which measurement, because a wait sized by guesswork is the flake this rule
   exists to prevent.
 
+  A deadline is only tight on purpose when the time is the subject. A test about something else - which machine
+  a window starts on, what an answer renders as - gives the step it waits for `PATIENCE`, or sets the production
+  deadline in its way through `muster::testing` (`set_startup_grace`, `set_typeable_deadline`), never a margin that
+  held on the machine it was written on. And a scratch path carries the process id, since another checkout's run
+  of the same test is using the same name at the same time.
+
   **There is one `until`, in `muster-harness`, and it has one deadline.** There were twenty-four, one per test file,
   because the way a test gets written is by copying the nearest one - and they had drifted to deadlines of two, ten,
   fifteen, twenty and thirty seconds, with not one of the outliers saying why. A single number is the honest answer
@@ -179,6 +185,18 @@ Muster's principles, adapted to that evidence:
   runnable threads the scheduler starts handing work to the slower cores - and `--perf --anyway` measures without
   gating for anyone who wants the numbers regardless. Refusing is defensible there and nowhere else, so nowhere
   else does it.
+
+  **A red gate says what load it ran at.** Several worktrees running the gate at once is a normal way to work
+  here, and it takes a machine far past its fast cores: one night four gate failures on main in a row were each
+  a different test that passed alone, at load 13 to 62. A failure that reads as a broken test teaches an agent to
+  re-run the whole gate, which settles nothing either way. So the gate neither refuses a loaded machine nor
+  stretches its deadlines. Instead, when a suite fails, it prints a command per failing test binary that re-runs
+  only the tests that failed (`tools/failed-tests.py` reads them off the run's log, kept in
+  `target/gate/rust-tests.log`). And when the one-minute load reached the performance-core count at any point,
+  sampled at the start and every five seconds through the Rust suite, it says so, with the peak. Run that test
+  alone before reading its failure as a bug, and read the failure either way: passing alone shows only that it
+  can pass. The Rust suite runs with `--no-fail-fast` so that list names every failing test rather than the first
+  binary's.
 
   Every run says what the machine was doing, narrowed flags included, because the failure this guards against is
   not a red run but a plausible one: seventy-four minutes of a machine with seven of its ten cores eaten by
