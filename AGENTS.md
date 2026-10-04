@@ -252,8 +252,9 @@ that checked nothing has not passed.
 
 `./dev --codex` is the same for the Codex installed here, and reaches OpenAI: a pane with `extras/codex`'s hooks and
 one without read working and then idle, the hooked one reporting its context, Esc mid-turn reads idle from Codex's
-own report, a message posted to an idle Codex rings it in its pane and is answered, an urgent post reaches it at
-work, and its messaging hooks hand a sandboxed Codex what it was sent. Each harness with an adapter gets a tier of its own (MIP-5), since
+own report, a message posted to an idle Codex rings it in its pane and is answered, a hooked Codex holding a draft
+is woken through `codex queue` and keeps the draft, an urgent post reaches it at work, and its messaging hooks hand a
+sandboxed Codex what it was sent. Each harness with an adapter gets a tier of its own (MIP-5), since
 each reaches a different vendor with a different login.
 
 `./dev --opencode` is the same for OpenCode, on a free model, `opencode/big-pickle`, with each pane's data and

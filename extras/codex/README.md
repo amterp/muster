@@ -46,6 +46,12 @@ instead, is the same for every harness: `extras/claude-code/README.md` has it.
 facts when a new session starts or `/clear` runs. Codex fires it with the session's first prompt,
 not when it opens.
 
+`SessionStart` also reports the session's id, which lets Muster wake an idle Codex with `codex
+queue` rather than typing into its pane, so a draft in the composer is left alone (`muster docs
+msg`). It needs `jq`; without it, or before a session's first prompt, Codex is rung by typing as
+any agent is. `codex` must be on the `PATH` a login shell sets, `.zprofile` rather than `.zshrc`,
+since Muster runs it through one.
+
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Codex ends a
 turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`.
 Muster then holds off calling the pane done until a later turn ends without the agent declaring

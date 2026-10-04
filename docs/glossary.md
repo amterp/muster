@@ -86,8 +86,10 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **vocabulary** - the backend contract's nouns and verbs, owned by Muster; the contract corpus is its executable
   form.
 - **wake** - the one-line notice that messages are waiting, sent to a participant once per group until it reads;
-  never the message itself. For an agent in a pane it is rung by the doorbell; for a Claude Code session outside
-  one, it is a line on its inbox socket; a session given the messaging hooks fetches its own.
+  never the message itself. For an agent in a pane it is rung by the doorbell, or, for a harness whose manifest
+  names a command and whose hooks reported the session's id, handed to the session by that command (`codex queue`)
+  with nothing typed; for a Claude Code session outside one, it is a line on its inbox socket; a session given the
+  messaging hooks fetches its own.
 - **window** - the unit that holds an ordered list of Muster tabs and shows one of them, with an arrangement of its
   own under `~/.muster/state/<install>/windows/`. Two windows are two arrangements rather than two views of one, and a window is
   named after its arrangement (`window-2`), so it is the same window after a quit.
