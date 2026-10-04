@@ -9,6 +9,7 @@
 #   ./devenv/devenv status          is it up, and is there a daemon in it
 #   ./devenv/devenv rebuild         rebuild the image from scratch, then up
 #   ./devenv/devenv port            the port this checkout's container listens on
+#   ./devenv/devenv help            this list
 #
 # Each checkout gets its own container, image, port and key, named after the checkout's path,
 # so two worktrees can run the remote tier at once without recreating each other's container.
@@ -37,6 +38,21 @@ SSH_OPTS=(-i "$KEY" -p "$PORT"
 
 die() { printf '%s\n' "$@" >&2; exit 1; }
 
+usage() {
+    cat <<'USAGE'
+usage: ./devenv/devenv <command>
+
+  build      build the image, and nothing else
+  up         build and start it, recreating a container on an older image or key
+  down       stop and remove it
+  ssh        shell in as dev
+  status     is it up, and is there a daemon in it
+  rebuild    rebuild the image from scratch, then up
+  port       the port this checkout's container listens on
+  help       this list
+USAGE
+}
+
 need_docker() {
     command -v docker >/dev/null 2>&1 || die \
         "docker is not on PATH." \
@@ -62,6 +78,13 @@ build() {
         -t "$IMAGE" -f "$REPO_ROOT/devenv/Dockerfile" "$@" "$REPO_ROOT"
 }
 
+# Whether the running container runs the image `build` just produced. A running container keeps
+# the image it started from, so an edited Dockerfile reaches it only once it is recreated.
+image_matches() {
+    [[ "$(docker inspect -f '{{.Image}}' "$CONTAINER" 2>/dev/null)" == \
+       "$(docker image inspect -f '{{.Id}}' "$IMAGE" 2>/dev/null)" ]]
+}
+
 # Whether the running container lets this checkout's key in. It stops doing so when devenv/.ssh/
 # is deleted and a new key generated, since the old one is baked into the running container.
 # Asked through docker rather than ssh, because ssh with the wrong key cannot tell a refusal
@@ -70,7 +93,16 @@ key_matches() {
     [[ "$(docker exec "$CONTAINER" cat /home/dev/.ssh/authorized_keys 2>/dev/null)" == "$(cat "$KEY.pub")" ]]
 }
 
-case "${1:-up}" in
+# No default: `up` recreates a container, and a bare invocation is more often somebody asking what
+# the commands are than somebody asking for that.
+case "${1:-}" in
+    "")
+        usage >&2
+        exit 2
+        ;;
+    help|-h|--help)
+        usage
+        ;;
     up)
         need_docker
         # Built every time rather than only when the image is missing. Docker's layer cache
@@ -81,12 +113,15 @@ case "${1:-up}" in
         build >/dev/null
         if [[ -n "$(docker ps -q -f "name=^${CONTAINER}$")" ]]; then
             # The rebuild above does not reach a container that is already running, so one
-            # started before this checkout's key changed still holds the old one.
-            if key_matches; then
+            # started before this checkout's key or image changed still holds the old one.
+            if ! key_matches; then
+                echo "devenv $CONTAINER was running with an older key of this checkout's; recreating it, and whatever was running in it"
+            elif ! image_matches; then
+                echo "devenv $CONTAINER was running an older image than this checkout builds; recreating it, and whatever was running in it"
+            else
                 echo "devenv $CONTAINER already running on port $PORT"
                 exit 0
             fi
-            echo "devenv $CONTAINER was running with an older key of this checkout's; recreating it, and whatever was running in it"
         fi
         docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
         # On loopback only: nothing outside this machine has any business with it, and docker
@@ -157,6 +192,7 @@ case "${1:-up}" in
         echo "$PORT"
         ;;
     *)
-        die "unknown command: $1" "  Try: build | up | down | ssh | status | rebuild | port"
+        usage >&2
+        die "unknown command: $1"
         ;;
 esac

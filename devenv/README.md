@@ -11,11 +11,16 @@ else, reachable at `ssh -p $(./devenv/devenv port) dev@localhost`, or `./devenv/
 ./devenv/devenv down            stop and remove it
 ./devenv/devenv rebuild         rebuild from scratch
 ./devenv/devenv port            the port this checkout's container listens on
+./devenv/devenv help            this list; so does running it with no command
 ```
 
 `up` builds every time rather than only when the image is missing. Docker's layer cache
 makes that about a second, and the alternative was worse: an edited Dockerfile did nothing
-until somebody thought to say `rebuild`.
+until somebody thought to say `rebuild`. A container already running keeps the image it started
+from, so `up` also compares the two and recreates a container on an older image.
+
+With no command the script prints its commands and exits 2 rather than running `up`: `up` can
+recreate the container, and a bare run is more often somebody asking what the commands are.
 
 The first `up` generates a keypair into `devenv/.ssh/`, which is gitignored. Nothing
 in the image is a secret, and the port is published on loopback only, so nothing outside
