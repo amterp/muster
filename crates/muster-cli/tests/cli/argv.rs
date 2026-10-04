@@ -86,48 +86,7 @@ fn cli_conformance() {
                         _ => None,
                     },
                 ),
-                // What a command line means when it is not a request. Named rather than left
-                // blank, because "this sends nothing" and "this was not understood" would
-                // otherwise be the same case, and the commands that dial no window are exactly
-                // the ones worth being sure about.
-                (
-                    "answers_here",
-                    match &invocation.asking {
-                        Asking::Send(_)
-                        | Asking::SendFrom { .. }
-                        | Asking::Watch { .. }
-                        | Asking::WatchLayout { .. } => None,
-                        Asking::Print(_) => Some(json!("printing something this binary holds")),
-                        Asking::Survey { closed: false } => {
-                            Some(json!("listing every open window under this home"))
-                        }
-                        Asking::Survey { closed: true } => {
-                            Some(json!("listing every closed window under this home"))
-                        }
-                        Asking::MakeWindow(onto) => Some(match (&onto.daemon, &onto.tab) {
-                            (Some(daemon), _) => json!(format!(
-                                "asking the running app for a window with its first tab on {daemon}"
-                            )),
-                            (_, Some(tab)) => {
-                                json!(format!("asking the running app for a window onto {tab}"))
-                            }
-                            _ => json!("asking the running app for a window"),
-                        }),
-                        Asking::ReopenWindow(None) => {
-                            Some(json!("asking the running app for the window closed last"))
-                        }
-                        Asking::ReopenWindow(Some(name)) => {
-                            Some(json!(format!("asking the running app for {name}")))
-                        }
-                        Asking::CloseWindow(None) => {
-                            Some(json!("asking the running app to close the window this is about"))
-                        }
-                        Asking::CloseWindow(Some(name)) => {
-                            Some(json!(format!("asking the running app to close {name}")))
-                        }
-                        Asking::Message(_) => Some(json!("asking this machine's daemon")),
-                    },
-                ),
+                ("answers_here", answers_here(&invocation.asking)),
                 // How long a wait holds out, which is the caller's patience rather than anything
                 // the window is told - so it is not in the request.
                 (
@@ -380,4 +339,45 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
 /// A string field, or nothing if the command line did not say.
 fn said(value: &str) -> Option<Value> {
     (!value.is_empty()).then(|| json!(value))
+}
+
+/// What a command line means when it is not a request. Named rather than left blank, because
+/// "this sends nothing" and "this was not understood" would otherwise be the same case, and the
+/// commands that dial no window are exactly the ones worth being sure about.
+fn answers_here(asking: &Asking) -> Option<Value> {
+    match asking {
+        Asking::Send(_)
+        | Asking::SendFrom { .. }
+        | Asking::Watch { .. }
+        | Asking::WatchLayout { .. } => None,
+        Asking::Print(_) => Some(json!("printing something this binary holds")),
+        Asking::Survey { closed: false } => {
+            Some(json!("listing every open window under this home"))
+        }
+        Asking::Survey { closed: true } => {
+            Some(json!("listing every closed window under this home"))
+        }
+        Asking::MakeWindow(onto) => Some(match (&onto.daemon, &onto.tab) {
+            (Some(daemon), _) => {
+                json!(format!("asking the running app for a window with its first tab on {daemon}"))
+            }
+            (_, Some(tab)) => {
+                json!(format!("asking the running app for a window onto {tab}"))
+            }
+            _ => json!("asking the running app for a window"),
+        }),
+        Asking::ReopenWindow(None) => {
+            Some(json!("asking the running app for the window closed last"))
+        }
+        Asking::ReopenWindow(Some(name)) => {
+            Some(json!(format!("asking the running app for {name}")))
+        }
+        Asking::CloseWindow(None) => {
+            Some(json!("asking the running app to close the window this is about"))
+        }
+        Asking::CloseWindow(Some(name)) => {
+            Some(json!(format!("asking the running app to close {name}")))
+        }
+        Asking::Message(_) => Some(json!("asking this machine's daemon")),
+    }
 }
