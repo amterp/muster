@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-few-seam-and-cli",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791121472306,
+  "creator": "Alexander Terp",
+  "description": "Left from a 2026-10-04 scan of load-fragile tests (the gate now prints its load and re-run lines on a red run). Subject not timing, candidates for a fix: muster-cli/tests/cli/without_a_window.rs:222 counts earlier session.subscribe log lines by draining for 300 ms (needs a log marker); the 400 ms quiet settle() helpers in seam/publish_order.rs and seam/republish.rs; seam/pane_gone.rs (300 ms typeable deadline vs the test's own dial; unconfirmed). Timing is the subject, left to the load note: daemon/lifecycle.rs:14 (25 ms first answer), daemon/streams.rs:319, daemon/doorbell.rs:270 and :613; bridge/link.rs:233 uses production LOST_AGAIN_WITHIN.",
+  "id": "a_2biSnTqyS",
+  "position": "b0f",
+  "title": "A few seam and CLI waits still race a busy machine",
+  "type": "chore",
+  "updated_at_millis": 1791121472306,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791121472306}
+  ]
+}

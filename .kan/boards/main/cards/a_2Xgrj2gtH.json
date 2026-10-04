@@ -7,11 +7,13 @@
   "creator": "Alexander Terp",
   "description": "devenv/devenv defaults to up (case \"${1:-up}\"), and up recreates the shared muster-devenv container with the calling worktree's key. Running it bare to see its usage destroyed the container another worktree was using (2026-09-27). With no argument it should print its usage and exit, like ./dev -h.",
   "id": "a_2Xgrj2gtH",
-  "position": "af",
+  "position": "UUUUUUU",
   "title": "./devenv/devenv with no arguments recreates the container",
   "type": "bug",
-  "updated_at_millis": 1790526610617,
+  "updated_at_millis": 1791121852824,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790526610560}
+    {"field":"column","value":"backlog-lo","at":1790526610560},
+    {"field":"column","value":"in-progress","at":1791121585068},
+    {"field":"column","value":"backlog-lo","at":1791121852824}
   ]
 }

@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791102578806,
   "creator": "Alexander Terp",
   "description": "2026-10-04 review (plausible): app_lock.rs exchange counts any failure after connect as Sent. If the app accepts into its backlog and quits, the write succeeds and the read gets EOF/ECONNRESET, so the launch errors out with no window where it used to retry and take the lock. Treat EOF with no reply byte as unsent. Also speculative from the same review: adoption keyed by bare file name can rename an old window-2.toml over a new one (needs an old process that refused to quit).",
   "id": "a_2baXI53dA",
-  "position": "b0a",
+  "position": "YyA",
   "title": "Handover: an app that quits after accepting the connection makes the launch give up",
   "type": "bug",
-  "updated_at_millis": 1791102578806,
+  "updated_at_millis": 1791121472034,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791102578806}
+    {"field":"column","value":"backlog-lo","at":1791102578806},
+    {"field":"column","value":"done","at":1791121472034}
   ]
 }
