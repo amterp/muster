@@ -1042,7 +1042,8 @@ Sessions survive anything Muster does: a broken Muster must never strand a sessi
 
 **A fourth state, and the one that is easy to get wrong: the daemon answered, and the session it describes is not the
 one we knew.** A daemon that restarts brings back every tab, name and directory from its saved state, with a new shell
-in each pane and none of the old processes, and says in a `restored` event what it could not bring back; a daemon
+in each pane - or the pane's agent resumed in its session, where its harness reported one and says how - and none of
+the old processes, and says in a `restored` event what it could not bring back; a daemon
 whose saved state it could not read starts empty (MIP-3, section 2). Every test for "connected" passes in each case,
 and rendering an empty session as though the user closed everything is the worst available answer. It belongs to
 Muster because no daemon can know what a window was showing.
@@ -1136,9 +1137,10 @@ Muster's, in the window's arrangement. That closed the weaker tier MIP-2 accepte
 `~/.muster/state/names.toml` and nowhere else.
 
 Two states it answers either way. **A daemon restarts:** it returns every tab, each pane's name and each pane's
-directory, not the processes, and a grouped tab is whole again as soon as both daemons have spoken. **One of a tab's
-machines is unreachable:** the tab opens showing the panes it can reach rather than refusing to open, which is the
-rule the mirror already follows for a stale daemon applied to a tab.
+directory, not the processes - an agent whose harness reported its session comes back in it - and a grouped tab is whole
+again as soon as both daemons have spoken. **One of a tab's machines is unreachable:** the tab opens showing the panes
+it can reach rather than refusing to open, which is the rule the mirror already follows for a stale daemon applied to a
+tab.
 
 **The first row used to have an exception, and what closed it is the daemon being a helper application.** macOS
 charges a protected request - a folder, the camera, AppleScript, the local network - to the *responsible* process.

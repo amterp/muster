@@ -68,8 +68,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   `muster window --json | jq -r '.panes[] | select(.pane == env.MUSTER_PANE) | .adapter'` says
   `reporting`, `silent` (your harness has an adapter that is not installed or not running),
   `none` (it has no adapter), or `null` before your first turn has ended. For `silent`, tell the
-  person: `muster harness install <harness>` changes their harness's configuration, so it is
-  theirs to run, and a session takes it up when restarted.
+  person: `muster harness install <harness>` runs their harness's own plugin install, which
+  changes what that harness loads, so it is theirs to run, and a session takes it up when restarted.
 - **Compact a worker before it runs out of context**, rather than letting it hit the limit
   mid-task: `muster pane compact --pane X keep <what the summary must keep>`. It is typed once
   the agent is idle, never mid-turn. To compact yourself, run `muster pane compact <focus>` with

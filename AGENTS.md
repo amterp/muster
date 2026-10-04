@@ -44,7 +44,8 @@ setting, and `docs/cli/limits.md` is the same honest account for the CLI.
 - **Sessions outlive the app, and their shape outlives the daemon.** Backend daemons own the PTYs, so quitting
   Muster, dropping the VPN or closing the lid costs nothing: agents keep working and every pane comes back. Below
   that line the guarantee weakens honestly rather than silently - a daemon restart returns the pane tree and each
-  pane's directory but not the processes, and a reboot is the same case with the daemon to start first. A tab
+  pane's directory but not the processes, an agent whose harness reported its session coming back in that session
+  with the flags it ran with, and a reboot is the same case with the daemon to start first. A tab
   holding panes on two machines is written down on both daemons, each part carrying the tab's one name; only the
   order and widths of its regions are Muster's to keep. What can be written down is written down; a live process
   cannot be, and Muster does not pretend otherwise

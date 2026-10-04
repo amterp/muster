@@ -213,7 +213,10 @@ belong to a process that a restart ends. A daemon that starts and finds the file
 and starts a shell in each pane's recorded directory, keeping every name. It does not re-run
 commands: an agent restarted fresh in fifteen panes is not what anyone asked for. Processes and
 scrollback do not survive a daemon restart, which is the guarantee herdr gives today
-(`docs/architecture.md`, durability).
+(`docs/architecture.md`, durability). Since 2026-10-04 one command is written: an agent whose
+harness reported its session, and whose manifest says how to resume one, is restarted in that
+session with the arguments it ran with (`resume_agents`), which is the agent asked for rather than
+a fresh one.
 
 The file is JSON beside the socket, `~/.muster/daemon/<install>.state.json`, so a person can read
 it, although the protocol's enums are numbers in it: a number survives the protocol renaming a
