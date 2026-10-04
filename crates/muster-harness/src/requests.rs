@@ -165,6 +165,17 @@ pub fn read_text(control: &mut Control, name: &str, first_row: u64, rows: u32) -
     }
 }
 
+/// What a pane's screen shows, for a failure to print: what a wait saw tells "the command never
+/// ran" from "it ran and nothing recognised it". Says why instead when the read fails, since a
+/// test that is already failing must not fail again here.
+pub fn screen_text(control: &mut Control, name: &str) -> String {
+    let answer = control.ask(read_request(name, 0, 0)).answer;
+    match answer.detail {
+        Some(proto::answer::Detail::Text(text)) => format!("its screen:\n{}", text.text.trim_end()),
+        _ => format!("its screen could not be read: {}", answer.reason),
+    }
+}
+
 /// Every row of a pane's text, once it contains `needle`.
 pub fn until_text(control: &mut Control, name: &str, needle: &str) -> String {
     until_some(&format!("pane {name} to show {needle:?}"), || {

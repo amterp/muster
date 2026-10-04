@@ -6,14 +6,15 @@
 //! agent in it, under the name `claude`, with an override manifest that maps the markers the
 //! fake paints onto states - and tells the fake which state to paint.
 
+use std::cell::RefCell;
 use std::path::Path;
 
 use muster_daemon_proto::{self as proto, input_event};
 
 use crate::daemon::Daemon;
 use crate::input::Input;
-use crate::requests::{snapshot, until_text};
-use crate::until::until_some;
+use crate::requests::{screen_text, snapshot, until_text};
+use crate::until::until;
 
 /// A shell script that paints `PROBE-STATE:<STATE>` and reads `working`, `blocked`, `idle`
 /// or `quit`, one per line.
@@ -131,14 +132,33 @@ impl Daemon {
         assert!(status.success(), "the fake agent could not be signalled");
     }
 
-    /// Waits until the daemon says the fake agent in `pane` is in `state`.
+    /// Waits until the daemon says the fake agent in `pane` is in `state`, or fails saying what
+    /// it said instead and what the pane showed.
     pub fn until_agent(&self, pane: &str, state: proto::AgentState) {
-        let mut control = self.connect();
-        until_some(&format!("{pane}'s agent to be {state:?}"), || {
-            let record = snapshot(&mut control).panes.into_iter().find(|p| p.pane == pane)?;
-            (record.agent.as_deref() == Some(AGENT_NAME) && record.agent_state() == state)
-                .then_some(())
-        });
+        let control = RefCell::new(self.connect());
+        let last = RefCell::new(None);
+        until(
+            &format!("{pane}'s agent to be {state:?}"),
+            || {
+                let record = snapshot(&mut control.borrow_mut())
+                    .panes
+                    .into_iter()
+                    .find(|p| p.pane == pane)
+                    .map(|record| (record.agent.clone(), record.agent_state()));
+                let reached = record.as_ref().is_some_and(|(agent, now)| {
+                    agent.as_deref() == Some(AGENT_NAME) && *now == state
+                });
+                *last.borrow_mut() = record;
+                reached
+            },
+            || {
+                let was = match last.borrow().as_ref() {
+                    Some((agent, now)) => format!("it was {agent:?} {now:?}"),
+                    None => format!("the daemon had no pane {pane}"),
+                };
+                format!("{was}, {}", screen_text(&mut control.borrow_mut(), pane))
+            },
+        );
     }
 }
 

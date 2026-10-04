@@ -100,9 +100,10 @@ fn detected(control: &mut Control, pane: &str) -> (Option<String>, proto::AgentS
     (record.agent, state)
 }
 
-/// Fails saying what the pane was instead, whether that came from a report, and its facts: a
-/// test waits for the same state several times, and a pending wait in the facts or a report
-/// still counting is what tells those apart.
+/// Fails saying what the pane was instead, whether that came from a report, its facts, and its
+/// screen: a test waits for the same state several times, and a pending wait in the facts or a
+/// report still counting is what tells those apart. The screen is for the wait that never sees
+/// an agent at all, which under a loaded gate has been the one nothing else explained.
 fn until_detected(
     control: &mut Control,
     pane: &str,
@@ -111,21 +112,23 @@ fn until_detected(
 ) {
     let want = (agent.map(str::to_string), state);
     let last = std::cell::RefCell::new(None);
+    let control = std::cell::RefCell::new(control);
     until(
         &format!("{pane} to be {agent:?} {state:?}"),
         || {
-            let record = record(control, pane);
+            let record = record(&mut control.borrow_mut(), pane);
             let reached = (record.agent.clone(), record.agent_state()) == want;
             *last.borrow_mut() = Some(record);
             reached
         },
         || match last.borrow().as_ref() {
             Some(record) => format!(
-                "it was {:?} {:?}, reported: {}, facts: {:?}",
+                "it was {:?} {:?}, reported: {}, facts: {:?}, {}",
                 record.agent,
                 record.agent_state(),
                 record.state_reported,
-                record.facts
+                record.facts,
+                screen_text(&mut control.borrow_mut(), pane)
             ),
             None => "the daemon was never asked".to_string(),
         },
