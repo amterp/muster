@@ -589,11 +589,11 @@ discover it by typing into something that stopped listening. It clears itself if
 turns up late, and it goes with the pane if you close it.
 
 `~/.muster/state/` is Muster's to write, and nothing in it should be edited by hand. Arrangements
-live under `windows/`, one file per window rather than one for the machine, and each is rewritten
+live under `<install>/windows/` - `release/windows/` for the app you installed - one file per
+window rather than one for the machine, and each is rewritten
 whenever that window settles: which tabs it was showing, in what order, at what widths; under
 `[window]`, whether the agent list was open and how wide, and how big the window itself was; and
-one `[[pane]]` row for each pane whose text somebody sized. A running window writes its pid beside the file it
-took, which is how a launch tells an arrangement nobody is holding from one in use. Delete the
+one `[[pane]]` row for each pane whose text somebody sized. Delete the
 directory and the next launch opens fresh. Nothing about a session is in any of them - what a tab
 holds is the daemon's answer, asked again on every launch.
 

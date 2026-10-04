@@ -89,7 +89,7 @@ One name per concept; docs and code use these terms. Alphabetical.
   never the message itself. For an agent in a pane it is rung by the doorbell; for a Claude Code session outside
   one, it is a line on its inbox socket; a session given the messaging hooks fetches its own.
 - **window** - the unit that holds an ordered list of Muster tabs and shows one of them, with an arrangement of its
-  own under `~/.muster/state/windows/`. Two windows are two arrangements rather than two views of one, and a window is
+  own under `~/.muster/state/<install>/windows/`. Two windows are two arrangements rather than two views of one, and a window is
   named after its arrangement (`window-2`), so it is the same window after a quit.
 - **workspace** - a daemon's top-level container of tabs. Nothing a person using Muster has to know about: the
   adapter works out which one a tab belongs in, and no message and no CLI argument names one.

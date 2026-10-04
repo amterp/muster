@@ -84,8 +84,10 @@ and not which window. The window is, in order:
 - outside every pane, the window in front.
 
 A request naming a pane or a tab is answered by the window holding it, whichever window it reached.
-`--window` naming a window the app has not got is refused, and so is a closed one, with how to
-reopen it.
+`--window` naming a window the app has not got is refused. Naming a closed one is refused too, with
+how to reopen it, for everything but two commands: `muster window close`, which has nothing to do
+and succeeds, and `muster window` itself, which answers for a window showing nothing - its tabs are
+listed under its name, `window-2 (closed)`, by any window that is open.
 
 ## More than one Muster
 

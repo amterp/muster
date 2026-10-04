@@ -187,9 +187,13 @@ pub fn windows(
             .map(|row| match &row.unreadable {
                 // Listed with its reason rather than dropped: an app that is there and will not
                 // answer is the case somebody running this is looking for.
-                Some(detail) => {
-                    json!({ "socket": row.socket, "here": false, "unreadable": detail })
-                }
+                Some(detail) => json!({
+                    "window": null,
+                    "open": null,
+                    "here": false,
+                    "socket": row.socket,
+                    "unreadable": detail,
+                }),
                 None => json!({
                     "window": row.name,
                     "open": !closed,
@@ -1361,8 +1365,26 @@ fn shell_word(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Others, QUIET, agent_style, daemons_text, held_for, window_json, window_text};
+    use super::{
+        Others, QUIET, agent_style, daemons_text, held_for, window_json, window_text, windows,
+    };
     use anstyle::{AnsiColor, Color, Style};
+
+    /// An app that would not say what it holds is still a row with every key the others have,
+    /// so a filter over `.windows[]` reads it without a special case.
+    #[test]
+    fn an_app_that_would_not_answer_lists_every_key() {
+        let answers = vec![(
+            "/s/command-1.sock".to_string(),
+            Err(crate::Trouble::Unreachable("nothing answered".to_string())),
+        )];
+        let listed: serde_json::Value =
+            serde_json::from_str(&windows(&answers, None, false, true)).expect("JSON");
+        let row = &listed["windows"][0];
+        for key in ["window", "open", "here", "socket", "unreadable"] {
+            assert!(row.get(key).is_some(), "the row has no {key}: {row}");
+        }
+    }
 
     fn hue(color: AnsiColor) -> Style {
         Style::new().fg_color(Some(Color::Ansi(color)))

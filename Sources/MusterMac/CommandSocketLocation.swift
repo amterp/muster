@@ -1,14 +1,14 @@
 import Foundation
 
-/// Where this window listens for requests from outside its own process.
+/// Where this app listens for requests from outside its own process.
 ///
 /// Beside the arrangement and the pane names, because it is Muster's own state and nothing a
 /// person should have to know about. An OS question, which is why it is answered here and handed
 /// to the core at startup - the same division the log file and the state file already draw.
 ///
-/// The name carries this process's pid, because two Musters are two windows: a caller has to be
-/// able to reach the one it means, and a single fixed path would mean the second window to open
-/// silently took the first one's callers.
+/// The name carries this process's pid, because two installs under one home - a development build
+/// beside the release - are two apps: a caller has to be able to reach the one it means, and a
+/// single fixed path would mean the second app to start silently took the first one's callers.
 ///
 /// The variable that overrides it is deliberately not the `MUSTER_SOCKET` a pane is given.
 /// That one says where to dial and this one says where to listen, and one name for both would

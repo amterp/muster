@@ -376,7 +376,8 @@ record.
   front window, except one naming a tab or pane, which still reaches the window holding it.
 - A pane holding a dead socket from before reaches the new app through the existing sibling
   fallback.
-- `muster window list` keeps its output, and gains `--closed`.
+- `muster window list` prints a row per window, headed by its name where it printed a socket, and
+  gains `--closed`. Under `--json` each row gains `window` and `open`.
 - `muster window --json` keeps `other_windows[]`. Its `pid` becomes the same for every open
   window. So `muster tab move --window` takes a window's name rather than a pid; a pid is still
   accepted and means the front window of that process.

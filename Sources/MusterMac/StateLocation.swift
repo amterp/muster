@@ -151,8 +151,8 @@ public enum Arrangements {
 /// Where every window writes which window holds each tab.
 ///
 /// One file for all of them, because the rule it keeps spans windows: a tab belongs to exactly
-/// one, and a window lists only its own. In a directory of its own, because the shell watches it
-/// for another window's changes and should not wake for every arrangement a window saves.
+/// one, and a window lists only its own. The core reads it at launch and writes it as tabs move;
+/// the next launch reads it to know which windows to reopen.
 ///
 /// Nowhere to write is a real answer - the window then holds every tab, as a single window always
 /// did.

@@ -1174,34 +1174,32 @@ easy to break in one line - **nothing writes the file before the window has open
 opened is empty, and a shell reports its frame the moment the window exists, which is before it asks the core to
 open anything.
 
-**One arrangement per window, and a window claims one for as long as it runs.** They live under
-`~/.muster/state/windows/`, one file each, and a window writes its pid beside the one it took, as a file that fails
-to link when one is already there, so two launches cannot claim one arrangement. A launch drops the claims of
-processes that are gone, and of pids macOS has since given to a process that started after the claim was written. It
-then takes the most recently written arrangement nobody is holding - which is the
-window Muster comes back to when none is running, and the window that was just closed when one is. `muster window
-new` and ⌘N say `--fresh`, and a fresh window takes an arrangement nothing has ever held. Going to a closed window's
-tab from another window names the arrangement outright, and that launch takes it.
+**One arrangement per window.** They live under `~/.muster/state/<install>/windows/`, one file each. Every window
+of an install is a window of one app, which holds `state/app-<install>.lock` for as long as it runs, so no other
+process can be writing an arrangement this app has not opened. A window that is not asked for by name takes the most
+recently written arrangement no window of the app has open - the window Muster comes back to, and the one closed last
+when another is open. `muster window new` and ⌘N take an arrangement nothing has ever held. Reopening a closed window,
+by name or by going to one of its tabs, names its arrangement outright.
 
 Two things stand on that. The file has a single writer, where before every window shared one and whichever published
 last decided what came back. And a window that closes leaves something to come back to, which is what `muster window
 reopen` reads.
 
 **Every tab belongs to exactly one window, and that is written down where every window reads it** (kan
-a_2Mhi0EZlv). `~/.muster/state/holding/tabs.toml` says which window holds each tab, and every window reads, changes
-and writes it inside a lock of its own, so two windows cannot write over each other's change. A pane is drawn by one bridge at a time, so a tab two windows both listed was a
+a_2Mhi0EZlv). `~/.muster/state/<install>/holding/tabs.toml` says which window holds each tab. The app reads it once
+at launch and writes it as tabs move, and it is the only writer: two windows of one app change it under one lock in
+memory. A pane is drawn by one bridge at a time, so a tab two windows both listed was a
 tab whose panes the second took from the first at a click - and before this every window listed every tab, so a
 window holding nothing drew the next tab anybody made. Now a window lists the tabs the record gives it and no others,
 and its arrangement names only those.
 
 A window here is its arrangement's name, `window-2`, not its process, so a window keeps its tabs across a quit and
-`muster window reopen` comes back to them. Whether a window is open is asked by dialing its socket rather than read
-off a pid. A tab a window asks for is recorded as its own before anybody else can take it: the window writes that it
+`muster window reopen` comes back to them. A row with a pid is a window that was open, and a close clears it, so a
+row a quit or a crash left still carrying one is a window the next launch reopens. A tab a window asks for is recorded as its own before anybody else can take it: the window writes that it
 is waiting on that machine before it asks, and one write takes the tab and clears the wait, because the daemon
 announces a new tab to every window before the asking one hears its answer. A tab nothing asked for - made by another
 client, or held by a window whose arrangement has gone, or every tab on the first launch after this existed - joins
-the window that was in front most recently. The shell watches the record's directory and tells the core when it moves, so an idle
-window costs no wakeups.
+the window that was in front most recently.
 
 But composition is the piece nobody else can save. A daemon's saved state is scoped to itself: it can record that its
 part of a tab carries a name, but not which window shows that tab, where the tab sits in the window's list, or how
