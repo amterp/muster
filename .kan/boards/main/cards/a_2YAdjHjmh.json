@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "a-daemon-whose-start",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790597570938,
   "creator": "Alexander Terp",
   "description": "Configured daemons that cannot be attached are retried on the reconnect backoff for as long as Muster runs. A daemon whose start can never succeed (a missing binary, a config naming a host that does not exist) keeps retrying and logging. Some failures could be told apart as permanent and stop, with the problem saying why.",
   "id": "a_2YAdjHjmh",
-  "position": "au",
+  "position": "Yya",
   "title": "A daemon whose start can never succeed is retried forever",
   "type": "bug",
-  "updated_at_millis": 1790597570938,
+  "updated_at_millis": 1791098029011,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790597570938}
+    {"field":"column","value":"backlog-lo","at":1790597570938},
+    {"field":"column","value":"done","at":1791098029011}
   ]
 }

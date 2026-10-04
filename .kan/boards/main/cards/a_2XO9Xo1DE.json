@@ -6,17 +6,18 @@
     "shell",
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1790482013186,
   "creator": "Alexander Terp",
   "description": "Seen in MIP-3 round 2 by a worker at load average ~50: muster pane new timed out twice (EAGAIN on the window's command socket) and each attempt still created a herdr pane that the window never displayed, leaving an orphan shell the caller cannot name. Related to a_2P65uphDZ (CLI requests time out on the keystroke budget) and a_2PSQUYmcH (a pane new --run whose split timed out). With MIP-3's daemon, a create that names its pane up front (the name is minted by Muster and passed in the request) makes a lost answer recoverable: the caller can ask for that name. Re-check after the cut-over; if it still happens, the CLI should report the pane name it asked for so the orphan can be found or closed.",
   "id": "a_2XO9Xo1DE",
-  "position": "Zt",
+  "position": "Yyc",
   "title": "A muster pane new that times out still makes a pane the window never shows",
   "type": "bug",
-  "updated_at_millis": 1791096164005,
+  "updated_at_millis": 1791098028862,
   "history": [
     {"field":"column","value":"backlog-hi","at":1790482013186},
-    {"field":"column","value":"next","at":1791096164005}
+    {"field":"column","value":"next","at":1791096164005},
+    {"field":"column","value":"done","at":1791098028862}
   ]
 }

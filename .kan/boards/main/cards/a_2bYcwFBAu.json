@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "detach-a-machine",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1791098029339,
+  "creator": "Alexander Terp",
+  "description": "Since 2026-10-04 a [[daemon]] block added to config.toml is attached on save; one removed or changed waits for a relaunch, with a config.daemons warning naming it. Not built on purpose: a live detach takes that machine's tabs out of every window while its agents keep running, which reads as agents gone. Build only if wanted, with a way back.",
+  "id": "a_2bYcwFBAu",
+  "position": "b0Q",
+  "title": "Detach a machine live when its [[daemon]] block is removed",
+  "type": "feature",
+  "updated_at_millis": 1791098029339,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791098029339}
+  ]
+}
