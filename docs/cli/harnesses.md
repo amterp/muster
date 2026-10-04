@@ -133,7 +133,7 @@ hand it what it is sent regardless. `extras/codex/README.md` has both, and the s
 modules rather than a file, so `muster harness install opencode` runs nothing and prints these:
 
     mkdir -p ~/.config/opencode/plugin
-    ln -s <extras>/opencode/plugin/muster.js ~/.config/opencode/plugin/
+    ln -sf <extras>/opencode/plugin/muster.js ~/.config/opencode/plugin/
 
 `extras/opencode/README.md` has what it reports, and what it does not yet.
 

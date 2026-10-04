@@ -745,6 +745,32 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A directory somebody keeps at the link's path is theirs: nothing is linked inside it.
+    #[test]
+    fn an_install_leaves_a_directory_in_the_adapters_place() {
+        let root = scratch("extras-dir");
+        let linux = root.join("linux/linux-x86_64");
+        std::fs::create_dir_all(&linux).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::create_dir_all(root.join("carried")).unwrap();
+        std::fs::write(linux.join("muster-daemon"), b"daemon").unwrap();
+        let carried = Carried {
+            linux: Some(root.join("linux")),
+            data: Some(root.join("data")),
+            extras: Some(root.join("carried")),
+            ..Carried::default()
+        };
+        let payload = carried.payload("here", &Platform::from_uname("Linux x86_64").unwrap());
+        let payload = payload.unwrap();
+        let installed = installed_in(&root);
+        std::fs::create_dir_all(installed.extras()).unwrap();
+
+        Here.shell_on(&install_script(&installed, &payload.stamp), &payload.archive).unwrap();
+
+        assert!(std::fs::read_dir(installed.extras()).unwrap().next().is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A Mac attached over SSH may run a Muster of its own, whose app points `muster` at the CLI
     /// inside its bundle at every launch. That link is the app's, and an install leaves it.
     #[test]

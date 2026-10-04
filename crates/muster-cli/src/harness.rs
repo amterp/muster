@@ -87,7 +87,7 @@ pub fn plan(harness: Harness, extras: &Path) -> Plan {
                     .to_string(),
                 "  mkdir -p ~/.config/opencode/plugin".to_string(),
                 format!(
-                    "  ln -s {} ~/.config/opencode/plugin/muster.js",
+                    "  ln -sf {} ~/.config/opencode/plugin/muster.js",
                     shell_word(&extras.join("opencode/plugin/muster.js").display().to_string())
                 ),
                 format!("{readme} has what it reports."),
@@ -96,20 +96,28 @@ pub fn plan(harness: Harness, extras: &Path) -> Plan {
     }
 }
 
-/// Where this machine's adapters are: `$MUSTER_HOME/extras` where an install put a link there,
-/// as Muster's install on an SSH machine does, so that a path handed to a harness outlives the
-/// version it came with; otherwise beside this executable.
+/// Where this machine's adapters are. A bundle's own first, since its path outlives an update;
+/// then `$MUSTER_HOME/extras` where an install put a link there, as Muster's install on an SSH
+/// machine does, so that a path handed to a harness outlives the version it came with; otherwise
+/// beside this executable. The link comes after a bundle because an SSH install also makes it on
+/// a Mac with an app of its own, which may be another version.
 pub fn extras(
     environment: &BTreeMap<String, String>,
     executable: Option<PathBuf>,
 ) -> Result<PathBuf, Trouble> {
+    let executable = executable.and_then(|path| path.canonicalize().ok());
+    let beside = executable.as_deref().map(harnesses::extras_beside);
+    if let Some(bundled) = beside
+        .as_ref()
+        .filter(|extras| extras.ends_with("Contents/Resources/extras") && extras.is_dir())
+    {
+        return Ok(bundled.clone());
+    }
     if let Some(linked) = muster_home(environment).map(|home| Path::new(&home).join("extras"))
         && linked.is_dir()
     {
         return Ok(linked);
     }
-    let executable = executable.and_then(|path| path.canonicalize().ok());
-    let beside = executable.as_deref().map(harnesses::extras_beside);
     match beside {
         Some(extras) if extras.is_dir() => Ok(extras),
         _ => Err(Trouble::Refused(format!(

@@ -436,9 +436,10 @@ fn context_unsaid(
             if pane.adapter == "silent" {
                 format!(
                     "{pane_id}'s adapter is not reporting, so it will not say how full its \
-                     context is and --context cannot end this wait. `muster harness install` \
-                     installs the adapter, and the agent takes it up once restarted (`muster docs \
-                     harnesses`)."
+                     context is and --context cannot end this wait. The adapter is not \
+                     installed or not running: `muster harness install`, on the machine the \
+                     agent runs on, installs it, Codex runs one only once it is trusted in \
+                     /hooks, and a session takes one up when restarted (`muster docs harnesses`)."
                 )
             } else {
                 format!(

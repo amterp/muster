@@ -55,7 +55,7 @@ impl Home {
             .args(arguments)
             .env_clear()
             .env("HOME", self.0.join("home"))
-            .env("PATH", format!("{}:/usr/bin:/bin", self.0.join("bin").display()))
+            .env("PATH", self.0.join("bin"))
             .stdin(Stdio::null())
             .output()
             .expect("the muster binary runs")
@@ -144,7 +144,7 @@ fn opencode_runs_nothing_and_says_what_to_link() {
     assert!(home.asked("opencode").is_empty());
     let said = text(&ran.stdout);
     let plugin = home.extras().join("opencode/plugin/muster.js");
-    assert!(said.contains(&format!("ln -s {}", plugin.display())), "{said}");
+    assert!(said.contains(&format!("ln -sf {}", plugin.display())), "{said}");
 }
 
 #[test]

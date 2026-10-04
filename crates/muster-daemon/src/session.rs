@@ -2951,10 +2951,12 @@ impl Turn {
     }
 }
 
-/// Marks the pane's agent as reporting through its adapter, saying whether that is news. A report
-/// naming another agent than the one detected is not this agent's adapter.
+/// Marks the pane's agent as reporting through its adapter, saying whether that is news. Only once
+/// detection has named the agent: a report from no agent - a statusline's last run after its agent
+/// left - would otherwise pass to whichever agent comes next. One naming another agent than the
+/// detected one is not this agent's adapter either.
 fn adapter_heard(record: &mut proto::Pane, agent: &str) -> bool {
-    let own = agent.is_empty() || record.agent.as_deref().is_none_or(|detected| detected == agent);
+    let own = record.agent.as_deref().is_some_and(|detected| agent.is_empty() || detected == agent);
     let heard = own && record.adapter() != proto::Adapter::Reporting;
     if heard {
         record.set_adapter(proto::Adapter::Reporting);
