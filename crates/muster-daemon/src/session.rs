@@ -618,8 +618,10 @@ struct RestoringPane {
     saved: persist::Pane,
     /// What starts its agent's session again, when it starts with that rather than a shell.
     resume: Option<persist::Resume>,
-    /// The configured shell.
+    /// The configured shell, running the resume when there is one.
     launch: Launched,
+    /// The configured shell running nothing, for a resume whose directory is gone.
+    plain: Launched,
     /// The default shell, for when the configured one will not start.
     fallback: Launched,
 }
@@ -680,8 +682,26 @@ impl Restoring {
                         self.home.clone()
                     }
                 };
-                let mut first = start_launched(&pane.launch, &cwd, pane.saved.grid);
-                first.resumed = pane.resume.is_some();
+                // A session resumed anywhere but where it ran finds no conversation to resume, so a
+                // pane whose directory is gone comes back as a shell, and its agent as stopped.
+                let resumes = pane.resume.is_some() && cwd == *saved;
+                if pane.resume.is_some() && !resumes {
+                    log::warn(
+                        "daemon.state.resume_skipped",
+                        fields! {
+                            "pane" => pane.saved.name,
+                            "impact" => "the pane comes back as a shell rather than running its \
+                                         agent's session, which would not find its conversation \
+                                         from another directory",
+                            "check" => "the daemon.state.cwd line above says why the directory \
+                                        could not be used; restore it and start the session \
+                                        again by hand",
+                        },
+                    );
+                }
+                let launch = if resumes { &pane.launch } else { &pane.plain };
+                let mut first = start_launched(launch, &cwd, pane.saved.grid);
+                first.resumed = resumes;
                 let Err(error) = first.started else { return first };
                 log::warn(
                     "daemon.state.fallback",
@@ -704,6 +724,17 @@ impl Restoring {
             })
             .collect()
     }
+}
+
+/// The names of the flags among `arguments`, space-separated: `--model --settings`. A flag's
+/// value, whether after `=` or as the next word, is left out.
+fn flag_names(arguments: &[String]) -> String {
+    arguments
+        .iter()
+        .filter(|word| word.starts_with('-'))
+        .map(|flag| flag.split('=').next().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// How long restoring waits to learn whether a pane's saved directory is there. A directory on a
@@ -1628,7 +1659,6 @@ impl Session {
             && self.panes[index].session_id.as_deref() == Some(id)
         {
             self.panes[index].session_id = None;
-            self.resume_changed(index, None);
         }
     }
 
@@ -1642,17 +1672,53 @@ impl Session {
             return false;
         }
         let id = Some(said).filter(|id| !id.is_empty());
-        if pane.session_id == id {
+        let changed = pane.session_id != id;
+        // The same session again is worth another try at its resume when the last one could not
+        // be built: the job was between processes, or its arguments would not read.
+        if !changed && (id.is_none() || pane.resume.is_some()) {
             return false;
         }
-        log::debug(
-            "session.id.reported",
-            fields! { "pane" => pane.record.pane, "agent" => agent, "known" => id.is_some() },
+        if changed {
+            log::debug(
+                "session.id.reported",
+                fields! { "pane" => pane.record.pane, "agent" => agent, "known" => id.is_some() },
+            );
+            pane.session_id.clone_from(&id);
+        }
+        let resume = id.as_deref().and_then(|session| self.resume_of(index, agent, session));
+        if let Some(session) = id.as_deref().filter(|_| resume.is_none()) {
+            self.resume_missed(index, agent, session);
+        }
+        if resume.is_some() || changed {
+            self.resume_changed(index, resume);
+        }
+        changed
+    }
+
+    /// Says once per session that its resume could not be built, which otherwise leaves a pane
+    /// that will come back after a restart as a shell with nothing to say why.
+    fn resume_missed(&mut self, index: usize, agent: &str, session: &str) {
+        // A harness whose manifest says no way to resume has nothing to have missed.
+        let resumable = self.detecting.manifests().is_some_and(|manifests| {
+            manifests.session_resume(&muster_detect::Agent::new(agent), session, &[]).is_some()
+        });
+        let pane = &mut self.panes[index];
+        if !resumable || pane.resume_missed.as_deref() == Some(session) {
+            return;
+        }
+        pane.resume_missed = Some(session.to_string());
+        log::warn(
+            "session.resume.unbuilt",
+            fields! {
+                "pane" => pane.record.pane,
+                "agent" => agent,
+                "impact" => "after a daemon restart this pane comes back as a shell, not running \
+                             its agent's session; tried again at the agent's next report",
+                "check" => "whether the agent's manifest says how to resume, and whether its \
+                            process was in the pane's foreground with readable arguments when \
+                            it reported",
+            },
         );
-        pane.session_id.clone_from(&id);
-        let resume = id.and_then(|session| self.resume_of(index, agent, &session));
-        self.resume_changed(index, resume);
-        true
     }
 
     /// The command that starts the session `session` of the pane's agent again after a restart:
@@ -1671,7 +1737,15 @@ impl Session {
         if found != muster_detect::Agent::new(agent) {
             return None;
         }
-        let resume = manifests.session_resume(&found, session, &arguments)?;
+        let mut resume = manifests.session_resume(&found, session, &arguments)?;
+        // The agent's own executable where it was started from a path, so an agent an alias runs
+        // from outside `PATH` is the one resumed, rather than whichever the name finds there.
+        if let Some(program) = muster_detect::agent_program(&job, &manifests)
+            && let Some(first) = resume.command.first_mut()
+            && Path::new(&program).file_name() == Some(std::ffi::OsStr::new(first.as_str()))
+        {
+            *first = program;
+        }
         Some(persist::Resume {
             agent: agent.to_string(),
             session: session.to_string(),
@@ -2447,9 +2521,10 @@ impl Session {
                 )
             });
             let launch = self.launch_with(&shell, name, command.as_deref(), &HashMap::new());
+            let plain = self.launch_with(&shell, name, None, &HashMap::new());
             let fallback = proto::Shell { command: None, ..shell };
             let fallback = self.launch_with(&fallback, name, None, &HashMap::new());
-            panes.push(RestoringPane { saved: pane.clone(), resume, launch, fallback });
+            panes.push(RestoringPane { saved: pane.clone(), resume, launch, plain, fallback });
         }
         self.reserved.insert(tab.name.clone());
         for pane in &panes {
@@ -2537,17 +2612,23 @@ impl Session {
         self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
     }
 
-    /// Says which pane came back running its agent's session, and every word it was started
-    /// with, so a person can see exactly what was relaunched on their behalf.
+    /// Says which pane came back running its agent's session: the program, the session, and
+    /// which flags went along by name. Never a flag's value or the command as typed - a carried
+    /// `--settings` or `--append-system-prompt` can hold a secret, and what somebody typed stays
+    /// out of the run log. The pane's own record carries the whole command, for its owner.
     fn resumed(pane: &str, resume: &persist::Resume) {
+        let (program, arguments) = resume.command.split_first().unzip();
+        let arguments = arguments.unwrap_or_default();
         log::info(
             "daemon.state.resumed",
             fields! {
                 "pane" => pane,
                 "agent" => resume.agent,
                 "session" => resume.session,
-                "command" => resume.command.join(" "),
-                "arguments" => resume.uncarried.as_deref().unwrap_or("carried"),
+                "program" => program.map(String::as_str).unwrap_or_default(),
+                "arguments" => arguments.len(),
+                "flags" => flag_names(arguments),
+                "carried" => resume.uncarried.is_none(),
             },
         );
     }

@@ -714,8 +714,12 @@ pub(crate) struct Pane {
     /// agent's manifest names (`messages::command`).
     pub(crate) session_id: Option<String>,
     /// What starts that session again after a restart, built when the session was reported;
-    /// forgotten with it.
+    /// forgotten with it. Kept when a wake forgets the id: whether the session can be woken is
+    /// a different question from whether it can be resumed.
     pub(crate) resume: Option<crate::persist::Resume>,
+    /// The session a resume could not be built for, once that has been logged: later reports
+    /// of the same session try again quietly.
+    pub(crate) resume_missed: Option<String>,
     /// A compaction of its agent's context still to be typed, and where that context stands
     /// against `compact_at`. Not handed over: a daemon that took the pane over hears the
     /// context again from its next report.
@@ -794,6 +798,7 @@ impl Pane {
     ///
     /// With a child, the child ending is what ends the pane, even if a background job still
     /// holds the terminal. Otherwise the PTY closing is the only word there will be.
+    #[expect(clippy::too_many_lines, reason = "most of it is the pane's struct, a field a line")]
     pub(crate) fn start(
         record: proto::Pane,
         serial: u64,
@@ -908,6 +913,7 @@ impl Pane {
             compaction: Compaction::default(),
             session_id: None,
             resume: None,
+            resume_missed: None,
         })
     }
 

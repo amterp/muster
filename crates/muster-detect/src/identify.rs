@@ -150,6 +150,23 @@ pub fn agent_arguments(job: &Job, manifests: &Manifests) -> Option<(Agent, Vec<S
     Some((agent, argv.get(at + 1..).unwrap_or_default().to_vec()))
 }
 
+/// The path the job's agent was started from, when its first word is one and names the agent
+/// itself: `~/.claude/local/claude`, which an alias runs and `PATH` does not hold. None for an
+/// agent started by its bare name, or through a runtime or a wrapper script.
+pub fn agent_program(job: &Job, manifests: &Manifests) -> Option<String> {
+    let (agent, _) = identify_in_job(job, manifests)?;
+    let process = job
+        .leader()
+        .into_iter()
+        .chain(&job.processes)
+        .find(|process| identify_process(process, manifests).as_ref() == Some(&agent))?;
+    let first = process.argv.as_deref()?.first()?;
+    let names_it = agent_name_from_path_token(first, manifests)
+        .and_then(|name| manifests.agent_named(&name))
+        .is_some_and(|named| named == agent);
+    (first.contains('/') && names_it).then(|| first.clone())
+}
+
 /// The name a process should be looked up by.
 fn normalized_process_name(process: &Process, manifests: &Manifests) -> String {
     let effective = process.argv0.as_deref().unwrap_or(&process.name);
@@ -380,6 +397,27 @@ mod tests {
 
         let shell = Job { group: 1, processes: vec![process(1, "zsh", &["-zsh"])] };
         assert_eq!(agent_arguments(&shell, &manifests), None);
+    }
+
+    /// The path an agent was started from, which is what resumes it, only where its own first
+    /// word is that path: a bare name is `PATH`'s to find, and a runtime is not the agent.
+    #[test]
+    fn an_agents_program_is_its_own_path_and_nothing_else() {
+        let manifests = Manifests::built_in();
+        let from = |argv: &[&str]| {
+            let job = Job { group: 1, processes: vec![process(1, "claude", argv)] };
+            agent_program(&job, &manifests)
+        };
+        assert_eq!(
+            from(&["/Users/a/.claude/local/claude", "--model", "opus"]).as_deref(),
+            Some("/Users/a/.claude/local/claude")
+        );
+        assert_eq!(from(&["claude", "--model", "opus"]), None, "a bare name is PATH's");
+        let scripted = Job {
+            group: 1,
+            processes: vec![process(1, "sh", &["/bin/sh", "/home/a/bin/claude", "--model"])],
+        };
+        assert_eq!(agent_program(&scripted, &manifests), None, "the runtime is not the agent");
     }
 
     #[test]
