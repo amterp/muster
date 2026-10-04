@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1791042281192,
   "creator": "Alexander Terp",
   "description": "--layout is refused with --watch for now (2026-10-03, when --layout landed). Redrawing the diagram per change would make the layout a live view.",
   "id": "a_2bBEfsLGA",
-  "position": "a0",
+  "position": "Yyt",
   "title": "muster window --watch --layout redraws on change",
   "type": "enhancement",
-  "updated_at_millis": 1791094213102,
+  "updated_at_millis": 1791096163623,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791042281192},
-    {"field":"column","value":"next","at":1791094213102}
+    {"field":"column","value":"next","at":1791094213102},
+    {"field":"column","value":"done","at":1791096163623}
   ]
 }

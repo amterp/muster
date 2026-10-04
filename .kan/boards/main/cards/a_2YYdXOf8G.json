@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "muster-window-does",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790654762286,
   "creator": "Alexander Terp",
   "description": "The agent list draws a color swatch per machine, but muster window (and --json) do not report it, so a script or agent cannot match what a person sees.",
   "id": "a_2YYdXOf8G",
-  "position": "b0F",
+  "position": "Yyr",
   "title": "🎨 muster window does not show a machine's color",
   "type": "enhancement",
-  "updated_at_millis": 1790654762286,
+  "updated_at_millis": 1791096163777,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790654762286}
+    {"field":"column","value":"backlog-lo","at":1790654762286},
+    {"field":"column","value":"done","at":1791096163777}
   ]
 }

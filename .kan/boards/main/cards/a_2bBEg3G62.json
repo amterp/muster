@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1791042281301,
   "creator": "Alexander Terp",
   "description": "--layout lists a closed window's tabs but draws none, because how its machines' parts sit side by side is that window's record. Once one process holds every window (MIP-6), that record is in memory and the drawing is possible. Also: windowless --layout JSON has frame: null; exposing the core's place arithmetic for a bare tree would fill it.",
   "id": "a_2bBEg3G62",
-  "position": "a1",
+  "position": "Yyu",
   "title": "Draw a closed window's tabs in muster window --layout",
   "type": "enhancement",
-  "updated_at_millis": 1791094213027,
+  "updated_at_millis": 1791096163542,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791042281301},
-    {"field":"column","value":"next","at":1791094213027}
+    {"field":"column","value":"next","at":1791094213027},
+    {"field":"column","value":"done","at":1791096163542}
   ]
 }
