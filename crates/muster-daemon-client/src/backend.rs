@@ -62,17 +62,23 @@ impl DaemonBackend {
             )));
         };
         let answer = control.ask(service).wait(PATIENCE).map_err(|why| match why {
-            Unanswered::TimedOut => Refusal::Unanswered(format!(
-                "{} did not answer within {}s; the change may still happen, and arrives on its \
-                 events if it does",
-                self.description,
-                PATIENCE.as_secs()
-            )),
-            Unanswered::Ended => Refusal::Unanswered(format!(
-                "the connection to {} ended before it answered, so the change may or may not \
-                 have happened",
-                self.description
-            )),
+            Unanswered::TimedOut => Refusal::Unanswered {
+                detail: format!(
+                    "{} did not answer within {}s; the change may still happen, and arrives on \
+                     its events if it does",
+                    self.description,
+                    PATIENCE.as_secs()
+                ),
+                made: None,
+            },
+            Unanswered::Ended => Refusal::Unanswered {
+                detail: format!(
+                    "the connection to {} ended before it answered, so the change may or may not \
+                     have happened",
+                    self.description
+                ),
+                made: None,
+            },
         })?;
         match answer.outcome() {
             proto::Outcome::Done | proto::Outcome::AlreadySo => Ok(answer),
@@ -134,7 +140,13 @@ impl DaemonBackend {
             env: self.environment.clone().into_iter().collect(),
             command: run,
             label: name,
-        }))?;
+        }))
+        .map_err(|refusal| match refusal {
+            Refusal::Unanswered { detail, .. } => {
+                Refusal::Unanswered { detail, made: Some(pane.clone()) }
+            }
+            refusal => refusal,
+        })?;
         Ok(pane)
     }
 

@@ -374,7 +374,10 @@ pub enum Refusal {
     /// request may have reached the daemon, so the change may well have happened and only the
     /// answer was lost - a caller told it was refused sends the request again (kan
     /// a_2LOHfLmsL). Whatever did happen arrives on the daemon's own events.
-    Unanswered(String),
+    ///
+    /// `made` is the pane a request that makes one would have made, under the name it was sent
+    /// with, so whoever asked can find it or close it rather than ask for a second.
+    Unanswered { detail: String, made: Option<PaneId> },
 
     /// Anything else. The request did not happen, and saying so is all there is to do.
     Declined(String),
@@ -384,9 +387,9 @@ impl Refusal {
     /// What the backend said, for a log or a message back to whoever asked.
     pub fn detail(&self) -> &str {
         match self {
-            Refusal::NotThere(detail) | Refusal::Unanswered(detail) | Refusal::Declined(detail) => {
-                detail
-            }
+            Refusal::NotThere(detail)
+            | Refusal::Unanswered { detail, .. }
+            | Refusal::Declined(detail) => detail,
         }
     }
 }

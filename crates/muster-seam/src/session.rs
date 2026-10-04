@@ -2568,7 +2568,7 @@ pub(crate) enum Keyboard {
 fn refused_or_unanswered<T>(outcome: &Result<T, Refusal>) -> (String, String) {
     match outcome {
         Ok(_) => (String::new(), String::new()),
-        Err(Refusal::Unanswered(detail)) => (String::new(), detail.clone()),
+        Err(Refusal::Unanswered { detail, .. }) => (String::new(), detail.clone()),
         Err(refusal) => (refusal.to_string(), String::new()),
     }
 }
@@ -3303,7 +3303,7 @@ fn stopped_evening(
     refusal: &Refusal,
 ) -> String {
     match refusal {
-        Refusal::Unanswered(detail) => format!(
+        Refusal::Unanswered { detail, .. } => format!(
             "the daemon {daemon} did not answer about divider {nth} of {asked} while evening out \
              the tab {tab} ({detail}), so that divider may or may not have moved and the rest \
              were not sent. `muster window --json` says where every pane ended up; asking again \
@@ -5257,7 +5257,7 @@ fn ask_for_a_tab(window: WindowId, daemon: &DaemonId) {
     log::info("tab.first.creating", fields! { "daemon" => daemon.to_string() });
     let intent = BackendIntent::CreateTab { tab: mint_tab(), cwd: None, run: None, name: None };
     let asked = submit(window, daemon, &intent, Keyboard::Follows);
-    if let Err(Refusal::Unanswered(detail)) = &asked {
+    if let Err(Refusal::Unanswered { detail, .. }) = &asked {
         log::warn(
             "tab.first.unanswered",
             fields! {

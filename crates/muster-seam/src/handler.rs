@@ -925,7 +925,7 @@ fn placed(answer: Result<Response, Refusal>, target: &Target) -> Response {
 fn relayed(answer: Result<Response, Refusal>) -> Response {
     match answer {
         Ok(response) => response,
-        Err(Refusal::Unanswered(detail)) => unanswered(&detail),
+        Err(Refusal::Unanswered { detail, made }) => unanswered(&detail, made.as_ref()),
         Err(refusal) => refused(refusal.detail()),
     }
 }
@@ -1637,13 +1637,25 @@ fn refused(detail: &str) -> Response {
 ///
 /// Worded so that nobody reads it as a refusal, because the one thing a caller must not do with
 /// it is what a refusal invites: send the request again.
-fn unanswered(detail: &str) -> Response {
-    Response::unanswered(format!(
-        "the daemon was asked for that change and never said what came of it ({detail}), so it \
-         may well have happened. If it did, the window shows it once the daemon's own event \
-         arrives. Asking again may do it twice: `muster window` says what the session holds now, \
-         and `muster pane read` what a pane has on it."
-    ))
+fn unanswered(detail: &str, made: Option<&PaneId>) -> Response {
+    let Some(pane) = made else {
+        return Response::unanswered(format!(
+            "the daemon was asked for that change and never said what came of it ({detail}), so \
+             it may well have happened. If it did, the window shows it once the daemon's own \
+             event arrives. Asking again may do it twice: `muster window` says what the session \
+             holds now, and `muster pane read` what a pane has on it."
+        ));
+    };
+    let mut response = Response::unanswered(format!(
+        "the daemon was asked to make pane {pane} and never said what came of it ({detail}), so \
+         it may well exist and be running what it was asked to run. If it does, `muster window` \
+         lists it under that name once the daemon's own event arrives, and `muster pane close \
+         --pane {pane}` ends it. Asking again may make a second one."
+    ));
+    if let Some(response::Payload::Unanswered(unanswered)) = response.payload.as_mut() {
+        unanswered.pane_id = pane.to_string();
+    }
+    response
 }
 
 /// Opens the window onto whatever the daemons hold, which is what a bare `muster` asks for.

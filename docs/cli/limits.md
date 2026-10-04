@@ -124,9 +124,11 @@ Retrying a 4 is how a pane receives the same instruction twice, and it has: an a
 agents got one timeout on a message that had arrived, resent, and left the receiving harness with
 six copies of one instruction to reconcile.
 
-A `pane new` that exits 4 may still have made its pane. The window names a pane in the request
-that makes it, so a pane that was made has its name from the start: `muster window` lists it
-under that name, and the pane has the same one in its own `$MUSTER_PANE`.
+A `pane new` or `tab new` that exits 4 may still have made its pane. The window names a pane in
+the request that makes it, so a pane that was made has its name from the start: the exit 4
+message says that name, `muster window` lists the pane under it, and the pane has the same one in
+its own `$MUSTER_PANE`. So a caller can look for the pane, or end it with `muster pane close`,
+rather than make a second one.
 
 What to do instead of making the request again: `muster window` shows whether it happened, and
 `muster pane read --pane X` shows what is on a pane. What proves a request did *not* happen is
