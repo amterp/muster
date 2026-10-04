@@ -1,0 +1,38 @@
+Which free model OpenCode answers on with no credentials reachable, and what it does with a pasted
+line and its Return in one write.
+
+Recorded 2026-10-04 on macOS 26.4.1 / arm64. Every run unset each environment variable whose name
+holds KEY, TOKEN, SECRET, PASSWORD or CREDENTIAL, and pointed XDG_DATA_HOME, XDG_CONFIG_HOME,
+XDG_STATE_HOME and XDG_CACHE_HOME at scratch folders, so no stored login or API key could be used.
+
+opencode 1.3.15, the installed build (~/.opencode/bin/opencode):
+    $ opencode models opencode
+    opencode/big-pickle  opencode/gpt-5-nano  opencode/minimax-m2.5-free
+    opencode/nemotron-3-super-free  opencode/qwen3.6-plus-free
+    $ opencode run -m opencode/minimax-m2.5-free "Reply with the single word hi."
+    Error: Model minimax-m2.5-free is not supported
+    $ opencode run -m opencode/nemotron-3-super-free ...   (and qwen3.6-plus-free, gpt-5-nano)
+    Error: Model not found: opencode/<model>.
+    $ opencode run --format json -m opencode/big-pickle ...
+    {"type":"error", ... "statusCode":403, ... "FreeTierError","message":"Error from provider
+    (Console): OpenCode's free tier can only be used from within OpenCode"}
+    the TUI started with -m opencode/big-pickle drew "Build  Big Pickle OpenCode Zen", and the
+    request's turn ended with the same FreeTierError
+So -m is honored once no credential is in the environment. The earlier runs that drew a Google
+model had GEMINI_API_KEY in theirs; whether that is why was not checked. Either way, the free
+tier refuses 1.3.15.
+
+opencode 1.18.34, the current release, installed with npm into a scratch folder only:
+    $ opencode run -m opencode/big-pickle "Reply with the single word hi."
+    > build · big-pickle
+    hi
+    the TUI started with -m opencode/big-pickle drew "Build · Big Pickle OpenCode Zen" and answered
+
+A line pasted and a Return, in one write, as the doorbell rings an idle agent, at an empty prompt:
+    ESC[200~Without using any tools, count from 1 to 40, one number per line.ESC[201~ CR
+    the turn started at once and counted to 40
+1.3.15 kept the same write unsent (corpus/opencode-1.3.15/first-run.txt).
+
+The empty prompt's suggestion, as written to the terminal:
+    ESC[38;2;128;128;128m ESC[48;2;30;30;30m Ask anything… "What is the tech stack ...
+    grey by color, not faint (SGR 2), so a reader blanking faint cells reads it as typed

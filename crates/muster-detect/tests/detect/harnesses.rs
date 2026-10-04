@@ -9,7 +9,8 @@ use muster_detect::{Agent, Manifests};
 
 /// The harnesses with a column of their own, by manifest id, as the page names them. Every other
 /// harness detection knows shares the last column.
-const NAMED: [(&str, &str); 2] = [("claude", "Claude Code"), ("codex", "Codex")];
+const NAMED: [(&str, &str); 3] =
+    [("claude", "Claude Code"), ("codex", "Codex"), ("opencode", "OpenCode")];
 
 /// What a harness's adapter supplies, as far as files can say.
 #[allow(clippy::struct_excessive_bools)] // one flag per capability

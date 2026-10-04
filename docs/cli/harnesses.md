@@ -5,20 +5,20 @@ harness - Claude Code, Codex, Gemini - and gets from each what that harness allo
 running one shows its state; the rest depends on the harness, and on whether you installed the
 small adapter Muster ships for it (`extras/` in Muster's source).
 
-| Capability | Claude Code | Codex | Every other harness |
-|---|---|---|---|
-| Its state read off the screen | yes | yes | yes |
-| Its own report of its state | yes | yes | no |
-| Context used, model and cost | yes | yes | no |
-| Sub-agents counted | yes | yes | no |
-| Rung at an empty prompt | yes | yes | no |
-| Rung while it works, for an urgent post | yes | yes | no |
-| Messages fetched by its hooks | yes | yes | no |
-| Its session named after the pane | yes | yes | no |
-| The pane named after its session | yes | no | no |
+| Capability | Claude Code | Codex | OpenCode | Every other harness |
+|---|---|---|---|---|
+| Its state read off the screen | yes | yes | yes | yes |
+| Its own report of its state | yes | yes | no | no |
+| Context used, model and cost | yes | yes | no | no |
+| Sub-agents counted | yes | yes | no | no |
+| Rung at an empty prompt | yes | yes | yes | no |
+| Rung while it works, for an urgent post | yes | yes | no | no |
+| Messages fetched by its hooks | yes | yes | no | no |
+| Its session named after the pane | yes | yes | no | no |
+| The pane named after its session | yes | no | no | no |
 
 Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
-kimi, kiro, maki, opencode, pi, qodercli.
+kimi, kiro, maki, pi, qodercli.
 
 - **Its state read off the screen**: working, blocked or idle, from rules Muster keeps for each
   harness's screens.
@@ -35,7 +35,8 @@ kimi, kiro, maki, opencode, pi, qodercli.
   alone, so this needs no adapter.
 - **Rung while it works, for an urgent post**: `muster msg post --urgent` types the wake into the
   prompt of an agent at work, which takes it into the turn it is running: Claude Code once the
-  tool call it is in returns, Codex as a message held for after its next tool call. Its Return is
+  tool call it is in returns, Codex as a message held for after its next tool call. OpenCode holds
+  a line typed at work until the turn ends, so it is not rung at work. Its Return is
   pressed only once a second look sees the wake alone in the prompt, never at a dialog.
 - **Messages fetched by its hooks**: the session is handed what arrived after each tool call, with
   nothing typed into its pane. Needs the adapter's messaging hooks. Claude Code's are also woken
@@ -80,4 +81,6 @@ Muster's daemon, so a sandboxed Codex cannot run `muster msg read` or `post` its
 sandbox may use the network; the messaging hooks hand it what it is sent regardless.
 `extras/codex/README.md` has both, and the setting's cost.
 
-Every other harness has no adapter: Muster reads its state off its screen, and does not ring it.
+**OpenCode** has no adapter yet: Muster reads its state off its screen and rings it at an empty
+prompt, and nothing more. Every other harness has no adapter either: Muster reads its state off its
+screen, and does not ring it.

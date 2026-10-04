@@ -343,6 +343,38 @@ two forms:
   from its next report, as a first report; a harness without a statusline has the pane's name
   typed once more, which `/rename` takes as it took it the first time.
 
+### 11. OpenCode's adapter
+
+OpenCode is the third harness, measured at 1.18.34 (`docs/observations/opencode-1.18.34.md`): the
+installed 1.3.15 is refused by OpenCode's free models, so only a current build could be recorded
+at work without a paid login.
+
+Built, with no `extras/opencode`:
+
+- **Screen state.** Herdr's rules read every recorded screen right: working by its progress bar,
+  blocked at its permission prompt, idle otherwise.
+- **Readable prompt.** OpenCode draws its prompt as a box with `┃` down its left side, which no
+  region read alone, so detection engine 9 adds one: `bar_prompt`, the run of `┃` lines above the
+  box's foot, `╹▀▀▀`, without the line naming the agent and model. Two rule keys come with it:
+  `prompt_margin`, cut from the start of every line after the first, since the bar is drawn on
+  each; and `prompt_placeholder`, what an empty prompt reads as when the harness draws its
+  suggestion in a color rather than faint, as OpenCode does. 1.18.34 sends a paste and its Return
+  in one write, so a ring needs no second Return.
+
+Not built, and why:
+
+- **Prompt at work.** A line typed while OpenCode works waits for the turn to end, so ringing at
+  work gains nothing over ringing once idle.
+- **Reported state, interrupt, context, session reference.** A plugin can supply all four: its
+  `event` hook hears `session.status` busy and idle and `session.idle` at every turn's end, Esc
+  and a refused permission included, `permission.asked` and `permission.replied`, and token counts
+  on each assistant message, and each event carries the session's id. It would call
+  `"$MUSTER_DAEMON" report --agent opencode` through the shell its context hands it. Left for an
+  `extras/opencode` of its own, with a live tier.
+- **Session names.** Whether OpenCode can rename a session by typing at its prompt was not
+  measured. It names each session itself from its first request, as Codex does, so the pane would
+  not take OpenCode's names for the same reason it does not take Codex's.
+
 ## Delivery
 
 - **Stage one**, built 2026-10-03: this MIP; detection engine 7 and Codex's prompt rule, with
@@ -353,7 +385,9 @@ two forms:
 - **Session names**, built 2026-10-03 (section 10): detection engine 8 and `[session]` in both
   manifests, the daemon typing a pane's name and taking a session's, and Claude Code's statusline
   reporting it.
-- **Later**: the rest of section 10.
+- **OpenCode**, built 2026-10-04 (section 11): detection engine 9 and OpenCode's prompt rule, with
+  recorded screens of 1.18.34; its plugin events measured.
+- **Later**: the rest of section 10, and `extras/opencode`.
 
 ## Rationale
 
@@ -406,11 +440,8 @@ harness that allows less must not break anything.
   so none stands meanwhile. The end of the retries was not reached.
 - Whether Codex's `SubagentStart` and `SubagentStop` fire for the agents it spawns as Claude
   Code's do; the hooks are wired and were not seen firing.
-- What OpenCode can supply. Measured so far (`docs/observations/opencode-1.3.15.md`): its prompt is
-  a box no existing region reads alone, and a paste and its Return in one write is not sent, so a
-  prompt reader needs a region of its own behind a new engine version and leaves the second
-  Return to the doorbell's presses. Its working screens and its plugins' events, the likely source
-  of reported state, need a model that answers, which could not be chosen from outside in 1.3.15.
+- Whether an OpenCode plugin can hand the model its messages mid-turn, as Codex's hooks do, and
+  whether OpenCode renames a session from its prompt (section 11).
 - When a `codex queue` route should be chosen over the doorbell for a Codex in a pane, once the
   session's id is reported: it types nothing, so it reaches a Codex at a dialog, and what it does
   to a Codex at work was not measured.
@@ -433,3 +464,5 @@ harness that allows less must not break anything.
   10 described: a manifest table behind engine 8, and a report field.
 - 2026-10-03 Codex stage two (kan `a_2bBl75a4X`): prompt at work, messaging hooks and context
   used built; `codex queue` measured and left for later.
+- 2026-10-04 OpenCode as the third harness (section 11): its prompt read behind engine 9, its
+  plugin events measured, its adapter's plugin left for later.

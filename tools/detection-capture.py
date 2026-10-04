@@ -19,6 +19,12 @@ draft, and with a message queued), `plan` (plan mode's approval dialog, at work 
 approving it, idle after declining another). `--only` runs the named phases after `start`, and
 `--size` a narrower pane, where a dialog's question wraps.
 
+OpenCode's, after `start`: `draft`, `turn` (rung as the doorbell rings, at work, idle after),
+`permission` (its config asks before a shell command) and `steer` (typing while it works, and
+Esc twice). It runs with its data and config in <out> and no credentials in its environment, so
+only OpenCode's free models answer; `--binary` names a build other than the one on PATH, since its
+free models refuse 1.3.15.
+
 It spends a few short requests against whatever account the harness is logged in to, and runs it
 in <out>, which it trusts when asked. Nothing is sent to the network by this script itself.
 """
@@ -44,7 +50,16 @@ from typing import Callable
 
 
 class Capture:
-    def __init__(self, out: Path, argv: list[str], strip: tuple[str, ...], columns: int, rows: int):
+    def __init__(
+        self,
+        out: Path,
+        argv: list[str],
+        strip: tuple[str, ...],
+        columns: int,
+        rows: int,
+        environment: dict[str, str] | None = None,
+        credentials: bool = True,
+    ):
         self.columns, self.rows = columns, rows
         self.raw = bytearray()
         self.marks: list[dict] = []
@@ -55,6 +70,10 @@ class Capture:
             # a harness takes them as a reason to skip its prompts - the very screens wanted.
             for name in [name for name in os.environ if name.startswith(strip)]:
                 del os.environ[name]
+            if not credentials:
+                for name in [name for name in os.environ if CREDENTIAL.search(name)]:
+                    del os.environ[name]
+            os.environ.update(environment or {})
             os.environ["TERM"] = "xterm-256color"
             # Codex reads where it is from PWD, which a fork leaves as the parent's.
             os.environ["PWD"] = str(out)
@@ -109,6 +128,10 @@ class Capture:
         os.waitpid(self.pid, 0)
 
 
+# What a variable holding a credential is called, for a harness that must reach none of them.
+CREDENTIAL = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
+
+
 @dataclass
 class Harness:
     # The command, given the folder it runs in.
@@ -117,6 +140,10 @@ class Harness:
     strip: tuple[str, ...]
     start: Callable[[Capture], None]
     phases: dict[str, Callable[[Capture], None]]
+    # Variables the harness runs with, given the folder it runs in.
+    environment: Callable[[Path], dict[str, str]] = lambda out: {}
+    # Whether it may see the credentials in this environment.
+    credentials: bool = True
 
 
 # --- Claude Code -------------------------------------------------------------------------------
@@ -259,7 +286,7 @@ def spinning(title: str) -> bool:
 def codex_start(capture: Capture) -> None:
     capture.pump(15, b"Ask Codex")
     capture.pump(3)
-    capture.mark("idle at a fresh prompt", "idle", "Codex at its composer for the first time, a suggestion drawn faint in it.")
+    capture.mark("idle at a fresh prompt", "idle", "Codex at its composer for the first time, a suggestion drawn in grey in it.")
 
 
 def codex_draft(capture: Capture) -> None:
@@ -346,7 +373,127 @@ CODEX = Harness(
     phases={"draft": codex_draft, "approval": codex_approval, "turn": codex_turn, "steer": codex_steer},
 )
 
-HARNESSES = {"claude": CLAUDE, "codex": CODEX}
+# --- OpenCode ----------------------------------------------------------------------------------
+
+OPENCODE_MODEL = "opencode/big-pickle"
+
+
+def opencode_environment(out: Path) -> dict[str, str]:
+    # Its data and config in the capture's folder: it finds no stored login, so the only model
+    # it can reach is a free one, and its config here asks before every shell command.
+    folders = {name: out / ".opencode-home" / name.lower() for name in ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"]}
+    for folder in folders.values():
+        folder.mkdir(parents=True, exist_ok=True)
+    config = folders["XDG_CONFIG_HOME"] / "opencode"
+    config.mkdir(exist_ok=True)
+    (config / "opencode.json").write_text(json.dumps({"autoupdate": False, "permission": {"bash": "ask"}}) + "\n")
+    return {name: str(folder) for name, folder in folders.items()}
+
+
+def opencode_busy(capture: Capture) -> bool:
+    """Whether OpenCode drew its progress bar in the last second."""
+    seen_from = len(capture.raw)
+    capture.pump(1)
+    return "\u2b1d".encode() in capture.raw[seen_from:]
+
+
+def opencode_until_idle(capture: Capture, seconds: float) -> None:
+    deadline = time.monotonic() + seconds
+    quiet = 0
+    while time.monotonic() < deadline and quiet < 3:
+        quiet = 0 if opencode_busy(capture) else quiet + 1
+
+
+def opencode_clear(capture: Capture) -> None:
+    # One at a time: a burst of them loses some.
+    for _ in range(30):
+        capture.send("\x7f")
+        capture.pump(0.05)
+    capture.pump(1.5)
+
+
+def opencode_start(capture: Capture) -> None:
+    capture.pump(30, b"Ask anything")
+    capture.pump(3)
+    capture.mark("idle at a fresh prompt", "idle", "OpenCode at its prompt box for the first time, a suggestion drawn in grey in it.")
+
+
+def opencode_draft(capture: Capture) -> None:
+    capture.send("half typed")
+    capture.pump(1.5)
+    capture.mark("a draft at the prompt", "idle", "Words typed into OpenCode's prompt box and not sent: a draft, which the doorbell waits out.")
+    opencode_clear(capture)
+    capture.send("\x1b[200~first line\nsecond line\x1b[201~")
+    capture.pump(1.5)
+    capture.mark("a two-line draft", "idle", "Two lines pasted into the prompt box and not sent.")
+    opencode_clear(capture)
+
+
+def opencode_turn(capture: Capture) -> None:
+    # As the doorbell rings an idle agent: a bracketed paste and its Return in one write. A
+    # request long enough to still be at work a few seconds on.
+    capture.send("\x1b[200~Without using any tools, count from 1 to 40, one number per line.\x1b[201~\r")
+    capture.pump(1)
+    if not opencode_busy(capture):
+        capture.mark("a paste and its Return in one write, unsent", "idle", "The line pasted with its Return in the same write: still in the prompt box, unsent.")
+        capture.send("\r")
+        capture.pump(1.5)
+    capture.mark("working on a request", "working", "OpenCode working on the request, its progress bar drawn under the prompt box.")
+    opencode_until_idle(capture, 90)
+    capture.pump(1)
+    capture.mark("idle after a turn", "idle", "A turn finished: the answer above, OpenCode at its prompt box again.")
+
+
+def opencode_permission(capture: Capture) -> None:
+    capture.send("Run the shell command echo hi, and nothing else.")
+    capture.pump(1)
+    capture.send("\r")
+    if capture.pump(90, b"Permission required"):
+        capture.pump(2)
+        capture.mark("permission prompt", "blocked", "OpenCode asking whether it may run a shell command, as its config says to ask.")
+        capture.send("\x1b")
+        capture.pump(1)
+        opencode_until_idle(capture, 30)
+        capture.mark("idle after rejecting the command", "idle", "The command rejected with Esc; OpenCode back at its prompt box.")
+
+
+def opencode_steer(capture: Capture) -> None:
+    # A long answer, so there is time to type into the prompt box while OpenCode works. No tool,
+    # so no permission prompt.
+    capture.send("Without using any tools, write a 400-word story about a lighthouse keeper.")
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(5)
+    capture.mark("working with an empty prompt box", "working", "OpenCode writing, its prompt box empty above the progress bar.")
+    capture.send("and give it a title")
+    capture.pump(1.5)
+    capture.mark("working with a draft in the prompt box", "working", "Words typed into the prompt box while OpenCode works, not yet sent.")
+    capture.send("\r")
+    capture.pump(1.5)
+    capture.mark("working with a message queued", "working", "The words sent with Return while OpenCode works.")
+    opencode_until_idle(capture, 120)
+    # Esc twice interrupts a turn.
+    capture.send("Without using any tools, write a 600-word story about a lighthouse keeper.")
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(5)
+    capture.send("\x1b")
+    capture.pump(0.5)
+    capture.send("\x1b")
+    capture.pump(4)
+    capture.mark("idle after interrupting", "idle", "The turn interrupted with Esc twice: OpenCode back at its prompt box.")
+
+
+OPENCODE = Harness(
+    argv=lambda out: ["opencode", "-m", OPENCODE_MODEL],
+    strip=("OPENCODE", "MUSTER_"),
+    start=opencode_start,
+    phases={"draft": opencode_draft, "turn": opencode_turn, "permission": opencode_permission, "steer": opencode_steer},
+    environment=opencode_environment,
+    credentials=False,
+)
+
+HARNESSES = {"claude": CLAUDE, "codex": CODEX, "opencode": OPENCODE}
 
 
 def main() -> int:
@@ -355,6 +502,7 @@ def main() -> int:
     parser.add_argument("--harness", choices=sorted(HARNESSES), default="claude")
     parser.add_argument("--size", default="100x30", help="COLUMNSxROWS")
     parser.add_argument("--only", help="comma-separated phases to run after the start")
+    parser.add_argument("--binary", help="the harness's executable, when not the one on PATH")
     arguments = parser.parse_args()
     harness = HARNESSES[arguments.harness]
     columns, rows = (int(part) for part in arguments.size.split("x"))
@@ -365,11 +513,13 @@ def main() -> int:
     out = arguments.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     argv = harness.argv(out)
+    if arguments.binary:
+        argv[0] = arguments.binary
     said = subprocess.run([argv[0], "--version"], capture_output=True, text=True).stdout
     version = re.search(r"\d+(?:\.\d+)+", said)
     version = version.group(0) if version else said.strip()
 
-    capture = Capture(out, argv, harness.strip, columns, rows)
+    capture = Capture(out, argv, harness.strip, columns, rows, harness.environment(out), harness.credentials)
     try:
         harness.start(capture)
         for phase in phases:

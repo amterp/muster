@@ -1,7 +1,7 @@
 {
   "concept": "detection.prompt",
   "source": "authored",
-  "citation": "MIP-4, section 6: the doorbell rings only an empty prompt. The 2.1.283 screens are corpus/conformance/agent-detection-recorded.json's, recorded from Claude Code 2.1.283; the 2.1.288 screens of an agent at work were recorded the same way, by tools/detection-capture.py, with the capture's folder renamed /tmp/capture, as were Codex 0.154.0's; how it draws a suggestion nobody typed, every cell faint, is held to the installed Claude Code by claude_code_doorbell's live check.",
+  "citation": "MIP-4, section 6: the doorbell rings only an empty prompt. The 2.1.283 screens are corpus/conformance/agent-detection-recorded.json's, recorded from Claude Code 2.1.283; the 2.1.288 screens of an agent at work were recorded the same way, by tools/detection-capture.py, with the capture's folder renamed /tmp/capture, as were Codex 0.154.0's and OpenCode 1.18.34's; how it draws a suggestion nobody typed, every cell faint, is held to the installed Claude Code by claude_code_doorbell's live check.",
   "why": "The doorbell types into a pane only when its agent's screen reads as that agent at an empty prompt. Each case is a screen as drawn, its title and progress, and the same screen as typed - every faint cell blank - and says whether the rule deciding the screen shows the prompt, and what the prompt holds. A case with no `typed` reads the screen as typed whole.",
   "cases": [
     {
@@ -369,6 +369,134 @@
       },
       "expect": {
         "atPrompt": false
+      }
+    },
+    {
+      "name": "opencode 1.18.34: a fresh prompt box showing a suggestion is empty",
+      "why": "OpenCode draws its suggestion in grey, not faint, so the manifest names it as a placeholder: the box reads empty and the doorbell may ring.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n\n\n\n\n\n\n                                                                ▄\n                               █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█\n                               █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀\n                               ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀\n\n\n             ┃\n             ┃  Ask anything… \"What is the tech stack of this project?\"\n             ┃\n             ┃  Build · Big Pickle OpenCode Zen\n             ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n\n\n",
+        "title": "OpenCode",
+        "typed": "\n\n\n\n\n\n\n                                                                ▄\n                               █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█\n                               █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀\n                               ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀\n\n\n             ┃\n             ┃  Ask anything… \"What is the tech stack of this project?\"\n             ┃\n             ┃  Build · Big Pickle OpenCode Zen\n             ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n"
+      },
+      "expect": {
+        "atPrompt": true
+      }
+    },
+    {
+      "name": "opencode 1.18.34: a prompt box with words typed into it holds them",
+      "why": "A draft somebody is writing: the doorbell waits it out.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n\n\n\n\n\n\n                                                                ▄\n                               █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█\n                               █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀\n                               ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀\n\n\n             ┃\n             ┃  half typed\n             ┃\n             ┃  Build · Big Pickle OpenCode Zen\n             ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n\n\n",
+        "title": "OpenCode",
+        "typed": "\n\n\n\n\n\n\n                                                                ▄\n                               █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█\n                               █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀\n                               ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀\n\n\n             ┃\n             ┃  half typed\n             ┃\n             ┃  Build · Big Pickle OpenCode Zen\n             ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n"
+      },
+      "expect": {
+        "atPrompt": true,
+        "holds": "half typed"
+      }
+    },
+    {
+      "name": "opencode 1.18.34: a two-line draft is read as one, without the bar",
+      "why": "Each line of the box starts with the bar, which is drawn, not typed: only the first line's is cut by the prompt's marker, the rest by its margin.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n\n\n\n\n\n\n                                                                ▄\n                               █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█\n                               █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀\n                               ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀\n\n\n             ┃\n             ┃  first line\n             ┃  second line\n             ┃\n             ┃  Build · Big Pickle OpenCode Zen\n             ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n  /tmp/capture                                                                             1.18.34\n\n\n",
+        "title": "OpenCode",
+        "typed": "\n\n\n\n\n\n\n                                                                ▄\n                               █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█\n                               █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀\n                               ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀\n\n\n             ┃\n             ┃  first line\n             ┃  second line\n             ┃\n             ┃  Build · Big Pickle OpenCode Zen\n             ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n  /tmp/capture                                                                             1.18.34\n"
+      },
+      "expect": {
+        "atPrompt": true,
+        "holds": "first line second line"
+      }
+    },
+    {
+      "name": "opencode 1.18.34: at work, it is not at its prompt",
+      "why": "The box shows while OpenCode works, but a working rule decides the screen, and a line typed at work waits for the turn's end rather than joining it, so no rule reads the box at work.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n  ┃\n  ┃  Without using any tools, count from 1 to 40, one number per line.first line\n  ┃\n\n     ▣  Build · Big Pickle\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   ⬝⬝⬝⬝⬝⬝⬝⬝  esc interrupt                                             tab agents  ctrl+p commands\n\n",
+        "title": "OC | Counting from 1 to 40",
+        "typed": "\n  ┃\n  ┃  Without using any tools, count from 1 to 40, one number per line.first line\n  ┃\n\n     ▣  Build · Big Pickle\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   ⬝⬝⬝⬝⬝⬝⬝⬝  esc interrupt                                             tab agents  ctrl+p commands"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "opencode 1.18.34: after a turn the box is read, not the request above it",
+      "why": "Earlier requests are drawn with the same bar but no foot: only the box above the foot is the prompt, and it is empty.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "     22\n     23\n     24\n     25\n     26\n     27\n     28\n     29\n     30\n     31\n     32\n     33\n     34\n     35\n     36\n     37\n     38\n     39\n     40\n\n     ▣  Build · Big Pickle · 7.9s\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   /tmp/capture                                                            19.7K (10 ctrl+p\n                                                                                     commands\n\n",
+        "title": "OC | Counting from 1 to 40",
+        "typed": "     22\n     23\n     24\n     25\n     26\n     27\n     28\n     29\n     30\n     31\n     32\n     33\n     34\n     35\n     36\n     37\n     38\n     39\n     40\n\n     ▣  Build · Big Pickle · 7.9s\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   /tmp/capture                                                            19.7K (10 ctrl+p\n                                                                                     commands"
+      },
+      "expect": {
+        "atPrompt": true
+      }
+    },
+    {
+      "name": "opencode 1.18.34: a permission prompt is not the prompt",
+      "why": "The permission prompt takes the box's place, with no foot below it, so there is no prompt to read and nothing is rung.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "     32\n     33\n     34\n     35\n     36\n     37\n     38\n     39\n     40\n\n     ▣  Build · Big Pickle · 7.9s\n\n  ┃\n  ┃  Run the shell command echo hi, and nothing else.\n  ┃\n\n     $ echo hi\n\n     ▣  Build · Big Pickle\n\n  ┃\n  ┃  △ Permission required\n  ┃    # Shell command\n  ┃\n  ┃  $ echo hi\n  ┃\n  ┃\n  ┃   Allow once   Allow always   Reject             ctrl+f fullscreen  ⇆ select  enter confirm\n  ┃\n\n",
+        "title": "OC | Counting from 1 to 40",
+        "typed": "     32\n     33\n     34\n     35\n     36\n     37\n     38\n     39\n     40\n\n     ▣  Build · Big Pickle · 7.9s\n\n  ┃\n  ┃  Run the shell command echo hi, and nothing else.\n  ┃\n\n     $ echo hi\n\n     ▣  Build · Big Pickle\n\n  ┃\n  ┃  △ Permission required\n  ┃    # Shell command\n  ┃\n  ┃  $ echo hi\n  ┃\n  ┃\n  ┃   Allow once   Allow always   Reject             ctrl+f fullscreen  ⇆ select  enter confirm\n  ┃"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "opencode 1.18.34: the box after a rejected command is empty",
+      "why": "The command rejected with Esc: OpenCode back at an empty box.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "     30\n     31\n     32\n     33\n     34\n     35\n     36\n     37\n     38\n     39\n     40\n\n     ▣  Build · Big Pickle · 7.9s\n\n  ┃\n  ┃  Run the shell command echo hi, and nothing else.\n  ┃\n\n     $ echo hi\n\n     ▣  Build · Big Pickle\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   /tmp/capture                                                            19.8K (10 ctrl+p\n                                                                                     commands\n\n",
+        "title": "OC | Counting from 1 to 40",
+        "typed": "     30\n     31\n     32\n     33\n     34\n     35\n     36\n     37\n     38\n     39\n     40\n\n     ▣  Build · Big Pickle · 7.9s\n\n  ┃\n  ┃  Run the shell command echo hi, and nothing else.\n  ┃\n\n     $ echo hi\n\n     ▣  Build · Big Pickle\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   /tmp/capture                                                            19.8K (10 ctrl+p\n                                                                                     commands"
+      },
+      "expect": {
+        "atPrompt": true
+      }
+    },
+    {
+      "name": "opencode 1.18.34: at work with a draft in the box, it is not at its prompt",
+      "why": "Words typed while OpenCode works are queued for after the turn, not taken into it, so an urgent ring has nothing to gain from typing at work.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "  ┃\n\n     The lamp had been failing for three weeks, and Aldous had not told anyone.\n\n     He kept the log the way he always had, in a hand so steady it might have belonged to someone\n     else. Wind northeast, four. Visibility fair. Lamp oil consumed, two gallons. He wrote \"lamp\n     else. Wind northeast, four. Visibility fair. Lamp oil consumed, two gallons. He wrote \"lamp\n     adequate\" each night and turned the wick up another quarter turn, and in the morning the sea\n     looked like hammered lead, which meant the light was needed, which meant he was the reason\n     no one drowned.\n\n     The trouble was a brass fitting, corroded to a green crust, and a part he had ordered twice\n     that had not come. There was a lighthouse two miles up the coast, and its keeper was a man\n     named Breen who owed Aldous a favor involving a wrecked boat and a length of rope. But\n     asking meant explaining, and explaining meant the district would send an inspector, and the\n     inspector would see the log.\n\n     So on the ninth night Aldous climbed the tower with a lamp of his own, a hand-held one, and\n     stood at the gallery rail turning it in slow arcs across the water. It was nothing like the\n     real thing. It was a toy. Any fisherman out past the shoals would have looked at it and\n\n     ▣  Build · Big Pickle\n\n  ┃\n  ┃  and give it a title\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   ⬝⬝⬝⬝⬝⬝⬝⬝  esc interrupt                                            19.8K (10%)  ctrl+p commands\n\n",
+        "title": "OC | Counting from 1 to 40",
+        "typed": "  ┃\n\n     The lamp had been failing for three weeks, and Aldous had not told anyone.\n\n     He kept the log the way he always had, in a hand so steady it might have belonged to someone\n     else. Wind northeast, four. Visibility fair. Lamp oil consumed, two gallons. He wrote \"lamp\n     else. Wind northeast, four. Visibility fair. Lamp oil consumed, two gallons. He wrote \"lamp\n     adequate\" each night and turned the wick up another quarter turn, and in the morning the sea\n     looked like hammered lead, which meant the light was needed, which meant he was the reason\n     no one drowned.\n\n     The trouble was a brass fitting, corroded to a green crust, and a part he had ordered twice\n     that had not come. There was a lighthouse two miles up the coast, and its keeper was a man\n     named Breen who owed Aldous a favor involving a wrecked boat and a length of rope. But\n     asking meant explaining, and explaining meant the district would send an inspector, and the\n     inspector would see the log.\n\n     So on the ninth night Aldous climbed the tower with a lamp of his own, a hand-held one, and\n     stood at the gallery rail turning it in slow arcs across the water. It was nothing like the\n     real thing. It was a toy. Any fisherman out past the shoals would have looked at it and\n\n     ▣  Build · Big Pickle\n\n  ┃\n  ┃  and give it a title\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   ⬝⬝⬝⬝⬝⬝⬝⬝  esc interrupt                                            19.8K (10%)  ctrl+p commands"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "opencode 1.18.34: the box after an interrupted turn is empty",
+      "why": "Interrupted with Esc twice: the box is empty again.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "     Bren looked at him for a long moment. Then he went inside and came back with the part in his\n     hand, already wrapped in oilcloth, because he had bought it the week before and had been\n     waiting, patiently, for the proud man on the hill to come and ask.\n\n     ▣  Build · Big Pickle · 9.2s\n\n  ┃\n  ┃  and give it a title\n  ┃\n\n     The Part in the Oilcloth\n\n     ▣  Build · Big Pickle · 4.7s\n\n  ┃\n  ┃  Without using any tools, write a 600-word story about a lighthouse keeper.\n  ┃\n\n     + Thought: 3.0s\n\n     ▣  Build · Big Pickle · interrupted\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   /tmp/capture                                                            20.2K (10 ctrl+p\n                                                                                     commands\n\n",
+        "title": "OC | Counting from 1 to 40",
+        "typed": "     Bren looked at him for a long moment. Then he went inside and came back with the part in his\n     hand, already wrapped in oilcloth, because he had bought it the week before and had been\n     waiting, patiently, for the proud man on the hill to come and ask.\n\n     ▣  Build · Big Pickle · 9.2s\n\n  ┃\n  ┃  and give it a title\n  ┃\n\n     The Part in the Oilcloth\n\n     ▣  Build · Big Pickle · 4.7s\n\n  ┃\n  ┃  Without using any tools, write a 600-word story about a lighthouse keeper.\n  ┃\n\n     + Thought: 3.0s\n\n     ▣  Build · Big Pickle · interrupted\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   /tmp/capture                                                            20.2K (10 ctrl+p\n                                                                                     commands"
+      },
+      "expect": {
+        "atPrompt": true
       }
     }
   ]

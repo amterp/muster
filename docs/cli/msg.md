@@ -120,10 +120,11 @@ statusline, is rung five seconds after the pane was first found otherwise ready.
 never rung. Until then the wake waits in the daemon, and is rung as soon as the pane
 allows.
 
-**Only Claude Code and Codex are rung.** Reading an empty prompt needs a rule for it in the
-harness's manifest, and so far only theirs have one; `muster docs harnesses` says what Muster gets
-from each harness. An agent of any other harness in a pane is not woken, and the post says `its
-prompt cannot be read`. An urgent post rings either at work.
+**Only Claude Code, Codex and OpenCode are rung.** Reading an empty prompt needs a rule for it in
+the harness's manifest, and so far only theirs have one; `muster docs harnesses` says what Muster
+gets from each harness. An agent of any other harness in a pane is not woken, and the post says
+`its prompt cannot be read`. An urgent post rings Claude Code or Codex at work; OpenCode holds a
+line typed at work until its turn ends, so it is rung once idle.
 
 An agent that neither starts work nor reads within five seconds of a ring has Return pressed
 again, a few times, but only while its prompt holds the ring's own text and nothing else, and

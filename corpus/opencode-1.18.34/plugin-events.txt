@@ -1,0 +1,45 @@
+What an OpenCode 1.18.34 plugin is told during a turn, a refused permission and an interrupt.
+
+Recorded 2026-10-04 on macOS 26.4.1 / arm64, opencode 1.18.34 on opencode/big-pickle with no
+credentials reachable (first-run.txt), in a 100x30 pseudo-terminal driven by a scratch script built
+on tools/detection-capture.py, with "permission": {"bash": "ask"} in its config. A global plugin,
+$XDG_CONFIG_HOME/opencode/plugin/probe.js, logged its context's keys, every `event` with its
+properties, and the chat.message, tool.execute.before/after and permission.ask hooks. Repeats of
+message.part.updated and message.part.delta, and plugin.added, catalog.updated,
+integration.updated and reference.updated at start, are left out. Session ids are <session>.
+
+Loaded: the plugin function's context held client, project, worktree, directory,
+experimental_workspace, serverUrl and $ (a shell).
+
+"Reply with the single word hi.", pasted with its Return:
+    session.created
+    chat.message                 input: sessionID, agent, model, messageID, variant
+    message.updated              role user
+    session.status               {"type": "busy"}
+    message.updated              role assistant, with tokens
+    session.updated              title "Hi" (OpenCode names the session from the request)
+    message.updated              role assistant, finish "stop", with tokens
+    session.status               {"type": "idle"}
+    session.idle
+
+"Run the shell command echo hi, and nothing else.", the permission prompt refused with Esc:
+    chat.message
+    session.status               busy
+    tool.execute.before          tool "bash"
+    permission.asked             permission "bash", id per_<id>
+    permission.replied           reply "reject"
+    message.updated              role assistant, finish "tool-calls"
+    session.status               idle
+    session.idle
+The permission.ask hook was not called.
+
+A story requested, then Esc twice while it wrote:
+    chat.message
+    session.status               busy
+    message.part.delta           ...
+    session.error                MessageAbortedError "Aborted"
+    session.status               idle
+    session.idle
+    message.updated              role assistant, error MessageAbortedError, with tokens
+
+Every event carrying a session carried its id, sessionID.

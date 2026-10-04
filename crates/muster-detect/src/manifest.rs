@@ -24,9 +24,10 @@ use region::Region;
 /// The manifest engine this crate implements. 1 to 3 are herdr's, so herdr's manifests keep
 /// the gates they were written with; 4 is herdr's engine 3 plus `script_paths`, 5 adds a
 /// rule's `prompt`, 6 lets a working rule carry one, read where its `prompt_region` says, and
-/// 7 adds the `current_prompt` region, Codex's composer alone, and 8 a `[session]` table saying
-/// how to rename the harness's session.
-pub const ENGINE_VERSION: u32 = 8;
+/// 7 adds the `current_prompt` region, Codex's composer alone, 8 a `[session]` table saying
+/// how to rename the harness's session, and 9 the `bar_prompt` region, a prompt box drawn with a
+/// bar down its left side, with a rule's `prompt_margin` and `prompt_placeholder`.
+pub const ENGINE_VERSION: u32 = 9;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -39,6 +40,10 @@ const CURRENT_PROMPT_ENGINE_VERSION: u32 = 7;
 
 /// The engine version that introduced the `[session]` table.
 const SESSION_ENGINE_VERSION: u32 = 8;
+
+/// The engine version that introduced the `bar_prompt` region, `prompt_margin` and
+/// `prompt_placeholder`.
+const BAR_PROMPT_ENGINE_VERSION: u32 = 9;
 
 /// What a `[session]` rename's template is filled in with.
 const NAME_PLACEHOLDER: &str = "{name}";
@@ -127,6 +132,12 @@ struct Rule {
     prompt: Option<Regex>,
     /// Where on the screen the prompt is read, when not the rule's own region.
     prompt_region: Option<Region>,
+    /// What the harness draws at the start of each of the prompt's lines after the first, which
+    /// is not typed text.
+    prompt_margin: Option<Regex>,
+    /// What an empty prompt holds when the harness draws a suggestion in it without making it
+    /// faint, so it reads as typed.
+    prompt_placeholder: Option<Regex>,
 }
 
 #[derive(Debug, Clone)]
@@ -269,14 +280,22 @@ fn read_prompt(rule: &Rule, input: Input<'_>, typed: &str) -> Option<Prompt> {
     let (at, found) = drawn.iter().enumerate().find_map(|(at, line)| {
         marker.find(line).map(|found| (at, line[..found.end()].chars().count()))
     })?;
-    let rest: String =
-        typed.get(at).map_or(String::new(), |line| line.chars().skip(found).collect());
-    let held: Vec<&str> = std::iter::once(rest.as_str())
-        .chain(typed.iter().skip(at + 1).copied())
-        .flat_map(str::split_whitespace)
+    let after = |line: Option<&&str>, skip: usize| -> String {
+        line.map_or(String::new(), |line| line.chars().skip(skip).collect())
+    };
+    let margin = |line: &str| {
+        rule.prompt_margin
+            .as_ref()
+            .and_then(|margin| margin.find(line))
+            .map_or(0, |found| line[..found.end()].chars().count())
+    };
+    let held: Vec<String> = std::iter::once(after(typed.get(at), found))
+        .chain((at + 1..drawn.len()).map(|index| after(typed.get(index), margin(drawn[index]))))
         .collect();
-    let joined = held.join(" ");
-    Some(if joined.is_empty() { Prompt::Empty } else { Prompt::Holds(joined) })
+    let joined = held.iter().flat_map(|line| line.split_whitespace()).collect::<Vec<_>>().join(" ");
+    let placeholder =
+        rule.prompt_placeholder.as_ref().is_some_and(|placeholder| placeholder.is_match(&joined));
+    Some(if joined.is_empty() || placeholder { Prompt::Empty } else { Prompt::Holds(joined) })
 }
 
 impl Gate {
@@ -425,6 +444,8 @@ struct RawRule {
     line_regex: Vec<String>,
     prompt: Option<String>,
     prompt_region: Option<String>,
+    prompt_margin: Option<String>,
+    prompt_placeholder: Option<String>,
 }
 
 impl RawRule {
@@ -526,7 +547,11 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
             ));
         }
         reads_current_prompt(manifest, rule, region)?;
-        if rule.prompt.is_some() || rule.prompt_region.is_some() {
+        if rule.prompt.is_some()
+            || rule.prompt_region.is_some()
+            || rule.prompt_margin.is_some()
+            || rule.prompt_placeholder.is_some()
+        {
             validate_prompt(manifest, rule, region)?;
         }
         validate_gate(&rule.gate(), "rule", 0, &mut complexity)
@@ -559,18 +584,21 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     Ok(())
 }
 
-/// An engine before 7 does not know `current_prompt`, so a manifest using it says it needs 7.
+/// An engine before 7 does not know `current_prompt`, nor one before 9 `bar_prompt`, so a
+/// manifest using either says it needs the engine that does.
 fn reads_current_prompt(
     manifest: &RawManifest,
     rule: &RawRule,
     region: Region,
 ) -> Result<(), String> {
-    if region == Region::CurrentPrompt
-        && manifest.min_engine_version.unwrap_or(0) < CURRENT_PROMPT_ENGINE_VERSION
-    {
+    let (name, needs) = match region {
+        Region::CurrentPrompt => ("current_prompt", CURRENT_PROMPT_ENGINE_VERSION),
+        Region::BarPrompt => ("bar_prompt", BAR_PROMPT_ENGINE_VERSION),
+        _ => return Ok(()),
+    };
+    if manifest.min_engine_version.unwrap_or(0) < needs {
         return Err(format!(
-            "rule {} uses current_prompt but min_engine_version is below \
-             {CURRENT_PROMPT_ENGINE_VERSION}",
+            "rule {} uses {name} but min_engine_version is below {needs}",
             rule.id
         ));
     }
@@ -582,7 +610,10 @@ fn reads_current_prompt(
 fn validate_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Result<(), String> {
     let engine = manifest.min_engine_version.unwrap_or(0);
     if rule.prompt.is_none() {
-        return Err(format!("rule {} uses prompt_region without prompt", rule.id));
+        return Err(format!(
+            "rule {} uses prompt_region, prompt_margin or prompt_placeholder without prompt",
+            rule.id
+        ));
     }
     if engine < PROMPT_ENGINE_VERSION {
         return Err(format!(
@@ -611,6 +642,15 @@ fn validate_prompt(manifest: &RawManifest, rule: &RawRule, region: Region) -> Re
         None => region,
     };
     reads_current_prompt(manifest, rule, read_in)?;
+    if (rule.prompt_margin.is_some() || rule.prompt_placeholder.is_some())
+        && engine < BAR_PROMPT_ENGINE_VERSION
+    {
+        return Err(format!(
+            "rule {} uses prompt_margin or prompt_placeholder but min_engine_version is below \
+             {BAR_PROMPT_ENGINE_VERSION}",
+            rule.id
+        ));
+    }
     if matches!(read_in, Region::OscTitle | Region::OscProgress) {
         return Err(format!(
             "rule {} reads its prompt from a region that is not the screen",
@@ -767,9 +807,19 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
                         })
                     })
                     .transpose()?;
+                let pattern = |text: &Option<String>, key: &str| {
+                    text.as_deref()
+                        .map(Regex::new)
+                        .transpose()
+                        .map_err(|error| format!("rule {} has an invalid {key}: {error}", rule.id))
+                };
+                let prompt_margin = pattern(&rule.prompt_margin, "prompt_margin")?;
+                let prompt_placeholder = pattern(&rule.prompt_placeholder, "prompt_placeholder")?;
                 Ok(Rule {
                     prompt,
                     prompt_region,
+                    prompt_margin,
+                    prompt_placeholder,
                     state,
                     priority: rule.priority,
                     region,

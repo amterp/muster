@@ -19,6 +19,7 @@ pub(super) enum Region {
     CurrentPromptBlockMarker,
     AfterCurrentPromptBlockMarker,
     CurrentPrompt,
+    BarPrompt,
     PromptBoxBody,
     AbovePromptBox,
     LastNonEmptyAbovePromptBox,
@@ -43,6 +44,7 @@ impl Region {
             "current_prompt_block_marker" => Region::CurrentPromptBlockMarker,
             "after_current_prompt_block_marker" => Region::AfterCurrentPromptBlockMarker,
             "current_prompt" => Region::CurrentPrompt,
+            "bar_prompt" => Region::BarPrompt,
             "prompt_box_body" => Region::PromptBoxBody,
             "above_prompt_box" => Region::AbovePromptBox,
             "last_non_empty_above_prompt_box" => Region::LastNonEmptyAbovePromptBox,
@@ -77,6 +79,7 @@ impl Region {
                 after_current_prompt_block_marker(content).unwrap_or("")
             }
             Region::CurrentPrompt => current_prompt(content),
+            Region::BarPrompt => bar_prompt(content),
             Region::PromptBoxBody => prompt_box_body(content).unwrap_or(""),
             Region::AbovePromptBox => above_prompt_box(content),
             Region::LastNonEmptyAbovePromptBox => last_non_empty_line(above_prompt_box(content)),
@@ -212,6 +215,25 @@ fn codex_prompt_line(line: &str) -> bool {
 
 fn codex_block_marker_line(line: &str) -> bool {
     line.starts_with('•') || line.starts_with('■') || line.starts_with('✗') || line.starts_with('✓')
+}
+
+/// A prompt box drawn with a bar down its left side, as OpenCode draws one: the run of lines
+/// starting with `┃` just above the last line starting with `╹`, the box's foot, without the
+/// run's last line, where the harness names its agent and model. The requests above it are
+/// drawn with the same bar but no foot, and a dialog in its place has none either.
+fn bar_prompt(content: &str) -> &str {
+    let lines: Vec<&str> = content.lines().collect();
+    let starts = |line: &str, mark: char| line.trim_start().starts_with(mark);
+    let Some(foot) = lines.iter().rposition(|line| starts(line, '╹')) else {
+        return "";
+    };
+    let top =
+        lines[..foot].iter().rposition(|line| !starts(line, '┃')).map_or(0, |index| index + 1);
+    if foot < top + 2 {
+        return "";
+    }
+    let start = line_start_offset(content, &lines, top);
+    &content[start..line_start_offset(content, &lines, foot - 1)]
 }
 
 fn prompt_box_body(content: &str) -> Option<&str> {

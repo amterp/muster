@@ -326,6 +326,75 @@ fn current_prompt_is_codexs_composer_down_to_the_blank_line_above_its_footer() {
 }
 
 #[test]
+fn bar_prompt_is_the_box_above_its_foot_without_its_last_line() {
+    let screen = "  ┃\n  ┃  an old request\n  ┃\n\n  answer\n\n  ┃\n  ┃  half typed\n  ┃\n  \
+                  ┃  Build · Model\n  ╹▀▀▀\n  footer\n";
+    assert_eq!(region(screen, "bar_prompt"), "  ┃\n  ┃  half typed\n  ┃\n");
+    assert_eq!(region("  ┃\n  ┃  an old request\n  ┃\n", "bar_prompt"), "", "no foot");
+    assert_eq!(
+        region("  ┃  Build · Model\n  ╹▀▀▀\n", "bar_prompt"),
+        "",
+        "nothing above the last line"
+    );
+}
+
+/// OpenCode's prompt box, read as `opencode.toml` reads it.
+fn bar_box(lines: &[&str]) -> String {
+    let mut text = "  ┃\n".to_string();
+    for line in lines {
+        text.push_str("  ┃  ");
+        text.push_str(line);
+        text.push('\n');
+    }
+    text + "  ┃\n  ┃  Build · Model\n  ╹▀▀▀\n"
+}
+
+#[test]
+fn a_prompt_margin_is_cut_from_every_line_and_a_placeholder_reads_empty() {
+    let manifest = Manifest::parse(
+        r#"
+id = "agent"
+min_engine_version = 9
+
+[[rules]]
+id = "box"
+state = "idle"
+region = "bar_prompt"
+line_regex = ['^\s*┃']
+prompt = '^\s*┃'
+prompt_margin = '^\s*┃'
+prompt_placeholder = '^Ask anything… ".*"$'
+"#,
+    )
+    .unwrap();
+    let read = |text: &str| manifest.prompt(screen(text), text);
+    assert_eq!(
+        read(&bar_box(&["first line", "second line"])),
+        Some(Prompt::Holds("first line second line".into()))
+    );
+    assert_eq!(read(&bar_box(&["Ask anything… \"Fix broken tests\""])), Some(Prompt::Empty));
+    assert_eq!(read(&bar_box(&[])), Some(Prompt::Empty));
+}
+
+#[test]
+fn bar_prompt_and_its_keys_need_engine_nine() {
+    let reading = |engine: u32| with_prompt(engine, "idle", "bar_prompt");
+    assert!(Manifest::parse(&reading(9)).is_ok());
+    assert!(Manifest::parse(&reading(8)).is_err(), "as a rule's region");
+    for key in ["prompt_margin = '^ '", "prompt_placeholder = '^x$'"] {
+        let with = |engine: u32| {
+            with_prompt(engine, "idle", "whole_recent")
+                .replace("prompt = '^> ?'", &format!("prompt = '^> ?'\n{key}"))
+        };
+        assert!(Manifest::parse(&with(9)).is_ok(), "{key}");
+        assert!(Manifest::parse(&with(8)).is_err(), "{key} below engine 9");
+    }
+    let without_prompt =
+        with_prompt(9, "idle", "whole_recent").replace("prompt = '^> ?'", "prompt_margin = '^ '");
+    assert!(Manifest::parse(&without_prompt).is_err(), "a margin without a prompt");
+}
+
+#[test]
 fn only_a_working_rule_with_a_prompt_reads_the_prompt_at_work() {
     let at_work = Manifest::parse(&with_prompt(6, "working", "whole_recent")).unwrap();
     let idle = Manifest::parse(&with_prompt(6, "idle", "whole_recent")).unwrap();
@@ -373,8 +442,8 @@ fn versions_compare_numerically_with_trailing_zeros_insignificant() {
 
 #[test]
 fn required_engine_is_read_without_the_strict_schema() {
-    let newer = "id = \"x\"\nmin_engine_version = 9\nsomething_new = true\n";
-    assert_eq!(Manifest::required_engine(newer), Some(9));
+    let newer = "id = \"x\"\nmin_engine_version = 99\nsomething_new = true\n";
+    assert_eq!(Manifest::required_engine(newer), Some(99));
     assert!(Manifest::parse(newer).is_err());
     assert_eq!(Manifest::required_engine("id = \"x\"\n"), None);
 }

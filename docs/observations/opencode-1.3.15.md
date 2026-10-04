@@ -29,7 +29,6 @@ scratch data a Google model with no key. So no turn of a model that answers was 
 
 ## What this decides for Muster
 
-Nothing is built for OpenCode yet. A prompt reader needs a working screen recorded beside the idle
-ones, to be sure a rule reading the box does not read an agent at work as idle, and a model that
-answers is what draws one; until then OpenCode keeps herdr's rules and is not rung. Its plugins'
-events, which would supply reported state, were not measured.
+Nothing is built on 1.3.15. Its free models refuse it, so its working screens cannot be recorded
+without a paid login; OpenCode's prompt reader and recordings are of 1.18.34
+(`docs/observations/opencode-1.18.34.md`), which also sends a paste and its Return in one write.
