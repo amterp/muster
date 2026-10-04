@@ -97,15 +97,21 @@ fn supplied(manifests: &Manifests, extras: &[(Agent, String)], agent: &Agent) ->
         prompt: manifests.reads_prompt(agent),
         prompt_at_work: manifests.reads_prompt_at_work(agent),
         reported_state: words(&wiring).contains(&format!("--agent {} --state", agent.id())),
-        context: wiring.contains("--context-used"),
+        context: reports(&wiring, "context-used"),
         subagents: wiring.contains("--subagent-started"),
         fetches_messages: wiring.contains("msg read --if-unread"),
         woken_by_command: manifests.session_wake(agent, "id", "wake").is_some()
-            && wiring.contains("--session-id"),
+            && reports(&wiring, "session-id"),
         takes_pane_name: manifests.session_rename(agent, "name").is_some(),
-        names_pane: wiring.contains("--session-name"),
+        names_pane: reports(&wiring, "session-name"),
         compacts: manifests.session_compact(agent, None).is_some(),
     }
+}
+
+/// Whether the wiring reports `flag`: given outright, or read out of a harness's JSON with
+/// `--from`.
+fn reports(wiring: &str, flag: &str) -> bool {
+    wiring.contains(&format!("--{flag}")) || wiring.contains(&format!("--from {flag}="))
 }
 
 /// The table, and the line naming the harnesses the last column stands for.

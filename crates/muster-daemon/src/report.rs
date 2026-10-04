@@ -8,6 +8,7 @@
 //! the daemon did not take the report.
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -18,6 +19,21 @@ use muster_daemon_proto::{self as proto, ConnectionKind, connection, pane_reques
 
 use crate::session::HANDING_OVER;
 
+/// The most JSON `--from` reads from stdin. A statusline's or a hook's input is a few kilobytes.
+const STDIN_BYTES: u64 = 1 << 20;
+
+/// The flags `--from` may fill: each one that takes one value.
+const FROM_FLAGS: [&str; 8] = [
+    "context-used",
+    "model",
+    "cost-usd",
+    "waiting",
+    "session-name",
+    "session-id",
+    "agent",
+    "state",
+];
+
 /// How long a report waits for its daemon, from dialing to the answer. A hook that runs on every
 /// sub-agent and a statusline that runs on every message must not hold their harness up.
 const PATIENCE: Duration = Duration::from_secs(2);
@@ -26,7 +42,7 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
-    [--session-id ID | --session-id-from-hook]]\n\n\
+    [--session-id ID | --session-id-from-hook]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
@@ -43,13 +59,25 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     the harness's id for its session, which the daemon names it by to reach it through the \
     harness's own command, where its manifest says how; empty forgets it. It needs --agent too. \
     --session-id-from-hook takes it from the `session_id` of the JSON a hook is handed on its \
-    standard input, as Claude Code's and Codex's hooks are, so a hook needs nothing to read it.";
+    standard input, as Claude Code's and Codex's hooks are, so a hook needs nothing to read it. \
+    --from fills a flag from the JSON object on stdin, which a harness hands its hooks and \
+    statusline: --from context-used=/context_window/used_percentage reads that JSON pointer, a \
+    number or text, as --context-used's value. A value missing or null leaves the flag out, and \
+    a flag given later replaces one given before, so --session-name '' before a --from \
+    session-name says no name when the JSON has none. Stdin is read only for --from.";
 
 /// The most of a hook's input read for its session's id. A hook's input is a few hundred bytes.
 const HOOK_INPUT_LIMIT: u64 = 1 << 20;
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
-    let mut report = match parse(arguments, |name| std::env::var(name).ok()) {
+    let arguments = match filled_from(arguments.collect(), read_stdin) {
+        Ok(arguments) => arguments,
+        Err(problem) => {
+            eprintln!("muster-daemon report: {problem}\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let mut report = match parse(arguments.into_iter(), |name| std::env::var(name).ok()) {
         Ok(Parsed::Report(report)) => *report,
         Ok(Parsed::Help) => {
             println!("{USAGE}");
@@ -115,6 +143,61 @@ fn hook_session_id(input: &str) -> Result<String, String> {
         Some(serde_json::Value::String(id)) => Ok(id.clone()),
         _ => Err("the hook's input has no session_id".to_string()),
     }
+}
+
+/// The arguments with each `--from FLAG=POINTER` replaced by `--FLAG VALUE`, the value read out of
+/// the JSON object `stdin` gives - read once, and only when a `--from` asks for it - or by nothing
+/// where the JSON holds no value there. Kept in place, so that order decides between a `--from`
+/// and the same flag given outright.
+fn filled_from(
+    arguments: Vec<String>,
+    stdin: impl FnOnce() -> Result<String, String>,
+) -> Result<Vec<String>, String> {
+    if !arguments.iter().any(|argument| argument == "--from") {
+        return Ok(arguments);
+    }
+    let json: serde_json::Value = serde_json::from_str(&stdin()?).map_err(|error| {
+        format!("--from reads a JSON object on stdin, and it is not one: {error}")
+    })?;
+    let mut filled = Vec::with_capacity(arguments.len());
+    let mut arguments = arguments.into_iter();
+    while let Some(argument) = arguments.next() {
+        if argument != "--from" {
+            filled.push(argument);
+            continue;
+        }
+        let given = arguments.next().ok_or("--from needs a value")?;
+        let (flag, pointer) =
+            given.split_once('=').ok_or(format!("--from {given} is not FLAG=POINTER"))?;
+        if !FROM_FLAGS.contains(&flag) {
+            return Err(format!(
+                "--from {given} names {flag}, and --from fills only {}",
+                FROM_FLAGS.join(", ")
+            ));
+        }
+        let value = match json.pointer(pointer) {
+            None | Some(serde_json::Value::Null) => continue,
+            Some(serde_json::Value::String(text)) => text.clone(),
+            Some(serde_json::Value::Number(number)) => number.to_string(),
+            Some(other) => {
+                return Err(format!("--from {given} found {other}, which is not text or a number"));
+            }
+        };
+        filled.extend([format!("--{flag}"), value]);
+    }
+    Ok(filled)
+}
+
+fn read_stdin() -> Result<String, String> {
+    let mut text = String::new();
+    std::io::stdin()
+        .take(STDIN_BYTES + 1)
+        .read_to_string(&mut text)
+        .map_err(|error| format!("--from could not read stdin: {error}"))?;
+    if text.len() as u64 > STDIN_BYTES {
+        return Err(format!("--from reads at most {STDIN_BYTES} bytes of JSON on stdin"));
+    }
+    Ok(text)
 }
 
 enum Parsed {
@@ -271,6 +354,80 @@ fn send(socket: &std::path::Path, report: pane_request::Report) -> Result<(), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn filled(arguments: &[&str], stdin: &str) -> Result<Vec<String>, String> {
+        let arguments = arguments.iter().map(|argument| (*argument).to_string()).collect();
+        filled_from(arguments, || Ok(stdin.to_string()))
+    }
+
+    /// Claude Code's statusline JSON, cut down to what its statusline reports.
+    const STATUS: &str = r#"{"model":{"display_name":"Opus"},"context_window":{"used_percentage":42.5},"cost":{"total_cost_usd":1.5},"session_name":null}"#;
+
+    #[test]
+    fn from_fills_each_flag_out_of_the_json_on_stdin() {
+        let arguments = [
+            "--agent",
+            "claude",
+            "--session-name",
+            "",
+            "--from",
+            "context-used=/context_window/used_percentage",
+            "--from",
+            "model=/model/display_name",
+            "--from",
+            "cost-usd=/cost/total_cost_usd",
+            "--from",
+            "session-name=/session_name",
+            "--from",
+            "session-id=/session_id",
+        ];
+        assert_eq!(
+            filled(&arguments, STATUS).unwrap(),
+            [
+                "--agent",
+                "claude",
+                "--session-name",
+                "",
+                "--context-used",
+                "42.5",
+                "--model",
+                "Opus",
+                "--cost-usd",
+                "1.5",
+            ],
+            "a null and a missing value each leave their flag out"
+        );
+        let named = STATUS.replace(r#""session_name":null"#, r#""session_name":"🤖 A""#);
+        let filled =
+            filled(&["--session-name", "", "--from", "session-name=/session_name"], &named);
+        let report = parsed(
+            &filled
+                .unwrap()
+                .iter()
+                .map(String::as_str)
+                .chain(["--agent", "claude"])
+                .collect::<Vec<_>>(),
+            Some("p1"),
+        )
+        .unwrap();
+        assert_eq!(
+            report.session_name.as_deref(),
+            Some("🤖 A"),
+            "a later flag replaces an earlier"
+        );
+    }
+
+    #[test]
+    fn from_reads_stdin_only_when_asked_and_refuses_what_it_cannot_fill() {
+        let untouched = filled_from(vec!["--clear".to_string()], || panic!("stdin was read"));
+        assert_eq!(untouched.unwrap(), ["--clear"]);
+        let refused = |arguments: &[&str], stdin: &str| filled(arguments, stdin).unwrap_err();
+        assert!(refused(&["--from", "model=/model"], "not json").contains("not one"));
+        assert!(refused(&["--from", "clear=/x"], "{}").contains("fills only"));
+        assert!(refused(&["--from", "model"], "{}").contains("FLAG=POINTER"));
+        assert!(refused(&["--from"], "{}").contains("needs a value"));
+        assert!(refused(&["--from", "model=/model"], STATUS).contains("not text or a number"));
+    }
 
     fn parsed(arguments: &[&str], pane: Option<&str>) -> Result<pane_request::Report, String> {
         let arguments = arguments.iter().map(|argument| (*argument).to_string());

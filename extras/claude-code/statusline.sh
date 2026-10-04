@@ -13,29 +13,25 @@
 # With none, this draws the model and how full the context is.
 #
 # Outside a Muster pane it only draws: $MUSTER_DAEMON is how a pane reaches the daemon that owns
-# it. Needs jq. The report runs in the background, so a slow daemon never holds the line up.
+# it. The report reads Claude Code's JSON itself, so it needs nothing installed; drawing the line
+# with no command after this one needs jq. The report runs in the background, so a slow daemon
+# never holds the line up.
 
 # The x keeps the trailing newline, which $( ) would strip: the command after this reads what
 # Claude Code wrote, byte for byte.
 input=$(cat; printf x)
 input=${input%x}
 
-report() {
-    eval "set -- $1"
-    "$MUSTER_DAEMON" report "$@"
-}
-
-if [ -n "$MUSTER_DAEMON" ] && command -v jq >/dev/null 2>&1; then
-    facts=$(printf '%s' "$input" | jq -r '[
-        (.context_window.used_percentage // empty | "--context-used", tostring),
-        (.model.display_name // empty | "--model", .),
-        (.cost.total_cost_usd // empty | "--cost-usd", tostring),
-        "--agent", "claude", "--session-name", (.session_name // "")
-    ] | @sh' 2>/dev/null)
+if [ -n "$MUSTER_DAEMON" ]; then
     # Claude Code reads the line until every writer has closed it, so the background job's own
     # output goes nowhere. Redirecting only the call inside it would leave the job holding the
-    # line open until the report finished.
-    { [ -n "$facts" ] && report "$facts"; } >/dev/null 2>&1 &
+    # line open until the report finished. An empty --session-name first says the session has
+    # no name when the JSON has none.
+    { printf '%s' "$input" | "$MUSTER_DAEMON" report --agent claude --session-name '' \
+        --from context-used=/context_window/used_percentage \
+        --from model=/model/display_name \
+        --from cost-usd=/cost/total_cost_usd \
+        --from session-name=/session_name; } >/dev/null 2>&1 &
 fi
 
 if [ $# -gt 0 ]; then

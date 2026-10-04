@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::support::*;
+
 const STATUSLINE: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras/claude-code/statusline.sh");
 
@@ -73,47 +75,60 @@ fn a_daemon_that_never_answers_never_holds_the_statusline_up() {
     );
 }
 
-/// The session's name goes with every report, and so does its absence: a session that says it has
-/// no name is given the pane's.
+/// The statusline reports through the real `muster-daemon report`, which reads Claude Code's JSON
+/// itself: with no jq anywhere on the PATH, the pane still takes the context, model and cost, and
+/// the session's name - and a session that says it has no name leaves the pane's name alone.
 #[test]
-fn the_statusline_says_what_the_session_is_called_and_when_it_has_no_name() {
-    let scratch = Scratch::new("statusline-name");
-    let said = scratch.0.join("said");
-    let daemon = scratch.0.join("daemon");
-    // Written aside and moved into place: a test waits for the file to appear, and a redirect
-    // makes it before printf fills it.
-    std::fs::write(
-        &daemon,
-        format!(
-            "#!/bin/sh\nprintf '[%s]' \"$@\" > '{0}.part' && mv '{0}.part' '{0}'\n",
-            said.display()
-        ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
+fn the_statusline_reports_the_session_with_no_jq_installed() {
+    let scratch = Scratch::new("statusline-report");
+    // Only what the script runs besides the report: `cat`.
+    let bin = scratch.0.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::os::unix::fs::symlink("/bin/cat", bin.join("cat")).unwrap();
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
     let run = |status: &str| {
-        let _ = std::fs::remove_file(&said);
+        // `cat` after it draws the line: drawing it with nothing after it is what needs jq.
         let mut statusline = Command::new("/bin/sh")
-            .arg(STATUSLINE)
+            .args([STATUSLINE, "cat"])
             .env_clear()
-            .env("PATH", "/usr/bin:/bin")
-            .env("MUSTER_DAEMON", &daemon)
+            .env("PATH", &bin)
+            .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
+            .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+            .env("MUSTER_PANE", "p1")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .spawn()
             .expect("sh runs the statusline");
         statusline.stdin.take().unwrap().write_all(status.as_bytes()).unwrap();
         assert!(statusline.wait().unwrap().success());
-        muster_harness::until_within(
-            "the report to run",
-            Duration::from_mins(1),
-            || std::fs::read_to_string(&said).is_ok_and(|said| said.contains("--agent")),
-            || format!("{} never held a report", said.display()),
-        );
-        std::fs::read_to_string(&said).unwrap()
+    };
+    let pane = |control: &mut Control| {
+        snapshot(control).panes.into_iter().find(|record| record.pane == "p1").unwrap()
     };
 
-    let named = STATUS.replace("{\"model\"", "{\"session_name\":\"🤖 A\",\"model\"");
-    assert!(run(&named).ends_with("[--agent][claude][--session-name][🤖 A]"));
-    assert!(run(STATUS).ends_with("[--agent][claude][--session-name][]"));
+    run(&STATUS.replace("{\"model\"", "{\"session_name\":\"🤖 A\",\"model\""));
+    let named = until_some("the report to land", || {
+        let record = pane(&mut control);
+        record
+            .facts
+            .as_ref()
+            .is_some_and(|facts| facts.context_used == Some(42.0))
+            .then_some(record)
+    });
+    let facts = named.facts.unwrap();
+    assert_eq!((facts.model.as_deref(), facts.cost_usd), (Some("Opus"), Some(1.5)));
+    assert_eq!(named.label.as_deref(), Some("🤖 A"), "the pane took the session's name");
+
+    run(&STATUS.replace("42", "50"));
+    let unnamed = until_some("the second report to land", || {
+        let record = pane(&mut control);
+        record
+            .facts
+            .as_ref()
+            .is_some_and(|facts| facts.context_used == Some(50.0))
+            .then_some(record)
+    });
+    assert_eq!(unnamed.label.as_deref(), Some("🤖 A"), "no name took the pane's away");
 }

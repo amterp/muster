@@ -49,8 +49,8 @@ not when it opens.
 
 `SessionStart` also reports the session's id, which lets Muster wake an idle Codex with `codex
 queue` rather than typing into its pane, so a draft in the composer is left alone (`muster docs
-msg`). It needs `jq`; without it, or before a session's first prompt, Codex is rung by typing as
-any agent is. `codex` must be on the `PATH` a login shell sets, `.zprofile` rather than `.zshrc`,
+msg`). It needs nothing installed, since `muster-daemon report` reads the id out of the hook's
+input itself; before a session's first prompt, Codex is rung by typing as any agent is. `codex` must be on the `PATH` a login shell sets, `.zprofile` rather than `.zshrc`,
 since Muster runs it through one.
 
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Codex ends a
@@ -64,7 +64,9 @@ Codex has no statusline command, but every hook is handed its transcript and its
 tool call and when a turn ends, a hook reads the last token count from the transcript's final 64 KB
 and reports how full the context is, counted as Codex counts its own "N% context left": the first
 12,000 tokens are not counted as used. It reports in the background, so a slow daemon never holds
-Codex up, and it needs `jq`, which macOS ships in `/usr/bin` and a Linux devenv may not.
+Codex up. It needs `jq`, which macOS ships in `/usr/bin` and a Linux devenv may not, since it
+works the percent out of the transcript rather than reading one field; so do the messaging hooks
+below, which hand the model JSON they build.
 
 ## Messages through hooks
 

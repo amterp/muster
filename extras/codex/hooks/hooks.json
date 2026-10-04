@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$MUSTER_DAEMON\" ] && command -v jq >/dev/null 2>&1 || exit 0; id=$(jq -r '.session_id // empty' 2>/dev/null); [ -z \"$id\" ] || \"$MUSTER_DAEMON\" report --agent codex --session-id \"$id\" >/dev/null 2>&1 || true"
+            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; input=$(cat); case \"$input\" in *'\"session_id\"'*) printf '%s' \"$input\" | \"$MUSTER_DAEMON\" report --agent codex --from session-id=/session_id >/dev/null 2>&1 ;; esac; exit 0"
           }
         ]
       }

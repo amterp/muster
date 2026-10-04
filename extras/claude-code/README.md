@@ -88,9 +88,10 @@ the statusline, so `refreshInterval` is what brings the new name to the pane wit
 without it, the pane takes it at the session's next message. Renaming the pane renames the
 session either way (`muster docs harnesses`).
 
-Your command gets the same JSON on stdin it always did. With nothing after it, `statusline.sh`
-draws the model and how full the context is. It needs `jq`, which macOS ships in `/usr/bin` and a
-Linux devenv may not.
+Your command gets the same JSON on stdin it always did. The report needs nothing installed:
+`muster-daemon report` reads Claude Code's JSON itself. With nothing after it, `statusline.sh`
+draws the model and how full the context is, and that needs `jq`, which macOS ships in `/usr/bin`
+and a Linux devenv may not.
 
 ## Messages through hooks
 
