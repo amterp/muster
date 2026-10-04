@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "the-daemon-s-30-s",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790599791155,
   "creator": "Alexander Terp",
   "description": "STALLED_WRITE (30 s, crates/muster-daemon/src/stream.rs) hangs up on a bridge whose stdout is not drained, which under a stalled window is the window's fault, not the bridge's. Since the bridge reattaches after a lost stream this costs a replay, not a surface. Worth a look beside the stall watch.",
   "id": "a_2YBZUGuxv",
-  "position": "az",
+  "position": "YyV",
   "title": "The daemon's 30 s stalled-write cut-off drops a bridge that is behind only because its window is",
   "type": "bug",
-  "updated_at_millis": 1790599791155,
+  "updated_at_millis": 1791098918133,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790599791155}
+    {"field":"column","value":"backlog-lo","at":1790599791155},
+    {"field":"column","value":"done","at":1791098918133}
   ]
 }

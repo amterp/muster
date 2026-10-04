@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1791049414847,
   "creator": "Alexander Terp",
   "description": "Measured 2026-10-03 (corpus/codex-0.154.0/queue.txt): codex queue --thread \u003cname|id\u003e --message starts a turn in a running TUI session without typing into its pane. A route needs a session-reference capability (a --session-id report from hooks; both Claude Code and Codex hand hooks session_id) and a manifest table for the command (MIP-5 section 10), plus a precedence decision against the doorbell. MIP-5 Open Questions records it.",
   "id": "a_2bEEFlerm",
-  "position": "Zq",
+  "position": "YyR",
   "title": "🧩 Codex: a codex queue route that types nothing",
   "type": "feature",
-  "updated_at_millis": 1791096396981,
+  "updated_at_millis": 1791099219926,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791049414847},
-    {"field":"column","value":"next","at":1791096396981}
+    {"field":"column","value":"next","at":1791096396981},
+    {"field":"column","value":"done","at":1791099219926}
   ]
 }

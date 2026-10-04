@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "first-local-daemon",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791096899352,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-04 in a two-daemon seam test: a fresh window's first tab landed on either daemon from run to run. Decide which order is intended and make code and doc agree.",
   "id": "a_2bY9Xfd5f",
-  "position": "b0P",
+  "position": "YyS",
   "title": "first_local_daemon picks by attach order, not the config order its doc names",
   "type": "bug",
-  "updated_at_millis": 1791096899352,
+  "updated_at_millis": 1791098919330,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791096899352}
+    {"field":"column","value":"backlog-lo","at":1791096899352},
+    {"field":"column","value":"done","at":1791098919330}
   ]
 }

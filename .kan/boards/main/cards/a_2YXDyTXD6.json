@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "a-post-s-answer-can",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790651396359,
   "creator": "Alexander Terp",
   "description": "members_on_two_linked_daemons_share_a_group_and_the_guard_holds_across (muster-daemon linked.rs:175) failed once under load ~10 and passed on rerun. Inferred from the code, not reproduced: when a link comes up each daemon spawns a peer-refetch thread (peer.rs up). Run late, it fetches the post itself and wakes the member, so the home's Replicate that follows finds nothing new and the post's answer says it reached nobody. Delivery is right; only the answer is wrong. Options: a replica reports what it reached for entries it already took, or up does not refetch groups the link has caught up.",
   "id": "a_2YXDyTXD6",
   "parent": "a_2Y3ODvuwa",
-  "position": "b08",
+  "position": "YyW",
   "title": "A post's answer can say it reached nobody when a link-up refetch took it first",
   "type": "bug",
-  "updated_at_millis": 1790651396359,
+  "updated_at_millis": 1791098917797,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790651396359}
+    {"field":"column","value":"backlog-lo","at":1790651396359},
+    {"field":"column","value":"done","at":1791098917797}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "opencode-can-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791099220131,
+  "creator": "Alexander Terp",
+  "description": "Measured 2026-10-04 on 1.18.34: plugin events cover state, permissions, tokens and session id (docs/observations/opencode-1.18.34.md section 5). Not measured: whether a plugin can inject a message into a running turn (messages fetched by hooks, as Codex and Claude Code do) or rename the session (session names both ways).",
+  "id": "a_2bZ7usQqo",
+  "position": "b0R",
+  "title": "OpenCode: can a plugin hand the model messages mid-turn, and rename a session from its prompt?",
+  "type": "chore",
+  "updated_at_millis": 1791099220131,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791099220131}
+  ]
+}
