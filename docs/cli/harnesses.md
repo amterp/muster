@@ -48,8 +48,9 @@ kimi, kiro, maki, pi, qodercli.
 - **Woken by its own command, typing nothing**: a post to an idle agent runs the harness's own
   command to start a turn in its session, rather than typing a wake into its pane, so it reaches
   an agent holding a draft and never mixes with what a person is typing. Codex's is `codex queue`,
-  by the session id its adapter's hooks report as each session starts; until then, and whenever
-  the command fails, it is rung as usual. An agent at work or at a dialog is not woken this way:
+  by the session id its adapter's hooks report as each session starts, and it must be on the
+  `PATH` a login shell sets (`.zprofile`, not `.zshrc`). Until then, whenever the command fails,
+  and when Codex does not start the turn within five seconds, it is rung as usual. An agent at work or at a dialog is not woken this way:
   Codex holds a queued message until its turn ends, and at an approval prompt never sends it.
 - **Its session named after the pane**: naming a pane - the chord, the menu, `muster pane rename`,
   or `pane new --name` once its agent starts - types `/rename <name>` into the agent's prompt once

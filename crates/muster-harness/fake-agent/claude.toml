@@ -17,9 +17,11 @@ min_engine_version = 10
 [session]
 rename = "/rename {name}"
 # What wakes a session without typing into its pane, as Codex's manifest names `codex queue`. It
-# runs only once a session id is reported: it writes down the id and the message, and fails for a
-# session called "gone".
-wake = ["/bin/sh", "-c", "[ \"$0\" != gone ] || exit 3; printf '%s|%s\\n' \"$0\" \"$1\" >> \"$HOME/fake-agent-woken\"", "{session}", "{message}"]
+# runs only once a session id is reported: it writes down the id and the message and puts the
+# agent to work, as Codex starts the queued turn. A session called "gone" refuses it, as a missing
+# harness does, and one called "dead" takes it and starts nothing, as `codex queue` does for a
+# session whose Codex has exited.
+wake = ["/bin/sh", "-c", "[ \"$0\" != gone ] || exit 3; printf '%s|%s\\n' \"$0\" \"$1\" >> \"$HOME/fake-agent-woken\"; [ \"$0\" = dead ] || kill -USR2 \"$(cat \"$HOME/fake-agent-pid\")\"", "{session}", "{message}"]
 
 # At work, its prompt still takes a line, as Claude Code's box does: what an urgent ring reads.
 [[rules]]

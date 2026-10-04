@@ -58,6 +58,8 @@ pub(crate) struct Messages {
     pending: Vec<Wake>,
     /// Rings their agents have not yet taken, which the doorbell presses Return for again.
     rung: Vec<doorbell::Rung>,
+    /// Wakes handed to their sessions by command that their agents have not yet taken.
+    commanded: Vec<doorbell::Commanded>,
     /// Agents whose hooks fetch their messages, seen idle with none fetching, and when the
     /// doorbell may ring them: a `Stop` hook's wait may connect just after its turn ends.
     hook_grace: HashMap<String, Instant>,
@@ -96,6 +98,7 @@ impl Messages {
             // allows: at worst a wake too many.
             pending: service.outstanding(),
             rung: Vec::new(),
+            commanded: Vec::new(),
             hook_grace: HashMap::new(),
             left: HashMap::new(),
             service,

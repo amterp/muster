@@ -140,7 +140,8 @@ session as if the wake were typed there. Nothing reaches the pane, so it does no
 empty prompt or for anyone to stop typing, and a draft in Codex's composer stays as it was. A
 Codex at work or at an approval prompt is not woken this way: an urgent post at work is still
 typed into its running turn, and anything else waits for idle, as a ring does. If the command
-fails, the wake is rung instead.
+fails, or Codex has not started the turn five seconds later - as when the session it named has
+exited - the wake is rung instead.
 
 An agent that neither starts work nor reads within five seconds of a ring has Return pressed
 again, a few times, but only while its prompt holds the ring's own text and nothing else, and

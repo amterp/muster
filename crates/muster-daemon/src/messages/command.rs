@@ -21,8 +21,7 @@ const PATIENCE: Duration = Duration::from_secs(5);
 /// Runs `arguments` as a login shell of the user's would, so it finds the harness a pane finds:
 /// a daemon started by launchd has a PATH without Homebrew's directory in it. The arguments are
 /// handed to the shell as arguments, never as script, so the message is never read as one.
-/// Returns why it failed, if it did.
-pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
+pub(crate) fn run(arguments: &[String]) -> Result<(), Failed> {
     let environment: Vec<_> = std::env::vars_os().collect();
     let shell = pty::default_shell(&environment);
     let script =
@@ -34,16 +33,21 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("could not start {shell}: {error}"))?;
+        .map_err(|error| Failed::Refused(format!("could not start {shell}: {error}")))?;
     let started = Instant::now();
     let status = loop {
-        if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+        if let Some(status) =
+            child.try_wait().map_err(|error| Failed::Refused(error.to_string()))?
+        {
             break status;
         }
         if started.elapsed() > PATIENCE {
             drop(child.kill());
             drop(child.wait());
-            return Err(format!("it was still running after {}s", PATIENCE.as_secs()));
+            return Err(Failed::Stalled(format!(
+                "it was still running after {}s",
+                PATIENCE.as_secs()
+            )));
         }
         std::thread::sleep(Duration::from_millis(20));
     };
@@ -56,7 +60,26 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     }
     let said = said.trim();
     let said = said.char_indices().nth(300).map_or(said, |(at, _)| &said[..at]);
-    Err(format!("it exited with {status}: {said}"))
+    Err(Failed::Refused(format!("it exited with {status}: {said}")))
+}
+
+/// Why a command did not hand its message over.
+#[derive(Debug)]
+pub(crate) enum Failed {
+    /// It could not start, or said no: a session gone, a harness not on the PATH. It will say the
+    /// same next time.
+    Refused(String),
+    /// It took too long, which a busy machine can make it do once; it may still have handed the
+    /// message over.
+    Stalled(String),
+}
+
+impl Failed {
+    pub(crate) fn why(&self) -> &str {
+        match self {
+            Failed::Refused(why) | Failed::Stalled(why) => why,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -82,8 +105,9 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&out).unwrap(), format!("[--message][{message}]"));
 
         let failing = ["/bin/sh".to_string(), "-c".into(), "echo nobody there >&2; exit 1".into()];
-        let why = run(&failing).unwrap_err();
-        assert!(why.contains("nobody there"), "{why}");
+        let failed = run(&failing).unwrap_err();
+        assert!(matches!(failed, Failed::Refused(_)), "{failed:?}");
+        assert!(failed.why().contains("nobody there"), "{failed:?}");
         drop(std::fs::remove_dir_all(&scratch));
     }
 }

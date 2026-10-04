@@ -758,6 +758,21 @@ fn a_wake_command_that_fails_is_typed_instead() {
     assert_eq!(agent.woken(), Vec::<String>::new());
 }
 
+/// `codex queue` stores a message for a session whose Codex has exited and says it queued it, as
+/// a `codex exec` run in the pane leaves behind: a command wake whose agent neither goes to work
+/// nor reads is typed instead, and the command is not run for that session again.
+#[test]
+fn a_command_wake_nobody_takes_is_typed_instead() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("dead");
+    std::thread::sleep(QUIET);
+    agent.post("p1", "a brief");
+    until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
+    let rung = agent.until_rung(1);
+    assert_eq!(rung.len(), 1);
+    assert_eq!(agent.woken().len(), 1, "the command was run again");
+}
+
 /// Codex reports its session's id only as the session starts, so a daemon taking the pane over
 /// could not learn it again: it is handed over with the pane.
 #[test]

@@ -291,10 +291,20 @@ sections 6 to 9):
   nothing. Measured first (`docs/observations/codex-0.154.0.md`, section 9): at an approval
   prompt Codex stores a queued message and never submits it, so a blocked Codex waits as it does
   for the doorbell; and at work Codex holds one until the turn ends, where an urgent ring typed
-  into the composer joins the running turn, so an urgent post at work is still typed. A command
-  that fails is given up for that session, and the wake is rung as usual. A command that succeeds
-  says only that Codex stored the message, as it does for a session whose Codex has exited, so
-  it counts as a ring does: the agent is woken once more if it goes idle with the message unread.
+  into the composer joins the running turn, so an urgent post at work is still typed. The command
+  runs only while the agent's prompt shows, since a picker or a dialog over it might keep the
+  message unsent.
+
+  A command that succeeds says only that Codex stored the message, as it does for a session
+  whose Codex has exited - which a `codex exec` run from the pane leaves behind, having reported
+  its own session's id through the same hook. So a wake handed over by command is watched like a
+  typed ring: if its agent neither goes to work nor reads within five seconds, the wake is typed
+  instead and the session's id forgotten. A message Codex kept may then arrive too, a wake too
+  many rather than one lost. A command that fails is rung as usual; one that refused - exited
+  non-zero, or could not start - is not run for that session again, while one that only took
+  longer than five seconds, as a loaded machine can make it, is tried again for the next wake.
+  It runs through a login shell, which reads `.zprofile` but not `.zshrc`, so `codex` must be on
+  the `PATH` a login shell sets.
 
 ### 8. Recordings and tiers
 
