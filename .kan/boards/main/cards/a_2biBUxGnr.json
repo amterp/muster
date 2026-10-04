@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "live-tier-check-of",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "in-progress",
   "created_at_millis": 1791120807344,
   "creator": "Alexander Terp",
   "description": "./dev --claude-code could ask muster pane compact of a session and check it compacted, holding the manifest's compact line to each Claude Code update. Hand verification only so far (docs/observations/claude-code-2.1.289.md).",
   "id": "a_2biBUxGnr",
-  "position": "b0e",
+  "position": "Zg",
   "title": "Live-tier check of compaction",
   "type": "chore",
-  "updated_at_millis": 1791120807344,
+  "updated_at_millis": 1791129293215,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791120807344}
+    {"field":"column","value":"backlog-lo","at":1791120807344},
+    {"field":"column","value":"in-progress","at":1791129293215}
   ]
 }
