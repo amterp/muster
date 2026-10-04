@@ -1005,14 +1005,10 @@ public enum Core {
   }
 
   /// Whether anything is asking for somebody now, which is whether `focusAsking` would go
-  /// anywhere. True when the core could not say: an item left enabled beeps when there turns out
-  /// to be nothing, where one greyed out by mistake hides the way to an agent that is waiting.
-  public static func anythingAsking() -> Bool {
-    var request = Muster_Request()
-    request.readAsking = Muster_ReadAsking()
-    guard case .asking(let would) = send(request) else { return true }
-    return !would.paneID.isEmpty || !would.group.isEmpty
-  }
+  /// anywhere, as the core last said (`AskingChanged`). True until it has said: an item left
+  /// enabled beeps when there turns out to be nothing, where one greyed out by mistake hides the
+  /// way to an agent that is waiting.
+  @MainActor public internal(set) static var anythingAsking = true
 
   /// Puts the keyboard back on the pane it was on before, or forward again. False when the
   /// keyboard did not move: there was nowhere to go, or the core refused the step.
@@ -1487,6 +1483,8 @@ public enum Core {
       for window in windows(for: event) {
         window.apply(problems: problems)
       }
+    case .askingChanged(let changed):
+      anythingAsking = changed.asking
     case .attentionChanged(let changed):
       // Straight on, because the decision was made before it crossed: the core holds the
       // unread set, knows what this window is showing, and holds the file's answer about

@@ -1206,9 +1206,8 @@ message FocusAsking {}
 
 // What a FocusAsking would go to now, answered with an Asking and moving nothing.
 //
-// For a menu item that greys itself out while nothing asks. Asked as the menu opens or its chord
-// is pressed rather than carried in the view, because working it out on every publish would be
-// work per event for an answer read a few times a day.
+// A shell that greys its menu item out while nothing asks follows AskingChanged instead; this
+// answers a caller that wants the pane itself.
 message ReadAsking {}
 
 // Where a FocusAsking went, or would go for a ReadAsking: all empty when nothing was asking,
@@ -2070,6 +2069,7 @@ message Event {
     PasteHeld paste_held = 13;
     ClipboardWrite clipboard_write = 14;
     ShutWindow shut_window = 15;
+    AskingChanged asking_changed = 20;
   }
 
   // The window this event is for, by its name, or empty for one about the whole app: what the
@@ -2143,6 +2143,16 @@ message RaiseWindow {
 // CloseWindow. A close that does not happen - a sheet up in the window, or no window by that
 // name - reports StillOpen.
 message ShutWindow {}
+
+// Whether anything is asking for somebody now - a pane or a group with something waiting, the
+// set FocusAsking goes to the first of - sent when that answer changes, app-wide, and once when
+// a window opens. For a menu item that greys itself out while nothing asks: one answer for every
+// window, and an O(1) check where attention changes, where reading it on each menu validation
+// was a request per look and carrying it in ViewChanged would mean republishing every window
+// on an agent's finish.
+message AskingChanged {
+  bool asking = 1;
+}
 
 // One pane started asking for a person, or stopped.
 //

@@ -492,8 +492,9 @@ Attention is computed in the core from control-plane events - agent-state transi
 notifications and progress all arrive there, so the data-plane bypass costs nothing here. The core owns the unread and urgency
 ordering; the shell only delivers notifications and renders indicators. `focus_asking` (⌘⇧A) is that ordering's head
 as an action: it goes where clicking the most urgent banner would, and its menu item is greyed out while nothing
-asks. The shell asks the core for that (`ReadAsking`) as the menu opens rather than having every publish carry it,
-since it is read a few times a day and a publish happens on every event. Activating a notification dispatches an
+asks. The core tells the shell whether anything asks (`AskingChanged`) only when that answer flips, app-wide, rather
+than having every publish carry it or the menu ask on every look: the check is two emptiness tests where attention
+changes, and a publish happens on every event. Activating a notification dispatches an
 ordinary focus intent through the one action path - which may change composition first, because the pane that asked
 may not be visible in any window. Surfacing the hidden is part of the feature, and the core owns it.
 

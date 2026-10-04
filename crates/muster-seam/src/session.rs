@@ -54,9 +54,9 @@ use muster_ssh::{Forward, Reverse, State as TunnelState, Tunnel, remote_environm
 use crate::bridge_link::{PaneLink, Reports};
 use crate::holding::Holding;
 use crate::proto::{
-    AttentionChanged, ClipboardWrite, Event, Names, PaneTypeable, PasteHeld, PresentationChanged,
-    Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReattachPane, ReopenWindow, Request,
-    RosterChanged, ShutWindow, ViewChanged, event, problem, request,
+    AskingChanged, AttentionChanged, ClipboardWrite, Event, Names, PaneTypeable, PasteHeld,
+    PresentationChanged, Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReattachPane,
+    ReopenWindow, Request, RosterChanged, ShutWindow, ViewChanged, event, problem, request,
 };
 use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
@@ -1169,6 +1169,9 @@ pub(crate) struct Session {
     /// Beside the mirrors rather than inside one, because it spans them: a window is focused
     /// or it is not, and that answers for a laptop's panes and a devenv's at once.
     attention: Attention,
+
+    /// What the shell was last told of whether anything is asking ([`announce_asking`]).
+    told_asking: Option<bool>,
 
     /// Which pane has been told it has the keyboard of this window, for a program that asked
     /// to hear it. Spans the daemons for the reason attention does.
@@ -6175,6 +6178,7 @@ fn publish(cause: &str) {
         announce_attention(pane, Attend::Withdrawn);
     }
     read_what_is_looked_at();
+    announce_asking();
 }
 
 /// One window's part of a publish, settled under the lock and sent after it.
@@ -6360,6 +6364,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             ask_for_bridges_again(daemon);
         }
     }
+    announce_asking();
 }
 
 /// Asks for a bridge for every pane of this daemon that nothing has dialed, now that it answers.
@@ -6539,6 +6544,7 @@ fn seen_refused(panes: &[PaneKey]) {
     for pane in &settled {
         announce_state(pane);
     }
+    announce_asking();
 }
 
 /// What a daemon's change does to attention: whether a finish landed on a pane somebody was
@@ -6688,6 +6694,22 @@ fn catch_up_tab_names(daemon: &DaemonId) {
             );
         }
     }
+}
+
+/// Tells the shell whether anything is asking, when that answer has changed since it was last
+/// told. Called wherever attention may have moved, since it costs a lock and two emptiness
+/// checks and sends nothing when the answer is the same.
+fn announce_asking() {
+    let asking = {
+        let mut session = poison::lock(&SESSION, "session");
+        let asking = session.attention.anything_asking();
+        if session.told_asking == Some(asking) {
+            return;
+        }
+        session.told_asking = Some(asking);
+        asking
+    };
+    ffi::emit(&Event::new(event::Payload::AskingChanged(AskingChanged { asking })));
 }
 
 /// Tells the shell that a pane has started asking for somebody, or stopped.
@@ -7220,6 +7242,7 @@ pub(crate) fn window_focused(window: WindowId, focused: bool) {
     if focused && take_what_nobody_holds() {
         publish("holders");
     }
+    announce_asking();
 }
 
 /// How much of one daemon's truth the core currently has.

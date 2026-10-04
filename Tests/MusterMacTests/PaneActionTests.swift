@@ -56,21 +56,18 @@ struct PaneActionTests {
   }
 
   @MainActor
-  @Test("Select Pane Asking is greyed out while nothing asks, and only that item asks")
-  func theAskingItemAsksTheCore() {
+  @Test("Select Pane Asking is greyed out while the core says nothing asks, asking it nothing")
+  func theAskingItemFollowsWhatTheCoreSaid() {
     let asking = #selector(MusterWindow.focusPaneAsking(_:))
-    _ = seam(answeringReadAsking(Muster_Asking()))
+    let core = seam(RecordingDispatcher())
+    defer { Core.deliver(askingChanged(true)) }
+
+    Core.deliver(askingChanged(false))
     #expect(!MusterWindow.isAvailable(asking))
-
-    var waiting = Muster_Asking()
-    waiting.daemonID = "laptop"
-    waiting.paneID = "p2"
-    let busy = seam(answeringReadAsking(waiting))
+    Core.deliver(askingChanged(true))
     #expect(MusterWindow.isAvailable(asking))
-
-    let before = busy.requests.count
     #expect(MusterWindow.isAvailable(#selector(MusterWindow.zoomPane(_:))))
-    #expect(busy.requests.count == before)
+    #expect(core.requests.isEmpty, "validating a menu item asked the core something")
   }
 
   @MainActor
@@ -564,10 +561,10 @@ private func click() -> NSEvent {
     context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
 }
 
-/// A core that answers `ReadAsking` with `asking` and everything else with `ok`.
-private func answeringReadAsking(_ asking: Muster_Asking) -> RecordingDispatcher {
-  RecordingDispatcher { request in
-    if case .readAsking = request.payload { return .asking(asking) }
-    return nil
-  }
+private func askingChanged(_ asking: Bool) -> Muster_Event {
+  var changed = Muster_AskingChanged()
+  changed.asking = asking
+  var event = Muster_Event()
+  event.askingChanged = changed
+  return event
 }

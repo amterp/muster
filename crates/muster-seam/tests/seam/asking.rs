@@ -18,6 +18,7 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     let _turn = muster::testing::fresh_session();
     muster::ffi::muster_set_event_callback(Some(note));
     ASKED.lock().expect("a panicking test poisoned the log").clear();
+    TOLD.lock().expect("a panicking test poisoned the log").clear();
     let daemon = Daemon::start_built();
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
@@ -39,8 +40,9 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     );
     let (shown, _) = keyboard();
 
-    // Asked before anything asks, as the menu item asks to know whether to grey itself out.
+    // Before anything asks: the shell is told so, which its menu item greys itself out by.
     assert_eq!(read_asking(), muster::proto::Asking::default(), "something asks already");
+    assert_eq!(told(), [false], "the shell was not told that nothing asks");
 
     // Whichever tab is not on screen asks, so going there has to change what is shown.
     let (hidden_tab, hidden_pane) = if shown == "t1" { ("t2", "p2") } else { ("t1", "p1") };
@@ -53,6 +55,11 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
         || format!("the window asked {:?}", asked()),
     );
 
+    until(
+        "the shell to be told something asks",
+        || told() == [false, true],
+        || format!("{:?}", told()),
+    );
     let would = read_asking();
     assert_eq!(would.pane_id, hidden_pane, "would go to {would:?}");
     assert_eq!(keyboard().0, shown, "asking where it would go went there");
@@ -68,6 +75,7 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     let nothing = focus_asking();
     assert_eq!(nothing, muster::proto::Asking::default(), "something still asks");
     assert_eq!(keyboard(), (hidden_tab.to_string(), hidden_pane.to_string()), "it moved");
+    assert_eq!(told(), [false, true, false], "told only when the answer changed");
 }
 
 /// Muster quit and its agents went on, and one blocked meanwhile. The window that opens next
@@ -190,6 +198,13 @@ fn painted(pane: &str) -> Option<String> {
 
 static PAINTED: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 
+/// Every AskingChanged the shell was sent, in order.
+static TOLD: Mutex<Vec<bool>> = Mutex::new(Vec::new());
+
+fn told() -> Vec<bool> {
+    TOLD.lock().expect("a panicking test poisoned the log").clone()
+}
+
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
     // is the contract in include/muster.h.
@@ -198,6 +213,9 @@ extern "C" fn note(bytes: *const u8, len: usize) {
     match event.payload {
         Some(event::Payload::AttentionChanged(asked)) => {
             ASKED.lock().expect("a panicking test poisoned the log").push(asked);
+        }
+        Some(event::Payload::AskingChanged(changed)) => {
+            TOLD.lock().expect("a panicking test poisoned the log").push(changed.asking);
         }
         Some(event::Payload::PaneStateChanged(state)) => {
             PAINTED

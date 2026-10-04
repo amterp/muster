@@ -765,16 +765,16 @@ public final class MusterWindow: NSObject {
 /// and the agent that finished underneath was no more seen than if the app were hidden.
 extension MusterWindow: NSMenuItemValidation {
   /// Greys out Select Pane Asking while nothing asks, so the menu says there is nowhere to go
-  /// before anybody tries. AppKit asks as the menu opens and as the item's chord is pressed, and
-  /// the core is asked each time, since what asks changes without anything in the menu knowing.
-  /// Every other item this window targets is always available.
+  /// before anybody tries. AppKit asks as the menu opens and as the item's chord is pressed; the
+  /// answer is the one the core last sent, which it sends whenever it changes. Every other item
+  /// this window targets is always available.
   public func validateMenuItem(_ item: NSMenuItem) -> Bool {
     Self.isAvailable(item.action)
   }
 
   static func isAvailable(_ action: Selector?) -> Bool {
     switch action {
-    case #selector(focusPaneAsking(_:)): Core.anythingAsking()
+    case #selector(focusPaneAsking(_:)): Core.anythingAsking
     default: true
     }
   }
