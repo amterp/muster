@@ -2,8 +2,9 @@
 //! turn: the pane with Muster's hooks reads working and then idle from Claude Code's own
 //! reports, and the pane without them reads the same off its screen. This is what says whether
 //! a Claude Code update has broken either path. The same two panes, narrow and in plan mode,
-//! read blocked at the dialog asking to go ahead with a plan. A pane of its own checks that the
-//! pane's name and the session's follow each other.
+//! read blocked at the dialog asking to go ahead with a plan. Both panes compact when the daemon
+//! asks. A pane of its own checks that the pane's name and the session's follow each other, and
+//! another that a hooked session comes back resumed after a daemon restart.
 //!
 //! Out of the gate, because it reaches the network and spends a turn of a real model. It runs
 //! with `ANTHROPIC_API_KEY` if that is set, and otherwise with the login `claude` already has;
@@ -53,8 +54,11 @@ pub(super) fn quoted(argument: &str) -> String {
     format!("'{}'", argument.replace('\'', r"'\''"))
 }
 
-/// Every change to either pane's record, in order, until both have gone working and then idle.
-pub(super) fn until_both_settle(control: &mut Control, panes: [&str; 2]) -> [Vec<proto::Pane>; 2] {
+/// Every change to each pane's record, in order, until every one has gone working and then idle.
+pub(super) fn until_settled<const N: usize>(
+    control: &mut Control,
+    panes: [&str; N],
+) -> [Vec<proto::Pane>; N] {
     let settled = |seen: &[proto::Pane]| {
         let working =
             seen.iter().position(|record| record.agent_state() == proto::AgentState::Working);
@@ -63,13 +67,13 @@ pub(super) fn until_both_settle(control: &mut Control, panes: [&str; 2]) -> [Vec
         })
     };
     let deadline = Instant::now() + TURN;
-    let mut seen = [Vec::new(), Vec::new()];
+    let mut seen = std::array::from_fn(|_| Vec::new());
     while !seen.iter().all(|seen| settled(seen)) {
         let Some(left) = deadline.checked_duration_since(Instant::now()) else {
             for pane in panes {
                 eprintln!("claude-code: {pane} shows:\n{}", read_text(control, pane, 0, 0).text);
             }
-            panic!("the panes did not both settle within {TURN:?}: {seen:?}");
+            panic!("the panes did not all settle within {TURN:?}: {seen:?}");
         };
         if let Some(proto::control_message::Message::Event(event)) = control.next_message(left)
             && let Some(proto::event::Event::PaneChanged(changed)) = event.event
@@ -110,9 +114,10 @@ fn prompt(control: &mut Control, input: &mut Input, pane: &str) {
     input.send(pane, Event::Send(input_event::Send { text, enter: true }));
 }
 
-/// The two panes, `hooked` with Muster's hooks and `screen` without, side by side, each running
-/// Claude Code with `extra` arguments in a pane `grid` large; None when the tier is not asked for.
-fn two_panes(extra: &str, grid: proto::Grid) -> Option<(Daemon, Control, Input)> {
+/// A daemon for a live check, with `project` made under its root, and the arguments Claude Code
+/// runs with here; None when the tier is not asked for. The daemon's environment carries this
+/// user's home, where Claude Code keeps its login, and a restart starts it with the same.
+fn live_daemon() -> Option<(Daemon, Vec<String>)> {
     if std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none() {
         eprintln!(
             "claude-code: skipped, MUSTER_CLAUDE_CODE_TESTS is not set; ./dev --claude-code sets it"
@@ -134,12 +139,19 @@ fn two_panes(extra: &str, grid: proto::Grid) -> Option<(Daemon, Control, Input)>
     let environment: Vec<(&str, &str)> =
         environment.iter().map(|(name, value)| (*name, value.as_str())).collect();
     let daemon = daemon_with(&environment);
+    std::fs::create_dir_all(daemon.root().join("project")).unwrap();
+    let arguments = arguments.iter().map(|argument| quoted(argument)).collect();
+    Some((daemon, arguments))
+}
+
+/// The two panes, `hooked` with Muster's hooks and `screen` without, side by side, each running
+/// Claude Code with `extra` arguments in a pane `grid` large; None when the tier is not asked for.
+fn two_panes(extra: &str, grid: proto::Grid) -> Option<(Daemon, Control, Input)> {
+    let (daemon, arguments) = live_daemon()?;
     let project = daemon.root().join("project");
-    std::fs::create_dir_all(&project).unwrap();
 
     let mut control = daemon.connect();
     control.ask(subscribe_request());
-    let arguments: Vec<String> = arguments.iter().map(|argument| quoted(argument)).collect();
     let panes = [("hooked", format!("--plugin-dir {}", quoted(PLUGIN))), ("screen", String::new())];
     for (index, (name, hooks)) in panes.iter().enumerate() {
         let command = format!("claude {} {hooks} {extra}", arguments.join(" "));
@@ -169,7 +181,7 @@ fn claude_code_reads_working_then_idle_through_its_hooks_and_through_its_screen(
     for name in PANES {
         prompt(&mut control, &mut input, name);
     }
-    let settled = until_both_settle(&mut control, PANES);
+    let settled = until_settled(&mut control, PANES);
     for (name, seen) in PANES.into_iter().zip(settled) {
         let summary: Vec<_> = seen
             .iter()
@@ -239,23 +251,13 @@ fn claude_code_at_its_plan_approval_dialog_reads_blocked_through_both_paths() {
 #[test]
 #[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
 fn a_pane_and_its_claude_code_session_take_each_others_names() {
-    if std::env::var_os("MUSTER_CLAUDE_CODE_TESTS").is_none() {
-        eprintln!(
-            "claude-code: skipped, MUSTER_CLAUDE_CODE_TESTS is not set; ./dev --claude-code sets it"
-        );
-        return;
-    }
-    let arguments = how_to_run().unwrap_or_else(|why| panic!("claude-code: {why}"));
-    let home = std::env::var("HOME").expect("HOME is set");
-    let daemon = daemon_with(&[("HOME", &home)]);
+    let Some((daemon, arguments)) = live_daemon() else { return };
     let project = daemon.root().join("project");
-    std::fs::create_dir_all(&project).unwrap();
     let statusline = format!("{PLUGIN}/statusline.sh");
     let settings = serde_json::json!({
         "statusLine": { "type": "command", "refreshInterval": 1, "command": statusline }
     })
     .to_string();
-    let arguments: Vec<String> = arguments.iter().map(|argument| quoted(argument)).collect();
     let command = format!("claude {} --settings {}", arguments.join(" "), quoted(&settings));
     let mut control = daemon.connect();
     make(
@@ -301,4 +303,113 @@ fn a_pane_and_its_claude_code_session_take_each_others_names() {
     let screen = read_text(&mut control, "named", 0, 0).text;
     let renames: Vec<&str> = screen.lines().filter(|line| line.starts_with("❯ /rename")).collect();
     assert_eq!(renames, ["❯ /rename 🤖 live", "❯ /rename named in claude"], "{screen}");
+}
+
+/// What `muster pane compact` types compacts a real session, which says Claude Code still takes
+/// `/compact {focus}` (`claude.toml`'s `[session] compact`). Both panes, since the daemon types
+/// only at an idle, empty prompt, and one pane learns that from hooks and the other from its
+/// screen. Claude Code confirms with a line of its own under the command.
+#[test]
+#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
+fn claude_code_compacts_when_the_daemon_asks_through_both_paths() {
+    let grid = proto::Grid { cols: 100, rows: 30, width_px: 1000, height_px: 600 };
+    let Some((daemon, mut control, mut input)) = two_panes("", grid) else { return };
+    // A session with no conversation has nothing to compact.
+    for name in PANES {
+        prompt(&mut control, &mut input, name);
+    }
+    until_settled(&mut control, PANES);
+
+    let mut asking = daemon.connect();
+    for name in PANES {
+        let compact = proto::pane_request::Compact {
+            pane: name.to_string(),
+            focus: Some("keep the numbers".to_string()),
+        };
+        let asked = asking.ask(pane(proto::pane_request::Request::Compact(compact)));
+        assert_eq!(asked.outcome(), proto::Outcome::Done, "{name}: {}", asked.answer.reason);
+    }
+    let deadline = Instant::now() + TURN;
+    for name in PANES {
+        loop {
+            let screen = read_text(&mut asking, name, 0, 0).text;
+            let mut after_command = screen
+                .lines()
+                .skip_while(|line| !line.starts_with("❯ /compact keep the numbers"))
+                .skip(1);
+            if after_command.any(|line| line.contains("Compacted")) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "{name}: the session never compacted: {screen}");
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+}
+
+/// A session reported by its hooks comes back after a daemon restart as
+/// `claude <its flags> --resume <id>`, which says Claude Code's SessionStart still hands the
+/// hook its id and `--resume` still takes it (`claude.toml`'s `[session] resume`). `--model
+/// haiku`, from [`how_to_run`], is the flag that has to go along. The resumed pane shows the
+/// first turn's prompt, so it is that conversation and not a new one.
+#[test]
+#[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
+fn a_claude_code_session_comes_back_resumed_after_a_daemon_restart() {
+    use crate::persistence::{record, state_file, stop, until_restored, until_saved};
+
+    let Some((mut daemon, arguments)) = live_daemon() else { return };
+    let project = daemon.root().join("project");
+    let mut control = daemon.connect();
+    control.ask(subscribe_request());
+    let command = format!("claude {} --plugin-dir {}", arguments.join(" "), quoted(PLUGIN));
+    make(
+        &mut control,
+        proto::pane_request::Create {
+            command: Some(command),
+            cwd: Some(project.display().to_string()),
+            ..create("hooked", in_new_tab("t1"))
+        },
+    );
+    let mut input = Input::connect(daemon.socket_path());
+    prompt(&mut control, &mut input, "hooked");
+    until_settled(&mut control, ["hooked"]);
+
+    let saved_session = |daemon: &Daemon| -> Option<String> {
+        let state: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(state_file(daemon)).ok()?).ok()?;
+        let session = &state["panes"].as_array()?.first()?["resume"]["session"];
+        session.as_str().map(str::to_string)
+    };
+    until_saved(&daemon, "\"resume\"");
+    let session = saved_session(&daemon).expect("the state file holds the pane's resume");
+    eprintln!("claude-code: the hooks reported session {session}");
+
+    stop(&mut daemon, &mut control);
+    daemon.restart();
+    let mut control = daemon.connect();
+    let restored = until_restored(&mut control, 1);
+    let command = record(&restored, "hooked").command.clone().unwrap_or_default();
+    eprintln!("claude-code: restored as {command}");
+    assert!(command.starts_with("claude "), "{command}");
+    assert!(command.contains(" --model haiku "), "--model haiku did not go along: {command}");
+    assert!(command.ends_with(&format!(" --resume {session}")), "{command}");
+
+    let mut input = Input::connect(daemon.socket_path());
+    until_ready(&mut control, &mut input, "hooked");
+    let deadline = Instant::now() + TURN;
+    loop {
+        let screen = read_text(&mut control, "hooked", 0, 0).text;
+        let agent = record(&snapshot(&mut control), "hooked").agent.clone();
+        if agent.as_deref() == Some("claude") && screen.contains("write the numbers from 1 to 80") {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the resumed pane read as {agent:?} or showed no earlier conversation: {screen}"
+        );
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    // Whether Claude Code keeps the id on --resume decides which session a second restart
+    // resumes; noted rather than held, since either resumes the conversation.
+    std::thread::sleep(Duration::from_secs(4));
+    eprintln!("claude-code: after the resume the saved session is {:?}", saved_session(&daemon));
 }

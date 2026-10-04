@@ -248,7 +248,9 @@ daemon rather than inside it, because the bash and zsh scripts are GPLv3 (`packa
 `./dev --claude-code` reaches a model, where `--notarize` reaches only Apple and `--ssh` only what Docker fetches: it
 drives the Claude Code installed here for one turn, in a pane with `extras/claude-code`'s hooks and one without, and
 checks that both the hooks and the screen rules read it working and then idle - which is what says a Claude Code
-update has broken neither - and that a pane's name and its session's follow each other. It also has two sessions message each other through the daemon, and holds how Claude
+update has broken neither - and that a pane's name and its session's follow each other. It compacts both sessions
+through the daemon, and restarts the daemon under a hooked one to check it comes back as `claude <its flags> --resume
+<id>` on the same conversation. It also has two sessions message each other through the daemon, and holds how Claude
 Code treats a message from outside the session to the newest recording in `corpus/claude-code-*/`. It needs
 `ANTHROPIC_API_KEY` or `claude`'s own login, and fails saying which is missing when it has neither, since a tier
 that checked nothing has not passed.

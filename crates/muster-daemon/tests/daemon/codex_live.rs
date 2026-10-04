@@ -15,7 +15,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::claude_code_inbox::{log_of, until_turns};
-use crate::claude_code_live::{quoted, until_both_settle};
+use crate::claude_code_live::{quoted, until_settled};
 use crate::support::*;
 use muster_harness::Input;
 use proto::input_event::{self, Input as Event};
@@ -222,7 +222,7 @@ fn codex_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
             "Without using any tools, write the numbers from 1 to 80, one per line, and nothing else.",
         );
     }
-    let settled = until_both_settle(&mut control, PANES);
+    let settled = until_settled(&mut control, PANES);
     for (name, seen) in PANES.into_iter().zip(settled) {
         let summary: Vec<_> =
             seen.iter().map(|record| (record.agent_state(), record.state_reported)).collect();

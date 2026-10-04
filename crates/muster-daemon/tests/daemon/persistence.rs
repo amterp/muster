@@ -10,7 +10,7 @@ use muster_harness::Input;
 use proto::input_event::{self, Input as Event};
 use proto::{pane_request, placement, session_request, tab_request};
 
-fn state_file(daemon: &Daemon) -> PathBuf {
+pub(crate) fn state_file(daemon: &Daemon) -> PathBuf {
     daemon.root().join("daemon.state.json")
 }
 
