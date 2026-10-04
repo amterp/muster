@@ -174,7 +174,16 @@ fn hand_over(
                     return Err(failure.reason);
                 }
                 Ok(other) => last = format!("it answered {other:?}"),
-                Err(failure) => last = format!("{socket} did not answer ({failure})"),
+                Err(Unsent(failure)) => last = format!("{socket} did not answer ({failure})"),
+                // Sent, and the answer lost: the app may have acted on it, and asking again could
+                // open a second window.
+                Err(Sent(failure)) => {
+                    return Err(format!(
+                        "the Muster already running was asked, at {socket}, and did not answer \
+                         ({failure}). It may still do what was asked; if nothing appears, quit it \
+                         and launch again."
+                    ));
+                }
             }
         }
         if let Ok(Some(file)) = lock(home, install, own) {
@@ -193,13 +202,21 @@ fn hand_over(
     }
 }
 
-fn exchange(socket: &str, request: &Request) -> Result<Response, String> {
-    let mut stream = UnixStream::connect(socket).map_err(|error| error.to_string())?;
+/// Why an exchange failed: before the request could have reached the app, so it is safe to send
+/// again, or after, when the app may have acted on it.
+enum Failed {
+    Unsent(String),
+    Sent(String),
+}
+use Failed::{Sent, Unsent};
+
+fn exchange(socket: &str, request: &Request) -> Result<Response, Failed> {
+    let mut stream = UnixStream::connect(socket).map_err(|error| Unsent(error.to_string()))?;
     let _ = stream.set_read_timeout(Some(PATIENCE));
     let _ = stream.set_write_timeout(Some(PATIENCE));
-    write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| error.to_string())?;
-    let reply = read_frame(&mut stream, LARGEST_MESSAGE)?;
-    Response::decode(reply.as_slice()).map_err(|error| error.to_string())
+    write_frame(&mut stream, &request.encode_to_vec()).map_err(|error| Sent(error.to_string()))?;
+    let reply = read_frame(&mut stream, LARGEST_MESSAGE).map_err(Sent)?;
+    Response::decode(reply.as_slice()).map_err(|error| Sent(error.to_string()))
 }
 
 /// Moves what every install kept in one place into the release's own state directory, once.
@@ -378,6 +395,38 @@ mod tests {
         )
         .expect_err("handed over");
         assert!(refused.contains("app-i1.lock") && refused.contains("did not answer"), "{refused}");
+    }
+
+    /// An app that took the request and did not answer may have acted on it, so the launch says
+    /// so rather than asking again - which could open a second window.
+    #[test]
+    fn a_request_taken_and_not_answered_is_not_sent_again() {
+        let home = home();
+        let socket = home.join("silent.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).expect("binds");
+        let _held = lock(&home, "i1", &socket.display().to_string()).expect("the lock opens");
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counting = std::sync::Arc::clone(&asked);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                if read_frame(&mut stream, LARGEST_MESSAGE).is_ok() {
+                    counting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+        });
+
+        let refused = hand_over(
+            &home,
+            "i1",
+            "/s/command-2.sock",
+            AskForWindow::default(),
+            Duration::from_secs(2),
+        )
+        .expect_err("handed over");
+
+        assert!(refused.contains("may still do what was asked"), "{refused}");
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1, "asked more than once");
     }
 
     /// An app that quits while a launch is handing to it leaves the lock to that launch, rather
