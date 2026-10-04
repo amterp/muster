@@ -28,12 +28,16 @@ use prost::Message;
 /// The lock this process holds, kept open so that it stays held.
 static HELD: Mutex<Option<File>> = Mutex::new(None);
 
-/// How long a launch keeps trying to reach the app holding the lock.
-///
-/// The app takes the lock before it starts listening, so a launch moments after it finds the lock
-/// held and nothing yet answering. Long enough for a launch to finish starting, and short enough
-/// that a launch facing an app that has hung gives up while somebody is still looking.
+/// How long one exchange with the app holding the lock may take.
 const PATIENCE: Duration = Duration::from_secs(5);
+
+/// How long a launch keeps trying to reach the app holding the lock, or to take the lock itself.
+///
+/// The app takes the lock before it starts listening, and in between it may spend up to five
+/// seconds asking window processes from before to quit (`Retiring.patience` in the shell), so this
+/// outlasts that with room for the rest of a launch. Short enough that a launch facing an app that
+/// has hung gives up while somebody is still looking.
+const HANDOVER_PATIENCE: Duration = Duration::from_secs(15);
 
 /// What a claim came to.
 #[derive(Debug, PartialEq, Eq)]
@@ -51,18 +55,13 @@ pub(crate) fn claim(home: &str, socket: &str, ask: AskForWindow) -> Result<Claim
     }
     let home = Path::new(home);
     match lock(home, INSTALL, socket) {
-        Ok(Some(file)) => {
-            *poison::lock(&HELD, "app-lock") = Some(file);
-            let state = state_directory(home, INSTALL);
-            // A launch that cannot make its state directory still runs: it writes nothing, as a
-            // launch with no home does, and says so where the arrangement fails to save.
-            let _ = std::fs::create_dir_all(&state);
-            log::info("app.claimed", fields! { "lock" => lock_path(home, INSTALL).display() });
-            Ok(Claim::Claimed { state: Some(state) })
-        }
+        Ok(Some(file)) => Ok(claimed(home, file)),
         Ok(None) => {
-            hand_over(home, INSTALL, AskForWindow { install: INSTALL.to_string(), ..ask })?;
-            Ok(Claim::HandedOver)
+            let ask = AskForWindow { install: INSTALL.to_string(), ..ask };
+            match hand_over(home, INSTALL, socket, ask, HANDOVER_PATIENCE)? {
+                Handed::Over => Ok(Claim::HandedOver),
+                Handed::Back(file) => Ok(claimed(home, file)),
+            }
         }
         // Not knowing whether another app runs is not a reason to refuse to be one: a home
         // somebody pointed at a read-only place still gets a window, as it always has.
@@ -81,6 +80,17 @@ pub(crate) fn claim(home: &str, socket: &str, ask: AskForWindow) -> Result<Claim
             Ok(Claim::Claimed { state: Some(state_directory(home, INSTALL)) })
         }
     }
+}
+
+/// This process as the app, holding `file`.
+fn claimed(home: &Path, file: File) -> Claim {
+    *poison::lock(&HELD, "app-lock") = Some(file);
+    let state = state_directory(home, INSTALL);
+    // A launch that cannot make its state directory still runs: it writes nothing, as a launch
+    // with no home does, and says so where the arrangement fails to save.
+    let _ = std::fs::create_dir_all(&state);
+    log::info("app.claimed", fields! { "lock" => lock_path(home, INSTALL).display() });
+    Claim::Claimed { state: Some(state) }
 }
 
 /// Where an install keeps its own state under a home: its window arrangements and its record of
@@ -127,17 +137,37 @@ fn socket_of_holder(home: &Path, install: &str) -> String {
     text.trim().to_string()
 }
 
-/// Sends `ask` to the app holding the lock, trying until it answers or [`PATIENCE`] runs out.
-fn hand_over(home: &Path, install: &str, ask: AskForWindow) -> Result<(), String> {
+/// What a handover came to.
+#[derive(Debug)]
+enum Handed {
+    /// The app holding the lock took the request.
+    Over,
+    /// The app holding the lock ended before it answered, and this process took the lock.
+    Back(File),
+}
+
+/// Sends `ask` to the app holding the lock, trying until it answers or `patience` runs out.
+///
+/// Between tries the lock is tried again, because the app holding it may be quitting: its socket
+/// is gone while it still holds the lock, and once it ends there is nobody left to hand to and
+/// this launch is the app.
+fn hand_over(
+    home: &Path,
+    install: &str,
+    socket: &str,
+    ask: AskForWindow,
+    patience: Duration,
+) -> Result<Handed, String> {
     let request = Request::new(request::Payload::AskForWindow(ask));
-    let deadline = Instant::now() + PATIENCE;
+    let deadline = Instant::now() + patience;
     let mut last = String::from("it has not said where it listens");
+    let own = socket;
     loop {
         let socket = socket_of_holder(home, install);
         if !socket.is_empty() {
             match exchange(&socket, &request) {
                 Ok(Response { payload: Some(response::Payload::Ok(_)) }) => {
-                    return Ok(());
+                    return Ok(Handed::Over);
                 }
                 // Answered, and refused: trying again would be refused again.
                 Ok(Response { payload: Some(response::Payload::Failure(failure)) }) => {
@@ -146,6 +176,9 @@ fn hand_over(home: &Path, install: &str, ask: AskForWindow) -> Result<(), String
                 Ok(other) => last = format!("it answered {other:?}"),
                 Err(failure) => last = format!("{socket} did not answer ({failure})"),
             }
+        }
+        if let Ok(Some(file)) = lock(home, install, own) {
+            return Ok(Handed::Back(file));
         }
         if Instant::now() >= deadline {
             return Err(format!(
@@ -333,8 +366,38 @@ mod tests {
         let home = home();
         let _held = lock(&home, "i1", &home.join("nobody.sock").display().to_string())
             .expect("the lock opens");
-        let refused = hand_over(&home, "i1", AskForWindow::default()).expect_err("handed over");
+        let refused = hand_over(
+            &home,
+            "i1",
+            "/s/command-2.sock",
+            AskForWindow::default(),
+            Duration::from_millis(300),
+        )
+        .expect_err("handed over");
         assert!(refused.contains("app-i1.lock") && refused.contains("did not answer"), "{refused}");
+    }
+
+    /// An app that quits while a launch is handing to it leaves the lock to that launch, rather
+    /// than the launch reporting an app that never answered.
+    #[test]
+    fn a_holder_that_quits_hands_the_lock_on() {
+        let home = home();
+        let held = lock(&home, "i1", &home.join("quitting.sock").display().to_string())
+            .expect("the lock opens");
+        let quitting = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            drop(held);
+        });
+        let handed = hand_over(
+            &home,
+            "i1",
+            "/s/command-2.sock",
+            AskForWindow::default(),
+            Duration::from_secs(5),
+        );
+        quitting.join().expect("the holder let go");
+        assert!(matches!(handed, Ok(Handed::Back(_))), "{handed:?}");
+        assert_eq!(socket_of_holder(&home, "i1"), "/s/command-2.sock");
     }
 
     /// The release takes the arrangements nothing holds and the record, with every row's
