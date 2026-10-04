@@ -233,55 +233,80 @@ pub(crate) fn adopt_old_state(home: &str) {
 }
 
 /// [`adopt_old_state`] for any install, so a test can stand in for the release.
+///
+/// Runs at every launch rather than once: an arrangement held by a window process from before
+/// that would not quit stays behind, and is adopted at a later launch once its claim has gone.
+/// Paths are matched by file name, since every arrangement it moves came out of one directory and
+/// the record may spell that directory differently - through a symlinked home, say.
 pub(crate) fn adopt(home: &Path, install: &str) {
     let state = home.join("state");
     let (old_windows, old_record) = (state.join("windows"), state.join("holding/tabs.toml"));
     let own = state_directory(home, install);
     let (windows, record) = (own.join("windows"), own.join("holding/tabs.toml"));
-    if record.exists() || windows.exists() {
-        return;
-    }
-    let old = std::fs::read_to_string(&old_record).ok();
-    let others: BTreeSet<PathBuf> = old
+    // The first time, the shared record; after that, this install's own, whose rows for an
+    // arrangement left behind still name the old directory.
+    let first = !record.exists();
+    let from = if first { &old_record } else { &record };
+    let text = std::fs::read_to_string(from).ok();
+    let others: BTreeSet<std::ffi::OsString> = text
         .as_deref()
         .and_then(|text| from_toml(text).ok())
         .map(|holders| {
             holders
                 .windows()
                 .filter(|window| !window.install.is_empty() && window.install != install)
-                .map(|window| PathBuf::from(&window.arrangement))
+                .filter_map(|window| Path::new(&window.arrangement).file_name().map(Into::into))
                 .collect()
         })
         .unwrap_or_default();
-    let mut moved: BTreeSet<PathBuf> = BTreeSet::new();
+    // After the first adoption only what this install's own record left in the old directory is
+    // its to take: the shared record, which said whose each arrangement was, has gone.
+    let left_behind: Option<BTreeSet<std::ffi::OsString>> = (!first).then(|| {
+        text.as_deref()
+            .and_then(|text| from_toml(text).ok())
+            .map(|holders| {
+                holders
+                    .windows()
+                    .map(|window| Path::new(&window.arrangement))
+                    .filter(|arrangement| !arrangement.starts_with(&windows))
+                    .filter_map(|arrangement| arrangement.file_name().map(Into::into))
+                    .collect()
+            })
+            .unwrap_or_default()
+    });
+    let mut moved: BTreeSet<std::ffi::OsString> = BTreeSet::new();
     if let Ok(entries) = std::fs::read_dir(&old_windows) {
-        let _ = std::fs::create_dir_all(&windows);
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_none_or(|extension| extension != "toml")
-                || others.contains(&path)
+                || others.contains(&entry.file_name())
+                || left_behind.as_ref().is_some_and(|ours| !ours.contains(&entry.file_name()))
                 || claimed_by_a_running_process(&path.with_extension("held"))
             {
                 continue;
             }
+            let _ = std::fs::create_dir_all(&windows);
             if std::fs::rename(&path, windows.join(entry.file_name())).is_ok() {
                 let _ = std::fs::remove_file(path.with_extension("held"));
-                moved.insert(path);
+                moved.insert(entry.file_name());
             }
         }
     }
-    let rows = old.as_deref().and_then(|text| adopt_record(text, install, &moved, &windows));
+    if moved.is_empty() && !(first && old_record.exists()) {
+        return;
+    }
+    let rows = text.as_deref().and_then(|text| adopt_record(text, install, &moved, &windows));
     if let Some(text) = &rows {
         let written = record
             .parent()
             .map_or(Ok(()), std::fs::create_dir_all)
             .and_then(|()| std::fs::write(&record, text))
-            .and_then(|()| std::fs::remove_file(&old_record));
+            .and_then(|()| if first { std::fs::remove_file(&old_record) } else { Ok(()) });
         if let Err(failure) = written {
             log::warn(
                 "state.adopt.failed",
                 fields! {
-                    "record" => old_record.display(),
+                    "record" => from.display(),
                     "detail" => failure.to_string(),
                     "impact" => "the windows open when Muster last ended may not all reopen, and \
                                  a closed window's tabs may join an open window",
@@ -321,22 +346,19 @@ fn claimed_by_a_running_process(claim: &Path) -> bool {
 }
 
 /// The shared record, as `install`'s own: its rows and the rows from before rows named an
-/// install, with every arrangement in `moved` now under `new`. A row whose arrangement did not
-/// move keeps its path, since that is still where its file is. `None` for a record this build
+/// install, with every arrangement named in `moved` now under `new`. A row whose arrangement did
+/// not move keeps its path, since that is still where its file is. `None` for a record this build
 /// cannot read, which is left where it is rather than guessed at.
 fn adopt_record(
     text: &str,
     install: &str,
-    moved: &BTreeSet<PathBuf>,
+    moved: &BTreeSet<std::ffi::OsString>,
     new: &Path,
 ) -> Option<String> {
     let mut holders = from_toml(text).ok()?;
-    holders.adopt(install, |arrangement| {
-        let path = Path::new(arrangement);
-        match path.file_name() {
-            Some(file) if moved.contains(path) => new.join(file).display().to_string(),
-            _ => arrangement.to_string(),
-        }
+    holders.adopt(install, |arrangement| match Path::new(arrangement).file_name() {
+        Some(file) if moved.contains(file) => new.join(file).display().to_string(),
+        _ => arrangement.to_string(),
     });
     Some(to_toml(&holders))
 }
@@ -500,9 +522,20 @@ mod tests {
         );
         assert!(!home.join("state/holding/tabs.toml").exists(), "the old record was left behind");
 
-        std::fs::write(old.join("window-3.toml"), "three").expect("written");
+        // The window a running process held is adopted at a later launch, once that process has
+        // gone, with its row moved after it.
+        std::fs::remove_file(old.join("window-2.held")).expect("the claim is there");
         adopt(&home, "release");
-        assert!(!own.join("windows/window-3.toml").exists(), "adopted a second time");
+        assert_eq!(
+            std::fs::read_to_string(own.join("windows/window-2.toml")).ok().as_deref(),
+            Some("two")
+        );
+        let adopted = std::fs::read_to_string(own.join("holding/tabs.toml")).expect("adopted");
+        assert!(
+            adopted.contains(&own.join("windows/window-2.toml").display().to_string()),
+            "{adopted}"
+        );
+        assert!(old.join("window-4.toml").exists(), "another install's arrangement was taken");
     }
 
     /// A claim whose process has gone - a crash, a kill, a reboot under a build from before - is
@@ -512,9 +545,10 @@ mod tests {
         let home = home();
         let old = home.join("state/windows");
         std::fs::create_dir_all(&old).expect("the old windows directory");
-        let mut ended = std::process::Command::new("/usr/bin/true").spawn().expect("true runs");
-        let gone = ended.id();
-        ended.wait().expect("true ends");
+        // Above any pid macOS or Linux hands out, so no process has it. Not a child started and
+        // reaped for its pid: forking here would carry another test's lock into the child until
+        // it execs, and that test would find its own lock still held.
+        let gone = 4_000_000_u32;
         std::fs::write(old.join("window-1.toml"), "one").expect("written");
         std::fs::write(old.join("window-1.held"), gone.to_string()).expect("written");
 
