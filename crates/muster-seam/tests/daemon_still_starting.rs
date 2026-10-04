@@ -88,6 +88,39 @@ fn muster_s_own_daemon_that_cannot_start_is_a_problem_not_a_refused_window() {
     );
 }
 
+/// A daemon binary that is not there will not be there on the next attempt either, so the window
+/// says so once, as an error somebody has to act on, and stops trying (kan a_2YAdjHjmh). A daemon
+/// that exits, as above, may start next time and is still tried again.
+#[test]
+fn a_daemon_binary_that_is_not_there_is_an_error_and_not_retried() {
+    let home = scratch_home();
+    let missing = home.join("no-such-daemon");
+    let _turn = muster::testing::fresh_session();
+    *PROBLEMS.lock().expect("a panicking test poisoned the problems") = None;
+    muster::ffi::muster_set_event_callback(Some(note_problems));
+    open_with_no_daemon_configured(&missing, "missing");
+    let said = || {
+        PROBLEMS
+            .lock()
+            .expect("a panicking test poisoned the problems")
+            .clone()
+            .and_then(|changed| changed.problems.into_iter().find(|p| p.key == "daemon:local"))
+    };
+    until(
+        "the window to say its daemon is not there",
+        || said().is_some(),
+        || format!("the problems raised are {:?}", problems()),
+    );
+    let problem = said().expect("just waited for it");
+    assert_eq!(problem.severity, "error", "nothing changes by waiting: {problem:?}");
+    assert!(
+        problem.detail.contains(&missing.display().to_string())
+            && problem.detail.contains("stopped trying"),
+        "the problem names the missing binary and says Muster stopped: {}",
+        problem.detail
+    );
+}
+
 /// The record of who holds each tab forgets a tab no daemon describes, unless the window holding
 /// it follows a daemon that has not answered, which may be where the tab is. A daemon still on
 /// its way is one this window will show, so it counts as followed; were it not, this window
