@@ -5765,7 +5765,11 @@ pub(crate) fn attach(window: WindowId, pane_id: &str) -> Result<Arc<AttachedPane
     {
         let mut session = poison::lock(&SESSION, "session");
         let opening = &mut session.windows[window];
-        opening.lifecycle = Lifecycle::Open;
+        // A close asked for before this attach finished still stands: `closing` was a flag of
+        // its own beside `opened` until the two became one lifecycle.
+        if opening.lifecycle != Lifecycle::Closing {
+            opening.lifecycle = Lifecycle::Open;
+        }
         log::info(
             "window.opened",
             fields! {
