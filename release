@@ -1,0 +1,313 @@
+#!/usr/bin/env rad
+---
+Cut a Muster release, from the version bump to both Homebrew casks.
+
+Write packaging/release-notes/<version>.md first: it is the one part a script cannot do,
+and this refuses to start without it. Then './release minor' bumps the version, takes the
+gate and the contract tier, commits, pushes main, waits for CI, tags, waits for the
+notarized build, checks the artifact, and points both casks at it.
+
+It pushes main, a tag and both casks without asking: running it is the decision to publish.
+Run the same command again after an interruption and it picks up where it stopped.
+---
+args:
+    bump str  # Which part of the last release's version to raise.
+
+    bump enum ["major", "minor", "patch"]
+
+REPO = "amterp/muster"
+TAP = "amterp/homebrew-tap"
+CASK = "packaging/homebrew/muster.rb"
+TAP_CASK = "Casks/muster.rb"
+SCHEMA = "proto/muster_daemon.proto"
+BASELINE = "proto/muster_daemon.v1.baseline.proto"
+PROTOCOL_RS = "crates/muster-daemon-proto/src/version.rs"
+
+// The cask's line saying its checksum is still the last release's. Its presence is what
+// says a release is under way: the bump writes it, and pointing the cask at the published
+// artifact removes it. Keeping the state in a file the release commits anyway, rather than
+// a file of its own, is what lets a rerun resume without anything to clean up.
+fn marker(last, target):
+    return "  # Still {last}'s checksum, until the notarized {target} build gives its own."
+
+fn step(name):
+    print(bold("\n▸ {name}"))
+
+fn fail(lines):
+    print_err(red(lines[0]))
+    for line in lines[1:]:
+        print_err(line)
+    exit(1)
+
+fn workspace_version():
+    return quiet $`sed -n '/^\[workspace\.package\]/,$ s/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1`.stdout.trim()
+
+fn latest_tag():
+    tags = quiet $`git tag --list 'v*' --sort=-v:refname`.stdout.trim()
+    if tags == "":
+        fail(["No v* tag in this checkout, so there is no last release to bump from.",
+              "Fetch the tags (git fetch --tags origin), or tag the first release by hand."])
+    return tags.split_lines()[0].trim_prefix("v")
+
+fn bumped(version, bump):
+    parts = version.split(".")
+    major = parse_int(parts[0])
+    minor = parse_int(parts[1])
+    patch = parse_int(parts[2])
+    if bump == "major":
+        return "{major + 1}.0.0"
+    if bump == "minor":
+        return "{major}.{minor + 1}.0"
+    return "{major}.{minor}.{patch + 1}"
+
+fn cask_marker_line():
+    for line in read_file(CASK).content.split_lines():
+        if line.starts_with("  # Still ") and "'s checksum, until the notarized " in line:
+            return line
+    return ""
+
+fn protocol_version():
+    for line in read_file(PROTOCOL_RS).content.split_lines():
+        if line.starts_with("pub const PROTOCOL: Version"):
+            return replace(line, ".*major: (\\d+), minor: (\\d+).*", "$1.$2", regex=true)
+    fail(["{PROTOCOL_RS} declares no PROTOCOL, so the baseline cannot be brought up to it.",
+          "Impact: the release would ship without saying which daemon protocol it speaks.",
+          "Restore the `pub const PROTOCOL: Version` line."])
+
+fn baseline_version():
+    for line in read_file(BASELINE).content.split_lines():
+        if line.starts_with("// Version: "):
+            return line.trim_prefix("// Version: ").trim()
+    fail(["{BASELINE} has no '// Version:' line in its header.",
+          "Impact: nothing says which protocol the last release shipped, so the compatible",
+          "test's baseline cannot be moved forward. Restore the header from git history."])
+
+fn push_main():
+    $`git push origin HEAD:main` catch:
+        fail(["origin/main refused the push.",
+              "Impact: nothing is released until main carries this commit.",
+              "Usually somebody pushed in the meantime: fetch, rebase onto origin/main, check",
+              "the result still passes ./dev, and run this again."])
+
+// Every run GitHub started for the commit, or only one workflow's, waited on until each has
+// finished. A commit no run has appeared for yet is waited on too, for a while: a push
+// reaches Actions some seconds before its runs are listed.
+fn wait_for_runs(sha, workflow, what):
+    waited = 0
+    while:
+        if workflow == "":
+            listed = quiet $`gh run list -R {REPO} --commit {sha} --json name,status,conclusion,url`.stdout
+        else:
+            listed = quiet $`gh run list -R {REPO} --commit {sha} --workflow {workflow} --json name,status,conclusion,url`.stdout
+        runs = parse_json(listed)
+        if len(runs) == 0:
+            if waited > 300:
+                fail(["No {what} run appeared for {sha[:8]} in five minutes.",
+                      "Impact: nothing has checked this commit, so it is not tagged or published.",
+                      "Check https://github.com/{REPO}/actions, then run this again."])
+        else:
+            pending = runs.filter(fn(r) r.status != "completed")
+            if len(pending) == 0:
+                failed = runs.filter(fn(r) r.conclusion != "success")
+                if len(failed) > 0:
+                    lines = ["{what} failed on {sha[:8]}."]
+                    for r in failed:
+                        lines += ["  {r.name}: {r.conclusion} - {r.url}"]
+                    lines += ["Impact: the release stops here, and nothing is published.",
+                              "A failure outside the code - Apple refusing a submission, an expired credential, a",
+                              "runner - is re-run in place once fixed: gh run rerun <id> --failed, then run this",
+                              "again. A failure in the code means fixing main; a tag already pushed is not moved."]
+                    fail(lines)
+                print("{what} passed on {sha[:8]}.")
+                return
+        sleep(30)
+        waited += 30
+
+fn verify_artifact(target, dir):
+    zip = "Muster-{target}-arm64.zip"
+    $`gh release download v{target} -R {REPO} --pattern {zip} --dir {dir} --clobber`
+    sha = quiet $`shasum -a 256 {dir}/{zip}`.stdout.split(" ")[0]
+    body = quiet $`gh release view v{target} -R {REPO} --json body -q .body`.stdout
+    if "sha256 `{sha}`" not in body:
+        fail(["The downloaded {zip} hashes to {sha}, which the release body does not name.",
+              "Impact: the cask would pin a checksum that does not match what the release says.",
+              "Look at https://github.com/{REPO}/releases/tag/v{target} before going further."])
+    quiet $`unzip -q -o {dir}/{zip} -d {dir}`
+    app = "{dir}/Muster.app"
+    plist = quiet $`/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' {app}/Contents/Info.plist`.stdout.trim()
+    cli = quiet $`{app}/Contents/MacOS/muster-cli --version`.stdout.trim()
+    if plist != target or cli != "muster {target}":
+        fail(["The published app says it is {plist}, and its CLI '{cli}', not {target}.",
+              "Impact: Launch Services and brew would disagree about which version is installed.",
+              "The tag and Cargo.toml must have disagreed; release.yml checks this, so look at its run."])
+    $`xcrun stapler validate {app}`
+    stdout, stderr, code = $`spctl -a -vv -t exec {app}`
+    if "source=Notarized Developer ID" not in "{stdout}{stderr}":
+        fail(["Gatekeeper does not accept the published app as notarized.",
+              "Impact: a person installing it gets a warning, or a refusal, instead of the app.",
+              "What spctl said is above. The release stays published; do not point the casks at it."])
+    print("v{target}: {sha}, notarized and stapled.")
+    return sha
+
+fn point_cask_at(target, sha):
+    text = read_file(CASK).content
+    lines = text.split_lines().filter(fn(l) not (l.starts_with("  # Still ") and "'s checksum" in l))
+    lines = lines.map(fn(l) (l.starts_with("  sha256 \"") ? "  sha256 \"{sha}\"" : l))
+    write_file(CASK, join(lines, "\n") + "\n")
+    $`git add {CASK}`
+    subject = "chore: the cask names the artifact v{target} ships"
+    $`git commit -q -m {subject}`
+    code = $`git push origin HEAD:main`.code
+    if code != 0:
+        // Most likely somebody's board commit landed during the wait. The cask commit
+        // touches one file, so it replays onto theirs unless they edited the cask too.
+        if not $`git pull --rebase -q origin main`.ok:
+            $`git rebase --abort` catch:
+                pass
+            fail(["The cask commit conflicts with something pushed to main meanwhile.",
+                  "Impact: the repo's cask still names the old checksum; the release itself is out.",
+                  "Resolve it by hand: the cask wants sha256 {sha} and no 'Still' line."])
+        push_main()
+
+fn update_tap(target, dir):
+    tap = "{dir}/homebrew-tap"
+    $`gh repo clone {TAP} {tap} -- -q`
+    $`cp {CASK} {tap}/{TAP_CASK}`
+    if $`git -C {tap} diff --quiet`.ok:
+        print("The tap already carries this cask.")
+        return
+    $`git -C {tap} add {TAP_CASK}`
+    subject = "muster {target}"
+    $`git -C {tap} commit -q -m {subject}`
+    $`git -C {tap} push -q origin HEAD`
+
+// ---------------------------------------------------------------------------------------
+
+step("preflight")
+if quiet $`git branch --show-current`.stdout.trim() != "main":
+    fail(["Releases are cut from main, and this checkout is not on it.",
+          "Switch to main, or run this from the checkout that is."])
+quiet $`git fetch -q --tags origin`
+if not quiet $`git merge-base --is-ancestor origin/main HEAD`.ok:
+    fail(["origin/main has commits this checkout does not.",
+          "Impact: the release would be built from a tree without them, and pushing main would be refused.",
+          "Rebase onto origin/main, check the result still passes ./dev, and run this again."])
+if not quiet $`gh auth status -h github.com >/dev/null 2>&1`.ok:
+    fail(["gh is not logged in to github.com.",
+          "It is how this waits on CI and reads the release. Run: gh auth login"])
+
+current = workspace_version()
+latest = latest_tag()
+pending_marker = cask_marker_line()
+
+if pending_marker == "":
+    target = bumped(latest, bump)
+    if current != latest:
+        fail(["Cargo.toml says {current}, but the last release is {latest} and the cask names no release under way.",
+              "Impact: there is no telling which version this is meant to release.",
+              "Set Cargo.toml back to {latest} to release {target}, or finish {current} by hand."])
+    resuming = false
+else:
+    target = current
+    resuming = true
+    tagged = quiet $`git rev-parse -q --verify refs/tags/v{target} >/dev/null`.ok
+    if not tagged and bumped(latest, bump) != target:
+        fail(["A {target} release is under way, which is not a {bump} bump of {latest}.",
+              "Run this again with the bump that started it."])
+    print("A {target} release is under way: picking up where it stopped.")
+
+notes = "packaging/release-notes/{target}.md"
+if not quiet $`test -f {notes}`.ok:
+    commits = quiet $`git rev-list --count v{latest}..HEAD`.stdout.trim()
+    fail(["No release notes for {target}.",
+          "Impact: the GitHub release would say nothing about what changed, and nobody updating learns what to do.",
+          "Write {notes}: what somebody updating from {latest} has to know, shaped like",
+          "packaging/release-notes/{latest}.md. git log v{latest}..HEAD has the {commits} commits since."])
+
+if not resuming:
+    step("{latest} -> {target}")
+    if quiet $`git status --porcelain -- . :!{notes}`.stdout.trim() != "":
+        fail(["The working tree has changes besides {notes}.",
+              "Impact: the release commit would carry them, or the gate would judge a tree that is not the one tagged.",
+              "Commit or stash them, then run this again."])
+
+    cargo = read_file("Cargo.toml").content
+    if cargo.count("\nversion = \"{latest}\"\n") != 1:
+        fail(["Cargo.toml has no single 'version = \"{latest}\"' line to bump.",
+              "Bump [workspace.package] version by hand and run this again."])
+    write_file("Cargo.toml", cargo.replace("\nversion = \"{latest}\"\n", "\nversion = \"{target}\"\n"))
+    quiet $`cargo metadata -q --format-version 1 >/dev/null`
+
+    cask = read_file(CASK).content
+    old_version = "  version \"{latest}\"\n"
+    if cask.count(old_version) != 1:
+        fail(["{CASK} does not name {latest}, so it cannot be moved to {target}.",
+              "Impact: brew would keep offering the old version. Fix the cask's version line by hand."])
+    write_file(CASK, cask.replace(old_version, "  version \"{target}\"\n{marker(latest, target)}\n"))
+
+    // A protocol minor that ships becomes the baseline the compatible test holds the schema
+    // to, so a later change to the schema is the next minor rather than this one again.
+    protocol = protocol_version()
+    baseline = baseline_version()
+    if protocol != baseline:
+        header = read_file(BASELINE).content.split_lines()[:6]
+        header = header.map(fn(l) (l == "// Version: {baseline}" ? "// Version: {protocol}" : l))
+        write_file(BASELINE, join(header, "\n") + "\n" + read_file(SCHEMA).content)
+        print("The protocol baseline moves from {baseline} to {protocol}.")
+
+// A gate that went red leaves the bump in the working tree, marker and all, so a rerun has
+// to tell a bump that was committed from one that never got that far.
+pending_marker = cask_marker_line()
+committed = pending_marker != "" and pending_marker in quiet $`git show HEAD:{CASK}`.stdout
+if not committed:
+    step("gate")
+    $`./dev` catch:
+        fail(["The gate is red on the {target} tree.",
+              "The bump is left in the working tree. Fix what failed and run this again, or",
+              "git checkout the bumped files to abandon the release."])
+    $`./dev --contract` catch:
+        fail(["The contract tier is red on the {target} tree.",
+              "The bump is left in the working tree. Fix what failed and run this again, or",
+              "git checkout the bumped files to abandon the release."])
+
+    message = "chore: {target}\n\nWhat somebody updating has to know is in\n{notes}, which the release\nworkflow puts above the install lines.\n"
+    if not quiet $`git diff --quiet HEAD -- {BASELINE}`.ok:
+        protocol = protocol_version()
+        message += "\nThe daemon's protocol ships as {protocol}, so the schema's baseline\nbecomes {protocol} here: from now on a change to the schema is the next\nminor.\n"
+    message += "\nThe cask names {target} and still carries {latest}'s checksum, marked\nas such, until the notarized build gives its own.\n"
+    message_file = quiet $`mktemp`.stdout.trim()
+    write_file(message_file, message)
+    $`git add Cargo.toml Cargo.lock {CASK} {BASELINE} {notes}`
+    $`git commit -q -F {message_file}`
+
+step("publish v{target}")
+
+tag_pushed = quiet $`git ls-remote --tags origin refs/tags/v{target}`.stdout.trim() != ""
+if not tag_pushed:
+    if quiet $`git rev-parse -q --verify refs/tags/v{target} >/dev/null`.ok:
+        sha = quiet $`git rev-list -n 1 v{target}`.stdout.trim()
+    else:
+        sha = quiet $`git rev-parse HEAD`.stdout.trim()
+        if quiet $`git rev-list --count origin/main..HEAD`.stdout.trim() != "0":
+            push_main()
+        wait_for_runs(sha, "", "CI")
+        $`git tag v{target} {sha}`
+    $`git push -q origin v{target}`
+sha = quiet $`git rev-list -n 1 v{target}`.stdout.trim()
+wait_for_runs(sha, "release.yml", "The release build")
+
+step("verify and point the casks at v{target}")
+dir = quiet $`mktemp -d`.stdout.trim()
+artifact_sha = verify_artifact(target, dir)
+if cask_marker_line() != "":
+    point_cask_at(target, artifact_sha)
+update_tap(target, dir)
+
+if quiet $`which brew >/dev/null`.ok:
+    quiet $`brew update -q`
+    $`brew fetch --cask amterp/tap/muster` catch:
+        fail(["brew could not fetch the new cask.",
+              "Impact: brew install and brew upgrade fail for everybody until the tap is fixed.",
+              "What brew said is above; check {TAP}'s {TAP_CASK} against {CASK}."])
+
+print(green("\nMuster {target} is out: https://github.com/{REPO}/releases/tag/v{target}"))

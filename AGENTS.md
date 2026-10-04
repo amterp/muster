@@ -212,6 +212,15 @@ A release is Apple Silicon only, and `--notarize` refuses to run anywhere else. 
 cross-building libghostty under Zig for a second architecture, and the Homebrew cask in `packaging/homebrew/` says
 `depends_on arch: :arm64` so an Intel Mac is turned away by brew rather than by a crash.
 
+**`./release minor` cuts a release** (or `major`, or `patch`), and is a script of its own because `./dev` builds and
+checks a tree while this ships one. Write `packaging/release-notes/<version>.md` first: the notes take judgment, so
+the script refuses to start without them. It then bumps the version, moves the daemon protocol's baseline up to a
+protocol minor that ships, takes `./dev` and `./dev --contract`, commits, pushes main, tags once CI passes, waits for
+`release.yml`, checks the published zip's checksum, version and notarization, and points both casks at it - the one
+here and the tap's, which it clones to a scratch directory. The cask's "Still X's checksum" line marks a release
+under way, so running the same command after an interruption resumes it rather than bumping twice. It asks nothing
+before pushing: running it is the decision to publish.
+
 `./dev --contract` is the exception that stays out of the gate. It launches the real app against a real
 muster-daemon and reads its run log to see what connected, so it needs a logged-in GUI session - which the default
 suite is not allowed to require. The checks are `crates/muster-contract`, ignored by the gate and run one at a time
