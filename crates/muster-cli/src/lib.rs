@@ -122,7 +122,7 @@ pub fn run(
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
-        asking @ (args::Asking::MakeWindow
+        asking @ (args::Asking::MakeWindow(_)
         | args::Asking::ReopenWindow(_)
         | args::Asking::CloseWindow(_)) => {
             return match about_a_window(&asking, named.as_deref(), environment) {
@@ -244,7 +244,8 @@ fn about_a_window(
         args::Asking::ReopenWindow(name) => {
             opening::the_closed_window(environment, name.as_deref())
         }
-        _ => opening::another_window(environment),
+        args::Asking::MakeWindow(onto) => opening::another_window(environment, onto),
+        _ => unreachable!("only the window verbs reach here"),
     }?;
     Ok(serde_json::json!({ "window": opened.window, "socket": opened.socket }))
 }

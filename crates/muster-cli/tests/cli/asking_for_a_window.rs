@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use muster_proto::{
-    AskForWindow, Failure, Ok as Accepted, OtherWindow, Request, Response, Window, frame, request,
-    response,
+    AskForWindow, Failure, Machine, Ok as Accepted, OtherWindow, Request, Response, Window, frame,
+    request, response,
 };
 use prost::Message;
 
@@ -67,6 +67,39 @@ fn an_app_that_refuses_is_passed_over_for_starting_one() {
     assert_eq!(app.asked().len(), 1, "the running app was not asked first");
 }
 
+/// A window asked for on one machine names it to the app, which is the app that follows it.
+#[test]
+fn a_window_on_a_machine_is_asked_of_the_app_following_it() {
+    let scratch = Scratch::new("ask-daemon");
+    let app = App::answering(scratch.home(), 504, "window-1", "window-2");
+
+    let (code, out, errors) =
+        run(&["window", "new", "--daemon", "local"], scratch.home(), BTreeMap::new());
+
+    assert_eq!(code, 0, "asking for a window on a machine the app follows failed: {errors}");
+    assert_eq!(out.trim(), "window-2");
+    let asked = app.asked();
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert!(asked[0].fresh && asked[0].daemon == "local", "{asked:?}");
+}
+
+/// An app that follows no such machine is not asked, and is not answered by starting another
+/// app, which would not follow it either.
+#[test]
+fn a_window_on_a_machine_no_app_follows_is_refused() {
+    let scratch = Scratch::new("ask-no-daemon");
+    let app = App::answering(scratch.home(), 505, "window-1", "window-2");
+    let environment =
+        BTreeMap::from([("MUSTER_APP".to_string(), "/tmp/muster-cli/no-such.app".to_string())]);
+
+    let (code, _, errors) =
+        run(&["window", "new", "--daemon", "devenv"], scratch.home(), environment);
+
+    assert_ne!(code, 0, "a window was reported opened on a machine nothing follows");
+    assert!(errors.contains("devenv") && !errors.contains("no-such.app"), "{errors}");
+    assert!(app.asked().is_empty(), "the app was asked though it follows no such machine");
+}
+
 /// What a stand-in app was asked, and whether it says yes.
 struct App {
     asked: Arc<Mutex<Vec<AskForWindow>>>,
@@ -118,6 +151,10 @@ impl App {
                     response::Payload::Window(Window {
                         name: name.clone(),
                         windows: others,
+                        daemons: vec![Machine {
+                            daemon_id: "local".to_string(),
+                            ..Machine::default()
+                        }],
                         ..Window::default()
                     })
                 };

@@ -68,7 +68,7 @@ public final class WindowOpening {
       NSSound.beep()
       return
     }
-    open(arrangement: arrangement, show: asked.show)
+    open(arrangement: arrangement, show: asked.show, daemon: asked.daemon, tab: asked.tab)
   }
 
   /// Brings the app forward onto the window in front, or opens one when none is open: what a
@@ -93,8 +93,9 @@ public final class WindowOpening {
   }
 
   /// Opens a window onto an arrangement no window here has open.
-  private func open(arrangement: String, show: String) {
-    guard let name = Core.open(arrangement: arrangement, show: show) else {
+  private func open(arrangement: String, show: String, daemon: String = "", tab: String = "") {
+    guard let name = Core.open(arrangement: arrangement, show: show, daemon: daemon, tab: tab)
+    else {
       NSSound.beep()
       return
     }

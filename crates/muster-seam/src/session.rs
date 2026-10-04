@@ -1295,6 +1295,14 @@ pub(crate) struct Window {
     /// left is a fine place for it to be.
     show: Option<String>,
 
+    /// The machine this window's first tab is asked of when it has none, in place of the first
+    /// one on this machine: `muster window new --daemon`.
+    first_tab_on: Option<DaemonId>,
+
+    /// A tab this window opens onto, taken from whichever window holds it: `muster window new
+    /// --tab`. Brought in as it opens, before it would ask a machine for a tab of its own.
+    brings: Option<TabId>,
+
     /// True when Muster opened the roster itself to show an error, having found it closed.
     /// Kept so that clearing the last error can put it back the way somebody left it -
     /// borrowing the roster is defensible, keeping it is not.
@@ -1329,6 +1337,8 @@ impl Default for Window {
             opened: false,
             closed: false,
             show: None,
+            first_tab_on: None,
+            brings: None,
             opened_sidebar: false,
             bridge_baselines: BTreeMap::new(),
         }
@@ -3620,23 +3630,52 @@ fn taken_elsewhere(pane: &PaneId, tab: &TabId, window: &WindowName) -> Refusal {
 
 /// Asks the shell for a window on behalf of somebody outside the app: a new one, or a closed one
 /// by name, or the most recently closed when the name is empty.
-pub(crate) fn ask_for_window(name: &str, show: &str, fresh: bool, any: bool) {
+pub(crate) fn ask_for_window(ask: &crate::proto::AskForWindow) {
     log::info(
         "window.asked_for",
         fields! {
-            "window" => name,
-            "show" => show,
-            "fresh" => fresh.to_string(),
-            "any" => any.to_string(),
+            "window" => &ask.name,
+            "show" => &ask.show,
+            "fresh" => ask.fresh.to_string(),
+            "any" => ask.any.to_string(),
+            "daemon" => &ask.daemon,
+            "tab" => &ask.tab,
         },
     );
     ffi::emit(&Event::new(event::Payload::ReopenWindow(ReopenWindow {
-        name: name.to_string(),
+        name: ask.name.clone(),
         // Already gone to by the core when any window will do (`handler::ask_for_window`).
-        show: if any { String::new() } else { show.to_string() },
-        fresh,
-        any,
+        show: if ask.any { String::new() } else { ask.show.clone() },
+        fresh: ask.fresh,
+        any: ask.any,
+        daemon: ask.daemon.clone(),
+        tab: ask.tab.clone(),
     })));
+}
+
+/// Why a fresh window cannot be opened onto `daemon` or `tab`, if it cannot: the app follows no
+/// machine by that name, or no machine it follows holds that tab.
+pub(crate) fn cannot_open_onto(daemon: &str, tab: &str) -> Option<String> {
+    if !daemon.is_empty() {
+        let followed: Vec<String> = {
+            let session = poison::lock(&SESSION, "session");
+            session.backends.keys().map(ToString::to_string).collect()
+        };
+        if !followed.iter().any(|id| id == daemon) {
+            return Some(format!(
+                "this Muster follows no machine called {daemon}, so no window was opened. It \
+                 follows: {}. `muster window` lists them.",
+                followed.join(", ")
+            ));
+        }
+    }
+    if !tab.is_empty() && daemon_holding_tab(&TabId::new(tab)).is_none() {
+        return Some(format!(
+            "no machine this Muster follows holds a tab called {tab}, so no window was opened. \
+             `muster window` lists the tabs there are."
+        ));
+    }
+    None
 }
 
 /// The request that goes to a pane or a tab by name, whichever it names.
@@ -3688,8 +3727,7 @@ fn reopened_for(window: WindowId, tab: &TabId, show: &str) -> bool {
     ffi::emit(&Event::new(event::Payload::ReopenWindow(ReopenWindow {
         name: holder.name.to_string(),
         show: show.to_string(),
-        fresh: false,
-        any: false,
+        ..ReopenWindow::default()
     })));
     true
 }
@@ -4664,9 +4702,24 @@ pub(crate) fn open(window: WindowId) -> Result<(), String> {
     // is answered by the daemon on its own thread, and the region for it is opened
     // by the standing rule when that answer lands; a window that had not yet said it was open
     // would turn that rule off and wait forever for a region nothing else will make.
-    {
+    let brings = {
         let mut session = poison::lock(&SESSION, "session");
         session.windows[window].opened = true;
+        session.windows[window].brings.take()
+    };
+    // Before settling, so a window opened onto a tab is not empty and asks no machine for one.
+    if let Some(tab) = brings
+        && let Err(refusal) = move_tab(window, Some(tab.clone()), "")
+    {
+        log::warn(
+            "window.tab.failed",
+            fields! {
+                "tab" => tab.to_string(),
+                "detail" => refusal.to_string(),
+                "impact" => "the window opened onto a tab of its own rather than the one asked for",
+                "check" => "whether that tab closed while the window was opening",
+            },
+        );
     }
     settle_what_the_window_shows(window);
     // A window just opened has been sent nothing, whatever an earlier one was.
@@ -4761,7 +4814,13 @@ pub(crate) enum Opening {
 /// takes the next tab nobody asked for. Every daemon this process follows is one the new window
 /// follows too - there is one set of daemons for every window - so its composition starts
 /// attached to each of them, in the order the others have them.
-pub(crate) fn window_to_open(window: WindowId, arrangement: &str, show: &str) -> Opening {
+pub(crate) fn window_to_open(
+    window: WindowId,
+    arrangement: &str,
+    show: &str,
+    first_tab_on: &str,
+    brings: &str,
+) -> Opening {
     let mut session = poison::lock(&SESSION, "session");
     let existing = if arrangement.is_empty() {
         Some(window)
@@ -4779,6 +4838,9 @@ pub(crate) fn window_to_open(window: WindowId, arrangement: &str, show: &str) ->
         if !show.is_empty() {
             session.windows[existing].show = Some(show.to_string());
         }
+        session.windows[existing].first_tab_on =
+            (!first_tab_on.is_empty()).then(|| DaemonId::new(first_tab_on));
+        session.windows[existing].brings = (!brings.is_empty()).then(|| TabId::new(brings));
         return Opening::Unopened(existing);
     }
     let name = session.holding.register(arrangement);
@@ -4788,6 +4850,8 @@ pub(crate) fn window_to_open(window: WindowId, arrangement: &str, show: &str) ->
         name,
         arrangement: (!arrangement.is_empty()).then(|| (arrangement.to_string(), String::new())),
         show: (!show.is_empty()).then(|| show.to_string()),
+        first_tab_on: (!first_tab_on.is_empty()).then(|| DaemonId::new(first_tab_on)),
+        brings: (!brings.is_empty()).then(|| TabId::new(brings)),
         ..Window::default()
     };
     for daemon in daemons {
@@ -5156,7 +5220,8 @@ fn open_a_tab_if_the_window_is_empty(window: WindowId) {
         return;
     }
 
-    let Some(daemon) = first_local_daemon(window).filter(has_spoken) else {
+    let asked_for = poison::lock(&SESSION, "session").windows[window].first_tab_on.clone();
+    let Some(daemon) = asked_for.or_else(|| first_local_daemon(window)).filter(has_spoken) else {
         log::info(
             "window.empty",
             fields! {

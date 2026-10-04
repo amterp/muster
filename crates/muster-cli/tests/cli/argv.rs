@@ -104,7 +104,15 @@ fn cli_conformance() {
                         Asking::Survey { closed: true } => {
                             Some(json!("listing every closed window under this home"))
                         }
-                        Asking::MakeWindow => Some(json!("asking the running app for a window")),
+                        Asking::MakeWindow(onto) => Some(match (&onto.daemon, &onto.tab) {
+                            (Some(daemon), _) => json!(format!(
+                                "asking the running app for a window with its first tab on {daemon}"
+                            )),
+                            (_, Some(tab)) => {
+                                json!(format!("asking the running app for a window onto {tab}"))
+                            }
+                            _ => json!("asking the running app for a window"),
+                        }),
                         Asking::ReopenWindow(None) => {
                             Some(json!("asking the running app for the window closed last"))
                         }

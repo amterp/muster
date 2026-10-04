@@ -618,6 +618,13 @@ message OpenWindow {
 
   // A pane or a tab to go to once the window is open, as Startup's `show`.
   string show = 2;
+
+  // For a window taken on here: the machine its first tab is asked of, when it has none, in place
+  // of the first one on this machine. A daemon's id, as `muster window` names it.
+  string daemon = 3;
+
+  // For a window taken on here: a tab to open onto, taken from whichever window holds it.
+  string tab = 4;
 }
 
 // Closes one window, and leaves the others and the app running (mip/0006-one-process.md,
@@ -672,6 +679,14 @@ message AskForWindow {
   // second `open`, or an older `muster` starting the app - so `fresh` and `name` are ignored.
   // With `show`, the pane or tab named is gone to, wherever it is.
   bool any = 5;
+
+  // For a fresh window: the machine its first tab is asked of, rather than the first one on this
+  // machine. A daemon's id, as `muster window` names it. Refused when the app follows none by it.
+  string daemon = 6;
+
+  // For a fresh window: a tab to open onto rather than one of its own, taken from whichever window
+  // holds it, open or closed. Refused when no machine the app follows holds it.
+  string tab = 7;
 }
 
 // Makes this process the one app of its install under a Muster home, or hands what it was
@@ -2043,6 +2058,11 @@ message ReopenWindow {
   // Any window will do, as AskForWindow's: bring the one in front forward, or open one when none
   // is open.
   bool any = 4;
+
+  // For a fresh window, as AskForWindow's: the machine its first tab is asked of, and a tab to
+  // open onto instead. Handed back in the OpenWindow that opens it.
+  string daemon = 5;
+  string tab = 6;
 }
 
 // Bring a window to the front.

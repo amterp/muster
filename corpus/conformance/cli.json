@@ -2144,6 +2144,53 @@
       }
     },
     {
+      "name": "a window can be asked for with its first tab on one machine",
+      "why": "A window asked for takes its first tab on the first machine here, and with a devenv attached that may be the wrong one. `pane new` and `tab new` already take --daemon with this meaning.",
+      "given": {
+        "argv": [
+          "window",
+          "new",
+          "--daemon",
+          "devenv"
+        ]
+      },
+      "expect": {
+        "answers_here": "asking the running app for a window with its first tab on devenv"
+      }
+    },
+    {
+      "name": "a window can be asked for onto a tab that already exists",
+      "why": "The only other way to put an existing tab in a window of its own was a new window and then `tab move`, which leaves a tab nobody wanted behind it. The tab moves into the window, from whichever window held it.",
+      "given": {
+        "argv": [
+          "window",
+          "new",
+          "--tab",
+          "t1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "answers_here": "asking the running app for a window onto t1w3r07bsd"
+      }
+    },
+    {
+      "name": "a machine and a tab together are refused",
+      "why": "A window opened onto a tab has its first tab already, so a machine to ask for one says nothing, and taking it silently would leave a caller thinking it had.",
+      "given": {
+        "argv": [
+          "window",
+          "new",
+          "--daemon",
+          "devenv",
+          "--tab",
+          "t1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
       "name": "closing a window asks the running app to close it",
       "why": "A window closed only from the GUI could not be closed by an agent or covered by a script. The app closes it as its close button would, so the window keeps its tabs for `muster window reopen`. With no name it is the window this command is about, as for any command.",
       "given": {

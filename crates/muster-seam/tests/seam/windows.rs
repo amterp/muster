@@ -922,6 +922,7 @@ fn a_closed_window_comes_back_onto_its_tabs() {
     let opened = answer(&Request::new(request::Payload::OpenWindow(OpenWindow {
         state_path: arrangement_text(&daemon, "window-2"),
         show: second.clone(),
+        ..OpenWindow::default()
     })));
     match opened.payload {
         Some(response::Payload::Opened(opened)) => assert_eq!(opened.window, "window-2"),
@@ -991,6 +992,110 @@ fn a_launch_for_a_pane_nobody_holds_is_told_so() {
         ),
         other => panic!("a launch for a pane nobody holds was answered {other:?}"),
     }
+}
+
+/// `muster window new --daemon far` opens a window whose first tab is on that machine, where a
+/// window asked for otherwise takes one on the first machine here.
+#[test]
+fn a_window_asked_for_on_a_machine_opens_its_first_tab_there() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let near = Daemon::start_built();
+    let far = Daemon::start_built();
+    let config = near.root().join("two-machines.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "[[daemon]]\nid = \"local\"\nsocket = {:?}\n\n[[daemon]]\nid = \"far\"\nsocket = {:?}\n",
+            near.socket_path().to_string_lossy(),
+            far.socket_path().to_string_lossy()
+        ),
+    )
+    .expect("the harness root is writable");
+    forget_events();
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(&Request::new(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: arrangement(&near, "window-1").to_string_lossy().into_owned(),
+        tab_holders_path: record(&near).to_string_lossy().into_owned(),
+        ..Startup::default()
+    }))));
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow::default()))));
+    until(
+        "the first window to open onto a tab",
+        || showing_in("window-1").is_some(),
+        || format!("views arrived for {:?}", shown_windows()),
+    );
+
+    // The other machine from the one the first window's tab is on, which is the one a window
+    // asked for without naming a machine would take.
+    let first = machine_showing_in("window-1").expect("just waited for it");
+    let other = if first == "far" { "local" } else { "far" };
+
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow {
+        state_path: arrangement(&near, "window-2").to_string_lossy().into_owned(),
+        daemon: other.to_string(),
+        ..OpenWindow::default()
+    }))));
+
+    until(
+        "the second window to open onto a tab on the machine asked for",
+        || machine_showing_in("window-2").as_deref() == Some(other),
+        || format!("window-2 shows a tab on {:?}", machine_showing_in("window-2")),
+    );
+}
+
+/// `muster window new --tab` opens a window onto a tab another window holds, which moves into it,
+/// and asks no machine for a tab of its own.
+#[test]
+fn a_window_asked_for_onto_a_tab_takes_it() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, second) = two_windows(&daemon);
+
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow {
+        state_path: arrangement(&daemon, "window-3").to_string_lossy().into_owned(),
+        tab: first.clone(),
+        ..OpenWindow::default()
+    }))));
+
+    until(
+        "the third window to open onto the tab it asked for",
+        || showing_in("window-3").as_deref() == Some(first.as_str()),
+        || format!("window-3 shows {:?}", showing_in("window-3")),
+    );
+    assert_eq!(listed("window-3"), vec![first.clone()], "it made a tab of its own as well");
+    assert!(!listed("window-1").contains(&first), "the tab stayed in the window it left");
+    assert_eq!(listed("window-2"), vec![second]);
+}
+
+/// A machine or a tab the app has not got is refused before the shell is asked for a window.
+#[test]
+fn a_window_onto_a_machine_or_tab_nobody_has_is_refused() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+
+    for (daemon, tab, named) in [("nowhere", "", "nowhere"), ("", "t-nowhere", "t-nowhere")] {
+        let answered = answer(&Request::new(request::Payload::AskForWindow(AskForWindow {
+            install: muster_daemon_proto::install::INSTALL.to_string(),
+            fresh: true,
+            daemon: daemon.to_string(),
+            tab: tab.to_string(),
+            ..AskForWindow::default()
+        })));
+        match answered.payload {
+            Some(response::Payload::Failure(failure)) => assert!(
+                failure.reason.contains(named),
+                "the refusal does not name {named}: {}",
+                failure.reason
+            ),
+            other => panic!("a window onto {named} was asked for: {other:?}"),
+        }
+    }
+    assert!(asked_for().is_empty(), "the shell was asked for a window");
 }
 
 /// The first window open onto the daemon's one tab, and a second opened beside it onto a tab it
@@ -1123,6 +1228,18 @@ fn forget_events() {
 }
 
 /// The tab a window was last told it shows, from the views sent to it.
+/// The machine whose tab a window is showing, from the last view sent to it.
+fn machine_showing_in(window: &str) -> Option<String> {
+    let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let view = events.iter().rev().find_map(|event| match &event.payload {
+        Some(event::Payload::ViewChanged(view)) if event.window == window => Some(view),
+        _ => None,
+    })?;
+    let region = view.regions.first()?;
+    region.root.as_ref()?;
+    Some(region.daemon_id.clone())
+}
+
 fn showing_in(window: &str) -> Option<String> {
     let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let view = events.iter().rev().find_map(|event| match &event.payload {

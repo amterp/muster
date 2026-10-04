@@ -95,6 +95,8 @@ public enum Core {
     ask.name = asking.name
     ask.show = asking.show
     ask.any = asking.any
+    ask.daemon = asking.daemon
+    ask.tab = asking.tab
     var claim = Muster_ClaimApp()
     claim.home = home ?? ""
     claim.commandSocketPath = commandSocketPath ?? ""
@@ -297,10 +299,14 @@ public enum Core {
   /// answer here is only whether there is a session behind this window at all. Nil means it
   /// renders nothing, and the core has already said why on stderr and in the log.
   @discardableResult
-  public static func open(arrangement: String? = nil, show: String? = nil) -> String? {
+  public static func open(
+    arrangement: String? = nil, show: String? = nil, daemon: String = "", tab: String = ""
+  ) -> String? {
     var open = Muster_OpenWindow()
     open.statePath = arrangement ?? ""
     open.show = show ?? ""
+    open.daemon = daemon
+    open.tab = tab
     var request = Muster_Request()
     request.openWindow = open
     guard case .opened(let opened) = send(request) else { return nil }
@@ -1321,12 +1327,20 @@ public enum Core {
     public let fresh: Bool
     /// Any window will do: the one in front comes forward, and one opens only when none is open.
     public let any: Bool
+    /// For a fresh window: the machine its first tab is asked of, and a tab to open onto instead.
+    public let daemon: String
+    public let tab: String
 
-    public init(name: String, show: String, fresh: Bool, any: Bool = false) {
+    public init(
+      name: String, show: String, fresh: Bool, any: Bool = false, daemon: String = "",
+      tab: String = ""
+    ) {
       self.name = name
       self.show = show
       self.fresh = fresh
       self.any = any
+      self.daemon = daemon
+      self.tab = tab
     }
   }
 
@@ -1515,7 +1529,9 @@ public enum Core {
       // starting an app.
       info("window.reopen", ["window": reopen.name, "show": reopen.show])
       openWindowAsked?(
-        WindowAsked(name: reopen.name, show: reopen.show, fresh: reopen.fresh, any: reopen.any))
+        WindowAsked(
+          name: reopen.name, show: reopen.show, fresh: reopen.fresh, any: reopen.any,
+          daemon: reopen.daemon, tab: reopen.tab))
     case .shutWindow:
       // `muster window close`: closed as its close button closes it, so a window closing says
       // where it was and tells the core, whichever way it was asked.

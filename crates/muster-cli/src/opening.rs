@@ -14,7 +14,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use muster_daemon_proto::install;
-use muster_proto::{AskForWindow, AskToCloseWindow, Request, Response, request, response};
+use muster_proto::{AskForWindow, AskToCloseWindow, Request, Response, Window, request, response};
 
 use crate::{Trouble, dial, environment};
 
@@ -49,12 +49,45 @@ pub struct Opened {
     pub socket: String,
 }
 
-/// Opens another window onto tabs of its own, and hands back what it is called once it is open.
+/// What a new window opens onto, when the caller says: its first tab on one machine, or a tab
+/// another window holds.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Onto {
+    pub daemon: Option<String>,
+    pub tab: Option<String>,
+}
+
+impl Onto {
+    fn is_said(&self) -> bool {
+        self.daemon.is_some() || self.tab.is_some()
+    }
+
+    /// Why the app that answered `window` cannot open a window onto this, if it cannot: it
+    /// follows no such machine, or holds no such tab in any window.
+    fn missing_from(&self, window: &Window) -> Option<String> {
+        if let Some(daemon) = &self.daemon
+            && !window.daemons.iter().any(|machine| &machine.daemon_id == daemon)
+        {
+            return Some(format!("it follows no machine called {daemon}"));
+        }
+        let tab = self.tab.as_ref()?;
+        let held = window.roster.iter().flat_map(|roster| roster.tabs.iter());
+        let elsewhere = window.windows.iter().flat_map(|other| other.tabs.iter());
+        (!held.chain(elsewhere).any(|listed| &listed.tab_id == tab))
+            .then(|| format!("no window of it holds a tab called {tab}"))
+    }
+}
+
+/// Opens another window, onto tabs of its own or onto what `onto` says, and hands back what it is
+/// called once it is open.
 ///
 /// Waiting for it rather than answering at once is the difference between a command a script can
 /// use and one it has to poll after.
-pub fn another_window(environment: &BTreeMap<String, String>) -> Result<Opened, Trouble> {
-    open_a_window(environment, true, None)
+pub fn another_window(
+    environment: &BTreeMap<String, String>,
+    onto: &Onto,
+) -> Result<Opened, Trouble> {
+    open_a_window(environment, true, None, onto)
 }
 
 /// Brings back a closed window - `name`, or the one closed last - onto the tabs it kept.
@@ -65,16 +98,44 @@ pub fn the_closed_window(
     environment: &BTreeMap<String, String>,
     name: Option<&str>,
 ) -> Result<Opened, Trouble> {
-    open_a_window(environment, false, name)
+    open_a_window(environment, false, name, &Onto::default())
 }
 
 fn open_a_window(
     environment: &BTreeMap<String, String>,
     fresh: bool,
     name: Option<&str>,
+    onto: &Onto,
 ) -> Result<Opened, Trouble> {
-    if let Some(opened) = ask_a_running_app(environment, fresh, name)? {
+    let mut passed_over = Vec::new();
+    if let Some(opened) = ask_a_running_app(environment, fresh, name, onto, &mut passed_over)? {
         return Ok(opened);
+    }
+    if onto.is_said() {
+        // An app answered and has not got the machine or the tab: starting another would not
+        // have them either.
+        if !passed_over.is_empty() {
+            return Err(Trouble::Refused(format!(
+                "no window was opened: {}. `muster window` lists the machines and tabs there are.",
+                passed_over.join("; ")
+            )));
+        }
+        // None running: started as a plain launch is, which reopens its windows, and then asked.
+        // A machine or a tab is something the running app is asked about, never a launch's
+        // arguments.
+        launch(environment, false, None)?;
+        return ask_a_running_app(environment, fresh, name, onto, &mut passed_over)?.ok_or_else(
+            || {
+                Trouble::Refused(format!(
+                    "Muster was started and no window was opened: {}.",
+                    if passed_over.is_empty() {
+                        "the app did not take the request".to_string()
+                    } else {
+                        passed_over.join("; ")
+                    }
+                ))
+            },
+        );
     }
     let socket = launch(environment, fresh, name)?;
     let window = name.map(str::to_string).or_else(|| windows_open(&socket, environment).ok()?.0);
@@ -88,9 +149,15 @@ fn ask_a_running_app(
     environment: &BTreeMap<String, String>,
     fresh: bool,
     name: Option<&str>,
+    onto: &Onto,
+    passed_over: &mut Vec<String>,
 ) -> Result<Option<Opened>, Trouble> {
     for socket in apps(environment) {
-        let Ok((_, before)) = windows_open(&socket, environment) else { continue };
+        let Ok((_, before, window)) = windows_open(&socket, environment) else { continue };
+        if let Some(missing) = onto.missing_from(&window) {
+            passed_over.push(format!("the Muster at {socket} was passed over, as {missing}"));
+            continue;
+        }
         if let Some(name) = name
             && before.contains(name)
         {
@@ -100,6 +167,8 @@ fn ask_a_running_app(
             install: install::INSTALL.to_string(),
             fresh,
             name: name.unwrap_or_default().to_string(),
+            daemon: onto.daemon.clone().unwrap_or_default(),
+            tab: onto.tab.clone().unwrap_or_default(),
             ..AskForWindow::default()
         }));
         match dial::ask(&asked, Some(&socket), environment) {
@@ -141,7 +210,7 @@ fn apps(environment: &BTreeMap<String, String>) -> Vec<String> {
 fn windows_open(
     socket: &str,
     environment: &BTreeMap<String, String>,
-) -> Result<(Option<String>, BTreeSet<String>), Trouble> {
+) -> Result<(Option<String>, BTreeSet<String>, Window), Trouble> {
     let answer = dial::ask(&crate::read_window(), Some(socket), environment)?;
     let Some(response::Payload::Window(window)) = answer.payload else {
         return Err(Trouble::Refused(format!("the Muster at {socket} did not say what it holds")));
@@ -154,7 +223,7 @@ fn windows_open(
         .collect();
     let answering = (!window.name.is_empty()).then(|| window.name.clone());
     open.extend(answering.clone());
-    Ok((answering, open))
+    Ok((answering, open, window))
 }
 
 /// The window that opened in the app at `socket`: `name` once it is open, or the first window
@@ -167,7 +236,7 @@ fn opened_in(
 ) -> Option<Opened> {
     let deadline = Instant::now() + PATIENCE;
     while Instant::now() < deadline {
-        if let Ok((_, open)) = windows_open(socket, environment) {
+        if let Ok((_, open, _)) = windows_open(socket, environment) {
             let found = match name {
                 Some(name) => open.contains(name).then(|| name.to_string()),
                 None => open.difference(before).next().cloned(),

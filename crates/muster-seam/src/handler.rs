@@ -1650,7 +1650,13 @@ fn unanswered(detail: &str) -> Response {
 fn open_window(window: WindowId, open: &proto::OpenWindow) -> Response {
     // Answered with the window's name however it came to be open, because that name is how the
     // shell tells this window's events from another's.
-    let opening = match session::window_to_open(window, &open.state_path, &open.show) {
+    let opening = match session::window_to_open(
+        window,
+        &open.state_path,
+        &open.show,
+        &open.daemon,
+        &open.tab,
+    ) {
         session::Opening::AlreadyOpen(open) => return opened(open),
         session::Opening::Unopened(opening) | session::Opening::Added(opening) => opening,
     };
@@ -1688,6 +1694,9 @@ fn ask_for_window(ask: &proto::AskForWindow) -> Response {
             if ask.install.is_empty() { "(unnamed)" } else { &ask.install }
         ));
     }
+    if let Some(refusal) = session::cannot_open_onto(&ask.daemon, &ask.tab) {
+        return Response::failure(refusal);
+    }
     let went = if ask.any && !ask.show.is_empty() {
         // Going to a pane or a tab is going to the window holding it, which the ordinary focus
         // path finds and brings forward; the app is then brought forward as well, since the
@@ -1696,7 +1705,7 @@ fn ask_for_window(ask: &proto::AskForWindow) -> Response {
     } else {
         Response::ok()
     };
-    session::ask_for_window(&ask.name, &ask.show, ask.fresh, ask.any);
+    session::ask_for_window(ask);
     match went.payload {
         // Said rather than swallowed: a launch told it had handed over would exit as though the
         // pane it named were on screen.

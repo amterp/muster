@@ -111,7 +111,10 @@ outright.
 `muster window list` lists the open windows under this `MUSTER_HOME`, marking the one this command
 is running in, and `--closed` the closed ones. A Muster launched with a home of its own is not in
 that list and is reached by spelling out its socket. `muster window new` asks the running app for
-another window, waits for it to open, and prints its name: `window-3`.
+another window, waits for it to open, and prints its name: `window-3`. Its first tab is a new one
+on the first machine here; `--daemon devenv` asks that machine for it instead, and `--tab
+t1w3r07bsd` opens the window onto a tab that already exists, taking it from whichever window held
+it.
 
 `muster window reopen` brings back the window you closed last, and `muster window reopen
 window-2` a particular one, each printing the name the same way. The two verbs differ in one

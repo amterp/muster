@@ -76,7 +76,7 @@ pub enum Asking {
         closed: bool,
     },
     /// Another window, asked of the running app or, with none running, by starting it.
-    MakeWindow,
+    MakeWindow(crate::opening::Onto),
     /// A closed window by name, or the one closed last, asked for the same way.
     ReopenWindow(Option<String>),
     /// A window closed by name, or the one this command is about, asked of the running app.
@@ -382,7 +382,16 @@ enum AboutWindows {
     //
     // Asked of the running app, which opens it beside the windows it has; with none running,
     // this starts the app (mip/0006-one-process.md).
-    New,
+    New {
+        /// Ask this machine for the window's first tab, by its id as `muster window` prints it,
+        /// rather than the first one on this machine
+        #[arg(long, value_name = "ID", conflicts_with = "tab")]
+        daemon: Option<String>,
+
+        /// Open the window onto this tab instead, taking it from whichever window holds it
+        #[arg(long, value_name = "TAB")]
+        tab: Option<String>,
+    },
 
     /// Bring back a closed window, the last one closed unless NAME says which, and print its name
     //
@@ -834,7 +843,9 @@ pub fn parse(
         What::Window { doing: Some(AboutWindows::List { closed }), .. } => {
             Asking::Survey { closed: *closed }
         }
-        What::Window { doing: Some(AboutWindows::New), .. } => Asking::MakeWindow,
+        What::Window { doing: Some(AboutWindows::New { daemon, tab }), .. } => {
+            Asking::MakeWindow(crate::opening::Onto { daemon: daemon.clone(), tab: tab.clone() })
+        }
         What::Window { doing: Some(AboutWindows::Reopen { name }), .. } => {
             Asking::ReopenWindow(name.clone())
         }
@@ -942,7 +953,7 @@ fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
         },
         Asking::Print(_)
         | Asking::Survey { .. }
-        | Asking::MakeWindow
+        | Asking::MakeWindow(_)
         | Asking::ReopenWindow(_)
         | Asking::CloseWindow(_)
         | Asking::Message(_) => {
