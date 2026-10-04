@@ -392,28 +392,49 @@ fn a_program_that_is_not_there_is_refused_and_the_daemon_goes_on() {
 
 /// A program is run once with `--version` before any pane is touched, and one that does not
 /// answer in time, or answers with a failure, is refused there.
+///
+/// Only the program that never answers is given the one second the `short-launch` fault allows:
+/// one that fails answers at once, and a loaded machine taking more than a second to run it would
+/// turn its refusal into a timeout. Each is bounded well short of what waiting would have cost -
+/// the slow one's own sleep, the other's full patience - which is what says it was refused there.
 #[test]
 fn a_program_that_does_not_answer_its_version_is_refused_before_anything_is_touched() {
+    struct Case {
+        name: &'static str,
+        body: &'static str,
+        said: &'static str,
+        faults: &'static [(&'static str, &'static str)],
+        within: std::time::Duration,
+    }
     let scripts = std::env::temp_dir().join(format!("muster-launch-{}", std::process::id()));
     std::fs::create_dir_all(&scripts).unwrap();
-    for (name, body, said) in [
-        ("slow", "exec sleep 10", "did not answer --version within 1 s"),
-        ("failing", "exit 3", "answered --version with exit status: 3"),
-    ] {
+    let cases = [
+        Case {
+            name: "slow",
+            body: "exec sleep 30",
+            said: "did not answer --version within 1 s",
+            faults: &[("MUSTER_DAEMON_HANDOFF_FAULT", "short-launch")],
+            within: std::time::Duration::from_secs(20),
+        },
+        Case {
+            name: "failing",
+            body: "exit 3",
+            said: "answered --version with exit status: 3",
+            faults: &[],
+            within: muster_daemon_proto::launch::LAUNCH_PATIENCE,
+        },
+    ];
+    for Case { name, body, said, faults, within } in cases {
         let program = scripts.join(name);
         std::fs::write(&program, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&program, std::os::unix::fs::PermissionsExt::from_mode(0o755))
             .unwrap();
-        let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "short-launch")]);
+        let mut daemon = daemon_with(faults);
         let (control, _input) = two_panes(&daemon);
         let asked = std::time::Instant::now();
         let reason = refused(&mut daemon, Some(&program));
         assert!(reason.contains(said), "{name}: {reason}");
-        assert!(
-            asked.elapsed() < std::time::Duration::from_secs(5),
-            "{name}: waited {:?}",
-            asked.elapsed()
-        );
+        assert!(asked.elapsed() < within, "{name}: waited {:?}", asked.elapsed());
         still_serving(&daemon, control.welcome().instance);
     }
     let _ = std::fs::remove_dir_all(&scripts);
