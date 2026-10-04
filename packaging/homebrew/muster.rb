@@ -17,8 +17,7 @@
 
 cask "muster" do
   version "0.13.0"
-  # Still 0.12.0's checksum, until the notarized 0.13.0 build gives its own.
-  sha256 "3951ac857d061bf9787d4a683ef7a7df912726159e930105c8e7875573220094"
+  sha256 "c458665a5722bc742d63806b359dcf8dfffad98788430fe12797bf39850bace1"
 
   url "https://github.com/amterp/muster/releases/download/v#{version}/Muster-#{version}-arm64.zip"
   name "Muster"
