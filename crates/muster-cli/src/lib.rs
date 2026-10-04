@@ -122,15 +122,11 @@ pub fn run(
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }
-        args::Asking::MakeWindow | args::Asking::ReopenWindow(_) => {
-            let opened = match &invocation.asking {
-                args::Asking::ReopenWindow(name) => {
-                    opening::the_closed_window(environment, name.as_deref())
-                }
-                _ => opening::another_window(environment),
-            };
-            return match opened {
-                Ok(opened) => {
+        asking @ (args::Asking::MakeWindow
+        | args::Asking::ReopenWindow(_)
+        | args::Asking::CloseWindow(_)) => {
+            return match about_a_window(&asking, named.as_deref(), environment) {
+                Ok(answer) => {
                     // The name alone, with nothing around it, for the reason `pane new` prints a
                     // bare pane name: it is what the next command takes. The socket reaches the
                     // app rather than one window, so it is in the JSON for a script that wants it.
@@ -138,10 +134,9 @@ pub fn run(
                         out,
                         "{}",
                         if json {
-                            serde_json::json!({ "window": opened.window, "socket": opened.socket })
-                                .to_string()
+                            answer.to_string()
                         } else {
-                            opened.window
+                            answer["window"].as_str().unwrap_or_default().to_string()
                         }
                     );
                     0
@@ -233,6 +228,25 @@ pub fn run(
 
     let rendered = ask_a_window(&request, named.as_deref(), environment, json);
     finish(rendered, json, out, errors)
+}
+
+/// Opens, reopens or closes a window, and answers what it printed under `--json`.
+fn about_a_window(
+    asking: &args::Asking,
+    socket: Option<&str>,
+    environment: &BTreeMap<String, String>,
+) -> Result<serde_json::Value, Trouble> {
+    let opened = match asking {
+        args::Asking::CloseWindow(name) => {
+            let closed = opening::close_a_window(environment, socket, name.as_deref())?;
+            return Ok(serde_json::json!({ "window": closed }));
+        }
+        args::Asking::ReopenWindow(name) => {
+            opening::the_closed_window(environment, name.as_deref())
+        }
+        _ => opening::another_window(environment),
+    }?;
+    Ok(serde_json::json!({ "window": opened.window, "socket": opened.socket }))
 }
 
 /// Asks the window the caller means, or this machine's daemon when there is no window at all.

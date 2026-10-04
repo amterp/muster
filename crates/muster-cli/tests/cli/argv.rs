@@ -111,6 +111,12 @@ fn cli_conformance() {
                         Asking::ReopenWindow(Some(name)) => {
                             Some(json!(format!("asking the running app for {name}")))
                         }
+                        Asking::CloseWindow(None) => {
+                            Some(json!("asking the running app to close the window this is about"))
+                        }
+                        Asking::CloseWindow(Some(name)) => {
+                            Some(json!(format!("asking the running app to close {name}")))
+                        }
                         Asking::Message(_) => Some(json!("asking this machine's daemon")),
                     },
                 ),

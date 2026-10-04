@@ -79,6 +79,8 @@ pub enum Asking {
     MakeWindow,
     /// A closed window by name, or the one closed last, asked for the same way.
     ReopenWindow(Option<String>),
+    /// A window closed by name, or the one this command is about, asked of the running app.
+    CloseWindow(Option<String>),
     /// A message for this machine's daemon rather than a window.
     Message(Box<crate::messaging::Messaging>),
 }
@@ -389,6 +391,16 @@ enum AboutWindows {
     // onto the tabs it kept.
     Reopen {
         /// The closed window, as `muster window` names it: window-2
+        name: Option<String>,
+    },
+
+    /// Close a window, keeping its tabs for `muster window reopen`, and print its name
+    //
+    // The window closes as its close button closes it. The last window open is refused rather
+    // than closed, because closing it would quit Muster (mip/0006-one-process.md, section 4).
+    Close {
+        /// The window, as `muster window list` names it: window-2. Omit for the window this
+        /// command is about
         name: Option<String>,
     },
 }
@@ -826,6 +838,9 @@ pub fn parse(
         What::Window { doing: Some(AboutWindows::Reopen { name }), .. } => {
             Asking::ReopenWindow(name.clone())
         }
+        What::Window { doing: Some(AboutWindows::Close { name }), .. } => {
+            Asking::CloseWindow(closing(name.as_deref(), cli.window.as_deref())?)
+        }
         What::Pane { doing } => pane(doing, environment, here)?,
         What::Tab { doing } => tab(doing, environment, here, cli.window.as_deref())?,
         What::Focus { asking: true, .. } => send(request::Payload::FocusAsking(FocusAsking {})),
@@ -884,10 +899,27 @@ pub fn parse(
     };
 
     let asking = match (&cli.window, &cli.what) {
-        (None, _) | (Some(_), What::Tab { doing: WithTab::Move { .. } }) => asking,
+        (None, _)
+        | (
+            Some(_),
+            What::Tab { doing: WithTab::Move { .. } }
+            | What::Window { doing: Some(AboutWindows::Close { .. }), .. },
+        ) => asking,
         (Some(window), _) => for_window(asking, window)?,
     };
     Ok(Invocation { asking, json: cli.json, socket: cli.socket, no_window: cli.no_window })
+}
+
+/// The window `window close` closes: the one it names, which `--window` may name instead. Two
+/// different names are refused rather than one picked, since either could be the one meant.
+fn closing(name: Option<&str>, window: Option<&str>) -> Result<Option<String>, Failure> {
+    match (name, window) {
+        (Some(name), Some(window)) if name != window => Err(Failure::Refused(format!(
+            "`muster window close {name}` and --window {window} name two windows, so nothing \
+             was closed. Name one."
+        ))),
+        (name, window) => Ok(name.or(window).map(str::to_string)),
+    }
 }
 
 /// The request, for one window by name.
@@ -912,6 +944,7 @@ fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
         | Asking::Survey { .. }
         | Asking::MakeWindow
         | Asking::ReopenWindow(_)
+        | Asking::CloseWindow(_)
         | Asking::Message(_) => {
             return Err(Failure::Refused(format!(
                 "--window {window} names the window a command is about, and this command is not \

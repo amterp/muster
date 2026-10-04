@@ -1259,6 +1259,7 @@ public enum Core {
     case .focusAsking: return "focus_asking"
     case .readAsking: return "read_asking"
     case .closeWindow: return "close_window"
+    case .askToCloseWindow: return "ask_to_close_window"
     case .readReopening: return "read_reopening"
     case .askForWindow: return "ask_for_window"
     case .claimApp: return "claim_app"
@@ -1515,6 +1516,11 @@ public enum Core {
       info("window.reopen", ["window": reopen.name, "show": reopen.show])
       openWindowAsked?(
         WindowAsked(name: reopen.name, show: reopen.show, fresh: reopen.fresh, any: reopen.any))
+    case .shutWindow:
+      // `muster window close`: closed as its close button closes it, so a window closing says
+      // where it was and tells the core, whichever way it was asked.
+      info("window.shut", ["window": event.window])
+      window(for: event)?.close()
     case .raiseWindow:
       // Somebody went to one of this window's tabs from another window, or from a terminal. The
       // tab is already on screen; this is the window coming forward to show it.

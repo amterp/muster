@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use muster::proto::{
-    AskForWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking, FocusHistory, FocusPane,
-    FocusTab, MoveTab, OpenWindow, Quitting, ReadAsking, ReadReopening, ReadWindow, ReattachPane,
-    Request, Response, SplitPane, Startup, ToggleSidebar, ViewNode, WindowFocus, event, request,
-    response, view_node,
+    AskForWindow, AskToCloseWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking,
+    FocusHistory, FocusPane, FocusTab, MoveTab, OpenWindow, Quitting, ReadAsking, ReadReopening,
+    ReadWindow, ReattachPane, Request, Response, SplitPane, Startup, ToggleSidebar, ViewNode,
+    WindowFocus, event, request, response, view_node,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::AgentState;
@@ -845,6 +845,58 @@ fn the_window_in_front_closing_leaves_the_other_in_front() {
         Some(response::Payload::Window(window)) => assert_eq!(window.name, "window-1"),
         other => panic!("reading the window answered {other:?}"),
     }
+}
+
+/// `muster window close` asks the shell to close the window it names, and only that one, the
+/// way its close button would.
+#[test]
+fn a_window_asked_to_close_is_closed_by_the_shell() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::AskToCloseWindow(AskToCloseWindow {}),
+    )));
+
+    assert_eq!(
+        windows_sent(|payload| matches!(payload, event::Payload::ShutWindow(_))),
+        vec!["window-2".to_string()],
+        "the shell was not asked to close exactly the window named"
+    );
+}
+
+/// Closing the last window open is a quit, so asking for it from outside the shell is refused
+/// rather than ending every window.
+#[test]
+fn the_last_window_open_is_not_closed_when_asked() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    assert_ok(&answer(&in_window("window-2", request::Payload::CloseWindow(CloseWindow {}))));
+
+    match answer(&in_window("window-1", request::Payload::AskToCloseWindow(AskToCloseWindow {})))
+        .payload
+    {
+        Some(response::Payload::Failure(failure)) => assert!(
+            failure.reason.contains("only window open") && failure.reason.contains("cmd+q"),
+            "the refusal does not say why, or how to quit instead: {}",
+            failure.reason
+        ),
+        other => panic!("closing the last window was asked for: {other:?}"),
+    }
+    // A window already closed has nothing to close, and that is not a failure.
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::AskToCloseWindow(AskToCloseWindow {}),
+    )));
+    assert!(
+        windows_sent(|payload| matches!(payload, event::Payload::ShutWindow(_))).is_empty(),
+        "the shell was asked to close a window"
+    );
 }
 
 /// Going to a closed window's tab asks for that window back, and opening its arrangement again

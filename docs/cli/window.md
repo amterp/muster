@@ -108,6 +108,12 @@ how many panes and tabs it holds, and `▸` beside the window this command is ru
 `--closed` lists the closed windows instead, which is where the name `muster window reopen NAME`
 takes is found.
 
+`muster window close NAME` closes a window as its close button does: it keeps its tabs, its agents
+keep running, and `--closed` lists it. It prints the name once the window has closed. With no name
+it is the window this command is about, as `--window` would name it. Closing a window already
+closed changes nothing and succeeds. The last window open is refused rather than closed, because
+closing it is a quit; `cmd+q` quits, and every window comes back on the next launch.
+
     ▸ window-1  4 panes, 2 tabs
       window-2  1 panes, 1 tabs
 

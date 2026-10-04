@@ -119,6 +119,10 @@ thing: a window you ask for holds nothing until it makes a tab of its own, and r
 an arrangement nothing has ever held; a reopened window comes back to its own arrangement and the
 tabs it kept. Going to one of its tabs, `muster tab focus <TAB>`, reopens a closed window too.
 
+`muster window close window-2` closes a window as its close button does, and prints its name once
+it is closed; with no name it closes the window this command is about. The last window open is
+refused rather than closed, because closing it would quit Muster - `cmd+q` does that.
+
 With no app running, `window new` and `window reopen` start one. Quitting is not closing: every
 window open when Muster quits, or crashes, opens again at the next launch, and only a window you
 close stays closed.

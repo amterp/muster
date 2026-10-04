@@ -1,4 +1,5 @@
-//! Opening another window: asked of the app that is running, or, with none, by starting it.
+//! Opening another window: asked of the app that is running, or, with none, by starting it. And
+//! closing one, which is only ever asked of the app running.
 //!
 //! Every window of an install is a window of one process (mip/0006-one-process.md), so a running
 //! app is asked for a window (`AskForWindow`) and opens it beside the ones it has. Only when no
@@ -13,7 +14,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use muster_daemon_proto::install;
-use muster_proto::{AskForWindow, Request, Response, request, response};
+use muster_proto::{AskForWindow, AskToCloseWindow, Request, Response, request, response};
 
 use crate::{Trouble, dial, environment};
 
@@ -178,6 +179,62 @@ fn opened_in(
         std::thread::sleep(INTERVAL);
     }
     None
+}
+
+/// Closes a window - `name`, or the one this command is about - and hands back its name once the
+/// app lists it closed.
+///
+/// The app is asked, and closes the window as its close button would. Waiting for it, as opening
+/// does, so a script can reopen it on the next line. It is seen closed from another window open
+/// beside it, because a read naming a closed window is still answered as that window.
+pub fn close_a_window(
+    environment: &BTreeMap<String, String>,
+    socket: Option<&str>,
+    name: Option<&str>,
+) -> Result<String, Trouble> {
+    let about = |request: Request| match name {
+        Some(name) => request.for_window(name),
+        None => request,
+    };
+    let (target, beside) = match dial::ask(&about(crate::read_window()), socket, environment)? {
+        Response { payload: Some(response::Payload::Window(window)) } => {
+            let beside =
+                window.windows.iter().find(|other| other.pid != 0).map(|other| other.name.clone());
+            (window.name, beside)
+        }
+        Response { payload: Some(response::Payload::Failure(failure)) } => {
+            return Err(Trouble::Refused(failure.reason));
+        }
+        _ => return Err(Trouble::Refused("the app did not say which window this is".to_string())),
+    };
+    let asked =
+        Request::new(request::Payload::AskToCloseWindow(AskToCloseWindow {})).for_window(&target);
+    if let Response { payload: Some(response::Payload::Failure(failure)) } =
+        dial::ask(&asked, socket, environment)?
+    {
+        return Err(Trouble::Refused(failure.reason));
+    }
+    let Some(beside) = beside else {
+        // Only reachable for a window already closed with none open beside it, which an app
+        // that is running does not have.
+        return Ok(target);
+    };
+    let deadline = Instant::now() + PATIENCE;
+    while Instant::now() < deadline {
+        let read = crate::read_window().for_window(&beside);
+        if let Ok(Response { payload: Some(response::Payload::Window(window)) }) =
+            dial::ask(&read, socket, environment)
+            && window.windows.iter().any(|other| other.name == target && other.pid == 0)
+        {
+            return Ok(target);
+        }
+        std::thread::sleep(INTERVAL);
+    }
+    Err(Trouble::Unreachable(format!(
+        "the app was asked to close {target} and it was still open after {PATIENCE:?}. A sheet \
+         asking something may be holding the window open; `muster window list` says whether it \
+         closed since."
+    )))
 }
 
 /// Starts the app, and hands back the socket it binds.

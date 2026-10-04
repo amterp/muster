@@ -217,8 +217,8 @@ no live window is holding, and `muster window reopen window-2` brings back that 
 keeps its tabs while it is closed - its agents are still running - so whichever window comes
 back, it comes back to its own tabs.
 
-A window is closed only when somebody closes it: Close Window, `cmd+shift+w`, or its close button.
-Closing the last one quits instead, and quitting closes nothing - every window open at a quit, or
+A window is closed only when somebody closes it: Close Window, `cmd+shift+w`, its close button, or
+`muster window close`. Closing the last one quits instead - `muster window close` refuses it - and quitting closes nothing - every window open at a quit, or
 a crash, opens again at the next launch.
 
 A particular closed window also comes back when you go to one of its tabs. `muster window` lists

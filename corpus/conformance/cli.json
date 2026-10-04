@@ -2144,6 +2144,51 @@
       }
     },
     {
+      "name": "closing a window asks the running app to close it",
+      "why": "A window closed only from the GUI could not be closed by an agent or covered by a script. The app closes it as its close button would, so the window keeps its tabs for `muster window reopen`. With no name it is the window this command is about, as for any command.",
+      "given": {
+        "argv": [
+          "window",
+          "close"
+        ]
+      },
+      "expect": {
+        "answers_here": "asking the running app to close the window this is about"
+      }
+    },
+    {
+      "name": "a window to close can be named either way",
+      "why": "`--window` names the window any command is about, so it names the one to close as the argument does. The same name twice is one window.",
+      "given": {
+        "argv": [
+          "--window",
+          "window-2",
+          "window",
+          "close",
+          "window-2"
+        ]
+      },
+      "expect": {
+        "answers_here": "asking the running app to close window-2"
+      }
+    },
+    {
+      "name": "two windows named to close are refused",
+      "why": "Either name could be the one meant, and closing the wrong window is not something to guess at.",
+      "given": {
+        "argv": [
+          "--window",
+          "window-3",
+          "window",
+          "close",
+          "window-2"
+        ]
+      },
+      "expect": {
+        "refused": "`muster window close window-2` and --window window-3 name two windows, so nothing was closed. Name one."
+      }
+    },
+    {
       "name": "a bare window read is still a read",
       "why": "`muster window` kept its meaning when `window` grew subcommands under it. A caller that had this in a script before is asking the same thing after, which is the whole reason the subcommand is optional.",
       "given": {

@@ -457,3 +457,4 @@ Each stage leaves `main` working.
 ## History
 - 2026-10-03 Draft. Stages 1, 2 and 3a built the same day.
 - 2026-10-03 Stages 3b and 4 built. The open question on a `--window` flag settled.
+- 2026-10-04 `muster window close`, through the close button's own path, refusing the last window.

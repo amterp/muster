@@ -25,6 +25,8 @@ public protocol ShellWindow: AnyObject {
   /// Whether this window lists the pane, which decides where a held paste is asked about.
   func lists(_ pane: PaneKey) -> Bool
   func raise()
+  /// Closes as its close button does, so the last window's close is still a quit.
+  func close()
 }
 
 /// Every window this process has open, by the name the core gave each (mip/0006-one-process.md).

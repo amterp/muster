@@ -690,6 +690,54 @@ fn a_second_window_opens_in_the_same_app() {
 
 #[test]
 #[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn a_window_closed_by_name_reopens_on_its_own_tabs() {
+    // `muster window close` closes a window as its close button does, inside the one app: it is
+    // listed closed, keeps its tabs, and `muster window reopen` brings it back onto them.
+    let scratch = Scratch::new("close-reopen");
+    let daemon = holding_one_pane();
+    scratch.point_at(&daemon);
+
+    let mut app = Running::start(&built_app(), &scratch, &[], &[]);
+    app.until_settled();
+    muster(&scratch, &["window", "new"]);
+    app.until_windows_opened(2);
+    app.until_settled();
+    let tabs_before = tabs_of(&scratch, "window-2");
+
+    let closed = muster(&scratch, &["window", "close", "window-2"]);
+    let listed = muster(&scratch, &["window", "list", "--closed"]);
+    let reopened = muster(&scratch, &["window", "reopen", "window-2"]);
+    app.until_windows_opened(3);
+    app.until_settled();
+    let tabs_after = tabs_of(&scratch, "window-2");
+    let records = app.stop();
+
+    assert_eq!(closed, "window-2", "`muster window close` did not name the window it closed");
+    assert!(listed.contains("window-2"), "the closed window is not listed closed: {listed}");
+    assert_eq!(reopened, "window-2");
+    assert!(!tabs_before.is_empty(), "window-2 held no tab to keep");
+    assert_eq!(tabs_after, tabs_before, "window-2 did not come back onto the tabs it kept");
+    expect_nothing_wrong(&records, &[]);
+    expect_event(&records, "window.closed", "the core never heard window-2 close");
+    let pids = values(&records, "window.opened", "pid");
+    assert_eq!(pids.len(), 1, "a window opened in another process: {pids:?}");
+}
+
+/// The tabs a window holds, by name, as `muster window --json` lists them.
+fn tabs_of(scratch: &Scratch, window: &str) -> Vec<String> {
+    let answer: Value =
+        serde_json::from_str(&muster(scratch, &["--window", window, "window", "--json"]))
+            .expect("`muster window --json` answers JSON");
+    answer["tabs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|tab| tab["tab"].as_str().map(str::to_string))
+        .collect()
+}
+
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
 fn a_second_launch_opens_its_window_in_the_running_app() {
     // A second launch of the same install and home - `open -n`, Finder, an older `muster window
     // new` - hands what it was asked to do to the app already running, and exits without

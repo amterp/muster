@@ -173,6 +173,10 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             session::close_window(window);
             Response::ok()
         }
+        request::Payload::AskToCloseWindow(_) => match session::ask_to_close_window(window) {
+            Ok(()) => Response::ok(),
+            Err(refusal) => Response::failure(refusal),
+        },
         request::Payload::ReadReopening(read) => Response {
             payload: Some(response::Payload::Reopening(proto::Reopening {
                 arrangements: crate::holding::reopening(&read.tab_holders_path),

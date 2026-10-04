@@ -118,6 +118,25 @@ struct WindowsTests {
     #expect(second.applied == ["raise"])
   }
 
+  /// `muster window close` closes the window it names, and leaves the one in front open.
+  @Test("a close reaches the window it names and no other")
+  func aCloseReachesItsWindow() {
+    Windows.forgetAll()
+    defer { Windows.forgetAll() }
+    let first = StandIn("window-1")
+    let second = StandIn("window-2")
+    Windows.register(first)
+    Windows.register(second)
+
+    var shut = Muster_Event()
+    shut.shutWindow = Muster_ShutWindow()
+    shut.window = "window-2"
+    Core.deliver(shut)
+
+    #expect(first.applied.isEmpty, "the window in front was closed instead")
+    #expect(second.applied == ["close"])
+  }
+
   /// A second launch and the Dock's reopen ask for any window, which the app answers by bringing
   /// one forward rather than opening one; what reaches the app says so.
   @Test("a request for any window says so to the app")
@@ -179,4 +198,5 @@ private final class StandIn: ShellWindow {
   func hold(_ held: HeldPaste) { applied.append("paste") }
   func lists(_ pane: PaneKey) -> Bool { false }
   func raise() { applied.append("raise") }
+  func close() { applied.append("close") }
 }

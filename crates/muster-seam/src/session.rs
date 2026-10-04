@@ -56,7 +56,7 @@ use crate::holding::Holding;
 use crate::proto::{
     AttentionChanged, ClipboardWrite, Event, Names, PaneTypeable, PasteHeld, PresentationChanged,
     Problem as ProblemMessage, ProblemsChanged, RaiseWindow, ReattachPane, ReopenWindow, Request,
-    RosterChanged, ViewChanged, event, problem, request,
+    RosterChanged, ShutWindow, ViewChanged, event, problem, request,
 };
 use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
@@ -2516,6 +2516,7 @@ fn asks_a_closed_window(payload: &request::Payload) -> bool {
         payload,
         request::Payload::OpenWindow(_)
             | request::Payload::CloseWindow(_)
+            | request::Payload::AskToCloseWindow(_)
             | request::Payload::ReadWindow(_)
             | request::Payload::WindowFocus(_)
     )
@@ -4705,6 +4706,34 @@ pub(crate) fn close_window(window: WindowId) {
         log::info("window.closed", fields! { "window" => name.to_string() });
     }
     publish("window_closed");
+}
+
+/// Asks the shell to close a window as its close button would, for somebody outside the shell:
+/// `muster window close`.
+///
+/// A window already closed has nothing to ask. The last window open is refused rather than
+/// asked for, because closing it is a quit (mip/0006-one-process.md, section 4): a script that
+/// meant to close one window should not end them all, and a person who means to quit has cmd+q.
+pub(crate) fn ask_to_close_window(window: WindowId) -> Result<(), String> {
+    let name = {
+        let session = poison::lock(&SESSION, "session");
+        let asked = &session.windows[window];
+        if !asked.opened {
+            return Ok(());
+        }
+        if session.windows.opened().len() == 1 {
+            return Err(format!(
+                "{} is the only window open, and closing the last window quits Muster, so \
+                 nothing was closed. Quit with cmd+q if that is what you meant: the agents keep \
+                 running, and every window comes back on the next launch.",
+                asked.name
+            ));
+        }
+        asked.name.to_string()
+    };
+    log::info("window.close.asked", fields! { "window" => name.clone() });
+    ffi::emit(&Event::new(event::Payload::ShutWindow(ShutWindow {})).for_window(name));
+    Ok(())
 }
 
 /// Which window an `OpenWindow` means, and whether it is one this process has just taken on.

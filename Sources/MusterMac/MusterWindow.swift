@@ -710,6 +710,10 @@ public final class MusterWindow: NSObject {
     window.makeKeyAndOrderFront(nil)
   }
 
+  public func close() {
+    window.performClose(nil)
+  }
+
   /// Everything wrong with the window, for the roster to say properly and the title to count.
   ///
   /// Both, because the roster is the only one that can carry a sentence and it is not always on
@@ -1190,7 +1194,7 @@ extension MusterWindow {
   /// Closes this window as its close button does, so both go through the same check: the last
   /// window closing is a quit.
   @objc public func closeWindow(_ sender: Any?) {
-    window.performClose(sender)
+    close()
   }
 
   @objc public func showShortcuts(_ sender: Any?) {
