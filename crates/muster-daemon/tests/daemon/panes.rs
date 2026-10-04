@@ -282,19 +282,22 @@ fn a_pane_whose_process_exits_closes_and_says_how() {
     asked.command = Some("exit 3".to_string());
     control.send(create_request(asked));
 
+    // The pane can close before its create is answered, since the daemon answers under a second
+    // hold of its lock: the answer is waited for too, or the next request would read it.
     let mut seen = Vec::new();
-    let closed = until_some("the pane to close", || {
+    let (mut closed, mut answered) = (None, false);
+    let closed = until_some("the pane to close and its create to be answered", || {
         match control.next_message(muster_harness::PATIENCE)? {
             proto::control_message::Message::Event(event) => {
                 seen.push(named(&event));
-                match event.event {
-                    Some(proto::event::Event::PaneClosed(closed)) => Some(closed),
-                    _ => None,
+                if let Some(proto::event::Event::PaneClosed(event)) = event.event {
+                    closed = Some(event);
                 }
             }
-            proto::control_message::Message::Answer(_)
-            | proto::control_message::Message::LogLine(_) => None,
+            proto::control_message::Message::Answer(_) => answered = true,
+            proto::control_message::Message::LogLine(_) => {}
         }
+        if answered { closed.take() } else { None }
     });
     assert_eq!(seen, ["pane_opened:p1", "tab_opened:t1", "tab_closed:t1", "pane_closed:p1"]);
     assert_eq!(closed.reason(), proto::CloseReason::Exited);
