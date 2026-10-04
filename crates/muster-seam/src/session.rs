@@ -6145,7 +6145,17 @@ fn announce(daemon: &DaemonId, notice: Notice) {
                                 whether the tunnel is up",
                 },
             );
-            health(daemon, Health::Stale, &detail);
+            // What the mirror says rather than `stale` outright, so the shell and `muster window`
+            // read one word: a daemon this window never held a session with is `disconnected`.
+            let said = {
+                let session = poison::lock(&SESSION, "session");
+                session.backends.get(daemon).map(|backend| {
+                    let mirror = poison::lock(&backend.mirror, "mirror");
+                    (mirror.health(), mirror.health_detail().to_string())
+                })
+            };
+            let (now, detail) = said.unwrap_or((Health::Stale, detail));
+            health(daemon, now, &detail);
         }
         Notice::Reconnected => {
             log::info("backend.reconnected", fields! { "daemon" => daemon.to_string() });

@@ -314,8 +314,12 @@ fn follow(
             Err(why) => {
                 lock(&connection.control).take();
                 lock(&connection.input).take();
+                // A snapshot delivered on this connection counts, though the connect then failed:
+                // the daemon can end between sending its state and the subscribe's answer
+                // arriving, and a mirror holding its panes is a stale picture, not no picture.
+                let held_a_session = connected_before || *lock(&connection.snapshots) > 0;
                 let mut held = mirror.lock().unwrap_or_else(PoisonError::into_inner);
-                if connected_before {
+                if held_a_session {
                     held.mark_stale(&why);
                 } else {
                     held.mark_disconnected(&why);
