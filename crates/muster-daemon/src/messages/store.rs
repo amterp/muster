@@ -141,6 +141,15 @@ impl Store for Files {
         let bytes = serde_json::to_vec_pretty(&kept).map_err(|error| error.to_string())?;
         persist::write(&self.state(), &bytes).map_err(describe)
     }
+
+    fn remove(&mut self, group: &str) -> Result<(), String> {
+        match std::fs::remove_file(self.log_of(group)) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                Err(format!("{}: {error}", self.log_of(group).display()))
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 /// Cuts a log back to its last complete line. A last line with no newline is what a crash during

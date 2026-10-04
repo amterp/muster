@@ -523,3 +523,49 @@ fn a_follow_of_a_log_is_answered_by_the_next_entry() {
     // Woken by b's join, and answered with whatever had landed by the time it looked.
     assert_eq!(seqs.first(), Some(&3), "{entries:?}");
 }
+
+/// Deleting a group takes its log off the disk, ends a wait and a follow kept to it, tells the
+/// window nothing waits for the human there, and answers with what went.
+#[test]
+fn deleting_a_group_removes_its_log_and_ends_what_was_kept_to_it() {
+    let daemon = daemon();
+    let mut window = daemon.connect();
+    attend(&mut window);
+    let mut control = daemon.connect();
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &named("a"), "a", "g");
+    join(&mut control, &named("b"), "b", "g");
+    expect(&mut control, post_to(&named("a"), "@human", "need input"), DONE);
+    assert_eq!(human_notice(&mut window).count, 1);
+    let log = daemon.socket_path().with_extension("msg").join("groups/g.log");
+    assert!(log.exists());
+
+    let mut logging = daemon.connect();
+    let follow_log =
+        session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(follow_log), DONE);
+    let mut waiting = daemon.connect();
+    let wait = msg_request::Wait { group: Some("g".to_string()), ..msg_request::Wait::default() };
+    waiting.send(msg(&named("b"), Asked::Wait(wait)));
+    logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
+    let mut following = daemon.connect();
+    let follow = Asked::Log(msg_request::Log { group: "g".to_string(), since: 99, follow: true });
+    following.send(msg(&named("reader"), follow));
+    logging.logged_until("msg.following", std::time::Duration::from_secs(20));
+
+    let delete = Asked::GroupDelete(msg_request::GroupDelete { group: "g".to_string() });
+    let deleted = expect(&mut control, msg(&named("a"), delete), DONE);
+    let Some(Answer::Deleted(deleted)) = &msg_answer(&deleted).answer else {
+        panic!("{deleted:?}")
+    };
+    assert_eq!((deleted.group.as_str(), deleted.entries), ("g", 5));
+    assert_eq!(deleted.let_go, ["@human", "a", "b"]);
+
+    assert!(!log.exists(), "the log is still at {}", log.display());
+    assert_eq!(until_answer(&mut waiting).refusal, "left");
+    assert_eq!(until_answer(&mut following).refusal, "no_such_group");
+    let told = human_notice(&mut window);
+    assert_eq!((told.group.as_str(), told.count), ("g", 0));
+    let logged = logging.logged_until("msg.group.deleted", std::time::Duration::from_secs(20));
+    assert!(logged.iter().all(|line| !line.line.contains("need input")), "a body reached the log");
+}

@@ -740,6 +740,7 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, id: u64, call: Option<Called>)
     };
     match call {
         Called::Replicate(caught) => return replicated(shared, link, caught),
+        Called::Forget(forget) => return forgotten(shared, link, &forget.group),
         Called::Carried(request) => return carried(shared, link, id, request),
         _ => {}
     }
@@ -873,6 +874,46 @@ fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> 
     super::ring(shared, holding);
     let reached = wire::reached_to(&reached);
     Replied::Applied(proto::peer_reply::Reached { reached })
+}
+
+/// Tells each machine named that `group` is deleted, so its replica goes. A machine that cannot
+/// be told now finds out when its link returns: its refetch is refused, as no such group.
+pub(crate) fn forget(shared: &Shared, machines: &[String], group: &str) {
+    for machine in machines {
+        let Some(link) = shared.peers.to(machine) else { continue };
+        let call = Called::Forget(proto::peer_call::Forget { group: group.to_string() });
+        if let Err(error) = link.call(call, CALLING) {
+            log::warn(
+                "msg.peer.call_failed",
+                fields! {
+                    "machine" => machine,
+                    "group" => group,
+                    "error" => error,
+                    "impact" => "that machine still shows the deleted group until its link \
+                                 comes up again, when its refetch is refused and it forgets it",
+                    "check" => "whether the link to that machine is up",
+                },
+            );
+        }
+    }
+}
+
+/// A group's home deleted the group: forget the replica, end the waits kept to it, and tell
+/// the windows nothing waits for the human there.
+fn forgotten(shared: &Arc<Shared>, link: &Arc<Link>, group: &str) -> Replied {
+    let panes = Panes::of(shared);
+    let holding = {
+        let mut messages = shared.messages();
+        let Some(forgot) = messages.service.forget_replica(&link.peer, group) else {
+            return Replied::Applied(proto::peer_reply::Reached::default());
+        };
+        log::info("msg.group.forgotten", fields! { "group" => forgot.group });
+        messages.let_go(&forgot.ended);
+        messages.appended();
+        messages.hold(&forgot.wakes, &[], &panes)
+    };
+    super::ring(shared, holding);
+    Replied::Applied(proto::peer_reply::Reached::default())
 }
 
 #[cfg(test)]

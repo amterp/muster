@@ -25,9 +25,9 @@ pub use names::{HUMAN, LONGEST_GROUP, default_name, is_machine, pair_group, spli
 pub use policy::Policy;
 pub use refusal::{Action, Refusal};
 pub use service::{
-    Activity, AnsweredWait, Caller, Changed, Draft, GroupSummary, Inbox, Joined, Left, Liveness,
-    Member, Messaging, Notice, Participant, Posted, Presence, Reach, Read, Ringable, Via, Waited,
-    Wake,
+    Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Inbox, Joined,
+    Left, Liveness, Member, Messaging, Notice, Participant, Posted, Presence, Reach, Read,
+    Ringable, Via, Waited, Wake,
 };
 pub use store::{GroupRecord, Memory, Saved, Store};
 

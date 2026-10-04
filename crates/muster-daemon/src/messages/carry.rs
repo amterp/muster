@@ -45,6 +45,7 @@ fn group_of(asked: &Asked) -> Option<&str> {
         Asked::GroupMembers(members) => Some(&members.group),
         Asked::Pause(pause) => Some(&pause.group),
         Asked::Resume(resume) => Some(&resume.group),
+        Asked::GroupDelete(delete) => Some(&delete.group),
         Asked::Post(post) => post.group.as_deref(),
         _ => None,
     }
@@ -121,6 +122,10 @@ fn turned(
             resume.group = group(resume.group);
             Asked::Resume(resume)
         }
+        Asked::GroupDelete(mut delete) => {
+            delete.group = group(delete.group);
+            Asked::GroupDelete(delete)
+        }
         other => other,
     }
 }
@@ -161,6 +166,7 @@ pub(super) fn verb(asked: &Asked) -> &'static str {
         Asked::GroupMembers(_) => "group_members",
         Asked::Pause(_) => "pause",
         Asked::Resume(_) => "resume",
+        Asked::GroupDelete(_) => "group_delete",
         Asked::Peer(_) => "peer",
     }
 }

@@ -83,8 +83,8 @@ A group made with `group new G --policy F` has the policy in file F, TOML with f
   refusal says whom you may address. Here the director and the human may address anyone, and a
   member only the director or the human.
 - **`membership`** says who may change the group: join it, leave it, `group add` and `group
-  remove`, `group set`, `pause` and `resume`. Here a member cannot leave on its own, and the
-  refusal names who may dismiss it.
+  remove`, `group set`, `pause` and `resume`, and `group delete`. Here a member cannot leave
+  on its own, and the refusal names who may dismiss it.
 - **`urgent`** says who may post with `--urgent` (below). Here only the director and the human
   may interrupt an agent at work; a member's urgent post is refused, and the refusal names who
   may. It is refused rather than sent as an ordinary post, which would arrive later than its
@@ -102,6 +102,14 @@ every change of policy, and every pause and resume, is a line in the group's log
 `resume G` wakes each member once for what it has unread, including a member woken before the
 pause, and says whom it woke as a post does. Pausing is how a person reading along asks a busy
 group to stop for a moment.
+
+`group delete G` deletes the group and its log, unread messages included, and lets every
+member go: each stays a participant in its other groups, a `wait --group G` ends as a leave
+ends it, and a `log --follow` of it ends, refused as `no_such_group`. A group stays until it
+is deleted, and the name is free again afterwards, from #1. Nothing unread holds a delete
+back, so read the group with `log` first if anything in it matters:
+
+    deleted review (42 entries); let go: builder, critic, director
 
 ## Being woken
 
@@ -301,6 +309,7 @@ once Ctrl-C has stopped the follow and left its shell.
 | `group add G NAME...` / `group remove G NAME...` | adds or removes members, by name or pane |
 | `pause G` | holds a group's wakes: its posts wake nobody but the human |
 | `resume G` | wakes each member once for what it has unread, and lets posts wake again |
+| `group delete G` | deletes a group and its log, letting every member go |
 
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, including
 by a group's policy, 3 no daemon to ask, 4 no answer, so it may or may not have happened (the
@@ -355,10 +364,12 @@ from the other:
   as one made there is, and a refusal names members as you name them. A policy can name a
   member on another machine as the group's machine names it, `director@devenv`, so an agent on
   the devenv can direct a council kept on the laptop, or join a group whose `membership` names
-  it. `group set`, `group add`, `group remove`, `pause` and `resume` run only on the group's
-  machine; elsewhere an agent is refused, `kept_elsewhere`, naming it. There, `group remove
+  it. `group set`, `group add`, `group remove`, `pause`, `resume` and `group delete` run only on
+  the group's machine; elsewhere an agent is refused, `kept_elsewhere`, naming it. There, `group remove
   review critic@devenv` removes a member on another machine, which lets it go as a leave would.
-  A pause holds wakes on both machines, and a resume wakes each machine's members.
+  A pause holds wakes on both machines, and a resume wakes each machine's members. A delete
+  lets go of the members on every machine: one whose link is down when it happens forgets the
+  group when the link returns.
 - **The human is on the laptop.** `@human` in a policy means you wherever the group is kept, and
   a devenv post that wakes you notifies through the laptop's windows. The guard never holds your
   post, on either machine. Once the laptop has linked to a devenv, the devenv has no human of its
@@ -390,6 +401,11 @@ group's list as it was.
 
 A daemon links only to the machines a window attaches it to, so an agent on one devenv cannot
 reach an agent or a group on another: messages cross from the laptop to each devenv and back,
-not between devenvs. No verb deletes a group.
+not between devenvs.
+
+A group deleted while a machine with members in it was out of reach, and made again under the
+same name before the link returned, is taken there for the group it replaced: that machine
+misses the new group's first messages. A machine whose daemon is older than this Muster is not
+told of a delete at all, and keeps the group until Muster there is updated.
 `docs/mip/0004-agent-messaging.md` is the
 design and its order.

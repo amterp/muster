@@ -516,6 +516,8 @@ message MsgRequest {
     Pause pause = 21;
     Resume resume = 22;
     Peer peer = 23;
+    // Since 1.3.
+    GroupDelete group_delete = 24;
   }
 
   message Caller {
@@ -635,6 +637,12 @@ message MsgRequest {
     string group = 1;
   }
 
+  // Deletes a group kept here, with its log, letting every member go; answered with Deleted.
+  // Who may is the policy's `membership`, as for any other change (MIP-4, section 8).
+  message GroupDelete {
+    string group = 1;
+  }
+
   // Answered once the caller has unread messages that would wake it: at once if it already
   // does. A newer wait for the same participant ends this one, refused as `superseded`.
   message Wait {
@@ -674,6 +682,16 @@ message MsgAnswer {
     // A resume, which wakes as a post does: `seq` is the notice it logged.
     Posted resumed = 17;
     Groups groups = 18;
+    // Since 1.3.
+    Deleted deleted = 19;
+  }
+
+  // A group deleted: how many entries its log held, and the members it let go, in this
+  // machine's names.
+  message Deleted {
+    string group = 1;
+    uint64 entries = 2;
+    repeated string let_go = 3;
   }
 
   // A change to a group. No `seq` when it changed nothing: pausing a group already paused.
@@ -1642,6 +1660,13 @@ message PeerCall {
     // this one (MIP-4, section 10). Its names are written as the asker writes them; its answer
     // is in this machine's.
     MsgRequest carried = 18;
+    // Since 1.3. From a group's home: the group is deleted, so the replica goes, and with it
+    // what its members here had read and been woken for. Answered with `applied`.
+    Forget forget = 19;
+  }
+
+  message Forget {
+    string group = 1;
   }
 
   // Whether a group by this name is kept there.

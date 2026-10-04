@@ -689,6 +689,15 @@ impl<S: Store> Messaging<S> {
                 if let Some(caught) = caught {
                     apply(self, caught);
                 }
+                // The home no longer keeps a group this machine holds a replica of: it was
+                // deleted while the link was down, or this machine missed being told.
+                if matches!(refusal, Refusal::NoSuchGroup { .. })
+                    && let Some(forgot) = self.forget_replica(peer, call.group())
+                {
+                    applied.ended.extend(forgot.ended);
+                    applied.wakes.extend(forgot.wakes);
+                    applied.unsaved = applied.unsaved.take().or(forgot.unsaved);
+                }
                 Err(peer.refusal(refusal))
             }
             Reply::Joined { seq, caught } => {

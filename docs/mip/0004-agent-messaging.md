@@ -621,7 +621,23 @@ As built in stage 4:
   does not allow is refused as `not_urgent`, naming who may, rather than sent as an ordinary
   post, which would arrive later than its author was told. A policy from a daemon older than
   the key says nothing about it, which is the default.
-- **There is no `group delete` yet.** Whether groups ever close is an open question, below.
+- **`group delete` takes the group and its log**, added after stage 5. `membership` decides
+  it, as every other change, and only the group's home does it. Each member stays a
+  participant, losing only its place in the group: its cursor, what it was woken for, and a
+  wait kept to the group, which ends as a leave ends it. Unread messages go with the log;
+  nothing unread refuses the delete, which is deliberate, and `log` reads a group first. No
+  leave entries are written, since the log they would go in is going. What waits for the
+  human there is told as nothing, a follow of the log ends as `no_such_group`, and the name is
+  free again, from #1. The log file is removed before the saved state is written, so a crash
+  between the two leaves a policy with no log, which loading drops, rather than a log whose
+  policy fell back to the permissive default.
+- **A delete reaches the replicas.** The home tells each machine with a member to forget the
+  group, and that machine drops its replica as the home dropped the group. A machine out of
+  reach then finds out when the link returns: its refetch is refused as `no_such_group`, and a
+  replica whose home says that is forgotten. One case is not handled: a group deleted and made
+  again under the same name while the link was down is taken for the old one, whose head is
+  past the new log's, so the replica misses the new group's first entries. Telling the two
+  apart needs something like a creation stamp on the group.
 
 `allow` binds within its group. Two members who share no other group can still reach each other
 by posting to a new group of their own; the policy exists to keep a convened group's rules in
@@ -807,8 +823,9 @@ Loading cuts it off, so the next append starts on a line of its own, and a curso
 head is brought back to it.
 
 Logs are kept until the group is deleted (`muster msg group delete`). `muster msg groups` lists
-the groups this machine is home to or replicates, with size and last activity. As built in stage
-4 there is no `group delete`, and `groups` lists each group's members and whether it is paused.
+the groups this machine is home to or replicates, with size and last activity. As built,
+`groups` lists each group's members and whether it is paused, and `group delete` removes the
+log (section 8).
 
 **Message bodies never enter the daemon's log**, and so never the run's log that follows it (MIP-3
 section 1). It records that message 42 of `review` was posted, its size and whom it woke, under the
@@ -831,6 +848,7 @@ All under `muster msg` (Decision 3), each with `--json`:
 | `group new G [--policy F]`, `group set G --policy F` | makes a group with a policy, or replaces its policy |
 | `group add G NAME...`, `group remove G NAME...` | adds or removes members, by participant or pane name |
 | `pause G`, `resume G` | holds a group's wakes, then wakes each member once |
+| `group delete G` | deletes a group and its log, letting every member go |
 
 `wait` is for a hook running in the background and for scripts. With `--due` it answers only a
 wake section 5 would deliver, as the `Stop` hook needs (section 6); without it, it answers
@@ -1126,3 +1144,5 @@ bind.
 - 2026-10-03 Urgent posts: `post --urgent` rings an agent in a pane while it works, at a prompt
   box read as empty, and wakes one woken already; a policy's `urgent` says who may (sections 5, 6
   and 8). Detection engine 6 reads a working agent's prompt.
+- 2026-10-04 `group delete`: a group and its log go, every member is let go on every machine,
+  and a replica that missed it forgets it at its next refetch (sections 8, 12 and 13).

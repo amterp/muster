@@ -45,7 +45,7 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
         Called::Since(since) => Call::Since { group: since.group, after: since.after },
         Called::Who(who) => Call::Who { group: who.group },
         Called::Whom(whom) => Call::Whom { name: whom.name },
-        Called::Replicate(_) | Called::Carried(_) => return None,
+        Called::Replicate(_) | Called::Carried(_) | Called::Forget(_) => return None,
     })
 }
 
@@ -339,6 +339,7 @@ fn action_to(action: Action) -> &'static str {
         Action::SetPolicy => "set_policy",
         Action::Pause => "pause",
         Action::Resume => "resume",
+        Action::Delete => "delete",
     }
 }
 
@@ -351,6 +352,7 @@ fn action_from(action: &str) -> Option<Action> {
         "set_policy" => Action::SetPolicy,
         "pause" => Action::Pause,
         "resume" => Action::Resume,
+        "delete" => Action::Delete,
         _ => return None,
     })
 }

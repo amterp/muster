@@ -1225,6 +1225,62 @@
         "a posted #4 to g; woke b",
         "a posted #5 to g; already woken b"
       ] }
+    },
+    {
+      "name": "deleting a group lets every member go, ends a wait kept to it, and frees its name",
+      "why": "A group stays until it is deleted (MIP-4, section 12). Deleting takes its log, unread messages included, and each member's place in it; a wait kept to the group ends as a leave would end it, and the name can be used again, from #1 (MIP-4, section 8).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "c", "do": "join", "name": "c", "group": "other"},
+        {"session": "c", "do": "members", "group": "g", "add": ["c"]},
+        {"session": "c", "do": "wait", "group": "g"},
+        {"session": "a", "do": "group delete", "group": "g"},
+        {"session": "b", "do": "read"},
+        {"session": "a", "do": "post", "group": "g", "body": "two"},
+        {"session": "a", "do": "log", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"do": "groups"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "c joined other (created)",
+        "c changed the members of g (#5); added c",
+        "waiting 1",
+        "a deleted g (5 entries); let go a,b,c, ended wait 1",
+        "b read nothing",
+        "refused no_such_group g",
+        "refused no_such_group g",
+        "b joined g (created)",
+        "g [b], other [c]"
+      ] }
+    },
+    {
+      "name": "only those a policy's membership names may delete a group",
+      "why": "Deleting is a change to the group like any other, so `membership` decides it: a directed council's member cannot end the council it was convened into (MIP-4, section 8).",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"session": "sb", "do": "join", "name": "builder"},
+        {"do": "members", "group": "council", "add": ["builder"]},
+        {"session": "sb", "do": "group delete", "group": "council"},
+        {"session": "sb", "do": "group delete", "group": "nothing"},
+        {"session": "sd", "do": "group delete", "group": "council"},
+        {"do": "groups"}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "director joined council",
+        "builder registered",
+        "@human changed the members of council (#5); added builder",
+        "refused not_permitted builder delete council (only director,@human)",
+        "refused no_such_group nothing",
+        "director deleted council (5 entries); let go @human,builder,director",
+        ""
+      ] }
     }
   ]
 }

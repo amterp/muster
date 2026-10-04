@@ -7,6 +7,8 @@ use crate::{Entry, HumanHome, Participant, Policy};
 pub trait Store {
     fn append(&mut self, group: &str, entry: &Entry) -> Result<(), String>;
     fn save(&mut self, state: &Saved) -> Result<(), String>;
+    /// Forgets a deleted group's log. A log already gone is not an error.
+    fn remove(&mut self, group: &str) -> Result<(), String>;
 }
 
 /// Everything but the logs. A group's members are not here: they are read back from its log's
@@ -33,6 +35,8 @@ pub struct Memory {
     pub saved: Option<Saved>,
     /// How many times the state was saved.
     pub saves: usize,
+    /// Groups whose log was removed, in order.
+    pub removed: Vec<String>,
     /// Set to make every call fail, as a full disk would.
     pub failing: bool,
 }
@@ -52,6 +56,14 @@ impl Store for Memory {
         }
         self.saved = Some(state.clone());
         self.saves += 1;
+        Ok(())
+    }
+
+    fn remove(&mut self, group: &str) -> Result<(), String> {
+        if self.failing {
+            return Err("the store is failing on purpose".to_string());
+        }
+        self.removed.push(group.to_string());
         Ok(())
     }
 }

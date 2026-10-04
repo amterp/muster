@@ -443,6 +443,36 @@ fn a_directed_council_holds_its_members_to_its_policy() {
     );
 }
 
+/// A council's member cannot delete it, and the one its policy names can: the group, its log
+/// and every member's place in it go, and the name is free again.
+#[test]
+fn a_group_is_deleted_by_whoever_its_policy_lets_change_it() {
+    let daemon = Daemon::start_built();
+    let policy = daemon.root().join("directed.toml");
+    std::fs::write(&policy, DIRECTED).unwrap();
+    let policy = policy.display().to_string();
+    ok(&muster(&daemon, &["msg", "group", "new", "council", "--policy", policy.as_str()]));
+    ok(&muster(&daemon, &["msg", "--as", "director", "join", "--group", "council"]));
+    ok(&muster(&daemon, &["msg", "--as", "builder", "join"]));
+    ok(&muster(&daemon, &["msg", "group", "add", "council", "builder"]));
+
+    let refused = muster(&daemon, &["msg", "--as", "builder", "group", "delete", "council"]);
+    assert_eq!(refused.status.code(), Some(1), "{}", said(&refused));
+    assert!(complained(&refused).contains("delete it"), "{}", complained(&refused));
+
+    let deleted = ["msg", "--as", "director", "group", "delete", "council"];
+    assert_eq!(
+        ok(&muster(&daemon, &deleted)),
+        "deleted council (5 entries); let go: @human, builder, director"
+    );
+    let groups = ok(&muster(&daemon, &["msg", "groups"]));
+    assert!(!groups.contains("council"), "{groups}");
+    let gone = muster(&daemon, &["msg", "log", "--group", "council"]);
+    assert_eq!(gone.status.code(), Some(1), "{}", said(&gone));
+    let json = ok(&muster(&daemon, &["msg", "group", "new", "council", "--json"]));
+    assert!(json.contains("council"), "the name is free again: {json}");
+}
+
 /// A policy file with a key the service does not know is refused before anything is sent,
 /// rather than read as a policy that allows more than its author meant.
 #[test]

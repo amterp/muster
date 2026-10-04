@@ -116,3 +116,25 @@ fn a_request_that_changes_nothing_saves_nothing() {
     assert!(matches!(waited, muster_msg::Waited::Waiting { .. }), "{waited:?}");
     assert_eq!(service.store().saves, saves);
 }
+
+/// A delete removes the log before it saves, so a crash between the two leaves the group's
+/// policy and its members' places with no log. A restore keeps neither: the group stays deleted,
+/// and does not come back with the default policy.
+#[test]
+fn a_group_whose_log_was_removed_before_a_crash_stays_deleted() {
+    let mut first = Messaging::new(Memory::default());
+    first.join(&session("a"), Some("a"), Some("g"), &Everyone, 1).unwrap();
+    first.join(&session("a"), Some("a"), Some("kept"), &Everyone, 2).unwrap();
+    let saved = first.store().saved.clone().expect("the service saved its state");
+    let mut logs: BTreeMap<String, Vec<_>> = BTreeMap::new();
+    for (group, entry) in &first.store().appended {
+        if group != "g" {
+            logs.entry(group.clone()).or_default().push(entry.clone());
+        }
+    }
+
+    let second = Messaging::restore(Memory::default(), saved, logs);
+    assert_eq!(second.log("g", 0), Err(Refusal::NoSuchGroup { group: "g".to_string() }));
+    let cursors = &second.participant("a").unwrap().cursors;
+    assert_eq!(cursors.keys().collect::<Vec<_>>(), ["kept"]);
+}

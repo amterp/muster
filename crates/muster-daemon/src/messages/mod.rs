@@ -211,6 +211,7 @@ impl Messages {
             | Asked::Post(_)
             | Asked::Wait(_)
             | Asked::Resume(_)
+            | Asked::GroupDelete(_)
             | Asked::Peer(_) => unreachable!("each of these is handled apart"),
         };
         match result {
@@ -329,6 +330,7 @@ fn respond(
         Asked::Leave(leave) => leaving(shared, caller, &leave, panes),
         Asked::Who(who) => whoing(shared, &who, panes),
         Asked::GroupMembers(members) => membering(shared, caller, &members, panes),
+        Asked::GroupDelete(delete) => deleting(shared, caller, &delete.group, panes),
         Asked::Peer(_) => {
             refused_as("", "not_carried", "a link is held by the daemon it is asked of")
         }
@@ -344,6 +346,46 @@ fn respond(
             reply
         }
     }
+}
+
+/// Deletes a group kept here (MIP-4, section 8). Its follows are woken to find it gone, the
+/// waits kept to it end, the windows hear nothing waits for the human there, and each machine
+/// with a member is told to forget its replica.
+fn deleting(shared: &Arc<Shared>, caller: &Caller, group: &str, panes: &Panes) -> Reply {
+    let (result, told) = {
+        let mut messages = shared.messages();
+        if messages.handing_over {
+            return refused_as("", "handing_over", HANDING_OVER);
+        }
+        let result = messages.service.group_delete(caller, group, panes);
+        if let Ok(deleted) = &result {
+            messages.let_go(&deleted.ended);
+            messages.told.push(nothing_waits(&deleted.group));
+            messages.appended();
+        }
+        (result, messages.take_told())
+    };
+    tell_human(shared, told);
+    let deleted = match result {
+        Ok(deleted) => deleted,
+        Err(refusal) => return refused("", &refusal),
+    };
+    log::info(
+        "msg.group.deleted",
+        fields! {
+            "by" => deleted.by,
+            "group" => deleted.group,
+            "entries" => deleted.entries,
+            "let_go" => deleted.let_go.join(","),
+        },
+    );
+    peer::forget(shared, &deleted.forget, &deleted.group);
+    let answer = Answer::Deleted(msg_answer::Deleted {
+        group: deleted.group,
+        entries: deleted.entries,
+        let_go: deleted.let_go,
+    });
+    answered(deleted.by, answer)
 }
 
 /// What waits for the human, as the service decided it, for the windows to be told.
@@ -1375,6 +1417,7 @@ fn action_words(action: Action, group: &str) -> String {
         Action::SetPolicy => "change its policy".to_string(),
         Action::Pause => "pause it".to_string(),
         Action::Resume => "resume it".to_string(),
+        Action::Delete => "delete it".to_string(),
     }
 }
 

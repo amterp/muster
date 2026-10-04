@@ -171,7 +171,7 @@ pub enum Verb {
     #[command(name = GROUPS)]
     Groups,
 
-    /// Make a group with a policy, change its policy, or add and remove its members
+    /// Make a group with a policy, change its policy, add and remove its members, or delete it
     #[command(name = GROUP, subcommand)]
     Group(GroupVerb),
 
@@ -221,6 +221,11 @@ pub enum GroupVerb {
         group: String,
         #[arg(value_name = "NAME", required = true)]
         names: Vec<String>,
+    },
+    /// Delete a group and its log, letting every member go; unread messages go with it
+    Delete {
+        #[arg(value_name = "GROUP")]
+        group: String,
     },
 }
 
@@ -323,6 +328,9 @@ pub fn parse(
                 add: Vec::new(),
                 remove: names.clone(),
             })
+        }
+        Verb::Group(GroupVerb::Delete { group }) => {
+            Asked::GroupDelete(msg_request::GroupDelete { group: group.clone() })
         }
         Verb::Pause { group } => Asked::Pause(msg_request::Pause { group: group.clone() }),
         Verb::Resume { group } => Asked::Resume(msg_request::Resume { group: group.clone() }),
@@ -598,6 +606,7 @@ fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
         Some(Asked::GroupNew(_) | Asked::GroupSet(_)) => {
             Some(("keep a policy saying who may post urgently", 3))
         }
+        Some(Asked::GroupDelete(_)) => Some(("delete a group", 3)),
         _ => None,
     }
 }
@@ -743,6 +752,7 @@ fn render(
             }
         }
         Answer::Groups(groups) => groups_text(groups, json),
+        Answer::Deleted(deleted) => deleted_text(deleted, json),
         Answer::Notices(notices) => {
             if json {
                 let notices: Vec<_> = notices.notices.iter().map(notice_json).collect();
@@ -783,6 +793,25 @@ fn changed_text(request: &proto::MsgRequest, changed: &msg_answer::Changed, json
             lines.join("\n")
         }
     }
+}
+
+fn deleted_text(deleted: &msg_answer::Deleted, json: bool) -> String {
+    if json {
+        return serde_json::json!({
+            "deleted": deleted.group,
+            "entries": deleted.entries,
+            "let_go": deleted.let_go,
+        })
+        .to_string();
+    }
+    let entries = match deleted.entries {
+        1 => "1 entry".to_string(),
+        n => format!("{n} entries"),
+    };
+    if deleted.let_go.is_empty() {
+        return format!("deleted {} ({entries})", deleted.group);
+    }
+    format!("deleted {} ({entries}); let go: {}", deleted.group, deleted.let_go.join(", "))
 }
 
 fn groups_text(groups: &msg_answer::Groups, json: bool) -> String {

@@ -166,4 +166,5 @@ pub enum Action {
     SetPolicy,
     Pause,
     Resume,
+    Delete,
 }

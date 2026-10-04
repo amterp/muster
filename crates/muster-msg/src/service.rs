@@ -307,6 +307,32 @@ pub struct Changed {
     pub tell: Vec<Tell>,
 }
 
+/// A group deleted, and what the host still has to do about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Deleted {
+    pub by: String,
+    pub group: String,
+    /// How many entries its log held.
+    pub entries: u64,
+    /// Its members when it went, this machine's and other machines'.
+    pub let_go: Vec<String>,
+    /// Waits kept to the group, which the host ends as a leave does.
+    pub ended: Vec<u64>,
+    /// Other machines with members in it, whose replicas the host tells to go.
+    pub forget: Vec<String>,
+}
+
+/// A replica forgotten because its home deleted the group, or no longer has it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Forgot {
+    /// The replica's name here.
+    pub group: String,
+    pub ended: Vec<u64>,
+    /// Nothing waits for the human there now, if anything did.
+    pub wakes: Vec<Wake>,
+    pub unsaved: Option<String>,
+}
+
 /// A group as `groups` lists it.
 impl Changed {
     fn by(by: &str, group: &str, seq: Option<u64>) -> Changed {
@@ -460,8 +486,16 @@ impl<S: Store> Messaging<S> {
                     let head = groups.get(group).map_or(0, Group::head);
                     *cursor = (*cursor).min(head);
                 }
-                participant.woken.retain(|group| split_machine(group).is_none());
-                participant.rewoken.retain(|group| split_machine(group).is_none());
+                // A group deleted just before a crash lost its log and not yet its cursors.
+                participant.cursors.retain(|group, _| {
+                    split_machine(group).is_some() || groups.contains_key(group)
+                });
+                participant
+                    .woken
+                    .retain(|group| groups.get(group).is_some_and(|g| g.home.is_none()));
+                participant
+                    .rewoken
+                    .retain(|group| groups.get(group).is_some_and(|g| g.home.is_none()));
                 (participant.name.clone(), participant)
             })
             .collect();
@@ -1129,6 +1163,74 @@ impl<S: Store> Messaging<S> {
             posted.unsaved = Some(error);
         }
         Ok(posted)
+    }
+
+    /// Deletes a group kept here, with its log, letting every member go (MIP-4, section 8).
+    /// Nothing unread holds it back: deleting is deliberate, and `log` reads a group first.
+    /// The log goes before the saved state does, so a crash between the two leaves a policy
+    /// with no log, which a restore drops, rather than a log whose policy went back to the
+    /// default.
+    pub fn group_delete(
+        &mut self,
+        caller: &Caller,
+        group: &str,
+        presence: &dyn Presence,
+    ) -> Result<Deleted, Refusal> {
+        self.kept(group)?;
+        let by = self.acting(caller, presence)?;
+        self.permitted(group, &by, Action::Delete)?;
+        let record = &self.groups[group];
+        let entries = record.log.len() as u64;
+        let let_go: Vec<String> = record.members.iter().cloned().collect();
+        let forget = self.tell(group, 0, None).into_iter().map(|tell| tell.machine).collect();
+        self.store.remove(group).map_err(|error| Refusal::Store { error })?;
+        let ended = self.drop_group(group);
+        self.save()?;
+        Ok(Deleted { by, group: group.to_string(), entries, let_go, ended, forget })
+    }
+
+    /// Forgets a group and everything this machine's participants held of it: where each had
+    /// read to, what each was woken for, and any wait kept to it, whose tickets it returns.
+    fn drop_group(&mut self, group: &str) -> Vec<u64> {
+        self.groups.remove(group);
+        self.unanswered.remove(group);
+        for participant in self.participants.values_mut() {
+            participant.cursors.remove(group);
+            participant.woken.remove(group);
+            participant.rewoken.remove(group);
+        }
+        let waiting: Vec<String> = self
+            .waiters
+            .iter()
+            .filter(|(_, waiter)| waiter.group.as_deref() == Some(group))
+            .map(|(name, _)| name.clone())
+            .collect();
+        waiting
+            .into_iter()
+            .filter_map(|name| self.waiters.remove(&name))
+            .map(|w| w.ticket)
+            .collect()
+    }
+
+    /// Forgets the replica of `group`, named as `peer` names it, which its home deleted or no
+    /// longer keeps. None when nothing here held it.
+    pub fn forget_replica(&mut self, peer: &Peer, group: &str) -> Option<Forgot> {
+        let key = peer.inward(group);
+        if self.groups.get(&key).is_none_or(|kept| kept.home.as_deref() != Some(&peer.name)) {
+            return None;
+        }
+        let human = self.groups[&key].members.contains(HUMAN);
+        let ended = self.drop_group(&key);
+        let wakes = if human {
+            vec![Wake { name: HUMAN.to_string(), via: Via::Human, notice: self.human_notice(&key) }]
+        } else {
+            Vec::new()
+        };
+        let unsaved = match self.save() {
+            Err(Refusal::Store { error }) => Some(error),
+            _ => None,
+        };
+        Some(Forgot { group: key, ended, wakes, unsaved })
     }
 
     fn set_policy(

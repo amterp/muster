@@ -174,6 +174,7 @@ fn action_word(action: Action) -> &'static str {
         Action::SetPolicy => "set the policy of",
         Action::Pause => "pause",
         Action::Resume => "resume",
+        Action::Delete => "delete",
     }
 }
 
@@ -425,6 +426,18 @@ fn group_step(
         "resume" => service
             .resume(who, group, sessions, now)
             .map(|posted| resumed(service, sessions, &posted)),
+        "group delete" => service.group_delete(who, group, sessions).map(|deleted| {
+            let ended: Vec<String> =
+                deleted.ended.iter().map(|ticket| format!(", ended wait {ticket}")).collect();
+            let ended = ended.concat();
+            format!(
+                "{} deleted {} ({} entries); let go {}{ended}",
+                deleted.by,
+                deleted.group,
+                deleted.entries,
+                deleted.let_go.join(",")
+            )
+        }),
         "groups" => Ok(service
             .groups()
             .iter()
@@ -547,7 +560,7 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
             let since = step.get("since").and_then(Value::as_u64).unwrap_or(0);
             service.log(text("group").unwrap_or_default(), since).map(|entries| list(&entries))
         }
-        "group new" | "group set" | "members" | "pause" | "resume" | "groups" => {
+        "group new" | "group set" | "group delete" | "members" | "pause" | "resume" | "groups" => {
             group_step(service, sessions, step, &who, now)
         }
         "agent" => Ok(agent(sessions, step)),

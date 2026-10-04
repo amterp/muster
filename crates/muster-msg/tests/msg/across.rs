@@ -1660,3 +1660,54 @@ fn a_carried_request_names_what_the_far_machine_meant() {
     assert_eq!(name(HUMAN), HUMAN);
     assert_eq!(name("critic@devenv"), "critic@devenv");
 }
+
+/// Deleting a group at its home lets go of its members on the other machine: told to forget
+/// it, that machine drops the replica, their places in it, and a wait kept to it.
+#[test]
+fn a_group_deleted_at_its_home_is_forgotten_on_the_other_machine() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let waited = devenv.wait(&critic, Some("review@lap"), false, sessions).unwrap();
+    let muster_msg::Waited::Waiting { ticket, .. } = waited else { panic!("nothing unread") };
+
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let deleted = laptop.group_delete(&builder, "review", sessions).unwrap();
+    assert_eq!(deleted.let_go, ["builder", "critic@devenv"]);
+    assert_eq!(deleted.forget, ["devenv"]);
+    assert_eq!(wire.laptop.store().removed, ["review"]);
+
+    let forgot = wire.devenv.forget_replica(&Side::Devenv.peer(), "review").unwrap();
+    assert_eq!(forgot.group, "review@lap");
+    assert_eq!(forgot.ended, [ticket]);
+    let critic_there = wire.devenv.participant("critic").unwrap();
+    assert!(!critic_there.cursors.contains_key("review@lap"), "{:?}", critic_there.cursors);
+    assert!(wire.devenv.replicas_of("lap").is_empty(), "nothing left to refetch");
+}
+
+/// A machine whose link was down when the group was deleted is not told, and finds out when the
+/// link returns: its refetch is refused as no such group, and it forgets the replica then.
+#[test]
+fn a_replica_that_missed_a_delete_forgets_the_group_when_the_link_returns() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+
+    wire.cut();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.group_delete(&builder, "review", sessions).unwrap();
+    wire.up = true;
+    wire.laptop.linked(&Side::Laptop.peer());
+    wire.devenv.linked(&Side::Devenv.peer());
+    let replicas = wire.devenv.replicas_of("lap");
+    assert_eq!(replicas.len(), 1, "{replicas:?}");
+    let (group, after) = replicas[0].clone();
+    let refused = wire.send(Side::Devenv, &Call::Since { group, after }).unwrap_err();
+
+    assert_eq!(refused.code(), "no_such_group");
+    assert!(wire.devenv.replicas_of("lap").is_empty(), "nothing left to refetch");
+    assert!(!wire.devenv.participant("critic").unwrap().cursors.contains_key("review@lap"));
+}
