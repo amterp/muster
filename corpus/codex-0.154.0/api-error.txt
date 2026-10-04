@@ -1,0 +1,19 @@
+Which hooks Codex 0.154.0 fires when its model cannot be reached, and what its screen shows.
+
+Recorded 2026-10-04 on macOS 26.4.1 / arm64, codex-cli 0.154.0, -a on-request -s read-only, in a
+100x30 pseudo-terminal driven by a scratch script built on `tools/detection-capture.py`. The model
+provider was overridden inline, writing nothing to ~/.codex/config.toml:
+    -c 'model_providers.dead={name="dead",base_url="http://127.0.0.1:9/v1",wire_api="responses"}'
+    -c 'model_provider="dead"'
+with a hook on SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PermissionRequest, Stop and
+Interrupt writing its event's name, passed as -c hooks.<Event>=[...] with
+--dangerously-bypass-hook-trust.
+
+"Reply with the single word hi.":
+    SessionStart
+    UserPromptSubmit
+    2 s on:      • Working (2s • esc to interrupt), the title spinning
+    3 min 7 s on: • Reconnecting... waiting for network (3m 07s • esc to interrupt)
+                    └ Connection failed: error sending request
+                  the title still spinning; detection reads it working by its title
+    no further hook fired in those three minutes; the capture ended there, before Codex gave up

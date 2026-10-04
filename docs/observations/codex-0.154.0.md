@@ -118,6 +118,13 @@ the window would say 93% (`context.txt`).
 `codex queue --thread <name or id> --message <text>` handed an idle session, running in a terminal,
 a message it took as a new turn, with nothing typed into the terminal (`queue.txt`).
 
+## 10. An unreachable model keeps the turn open, retrying
+
+With its model provider pointed at an address nothing listens on, Codex fired `UserPromptSubmit`
+and then no hook for over three minutes, showing "Reconnecting... waiting for network" under its
+working line with its title spinning (`api-error.txt`). What it fires once it stops retrying was
+not reached.
+
 ## What this decides for Muster
 
 - Codex's adapter reports state through hooks, as Claude Code's does, from the same daemon verb:
@@ -144,6 +151,9 @@ a message it took as a new turn, with nothing typed into the terminal (`queue.tx
   after each tool call and as a turn starts, and asks for nothing at a turn's end, which would
   hold the session (section 7). Between turns Codex is rung, and the turn the ring starts begins
   with its messages.
+- While Codex retries an unreachable model it reads working, by its title, which is what it is
+  doing; no wait it declared earlier stands meanwhile, since `UserPromptSubmit` clears it
+  (section 10).
 - `codex queue` could reach a Codex without typing into its pane (section 9); Muster does not use
   it yet, since that needs the session's id reported, which nothing does so far.
 - A pane's name reaches the session as `/rename <name>` at an idle empty composer, which

@@ -400,8 +400,10 @@ harness that allows less must not break anything.
 
 ## Open Questions
 
-- Whether an API error or a dropped stream ends a Codex turn with `Stop`, `Interrupt` or no hook.
-  With none, a wait the agent declared would stand until its next turn ends.
+- What Codex fires when it gives up on an unreachable model. Measured as far as three minutes
+  (`docs/observations/codex-0.154.0.md`, section 10): it retries with its turn open and reads
+  working, firing nothing after `UserPromptSubmit`, which has already cleared any declared wait -
+  so none stands meanwhile. The end of the retries was not reached.
 - Whether Codex's `SubagentStart` and `SubagentStop` fire for the agents it spawns as Claude
   Code's do; the hooks are wired and were not seen firing.
 - What OpenCode can supply. Measured so far (`docs/observations/opencode-1.3.15.md`): its prompt is
