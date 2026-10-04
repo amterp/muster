@@ -1517,6 +1517,13 @@ impl Session {
             Err(why) => return Reply::refused(why),
         };
         let facts_changed = record.facts != facts;
+        // A report naming another agent than the one detected is not this agent's adapter.
+        let own = agent.is_empty()
+            || record.agent.as_deref().is_none_or(|detected| detected == agent.as_str());
+        let heard = own && record.adapter() != proto::Adapter::Reporting;
+        if heard {
+            record.set_adapter(proto::Adapter::Reporting);
+        }
         if facts_changed {
             let declared = is_waiting(facts.as_ref()) && !is_waiting(record.facts.as_ref());
             let withdrawn = !is_waiting(facts.as_ref()) && is_waiting(record.facts.as_ref());
@@ -1535,6 +1542,8 @@ impl Session {
                     fields! { "pane" => record.pane, "agent" => agent.as_str() },
                 );
             }
+        }
+        if facts_changed || heard {
             let record = record.clone();
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
@@ -1569,7 +1578,7 @@ impl Session {
             return Reply::done();
         }
         // Said again, a wait outlasts one more turn, which is a change even in the same words.
-        if facts_changed || says_waiting || renamed || identified || compacting {
+        if facts_changed || heard || says_waiting || renamed || identified || compacting {
             Reply::done()
         } else {
             Reply::already()
@@ -1799,6 +1808,7 @@ impl Session {
                 let replaced = record.agent.is_some() && record.agent != agent;
                 if replaced {
                     record.facts = None;
+                    record.set_adapter(proto::Adapter::Unsaid);
                     pane.turns.reports_turns = false;
                     pane.session_id = None;
                     if pane.resume.take().is_some() {
@@ -1814,6 +1824,14 @@ impl Session {
                 // call can read as a turn here after the agent's turn has ended.
                 if turn == Turn::Ended && !pane.turns.reports_turns {
                     settle_wait(record, &mut pane.turns.wait_declared, "detected turn end");
+                }
+                // Every adapter reports by the end of a turn, so one that has not by now is not
+                // installed, or not running.
+                if turn == Turn::Ended
+                    && record.agent == agent
+                    && record.adapter() == proto::Adapter::Unsaid
+                {
+                    record.set_adapter(proto::Adapter::Silent);
                 }
                 let waiting = is_waiting(record.facts.as_ref());
                 if turn == Turn::Ended && record.agent == agent {

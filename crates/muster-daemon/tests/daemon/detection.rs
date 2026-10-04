@@ -790,3 +790,74 @@ fn claude_codes_hooks_report_working_blocked_and_idle() {
         assert!(state_reported(&mut control), "{event} is the agent's own word");
     }
 }
+
+fn adapter(control: &mut Control) -> proto::Adapter {
+    record(control, "p1").adapter()
+}
+
+/// An agent says nothing of its adapter until it ends a turn, since Codex's reports only once it
+/// is prompted; a turn ended without a report is an adapter missing, and one report ends that.
+#[test]
+fn an_agent_that_ends_a_turn_without_reporting_has_a_silent_adapter() {
+    use proto::AgentState::{Idle, Working};
+    let home = Home::new("adapter-silent", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    assert_eq!(adapter(&mut control), proto::Adapter::Unsaid, "no turn has ended yet");
+
+    settle(&mut control, &mut input, "working", Working);
+    assert_eq!(adapter(&mut control), proto::Adapter::Unsaid, "the turn is still going");
+    settle(&mut control, &mut input, "idle", Idle);
+    assert_eq!(adapter(&mut control), proto::Adapter::Silent);
+
+    assert_eq!(report_state(&mut control, "claude", Working).outcome(), proto::Outcome::Done);
+    assert_eq!(adapter(&mut control), proto::Adapter::Reporting);
+
+    type_line(&mut input, "p1", "quit");
+    until_detected(&mut control, "p1", None, proto::AgentState::Unknown);
+    assert_eq!(adapter(&mut control), proto::Adapter::Unsaid, "it went with the agent");
+}
+
+/// A statusline can report before detection names the agent, and that is the agent's adapter
+/// reporting; the new daemon in a handoff knows it too.
+#[test]
+fn an_adapter_heard_before_detection_counts_and_is_handed_over() {
+    use proto::AgentState::{Idle, Working};
+    let home = Home::new("adapter-handoff", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let mut daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    let model = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        model: Some("Opus".to_string()),
+        ..Default::default()
+    };
+    expect(&mut control, pane(proto::pane_request::Request::Report(model)), proto::Outcome::Done);
+    type_line(&mut input, "p1", &home.agent("claude").display().to_string());
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+    settle(&mut control, &mut input, "working", Working);
+    settle(&mut control, &mut input, "idle", Idle);
+    assert_eq!(adapter(&mut control), proto::Adapter::Reporting, "a turn ended after a report");
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    assert_eq!(adapter(&mut daemon.connect()), proto::Adapter::Reporting);
+}
+
+/// A report naming an agent the pane does not run is no word from the pane's adapter.
+#[test]
+fn a_report_from_another_agent_is_not_the_panes_adapter() {
+    let home = Home::new("adapter-other", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+    report_state(&mut control, "codex", proto::AgentState::Working);
+    assert_eq!(adapter(&mut control), proto::Adapter::Unsaid);
+}
