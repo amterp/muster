@@ -1688,14 +1688,24 @@ fn ask_for_window(ask: &proto::AskForWindow) -> Response {
             if ask.install.is_empty() { "(unnamed)" } else { &ask.install }
         ));
     }
-    if ask.any && !ask.show.is_empty() {
+    let went = if ask.any && !ask.show.is_empty() {
         // Going to a pane or a tab is going to the window holding it, which the ordinary focus
         // path finds and brings forward; the app is then brought forward as well, since the
         // launch that asked was in front.
-        let _ = handle(Request::new(session::going_to(&ask.show)));
-    }
+        handle(Request::new(session::going_to(&ask.show)))
+    } else {
+        Response::ok()
+    };
     session::ask_for_window(&ask.name, &ask.show, ask.fresh, ask.any);
-    Response::ok()
+    match went.payload {
+        // Said rather than swallowed: a launch told it had handed over would exit as though the
+        // pane it named were on screen.
+        Some(response::Payload::Failure(failure)) => Response::failure(format!(
+            "the Muster already running could not go to {}, so it only came forward: {}",
+            ask.show, failure.reason
+        )),
+        _ => Response::ok(),
+    }
 }
 
 /// Makes this process the app of its install, or hands the launch to the one that is.

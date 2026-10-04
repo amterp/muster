@@ -967,6 +967,32 @@ fn asking_for_a_window_asks_the_shell() {
     assert_eq!(asked_for().len(), 1, "another install's request reached the shell");
 }
 
+/// A launch handed to the running app with a pane nobody holds is told so, rather than told it
+/// was handed over as though the pane were now on screen.
+#[test]
+fn a_launch_for_a_pane_nobody_holds_is_told_so() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+
+    let answered = answer(&Request::new(request::Payload::AskForWindow(AskForWindow {
+        install: muster_daemon_proto::install::INSTALL.to_string(),
+        show: "p-nobody".to_string(),
+        any: true,
+        ..AskForWindow::default()
+    })));
+
+    match answered.payload {
+        Some(response::Payload::Failure(failure)) => assert!(
+            failure.reason.contains("p-nobody"),
+            "the refusal does not name the pane: {}",
+            failure.reason
+        ),
+        other => panic!("a launch for a pane nobody holds was answered {other:?}"),
+    }
+}
+
 /// The first window open onto the daemon's one tab, and a second opened beside it onto a tab it
 /// asked for. Answers the two tabs, first window's first.
 fn two_windows(daemon: &Daemon) -> (String, String) {
