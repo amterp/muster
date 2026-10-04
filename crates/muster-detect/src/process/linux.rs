@@ -12,7 +12,7 @@
 use std::collections::{HashSet, VecDeque};
 
 #[cfg(target_os = "linux")]
-use super::{Job, Process, agent_hint_in};
+use super::{Job, Placed, Process, agent_hint_in};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Member {
@@ -49,6 +49,16 @@ pub(super) fn leader(group: u32) -> Option<Job> {
 #[cfg(target_os = "linux")]
 pub(super) fn agent_hint(pid: u32) -> Option<String> {
     agent_hint_in(&std::fs::read(format!("/proc/{pid}/environ")).ok()?)
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn placed(pid: u32) -> Option<Placed> {
+    let stat = stat_fields(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+    Some(Placed {
+        process: Process { pid, name: stat.comm, argv0: None, argv: argv(pid) },
+        parent: u32::try_from(stat.parent).ok()?,
+        group: u32::try_from(stat.group).ok()?,
+    })
 }
 
 /// The group's members among the processes under `shell`, and under the group's leader in
@@ -129,13 +139,23 @@ fn pgrp_and_comm(pid: u32) -> Option<(i32, String)> {
     pgrp_and_comm_from_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
 }
 
+fn pgrp_and_comm_from_stat(stat: &str) -> Option<(i32, String)> {
+    stat_fields(stat).map(|stat| (stat.group, stat.comm))
+}
+
+struct Stat {
+    comm: String,
+    parent: i32,
+    group: i32,
+}
+
 /// `pid (comm) state ppid pgrp ...`, where comm may itself hold spaces and parentheses - so it
 /// runs to the *last* closing parenthesis.
-fn pgrp_and_comm_from_stat(stat: &str) -> Option<(i32, String)> {
+fn stat_fields(stat: &str) -> Option<Stat> {
     let close = stat.rfind(')')?;
     let comm = stat.get(1 + stat.find('(')?..close)?.to_string();
     let fields: Vec<&str> = stat.get(close + 2..)?.split_whitespace().collect();
-    Some((fields.get(2)?.parse().ok()?, comm))
+    Some(Stat { comm, parent: fields.get(1)?.parse().ok()?, group: fields.get(2)?.parse().ok()? })
 }
 
 #[cfg(target_os = "linux")]
@@ -267,5 +287,7 @@ mod tests {
             pgrp_and_comm_from_stat("123 (name with ) paren) S 1 456 789 0 456"),
             Some((456, "name with ) paren".to_string()))
         );
+        let stat = stat_fields("123 (name with ) paren) S 1 456 789 0 456").unwrap();
+        assert_eq!((stat.parent, stat.group), (1, 456), "the parent is the field before the group");
     }
 }

@@ -5,6 +5,7 @@
 //! a test harness - decides how it is detached; this binary only serves its socket until it is
 //! told to stop.
 
+mod attribution;
 mod compaction;
 mod control;
 mod daemon_log;

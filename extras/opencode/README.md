@@ -60,8 +60,10 @@ model costs nothing.
 - **Messages fetched by hooks.** OpenCode is rung at an empty prompt instead.
 
 An `opencode run` that an agent starts from its shell inherits `$MUSTER_DAEMON`, and with the
-plugin installed it reports into the agent's pane. Start it as `env -u MUSTER_DAEMON opencode run
-...` and it does nothing.
+plugin installed it reports into the agent's pane. Muster refuses a report from an agent outside
+the process group the pane's own agent runs in, which a shell tool that leaves the group puts it
+in; one that stays is not told apart. Start it as `env -u MUSTER_DAEMON opencode run ...` and it
+does nothing either way.
 
 ## What was checked
 

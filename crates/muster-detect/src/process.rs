@@ -28,6 +28,16 @@ pub struct Process {
     pub argv: Option<Vec<String>>,
 }
 
+/// A process and where it hangs in the process tree, for walking up from one to its ancestors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placed {
+    pub process: Process,
+    /// Its parent's pid: 1, or 0, once it has none worth the name.
+    pub parent: u32,
+    /// The process group it runs in.
+    pub group: u32,
+}
+
 /// The processes in a terminal's foreground process group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Job {
@@ -55,6 +65,13 @@ pub trait Processes {
     /// environment of its own platform binaries (`/bin/sleep`, `/bin/zsh`), so a hint is only
     /// ever read from a process that is not one - which no agent is.
     fn agent_hint(&self, pid: u32) -> Option<String>;
+
+    /// One process with its parent and group, or none when it has gone or will not be read. A
+    /// source that cannot say answers none, which a caller reads as not knowing.
+    fn placed(&self, pid: u32) -> Option<Placed> {
+        let _ = pid;
+        None
+    }
 }
 
 /// The processes of the machine this runs on.
@@ -81,6 +98,13 @@ impl Processes for System {
         return macos::agent_hint(pid);
         #[cfg(target_os = "linux")]
         return linux::agent_hint(pid);
+    }
+
+    fn placed(&self, pid: u32) -> Option<Placed> {
+        #[cfg(target_os = "macos")]
+        return macos::placed(pid);
+        #[cfg(target_os = "linux")]
+        return linux::placed(pid);
     }
 }
 
@@ -156,6 +180,26 @@ mod tests {
         assert_eq!(sleep.argv.as_deref(), Some(&["sleep".to_string(), "30".to_string()][..]));
         assert_eq!(leader.map(|job| job.processes), Some(job.processes.clone()));
         assert_eq!(System.job(pid, pid), None, "a group that has gone has no job");
+    }
+
+    /// A process's parent and group, which the daemon walks up from a report's sender.
+    #[test]
+    fn the_system_places_a_process_under_its_parent_and_in_its_group() {
+        use std::os::unix::process::CommandExt;
+
+        let mut child = std::process::Command::new("/bin/sh")
+            .args(["-c", "exec sleep 30"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let placed = until(|| System.placed(pid).filter(|placed| placed.process.name == "sleep"));
+        let _ = child.kill();
+        let _ = child.wait();
+
+        let placed = placed.expect("the child should be visible, running sleep");
+        assert_eq!((placed.parent, placed.group), (std::process::id(), pid));
+        assert_eq!(System.placed(pid), None, "a process that has gone is placed nowhere");
     }
 
     #[test]

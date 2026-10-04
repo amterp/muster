@@ -53,11 +53,12 @@ it is next prompted. A turn ends at each `Stop`, so a `Stop` hook of your own th
 keep going (one that runs the tests before it lets it stop, say) ends the wait at the second
 `Stop`, and the pane reads done while the agent waits.
 
-Muster takes a report for the pane in `$MUSTER_PANE`, whichever process sent it. A `claude -p`
-that Claude Code starts from its Bash tool inherits that, and with the plugin installed at user
-level its own `Stop` reports the pane idle mid-turn, which also ends a wait the agent declared.
-Start it as `env -u MUSTER_DAEMON claude -p
-...` and its hooks do nothing.
+A `claude -p` that Claude Code starts from its Bash tool inherits `$MUSTER_PANE`, and with the
+plugin installed at user level its hooks report into the outer session's pane. Muster refuses
+those reports: the Bash tool runs it in a process group of its own, and Muster takes a report only
+from processes in the group the pane's own agent runs in (`muster docs limits`). One it cannot
+tell apart, such as a nested session started some other way in the same group, is still taken;
+`env -u MUSTER_DAEMON claude -p ...` keeps its hooks quiet either way.
 
 A plugin cannot set a statusline, so that is a step of its own either way.
 

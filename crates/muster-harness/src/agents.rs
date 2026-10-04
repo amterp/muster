@@ -95,6 +95,17 @@ impl Daemon {
         self.until_agent(pane, state);
     }
 
+    /// Types `line` into `pane` with its Return: one of the fake agent's commands while it runs,
+    /// or a command for the pane's shell.
+    pub fn type_into(&self, pane: &str, line: &str) {
+        type_line(self, pane, line);
+    }
+
+    /// Where the fake agent is installed, as `claude`, for a pane's shell to run it by path.
+    pub fn agent_path(&self) -> std::path::PathBuf {
+        self.root().join("home/.muster/bin").join(AGENT_NAME)
+    }
+
     /// Tells the fake agent in `pane` to be `working`, `blocked` or `idle`, and waits until
     /// the daemon says it is.
     pub fn set_agent_state(&self, pane: &str, state: proto::AgentState) {

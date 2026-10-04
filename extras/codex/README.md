@@ -101,9 +101,10 @@ That lets every command the model runs reach the network, not only the daemon.
 
 ## Not here yet
 
-A `codex exec` that Codex starts from its shell inherits
-`$MUSTER_PANE`, and with the plugin installed its own hooks report into that pane; start it as
-`env -u MUSTER_DAEMON codex exec ...` and they do nothing.
+A `codex exec` that Codex starts from its shell inherits `$MUSTER_PANE`, and with the plugin
+installed its own hooks report into that pane. Muster refuses a report from an agent outside the
+process group the pane's own agent runs in, but whether Codex's shell leaves that group has not
+been measured; start it as `env -u MUSTER_DAEMON codex exec ...` and its hooks do nothing.
 
 ## What was checked
 

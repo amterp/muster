@@ -787,15 +787,28 @@ debounce, and the pane's record says `state_reported`. The rules still read the 
 and take over the moment the report stops counting. herdr arbitrated hooks too; nothing of its
 arbitration was recorded here beyond its API, and this is written from scratch.
 
-**A report is taken on the pane it names, whoever sent it.** Any process with the pane's
-`$MUSTER_PANE` in its environment reports for that pane. A `claude -p` that the agent's Bash tool
-starts inherits it, and runs any plugin installed at user level, so its `Stop` reports the pane
-idle while the outer agent is mid-turn, and sets `finished_unseen`. A tmux server started in one
-pane does the same for every session it later runs. Such a report stands until the outer agent's
-next hook, or until the screen has moved for three seconds. Rejecting it would mean reading the
-sender's pid off the socket and walking its ancestors to the nearest process that is an agent,
-which has to be the pane's own; the process probe reads only a pane's foreground group, so that
-check is not built. Starting the nested agent with `MUSTER_DAEMON` unset keeps its hooks quiet.
+**A report is refused from another agent's process, and taken whenever that cannot be told.**
+Any process with the pane's `$MUSTER_PANE` in its environment can report for that pane. A
+`claude -p` that the agent's Bash tool starts inherits it, and runs any plugin installed at user
+level, so its `Stop` would report the pane idle while the outer agent is mid-turn, and its
+`SessionStart` would clear the outer agent's facts. A tmux server started in one pane passes it to
+every session it later runs. So the daemon reads the sender's pid off the connection
+(`LOCAL_PEERPID`, `SO_PEERCRED`) and walks up from it, past the hook's shell, to the nearest process
+detection would call an agent (`crates/muster-daemon/src/attribution.rs`). It refuses the whole
+report - state, facts, names - when that process runs outside the process group the pane's own
+agent was found in, and logs it once per process.
+
+Process groups, because a harness started through a wrapper is several processes that all read as
+the agent, and its hooks hang off any of them; they share the group. Claude Code's Bash tool runs
+its shell in a group of its own (measured on 2.1.289: the tool's shell leads its own group, under
+an agent in the pane's foreground group), so a nested `claude -p` is told apart. Everything else
+is taken, as every report was before: a sender the connection does not name, a walk that cannot
+read a process or finds no agent - a report backgrounded until its hook exited has only launchd
+above it - a pane with no agent identified, and a nested agent that stays in the outer agent's
+group. The walk stops at the daemon and anything above it, which is in no pane. It reads one
+process a step, about a tenth of a millisecond per report in all, before the session's lock is
+taken. Starting the nested agent with `MUSTER_DAEMON` unset still keeps its hooks quiet, for a
+harness whose shell tool does not leave its group.
 
 **Drift is shown, not guessed.** The rules also say when they have stopped reading an agent: for a
 minute, the screen changed in at least half the seconds while either no rule matched at all, or

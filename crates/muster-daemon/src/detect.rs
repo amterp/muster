@@ -348,6 +348,7 @@ impl Detection {
         }
         let mut observed = Observed { io, progress: &mut self.progress };
         let tick = self.detector.tick(now, &mut observed, &System, &manifests);
+        io.set_agent_group(self.detector.agent_group());
         self.due = now + tick.next;
         tick.publication
     }

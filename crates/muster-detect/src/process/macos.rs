@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use super::{Job, Process, agent_hint_in};
+use super::{Job, Placed, Process, agent_hint_in};
 
 /// `PROC_PGRP_ONLY` from `<sys/proc_info.h>`, which the libc crate does not carry.
 const PROC_PGRP_ONLY: u32 = 2;
@@ -23,6 +23,21 @@ pub(super) fn leader(group: u32) -> Option<Job> {
 
 pub(super) fn agent_hint(pid: u32) -> Option<String> {
     agent_hint_in(procargs2_env(&kern_procargs2(pid)?)?)
+}
+
+pub(super) fn placed(pid: u32) -> Option<Placed> {
+    let info = bsdinfo(pid)?;
+    let args = kern_procargs2(pid);
+    Some(Placed {
+        process: Process {
+            pid,
+            name: comm(&info)?,
+            argv0: args.as_deref().and_then(procargs2_argv0_name),
+            argv: args.as_deref().and_then(procargs2_argv),
+        },
+        parent: info.pbi_ppid,
+        group: info.pbi_pgid,
+    })
 }
 
 /// A process, if it is still in the group: it can leave between the listing and the read.

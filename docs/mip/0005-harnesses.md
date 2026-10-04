@@ -483,8 +483,9 @@ harness that allows less must not break anything.
   own rules, so it neither rings Codex nor renames sessions until a daemon of this version takes
   over.
 - A harness that one agent runs as a command from its shell - `codex exec`, `claude -p` - inherits
-  `$MUSTER_PANE`, and its hooks report into the pane it was started from. Both READMEs say how to
-  stop that.
+  `$MUSTER_PANE`, and its hooks report into the pane it was started from. The daemon refuses such a
+  report when the nested agent runs outside the outer agent's process group, as Claude Code's Bash
+  tool puts it (MIP-3, section 8); each adapter's README says how to quiet the rest.
 - A sandboxed Codex cannot run `muster` without the sandbox's network, which also lets every
   command it runs reach the network.
 - Recordings age with each harness version, as Claude Code's do; a tier says when they no longer

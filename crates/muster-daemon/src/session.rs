@@ -1421,6 +1421,35 @@ impl Session {
         Payload::TabClosed(proto::TabClosed { tab: closed.name })
     }
 
+    /// A refusal for a report whose sender's nearest agent is not the pane's own: one running
+    /// outside the process group the pane's agent was found in. None - take the report - for
+    /// anything else, including a pane with no agent identified or no group known for it
+    /// ([`crate::attribution`]).
+    pub(crate) fn foreign_report(
+        &self,
+        service: &Service,
+        sender: &crate::attribution::Nearest,
+    ) -> Option<Reply> {
+        let Service::Pane(proto::PaneRequest {
+            request: Some(pane_request::Request::Report(report)),
+        }) = service
+        else {
+            return None;
+        };
+        let pane = &self.panes[self.pane_index(&report.pane)?];
+        let own = pane.record.agent.as_deref()?;
+        if pane.io.agent_group()? == sender.group {
+            return None;
+        }
+        crate::attribution::refused(&report.pane, own, sender);
+        Some(Reply::refused(format!(
+            "pane {} runs {own}, and this report came from another {} (pid {}), outside the \
+             process group the pane's own agent runs in; it inherited the pane's environment, \
+             and its reports are not the pane's",
+            report.pane, sender.agent, sender.pid
+        )))
+    }
+
     /// Facts the agent in a pane states about itself.
     fn report(&mut self, mut report: pane_request::Report) -> Reply {
         let Some(index) = self.pane_index(&report.pane) else {

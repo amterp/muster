@@ -338,3 +338,14 @@ A wait on `--context` is met only by what an agent's adapter reports. A harness 
 never reports its context, and Muster cannot tell that apart from one that has not reported yet, so
 such a wait is not refused: it says on stderr that the pane has not said its context, and goes on
 waiting for whatever else it was asked, its `--until` states or its `--timeout`.
+
+## A nested agent's reports are refused only when it runs apart
+
+Every process started in a pane inherits `$MUSTER_PANE`, so an agent that the pane's agent starts -
+a `claude -p` from Claude Code's Bash tool, a `codex exec`, an agent in a tmux server started
+there - has hooks that report into the pane. Muster refuses such a report when the process that
+sent it sits below an agent running outside the process group the pane's own agent runs in, which
+is where Claude Code's Bash tool puts what it runs. It cannot tell a nested agent that stays in that
+group from the pane's own, and takes its reports as before; nor can it tell anything about a
+sender it cannot see, so it takes those too. `env -u MUSTER_DAEMON` in front of the nested command
+keeps its hooks quiet whatever Muster can tell.

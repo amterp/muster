@@ -17,6 +17,7 @@ use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, pane_request, request::Service, session_request};
 use prost::Message;
 
+use crate::attribution;
 use crate::session::{Handled, Replacement, Reply, Session, Shared, Stop};
 use crate::{handoff, messages};
 
@@ -186,6 +187,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         "daemon.connection.opened",
         fields! { "connection" => outbox.id, "client" => client },
     );
+    let peer = attribution::peer_pid(&stream);
 
     loop {
         let request = match connection::receive::<proto::Request>(&mut stream) {
@@ -224,6 +226,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         // the next, once letting go of this one has done the work it left on panes' terminals,
         // so an answer still means the request has taken effect. A snapshot leaves no such work,
         // and its answer goes under this lock, beside the state it describes.
+        let sender = sender_of(peer, request.service.as_ref(), shared);
         let handled = match request.service {
             // Outside the session's lock: messages have their own (crate::messages).
             Some(Service::Msg(request)) => {
@@ -231,7 +234,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             }
             Some(service) => {
                 let mut session = locked();
-                match handle(&mut session, service, &outbox, shared) {
+                match handle(&mut session, service, sender.as_ref(), &outbox, shared) {
                     Handled::Snapshot(reply) => {
                         let timing = Answered::after(request.id, name, received, lock);
                         answer(&session, &outbox, reply, timing);
@@ -281,8 +284,18 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
 /// Handles a request under the session's lock. One that renames a pane, reports a session's
 /// name or its context, asks for a compaction, or turns naming sessions or compacting on may
 /// leave a line to type into an agent's prompt, which the doorbell's thread does - but only if
-/// it changed something: a statusline repeats its report every few seconds.
-fn handle(session: &mut Session, service: Service, outbox: &Outbox, shared: &Shared) -> Handled {
+/// it changed something: a statusline repeats its report every few seconds. A report whose
+/// `sender` is another agent than the pane's own is refused before any of it is taken.
+fn handle(
+    session: &mut Session,
+    service: Service,
+    sender: Option<&attribution::Nearest>,
+    outbox: &Outbox,
+    shared: &Shared,
+) -> Handled {
+    if let Some(refused) = sender.and_then(|sender| session.foreign_report(&service, sender)) {
+        return Handled::Reply(refused);
+    }
     let names = matches!(
         &service,
         Service::Pane(proto::PaneRequest {
@@ -303,6 +316,20 @@ fn handle(session: &mut Session, service: Service, outbox: &Outbox, shared: &Sha
         shared.doorbell.nudge();
     }
     handled
+}
+
+/// The nearest agent above a report's sender, for a report; read before the session's lock is
+/// taken, since the walk reads the process table a process at a time.
+fn sender_of(
+    peer: Option<u32>,
+    service: Option<&Service>,
+    shared: &Shared,
+) -> Option<attribution::Nearest> {
+    let report = matches!(
+        service,
+        Some(Service::Pane(proto::PaneRequest { request: Some(pane_request::Request::Report(_)) }))
+    );
+    attribution::nearest_agent(peer.filter(|_| report)?, &*shared.detecting.manifests()?)
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is

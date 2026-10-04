@@ -15,7 +15,7 @@ use std::io;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::path::PathBuf;
 use std::process::Child;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -151,6 +151,9 @@ pub(crate) struct PaneIo {
     carried: Mutex<Option<proto::handoff::Detection>>,
     /// What the pane's agent last said about its own state, for the reader to hand detection.
     self_report: Mutex<Option<(String, muster_detect::State)>>,
+    /// The process group detection last found the pane's agent in, zero for none: written by the
+    /// reader, read by a connection judging who sent a report.
+    agent_group: AtomicU32,
     /// When the writer last wrote input to the program.
     typed: Mutex<Typed>,
     begun: Begun,
@@ -330,6 +333,15 @@ impl PaneIo {
 
     pub(crate) fn shell(&self) -> Option<i32> {
         self.begun.shell
+    }
+
+    /// The process group detection last found the pane's agent in.
+    pub(crate) fn agent_group(&self) -> Option<u32> {
+        Some(self.agent_group.load(Ordering::Acquire)).filter(|&group| group != 0)
+    }
+
+    pub(crate) fn set_agent_group(&self, group: Option<u32>) {
+        self.agent_group.store(group.unwrap_or(0), Ordering::Release);
     }
 
     /// How long ago this daemon took the pane on.
@@ -789,6 +801,7 @@ impl Pane {
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
+            agent_group: AtomicU32::new(0),
             typed: Mutex::default(),
             begun: Begun::new(process),
             turn: Mutex::new(None),
@@ -1204,6 +1217,7 @@ impl PaneIo {
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
+            agent_group: AtomicU32::new(0),
             typed: Mutex::default(),
             begun: Begun::new(None),
             turn: Mutex::new(None),

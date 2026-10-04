@@ -115,6 +115,9 @@ pub struct Detector {
     published: PublishState,
     last_process_check: Instant,
     last_foreground_group: Option<u32>,
+    /// The process group the current agent was last found in, which every process of the agent
+    /// shares unless it leaves the group on purpose.
+    agent_group: Option<u32>,
     has_process_probe: bool,
     acquisition_started_at: Option<Instant>,
     last_content_change_at: Option<Instant>,
@@ -152,6 +155,7 @@ impl Detector {
             published: PublishState { state: State::Idle, visible: false },
             last_process_check: now,
             last_foreground_group: None,
+            agent_group: None,
             has_process_probe: false,
             acquisition_started_at: None,
             last_content_change_at: None,
@@ -176,6 +180,7 @@ impl Detector {
         self.presence = Presence::default();
         self.published = PublishState { state: State::Unknown, visible: false };
         self.last_foreground_group = None;
+        self.agent_group = None;
         self.has_process_probe = false;
         self.acquisition_started_at = None;
         self.last_content_change_at = None;
@@ -247,6 +252,12 @@ impl Detector {
 
     pub fn agent(&self) -> Option<&Agent> {
         self.presence.current.as_ref()
+    }
+
+    /// The process group the pane's agent was found in; none while there is no agent, or it has
+    /// not been probed since this detector began.
+    pub fn agent_group(&self) -> Option<u32> {
+        self.agent_group.filter(|_| self.presence.current.is_some())
     }
 
     /// What the agent says about its own state, which outranks the screen rules while it counts
@@ -440,6 +451,7 @@ impl Detector {
         self.last_foreground_group =
             process_group_for_change_tracking(foreground_group, found.group);
         if found.agent.is_some() {
+            self.agent_group = found.group;
             self.acquisition_started_at = None;
             self.last_content_change_at = None;
         } else if self.presence.current.is_none() && had_process_probe && group_changed {

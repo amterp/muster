@@ -122,6 +122,12 @@ pub fn identify_in_job(job: &Job, manifests: &Manifests) -> Option<(Agent, Strin
     best.map(|(_, agent, name)| (agent, name))
 }
 
+/// The agent one process is, by the names detection reads a foreground by: none for a shell, a
+/// hook, or anything else no manifest names.
+pub fn identify_process(process: &Process, manifests: &Manifests) -> Option<Agent> {
+    manifests.agent_named(&normalized_process_name(process, manifests))
+}
+
 /// The name a process should be looked up by.
 fn normalized_process_name(process: &Process, manifests: &Manifests) -> String {
     let effective = process.argv0.as_deref().unwrap_or(&process.name);

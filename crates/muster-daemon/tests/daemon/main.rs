@@ -1,6 +1,7 @@
 //! muster-daemon's integration tests, as one binary rather than one per file: see docs/testing.md.
 
 mod arranging;
+mod attribution;
 mod claude_code;
 mod claude_code_council;
 mod claude_code_doorbell;
