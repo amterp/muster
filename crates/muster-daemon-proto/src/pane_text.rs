@@ -50,10 +50,14 @@ pub fn newest<E>(
 
 /// What a pane's agent printed in its last turn, from the one page `read_turn` asks the daemon
 /// for. None when the daemon answered without placing a turn: it predates the request, and read
-/// something else.
+/// something else. Truncated when the page starts after the turn, and when the pane's rows moved
+/// since the turn began, which may have put its start after the turn's.
 pub fn turn<E>(read_turn: impl FnOnce() -> Result<PaneText, E>) -> Result<Option<Newest>, E> {
     let page = read_turn()?;
-    Ok(page.turn.map(|start| Newest { truncated: page.first_row > start, text: page.text }))
+    Ok(page.turn.map(|start| Newest {
+        truncated: page.first_row > start || page.turn_moved,
+        text: page.text,
+    }))
 }
 
 /// Whether a read that asked for the last `rows` rows got them.
@@ -107,7 +111,7 @@ mod tests {
                 rows: u32::try_from(rows).unwrap(),
                 total_rows: 100,
                 text: format!("rows {from}.."),
-                turn: None,
+                ..PaneText::default()
             })
         })
         .unwrap();
@@ -124,5 +128,9 @@ mod tests {
         assert_eq!(at(40, Some(40)).map(|read| read.truncated), Some(false));
         assert_eq!(at(55, Some(40)).map(|read| read.truncated), Some(true), "4 MiB cut its top");
         assert_eq!(at(0, None), None, "a daemon that predates the field read something else");
+        let moved =
+            PaneText { first_row: 40, turn: Some(40), turn_moved: true, ..PaneText::default() };
+        let moved = turn(|| Ok::<_, ()>(moved)).unwrap();
+        assert_eq!(moved.map(|read| read.truncated), Some(true), "rows moved since it began");
     }
 }

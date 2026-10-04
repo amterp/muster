@@ -102,3 +102,33 @@ fn the_first_turn_after_a_handoff_is_read() {
     };
     assert!(text.text.starts_with("after the handoff"), "{text:?}");
 }
+
+/// A pane widened during the turn rewraps its rows, which can move where the turn began: the
+/// answer says so rather than reading as the whole turn.
+#[test]
+fn a_turn_whose_rows_moved_says_so() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    daemon.unblock_agent_unasked();
+    daemon.until_agent("p1", proto::AgentState::Working);
+    say(&daemon, &mut control, "the report");
+    let still = read_turn(&mut control);
+    assert!(!still.turn_moved, "nothing moved: {still:?}");
+
+    let mut stream = attached(&daemon, "p1", false);
+    stream.resize(proto::Grid { cols: 120, rows: 30, width_px: 1200, height_px: 600 });
+    until_some("the pane to be wider", || {
+        let moved = read_turn(&mut control);
+        moved.turn_moved.then_some(())
+    });
+}
+
+fn read_turn(control: &mut Control) -> proto::PaneText {
+    let read = expect(control, turn_request("p1"), proto::Outcome::Done);
+    match read.answer.detail {
+        Some(proto::answer::Detail::Text(text)) => text,
+        _ => panic!("a turn read answered {:?}", read.answer),
+    }
+}

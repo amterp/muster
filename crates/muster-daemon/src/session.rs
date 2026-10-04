@@ -576,7 +576,11 @@ impl Reading {
                      there is no last turn to read; read its newest rows with --rows instead",
                 );
             };
-            proto::PaneText { turn: Some(start), ..screen::since(start, screen::PAGE_BYTES, rows) }
+            proto::PaneText {
+                turn: Some(start.row),
+                turn_moved: start.moved,
+                ..screen::since(start.row, screen::PAGE_BYTES, rows)
+            }
         } else if self.last > 0 && self.last <= screen::HELD_TAIL {
             let held = self.io.screen();
             screen::last_page(self.last, screen::PAGE_BYTES, |first, count| held.rows(first, count))

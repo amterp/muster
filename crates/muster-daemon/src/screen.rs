@@ -460,7 +460,7 @@ pub(crate) fn page(
         text.push_str(&joined);
         held += u32::try_from(lines.len()).unwrap_or(u32::MAX);
     }
-    proto::PaneText { first_row, text, total_rows, rows: held, turn: None }
+    proto::PaneText { first_row, text, total_rows, rows: held, ..proto::PaneText::default() }
 }
 
 /// The last `last` rows ending at the last row with anything on it, stopping short at `limit`
@@ -530,7 +530,8 @@ fn newest_back_to(
     }
     newest_first.reverse();
     let rows = u32::try_from(newest_first.len()).unwrap_or(u32::MAX);
-    proto::PaneText { first_row, text: newest_first.join("\n"), total_rows, rows, turn: None }
+    let text = newest_first.join("\n");
+    proto::PaneText { first_row, text, total_rows, rows, ..proto::PaneText::default() }
 }
 
 /// One cell's size in pixels, zero while no surface has said.

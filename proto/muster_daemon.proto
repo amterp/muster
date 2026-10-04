@@ -1026,6 +1026,10 @@ message PaneText {
   // Since 1.3. For a read of the turn, the row it starts at; `first_row` past it means the page
   // was cut short at its top.
   optional uint64 turn = 5;
+  // Since 1.3. For a read of the turn, the pane's rows have moved since the turn began - rewrapped
+  // to another width, or trimmed off the top of a full history - so the turn may begin above
+  // `turn`.
+  bool turn_moved = 6;
 }
 
 message Event {

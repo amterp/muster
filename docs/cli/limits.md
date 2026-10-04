@@ -49,15 +49,16 @@ those, so a small count costs a small answer however much the pane holds. A daem
 window sends the whole history instead, and the window takes the last N itself: the same answer,
 at the cost of the history on the wire.
 
-## `--turn` is placed by the screen, and a full history can cost it its first rows
+## `--turn` is placed by the screen, and says when rows have moved under it
 
 `--turn` starts at the first row that no longer reads as the screen did when the agent went to
-work. Row numbers count from the oldest row a pane holds, so they hold still until its history
-reaches the scrollback limit (`scrollback_bytes`, 10 MB by default). From then on, each row
-trimmed from the top moves the rest up by one, and a long turn in a full pane can be read from a
-few rows into it rather than its start. A pane resized during the turn rewraps its rows, which
-moves the start up: a few rows from before the turn come with it, and none of the turn is lost.
-A turn longer than 4 MiB comes back as its newest 4 MiB, with `truncated` set.
+work. Row numbers count from the oldest row a pane holds, so they hold still until something moves
+the rows: a change of the pane's width rewraps them, and once its history reaches the scrollback
+limit (`scrollback_bytes`, 10 MB by default) each row trimmed from the top moves the rest up by
+one. Either can put the read's start after the turn's real one. The daemon notices both - the
+pane's width, and the history rows above the screen no longer reading as they did - and the read
+then comes back with `truncated` set, so a caller knows the top may be missing and can read
+`--rows` for more. A turn longer than 4 MiB comes back as its newest 4 MiB, `truncated` too.
 
 The daemon learns where a turn began as it sees the agent go to work, and keeps it in memory: a
 pane taken over by a newer Muster has no turn to read until its agent next goes to work, and a

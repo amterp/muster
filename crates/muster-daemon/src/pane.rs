@@ -168,6 +168,23 @@ struct TurnMark {
     top: u64,
     /// The screen's rows then, from its top down.
     rows: Vec<String>,
+    /// The history's last rows above the screen then, which nothing rewrites in place: rows
+    /// that read otherwise later have moved, trimmed off the top or rewrapped.
+    above: Vec<String>,
+    /// The pane's width then; another rewraps every row.
+    cols: u16,
+}
+
+/// How many history rows above the screen a turn's mark keeps, to tell that rows have moved.
+const MARKED_ABOVE: u64 = 3;
+
+/// Where a pane's last turn starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TurnStart {
+    pub(crate) row: u64,
+    /// The pane's rows have moved since the turn began - rewrapped by a change of width, trimmed
+    /// off the top of a full history, or erased - so the turn may begin above `row`.
+    pub(crate) moved: bool,
 }
 
 /// When input was last written to a pane's program.
@@ -265,27 +282,36 @@ impl PaneIo {
         let (_, total) = screen.rows(0, 0);
         let (rows, _) =
             screen.rows(top, u32::try_from(total.saturating_sub(top)).unwrap_or(u32::MAX));
+        let first_above = top.saturating_sub(MARKED_ABOVE);
+        let (above, _) = screen.rows(first_above, u32::try_from(top - first_above).unwrap_or(0));
         drop(screen);
-        *poison::lock(&self.turn, "daemon.pane.turn") = Some(TurnMark { top, rows });
+        let cols = self.grid().cols;
+        *poison::lock(&self.turn, "daemon.pane.turn") = Some(TurnMark { top, rows, above, cols });
     }
 
     /// The row the agent's last turn starts at: the first, from the screen's top when it went to
     /// work, that no longer reads as it did then. What the screen already showed - the previous
     /// turn's end, the line that started this one - stays out, and a prompt the agent redrew in
-    /// place with the turn's first lines does not. A rewrap moves the first difference up, so a
-    /// resize costs a few rows too many rather than any missing; rows trimmed off the top of a
-    /// full history move it down, and can cost a long turn its first rows. None before any turn.
-    pub(crate) fn turn_start(&self) -> Option<u64> {
+    /// place with the turn's first lines does not. Rows that moved since - rewrapped to another
+    /// width, trimmed off the top of a full history - can put that row after the turn's real
+    /// start, which the answer then says. None before any turn.
+    pub(crate) fn turn_start(&self) -> Option<TurnStart> {
         let turn = poison::lock(&self.turn, "daemon.pane.turn");
         let mark = turn.as_ref()?;
+        let first_above = mark.top - mark.above.len() as u64;
+        let screen = self.screen();
+        let (above, _) =
+            screen.rows(first_above, u32::try_from(mark.above.len()).unwrap_or(u32::MAX));
         let (now, total) =
-            self.screen().rows(mark.top, u32::try_from(mark.rows.len()).unwrap_or(u32::MAX));
+            screen.rows(mark.top, u32::try_from(mark.rows.len()).unwrap_or(u32::MAX));
+        drop(screen);
+        let moved = above != mark.above || self.grid().cols != mark.cols;
         if mark.top >= total {
             // The history was erased, or trimmed past where the turn began.
-            return Some(0);
+            return Some(TurnStart { row: 0, moved: true });
         }
         let same = mark.rows.iter().zip(&now).take_while(|(then, now)| then == now).count();
-        Some(mark.top + same as u64)
+        Some(TurnStart { row: mark.top + same as u64, moved })
     }
 
     fn take_self_report(&self) -> Option<(String, muster_detect::State)> {
