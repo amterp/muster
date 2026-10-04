@@ -58,7 +58,9 @@ impl SessionName {
             self.want(pane, label);
             return None;
         }
+        // What was typed before no longer stands: naming the pane that again has to type it.
         self.wanted = None;
+        self.typed = None;
         Some(said.to_string())
     }
 
@@ -160,6 +162,18 @@ mod tests {
         // The pane took B, which the daemon does without calling `named`.
         assert_eq!(heard(&mut state, "B", Some("B")), None, "said again");
         assert_eq!(state.wanted(), None);
+    }
+
+    #[test]
+    fn a_pane_named_back_after_a_rename_in_the_harness_hands_the_name_on_again() {
+        let mut state = SessionName::default();
+        heard(&mut state, "", None);
+        state.named("p1", Some("A"));
+        state.typed("A");
+        heard(&mut state, "A", Some("A"));
+        assert_eq!(heard(&mut state, "B", Some("A")).as_deref(), Some("B"));
+        state.named("p1", Some("A"));
+        assert_eq!(state.wanted(), Some("A"), "the session is called B now, not A");
     }
 
     #[test]
