@@ -158,11 +158,12 @@ pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to 
 
 Five verbs work with no window at all: `muster window` (and `window --watch`), `pane read`, `pane
 send`, `pane wait` and `pane compact`. What agents are doing and what a pane printed are the
-daemon's to know, and the daemon is what types a compaction, so a window only relays them, so when no window answers these ask the daemon holding the panes: the
-one `$MUSTER_DAEMON_SOCKET` names, which every pane has, and otherwise this install's. That is
-what makes them work on an SSH devenv nothing forwards a window to, and in a pane whose window has
-quit. They answer as a window would: the same text, the same `--json`, the same exit codes, the
-same `--confirm` read-back and the same wait. Panes are named as a window names them.
+daemon's to know, and a compaction is the daemon's to type, so a window only relays them. When no
+window answers, these ask the daemon holding the panes: the one `$MUSTER_DAEMON_SOCKET` names, which
+every pane has, and otherwise this install's. That is what makes them work on an SSH devenv nothing
+forwards a window to, and in a pane whose window has quit. They answer as a window would: the same
+text, the same `--json`, the same exit codes, the same `--confirm` read-back and the same wait.
+Panes are named as a window names them.
 
 They fall back only when there is no window to ask: `$MUSTER_SOCKET` names one that does not
 answer, or, with it unset, none is listening. A Muster named with `--socket` that is not there is

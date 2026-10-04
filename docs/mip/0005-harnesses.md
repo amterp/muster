@@ -335,7 +335,8 @@ into Codex's config.
    idle.
 5. If a session can be renamed by typing at its prompt, a `[session] rename` in its manifest; if
    its hooks or statusline can say the session's name, and only for names a person gave, a
-   `--session-name` in its report.
+   `--session-name` in its report. If it compacts on a line typed at its prompt, a
+   `[session] compact` too, once recorded working as typed.
 6. An observation file and its transcripts.
 7. A live tier.
 8. Regenerate the table in `muster docs harnesses`.
