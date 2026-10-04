@@ -40,10 +40,13 @@ fn a_pane_in_a_tab_nothing_is_showing_can_be_split() {
     );
     let backgrounded = panes_of_tabs()[0].clone();
 
-    // A second tab, which comes on screen and puts the first one behind it. That is the
-    // arrangement the failure happens in and it is an ordinary one: a person made a tab, and
-    // the agent's own pane is in the tab they left.
-    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    // A second tab, made as cmd+T makes one, which comes on screen and puts the first one behind
+    // it. That is the arrangement the failure happens in and it is an ordinary one: a person made
+    // a tab, and the agent's own pane is in the tab they left.
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        take_focus: true,
+        ..CreateTab::default()
+    })));
     // A request returns with its effect already in the window, so this is true on the answer.
     assert!(
         tabs().len() == 2 && tabs().iter().filter(|(_, on_screen)| *on_screen).count() == 1,
@@ -74,6 +77,54 @@ fn a_pane_in_a_tab_nothing_is_showing_can_be_split() {
         keyboard_was,
         "splitting a pane in a background tab moved the keyboard out of the tab on screen"
     );
+}
+
+/// A tab made without asking for the keyboard is made behind the one on screen, which stays on
+/// screen with the keyboard where it was: an agent making three tabs does not drag somebody
+/// through all three (kan a_2WEHtnf1Y). Asking for the keyboard brings the tab on screen.
+#[test]
+fn a_tab_made_without_the_keyboard_is_made_behind() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+
+    muster::ffi::muster_set_event_callback(Some(note));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the window to open onto a tab",
+        || panes_of_tabs().len() == 1 && keyboard().is_some(),
+        || format!("the last roster the core published: {:?}", tabs()),
+    );
+    let showing = tabs().into_iter().find(|(_, on_screen)| *on_screen);
+    let keyboard_was = keyboard();
+
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    until(
+        "the new tab to be listed",
+        || tabs().len() == 2,
+        || format!("the last roster the core published: {:?}", tabs()),
+    );
+    assert_eq!(
+        tabs().into_iter().find(|(_, on_screen)| *on_screen),
+        showing,
+        "a tab made without the keyboard came on screen: {:?}",
+        tabs()
+    );
+    assert_eq!(keyboard(), keyboard_was, "a tab made without the keyboard took it");
+
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        take_focus: true,
+        ..CreateTab::default()
+    })));
+    assert!(
+        tabs().len() == 3 && tabs().last().is_some_and(|(_, on_screen)| *on_screen),
+        "a tab made with the keyboard is the one on screen: {:?}",
+        tabs()
+    );
+    assert_ne!(keyboard(), keyboard_was, "and the keyboard went with it");
 }
 
 /// A tab nothing is showing is described as fully as the one on screen, when somebody asks for
