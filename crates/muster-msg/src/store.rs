@@ -39,6 +39,8 @@ pub struct Memory {
     pub removed: Vec<String>,
     /// Set to make every call fail, as a full disk would.
     pub failing: bool,
+    /// Set to make only saving the state fail, as a disk filling up between two writes would.
+    pub failing_saves: bool,
 }
 
 impl Store for Memory {
@@ -51,7 +53,7 @@ impl Store for Memory {
     }
 
     fn save(&mut self, state: &Saved) -> Result<(), String> {
-        if self.failing {
+        if self.failing || self.failing_saves {
             return Err("the store is failing on purpose".to_string());
         }
         self.saved = Some(state.clone());

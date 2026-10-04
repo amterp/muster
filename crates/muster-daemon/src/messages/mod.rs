@@ -396,6 +396,9 @@ fn deleting(shared: &Arc<Shared>, caller: &Caller, group: &str, panes: &Panes) -
         Ok(deleted) => deleted,
         Err(refusal) => return refused("", &refusal),
     };
+    if let Some(error) = &deleted.unsaved {
+        kept_nothing(&Refusal::Store { error: error.clone() });
+    }
     log::info(
         "msg.group.deleted",
         fields! {

@@ -320,6 +320,9 @@ pub struct Deleted {
     pub ended: Vec<u64>,
     /// Other machines with members in it, whose replicas the host tells to go.
     pub forget: Vec<String>,
+    /// Why the state could not be saved afterwards. The group is deleted all the same: its log
+    /// is gone, and a restore drops what the state still holds of a group with no log.
+    pub unsaved: Option<String>,
 }
 
 /// A replica forgotten because its home deleted the group, or no longer has it.
@@ -1190,7 +1193,8 @@ impl<S: Store> Messaging<S> {
     /// Nothing unread holds it back: deleting is deliberate, and `log` reads a group first.
     /// The log goes before the saved state does, so a crash between the two leaves a policy
     /// with no log, which a restore drops, rather than a log whose policy went back to the
-    /// default.
+    /// default. For the same reason a save that fails once the log is gone still answers the
+    /// group deleted, so its waits end and the other machines are told.
     pub fn group_delete(
         &mut self,
         caller: &Caller,
@@ -1206,8 +1210,12 @@ impl<S: Store> Messaging<S> {
         let forget = self.tell(group, 0, None).into_iter().map(|tell| tell.machine).collect();
         self.store.remove(group).map_err(|error| Refusal::Store { error })?;
         let ended = self.drop_group(group);
-        self.save()?;
-        Ok(Deleted { by, group: group.to_string(), entries, let_go, ended, forget })
+        let mut deleted =
+            Deleted { by, group: group.to_string(), entries, let_go, ended, forget, unsaved: None };
+        if let Err(Refusal::Store { error }) = self.save() {
+            deleted.unsaved = Some(error);
+        }
+        Ok(deleted)
     }
 
     /// Forgets a group and everything this machine's participants held of it: where each had

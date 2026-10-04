@@ -163,3 +163,21 @@ fn a_group_whose_log_was_removed_before_a_crash_stays_deleted() {
     let cursors = &second.participant("a").unwrap().cursors;
     assert_eq!(cursors.keys().collect::<Vec<_>>(), ["kept"]);
 }
+
+/// Once the log is gone the group is deleted, so a save that fails after it does not keep the
+/// delete from ending the waits kept to the group: it says why, for the host to log.
+#[test]
+fn a_delete_whose_save_fails_still_ends_the_waits_kept_to_its_group() {
+    let mut service = Messaging::new(Memory::default());
+    service.join(&session("a"), Some("a"), Some("g"), &Everyone, 1).unwrap();
+    service.join(&session("b"), Some("b"), Some("g"), &Everyone, 2).unwrap();
+    service.read(&session("b"), None, &Everyone).unwrap();
+    let waited = service.wait(&session("b"), Some("g"), false, &Everyone).unwrap();
+    let muster_msg::Waited::Waiting { ticket, .. } = waited else { panic!("{waited:?}") };
+
+    service.store_mut().failing_saves = true;
+    let deleted = service.group_delete(&session("a"), "g", &Everyone).unwrap();
+    assert_eq!(deleted.ended, [ticket]);
+    assert!(deleted.unsaved.is_some(), "{deleted:?}");
+    assert_eq!(service.log("g", 0), Err(Refusal::NoSuchGroup { group: "g".to_string() }));
+}
