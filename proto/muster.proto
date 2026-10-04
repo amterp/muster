@@ -2162,11 +2162,11 @@ message RaiseWindow {
 message ShutWindow {}
 
 // Whether anything is asking for somebody now - a pane or a group with something waiting, the
-// set FocusAsking goes to the first of - sent when that answer changes, app-wide, and once when
-// a window opens. For a menu item that greys itself out while nothing asks: one answer for every
-// window, and an O(1) check where attention changes, where reading it on each menu validation
-// was a request per look and carrying it in ViewChanged would mean republishing every window
-// on an agent's finish.
+// set FocusAsking goes to the first of - sent app-wide the first time the core works it out, and
+// after that only when it changes. For a menu item that greys itself out while nothing asks: one
+// answer for every window, and an O(1) check where attention changes, where reading it on each
+// menu validation was a request per look and carrying it in ViewChanged would mean republishing
+// every window on an agent's finish.
 message AskingChanged {
   bool asking = 1;
 }

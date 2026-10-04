@@ -28,6 +28,7 @@ window`).
 | Its session named after the pane | yes | yes | no | no |
 | The pane named after its session | yes | no | no | no |
 | Compacted when asked | yes | no | no | no |
+| Resumed after a restart | yes | no | no | no |
 
 Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
 kimi, kiro, maki, pi, qodercli.
@@ -78,7 +79,6 @@ kimi, kiro, maki, pi, qodercli.
   idle and the prompt is empty, as a ring is typed. Needs no adapter, though `compact_at` acts on
   the context its adapter reports. Codex and OpenCode have a `/compact` of their own that Muster
   has not yet been recorded typing, so it does not type it.
-
 - **Resumed after a restart**: a pane whose agent reported its session comes back after a daemon
   restart or a reboot running that session again, with the flags the agent was started with,
   less what would start a session of its own (`docs/configuration.md`, `resume_agents`). Claude

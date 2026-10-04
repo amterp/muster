@@ -151,7 +151,13 @@ pub(crate) fn set_sidebar_width(window: WindowId, width: f64) {
 }
 
 /// Tells the shell the human's groups on every daemon, if they changed since it was last told.
+///
+/// Settled and sent under one lock of its own, as [`PUBLISHING`] does for a view: daemon threads
+/// and the handler's call this, and one that settled first and sent second would leave the shell
+/// on the older list.
 fn announce_groups() {
+    static TELLING: Mutex<()> = Mutex::new(());
+    let _telling = poison::lock(&TELLING, "groups");
     let groups = {
         let mut session = poison::lock(&SESSION, "session");
         let held: Vec<(DaemonId, String, HumanNotice)> = session
@@ -6382,8 +6388,11 @@ fn catch_up_tab_names(daemon: &DaemonId) {
 
 /// Tells the shell whether anything is asking, when that answer has changed since it was last
 /// told. Called wherever attention may have moved, since it costs a lock and two emptiness
-/// checks and sends nothing when the answer is the same.
+/// checks and sends nothing when the answer is the same. Settled and sent under one lock of its
+/// own, as [`announce_groups`] is, so the last answer settled is the last one the shell hears.
 fn announce_asking() {
+    static TELLING: Mutex<()> = Mutex::new(());
+    let _telling = poison::lock(&TELLING, "asking");
     let asking = {
         let mut session = poison::lock(&SESSION, "session");
         let asking = session.attention.anything_asking();

@@ -25,12 +25,13 @@ struct Supplied {
     takes_pane_name: bool,
     names_pane: bool,
     compacts: bool,
+    resumes: bool,
 }
 
 /// A capability's row: its name on the page, and how it is read off what a harness supplies.
 type Row = (&'static str, fn(&Supplied) -> bool);
 
-const ROWS: [Row; 10] = [
+const ROWS: [Row; 11] = [
     ("Its own report of its state", |supplied| supplied.reported_state),
     ("Context used, model and cost", |supplied| supplied.context),
     ("Sub-agents counted", |supplied| supplied.subagents),
@@ -41,6 +42,7 @@ const ROWS: [Row; 10] = [
     ("Its session named after the pane", |supplied| supplied.takes_pane_name),
     ("The pane named after its session", |supplied| supplied.names_pane),
     ("Compacted when asked", |supplied| supplied.compacts),
+    ("Resumed after a restart", |supplied| supplied.resumes),
 ];
 
 fn page() -> PathBuf {
@@ -105,6 +107,9 @@ fn supplied(manifests: &Manifests, extras: &[(Agent, String)], agent: &Agent) ->
         takes_pane_name: manifests.session_rename(agent, "name").is_some(),
         names_pane: reports(&wiring, "session-name"),
         compacts: manifests.session_compact(agent, None).is_some(),
+        // The manifest says how, and the adapter reports the session to resume.
+        resumes: manifests.session_resume(agent, "id", &[]).is_some()
+            && reports(&wiring, "session-id"),
     }
 }
 

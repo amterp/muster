@@ -354,7 +354,7 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
         };
         shared.messages().commanding.insert(pane.clone());
         let ran = Ran { wake, pane, session, agent: seen.agent };
-        let unstarted = ran.clone();
+        let unsettled_pane = ran.pane.clone();
         let mut unsettled = Unsettled { shared: Arc::downgrade(shared), ran: Some(ran) };
         let started =
             std::thread::Builder::new().name("wake-command".to_string()).spawn(move || {
@@ -365,10 +365,19 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
                     settle(&shared, ran, outcome);
                 }
             });
+        // A thread that could not start dropped its closure, and the guard in it has settled the
+        // wake as stalled already; settling here too would ring it twice.
         if let Err(error) = started {
-            let stalled =
-                command::Failed::Stalled(format!("no thread could be started for it: {error}"));
-            settle(shared, unstarted, Err(stalled));
+            log::warn(
+                "msg.ring.command_unstarted",
+                fields! {
+                    "pane" => unsettled_pane,
+                    "error" => error,
+                    "impact" => "the wake is typed into the pane instead, as for a command that \
+                                 took too long",
+                    "check" => "whether the daemon is out of threads or memory",
+                },
+            );
         }
     }
     shared.messages().pending.extend(waiting);
