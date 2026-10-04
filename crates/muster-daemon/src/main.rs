@@ -193,23 +193,7 @@ fn run(
     // The saved panes come back with new shells, and their agents do not: nothing restored is
     // waited for.
     shared.start_doorbell();
-    serve(&shared, signals, stopping).map_err(Failure::Other)?;
-
-    // Once the socket is served: a shell starting in a directory on a hung mount must not keep
-    // the daemon from answering.
-    match state {
-        Some(state) => {
-            let restoring = Arc::clone(&shared);
-            std::thread::Builder::new()
-                .name("restore".to_string())
-                .spawn(move || session::restore(&restoring, state))
-                .map_err(|error| {
-                    Failure::Other(format!("could not start the restore thread: {error}"))
-                })?;
-        }
-        None => persister.arm(),
-    }
-
+    // Before serving, so it is the first record a client's connection can follow.
     let descriptors = descriptors.unwrap_or_else(|error| {
         log::warn(
             "daemon.descriptors.not_raised",
@@ -231,6 +215,23 @@ fn run(
             "descriptors" => descriptors,
         },
     );
+    serve(&shared, signals, stopping).map_err(Failure::Other)?;
+
+    // Once the socket is served: a shell starting in a directory on a hung mount must not keep
+    // the daemon from answering.
+    match state {
+        Some(state) => {
+            let restoring = Arc::clone(&shared);
+            std::thread::Builder::new()
+                .name("restore".to_string())
+                .spawn(move || session::restore(&restoring, state))
+                .map_err(|error| {
+                    Failure::Other(format!("could not start the restore thread: {error}"))
+                })?;
+        }
+        None => persister.arm(),
+    }
+
     wait(&shared, &stop, &persister);
     Ok(())
 }
