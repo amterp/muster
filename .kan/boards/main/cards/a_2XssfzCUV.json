@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "accept-an-agent-s",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "in-progress",
   "created_at_millis": 1790555246457,
   "creator": "Alexander Terp",
   "description": "A nested claude -p, or a tmux server started in a pane, inherits MUSTER_PANE and MUSTER_DAEMON and can report state for the outer agent (documented as a limit in MIP-3 section 8 and the plugin README, with an env -u MUSTER_DAEMON workaround). The daemon could read the sender's pid off the socket (LOCAL_PEERPID, SO_PEERCRED) and accept a state report only when its nearest agent ancestor is the pane's identified agent; that needs a parent lookup and ancestor identification in muster-detect's process probe, and a wrong answer drops a real report.\n\nSeen in use 2026-09-28, on the devenv: an agent started two `claude -p` critics from its Bash tool, declared `report --waiting` 25 s later, and ended its turn. The pane read idle within seconds. The daemon took idle reports at 23:10:45.820 and 23:10:49.338, and the second logged `daemon.report.waiting_cleared` by \"reported turn end\". Those times match the critics finishing: their output files were written 18 ms and 76 ms after each report. So the first critic's Stop used up the turn that declared the wait and the second cleared it. The agent never learned of the `env -u MUSTER_DAEMON` workaround, so a stopgap is to name it in the SessionStart line the plugin already prints about `report --waiting`.",
   "id": "a_2XssfzCUV",
   "parent": "a_2XJ1fUIyr",
-  "position": "ag",
+  "position": "Zt",
   "title": "Accept an agent's state report only from the pane's own agent",
   "type": "enhancement",
-  "updated_at_millis": 1790637550383,
+  "updated_at_millis": 1791120835747,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790555246457}
+    {"field":"column","value":"backlog-lo","at":1790555246457},
+    {"field":"column","value":"in-progress","at":1791120835747}
   ]
 }

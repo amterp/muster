@@ -2,18 +2,19 @@
   "_v": 3,
   "alias": "muster-pane-wait-on",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1790587966271,
   "creator": "Alexander Terp",
   "description": "Agent facts (context used, sub-agents, waiting) now reach muster window and --json, but pane wait keys only on state. WatchPanes would carry a condition on facts and a watch would wake on facts as well as state. Useful for an orchestrator that wants to compact a worker before it runs out of context.",
   "id": "a_2Y6brssqH",
-  "position": "Zy",
+  "position": "YyE",
   "title": "muster pane wait on an agent fact, such as context over 80%",
   "type": "feature",
-  "updated_at_millis": 1791118929618,
+  "updated_at_millis": 1791120835533,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790587966271},
     {"field":"column","value":"next","at":1791102590004},
-    {"field":"column","value":"in-progress","at":1791118929618}
+    {"field":"column","value":"in-progress","at":1791118929618},
+    {"field":"column","value":"done","at":1791120835533}
   ]
 }

@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "codex-and-opencode",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1791120807068,
+  "creator": "Alexander Terp",
+  "description": "Both harnesses have a /compact. Codex 0.154 needs an OpenAI login (not run, the account is near its monthly limit); OpenCode needs 1.18+ (not installed). Record each working as typed at an idle prompt, whether it takes a focus, then add [session] compact to codex.toml and opencode.toml (engine 11). Claude Code's is recorded in corpus/claude-code-2.1.289/compact.txt.",
+  "id": "a_2biBUV9RK",
+  "position": "b0c",
+  "title": "Codex and OpenCode compaction: record /compact as typed and add it to their manifests",
+  "type": "feature",
+  "updated_at_millis": 1791120807068,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791120807068}
+  ]
+}
