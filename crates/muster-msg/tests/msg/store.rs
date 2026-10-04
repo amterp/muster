@@ -3,7 +3,9 @@
 
 use std::collections::BTreeMap;
 
-use muster_msg::{Caller, Inbox, Memory, Messaging, Participant, Presence, Refusal, What};
+use muster_msg::{
+    Caller, Inbox, Memory, Messaging, Participant, Policy, Presence, Refusal, Saved, What,
+};
 
 struct Everyone;
 
@@ -44,6 +46,29 @@ fn a_restored_service_has_the_same_members_cursors_and_log() {
     let posted = second.post(&session("b"), None, &[], "after", &Everyone, 5).unwrap();
     assert_eq!(posted.seq, 5);
     assert_eq!(posted.wakes.iter().map(|wake| wake.name.as_str()).collect::<Vec<_>>(), ["a"]);
+}
+
+/// The saved state may miss its last write, since it is written without waiting for the disk;
+/// a group's policy and its pause are read back from its log, which records both.
+#[test]
+fn a_policy_and_a_pause_the_saved_state_missed_are_read_back_from_the_log() {
+    let mut first = Messaging::new(Memory::default());
+    first.join(&session("a"), Some("a"), Some("g"), &Everyone, 1).unwrap();
+    let before: Saved = first.store().saved.clone().expect("the service saved its state");
+    let only_a = Policy {
+        ring: BTreeMap::from([("*".to_string(), vec!["a".to_string()])]),
+        ..Policy::default()
+    };
+    first.group_set(&session("a"), "g", only_a.clone(), &Everyone, 2).unwrap();
+    first.pause(&session("a"), "g", &Everyone, 3).unwrap();
+
+    let mut logs: BTreeMap<String, Vec<_>> = BTreeMap::new();
+    for (group, entry) in &first.store().appended {
+        logs.entry(group.clone()).or_default().push(entry.clone());
+    }
+    let second = Messaging::restore(Memory::default(), before, logs);
+
+    assert_eq!(second.policy("g"), Some(&Policy { paused: true, ..only_a }));
 }
 
 #[test]

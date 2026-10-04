@@ -139,7 +139,7 @@ impl Store for Files {
         self.ensure_directories().map_err(describe)?;
         let kept = Kept { version: VERSION, saved: saved.clone() };
         let bytes = serde_json::to_vec_pretty(&kept).map_err(|error| error.to_string())?;
-        persist::write(&self.state(), &bytes).map_err(describe)
+        persist::replace(&self.state(), &bytes).map_err(describe)
     }
 
     fn remove(&mut self, group: &str) -> Result<(), String> {

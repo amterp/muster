@@ -231,6 +231,27 @@ pub(crate) fn write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     commit(path)
 }
 
+/// Writes `bytes` as the file at `path`, whole or not at all, as [`write`] does, without asking
+/// the disk to have it before returning: no full flush of the file, and none of its directory.
+///
+/// For state that is written often and costs little to lose its latest change to - after a power
+/// loss the path holds an earlier whole file rather than this one. What a session's tabs are
+/// keeps [`write`], since that is somebody's work. The message service's state is written on
+/// every post and read, and its latest change lost costs a message shown as unread again, a wake
+/// repeated, or a session joined that moment joining again; a group's policy and pause are read
+/// back from its log, which is appended and synced first.
+pub(crate) fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = File::options()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(temporary(path))?;
+    file.write_all(bytes)?;
+    file.sync_data()?;
+    std::fs::rename(temporary(path), path)
+}
+
 fn write_temporary(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut file = File::options()
         .write(true)

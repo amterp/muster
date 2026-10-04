@@ -443,13 +443,17 @@ impl<S: Store> Messaging<S> {
     }
 
     /// Picks up where a previous host left off. Each group's members are read back from its
-    /// log, which is appended before the saved state is written.
+    /// log, which is appended before the saved state is written - and so are its policy and
+    /// whether it is paused, where the log records them, since the saved state may have missed
+    /// its last write (`muster-daemon`'s store writes it without waiting for the disk).
     pub fn restore(store: S, saved: Saved, logs: BTreeMap<String, Vec<Entry>>) -> Messaging<S> {
         let mut policies: BTreeMap<String, Policy> =
             saved.groups.into_iter().map(|record| (record.name, record.policy)).collect();
         let mut groups = BTreeMap::new();
         for (name, log) in logs {
             let mut members = BTreeSet::new();
+            let mut set: Option<Policy> = None;
+            let mut paused: Option<bool> = None;
             for entry in &log {
                 match &entry.what {
                     What::Joined { who } => {
@@ -458,10 +462,21 @@ impl<S: Store> Messaging<S> {
                     What::Left { who } => {
                         members.remove(who);
                     }
+                    What::Changed { change: Change::SetPolicy, policy: Some(policy), .. } => {
+                        set = Some((**policy).clone());
+                    }
+                    What::Changed { change: Change::Paused, .. } => paused = Some(true),
+                    What::Changed { change: Change::Resumed, .. } => paused = Some(false),
                     _ => {}
                 }
             }
-            let policy = policies.remove(&name).unwrap_or_default();
+            let mut policy = policies.remove(&name).unwrap_or_default();
+            if let Some(set) = set {
+                policy = Policy { paused: policy.paused, ..set };
+            }
+            if let Some(paused) = paused {
+                policy.paused = paused;
+            }
             groups.insert(name, Group { policy, members, log, home: None });
         }
         // A cursor past its log's head is what a log that lost entries leaves; the next entry
