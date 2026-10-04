@@ -300,6 +300,15 @@ pub fn to_toml(holders: &Holders) -> String {
         .unwrap_or_else(|error| panic!("who holds which tab should always render as TOML: {error}"))
 }
 
+/// Whether a record was written by a Muster newer than this one: a version this build does not
+/// know, and so cannot write back without losing what it says.
+pub fn written_by_a_newer_muster(text: &str) -> bool {
+    toml::from_str::<toml::Table>(text)
+        .ok()
+        .and_then(|root| root.get("version").and_then(toml::Value::as_integer))
+        .is_some_and(|version| version > VERSION)
+}
+
 /// Reads the record back, or says why it will not.
 ///
 /// An empty record is an empty answer rather than a refusal: it is what the first window to

@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use muster_core::composition::holding::{from_toml, to_toml};
+use muster_core::composition::holding::{from_toml, to_toml, written_by_a_newer_muster};
 use muster_core::composition::{DaemonId, HeldWindow, Holders, Taker, WindowName};
 use muster_core::diagnostics::log;
 use muster_core::fields;
@@ -34,6 +34,9 @@ pub(crate) struct Holding {
     record: Option<PathBuf>,
     /// The record, as this process has it: read at startup and changed here since.
     holders: Holders,
+    /// Whether the record on disk was written by a newer Muster, which this process then leaves
+    /// alone: writing back what it could read of it would throw the rest away.
+    newer_on_disk: bool,
     /// The machines this process follows, as it last wrote them into its windows' rows. Every
     /// window here follows the same ones.
     daemons: BTreeSet<DaemonId>,
@@ -71,9 +74,27 @@ impl Default for Holding {
 impl Holding {
     pub(crate) fn new(record: &str, socket: &str) -> Holding {
         let record = (!record.is_empty()).then(|| PathBuf::from(record));
+        let newer_on_disk = record.as_deref().is_some_and(|record| {
+            std::fs::read_to_string(record).is_ok_and(|text| written_by_a_newer_muster(&text))
+        });
+        if newer_on_disk {
+            log::warn(
+                "holding.newer",
+                fields! {
+                    "record" => record.as_deref().map(Path::display).map(|path| path.to_string()).unwrap_or_default(),
+                    "impact" => "a newer Muster wrote the record of which window holds each tab, \
+                                 so this one will not write over it: which window holds each tab \
+                                 is kept only while this Muster runs, and the next launch of this \
+                                 version reopens no window from it",
+                    "check" => "whether an older Muster was launched after a newer one; running \
+                                the newer one again reads the record as it was left",
+                },
+            );
+        }
         Holding {
             socket: socket.to_string(),
             holders: record.as_deref().map(read).unwrap_or_default(),
+            newer_on_disk,
             record,
             daemons: BTreeSet::new(),
             reopening: BTreeMap::new(),
@@ -378,6 +399,9 @@ impl Holding {
     /// Changes the record, and writes it.
     fn change(&mut self, work: impl FnOnce(&mut Holders)) {
         work(&mut self.holders);
+        if self.newer_on_disk {
+            return;
+        }
         if let Some(record) = &self.record {
             write(record, &self.holders);
         }

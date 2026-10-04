@@ -221,6 +221,27 @@ fn a_tab_on_a_daemon_still_attaching_stays_this_windows() {
     drop(relay);
 }
 
+/// A record a newer Muster wrote is left as it is: this one cannot read it, and writing back the
+/// little it could would throw away which window holds every tab, for the newer one too.
+#[test]
+fn a_record_from_a_newer_muster_is_not_written_over() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let path = record(&daemon);
+    std::fs::create_dir_all(path.parent().expect("a directory")).expect("writable");
+    let newer = "version = 99\n\n[[window]]\nname = \"window-9\"\n";
+    std::fs::write(&path, newer).expect("writable");
+
+    open_a_window(&daemon, "window-1");
+    until_showing_something();
+
+    assert_eq!(
+        std::fs::read_to_string(&path).ok().as_deref(),
+        Some(newer),
+        "the newer Muster's record was written over"
+    );
+}
+
 /// The window's subscribe, whose answer carries the daemon's state.
 fn subscribes(request: &daemon_proto::Request) -> bool {
     matches!(
