@@ -16,7 +16,20 @@ root=$(cd "$here/../.." && pwd)
 # stale one reused.
 tag="muster-linux-run:$(echo "$platform" | tr / -)-$(shasum -a 256 "$here/Dockerfile" | cut -c1-12)"
 if ! docker image inspect "$tag" >/dev/null 2>&1; then
-    docker build -q --platform "$platform" -t "$tag" "$here" >/dev/null
+    # Built from a public base image, which needs no credentials - and asking Docker Desktop's
+    # credential helper for them is where a build once sat for 37 minutes at no CPU. So the build
+    # gets a docker config of its own: this one's context and plugins, and no credential store.
+    # Under target/, rewritten each time rather than made and removed.
+    real=${DOCKER_CONFIG:-$HOME/.docker}
+    config="$root/target/linux-run-docker"
+    mkdir -p "$config"
+    for shared in contexts cli-plugins; do
+        if [ -e "$real/$shared" ]; then
+            ln -sfn "$real/$shared" "$config/$shared"
+        fi
+    done
+    printf '{"currentContext": "%s"}\n' "$(docker context show)" > "$config/config.json"
+    DOCKER_CONFIG=$config docker build -q --platform "$platform" -t "$tag" "$here" >/dev/null
 fi
 
 # Where the binaries were built, which is this checkout unless they were built elsewhere and
