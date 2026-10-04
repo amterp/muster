@@ -22,6 +22,7 @@ mod linked;
 mod log;
 mod messaging;
 mod migration;
+mod opencode_live;
 mod panes;
 mod persistence;
 mod relay;

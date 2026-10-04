@@ -256,6 +256,11 @@ own report, a message posted to an idle Codex rings it in its pane and is answer
 work, and its messaging hooks hand a sandboxed Codex what it was sent. Each harness with an adapter gets a tier of its own (MIP-5), since
 each reaches a different vendor with a different login.
 
+`./dev --opencode` is the same for OpenCode, on a free model, `opencode/big-pickle`, with each pane's data and
+config in scratch and no credential in reach: a pane with `extras/opencode`'s plugin and one without read working and
+then idle, and a message posted to an idle OpenCode is rung and answered. OpenCode's free models refuse anything
+before 1.18, so the tier says so on an older one, and `MUSTER_OPENCODE_BINARY` names a newer one than the `PATH` holds.
+
 `./dev --perf` and `./dev --latency` are the other two out-of-gate tiers: the first measures the per-unit budgets
 against a checked-in baseline and fails on regression, the second times input-to-glyph with `crates/muster-latency`:
 a keystroke through muster-daemon, read off the pane's stream directly and through the real bridge drawing from it,
@@ -335,9 +340,9 @@ regenerates on demand; a normal build does it only when the schema's hash change
   rationale lives in commit messages; open questions live in the kan board's `uncommitted` column. `docs/cli/` is
   the reference `muster docs` ships inside the CLI binary, so a file there is prose the gate checks is reachable.
 - `extras/` holds things that are Muster-adjacent rather than Muster: a Claude Code skill pointing an agent at
-  `muster docs`, and each harness's wiring that reports a session's state, sub-agents and, for Claude Code, its
-  context and cost to the daemon that owns its pane - `extras/claude-code` and `extras/codex`, plugins each harness
-  installs from this directory (MIP-5).
+  `muster docs`, and each harness's wiring that reports a session's state and its context to the daemon that owns
+  its pane - `extras/claude-code`, `extras/codex` and `extras/opencode`, plugins each harness installs from this
+  directory (MIP-5).
 - `packaging/` is everything that exists only so that Muster can leave this machine: the icon and its source, the
   entitlements a release is signed with, the Homebrew cask - which lives here rather than only in the tap because
   it changes when the app does, and should be reviewed beside it - and `release-notes/<version>.md`, what somebody

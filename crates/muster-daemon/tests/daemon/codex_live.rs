@@ -118,7 +118,7 @@ fn merged(files: &[&str]) -> String {
 }
 
 /// The `muster` CLI built beside this commit's daemon.
-fn built_muster() -> std::path::PathBuf {
+pub(super) fn built_muster() -> std::path::PathBuf {
     let muster = muster_harness::built_daemon().with_file_name("muster");
     assert!(
         muster.is_file(),
@@ -130,13 +130,13 @@ fn built_muster() -> std::path::PathBuf {
 }
 
 /// `command` with `muster` first on its PATH.
-fn with_muster_on_path(muster: &std::path::Path, command: &str) -> String {
+pub(super) fn with_muster_on_path(muster: &std::path::Path, command: &str) -> String {
     let bin = muster.parent().unwrap().display().to_string();
     format!("PATH={}:\"$PATH\" {command}", quoted(&bin))
 }
 
 /// Runs `muster` as the integrator, a participant outside any pane.
-fn as_integrator(
+pub(super) fn as_integrator(
     muster: &std::path::Path,
     daemon: &Daemon,
     arguments: &[&str],
@@ -186,7 +186,7 @@ fn until_ready(control: &mut Control, pane: &str) {
     }
 }
 
-fn type_line(input: &mut Input, pane: &str, text: &str) {
+pub(super) fn type_line(input: &mut Input, pane: &str, text: &str) {
     input.send(pane, Event::Send(input_event::Send { text: text.to_string(), enter: true }));
 }
 

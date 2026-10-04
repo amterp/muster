@@ -23,6 +23,7 @@ args:
     ssh bool       # Run the remote tier against the devenv container. Needs docker; not in the gate.
     claude_code bool  # Drive the installed Claude Code for one turn through its hooks and its screen. Reaches the network; not in the gate.
     codex bool     # Drive the installed Codex through its hooks, its screen and the doorbell. Reaches the network; not in the gate.
+    opencode bool  # Drive OpenCode 1.18+ on a free model through its plugin, its screen and the doorbell. Reaches the network; not in the gate.
     linux bool     # Run the daemon's and detection's suites on Linux, in docker. Not in the gate.
     perf bool      # Measure the per-unit budgets against perf/baseline.json. Not in the gate.
     record bool    # With --perf, record this run as the new baseline instead of judging it.
@@ -458,6 +459,8 @@ SKIPPED_SUITES = [
       "note": "reach the network and spend model turns; ./dev --claude-code runs them" },
     { "language": "Rust", "suite": "muster-daemon's live Codex checks", "skipped": 6,
       "note": "reach the network and spend model turns; ./dev --codex runs them" },
+    { "language": "Rust", "suite": "muster-daemon's live OpenCode checks", "skipped": 2,
+      "note": "reach the network on a free model; ./dev --opencode runs them" },
     { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 15,
       "note": "need a logged-in session; ./dev --contract runs them" },
     { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 5,
@@ -1498,7 +1501,7 @@ if ssh:
 
 // Needs the daemon's data directory, which the libghostty build assembles, and nothing else of
 // the app.
-if claude_code or codex:
+if claude_code or codex or opencode:
     deps = true
 
 if record and not perf:
@@ -1531,7 +1534,7 @@ if bundle:
 if notarize:
     bundle = true
 
-if not (deps or build or test or lint or format or clean or bundle or notarize or contract or ssh or claude_code or codex or linux or perf or latency or doctor):
+if not (deps or build or test or lint or format or clean or bundle or notarize or contract or ssh or claude_code or codex or opencode or linux or perf or latency or doctor):
     deps = true
     build = true
     test = true
@@ -1810,6 +1813,13 @@ if codex:
     // and the doorbell ringing it. It fails saying which is missing without codex or a login or
     // OPENAI_API_KEY, and trusts its scratch folders for the run only, leaving ~/.codex as it was.
     $`MUSTER_CODEX_TESTS=1 cargo test -p muster-daemon --test daemon -- codex_live --ignored --nocapture`
+
+if opencode:
+    announce("opencode")
+    // The same for OpenCode, on a free model with no credential reachable: its plugin, its screen
+    // rules, and the doorbell ringing it. Its free models refuse anything before 1.18, so it fails
+    // saying so on an older one; MUSTER_OPENCODE_BINARY names a newer one than the PATH holds.
+    $`MUSTER_OPENCODE_TESTS=1 cargo test -p muster-daemon --test daemon -- opencode_live --ignored --nocapture`
 
 // The remote tier needs docker anyway, and a remote pane is a Linux daemon's pane.
 if linux or ssh:
