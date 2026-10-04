@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791124932035,
   "creator": "Alexander Terp",
   "description": "2026-10-04: launch configuration moved to crates/muster-seam/src/session/startup.rs (session.rs 7,372 -\u003e 7,151 lines). Three blocks already read as their own subjects and are candidates: problems (PROBLEMS, raise_problem, clear_problem, reconcile_sidebar_with_problems, announce_problems; DARK is interleaved but is about bridges), daemon attaching (follow_configured through attach_daemon_in, Attaches/ATTACHES), and window lifecycle (open, close_window, window_to_open, reopen_what_was_left, open_a_tab_if_the_window_is_empty). Each touches SESSION heavily, so the move is mechanical but larger. Do it when no other stream is editing session.rs.",
   "id": "a_2bjungwna",
-  "position": "b0i",
+  "position": "Yxv",
   "title": "Split seam session.rs further: problems, daemon attaching, window lifecycle",
   "type": "chore",
-  "updated_at_millis": 1791124932035,
+  "updated_at_millis": 1791126303732,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791124932035}
+    {"field":"column","value":"backlog-lo","at":1791124932035},
+    {"field":"column","value":"done","at":1791126303732}
   ]
 }
