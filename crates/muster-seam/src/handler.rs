@@ -286,10 +286,23 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             "a request to open a transcript named no group, so nothing opened. A banner for a \
              message always carries its group, so the shell building this has a bug.",
         ),
-        request::Payload::OpenTranscript(open) => match resolve_daemon(window, &open.daemon_id) {
-            Ok(daemon) => open_transcript(window, &daemon, &open.group),
-            Err(refusal) => *refusal,
-        },
+        // Named by a banner, and by nobody else: `muster msg open` names none, and means the
+        // daemon here, since a group kept on another machine is followed here by its full name.
+        request::Payload::OpenTranscript(open) if open.daemon_id.is_empty() => {
+            match session::home_daemon() {
+                Some(daemon) => open_transcript(window, &daemon, &open.group),
+                None => Response::failure(format!(
+                    "no transcript of {} was opened: this window is attached to no daemon on this \
+                     machine, and that daemon is the one that keeps messages for you, including \
+                     a group kept elsewhere under its full name. Attach it with a [[daemon]] \
+                     block that has no host.",
+                    open.group
+                )),
+            }
+        }
+        request::Payload::OpenTranscript(open) => {
+            open_transcript(window, &DaemonId::new(&open.daemon_id), &open.group)
+        }
         request::Payload::FocusTab(tab) => focus_tab(window, &tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(window, &arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(window, set),
@@ -1505,10 +1518,7 @@ fn focus_asking(window: WindowId) -> Response {
         },
         Some(Asker::Group(group)) => {
             let opened = open_transcript(window, &group.daemon, &group.group);
-            if !matches!(
-                opened.payload,
-                Some(response::Payload::Ok(_) | response::Payload::Made(_))
-            ) {
+            if !matches!(opened.payload, Some(response::Payload::Went(_))) {
                 return opened;
             }
             proto::Asking {
@@ -1540,7 +1550,7 @@ fn focus_history(window: WindowId, forward: bool) -> Response {
 /// Goes to a group's transcript on a daemon: the pane there that runs it, or a new tab running
 /// it when none does (MIP-4, section 10). A new tab rather than a split, so that nobody's
 /// layout moves under them because a message arrived. Going there is the human reading the
-/// group, so its daemon is told.
+/// group, so its daemon is told. Answered with the pane it went to, either way.
 fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response {
     let Some(command) = transcript::command(group) else {
         return Response::failure(format!(
@@ -1550,9 +1560,16 @@ fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response
              have sent it; check which Muster that daemon is and whether it can be trusted."
         ));
     };
-    let response = match session::transcript_pane(daemon, group) {
-        Some(pane) => relayed(session::focus(window, daemon, &pane).map(|()| Response::ok())),
-        None => open_a_tab(
+    let went = |pane: String| Response {
+        payload: Some(response::Payload::Went(proto::Went {
+            daemon_id: daemon.to_string(),
+            pane_id: pane,
+        })),
+    };
+    let response = if let Some(pane) = session::transcript_pane(daemon, group) {
+        relayed(session::focus(window, daemon, &pane).map(|()| went(pane.to_string())))
+    } else {
+        let opened = open_a_tab(
             window,
             daemon,
             None,
@@ -1560,9 +1577,14 @@ fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response
             None,
             Some(command),
             Some(transcript::pane_name(group)),
-        ),
+        );
+        if let Some(response::Payload::Made(made)) = &opened.payload {
+            went(made.pane_id.clone())
+        } else {
+            opened
+        }
     };
-    if matches!(response.payload, Some(response::Payload::Ok(_) | response::Payload::Made(_))) {
+    if matches!(response.payload, Some(response::Payload::Went(_))) {
         session::read_as_human(daemon, group);
     }
     response

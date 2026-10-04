@@ -285,9 +285,14 @@ remove. It is for hooks and scripts.
 `@human` is the person at Muster's window, on the machine the app runs on. A message that
 wakes them - addressed to `@human`, or unaddressed in a group whose policy rings them - raises a
 notification naming the group and who wrote, and chatter between agents raises nothing. Choosing
-it, or ⌘⇧A, opens the group's transcript: a tab running `muster msg log --group G --follow`, or
-the pane already running it. Going there counts as reading the group. With no window open, the
-post says `@human (notified when a window opens)`, and the next window to open notifies.
+it, ⌘⇧A, or `muster msg open --group G` opens the group's transcript: a tab running `muster msg
+log --group G --follow`, or the pane already running it. Going there counts as reading the group.
+With no window open, the post says `@human (notified when a window opens)`, and the next window
+to open notifies.
+
+`open` is the one msg verb that asks the window rather than the daemon, since a transcript is a
+pane: it prints the transcript's pane, and with no window open it exits 3. The transcript runs
+on this machine's daemon, which follows a group kept on a devenv as `review@devenv`.
 
 The human posts with `muster msg post` from any shell of their own, the transcript's included
 once Ctrl-C has stopped the follow and left its shell.
@@ -310,6 +315,7 @@ once Ctrl-C has stopped the follow and left its shell.
 | `pause G` | holds a group's wakes: its posts wake nobody but the human |
 | `resume G` | wakes each member once for what it has unread, and lets posts wake again |
 | `group delete G` | deletes a group and its log, letting every member go |
+| `open --group G` | goes to the group's transcript in the window, as its notification does |
 
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, including
 by a group's policy, 3 no daemon to ask, 4 no answer, so it may or may not have happened (the

@@ -23,8 +23,9 @@ use clap_complete::Shell;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusAsking,
     FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, MoveTab,
-    ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, Request,
-    ResizePane, SendToPane, SplitPane, ToggleSidebar, WatchPanes, ZoomPane, request,
+    OpenTranscript, ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane,
+    RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar, WatchPanes, ZoomPane,
+    request,
 };
 
 use crate::{docs, environment};
@@ -836,6 +837,15 @@ pub fn parse(
             send(request::Payload::ReadWindow(ReadWindow { layout: *layout }))
         }
         What::Daemons => send(request::Payload::ReadDaemons(ReadDaemons {})),
+        // The window's verb among the daemon's: a transcript is a pane, which only a window
+        // can open. No daemon is named, which the core reads as this machine's: the human is
+        // homed here, and a group kept elsewhere is followed here as `group@machine`.
+        What::Msg { verb: crate::messaging::Verb::Open { group }, .. } => {
+            send(request::Payload::OpenTranscript(OpenTranscript {
+                daemon_id: String::new(),
+                group: group.clone(),
+            }))
+        }
         What::Msg { identity, verb } => {
             Asking::Message(Box::new(crate::messaging::parse(verb, identity, environment, here)?))
         }

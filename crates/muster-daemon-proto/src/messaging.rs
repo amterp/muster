@@ -15,18 +15,22 @@ pub const READ: &str = "read";
 pub const LOG: &str = "log";
 pub const WAIT: &str = "wait";
 pub const GROUPS: &str = "groups";
-/// Makes a group or changes one: `group new`, `group set`, `group add`, `group remove`.
+/// Makes a group, changes one, or deletes one: `group new`, `group set`, `group add`, `group
+/// remove`, `group delete`.
 pub const GROUP: &str = "group";
 pub const PAUSE: &str = "pause";
 pub const RESUME: &str = "resume";
+/// Opens a group's transcript in the window, as choosing a message's banner does. The one verb
+/// that asks the window rather than the daemon.
+pub const OPEN: &str = "open";
 
 /// What the human is called as a participant: a name no agent's can be, since names do not
 /// start with `@`. The same as `muster_msg::HUMAN`, which muster-daemon's tests hold it to.
 pub const HUMAN: &str = "@human";
 
 /// Every verb, in the order `--help` lists them.
-pub const VERBS: [&str; 11] =
-    [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT, GROUPS, GROUP, PAUSE, RESUME];
+pub const VERBS: [&str; 12] =
+    [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT, GROUPS, GROUP, PAUSE, RESUME, OPEN];
 
 /// `muster msg <verb>`, followed by `arguments` when there are any.
 pub fn command(verb: &str, arguments: &str) -> String {

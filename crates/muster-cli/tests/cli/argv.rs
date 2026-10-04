@@ -185,7 +185,9 @@ fn described(request: &Request) -> Value {
     let Some(payload) = request.payload.as_ref() else {
         return json!("a request with no payload, which nothing here can build");
     };
-    described_tab(payload).unwrap_or_else(|| described_pane_or_window(payload))
+    described_tab(payload)
+        .or_else(|| described_transcript(payload))
+        .unwrap_or_else(|| described_pane_or_window(payload))
 }
 
 /// The arms about a tab, which is the one subject with a vocabulary of its own.
@@ -214,6 +216,16 @@ fn described_tab(payload: &request::Payload) -> Option<Value> {
         }),
         _ => return None,
     })
+}
+
+fn described_transcript(payload: &request::Payload) -> Option<Value> {
+    let request::Payload::OpenTranscript(open) = payload else { return None };
+    Some(json!({
+        "open_transcript": fields([
+            ("daemon_id", said(&open.daemon_id)),
+            ("group", said(&open.group)),
+        ])
+    }))
 }
 
 fn described_split(split: &muster_proto::SplitPane) -> Value {

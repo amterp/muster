@@ -1867,6 +1867,25 @@
       }
     },
     {
+      "name": "a group's transcript is opened from a script as its banner opens it",
+      "why": "Choosing a message's banner, or the chord that goes to what asks, opens the group's transcript, and a command line has to reach the same place (MIP-4, section 10). It is the one msg verb sent to the window rather than the daemon, since a transcript is a pane. It names no daemon: the one on this machine keeps messages for the human, a group kept elsewhere included under its full name.",
+      "given": {
+        "argv": [
+          "msg",
+          "open",
+          "--group",
+          "review"
+        ]
+      },
+      "expect": {
+        "request": {
+          "open_transcript": {
+            "group": "review"
+          }
+        }
+      }
+    },
+    {
       "name": "going back is the mouse's back button from a script",
       "why": "The focus history lives in the window, so a script walks the same one the mouse buttons and cmd+opt+[ do rather than keeping its own. It names no pane because the window is the only thing that knows where the keyboard has been.",
       "given": {

@@ -4022,6 +4022,13 @@ pub(crate) fn raise(window: WindowId) {
 /// What a request naming no daemon means, for the same reason an empty pane id means the
 /// focused pane: a menu item is about what is in front of the user and has nothing else to
 /// say.
+/// The daemon this app runs beside, where the human is homed (MIP-4, section 10): the one
+/// attached without a tunnel.
+pub(crate) fn home_daemon() -> Option<DaemonId> {
+    let session = poison::lock(&SESSION, "session");
+    session.backends.iter().find(|(_, backend)| backend.tunnel.is_none()).map(|(id, _)| id.clone())
+}
+
 pub(crate) fn focused_daemon(window: WindowId) -> Option<DaemonId> {
     let session = poison::lock(&SESSION, "session");
     session.windows[window].composition.focused_region().map(|region| region.daemon.clone())

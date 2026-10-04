@@ -698,7 +698,11 @@ As built in stage 3, under Decision 1 (a):
   home daemon running `muster msg log --group G --follow`, found by that command, or opens a
   tab running it. Going there is the human reading the group: the window reads it for them, and
   the banner comes down once the daemon says nothing waits. A transcript somebody is reading in
-  a focused window reads what arrives there, and raises nothing.
+  a focused window reads what arrives there, and raises nothing. `muster msg open --group G`,
+  added after stage 5, sends the window the same request, naming no daemon, which the window
+  reads as the one on its own machine: the human's home, where a group kept elsewhere is
+  followed by its full name. It is the one msg verb that asks the window, and answers with the
+  transcript's pane.
 - **The human's home publishes.** For a group homed elsewhere, the home daemon's replica wakes
   the human the way a local post does (section 11), and a window takes what waits for the human
   only from a daemon on its own machine, so only the daemon on the app's machine ever tells a
@@ -849,6 +853,7 @@ All under `muster msg` (Decision 3), each with `--json`:
 | `group add G NAME...`, `group remove G NAME...` | adds or removes members, by participant or pane name |
 | `pause G`, `resume G` | holds a group's wakes, then wakes each member once |
 | `group delete G` | deletes a group and its log, letting every member go |
+| `open --group G` | goes to a group's transcript in the window; asks the window, not the daemon |
 
 `wait` is for a hook running in the background and for scripts. With `--due` it answers only a
 wake section 5 would deliver, as the `Stop` hook needs (section 6); without it, it answers
@@ -1146,3 +1151,4 @@ bind.
   and 8). Detection engine 6 reads a working agent's prompt.
 - 2026-10-04 `group delete`: a group and its log go, every member is let go on every machine,
   and a replica that missed it forgets it at its next refetch (sections 8, 12 and 13).
+  `muster msg open` goes to a group's transcript as its notification does (sections 10 and 13).

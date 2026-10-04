@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use clap::{Args, Subcommand};
 use muster_daemon_proto::connection;
 use muster_daemon_proto::messaging::{
-    self as spelling, GROUP, GROUPS, JOIN, LEAVE, LOG, PAUSE, POST, READ, RESUME, WAIT, WHO,
+    self as spelling, GROUP, GROUPS, JOIN, LEAVE, LOG, OPEN, PAUSE, POST, READ, RESUME, WAIT, WHO,
 };
 use muster_daemon_proto::msg_answer::{self, Answer, Until, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
@@ -188,6 +188,14 @@ pub enum Verb {
         #[arg(value_name = "GROUP")]
         group: String,
     },
+
+    /// Go to a group's transcript in the window, as choosing its banner does: the pane
+    /// following it, or a new tab. Asks the window, not the daemon
+    #[command(name = OPEN)]
+    Open {
+        #[arg(long, value_name = "GROUP")]
+        group: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -334,6 +342,7 @@ pub fn parse(
         }
         Verb::Pause { group } => Asked::Pause(msg_request::Pause { group: group.clone() }),
         Verb::Resume { group } => Asked::Resume(msg_request::Resume { group: group.clone() }),
+        Verb::Open { .. } => unreachable!("`msg open` asks the window, and args sends it there"),
     };
     let request = proto::MsgRequest { caller: Some(caller), request: Some(asked) };
     Ok(Messaging { request, body_from, policy_from, if_unread, follow })

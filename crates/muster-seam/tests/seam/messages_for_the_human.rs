@@ -94,6 +94,31 @@ fn a_message_sent_while_no_window_was_open_notifies_when_one_opens() {
     assert_eq!(messages_asked()[0].group, "g");
 }
 
+/// `muster msg open` names no daemon, which means the one on this machine: it opens the group's
+/// transcript there, answers with its pane, and a second open goes to the same pane.
+#[test]
+fn a_transcript_opened_naming_no_daemon_is_the_one_here_and_opens_once() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    open_window(&daemon);
+    group_of_three(&mut control);
+    let open = || {
+        answer(request::Payload::OpenTranscript(muster::proto::OpenTranscript {
+            daemon_id: String::new(),
+            group: "g".to_string(),
+        }))
+    };
+
+    let Some(response::Payload::Went(went)) = open().payload else { panic!("not opened") };
+    assert_eq!(went.daemon_id, "local");
+    assert_eq!(command_of(&mut control, &went.pane_id), "muster msg log --group='g' --follow");
+    let Some(response::Payload::Went(again)) = open().payload else { panic!("not opened") };
+    assert_eq!(again.pane_id, went.pane_id, "a second open made a second transcript");
+}
+
 /// A group's name reaches a shell only as a group's name: one that could be read as a command
 /// gets no transcript, rather than a tab whose shell runs it.
 #[test]
