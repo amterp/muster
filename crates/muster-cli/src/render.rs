@@ -1374,7 +1374,7 @@ fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
 /// `text` as one word a POSIX shell reads back unchanged, for a command printed to be pasted:
 /// as it is when it needs no quoting, which is every path Muster makes, and single-quoted
 /// otherwise.
-fn shell_word(text: &str) -> String {
+pub(crate) fn shell_word(text: &str) -> String {
     let plain = !text.is_empty()
         && text.chars().all(|c| c.is_ascii_alphanumeric() || "/._-+:@%,=".contains(c));
     if plain { text.to_string() } else { format!("'{}'", text.replace('\'', "'\\''")) }

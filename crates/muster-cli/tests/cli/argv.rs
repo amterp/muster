@@ -400,5 +400,11 @@ fn answers_here(asking: &Asking) -> Option<Value> {
             Some(json!(format!("asking the running app to close {name}")))
         }
         Asking::Message(_) => Some(json!("asking this machine's daemon")),
+        Asking::Install { harness, dry_run: false } => {
+            Some(json!(format!("installing {}'s adapter with its own commands", harness.name)))
+        }
+        Asking::Install { harness, dry_run: true } => {
+            Some(json!(format!("printing how to install {}'s adapter", harness.name)))
+        }
     }
 }

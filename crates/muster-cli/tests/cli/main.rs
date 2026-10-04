@@ -5,6 +5,7 @@ mod asking_for_a_window;
 mod docs;
 mod driving_a_window;
 mod exit_codes;
+mod harness;
 mod messaging;
 mod pane_variables;
 mod two_windows;

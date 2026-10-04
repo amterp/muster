@@ -680,6 +680,10 @@ fn stage_helpers(profile):
         $`mkdir -p {carried}`
         stage(target = "target/{target}/{profile}/muster-daemon", into = "{carried}/muster-daemon")
         stage(target = "target/{target}/{profile}/muster", into = "{carried}/muster")
+    // Each harness's adapter, where the CLI looks beside itself (`muster harness install`) and
+    // where a remote install takes them from: the same place relative to `muster-cli` as in a
+    // bundle's Resources.
+    $`rsync -a --delete extras/ {swift_bin}/extras/`
 
 // What the app calls a Linux build it carries: `linux-x86_64` for x86_64-unknown-linux-musl.
 fn carried_name(target):
@@ -725,6 +729,9 @@ fn build_bundle():
     // Resources rather than Library, because a Linux ELF is not code to codesign: it is sealed
     // as a resource like the icon, and is only ever run on another machine.
     $`rsync -a --copy-links {swift_bin}/daemons/ {contents}/Resources/daemons/`
+    // Each harness's adapter, which `muster harness install` hands the harness by this path, so
+    // it is the installed app's own and survives an update in place.
+    $`rsync -a extras/ {contents}/Resources/extras/`
 
     // muster-daemon's agent detection is a port of herdr's, and Apache-2.0 asks that its terms
     // travel with the binary. The copy is checked in rather than downloaded so that assembling
@@ -826,6 +833,9 @@ fn check_bundle_is_whole(contents):
         // no `muster msg` to message anyone with.
         "{contents}/Resources/daemons/linux-x86_64/muster",
         "{contents}/Resources/daemons/linux-aarch64/muster",
+        // The adapters `muster harness install` installs, here and on every SSH machine.
+        "{contents}/Resources/extras/.claude-plugin/marketplace.json",
+        "{contents}/Resources/extras/.agents/plugins/marketplace.json",
         "{contents}/Frameworks/libmuster.dylib",
         "{contents}/Frameworks/libghostty-vt.dylib",
         "{contents}/Info.plist",

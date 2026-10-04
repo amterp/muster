@@ -2444,6 +2444,49 @@
       "expect": {
         "answers_here": "asking the running app for window-3"
       }
+    },
+    {
+      "name": "a harness's adapter is installed on this machine, asking no window",
+      "why": "The adapter is what makes an agent's state exact, and a person had to find it in Muster's source. Installing it is about the harness on this machine, not about a window, so it dials nothing; and it goes through the harness's own plugin command, since a person's harness config may be managed by a tool that rewrites hand edits. A harness's adapter directory names it, and so does its manifest id.",
+      "given": {
+        "argv": [
+          "harness",
+          "install",
+          "claude"
+        ]
+      },
+      "expect": {
+        "answers_here": "installing Claude Code's adapter with its own commands"
+      }
+    },
+    {
+      "name": "a dry run of an adapter install prints rather than installs",
+      "why": "Printing the commands is always safe: a person who will not let anything touch their harness's config still gets the exact lines to run.",
+      "given": {
+        "argv": [
+          "harness",
+          "install",
+          "codex",
+          "--dry-run"
+        ]
+      },
+      "expect": {
+        "answers_here": "printing how to install Codex's adapter"
+      }
+    },
+    {
+      "name": "a harness Muster has no adapter for is refused",
+      "why": "Every other harness is read off its screen, and there is nothing to install for it; the refusal names the ones there are rather than leaving a person to guess the spelling.",
+      "given": {
+        "argv": [
+          "harness",
+          "install",
+          "gemini"
+        ]
+      },
+      "expect": {
+        "refused": "Muster ships no adapter for \"gemini\", so there is nothing to install. It has one for claude-code, codex, opencode; every other harness is read off its screen (`muster docs harnesses`)."
+      }
     }
   ]
 }

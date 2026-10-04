@@ -32,6 +32,9 @@ pub struct Carried {
     pub mac_library: Option<PathBuf>,
     /// The data directory every daemon gives its shells, the same on every platform.
     pub data: Option<PathBuf>,
+    /// Each harness's adapter (`extras/`), which `muster harness install` on that machine hands
+    /// its harnesses, the same on every platform.
+    pub extras: Option<PathBuf>,
 }
 
 /// One machine's install, ready to send.
@@ -88,14 +91,18 @@ impl Carried {
         // A build that carries no CLI still installs the daemon: the panes over there work,
         // and only messaging from them waits for an app that carries one.
         let cli = cli.filter(|cli| cli.is_file());
-        let archive =
-            archive(&daemon, library.as_deref(), cli.as_deref(), data).map_err(|error| {
+        // Without them the panes over there work as well, and only `muster harness install`
+        // there has nothing to install.
+        let extras = self.extras.as_deref().filter(|extras| extras.is_dir());
+        let archive = archive(&daemon, library.as_deref(), cli.as_deref(), data, extras).map_err(
+            |error| {
                 format!(
                     "could not pack the daemon for {host} from {} ({error}), so that machine's \
                  panes are absent from the window. Check that the app's files are readable.",
                     daemon.display()
                 )
-            })?;
+            },
+        )?;
         let stamp = format!("{:x}", Sha256::digest(&archive));
         Ok(Payload { build, archive, stamp, carries_cli: cli.is_some() })
     }
@@ -111,8 +118,8 @@ fn build_for(platform: &Platform) -> Option<&'static str> {
     }
 }
 
-/// The install as a ustar archive, laid out as the machine keeps it: `muster`, `muster-daemon`,
-/// on a Mac `libghostty-vt.dylib` beside them, and `muster-daemon-data/`.
+/// The install as a ustar archive, laid out as the machine keeps it: `extras/`, `muster`,
+/// `muster-daemon`, on a Mac `libghostty-vt.dylib` beside them, and `muster-daemon-data/`.
 ///
 /// The same bytes for the same files: entries in name order, and no owner, group or time of
 /// this machine's in any header, so the digest changes only when something sent does. A mode
@@ -122,8 +129,12 @@ fn archive(
     library: Option<&Path>,
     cli: Option<&Path>,
     data: &Path,
+    extras: Option<&Path>,
 ) -> io::Result<Vec<u8>> {
     let mut builder = tar::Builder::new(Vec::new());
+    if let Some(extras) = extras {
+        add_directory(&mut builder, extras, Path::new("extras"))?;
+    }
     if let Some(cli) = cli {
         add_file(&mut builder, cli, "muster", 0o755)?;
     }
@@ -245,6 +256,33 @@ mod tests {
         std::fs::write(root.join("data/README.md"), b"changed").unwrap();
         let changed = carried.payload("box", &platform("Linux x86_64")).unwrap();
         assert_ne!(changed.stamp, first.stamp, "a changed file is a different install");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The adapters travel too, so `muster harness install` on that machine has them.
+    #[test]
+    fn the_adapters_go_with_the_daemon() {
+        let root = scratch("extras");
+        std::fs::create_dir_all(root.join("extras/.claude-plugin")).unwrap();
+        std::fs::write(root.join("extras/.claude-plugin/marketplace.json"), b"{}").unwrap();
+        let carried = Carried {
+            linux: Some(root.join("linux")),
+            data: Some(root.join("data")),
+            extras: Some(root.join("extras")),
+            ..Carried::default()
+        };
+        let payload = carried.payload("box", &platform("Linux x86_64")).unwrap();
+        let mut archive = tar::Archive::new(payload.archive.as_slice());
+        let names: Vec<String> = archive
+            .entries()
+            .unwrap()
+            .map(|entry| entry.unwrap().path().unwrap().to_string_lossy().into_owned())
+            .take(3)
+            .collect();
+        assert_eq!(
+            names,
+            ["extras", "extras/.claude-plugin", "extras/.claude-plugin/marketplace.json"]
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

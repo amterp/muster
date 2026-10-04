@@ -76,6 +76,7 @@ pub(super) fn carried() -> remote_install::Carried {
     let mac_here = cfg!(all(target_os = "macos", target_arch = "aarch64"));
     remote_install::Carried {
         linux: poison::lock(&REMOTE_DAEMONS, "remote-daemons").clone().map(PathBuf::from),
+        extras: mac_cli.as_deref().map(muster_core::harnesses::extras_beside),
         mac: mac.filter(|_| mac_here),
         mac_cli: mac_cli.filter(|_| mac_here),
         mac_library: muster_vt::library_path(),

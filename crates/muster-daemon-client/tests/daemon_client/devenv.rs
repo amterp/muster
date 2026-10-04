@@ -63,6 +63,7 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
     let carried = Carried {
         linux: Some(built_linux_daemons()),
         data: Some(DAEMON_DATA.into()),
+        extras: Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../../extras").into()),
         ..Carried::default()
     };
 
@@ -74,15 +75,18 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
         .shell(&format!(
             "cd {} && test -f installed && test -d muster-daemon-data \
              && test -x muster-daemon-data/bin/ghostty \
-             && test -x muster-daemon-data/bin/muster && echo placed",
+             && test -x muster-daemon-data/bin/muster \
+             && test -f {}/.claude-plugin/marketplace.json && echo placed",
             muster_ssh::quoted(&installed.directory.to_string_lossy()),
+            muster_ssh::quoted(&installed.extras().to_string_lossy()),
         ))
         .unwrap();
     assert_eq!(
         placed.trim(),
         "placed",
         "the daemon was installed with its data and its stamp, and the scripts a pane runs for \
-         `ssh` and `muster` are executable"
+         `ssh` and `muster` are executable, and the adapters are linked where `muster harness \
+         install` finds them"
     );
 
     let mut control = Control::connect(local);

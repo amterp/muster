@@ -25,6 +25,7 @@ pub mod diagram;
 pub mod dial;
 pub mod docs;
 pub mod environment;
+pub mod harness;
 pub mod messaging;
 pub mod opening;
 mod redraw;
@@ -125,6 +126,12 @@ pub fn run(
         args::Asking::Print(text) => {
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
+        }
+        args::Asking::Install { harness, dry_run } => {
+            return match harness::install(harness, dry_run, json, environment, out, errors) {
+                Ok(()) => 0,
+                Err(trouble) => report(&trouble, json, errors),
+            };
         }
         asking @ (args::Asking::MakeWindow(_)
         | args::Asking::ReopenWindow(_)

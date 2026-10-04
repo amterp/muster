@@ -86,6 +86,12 @@ impl Installed {
         self.socket.with_extension("stderr")
     }
 
+    /// Where the adapters the install carried are linked from, beside the commands directory:
+    /// `~/.muster/extras`, a path that outlives the version a harness was handed it by.
+    pub fn extras(&self) -> PathBuf {
+        self.commands.with_file_name("extras")
+    }
+
     /// The digest of the install that put this build there, which says whether it is the
     /// one this app carries.
     fn stamp(&self) -> PathBuf {
@@ -316,11 +322,16 @@ fn put_there(remote: &impl Far, installed: &Installed, payload: &Payload) -> Res
 /// cannot be made fails nothing: the daemon still serves every pane, and only messaging from
 /// that machine's shells waits for it. A link an install did not make is left alone: on a Mac
 /// running a Muster of its own, the app keeps it pointed at its own CLI.
+///
+/// Last it points `extras` beside the commands directory at the adapters the install carried,
+/// on the same terms, and only where nothing but such a link is in the way. `ln -sfn` rather
+/// than a rename, since renaming onto a link to a directory moves the new link into it.
 fn install_script(installed: &Installed, stamp: &str) -> String {
     let directory = path(&installed.directory);
     let commands = path(&installed.commands);
+    let extras = path(&installed.extras());
     format!(
-        "d={directory}; b={commands}; s=\"$d.placing.$$\"; o=\"$d.old.$$\"; \
+        "d={directory}; b={commands}; x={extras}; s=\"$d.placing.$$\"; o=\"$d.old.$$\"; \
          rm -rf \"$s\" && mkdir -p \"$s\" && \
          {{ tar -xf - -C \"$s\" && printf %s {stamp} > \"$s/installed\" || \
          {{ rm -rf \"$s\"; false; }}; }} && \
@@ -330,6 +341,10 @@ fn install_script(installed: &Installed, stamp: &str) -> String {
          case \"$(readlink \"$b/muster\" 2>/dev/null)\" in \"\"|\"${{d%/*}}\"/*) \
          mkdir -p \"$b\" && \
          ln -sfn \"$d/muster\" \"$b/.muster.$$\" && mv -f \"$b/.muster.$$\" \"$b/muster\";; \
+         esac || true; }} && \
+         {{ [ ! -d \"$d/extras\" ] || {{ [ -e \"$x\" ] && [ ! -L \"$x\" ]; }} || \
+         case \"$(readlink \"$x\" 2>/dev/null)\" in \"\"|\"${{d%/*}}\"/*) \
+         mkdir -p \"${{x%/*}}\" && ln -sfn \"$d/extras\" \"$x\";; \
          esac || true; }}",
         stamp = quoted(stamp),
     )
@@ -460,6 +475,7 @@ mod tests {
             mac_cli: None,
             mac_library: Some(library),
             data: Some(data),
+            extras: None,
         }
     }
 
@@ -688,6 +704,44 @@ mod tests {
         let link = installed.commands.join("muster");
         assert_eq!(std::fs::read_link(&link).unwrap(), installed.directory.join("muster"));
         assert_eq!(std::fs::read(&link).unwrap(), b"cli");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The adapters an install carried are linked where `muster harness install` there finds
+    /// them, and a second install moves the link to its own.
+    #[test]
+    fn an_install_links_the_adapters_it_carried() {
+        let root = scratch("extras");
+        let linux = root.join("linux/linux-x86_64");
+        std::fs::create_dir_all(&linux).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::create_dir_all(root.join("carried/codex")).unwrap();
+        std::fs::write(linux.join("muster-daemon"), b"daemon").unwrap();
+        std::fs::write(root.join("carried/codex/README.md"), b"codex").unwrap();
+        let carried = Carried {
+            linux: Some(root.join("linux")),
+            data: Some(root.join("data")),
+            extras: Some(root.join("carried")),
+            ..Carried::default()
+        };
+        let payload = carried.payload("here", &Platform::from_uname("Linux x86_64").unwrap());
+        let payload = payload.unwrap();
+        let installed = installed_in(&root);
+        let stale = root.join("installed-before");
+        std::fs::create_dir_all(&stale).unwrap();
+        std::os::unix::fs::symlink(&stale, installed.extras()).unwrap();
+
+        Here.shell_on(&install_script(&installed, &payload.stamp), &payload.archive).unwrap();
+
+        assert_eq!(
+            std::fs::read_link(installed.extras()).unwrap(),
+            installed.directory.join("extras")
+        );
+        assert_eq!(std::fs::read(installed.extras().join("codex/README.md")).unwrap(), b"codex");
+        assert!(
+            std::fs::read_dir(&stale).unwrap().next().is_none(),
+            "nothing went inside the old one"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
