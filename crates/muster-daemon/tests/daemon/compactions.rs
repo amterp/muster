@@ -56,6 +56,29 @@ impl Pane {
         );
     }
 
+    /// Has the daemon load its manifests again, as an app connecting does.
+    fn send_manifests(&mut self) {
+        let send = session(proto::session_request::Request::SendManifests(
+            proto::SendManifests::default(),
+        ));
+        let asked = self.control.ask(send);
+        assert!(
+            matches!(asked.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo),
+            "sending the manifests was refused: {}",
+            asked.answer.reason
+        );
+    }
+
+    /// Waits until `p1`'s record says whether its agent compacts, with the agent still claude.
+    fn until_record_compacts(&mut self, compacts: bool) {
+        let control = &mut self.control;
+        until_some(&format!("p1's record to say its agent compacts: {compacts}"), || {
+            let record = snapshot(control).panes.into_iter().find(|record| record.pane == "p1")?;
+            (record.agent.as_deref() == Some("claude") && record.agent_compacts == compacts)
+                .then_some(())
+        });
+    }
+
     fn heard_file(&self) -> PathBuf {
         self.daemon.root().join("home/fake-agent-heard")
     }
@@ -155,4 +178,28 @@ fn a_panes_record_says_whether_its_agent_compacts() {
     };
     assert_eq!(compacts("p1"), Some(true), "claude's manifest gives `/compact`");
     assert_eq!(compacts("p2"), Some(false), "a shell has no agent to compact");
+}
+
+/// An override saved while an agent runs can give it a compact line or take one away, and
+/// detection still finds the same agent, so nothing else would say it again. Sending the
+/// manifests, which the app does on every connect, does.
+#[test]
+fn an_override_that_changes_the_compact_line_is_said_again() {
+    let mut p1 = Pane::with_an_agent();
+    let override_file = p1.daemon.root().join("home/.muster/agent-detection/claude.toml");
+    let with_compact = std::fs::read_to_string(&override_file).expect("the harness wrote it");
+    let without: String = with_compact
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("compact"))
+        .flat_map(|line| [line, "\n"])
+        .collect();
+    assert_ne!(without, with_compact, "the harness's manifest gives a compact line to remove");
+
+    std::fs::write(&override_file, &without).expect("the override is rewritten");
+    p1.send_manifests();
+    p1.until_record_compacts(false);
+
+    std::fs::write(&override_file, &with_compact).expect("the override is restored");
+    p1.send_manifests();
+    p1.until_record_compacts(true);
 }
