@@ -352,8 +352,9 @@ behind an engine version. The daemon code that acts on the answer will be generi
 protocol field is added as a minor version, per `proto/muster_daemon.proto`'s rules.
 
 A session reference, the third, is built in exactly those two forms for Codex (section 7): a
-report field, `--session-id`, and a manifest's `[session] wake`. Claude Code's hooks are handed
-its session's id too, and do not report it until something acts on it for Claude Code.
+report field, `--session-id`, and a manifest's `[session] wake`. Claude Code's hooks report its
+session's id since a restart resumes the session (`[session] resume`, detection engine 12), with
+`--session-id-from-hook`, which reads it from the hook's input.
 
 The fourth, a session name kept in step with the pane's, is built, both ways, in exactly those
 two forms:

@@ -42,7 +42,10 @@ No at a permission prompt fires no hook either. If the rules never read it that 
 once the screen has moved for three seconds running: an approved tool fires no hook until it
 finishes, and a background task can keep the screen busy after `Stop`. `SubagentStart` and `SubagentStop`
 count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
-`/clear` runs.
+`/clear` runs. `SessionStart` also reports the session's id, however the session started, which is
+what lets the pane come back running this session after a daemon restart or a reboot
+(`docs/configuration.md`, `resume_agents`). The report reads the id from the hook's own input, so
+the hook needs no JSON tool.
 
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Claude Code ends
 a turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`.

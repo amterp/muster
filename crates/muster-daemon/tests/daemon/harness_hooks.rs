@@ -14,7 +14,8 @@ struct Harness {
     /// Its directory under `extras/`.
     extras: &'static str,
     hooks: &'static str,
-    /// Each event its hooks answer, with the arguments `$MUSTER_DAEMON` is run with.
+    /// Each event its hooks answer, with the arguments `$MUSTER_DAEMON` is run with, one after
+    /// another where the event runs it more than once.
     reports: &'static [(&'static str, &'static str)],
     /// The events that end a turn.
     turn_ends: &'static [&'static str],
@@ -27,7 +28,7 @@ const CLAUDE_CODE: Harness = Harness {
         "/../../extras/claude-code/hooks/hooks.json"
     )),
     reports: &[
-        ("SessionStart", "[report][--clear]"),
+        ("SessionStart", "[report][--clear][report][--agent][claude][--session-id-from-hook]"),
         ("SubagentStart", "[report][--subagent-started]"),
         ("SubagentStop", "[report][--subagent-stopped]"),
         ("UserPromptSubmit", "[report][--agent][claude][--state][working][--waiting][]"),
@@ -142,7 +143,7 @@ fn every_hook_reports_what_its_event_means_and_every_turn_end_reports_idle() {
                 .map(|command| reported(command, &scratch))
                 .filter(|said| !said.is_empty())
                 .collect();
-            assert_eq!(said, [*expected], "{}: {event}", harness.extras);
+            assert_eq!(said.concat(), *expected, "{}: {event}", harness.extras);
         }
         for event in harness.turn_ends {
             let idle = harness.reports.iter().find(|(reported, _)| reported == event);
@@ -280,6 +281,59 @@ fn codexs_session_start_reports_its_session_id() {
         assert!(output.stdout.is_empty(), "{shell}: what it prints reaches the model");
         let said = std::fs::read_to_string(&arguments).unwrap_or_default();
         assert_eq!(said, "[report][--agent][codex][--session-id][019a-b c]", "in {shell}");
+    }
+}
+
+/// Claude Code's session is resumed after a restart by its id, which only its hooks are handed:
+/// `SessionStart`, on every source a session starts from, has the report read it from the hook's
+/// input, so the hook needs no JSON tool, and says nothing to the model doing so.
+#[test]
+fn claude_codes_session_start_reports_its_session_id() {
+    let scratch = Scratch::new("claude-session-id");
+    let arguments = scratch.0.join("arguments");
+    let read = scratch.0.join("read");
+    let daemon = scratch.0.join("daemon");
+    std::fs::write(
+        &daemon,
+        format!(
+            "#!/bin/sh\nprintf '[%s]' \"$@\" >> '{}'\ncat > '{}'\n",
+            arguments.display(),
+            read.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let input = serde_json::json!({ "session_id": "0199-a b", "source": "resume" }).to_string();
+    let hooks: serde_json::Value = serde_json::from_str(CLAUDE_CODE.hooks).unwrap();
+    let group = hooks["hooks"]["SessionStart"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|group| group.to_string().contains("--session-id-from-hook"))
+        .expect("a SessionStart hook reports the session's id");
+    assert!(
+        group.get("matcher").is_none(),
+        "every source a session starts from, resume among them"
+    );
+    let reporting = group["hooks"][0]["command"].as_str().unwrap().to_string();
+    for shell in shells() {
+        let _ = std::fs::remove_file(&arguments);
+        let mut hook = Command::new(shell)
+            .args(["-c", &reporting])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("MUSTER_DAEMON", &daemon)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        hook.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+        let output = hook.wait_with_output().unwrap();
+        assert!(output.status.success(), "a hook never fails a session");
+        assert!(output.stdout.is_empty(), "{shell}: what it prints reaches the model");
+        let said = std::fs::read_to_string(&arguments).unwrap_or_default();
+        assert_eq!(said, "[report][--agent][claude][--session-id-from-hook]", "in {shell}");
+        assert_eq!(std::fs::read_to_string(&read).unwrap(), input, "the hook's input reaches it");
     }
 }
 

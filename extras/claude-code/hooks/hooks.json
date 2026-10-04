@@ -1,5 +1,5 @@
 {
-  "description": "Tells the Muster daemon that owns this pane what Claude Code is doing: working, waiting on you or idle, and how many sub-agents it runs.",
+  "description": "Tells the Muster daemon that owns this pane what Claude Code is doing: working, waiting on you or idle, how many sub-agents it runs, and the session's id, by which Muster resumes it after a restart.",
   "hooks": {
     "SessionStart": [
       {
@@ -16,6 +16,14 @@
           {
             "type": "command",
             "command": "[ -z \"$MUSTER_PANE\" ] || [ -z \"$MUSTER_DAEMON\" ] || echo 'In Muster: if you end a turn to wait on work you started, first run \"$MUSTER_DAEMON\" report --waiting \"<what>\".'"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --session-id-from-hook >/dev/null 2>&1 || true"
           }
         ]
       }

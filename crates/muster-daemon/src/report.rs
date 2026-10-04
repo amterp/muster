@@ -25,7 +25,8 @@ const PATIENCE: Duration = Duration::from_secs(2);
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
     [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT] [--clear] \
-    [--agent NAME [--state working|blocked|idle] [--session-name NAME] [--session-id ID]]\n\n\
+    [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
+    [--session-id ID | --session-id-from-hook]]\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
@@ -40,10 +41,15 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     name: the pane takes a name the session is given once it has started, and gives the \
     session the pane's own name otherwise. It needs --agent, as --state does. --session-id is \
     the harness's id for its session, which the daemon names it by to reach it through the \
-    harness's own command, where its manifest says how; empty forgets it. It needs --agent too.";
+    harness's own command, where its manifest says how; empty forgets it. It needs --agent too. \
+    --session-id-from-hook takes it from the `session_id` of the JSON a hook is handed on its \
+    standard input, as Claude Code's and Codex's hooks are, so a hook needs nothing to read it.";
+
+/// The most of a hook's input read for its session's id. A hook's input is a few hundred bytes.
+const HOOK_INPUT_LIMIT: u64 = 1 << 20;
 
 pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
-    let report = match parse(arguments, |name| std::env::var(name).ok()) {
+    let mut report = match parse(arguments, |name| std::env::var(name).ok()) {
         Ok(Parsed::Report(report)) => *report,
         Ok(Parsed::Help) => {
             println!("{USAGE}");
@@ -54,6 +60,15 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if report.session_id.as_deref() == Some(FROM_HOOK) {
+        match hook_input().and_then(|input| hook_session_id(&input)) {
+            Ok(id) => report.session_id = Some(id),
+            Err(problem) => {
+                eprintln!("muster-daemon report: {problem}");
+                return ExitCode::from(2);
+            }
+        }
+    }
     let Some(socket) = std::env::var_os("MUSTER_DAEMON_SOCKET").map(PathBuf::from) else {
         eprintln!(
             "muster-daemon report: MUSTER_DAEMON_SOCKET is not set, so this is not running in a \
@@ -67,6 +82,38 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
             eprintln!("muster-daemon report: {problem}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// What `--session-id-from-hook` leaves as the session id until the hook's input is read: not an
+/// id a harness writes, and refused by the daemon if it ever got that far.
+const FROM_HOOK: &str = "\u{0}from-hook";
+
+/// A hook's JSON input, from standard input. Refused at a terminal, where nothing would arrive.
+fn hook_input() -> Result<String, String> {
+    use std::io::{IsTerminal as _, Read as _};
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return Err(
+            "--session-id-from-hook reads a hook's JSON input, and none is piped in".to_string()
+        );
+    }
+    let mut input = String::new();
+    stdin
+        .lock()
+        .take(HOOK_INPUT_LIMIT)
+        .read_to_string(&mut input)
+        .map_err(|error| format!("could not read the hook's input: {error}"))?;
+    Ok(input)
+}
+
+/// The `session_id` in a hook's JSON input.
+fn hook_session_id(input: &str) -> Result<String, String> {
+    let input: serde_json::Value = serde_json::from_str(input)
+        .map_err(|error| format!("the hook's input is not JSON: {error}"))?;
+    match input.get("session_id") {
+        Some(serde_json::Value::String(id)) => Ok(id.clone()),
+        _ => Err("the hook's input has no session_id".to_string()),
     }
 }
 
@@ -130,6 +177,7 @@ fn parse(
             "--clear" => report.clear = true,
             "--session-name" => report.session_name = Some(value("--session-name")?),
             "--session-id" => report.session_id = Some(value("--session-id")?),
+            "--session-id-from-hook" => report.session_id = Some(FROM_HOOK.to_string()),
             "--agent" => report.agent = value("--agent")?,
             "--state" => {
                 let given = value("--state")?;
@@ -230,6 +278,21 @@ mod tests {
             Parsed::Report(report) => Ok(*report),
             Parsed::Help => Err("help".to_string()),
         }
+    }
+
+    /// A hook hands its session's id in the JSON on its standard input, which the report reads
+    /// so the hook needs no JSON tool of its own.
+    #[test]
+    fn a_session_id_is_read_from_a_hooks_input() {
+        let report = parsed(&["--agent", "claude", "--session-id-from-hook"], Some("p1")).unwrap();
+        assert_eq!(report.session_id.as_deref(), Some(FROM_HOOK));
+        assert!(parsed(&["--session-id-from-hook"], Some("p1")).is_err(), "needs --agent");
+
+        let input =
+            r#"{"session_id":"0199-a b","hook_event_name":"SessionStart","source":"resume"}"#;
+        assert_eq!(hook_session_id(input).as_deref(), Ok("0199-a b"));
+        assert!(hook_session_id("{}").is_err());
+        assert!(hook_session_id("not json").is_err());
     }
 
     #[test]
