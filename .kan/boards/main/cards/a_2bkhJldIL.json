@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "terminal-xtshiftescape",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791126797044,
+  "creator": "Alexander Terp",
+  "description": "2026-10-04: in ./dev --ssh's Linux run, terminal::xtshiftescape_is_on_the_panes_record failed with 'heard []', then passed 3 of 3 alone on native aarch64 Linux. Looks like a load flake right after the remote tier; not investigated.",
+  "id": "a_2bkhJldIL",
+  "position": "b0i",
+  "title": "terminal::xtshiftescape_is_on_the_panes_record flaked on Linux after the remote tier",
+  "type": "bug",
+  "updated_at_millis": 1791126797044,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791126797044}
+  ]
+}

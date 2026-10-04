@@ -5,17 +5,18 @@
   "area": [
     "devenv"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1791101273009,
   "creator": "Alexander Terp",
   "description": "2026-10-04: presence probes and deliveries now connect nonblocking with a 1 s deadline, and a full queue answers 'not there' at once. Verified on macOS only, where a full queue refuses rather than blocks; Linux is where the blocking happened. Check ./dev --linux or the CI linux job covers it.",
   "id": "a_2bZzJwVaK",
-  "position": "Zm",
+  "position": "Yxp",
   "title": "Run the inbox's nonblocking connect deadline on Linux",
   "type": "chore",
-  "updated_at_millis": 1791122485432,
+  "updated_at_millis": 1791126791418,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791101273009},
-    {"field":"column","value":"in-progress","at":1791122485432}
+    {"field":"column","value":"in-progress","at":1791122485432},
+    {"field":"column","value":"done","at":1791126791418}
   ]
 }

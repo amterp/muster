@@ -2,17 +2,18 @@
   "_v": 3,
   "alias": "the-stranded-check",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1790617333210,
   "creator": "Alexander Terp",
   "description": "Council stage 4's stranded-agent check samples every 10 s; decide whether that is the right cadence or whether it should follow presence events.",
   "id": "a_2YIvpuuDJ",
   "parent": "a_2Y3ODvuwa",
-  "position": "b05",
+  "position": "Yxt",
   "title": "The stranded check samples every 10 s",
   "type": "chore",
-  "updated_at_millis": 1790617333210,
+  "updated_at_millis": 1791126791062,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1790617333210}
+    {"field":"column","value":"backlog-lo","at":1790617333210},
+    {"field":"column","value":"done","at":1791126791062}
   ]
 }

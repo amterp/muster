@@ -2,19 +2,20 @@
   "_v": 3,
   "alias": "devenv-devenv-with",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1790526610560,
   "creator": "Alexander Terp",
   "description": "devenv/devenv defaults to up (case \"${1:-up}\"), and up recreates the shared muster-devenv container with the calling worktree's key. Running it bare to see its usage destroyed the container another worktree was using (2026-09-27). With no argument it should print its usage and exit, like ./dev -h.",
   "id": "a_2Xgrj2gtH",
-  "position": "Zp",
+  "position": "Yxs",
   "title": "./devenv/devenv with no arguments recreates the container",
   "type": "bug",
-  "updated_at_millis": 1791122484913,
+  "updated_at_millis": 1791126791152,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790526610560},
     {"field":"column","value":"in-progress","at":1791121585068},
     {"field":"column","value":"backlog-lo","at":1791121852824},
-    {"field":"column","value":"in-progress","at":1791122484913}
+    {"field":"column","value":"in-progress","at":1791122484913},
+    {"field":"column","value":"done","at":1791126791152}
   ]
 }
