@@ -164,3 +164,27 @@ fn a_session_name_needs_its_agent_and_counts_only_from_the_agent_in_the_pane() {
     p1.control.ask(pane(proto::pane_request::Request::Report(other)));
     assert_eq!(p1.label(), None);
 }
+
+/// A session's name too long to keep is not a reason to lose the rest of the report: the
+/// statusline sends the context, model and cost beside it, and a refusal would drop them all.
+#[test]
+fn a_session_name_too_long_to_keep_leaves_the_rest_of_its_report() {
+    let mut p1 = Pane::named(None);
+    p1.daemon.run_agent("p1");
+    let report = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        session_name: Some("x".repeat(200)),
+        context_used: Some(42.0),
+        ..Default::default()
+    };
+    expect(
+        &mut p1.control,
+        pane(proto::pane_request::Request::Report(report)),
+        proto::Outcome::Done,
+    );
+    let record =
+        snapshot(&mut p1.control).panes.into_iter().find(|record| record.pane == "p1").unwrap();
+    assert_eq!(record.facts.and_then(|facts| facts.context_used), Some(42.0));
+    assert_eq!(record.label, None, "the name was not taken");
+}

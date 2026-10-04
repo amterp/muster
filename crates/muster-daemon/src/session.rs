@@ -1393,14 +1393,19 @@ impl Session {
             Some(_) => return Reply::refused("an agent reports itself working, blocked or idle"),
         };
         let agent = std::mem::take(&mut report.agent);
-        let session_name = report.session_name.take();
-        if let Some(name) = &session_name {
-            if agent.is_empty() {
-                return Reply::refused("a session's name needs the name of the agent reporting it");
-            }
-            if let Err(why) = facts::session_name(name) {
-                return Reply::refused(why);
-            }
+        let mut session_name = report.session_name.take();
+        if session_name.is_some() && agent.is_empty() {
+            return Reply::refused("a session's name needs the name of the agent reporting it");
+        }
+        // Left out rather than refused: a statusline sends the context, model and cost beside it,
+        // and a refusal would drop them all, every time it runs.
+        if let Some(why) = session_name.as_deref().and_then(|name| facts::session_name(name).err())
+        {
+            log::debug(
+                "daemon.report.session_name_ignored",
+                fields! { "pane" => report.pane, "why" => why },
+            );
+            session_name = None;
         }
         let cleared = report.clear;
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
