@@ -288,13 +288,7 @@ fn ask_a_window(
     json: bool,
 ) -> Result<String, Trouble> {
     match dial::ask(request, named, environment) {
-        // No window at all, rather than one that would not answer or several to choose from:
-        // this machine's daemon holds the panes, and answers what it can about them.
-        Err(Trouble::Unreachable(detail))
-            if named.is_none()
-                && request.window.is_empty()
-                && !dial::any_window_answers(environment) =>
-        {
+        Err(Trouble::Unreachable(detail)) if no_window_at_all(request, named, environment) => {
             if windowless::can_answer(request) {
                 from_the_daemon(request, environment, json)
                     .map_err(|trouble| neither(&detail, trouble))
@@ -306,9 +300,20 @@ fn ask_a_window(
     }
 }
 
+/// Whether a request that reached no window found none at all, rather than one that would not
+/// answer or several to choose from: then this machine's daemon, which holds the panes, may
+/// answer in its place.
+pub(crate) fn no_window_at_all(
+    request: &muster_proto::Request,
+    named: Option<&str>,
+    environment: &BTreeMap<String, String>,
+) -> bool {
+    named.is_none() && request.window.is_empty() && !dial::any_window_answers(environment)
+}
+
 /// Why a request found no window, and then no daemon either: both, since the first is what a
 /// caller can usually act on.
-fn neither(window: &str, daemon: Trouble) -> Trouble {
+pub(crate) fn neither(window: &str, daemon: Trouble) -> Trouble {
     match daemon {
         Trouble::Unreachable(daemon) => Trouble::Unreachable(format!(
             "{window} This machine's muster-daemon could have answered instead, and did not \
@@ -358,11 +363,7 @@ fn follow(
         return from_the_daemon();
     }
     match dial::follow(request, named, environment) {
-        Err(Trouble::Unreachable(detail))
-            if named.is_none()
-                && request.window.is_empty()
-                && !dial::any_window_answers(environment) =>
-        {
+        Err(Trouble::Unreachable(detail)) if no_window_at_all(request, named, environment) => {
             from_the_daemon().map_err(|trouble| neither(&detail, trouble))
         }
         followed => followed.map(|answers| Box::new(answers) as _),

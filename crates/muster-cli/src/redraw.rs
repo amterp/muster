@@ -158,12 +158,8 @@ fn answered(
         return from_the_daemon();
     }
     match dial::ask(read, named, environment) {
-        Err(Trouble::Unreachable(_))
-            if named.is_none()
-                && read.window.is_empty()
-                && !dial::any_window_answers(environment) =>
-        {
-            from_the_daemon()
+        Err(Trouble::Unreachable(detail)) if crate::no_window_at_all(read, named, environment) => {
+            from_the_daemon().map_err(|trouble| crate::neither(&detail, trouble))
         }
         asked => asked.map(Answer::Window),
     }
