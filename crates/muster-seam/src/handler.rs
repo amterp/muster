@@ -1185,9 +1185,9 @@ fn report_font_family(report: &proto::ReportFontFamily) -> Response {
                     "detail" => problem.detail.clone(),
                 },
             );
-            session::raise_problem(&problem.key, problem.severity, &problem.detail);
+            session::problems::raise_problem(&problem.key, problem.severity, &problem.detail);
         }
-        None => session::clear_problem(font::KEY, "usable"),
+        None => session::problems::clear_problem(font::KEY, "usable"),
     }
     Response::ok()
 }
@@ -2427,13 +2427,13 @@ fn read_config(path: &str, reading: Reading) -> Option<config::Config> {
                                 one it has already seen",
                 },
             );
-            session::raise_problem(CONFIG_PROBLEM, Severity::Error, &detail);
+            session::problems::raise_problem(CONFIG_PROBLEM, Severity::Error, &detail);
             return None;
         }
     };
     match config::parse(&text) {
         Ok(config) => {
-            session::clear_problem(CONFIG_PROBLEM, "accepted");
+            session::problems::clear_problem(CONFIG_PROBLEM, "accepted");
             for given_up in &config.given_up {
                 let taken_by = match given_up.taken_by {
                     config::TakenBy::Text => "[text]",
@@ -2465,7 +2465,7 @@ fn read_config(path: &str, reading: Reading) -> Option<config::Config> {
             // The refusal, whole and unedited. `config.rs` writes these to be read by whoever
             // caused them - they name the value, what stopped working and what to type instead
             // - so anything composed here would be a worse sentence about the same fact.
-            session::raise_problem(CONFIG_PROBLEM, Severity::Error, &refusal);
+            session::problems::raise_problem(CONFIG_PROBLEM, Severity::Error, &refusal);
             None
         }
     }
@@ -2496,7 +2496,7 @@ fn reload_config() -> Response {
     // person who just edited that block is told so rather than left wondering.
     let waiting = session::follow_changed(&config);
     if waiting.is_empty() {
-        session::clear_problem(DAEMONS_PROBLEM, "matches");
+        session::problems::clear_problem(DAEMONS_PROBLEM, "matches");
     } else {
         let named: Vec<String> = waiting.iter().map(session::described).collect();
         log::warn(
@@ -2510,7 +2510,7 @@ fn reload_config() -> Response {
                             the tabs of agents still running out of the window",
             },
         );
-        session::raise_problem(
+        session::problems::raise_problem(
             DAEMONS_PROBLEM,
             Severity::Warning,
             &format!(
