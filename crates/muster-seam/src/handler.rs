@@ -310,6 +310,7 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::SetSplitRatio(set) => set_split_ratio(window, set),
         request::Payload::EqualizePanes(even) => equalize_panes(window, &even),
         request::Payload::RenamePane(rename) => rename_pane(window, &rename),
+        request::Payload::CompactPane(compact) => compact_pane(window, &compact),
         request::Payload::RenameTab(rename) => rename_tab(window, &rename),
         request::Payload::CloseTab(close) => close_tab(window, &close),
         // Answered when the panes have been handed back, not when the message was read. The
@@ -428,6 +429,15 @@ fn rename_pane(window: WindowId, rename: &proto::RenamePane) -> Response {
     let name = wanted_name(&rename.name);
     act(window, &rename.daemon_id, &rename.pane_id, Keyboard::Follows, |pane| {
         BackendIntent::RenamePane { pane, name }
+    })
+}
+
+/// Compacts the context of the agent in a pane, once it is idle at an empty prompt. The keyboard
+/// stays where it is: compacting an agent is not looking at it.
+fn compact_pane(window: WindowId, compact: &proto::CompactPane) -> Response {
+    let focus = Some(compact.focus.trim().to_string()).filter(|focus| !focus.is_empty());
+    act(window, &compact.daemon_id, &compact.pane_id, Keyboard::StaysPut, |pane| {
+        BackendIntent::CompactPane { pane, focus }
     })
 }
 

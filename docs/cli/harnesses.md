@@ -17,6 +17,7 @@ small adapter Muster ships for it (`extras/` in Muster's source).
 | Woken by its own command, typing nothing | no | yes | no | no |
 | Its session named after the pane | yes | yes | no | no |
 | The pane named after its session | yes | no | no | no |
+| Compacted when asked | yes | no | no | no |
 
 Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
 kimi, kiro, maki, pi, qodercli.
@@ -62,6 +63,11 @@ kimi, kiro, maki, pi, qodercli.
   and its `refreshInterval` for the pane to follow within seconds rather than at the next message.
   Codex names every session itself after its first request, where a rename goes too, so Muster
   cannot tell a name you gave from one Codex chose, and takes neither.
+- **Compacted when asked**: `muster pane compact`, or `compact_at` in the config file, types the
+  harness's compact command, `/compact <focus>` for Claude Code, at the agent's prompt once it is
+  idle and the prompt is empty, as a ring is typed. Needs no adapter, though `compact_at` acts on
+  the context its adapter reports. Codex and OpenCode have a `/compact` of their own that Muster
+  has not yet been recorded typing, so it does not type it.
 
 The first name a session reports is the one it started with, not a rename: a pane with a name
 keeps it and gives it to the session, and a pane without one takes the session's. Neither

@@ -259,6 +259,16 @@ pub enum BackendIntent {
         name: Option<String>,
     },
 
+    /// Compacts the context of the agent in a pane, at its next idle, empty prompt.
+    ///
+    /// The daemon types it, because the daemon is what can tell when the agent's prompt is empty
+    /// and what its harness calls compacting.
+    CompactPane {
+        pane: PaneId,
+        /// What the compaction should keep, where the agent's harness takes one.
+        focus: Option<String>,
+    },
+
     /// Calls a tab what somebody wants to call it.
     ///
     /// Separate from [`BackendIntent::RenamePane`] rather than one verb over a target, because
@@ -312,6 +322,9 @@ impl BackendIntent {
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),
+            BackendIntent::CompactPane { pane, focus } => {
+                format!("CompactPane {{ pane: {pane}, focus: {} }}", counted(focus.as_ref()))
+            }
             other => format!("{other:?}"),
         }
     }

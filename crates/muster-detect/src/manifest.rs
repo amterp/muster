@@ -26,9 +26,10 @@ use region::Region;
 /// rule's `prompt`, 6 lets a working rule carry one, read where its `prompt_region` says, and
 /// 7 adds the `current_prompt` region, Codex's composer alone, 8 a `[session]` table saying
 /// how to rename the harness's session, 9 the `bar_prompt` region, a prompt box drawn with a
-/// bar down its left side, with a rule's `prompt_margin` and `prompt_placeholder`, and 10 a
-/// `[session]` `wake`, the command that hands a running session a message.
-pub const ENGINE_VERSION: u32 = 10;
+/// bar down its left side, with a rule's `prompt_margin` and `prompt_placeholder`, 10 a
+/// `[session]` `wake`, the command that hands a running session a message, and 11 a
+/// `[session]` `compact`, the line that compacts the session's context.
+pub const ENGINE_VERSION: u32 = 11;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -48,6 +49,12 @@ const BAR_PROMPT_ENGINE_VERSION: u32 = 9;
 
 /// The engine version that introduced `[session]` `wake`.
 const WAKE_ENGINE_VERSION: u32 = 10;
+
+/// The engine version that introduced `[session]` `compact`.
+const COMPACT_ENGINE_VERSION: u32 = 11;
+
+/// Where a `[session]` compact's template takes what to keep, when its harness takes one.
+const FOCUS_PLACEHOLDER: &str = "{focus}";
 
 /// What a `[session]` wake's arguments are filled in with: the session's id, and the message.
 const SESSION_PLACEHOLDER: &str = "{session}";
@@ -126,6 +133,9 @@ pub struct Manifest {
     rename: Option<String>,
     /// The command that hands the agent's running session a message, as arguments.
     wake: Option<Vec<String>>,
+    /// What typed at the agent's empty prompt compacts its context, with `{focus}` where the
+    /// harness takes what to keep, if it takes it.
+    compact: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -226,6 +236,23 @@ impl Manifest {
     /// `name`; none when the manifest does not say how.
     pub fn session_rename(&self, name: &str) -> Option<String> {
         self.rename.as_ref().map(|template| template.replace(NAME_PLACEHOLDER, name))
+    }
+
+    /// The line that, typed at the agent's empty prompt with a Return, compacts its session's
+    /// context, keeping `focus` where the harness takes one. None when the manifest does not say
+    /// how; an error when a focus was given and the harness takes none, since dropping it would
+    /// compact away what the caller asked to keep.
+    pub fn session_compact(&self, focus: Option<&str>) -> Option<Result<String, String>> {
+        let template = self.compact.as_ref()?;
+        let focus = focus.map(str::trim).filter(|focus| !focus.is_empty());
+        if focus.is_some() && !template.contains(FOCUS_PLACEHOLDER) {
+            return Some(Err(format!(
+                "{}'s compaction, `{template}`, takes nothing to keep, so it cannot be given a \
+                 focus. Compact it without one.",
+                self.id
+            )));
+        }
+        Some(Ok(template.replace(FOCUS_PLACEHOLDER, focus.unwrap_or_default()).trim().to_string()))
     }
 
     /// The command, as arguments, that hands the session with id `session` the message
@@ -432,6 +459,7 @@ struct RawManifest {
 struct RawSession {
     rename: Option<String>,
     wake: Option<Vec<String>>,
+    compact: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -599,6 +627,9 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     if let Some(wake) = &session.wake {
         validate_wake(manifest, wake)?;
     }
+    if let Some(compact) = &session.compact {
+        validate_compact(manifest, compact)?;
+    }
     let Some(rename) = &session.rename else { return Ok(()) };
     if !rename.contains(NAME_PLACEHOLDER) {
         return Err(format!(
@@ -607,6 +638,22 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     }
     if rename.chars().any(char::is_control) {
         return Err("[session] rename holds a control character".to_string());
+    }
+    Ok(())
+}
+
+/// A compaction is typed as one line and sent with one Return, as a rename is.
+fn validate_compact(manifest: &RawManifest, compact: &str) -> Result<(), String> {
+    if manifest.min_engine_version.unwrap_or(0) < COMPACT_ENGINE_VERSION {
+        return Err(format!(
+            "[session] compact needs min_engine_version {COMPACT_ENGINE_VERSION} or later"
+        ));
+    }
+    if compact.replace(FOCUS_PLACEHOLDER, "").trim().is_empty() {
+        return Err("[session] compact types nothing".to_string());
+    }
+    if compact.chars().any(char::is_control) {
+        return Err("[session] compact holds a control character".to_string());
     }
     Ok(())
 }
@@ -891,6 +938,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         script_paths: raw.script_paths,
         rules,
         rename: raw.session.as_ref().and_then(|session| session.rename.clone()),
+        compact: raw.session.as_ref().and_then(|session| session.compact.clone()),
         wake: raw.session.and_then(|session| session.wake),
     })
 }

@@ -1,13 +1,16 @@
 id = "claude"
-version = "2026.10.03.3"
-min_engine_version = 8
-updated_at = "2026-10-03T00:00:00Z"
+version = "2026.10.04.1"
+min_engine_version = 11
+updated_at = "2026-10-04T00:00:00Z"
 aliases = ["claude-code"]
 
 # Typed at an empty prompt with a Return, as a person names a session: what `/resume` lists and
 # the prompt box's top rule shows (docs/observations/claude-code-2.1.288.md, section 5).
 [session]
 rename = "/rename {name}"
+# Typed the same way, and what follows it is what the summary should keep
+# (docs/observations/claude-code-2.1.289.md, section 1).
+compact = "/compact {focus}"
 
 [[rules]]
 id = "osc_title_working"

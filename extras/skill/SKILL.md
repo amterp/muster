@@ -29,7 +29,7 @@ only what goes wrong when you skip them.
 Every pane Muster makes has `muster` on its `PATH` and `$MUSTER_SOCKET` naming the window it is
 drawn in, on this machine and on an SSH devenv alike, so every verb works from either. With no
 window to talk to - a terminal outside Muster, or a pane whose window has since quit - `muster
-window`, `pane read`, `pane send`, `pane wait` and `muster msg` still answer, from the machine's own
+window`, `pane read`, `pane send`, `pane wait`, `pane compact` and `muster msg` still answer, from the machine's own
 daemon, and every other verb says it needs a window. `muster docs overview`, under "With no
 window", has the rest.
 
@@ -61,6 +61,10 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   `--until working` first. `waiting` is not `idle`: add it to hear of an agent waiting on its own
   build, and give `--timeout`. `--context 80` also ends the wait once the agent's context is that
   full.
+- **Compact a worker before it runs out of context**, rather than letting it hit the limit
+  mid-task: `muster pane compact --pane X keep <what the summary must keep>`. It is typed once
+  the agent is idle, never mid-turn. To compact yourself, run `muster pane compact <focus>` with
+  no `--pane` and end your turn; the compaction runs once it has ended.
 - **Do not take the keyboard.** `pane new` leaves focus where it is, which is right: the person is
   reading something. `--focus` and `muster focus` are for an agent that needs them.
 - **Name every pane you make**, `--name '🤖 A'`, so a person can tell your agents apart.

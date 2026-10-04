@@ -424,6 +424,11 @@ pub struct Panes {
     /// the agent's prompt (MIP-5, section 10). On unless the file says `false`. A session renamed
     /// in its harness renames the pane either way, since that types nothing.
     pub name_sessions: bool,
+
+    /// How full, in percent, an agent's context gets before its daemon compacts it unasked, by
+    /// typing the harness's compact command at its idle, empty prompt (MIP-5, section 10).
+    /// `None`, the default, compacts nothing unasked.
+    pub compact_at: Option<u8>,
 }
 
 impl Default for Panes {
@@ -433,6 +438,7 @@ impl Default for Panes {
             shell: Shell::default(),
             clipboard_write: ClipboardWrite::default(),
             name_sessions: true,
+            compact_at: None,
         }
     }
 }
@@ -556,7 +562,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 5] = ["id", "socket", "host", "ssh_options", "color"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 18] = [
+const ROOT_KEYS: [&str; 19] = [
     "daemon",
     "keymap",
     "text",
@@ -569,6 +575,7 @@ const ROOT_KEYS: [&str; 18] = [
     "scrollback_bytes",
     "clipboard_write",
     "name_sessions",
+    "compact_at",
     "human_name",
     "font",
     "colors",
@@ -732,7 +739,7 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
     Ok(notifications)
 }
 
-/// `scrollback_bytes`, `clipboard_write`, `name_sessions` and `[shell]`.
+/// `scrollback_bytes`, `clipboard_write`, `name_sessions`, `compact_at` and `[shell]`.
 fn read_panes(root: &toml::Table) -> Result<Panes, String> {
     let mut panes = Panes {
         shell: read_shell(block(root, "shell", &SHELL_KEYS)?.as_ref())?,
@@ -747,6 +754,24 @@ fn read_panes(root: &toml::Table) -> Result<Panes, String> {
                 described(value)
             )
         })?;
+    }
+
+    if let Some(value) = root.get("compact_at") {
+        panes.compact_at = Some(
+            value
+                .as_integer()
+                .and_then(|percent| u8::try_from(percent).ok())
+                .filter(|percent| (1..=100).contains(percent))
+                .ok_or_else(|| {
+                    format!(
+                        "`compact_at` in the config file is {}, and it has to be a whole percent \
+                         from 1 to 100: how full an agent's context gets before Muster compacts \
+                         it. None of the file was applied. Leave it out to compact nothing \
+                         unasked.",
+                        written(value)
+                    )
+                })?,
+        );
     }
 
     if let Some(value) = root.get("clipboard_write") {

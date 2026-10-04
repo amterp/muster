@@ -729,6 +729,50 @@
       }
     },
     {
+      "name": "compacting a pane's agent says what to keep",
+      "why": "An orchestrator compacting a worker names it and says what the summary must not lose. The focus arrives in pieces from a shell and is one line by the time it is typed.",
+      "given": {
+        "argv": [
+          "pane",
+          "compact",
+          "--pane",
+          "p1w3r07bsd",
+          "keep",
+          "the",
+          "parser",
+          "notes"
+        ]
+      },
+      "expect": {
+        "request": {
+          "compact_pane": {
+            "pane_id": "p1w3r07bsd",
+            "focus": "keep the parser notes"
+          }
+        }
+      }
+    },
+    {
+      "name": "an agent compacts itself by naming nothing",
+      "why": "An agent asking to be compacted is running in the pane it means, as for every pane command, and a compaction needs nothing to keep.",
+      "given": {
+        "argv": [
+          "pane",
+          "compact"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "compact_pane": {
+            "pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
       "name": "renaming a pane says what to call it",
       "why": "A person running fifteen agents wants to say which is which in their own words, and this is the surface a script sets those names from.",
       "given": {

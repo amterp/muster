@@ -327,8 +327,8 @@ pub(crate) fn neither(window: &str, daemon: Trouble) -> Trouble {
 }
 
 /// What a refusal for want of a window adds, so a caller learns what still works.
-const WITHOUT_A_WINDOW: &str = "Without one, `muster window`, `pane read`, `pane send` and \
-    `pane wait` still work, answered by this machine's muster-daemon; everything else is about \
+const WITHOUT_A_WINDOW: &str = "Without one, `muster window`, `pane read`, `pane send`, `pane \
+    wait` and `pane compact` still work, answered by this machine's muster-daemon; everything else is about \
     what a window shows or how it lays out its tabs.";
 
 /// Asks this machine's daemon what a window was asked, and renders what it says the way a

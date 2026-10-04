@@ -290,6 +290,11 @@ impl BackendChannel for DaemonBackend {
                 }))?;
                 done
             }
+            BackendIntent::CompactPane { pane, focus } => {
+                let compact = pane_request::Compact { pane: pane.to_string(), focus };
+                self.pane_request(pane_request::Request::Compact(compact))?;
+                done
+            }
             BackendIntent::RenameTab { tab, name, generation } => {
                 self.tab_request(tab_request::Request::Rename(tab_request::Rename {
                     tab: tab.to_string(),

@@ -163,6 +163,8 @@ message SessionRequest {
     SetNameSessions set_name_sessions = 14;
     // Since 1.3.
     SetHumanName set_human_name = 15;
+    // Since 1.3.
+    SetCompactAt set_compact_at = 16;
   }
 
   message Snapshot {}
@@ -237,6 +239,8 @@ message PaneRequest {
     Read read = 8;
     Report report = 9;
     Seen seen = 10;
+    // Since 1.3.
+    Compact compact = 11;
   }
 
   // Somebody has seen these panes: a window with the keyboard shows them. Clears each one's
@@ -246,6 +250,19 @@ message PaneRequest {
   // does not stop the others being seen; NOT_THERE only when none of them is here.
   message Seen {
     repeated string panes = 1;
+  }
+
+  // Compacts the context of the agent in a pane, by typing what its manifest gives in `[session]
+  // compact` at its prompt once it is idle and the prompt is empty, under the doorbell's rules,
+  // never while it works (MIP-5, section 10). DONE once it is to be typed, which may be long
+  // before it is: the agent's turn ends first. REFUSED, with the reason, when the pane runs no
+  // agent, the agent's manifest says no way to compact it, or the focus cannot be typed or taken.
+  // A second request before the first is typed replaces it.
+  message Compact {
+    string pane = 1;
+    // What the compaction should keep, typed after the command where the manifest says the
+    // harness takes it. One line. Absent or blank: compacted without one.
+    optional string focus = 2;
   }
 
   // Starts a pane. A pane of that name already here answers ALREADY_SO, so a create retried
@@ -434,6 +451,12 @@ message SetScrollMultiplier {
 // to rename it (MIP-5, section 10). A session renamed in its harness renames the pane either way.
 message SetNameSessions {
   bool name = 1;
+}
+
+// How full an agent's context gets before the daemon compacts it, as a Compact for its pane
+// would, once each time a report crosses it. Absent: never.
+message SetCompactAt {
+  optional float percent = 1;
 }
 
 // What messages call the human where they show it (MIP-4, section 10): `who` and the framing of
@@ -1260,6 +1283,8 @@ message Settings {
   optional bool name_sessions = 7;
   // Since 1.3. Absent: the human is shown by the address alone.
   optional string human_name = 8;
+  // Since 1.3. Absent: no agent is compacted unasked.
+  optional float compact_at = 9;
 }
 
 // ---------------------------------------------------------------------------------------------

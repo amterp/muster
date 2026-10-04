@@ -2652,6 +2652,7 @@ pub(crate) struct Beside {
 /// The intent alone cannot say which pane that was: it names a pane on the machine it goes to,
 /// or none at all when that machine is joining the tab. The new pane takes its text size from
 /// the pane that was split, and a machine joining the tab goes on the side asked for.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn submit_from(
     window: WindowId,
     daemon: &DaemonId,
@@ -2684,6 +2685,7 @@ pub(crate) fn submit_from(
             BackendIntent::CreateTab { .. }
             | BackendIntent::JoinTab { .. }
             | BackendIntent::RenamePane { .. }
+            | BackendIntent::CompactPane { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SwapPanes { .. }
             | BackendIntent::MovePane { .. } => None,

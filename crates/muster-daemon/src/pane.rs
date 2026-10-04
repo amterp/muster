@@ -24,6 +24,7 @@ use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
 
+use crate::compaction::Compaction;
 use crate::detect::{self, Detecting, Detection};
 use crate::effects::{self, Happened, Reported, Reports};
 use crate::hold::{Hold, Leaving};
@@ -618,6 +619,10 @@ pub(crate) struct Pane {
     /// that agent leaves the pane. A wake reaches the session by it, through the command the
     /// agent's manifest names (`messages::command`).
     pub(crate) session_id: Option<String>,
+    /// A compaction of its agent's context still to be typed, and where that context stands
+    /// against `compact_at`. Not handed over: a daemon that took the pane over hears the
+    /// context again from its next report.
+    pub(crate) compaction: Compaction,
 }
 
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
@@ -800,6 +805,7 @@ impl Pane {
             adopted: !child && process.is_some(),
             turns: watching.turns,
             session_name: SessionName::default(),
+            compaction: Compaction::default(),
             session_id: None,
         })
     }

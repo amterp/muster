@@ -145,6 +145,28 @@ pane holds more than a read can reach.
 How far back the window goes is the daemon's limit rather than a promise made here; see
 `muster docs limits`.
 
+## Compacting an agent
+
+An agent near the end of its context can be compacted before it runs out, with what its summary
+should keep:
+
+    muster pane compact --pane p1w3r0ab2n keep the parser notes and the failing test
+
+The daemon types the harness's own compact command at the agent's prompt - `/compact keep the
+parser notes and the failing test` for Claude Code - once the agent is idle and its prompt is
+empty, under the rules a message's ring is typed by, and never while it works. So an agent can
+compact itself: `muster pane compact` from inside its own pane, with no `--pane`, runs once its
+turn ends. Exit 0 says the daemon will type it, not that it has. A second compaction asked for
+before the first is typed replaces it.
+
+What follows the command is a focus, one line, for a harness that takes one. A harness that gives
+no way to compact it from its prompt, or takes no focus when given one, is refused with the reason
+(`muster docs harnesses` has which), and so is a pane running no agent.
+
+With `compact_at = 80` in the config file, Muster also compacts an agent once it reports its
+context 80% full, once each time it crosses that line. It is off unless the file says so
+(`docs/configuration.md`). `pane wait --context`, above, is the way to choose the moment yourself.
+
 ## Rearranging what you made
 
 Three `pane new --down` in a row give a column of four, which is rarely what somebody asking for a

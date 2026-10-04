@@ -85,6 +85,7 @@ message Request {
     ClaimApp claim_app = 65;
     AdoptOldState adopt_old_state = 66;
     AskToCloseWindow ask_to_close_window = 67;
+    CompactPane compact_pane = 68;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -283,6 +284,24 @@ message RenamePane {
   // than an absent field because a name nobody could have typed - the empty one - is not a
   // state worth being able to ask for, and one spelling for "no name" is fewer than two.
   string name = 3;
+}
+
+// Compacts the context of the agent in a pane, by typing its harness's compact command at its
+// prompt once it is idle and the prompt is empty - never while it works, so a compaction asked
+// for mid-turn, by the agent itself included, runs once the turn ends.
+//
+// Answered once the pane's daemon has taken it to type, which may be long before it is typed.
+// Refused, saying why, when the pane runs no agent or its harness gives no way to compact it
+// from its prompt (`muster docs harnesses`).
+message CompactPane {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on.
+  string pane_id = 2;
+
+  // What the compaction should keep, for a harness that takes it, as Claude Code's `/compact`
+  // does. One line. Empty compacts without one.
+  string focus = 3;
 }
 
 // Closes a tab, and every pane in it.

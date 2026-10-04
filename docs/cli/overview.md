@@ -156,9 +156,9 @@ pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to 
 
 ## With no window
 
-Four verbs work with no window at all: `muster window` (and `window --watch`), `pane read`, `pane
-send` and `pane wait`. What agents are doing and what a pane printed are the daemon's to know, and
-a window only relays them, so when no window answers these ask the daemon holding the panes: the
+Five verbs work with no window at all: `muster window` (and `window --watch`), `pane read`, `pane
+send`, `pane wait` and `pane compact`. What agents are doing and what a pane printed are the
+daemon's to know, and the daemon is what types a compaction, so a window only relays them, so when no window answers these ask the daemon holding the panes: the
 one `$MUSTER_DAEMON_SOCKET` names, which every pane has, and otherwise this install's. That is
 what makes them work on an SSH devenv nothing forwards a window to, and in a pane whose window has
 quit. They answer as a window would: the same text, the same `--json`, the same exit codes, the

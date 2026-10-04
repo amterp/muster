@@ -21,11 +21,11 @@ use std::time::Duration;
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_proto::{
-    AdjustFontSize, ArrangePane, ClosePane, CloseTab, CreateTab, EqualizePanes, FocusAsking,
-    FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative, MoveTab,
-    OpenTranscript, ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane,
-    RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar, WatchPanes, ZoomPane,
-    request,
+    AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
+    FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
+    MoveTab, OpenTranscript, ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig,
+    RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar, WatchPanes,
+    ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -199,9 +199,9 @@ struct Cli {
 
     /// Ask this machine's daemon instead of a window, as happens when none answers
     //
-    // For `window`, `pane read`, `pane send` and `pane wait`, the verbs a daemon can answer on
-    // its own. Forcing the window needs no flag of its own: `--socket` names one, and a named
-    // window that is not there is refused rather than passed over.
+    // For `window`, `pane read`, `pane send`, `pane wait` and `pane compact`, the verbs a daemon
+    // can answer on its own. Forcing the window needs no flag of its own: `--socket` names one,
+    // and a named window that is not there is refused rather than passed over.
     #[arg(long, global = true, conflicts_with = "socket", display_order = 102)]
     no_window: bool,
 
@@ -518,6 +518,21 @@ enum Doing {
         /// What to call it, joined with spaces if it arrives in pieces
         #[arg(required = true, value_name = "NAME")]
         name: Vec<String>,
+    },
+
+    /// Compact the context of a pane's agent, once it is idle at an empty prompt
+    //
+    // Never typed while the agent works, so an agent compacting itself is compacted once its
+    // turn ends. The daemon types it, under the rules it rings an agent by.
+    Compact {
+        /// The pane whose agent to compact, or the one this is running in
+        #[arg(long, value_name = "REF")]
+        pane: Option<String>,
+
+        /// What the summary should keep, joined with spaces if it arrives in pieces, where the
+        /// harness takes one
+        #[arg(value_name = "FOCUS")]
+        focus: Vec<String>,
     },
 
     /// Type text into a pane, whether or not anything is showing it
@@ -1028,6 +1043,7 @@ fn pane(
             name: name.join(" "),
             ..RenamePane::default()
         })),
+        Doing::Compact { pane, focus } => compact(pane.as_ref(), focus, environment),
         Doing::Send { pane, enter, confirm, file, text } => {
             // Only a hyphen standing alone reads stdin. One inside a sentence is text, so
             // `muster pane send a - b` still means what it says.
@@ -1125,6 +1141,19 @@ fn pane(
             }))
         }
     })
+}
+
+/// A `pane compact`, about the pane named or the one this runs in.
+fn compact(
+    pane: Option<&String>,
+    focus: &[String],
+    environment: &BTreeMap<String, String>,
+) -> Asking {
+    send(request::Payload::CompactPane(CompactPane {
+        pane_id: pane_ref(pane, environment),
+        focus: focus.join(" "),
+        ..CompactPane::default()
+    }))
 }
 
 /// A `pane wait`: a watch that ends when a named pane gets somewhere, or when the caller's

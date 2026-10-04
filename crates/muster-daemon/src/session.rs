@@ -684,6 +684,10 @@ impl Restoring {
 /// mount that has hung never answers, and would otherwise hold every tab after it back.
 const DIRECTORY_PATIENCE: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// The longest focus typed after an agent's compact command: a line for the summary to keep,
+/// not a brief.
+const FOCUS_BYTES: usize = 512;
+
 /// Whether each of `paths` is a directory, asked by `probe` on a thread per path, all at once
 /// and given `within` between them: N panes on a hung mount cost `within`, not N times it. None
 /// for a path that did not answer in time; its thread is left waiting, one per such directory.
@@ -955,6 +959,7 @@ impl Session {
                 S::SetScrollMultiplier(set) => self.set_scroll_multiplier(set.multiplier),
                 S::SetNameSessions(set) => self.set_name_sessions(set.name),
                 S::SetHumanName(set) => self.set_human_name(set.name),
+                S::SetCompactAt(set) => self.set_compact_at(set.percent),
                 S::ReadGrids(_) => self.grids(),
                 S::FollowLog(follow) => self.follow_log(asker, follow.after),
                 S::Replace(replace) => return self.replace(replace),
@@ -978,6 +983,7 @@ impl Session {
                 P::Rename(rename) => self.rename_pane(rename),
                 P::Report(report) => self.report(report),
                 P::Seen(seen) => self.seen(&seen.panes),
+                P::Compact(compact) => self.compact(&compact),
                 P::Read(read) => match self.pane_index(&read.pane) {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
                     Some(index) => {
@@ -1444,6 +1450,7 @@ impl Session {
             return Reply::refused(why);
         }
         let cleared = report.clear;
+        let context_used = report.context_used;
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
         let record = &mut self.panes[index].record;
         let facts = match facts::apply(record.facts.as_ref(), report) {
@@ -1474,6 +1481,7 @@ impl Session {
         }
         let renamed = self.session_named(index, cleared, &agent, session_name.as_deref());
         let identified = self.session_identified(index, &agent, session_id);
+        let compacting = self.past_compact_at(index, cleared, context_used);
         let pane = &mut self.panes[index];
         if says_waiting {
             pane.turns.wait_declared = true;
@@ -1502,11 +1510,47 @@ impl Session {
             return Reply::done();
         }
         // Said again, a wait outlasts one more turn, which is a change even in the same words.
-        if facts_changed || says_waiting || renamed || identified {
+        if facts_changed || says_waiting || renamed || identified || compacting {
             Reply::done()
         } else {
             Reply::already()
         }
+    }
+
+    /// What a report of the context says against `compact_at` ([`crate::compaction`]); true when
+    /// it crossed it and a compaction is now to be typed, which the doorbell is told of.
+    fn past_compact_at(&mut self, index: usize, cleared: bool, context_used: Option<f32>) -> bool {
+        let threshold = self.settings.compact_at;
+        let manifests = self.detecting.manifests();
+        let pane = &mut self.panes[index];
+        if cleared {
+            pane.compaction.cleared();
+        }
+        let Some(used) = context_used else { return false };
+        if !pane.compaction.reported(used, threshold) {
+            return false;
+        }
+        let agent = pane.record.agent.clone().unwrap_or_default();
+        let line = manifests.and_then(|manifests| {
+            manifests.session_compact(&muster_detect::Agent::new(&agent), None)?.ok()
+        });
+        let Some(line) = line else {
+            log::debug(
+                "daemon.compact.cannot",
+                fields! {
+                    "pane" => pane.record.pane,
+                    "agent" => agent,
+                    "why" => "its manifest says no way to compact it",
+                },
+            );
+            return false;
+        };
+        log::info(
+            "daemon.compact.past_threshold",
+            fields! { "pane" => pane.record.pane, "agent" => agent, "context_used" => used },
+        );
+        pane.compaction.crossed(line);
+        pane.compaction.wanted().is_some()
     }
 
     /// Forgets the session id a pane's agent reported, if it is still `id`: a wake the command
@@ -1662,6 +1706,7 @@ impl Session {
                     record.facts = None;
                     pane.turns.reports_turns = false;
                     pane.session_id = None;
+                    pane.compaction.cleared();
                 }
                 if replaced || (record.agent.is_none() && agent.is_some()) {
                     pane.session_name.agent_changed(&name, replaced, record.label.as_deref());
@@ -1967,6 +2012,28 @@ impl Session {
         self.settings_changed()
     }
 
+    /// How full an agent's context gets before it is compacted unasked. None turns it off, and
+    /// takes back every compaction it asked for that is not typed yet.
+    fn set_compact_at(&mut self, percent: Option<f32>) -> Reply {
+        if let Some(percent) = percent
+            && !(percent > 0.0 && percent <= 100.0)
+        {
+            return Reply::refused(format!(
+                "compact_at is {percent}, and a context is above 0 and at most 100 percent full"
+            ));
+        }
+        if self.settings.compact_at.map(f32::to_bits) == percent.map(f32::to_bits) {
+            return Reply::already();
+        }
+        self.settings.compact_at = percent;
+        if percent.is_none() {
+            for pane in &mut self.panes {
+                pane.compaction.threshold_off();
+            }
+        }
+        self.settings_changed()
+    }
+
     /// An empty name is none: the human is shown by the address alone.
     fn set_human_name(&mut self, name: Option<String>) -> Reply {
         let name = name.filter(|name| !name.is_empty());
@@ -1980,6 +2047,73 @@ impl Session {
     /// What messages call the human (`SetHumanName`), if anything does.
     pub(crate) fn human_name(&self) -> Option<&str> {
         self.settings.human_name.as_deref()
+    }
+
+    /// Asks for the agent in a pane to be compacted, at its next idle, empty prompt.
+    fn compact(&mut self, compact: &pane_request::Compact) -> Reply {
+        let Some(index) = self.pane_index(&compact.pane) else {
+            return Reply::not_there(format!("no pane {} on this daemon", compact.pane));
+        };
+        let pane = &self.panes[index];
+        let Some(agent) = pane.record.agent.clone() else {
+            return Reply::refused(format!(
+                "pane {} runs no agent Muster recognizes, so there is no context to compact",
+                compact.pane
+            ));
+        };
+        let focus = compact.focus.as_deref().map(str::trim).filter(|focus| !focus.is_empty());
+        if let Some(focus) = focus {
+            if focus.chars().any(char::is_control) {
+                return Reply::refused(
+                    "a focus is typed at the agent's prompt as one line, so it cannot hold a \
+                     newline or any other control character",
+                );
+            }
+            if focus.len() > FOCUS_BYTES {
+                return Reply::refused(format!(
+                    "a focus is at most {FOCUS_BYTES} bytes, and this one is {}; a longer brief \
+                     belongs in a message (`muster msg post`)",
+                    focus.len()
+                ));
+            }
+        }
+        let Some(manifests) = self.detecting.manifests() else {
+            return Reply::refused(
+                "this daemon has not loaded its agents' manifests yet, so it cannot say how to \
+                 compact one; ask again in a moment",
+            );
+        };
+        let line = match manifests.session_compact(&muster_detect::Agent::new(&agent), focus) {
+            None => {
+                return Reply::refused(format!(
+                    "{agent} gives Muster no way to compact it from its prompt, so pane {} is \
+                     left as it is; `muster docs harnesses` says which harnesses can be",
+                    compact.pane
+                ));
+            }
+            Some(Err(why)) => return Reply::refused(why),
+            Some(Ok(line)) => line,
+        };
+        log::info(
+            "daemon.compact.asked",
+            fields! { "pane" => compact.pane, "agent" => agent, "focused" => focus.is_some() },
+        );
+        self.panes[index].compaction.ask(line);
+        Reply::done()
+    }
+
+    /// Whether any line is still to be typed at an agent's prompt - a pane's name for its
+    /// session, or a compaction - which keeps the doorbell's thread looking.
+    pub(crate) fn wants_typing(&self) -> bool {
+        self.wants_session_names()
+            || self.panes.iter().any(|pane| pane.compaction.wanted().is_some())
+    }
+
+    /// A compaction was typed into the agent in `pane` and taken, or typing it was given up.
+    pub(crate) fn compaction_typed(&mut self, pane: &str, line: &str) {
+        if let Some(index) = self.pane_index(pane) {
+            self.panes[index].compaction.typed(line);
+        }
     }
 
     /// Whether a pane's name is typed into its agent's session (`SetNameSessions`).

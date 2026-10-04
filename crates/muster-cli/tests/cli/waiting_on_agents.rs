@@ -38,6 +38,7 @@ fn a_caller_can_wait_on_an_agent_instead_of_polling() {
     open.daemon.run_agent(&open.pane);
 
     a_wait_on_a_context_never_said_says_so(&open);
+    a_compaction_reaches_the_agent_through_the_window(&open);
     a_watch_prints_each_change_as_it_happens(&open);
     a_wait_exits_when_the_agent_finishes(&open);
     a_layout_watch_draws_again_when_the_arrangement_moves(&open);
@@ -149,6 +150,21 @@ fn a_wait_on_a_context_never_said_says_so(open: &Open) {
     assert!(
         complaint.contains(&format!("{} has not said how full its context is", open.pane)),
         "{complaint}"
+    );
+}
+
+/// `pane compact` reaches the pane's daemon, which types the compaction at the agent's prompt.
+fn a_compaction_reaches_the_agent_through_the_window(open: &Open) {
+    let ran = muster(open, &["pane", "compact", "--pane", &open.pane, "keep", "the", "notes"]);
+    assert_eq!(ran.status.code(), Some(0), "{}", String::from_utf8_lossy(&ran.stderr));
+    let heard = open.daemon.root().join("home/fake-agent-heard");
+    until(
+        "the agent to read the compaction",
+        || {
+            std::fs::read_to_string(&heard)
+                .is_ok_and(|read| read.contains("/compact keep the notes"))
+        },
+        || std::fs::read_to_string(&heard).unwrap_or_default(),
     );
 }
 

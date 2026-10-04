@@ -8,6 +8,7 @@ mod claude_code_hooks;
 mod claude_code_inbox;
 mod claude_code_live;
 mod codex_live;
+mod compactions;
 mod detection;
 mod devenv_terminfo;
 mod doorbell;

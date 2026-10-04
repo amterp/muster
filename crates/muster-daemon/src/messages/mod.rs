@@ -7,6 +7,7 @@
 
 mod carry;
 mod command;
+mod compacts;
 mod doorbell;
 mod inbox;
 pub(crate) mod peer;

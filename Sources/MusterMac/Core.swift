@@ -1305,6 +1305,7 @@ public enum Core {
     // The kind of request, never the name it carried. A name is text a person wrote about
     // their own work, and this line ends up in a file destined for a bug report.
     case .renamePane: return "rename_pane"
+    case .compactPane: return "compact_pane"
     case .renameTab: return "rename_tab"
     case .closeTab: return "close_tab"
     case .endNumberedChord: return "end_numbered_chord"

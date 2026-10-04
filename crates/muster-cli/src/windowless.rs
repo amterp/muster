@@ -38,6 +38,7 @@ pub fn can_answer(request: &Request) -> bool {
                 | request::Payload::ReadPane(_)
                 | request::Payload::SendToPane(_)
                 | request::Payload::WatchPanes(_)
+                | request::Payload::CompactPane(_)
         )
     )
 }
@@ -82,6 +83,10 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         Some(request::Payload::SendToPane(send)) => {
             let pane = named(&send.pane_id, "sent")?;
             respond(send_to_pane(&socket, pane, send))
+        }
+        Some(request::Payload::CompactPane(compact)) => {
+            let pane = named(&compact.pane_id, "compacted")?;
+            respond(compact_pane(&socket, pane, &compact.focus)?)
         }
         _ => Err(Trouble::Refused(
             "this asks something only a window can answer, and no window answered. That is a bug \
@@ -231,6 +236,30 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
         Ok(()) => Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) },
         Err(refusal) => failure(refusal),
     }
+}
+
+/// Asks the daemon to compact the agent in a pane, as the window asks it.
+fn compact_pane(socket: &Path, pane: &str, focus: &str) -> Result<Response, Trouble> {
+    let focus = Some(focus.trim().to_string()).filter(|focus| !focus.is_empty());
+    let answer = asked(
+        socket,
+        daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
+            request: Some(daemon_proto::pane_request::Request::Compact(
+                daemon_proto::pane_request::Compact { pane: pane.to_string(), focus },
+            )),
+        }),
+    )?;
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::Done | daemon_proto::Outcome::AlreadySo => {
+            Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) }
+        }
+        daemon_proto::Outcome::NotThere => failure(format!(
+            "the muster-daemon at {} holds no pane called {pane}, so nothing was compacted. \
+             `muster window` lists the panes this machine has.",
+            socket.display()
+        )),
+        _ => failure(answer.reason),
+    })
 }
 
 // ---------------------------------------------------------------------------------------------

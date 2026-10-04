@@ -281,6 +281,16 @@ impl Manifests {
         self.entry(agent)?.manifest.session_rename(name)
     }
 
+    /// The line that compacts the agent's session, keeping `focus`; none when its manifest does
+    /// not say how, and an error when it takes no focus and was given one.
+    pub fn session_compact(
+        &self,
+        agent: &Agent,
+        focus: Option<&str>,
+    ) -> Option<Result<String, String>> {
+        self.entry(agent)?.manifest.session_compact(focus)
+    }
+
     /// The command that hands the agent's session `session` the message `message`, typing
     /// nothing into its pane; none when its manifest names none.
     pub fn session_wake(&self, agent: &Agent, session: &str, message: &str) -> Option<Vec<String>> {

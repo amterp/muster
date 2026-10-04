@@ -43,6 +43,7 @@ use muster_detect::Agent;
 use muster_msg::{Activity, Presence, Ringable, Via, Wake};
 
 use super::command;
+use super::compacts::{self, Compacting};
 use super::presence::{Panes, Seen};
 use super::prompt::{self, AtPrompt};
 use super::renames::{self, Typing};
@@ -548,13 +549,14 @@ fn run(shared: &Weak<Shared>) {
     // What each watched pane's agent was doing when last looked at, to see it go idle.
     let mut before: HashMap<String, Option<Activity>> = HashMap::new();
     let mut typing = Typing::new();
+    let mut compacting = Compacting::new();
     let mut moving = Moving::new();
     // The first look is at once: a daemon that starts may already hold wakes to ring again.
     let mut sleep = Duration::ZERO;
     loop {
         std::thread::park_timeout(sleep);
         let Some(shared) = shared.upgrade() else { return };
-        sleep = look(&shared, &mut before, &mut typing, &mut moving);
+        sleep = look(&shared, &mut before, &mut typing, &mut compacting, &mut moving);
     }
 }
 
@@ -564,10 +566,11 @@ fn look(
     shared: &Arc<Shared>,
     before: &mut HashMap<String, Option<Activity>>,
     typing: &mut Typing,
+    compacting: &mut Compacting,
     moving: &mut Moving,
 ) -> Duration {
     let (quiet, handing_over) = standing(shared);
-    if quiet && typing.is_empty() && !shared.lock().wants_session_names() {
+    if quiet && typing.is_empty() && compacting.is_empty() && !shared.lock().wants_typing() {
         before.clear();
         return IDLE;
     }
@@ -581,6 +584,7 @@ fn look(
     moving.retain(|pane, _| panes.exists(pane));
     let busy = shared.messages().commanding.clone();
     renames::look(shared, &panes, &busy, Instant::now(), typing, moving, &mut next);
+    compacts::look(shared, &panes, &busy, Instant::now(), compacting, moving, &mut next);
     if quiet {
         before.clear();
         return until(next, false);

@@ -132,6 +132,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
 
     a_wait_ends_when_the_agent_gets_there(&here);
     a_wait_on_context_ends_when_the_agent_says_it(&here);
+    a_compaction_is_asked_of_the_daemon(&here);
     a_watch_prints_each_change(&here);
     a_wait_on_a_pane_that_closes_is_refused(&here);
     a_send_the_pane_never_shows_is_refused(&here);
@@ -214,6 +215,17 @@ fn a_wait_on_context_ends_when_the_agent_says_it(here: &Here) {
     );
     // `done`: the wait before this one left a finish nobody has looked at.
     assert_eq!(ok(&wait.wait_with_output().unwrap()), "p2  done  85% context");
+}
+
+/// With no window, `pane compact` asks the daemon, and a shell, which has no context, is refused.
+fn a_compaction_is_asked_of_the_daemon(here: &Here) {
+    ok(&here.muster(&["pane", "compact", "--pane", "p3"]));
+    let heard = here.daemon.root().join("home/fake-agent-heard");
+    until_some("the agent in p3 to read the compaction", || {
+        std::fs::read_to_string(&heard).ok()?.lines().any(|line| line == "/compact").then_some(())
+    });
+    let refused = refused_with(&here.muster(&["pane", "compact", "--pane", "p1"]), 1);
+    assert!(refused.contains("runs no agent"), "{refused}");
 }
 
 /// `window --watch --json` says each pane as it stands, then each change.

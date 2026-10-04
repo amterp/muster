@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "daemon": "0.9.0",
+  "settings": {
+    "shell": {
+      "command": "/bin/zsh",
+      "mode": 2
+    },
+    "scrollback_bytes": 5000000,
+    "palette": {
+      "entries": [
+        1056816,
+        12599360
+      ],
+      "foreground": 14540253,
+      "background": 1118481,
+      "cursor": 16711935,
+      "scheme": 1
+    },
+    "clipboard_write": false,
+    "cursor": {
+      "style": 2,
+      "blink": false
+    },
+    "scroll_multiplier": 0.5,
+    "name_sessions": false,
+    "human_name": "Alex",
+    "compact_at": 80.0
+  },
+  "tabs": [
+    {
+      "tab": "t1",
+      "label": {
+        "text": "work",
+        "generation": 2
+      },
+      "zoomed": "p2",
+      "root": {
+        "split": {
+          "axis": "columns",
+          "ratio": 0.3,
+          "first": {
+            "pane": "p1"
+          },
+          "second": {
+            "pane": "p2"
+          }
+        }
+      }
+    },
+    {
+      "tab": "t2",
+      "label": {
+        "generation": 1
+      },
+      "root": {
+        "split": {
+          "axis": "rows",
+          "ratio": 0.6,
+          "first": {
+            "pane": "p3"
+          },
+          "second": {
+            "pane": "p4"
+          }
+        }
+      }
+    }
+  ],
+  "panes": [
+    {
+      "pane": "p1",
+      "label": "A",
+      "cwd": "/tmp",
+      "grid": {
+        "cols": 80,
+        "rows": 24,
+        "width_px": 800,
+        "height_px": 480
+      }
+    },
+    {
+      "pane": "p2",
+      "cwd": "/tmp",
+      "grid": {
+        "cols": 80,
+        "rows": 24,
+        "width_px": 800,
+        "height_px": 480
+      }
+    },
+    {
+      "pane": "p3",
+      "cwd": "/tmp",
+      "grid": {
+        "cols": 80,
+        "rows": 24,
+        "width_px": 800,
+        "height_px": 480
+      }
+    },
+    {
+      "pane": "p4",
+      "label": "B",
+      "cwd": "/tmp",
+      "grid": {
+        "cols": 80,
+        "rows": 24,
+        "width_px": 800,
+        "height_px": 480
+      }
+    }
+  ]
+}

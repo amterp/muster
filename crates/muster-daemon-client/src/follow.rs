@@ -575,6 +575,9 @@ fn send_settings(
     if previous.is_none_or(|previous| previous.name_sessions != settings.name_sessions) {
         sent.push(control.set_name_sessions(settings.name_sessions));
     }
+    if previous.is_none_or(|previous| previous.compact_at != settings.compact_at) {
+        sent.push(control.set_compact_at(settings.compact_at.map(f32::from)));
+    }
     if previous.is_none_or(|previous| previous.human_name != settings.human_name) {
         sent.push(control.set_human_name(human_name(settings)));
     }

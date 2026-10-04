@@ -172,6 +172,7 @@ alias of it (`claude-code` for `claude`), and `<id>` for the manifest id itself.
 | Pane named after the session | A session renamed in its harness renames the pane | The pane keeps the name it has | A statusline or hook calling `report --agent <id> --session-name` |
 | Session reference | Wakes the session through the harness's own command | - | Hooks calling `report --agent <id> --session-id` |
 | Woken by its own command | A wake to an idle agent runs a command that starts a turn in its session, typing nothing into its pane | It is rung | A manifest's `[session] wake` (detection engine 10), with the session reference |
+| Compacted when asked | `muster pane compact`, or `compact_at` past a reported context, types the harness's compact command at the agent's idle, empty prompt | A compaction is refused, and `compact_at` passes it by | A manifest's `[session] compact` (detection engine 11) |
 | Resume, compaction reported | Not yet used | - | To come (section 10) |
 
 The table in `muster docs harnesses` (section 5) says which harness has which.
@@ -184,8 +185,8 @@ The table in `muster docs harnesses` (section 5) says which harness has which.
   region of the screen, and the regions and gates a rule can use are detection's engine, which
   grows when a harness draws something no region reads: engine 7 adds `current_prompt` for
   Codex's composer. A manifest can also say what to type to rename the session, a `[session]`
-  table that engine 8 adds, and the command that wakes a session, `wake` in that table, which
-  engine 10 adds. So "data, not code" means data in a
+  table that engine 8 adds, the command that wakes a session, `wake` in that table, which
+  engine 10 adds, and the line that compacts it, `compact`, which engine 11 adds. So "data, not code" means data in a
   vocabulary the engine extends, with each extension behind an engine version.
 - **`extras/<harness>/`**: what runs inside the harness - hooks, a statusline, the plugin and
   marketplace files that install them. Everything there calls only Muster's own verbs,
@@ -377,6 +378,18 @@ two forms:
   from its next report, as a first report; a harness without a statusline has the pane's name
   typed once more, which `/rename` takes as it took it the first time.
 
+The fifth, compaction asked for, is built as a manifest table alone, `[session] compact`
+(detection engine 11): `"/compact {focus}"` for Claude Code, with `{focus}` where the harness
+takes what the summary should keep, and a focus given to a harness whose line has no `{focus}`
+refused rather than dropped. `muster pane compact` asks for it, and so does `compact_at` in
+Muster's config once an agent's reported context crosses it, once per crossing, handed to the
+daemon as a setting. The doorbell's thread types it under a rename's rules - idle, empty prompt,
+never at work - so it does not depend on what a harness does with a line typed mid-turn, and a
+second look takes it once the prompt is empty again or the agent has gone to work on it
+(`crates/muster-daemon/src/messages/compacts.rs`, `docs/observations/claude-code-2.1.289.md`).
+Codex and OpenCode have a `/compact`, and neither manifest says so until it is recorded working
+as typed. Compaction *reported*, the harness saying it compacted, is still to come.
+
 ### 11. OpenCode's adapter
 
 OpenCode is the third harness, measured at 1.18.34 (`docs/observations/opencode-1.18.34.md`): the
@@ -516,3 +529,5 @@ harness that allows less must not break anything.
   as section 10 described, and when the command beats the doorbell decided from measurements.
 - 2026-10-04 `extras/opencode`, a plugin reporting OpenCode's state, context and session id
   (section 11).
+- 2026-10-04 Compaction asked for (section 10): `[session] compact` behind engine 11, `muster
+  pane compact`, and `compact_at`.

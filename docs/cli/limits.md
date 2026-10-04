@@ -6,7 +6,7 @@
 quit and the same Muster is running again - relaunched - `muster` asks the new app instead, on
 this machine and on an SSH machine alike, and the app answers from whichever window holds the
 pane. With no app running at all, the pane's own daemon answers what it can in the window's
-place: `muster window`, `pane read`, `pane send` and `pane wait` work on that
+place: `muster window`, `pane read`, `pane send`, `pane wait` and `pane compact` work on that
 machine's own panes (`muster docs overview`, "With no window"), and everything else waits for a
 window.
 

@@ -1050,7 +1050,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, human_name, font, colors, cursor, shell, notifications."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, compact_at, human_name, font, colors, cursor, shell, notifications."
       }
     },
     {
@@ -1463,6 +1463,48 @@
       },
       "expect": {
         "refused": "`name_sessions` in the config file is a string, and it has to be true or false. None of the file was applied."
+      }
+    },
+    {
+      "name": "an agent can be compacted once its context is so full",
+      "why": "Off unless the file asks, because compacting types into somebody's agent unasked. A whole percent, as `muster window` shows context, and a root key, since the subject has one answer.",
+      "given": {
+        "file": [
+          "compact_at = 80"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "compact_at=80"
+        ]
+      }
+    },
+    {
+      "name": "compacting is past a percent an agent can reach",
+      "why": "Zero would compact every agent the moment it says anything, and more than 100 none ever, so either is a mistake rather than a setting.",
+      "given": {
+        "file": [
+          "compact_at = 0"
+        ]
+      },
+      "expect": {
+        "refused": "`compact_at` in the config file is 0, and it has to be a whole percent from 1 to 100: how full an agent's context gets before Muster compacts it. None of the file was applied. Leave it out to compact nothing unasked."
+      }
+    },
+    {
+      "name": "compacting is a whole percent",
+      "why": "A string such as \"80%\" is the likely mistake, and reading it would mean guessing what else a string could say.",
+      "given": {
+        "file": [
+          "compact_at = \"80%\""
+        ]
+      },
+      "expect": {
+        "refused": "`compact_at` in the config file is a string, and it has to be a whole percent from 1 to 100: how full an agent's context gets before Muster compacts it. None of the file was applied. Leave it out to compact nothing unasked."
       }
     },
     {

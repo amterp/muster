@@ -91,6 +91,7 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
         Payload::ZoomPane(zoom) => pane(&zoom.pane_id),
         Payload::ResizePane(resize) => pane(&resize.pane_id),
         Payload::RenamePane(rename) => pane(&rename.pane_id),
+        Payload::CompactPane(compact) => pane(&compact.pane_id),
         Payload::SendToPane(send) => pane(&send.pane_id),
         Payload::ReattachPane(reattach) => pane(&reattach.pane_id),
         Payload::EqualizePanes(even) => pane(&even.pane_id),

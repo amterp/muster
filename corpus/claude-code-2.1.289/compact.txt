@@ -1,0 +1,26 @@
+What Claude Code 2.1.289 does with `/compact <focus>` typed into its prompt box at idle.
+
+Recorded 2026-10-04 on macOS 26.4.1 / arm64, Claude Code 2.1.289 logged in to a Claude Max
+account, in a Muster pane (`muster tab new --run claude`). One model turn was taken first, so
+there was a conversation to compact:
+    muster pane send --pane P "Reply with the single word: pong"   then   " " --enter
+
+Idle at an empty prompt, one send holding a bracketed paste and its Return:
+    muster pane send --pane P "/compact keep the word pong" --enter
+
+Three seconds later the prompt box was empty and the session at work on it:
+    ✻ Compacting conversation… (2s · ↓ 163 tokens)
+
+    ────────────────────────────────────────────────────────────
+    ❯
+    ────────────────────────────────────────────────────────────
+      ... | Opus 5.5 high | ... | ░░░░░░░░░░ 6%
+
+Once it was idle again the screen had been cleared, and the transcript read:
+    ❯ Reply with the single word: pong
+    ⏺ pong
+    ✻ Cogitated for 4s · done 8:21 am
+    ❯ /compact keep the word pong
+      ⎿  Compacted (ctrl+o to see full summary)
+
+with the statusline's context gauge at 0% rather than 6%. No menu kept the Return.

@@ -771,11 +771,12 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 4] = [
+    const FIXTURES: [(&str, &[&str]); 5] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
         ("state-v1-human-name.json", &["human_name"]),
+        ("state-v1-compact-at.json", &["compact_at"]),
     ];
 
     fn fixture(name: &str) -> PathBuf {

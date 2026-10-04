@@ -243,6 +243,7 @@ fn described_split(split: &muster_proto::SplitPane) -> Value {
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn described_pane_or_window(payload: &request::Payload) -> Value {
     match payload {
         request::Payload::ReadWindow(read) => json!({
@@ -254,6 +255,12 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
             "rename_pane": fields([
                 ("pane_id", said(&rename.pane_id)),
                 ("name", Some(json!(rename.name))),
+            ])
+        }),
+        request::Payload::CompactPane(compact) => json!({
+            "compact_pane": fields([
+                ("pane_id", said(&compact.pane_id)),
+                ("focus", said(&compact.focus)),
             ])
         }),
         request::Payload::SendToPane(send) => json!({

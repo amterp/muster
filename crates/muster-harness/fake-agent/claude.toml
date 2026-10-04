@@ -9,13 +9,15 @@
 # claude session.
 
 id = "claude"
-version = "2026.10.04.1"
-min_engine_version = 10
+version = "2026.10.04.2"
+min_engine_version = 11
 
 # What renames a session, as Claude Code's own manifest says it: the fake writes down every line
 # it reads, so a test sees the rename typed.
 [session]
 rename = "/rename {name}"
+# What compacts a session, as Claude Code's own manifest says it, written down the same way.
+compact = "/compact {focus}"
 # What wakes a session without typing into its pane, as Codex's manifest names `codex queue`. It
 # runs only once a session id is reported: it writes down the id and the message and puts the
 # agent to work, as Codex starts the queued turn. A session called "gone" refuses it, as a missing

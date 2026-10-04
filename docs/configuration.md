@@ -23,6 +23,7 @@ scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
 hide_pointer_while_typing = true  # until the mouse moves; off by default, as in Ghostty
 clipboard_write = "deny"       # allow (the default) | deny: may a program set the clipboard
 name_sessions = false          # the default true: naming a pane names its agent's session
+compact_at = 80                # compact an agent once its context is this full; omit for never
 human_name = "Alex"            # what messages call you beside @human; omit for your login name
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
@@ -473,6 +474,15 @@ into their agents unasked. It stops only that direction: a session renamed in it
 renames the pane, since nothing is typed for that. The daemon is the one that types, so it is
 handed the answer as a setting, as `scrollback_bytes` is below.
 
+`compact_at` is how full, in percent, an agent's context gets before Muster compacts it unasked,
+by typing the harness's compact command at its prompt once it is idle and the prompt is empty, as
+`muster pane compact` does (`muster docs agents`). Once per crossing: an agent compacted at 85%
+is not compacted again on its next report at 86%, only after its context has fallen below the
+line and crossed it again. It acts on the context the harness's adapter reports, so an agent whose
+harness reports none is never compacted by it. Off unless the file says so, because it types into
+somebody's agent unasked. The daemon is the one that types, so it is handed the percent as a
+setting, as `name_sessions` is, and every daemon this window attaches gets it.
+
 `human_name` is what messages between agents call you where they show you: `muster msg who`, and
 the framing of `read` and `log`, which a transcript is. It goes beside your address rather than
 in place of it - `Alex (@human)` - because an agent reading the transcript has to know what to
@@ -569,7 +579,7 @@ drawn when it is unreachable or holds no panes, carries the same swatch.
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `hide_pointer_while_typing`, `clipboard_write`,
-`[notifications]`, `name_sessions`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
+`[notifications]`, `name_sessions`, `compact_at`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

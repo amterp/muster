@@ -40,6 +40,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(session_request::Request::ReadGrids(_)) => "session.read_grids",
             Some(session_request::Request::SetNameSessions(_)) => "session.set_name_sessions",
             Some(session_request::Request::SetHumanName(_)) => "session.set_human_name",
+            Some(session_request::Request::SetCompactAt(_)) => "session.set_compact_at",
             None => "session",
         },
         Service::Tab(asked) => match &asked.request {
@@ -59,6 +60,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Read(_)) => "pane.read",
             Some(pane_request::Request::Report(_)) => "pane.report",
             Some(pane_request::Request::Seen(_)) => "pane.seen",
+            Some(pane_request::Request::Compact(_)) => "pane.compact",
             None => "pane",
         },
         Service::Msg(asked) => match &asked.request {

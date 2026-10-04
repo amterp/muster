@@ -448,6 +448,39 @@ fn a_session_wake_fills_whole_arguments_and_needs_engine_ten() {
 }
 
 #[test]
+fn a_session_compact_takes_a_focus_only_where_it_says_and_needs_engine_eleven() {
+    let with = |engine: u32, compact: &str| {
+        format!("{}\n[session]\ncompact = {compact}\n", with_prompt(engine, "idle", "whole_recent"))
+    };
+    let focused = Manifest::parse(&with(11, "'/compact {focus}'")).unwrap();
+    assert_eq!(
+        focused.session_compact(Some(" keep the parser notes ")),
+        Some(Ok("/compact keep the parser notes".to_string()))
+    );
+    assert_eq!(
+        focused.session_compact(None),
+        Some(Ok("/compact".to_string())),
+        "no trailing space"
+    );
+
+    let plain = Manifest::parse(&with(11, "'/compact'")).unwrap();
+    assert_eq!(plain.session_compact(None), Some(Ok("/compact".to_string())));
+    assert_eq!(
+        plain.session_compact(Some("  ")),
+        Some(Ok("/compact".to_string())),
+        "blank is none"
+    );
+    let refused = plain.session_compact(Some("keep the notes")).unwrap().unwrap_err();
+    assert!(refused.contains("takes nothing to keep"), "{refused}");
+
+    assert!(Manifest::parse(&with(10, "'/compact'")).is_err(), "below engine 11");
+    assert!(Manifest::parse(&with(11, "' {focus} '")).is_err(), "types nothing");
+    assert!(Manifest::parse(&with(11, "\"/compact\\n\"")).is_err(), "with a newline");
+    let without = Manifest::parse(&with_prompt(11, "idle", "whole_recent")).unwrap();
+    assert_eq!(without.session_compact(None), None);
+}
+
+#[test]
 fn versions_compare_numerically_with_trailing_zeros_insignificant() {
     let v = |text| Version::parse(text).unwrap();
     assert!(v("2026.06.10.1") < v("2026.07.1"));
