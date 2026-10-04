@@ -92,7 +92,7 @@ fn the_last_rows_end_at_the_last_row_with_anything_on_it() {
 
     let more = last(&mut control, 1000);
     assert!(more.text.ends_with("marker\nprompt"), "as many as there are: {more:?}");
-    assert_eq!(more.first_row, 0);
+    assert_eq!(more.first_row, more.oldest_row, "from the oldest row `clear` left");
 }
 
 /// Rows `row0` to `row99`, printed by a pane's program.
@@ -135,8 +135,13 @@ fn erased_scrollback_is_gone_from_a_read() {
     let text = until_text(&mut control, "p1", "erased\n");
     assert!(!has_row(&text, "row0") && !has_row(&text, "row50"), "{text:?}");
     // What was printed after the erase, and the shell's prompt, may scroll a row or two back in.
-    let rows = read_text(&mut control, "p1", 0, 0).total_rows;
+    let read = read_text(&mut control, "p1", 0, 0);
+    let rows = read.total_rows - read.oldest_row;
     assert!(rows < 24 + 3, "the screen's rows and next to nothing else, not {rows}");
+    assert!(
+        read.oldest_row > 0 && read.text.starts_with(&format!("row{}\n", read.oldest_row)),
+        "rows keep the numbers they had before the erase: {read:?}"
+    );
 }
 
 /// A line longer than the pane is read as the rows it wrapped onto, since a read counts rows as
@@ -480,8 +485,9 @@ fn clear_screen_at_a_prompt_clears_everything_and_asks_the_shell_to_redraw() {
     clear_screen(&daemon, "p1");
 
     assert_eq!(bytes_in(&heard), b"\x0c", "the shell is asked to redraw its prompt");
-    let total = read_text(&mut control, "p1", 0, 0).total_rows;
-    assert!(total < 64, "the history before the clear is gone: {total} rows");
+    let read = read_text(&mut control, "p1", 0, 0);
+    let (total, held) = (read.total_rows, read.total_rows - read.oldest_row);
+    assert!(held < 64, "the history before the clear is gone: {held} rows");
     let screen = read_text(&mut control, "p1", total - 24, 0);
     assert!(!screen.text.contains("old"), "nothing old on the screen: {:?}", screen.text);
     surface.follow(&mut stream, "the cleared screen", true, |surface| surface.replays > 1);
@@ -510,7 +516,7 @@ fn clear_screen_away_from_a_prompt_keeps_the_cursor_row_and_tells_nobody() {
         (!text.text.contains("old")).then_some(text)
     });
     let text = read_text(&mut control, "p1", 0, 0);
-    assert_eq!(text.total_rows, 24, "no history is left");
+    assert_eq!(text.total_rows - text.oldest_row, 24, "no history is left");
     assert!(text.text.contains("here"), "the cursor's row stays: {:?}", text.text);
     // The program read for two seconds and heard nothing.
     until_some("the program to stop reading", || heard.exists().then_some(()));

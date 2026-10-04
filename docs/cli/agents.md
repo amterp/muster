@@ -140,7 +140,8 @@ forty rows it printed, which is what checking on somebody wants. It is a count a
 a quiet pane sitting at a prompt still answers with its last forty rows, not with the blank space
 under them. `--json` adds `rows` and `truncated` beside the text; `truncated` is how you learn
 there is history the read did not reach, whether because you asked for fewer rows or because the
-pane holds more than a read can reach.
+pane holds more than a read can reach. History the pane has already trimmed at its scrollback
+limit is gone for every read, and does not count.
 
 To collect what an agent reported when its turn ended, read the turn instead of guessing a
 count:

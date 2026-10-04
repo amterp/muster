@@ -164,6 +164,9 @@ pub(crate) struct Screen {
     bridge: Option<Bridge>,
     /// The size a kitty image still arriving had reached, and when it last grew.
     arriving: Option<(u64, Instant)>,
+    /// Rows trimmed off the top of the primary screen's history before this terminal held it:
+    /// by the daemons this pane was handed over from, whose replay began at their oldest row.
+    trimmed_before: u64,
 }
 
 impl std::fmt::Debug for Screen {
@@ -203,6 +206,7 @@ impl Screen {
             scroll_multiplier: settled.scroll_multiplier,
             bridge: None,
             arriving: None,
+            trimmed_before: 0,
         };
         screen.appear(&settled.appearance);
         Ok(screen)
@@ -366,27 +370,76 @@ impl Screen {
         self.terminal.resize(grid.cols, grid.rows, cell_pixels(grid))
     }
 
-    /// Up to `count` rows of text from `first`, counted from the oldest history still held, one
-    /// line per row, with the rows the pane holds in all.
-    pub(crate) fn rows(&self, first: u64, count: u32) -> (Vec<String>, u64) {
-        let total = self.terminal.total_rows() as u64;
-        let covered = total.saturating_sub(first).min(u64::from(count));
-        if covered == 0 {
-            return (Vec::new(), total);
+    /// Numbers the oldest row of a replay just fed as `oldest_row`, the number the daemon
+    /// handing the pane over gave it, so that rows keep their numbers. What this terminal
+    /// counted as trimmed while replaying - the blank screen it started with, which the replay's
+    /// reset discards - is taken off.
+    pub(crate) fn replayed_from(&mut self, oldest_row: u64) {
+        let replaying = match self.terminal.active_screen() {
+            muster_vt::Screen::Primary => self.terminal.rows_trimmed(),
+            muster_vt::Screen::Alternate => 0,
+        };
+        self.trimmed_before = oldest_row.saturating_sub(replaying);
+    }
+
+    /// What a daemon taking the pane over numbers the replay's first row of the primary screen
+    /// as. Rows this daemon trimmed from the primary screen while the alternate one shows are
+    /// not known here, so the numbering then starts again from where this daemon took over.
+    pub(crate) fn handed_over_oldest_row(&self) -> u64 {
+        match self.terminal.active_screen() {
+            muster_vt::Screen::Primary => self.oldest_row(),
+            muster_vt::Screen::Alternate => self.trimmed_before,
         }
-        let start = u32::try_from(first).unwrap_or(u32::MAX);
+    }
+
+    /// The number of the oldest row still held. Rows are numbered from the start of the pane's
+    /// history, so a row keeps its number as rows above it are trimmed, until a rewrap. The
+    /// alternate screen keeps no history, and numbers its rows on its own.
+    pub(crate) fn oldest_row(&self) -> u64 {
+        let before = match self.terminal.active_screen() {
+            muster_vt::Screen::Primary => self.trimmed_before,
+            muster_vt::Screen::Alternate => 0,
+        };
+        before + self.terminal.rows_trimmed()
+    }
+
+    /// The rows from `first` up to `first + count` that are still held, one line per row.
+    pub(crate) fn rows(&self, first: u64, count: u32) -> Held {
+        let oldest = self.oldest_row();
+        let end = oldest + self.terminal.total_rows() as u64;
+        let from = first.max(oldest);
+        let until = first.saturating_add(u64::from(count)).min(end);
+        let covered = until.saturating_sub(from);
+        if covered == 0 {
+            return Held { lines: Vec::new(), from, oldest, end };
+        }
+        let start = u32::try_from(from - oldest).unwrap_or(u32::MAX);
         let last = start.saturating_add(u32::try_from(covered - 1).unwrap_or(u32::MAX));
         let text = self.terminal.screen_text(start, last);
         // The formatter drops blank rows at the end of a range; a page keeps one line per row.
         let mut lines: Vec<String> =
             if text.is_empty() { Vec::new() } else { text.split('\n').map(String::from).collect() };
         lines.resize(usize::try_from(covered).unwrap_or(usize::MAX), String::new());
-        (lines, total)
+        Held { lines, from, oldest, end }
     }
 
     pub(crate) fn terminal(&self) -> &Terminal {
         &self.terminal
     }
+}
+
+/// Rows read from a pane's screen, numbered from the start of its history.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Held {
+    /// One line per row, from `from`.
+    pub(crate) lines: Vec<String>,
+    /// The row the lines start at: the one asked for, or the oldest row held when that one has
+    /// been trimmed.
+    pub(crate) from: u64,
+    /// The oldest row still held.
+    pub(crate) oldest: u64,
+    /// The row after the last one held.
+    pub(crate) end: u64,
 }
 
 /// What applying new settings came to.
@@ -405,24 +458,26 @@ pub(crate) const PAGE_BYTES: usize = 4 << 20;
 /// pane's output a batch at a time rather than for the whole page.
 const PAGE_BATCH: u32 = 256;
 
-/// The most rows a read of the last rows takes under one hold of the screen. Row numbers count
-/// from the oldest row held, so output that prunes the top between finding the last row and
-/// reading up to it would shift or empty the answer; a hold this short costs the pane's output
-/// well under a millisecond, where one across a 4 MiB read would not.
+/// The most rows a read of the last rows takes under one hold of the screen, so that output
+/// arriving between finding the last row and reading up to it cannot move the last row; a hold
+/// this short costs the pane's output well under a millisecond, where one across a 4 MiB read
+/// would not.
 pub(crate) const HELD_TAIL: u32 = 512;
 
-/// A page of text from `first_row`: `rows` of them, or to the last row when `rows` is zero,
-/// stopping short at `limit` bytes. `read` returns a batch's lines and the rows held in all.
+/// A page of text from `first_row`, or from the oldest row held when that one has been
+/// trimmed: `rows` of them, or to the last row when `rows` is zero, stopping short at `limit`
+/// bytes. `read` reads a batch.
 pub(crate) fn page(
     first_row: u64,
     rows: u32,
     limit: usize,
-    mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
+    mut read: impl FnMut(u64, u32) -> Held,
 ) -> proto::PaneText {
     let end = if rows == 0 { u64::MAX } else { first_row.saturating_add(u64::from(rows)) };
+    let probe = read(first_row, 0);
+    let (first_row, mut oldest_row, mut total_rows) = (probe.from, probe.oldest, probe.end);
     let mut text = String::new();
     let mut held: u32 = 0;
-    let mut total_rows = 0;
     let mut batch = PAGE_BATCH;
     loop {
         let next = first_row + u64::from(held);
@@ -430,9 +485,10 @@ pub(crate) fn page(
             break;
         }
         let count = u32::try_from(end - next).unwrap_or(u32::MAX).min(batch);
-        let (lines, total) = read(next, count);
-        total_rows = total;
-        if lines.is_empty() {
+        let Held { lines, from, oldest, end: total } = read(next, count);
+        (oldest_row, total_rows) = (oldest, total);
+        // Trimmed past `next` between two batches: the page ends where its rows stop running on.
+        if lines.is_empty() || from != next {
             break;
         }
         let joined = lines.join("\n");
@@ -460,7 +516,14 @@ pub(crate) fn page(
         text.push_str(&joined);
         held += u32::try_from(lines.len()).unwrap_or(u32::MAX);
     }
-    proto::PaneText { first_row, text, total_rows, rows: held, ..proto::PaneText::default() }
+    proto::PaneText {
+        first_row,
+        text,
+        total_rows,
+        rows: held,
+        oldest_row,
+        ..proto::PaneText::default()
+    }
 }
 
 /// The last `last` rows ending at the last row with anything on it, stopping short at `limit`
@@ -472,10 +535,10 @@ pub(crate) fn page(
 pub(crate) fn last_page(
     last: u32,
     limit: usize,
-    mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
+    mut read: impl FnMut(u64, u32) -> Held,
 ) -> proto::PaneText {
-    let (end, total_rows) = written_end(&mut read);
-    newest_back_to(end.saturating_sub(u64::from(last)), end, total_rows, limit, read)
+    let tail = written_end(&mut read);
+    newest_back_to(tail.written_end.saturating_sub(u64::from(last)), tail, limit, read)
 }
 
 /// The rows from `first` to the last row with anything on it, stopping short at `limit` bytes
@@ -483,41 +546,55 @@ pub(crate) fn last_page(
 pub(crate) fn since(
     first: u64,
     limit: usize,
-    mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
+    mut read: impl FnMut(u64, u32) -> Held,
 ) -> proto::PaneText {
-    let (end, total_rows) = written_end(&mut read);
-    newest_back_to(first.min(end), end, total_rows, limit, read)
+    let tail = written_end(&mut read);
+    newest_back_to(first.min(tail.written_end), tail, limit, read)
 }
 
-/// The row after the last one with anything on it, and the rows held in all.
-fn written_end(read: &mut impl FnMut(u64, u32) -> (Vec<String>, u64)) -> (u64, u64) {
-    let (_, total_rows) = read(0, 0);
-    let mut end = total_rows;
-    while end > 0 {
-        let from = end.saturating_sub(u64::from(PAGE_BATCH));
-        let (lines, _) = read(from, u32::try_from(end - from).unwrap_or(PAGE_BATCH));
-        if let Some(at) = lines.iter().rposition(|line| !line.trim().is_empty()) {
-            return (from + at as u64 + 1, total_rows);
+/// Where a pane's rows end, for a reader of its newest ones.
+#[derive(Debug, Clone, Copy)]
+struct Tail {
+    /// The row after the last one with anything on it.
+    written_end: u64,
+    /// The oldest row held.
+    oldest: u64,
+    /// The row after the last one held.
+    held_end: u64,
+}
+
+fn written_end(read: &mut impl FnMut(u64, u32) -> Held) -> Tail {
+    let probe = read(0, 0);
+    let tail = |written_end| Tail { written_end, oldest: probe.oldest, held_end: probe.end };
+    let mut end = probe.end;
+    while end > probe.oldest {
+        let from = end.saturating_sub(u64::from(PAGE_BATCH)).max(probe.oldest);
+        let batch = read(from, u32::try_from(end - from).unwrap_or(PAGE_BATCH));
+        if let Some(at) = batch.lines.iter().rposition(|line| !line.trim().is_empty()) {
+            return tail(batch.from + at as u64 + 1);
         }
         end = from;
     }
-    (0, total_rows)
+    tail(probe.oldest)
 }
 
-/// The rows from `oldest` up to `end`, read backwards so that `limit` cuts the oldest.
+/// The rows from `first` up to the written end, read backwards so that `limit` cuts the oldest.
 fn newest_back_to(
-    oldest: u64,
-    end: u64,
-    total_rows: u64,
+    first: u64,
+    tail: Tail,
     limit: usize,
-    mut read: impl FnMut(u64, u32) -> (Vec<String>, u64),
+    mut read: impl FnMut(u64, u32) -> Held,
 ) -> proto::PaneText {
+    let oldest = first.max(tail.oldest);
     let mut newest_first: Vec<String> = Vec::new();
     let mut bytes = 0;
-    let mut first_row = end;
+    let mut first_row = tail.written_end;
     'reading: while first_row > oldest {
         let from = first_row.saturating_sub(u64::from(PAGE_BATCH)).max(oldest);
-        let (lines, _) = read(from, u32::try_from(first_row - from).unwrap_or(PAGE_BATCH));
+        let lines = read(from, u32::try_from(first_row - from).unwrap_or(PAGE_BATCH)).lines;
+        if lines.is_empty() {
+            break;
+        }
         for line in lines.into_iter().rev() {
             let separator = usize::from(!newest_first.is_empty());
             if bytes + separator + line.len() > limit {
@@ -531,7 +608,14 @@ fn newest_back_to(
     newest_first.reverse();
     let rows = u32::try_from(newest_first.len()).unwrap_or(u32::MAX);
     let text = newest_first.join("\n");
-    proto::PaneText { first_row, text, total_rows, rows, ..proto::PaneText::default() }
+    proto::PaneText {
+        first_row,
+        text,
+        total_rows: tail.held_end,
+        rows,
+        oldest_row: tail.oldest,
+        ..proto::PaneText::default()
+    }
 }
 
 /// One cell's size in pixels, zero while no surface has said.
@@ -665,16 +749,39 @@ mod tests {
         let mut screen =
             Screen::new(grid, &settled(0, &proto::Settings::default())).expect("a terminal");
         screen.feed(b"a\r\n\r\n\r\nb");
-        assert_eq!(screen.rows(0, 3).0, ["a", "", ""]);
-        assert_eq!(screen.rows(1, 2).0, ["", ""]);
+        assert_eq!(screen.rows(0, 3).lines, ["a", "", ""]);
+        assert_eq!(screen.rows(1, 2).lines, ["", ""]);
     }
 
     /// A pane of `rows` rows, each `width` bytes, read the way a pane's screen is.
-    fn rows_of(width: usize, rows: u64) -> impl FnMut(u64, u32) -> (Vec<String>, u64) {
+    fn rows_of(width: usize, rows: u64) -> impl FnMut(u64, u32) -> Held {
+        held_from(width, 0, rows)
+    }
+
+    /// A pane holding rows `oldest` up to `end`, those above trimmed, each `width` bytes.
+    fn held_from(width: usize, oldest: u64, end: u64) -> impl FnMut(u64, u32) -> Held {
         move |first, count| {
-            let last = rows.min(first + u64::from(count));
-            ((first..last).map(|row| format!("{row:0width$}")).collect(), rows)
+            let from = first.max(oldest);
+            let until = end.min(first + u64::from(count)).max(from);
+            let lines = (from..until).map(|row| format!("{row:0width$}")).collect();
+            Held { lines, from, oldest, end }
         }
+    }
+
+    /// A row keeps its number as the rows above it are trimmed, and a read from a trimmed row
+    /// starts at the oldest still held.
+    #[test]
+    fn rows_are_numbered_from_the_start_of_history() {
+        let read = page(940, 3, PAGE_BYTES, held_from(9, 900, 1_000));
+        assert_eq!((read.first_row, read.text.as_str()), (940, "000000940\n000000941\n000000942"));
+        let trimmed = page(10, 2, PAGE_BYTES, held_from(9, 900, 1_000));
+        assert_eq!((trimmed.first_row, trimmed.rows, trimmed.oldest_row), (900, 0, 900));
+        let from_trimmed = page(899, 2, PAGE_BYTES, held_from(9, 900, 1_000));
+        assert_eq!((from_trimmed.first_row, from_trimmed.text.as_str()), (900, "000000900"));
+        let turn = since(850, PAGE_BYTES, held_from(9, 900, 1_000));
+        assert_eq!((turn.first_row, turn.rows, turn.total_rows), (900, 100, 1_000));
+        let newest = last_page(2, PAGE_BYTES, held_from(9, 900, 1_000));
+        assert_eq!((newest.first_row, newest.oldest_row), (998, 900));
     }
 
     #[test]

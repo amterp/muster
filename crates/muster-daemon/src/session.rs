@@ -515,6 +515,8 @@ pub(crate) struct Resuming<'a> {
     pub(crate) turns: Turns,
     pub(crate) session_id: Option<&'a str>,
     pub(crate) resume: Option<&'a persist::Resume>,
+    /// The number of the oldest row the replay holds.
+    pub(crate) oldest_row: u64,
 }
 
 pub(crate) struct HandedPane {
@@ -2784,6 +2786,7 @@ impl Session {
     ) -> Result<(), String> {
         let mut screen = Screen::new(grid, &self.settled).map_err(|error| error.to_string())?;
         drop(screen.output(replay));
+        screen.replayed_from(resuming.oldest_row);
         self.next_serial += 1;
         let watching = Watching {
             ended: &self.ended,

@@ -7,7 +7,8 @@
 
 use crate::PaneText;
 
-/// A pane's newest rows as one text, and whether the pane holds rows older than it.
+/// A pane's newest rows as one text, and whether the pane still holds rows older than it: rows
+/// trimmed off the top of its history are gone for every reader, and leave nothing out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Newest {
     pub text: String,
@@ -27,7 +28,7 @@ pub fn newest<E>(
     // buffer where 12000 do not.
     let first = read_page(0, rows)?;
     if answers_the_tail(&first, rows) {
-        return Ok(Newest { truncated: first.first_row > 0, text: first.text });
+        return Ok(Newest { truncated: first.first_row > first.oldest_row, text: first.text });
     }
     if reaches_the_end(&first) {
         return Ok(Newest { text: first.text, truncated: false });
@@ -64,13 +65,15 @@ pub fn turn<E>(read_turn: impl FnOnce() -> Result<PaneText, E>) -> Result<Option
 ///
 /// A daemon that predates reading from the end reads from the first row instead. It gives that
 /// away by sending more rows than were asked for, or, when its 4 MiB cut the page short of that,
-/// by starting at row 0 and ending far from the last row. A tail ends at the last row with
-/// anything on it, so at most a screen of blank rows short of the end.
+/// by starting at its oldest row and ending far from the last row. A tail ends at the last row
+/// with anything on it, so at most a screen of blank rows short of the end.
 fn answers_the_tail(page: &PaneText, rows: u32) -> bool {
     /// Taller than any screen, and far shorter than the rows a 4 MiB cut leaves out.
     const A_SCREEN: u64 = 1000;
     let ends = page.first_row + u64::from(page.rows);
-    rows > 0 && page.rows <= rows && (page.first_row > 0 || ends + A_SCREEN >= page.total_rows)
+    rows > 0
+        && page.rows <= rows
+        && (page.first_row > page.oldest_row || ends + A_SCREEN >= page.total_rows)
 }
 
 fn reaches_the_end(page: &PaneText) -> bool {
@@ -96,6 +99,34 @@ mod tests {
         assert!(!answers_the_tail(&page(0, 42_000, 100_000), 100_000));
         // And more rows than were asked for is an older daemon's whole answer.
         assert!(!answers_the_tail(&page(0, 300, 300), 20));
+    }
+
+    /// Rows trimmed off the top are gone for every reader, so a read that starts at the oldest
+    /// row still held left nothing out.
+    #[test]
+    fn rows_trimmed_off_the_top_leave_nothing_out() {
+        let read = newest(20, |_, _| {
+            Ok::<_, ()>(PaneText {
+                first_row: 500,
+                rows: 12,
+                total_rows: 512,
+                oldest_row: 500,
+                ..PaneText::default()
+            })
+        })
+        .unwrap();
+        assert!(!read.truncated);
+        let read = newest(5, |_, _| {
+            Ok::<_, ()>(PaneText {
+                first_row: 507,
+                rows: 5,
+                total_rows: 512,
+                oldest_row: 500,
+                ..PaneText::default()
+            })
+        })
+        .unwrap();
+        assert!(read.truncated, "rows 500 to 506 are still held");
     }
 
     #[test]

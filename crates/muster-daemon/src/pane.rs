@@ -164,12 +164,12 @@ pub(crate) struct PaneIo {
 /// What a pane's screen showed as its agent went to work, which a read of the turn starts after.
 #[derive(Debug)]
 struct TurnMark {
-    /// The row the screen's top was at, counted from the oldest row held.
+    /// The row the screen's top was at, numbered from the start of the pane's history.
     top: u64,
     /// The screen's rows then, from its top down.
     rows: Vec<String>,
     /// The history's last rows above the screen then, which nothing rewrites in place: rows
-    /// that read otherwise later have moved, trimmed off the top or rewrapped.
+    /// still held that read otherwise later have moved, rewrapped or erased.
     above: Vec<String>,
     /// The pane's width then; another rewraps every row.
     cols: u16,
@@ -182,8 +182,8 @@ const MARKED_ABOVE: u64 = 3;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TurnStart {
     pub(crate) row: u64,
-    /// The pane's rows have moved since the turn began - rewrapped by a change of width, trimmed
-    /// off the top of a full history, or erased - so the turn may begin above `row`.
+    /// The pane's rows have moved since the turn began - rewrapped by a change of width, or
+    /// erased - so the turn may begin above `row`. Rows trimmed off the top move nothing.
     pub(crate) moved: bool,
 }
 
@@ -284,12 +284,11 @@ impl PaneIo {
     /// Notes what the screen shows, as the pane's agent starts a turn.
     fn mark_turn(&self) {
         let screen = self.screen();
-        let top = screen.terminal().scrollback_rows() as u64;
-        let (_, total) = screen.rows(0, 0);
-        let (rows, _) =
-            screen.rows(top, u32::try_from(total.saturating_sub(top)).unwrap_or(u32::MAX));
-        let first_above = top.saturating_sub(MARKED_ABOVE);
-        let (above, _) = screen.rows(first_above, u32::try_from(top - first_above).unwrap_or(0));
+        let oldest = screen.oldest_row();
+        let top = oldest + screen.terminal().scrollback_rows() as u64;
+        let rows = screen.rows(top, u32::MAX).lines;
+        let first_above = top.saturating_sub(MARKED_ABOVE).max(oldest);
+        let above = screen.rows(first_above, u32::try_from(top - first_above).unwrap_or(0)).lines;
         drop(screen);
         let cols = self.grid().cols;
         *poison::lock(&self.turn, "daemon.pane.turn") = Some(TurnMark { top, rows, above, cols });
@@ -299,25 +298,32 @@ impl PaneIo {
     /// work, that no longer reads as it did then. What the screen already showed - the previous
     /// turn's end, the line that started this one - stays out, and a prompt the agent redrew in
     /// place with the turn's first lines does not. Rows that moved since - rewrapped to another
-    /// width, trimmed off the top of a full history - can put that row after the turn's real
-    /// start, which the answer then says. None before any turn.
+    /// width, or erased - can put that row after the turn's real start, which the answer then
+    /// says. Rows trimmed off the top keep the rest where they were: a turn whose first rows went
+    /// with them starts before the oldest row held, which is what says so. None before any turn.
     pub(crate) fn turn_start(&self) -> Option<TurnStart> {
         let turn = poison::lock(&self.turn, "daemon.pane.turn");
         let mark = turn.as_ref()?;
         let first_above = mark.top - mark.above.len() as u64;
         let screen = self.screen();
-        let (above, _) =
-            screen.rows(first_above, u32::try_from(mark.above.len()).unwrap_or(u32::MAX));
-        let (now, total) =
-            screen.rows(mark.top, u32::try_from(mark.rows.len()).unwrap_or(u32::MAX));
+        let above = screen.rows(first_above, u32::try_from(mark.above.len()).unwrap_or(u32::MAX));
+        let now = screen.rows(mark.top, u32::try_from(mark.rows.len()).unwrap_or(u32::MAX));
         drop(screen);
-        let moved = above != mark.above || self.grid().cols != mark.cols;
-        if mark.top >= total {
-            // The history was erased, or trimmed past where the turn began.
-            return Some(TurnStart { row: 0, moved: true });
+        let still_held = usize::try_from(above.from - first_above).unwrap_or(usize::MAX);
+        let moved = mark.above.get(still_held..).is_some_and(|then| then != above.lines)
+            || self.grid().cols != mark.cols;
+        if mark.top >= now.end {
+            // Erased, or rewrapped into fewer rows than the turn began at.
+            return Some(TurnStart { row: now.oldest, moved: true });
         }
-        let same = mark.rows.iter().zip(&now).take_while(|(then, now)| then == now).count();
-        Some(TurnStart { row: mark.top + same as u64, moved })
+        let trimmed = usize::try_from(now.from - mark.top).unwrap_or(usize::MAX);
+        let then = mark.rows.get(trimmed..).unwrap_or_default();
+        let same = then.iter().zip(&now.lines).take_while(|(then, now)| then == now).count();
+        if trimmed > 0 && same == 0 {
+            // The first row held reads otherwise, so the turn may have begun in the rows trimmed.
+            return Some(TurnStart { row: mark.top, moved });
+        }
+        Some(TurnStart { row: now.from + same as u64, moved })
     }
 
     fn take_self_report(&self) -> Option<(String, muster_detect::State)> {

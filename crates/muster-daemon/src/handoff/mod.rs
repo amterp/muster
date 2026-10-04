@@ -346,6 +346,7 @@ fn handed(
                 wait_declared: Some(pane.turns.wait_declared),
                 reports_turns: pane.turns.reports_turns,
                 session_id: pane.session_id.clone(),
+                oldest_row: pane.io.screen().handed_over_oldest_row(),
             })),
         )?;
         for piece in replay.chunks(PIECE) {
@@ -728,6 +729,7 @@ fn adopt_panes(
                 },
                 session_id: pane.session_id.as_deref(),
                 resume,
+                oldest_row: pane.oldest_row,
             },
         );
         if let Err(problem) = adopted {

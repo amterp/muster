@@ -171,3 +171,69 @@ fn a_turn_the_daemon_started_with_a_chore_keeps_the_turn_before_it() {
     daemon.until_agent("p1", proto::AgentState::Working);
     assert!(read_turn(&mut control).text.starts_with("the answer"), "the rename took the turn");
 }
+
+/// Lowers the pane's history to the least the scrollback setting allows, trimming its top at once.
+fn trim_history(control: &mut Control) {
+    let scrollback = proto::SetScrollback { bytes: Some(1) };
+    expect(
+        control,
+        session(proto::session_request::Request::SetScrollback(scrollback)),
+        proto::Outcome::Done,
+    );
+}
+
+/// Rows are numbered from the start of the pane's history, so a turn whose history is trimmed
+/// above it while it runs still starts where it did, with nothing said to have moved.
+#[test]
+fn a_turn_whose_history_is_trimmed_while_it_runs_still_starts_where_it_did() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    type_line(&daemon, "seq 1 20000");
+    until_text(&mut control, "p1", "19999\n20000\n");
+    daemon.run_agent("p1");
+    daemon.unblock_agent_unasked();
+    daemon.until_agent("p1", proto::AgentState::Working);
+    say(&daemon, &mut control, "first line of the report");
+    trim_history(&mut control);
+    say(&daemon, &mut control, "last line of the report");
+
+    let text = read_turn(&mut control);
+    let lines: Vec<&str> = text.text.lines().map(str::trim_end).collect();
+    assert_eq!(
+        lines,
+        ["first line of the report", "last line of the report", "PROBE-PROMPT>"],
+        "{text:?}"
+    );
+    assert!(text.oldest_row > 0, "the history was trimmed: {text:?}");
+    assert_eq!(text.turn, Some(text.first_row), "the page starts where the turn did");
+    assert!(!text.turn_moved, "trimming moves no row: {text:?}");
+}
+
+/// A row read by its number reads the same after the history above it is trimmed, and after a
+/// newer daemon takes the pane over.
+#[test]
+fn a_row_keeps_its_number_as_history_is_trimmed_and_across_a_handoff() {
+    let mut daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    type_line(&daemon, "seq 1 20000");
+    until_text(&mut control, "p1", "19999\n20000\n");
+    let before = read_text(&mut control, "p1", 0, 0);
+    let row = before.total_rows - 30;
+    let saved = read_text(&mut control, "p1", row, 2).text;
+
+    trim_history(&mut control);
+    let trimmed = read_text(&mut control, "p1", row, 2);
+    assert!(trimmed.oldest_row > 0, "the history was trimmed: {trimmed:?}");
+    assert_eq!(trimmed.text, saved, "row {row} after the trim");
+    let gone = read_text(&mut control, "p1", 0, 1);
+    assert_eq!(gone.first_row, gone.oldest_row, "a trimmed row reads from the oldest held");
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    let mut control = daemon.connect();
+    let handed = read_text(&mut control, "p1", row, 2);
+    assert_eq!(handed.text, saved, "row {row} after the handoff");
+    assert_eq!(handed.oldest_row, trimmed.oldest_row);
+}

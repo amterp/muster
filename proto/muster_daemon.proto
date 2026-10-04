@@ -1019,11 +1019,15 @@ message Snapshot {
 }
 
 message PaneText {
-  // The absolute row of the first line in `text`.
+  // The row of the first line in `text`. Since 1.3 rows are numbered from the start of the pane's
+  // history, so a row keeps its number as rows above it are trimmed, until a change of width
+  // rewraps them; before, from the oldest row the pane held. A read asked to start at a row
+  // already trimmed starts at `oldest_row`.
   uint64 first_row = 1;
   // One line per row, joined by newlines.
   string text = 2;
-  // Rows the pane holds in all, so a reader knows where the end is.
+  // The row after the last one the pane holds, so a reader knows where the end is: the rows it
+  // holds in all, before 1.3, when nothing above them was counted.
   uint64 total_rows = 3;
   // Rows in this page, which can be fewer than were asked for: the next page starts at
   // `first_row + rows`.
@@ -1032,9 +1036,12 @@ message PaneText {
   // was cut short at its top.
   optional uint64 turn = 5;
   // Since 1.3. For a read of the turn, the pane's rows have moved since the turn began - rewrapped
-  // to another width, or trimmed off the top of a full history - so the turn may begin above
-  // `turn`.
+  // to another width, or erased - so the turn may begin above `turn`. Rows trimmed off the top
+  // move nothing: a turn that began in them has a `turn` before `oldest_row`.
   bool turn_moved = 6;
+  // Since 1.3. The oldest row the pane still holds. Older daemons send 0, which was its number
+  // then.
+  uint64 oldest_row = 7;
 }
 
 message Event {
@@ -1641,6 +1648,9 @@ message Handoff {
     // say only as a session starts, so the new daemon could not learn it again for the life of
     // the session. Absent: none reported.
     optional string session_id = 8;
+    // Since 1.3. The number of the oldest row the pane holds, which the replay begins with, so
+    // the new daemon goes on numbering rows from the start of the pane's history.
+    uint64 oldest_row = 9;
   }
 
   // One pane's agent detection, as `muster-detect`'s detector holds it. Times are carried as

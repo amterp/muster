@@ -41,7 +41,8 @@ which is what a chord means and is a different tab whenever the keyboard is some
 up to 4 MiB of text: the most the daemon puts in one answer. A pane holding more comes back as its
 newest 4 MiB, and `truncated` in the `--json` answer is the only thing that says the oldest rows
 were left out. A caller that reads the text and not that flag will conclude it has seen the whole
-pane.
+pane. Rows the pane has already trimmed off the top of its history, at the scrollback limit
+(`scrollback_bytes`, 10 MB by default), are gone for every read and do not set `truncated`.
 
 `--rows N` is a count of rows the pane printed, counted back from the last row with anything on
 it, so the blank space under a quiet pane is not rows to it. The daemon counts them and sends only
@@ -52,16 +53,21 @@ at the cost of the history on the wire.
 ## `--turn` is placed by the screen, and says when rows have moved under it
 
 `--turn` starts at the first row that no longer reads as the screen did when the agent went to
-work. Row numbers count from the oldest row a pane holds, so they hold still until something moves
-the rows: a change of the pane's width rewraps them, and once its history reaches the scrollback
-limit (`scrollback_bytes`, 10 MB by default) each row trimmed from the top moves the rest up by
-one. Either can put the read's start after the turn's real one. The daemon notices both - the
-pane's width, and the history rows above the screen no longer reading as they did - and the read
-then comes back with `truncated` set, so a caller knows the top may be missing and can read
-`--rows` for more. A turn longer than 4 MiB comes back as its newest 4 MiB, `truncated` too.
+work. The daemon numbers a pane's rows from the start of its history, so a row keeps its number
+as the history above it is trimmed at the scrollback limit, erased, or cleared, and a long turn
+still starts where it did. Two things do move rows: a change of the pane's width rewraps them, and
+a clear of the screen that keeps its history takes rows out from under it. Either can put the
+read's start after the turn's real one. The daemon notices both - the pane's width, and the rows
+above the screen no longer reading as they did - and the read then comes back with `truncated`
+set, so a caller knows the top may be missing and can read `--rows` for more. So does a turn whose
+first rows were trimmed along with the history, and a turn longer than 4 MiB, which comes back as
+its newest 4 MiB.
 
-The daemon learns where a turn began as it sees the agent go to work, and keeps it in memory: a
-pane taken over by a newer Muster has no turn to read until its agent next goes to work, and a
+The numbering is carried to a newer Muster's daemon that takes the pane over, and starts again
+only where the pane's history does: after a daemon restart, or while a program holds the
+alternate screen, which keeps no history. The daemon learns where a turn began as it sees the
+agent go to work, and keeps it in memory: a pane taken over by a newer Muster has no turn to read
+until its agent next goes to work, and a
 daemon older than `--turn` refuses rather than answering with something else. So does a window
 older than it, which says to read with `--no-window` until it is updated.
 
