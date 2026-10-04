@@ -204,6 +204,16 @@ fn the_machines_are_named_well_enough_to_end_one(environment: &[(&str, String)])
     // running when the window opened, because the test started it.
     assert_eq!(machine["started_by_muster"], json!(false));
     assert_eq!(machine["host"], json!(""), "this daemon is on this machine");
+    // The color its swatch in the agent list is painted, so a script can match what a person
+    // sees. No `[[daemon]]` block names one here, so it is the color drawn from its name.
+    assert!(
+        machine["color"].as_str().is_some_and(|color| {
+            color.len() == 7
+                && color.starts_with('#')
+                && color[1..].chars().all(|digit| digit.is_ascii_hexdigit())
+        }),
+        "a machine says the color of its swatch: {machine}"
+    );
     assert!(
         machine["panes"].as_u64().is_some_and(|panes| panes > 0),
         "a machine holding panes should say how many: {machine}"

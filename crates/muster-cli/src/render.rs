@@ -703,7 +703,11 @@ fn daemon_lines(machine: &muster_proto::Machine) -> Vec<String> {
         (count, []) => format!("{count} panes"),
         (count, directories) => format!("{count} panes in {}", directories.join(", ")),
     };
-    lines.push(styled(&format!("  {where_it_runs} · {whose} · {holding}"), QUIET));
+    // The swatch's color as text rather than painted: what the CLI paints is the terminal's
+    // sixteen, and a hex triple is not one of them.
+    let color =
+        if machine.color.is_empty() { String::new() } else { format!(" · {}", machine.color) };
+    lines.push(styled(&format!("  {where_it_runs} · {whose} · {holding}{color}"), QUIET));
     lines.push(styled(&format!("  {}", machine.socket), QUIET));
     lines
 }
@@ -1053,6 +1057,7 @@ fn window_json(window: &Window, others: Others) -> Value {
                 "started_by_muster": daemon.started_by_muster,
                 "panes": daemon.panes,
                 "directories": daemon.directories,
+                "color": (!daemon.color.is_empty()).then_some(&daemon.color),
             })
         })
         .collect();

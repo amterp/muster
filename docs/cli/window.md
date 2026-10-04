@@ -12,7 +12,7 @@ out what it did.
         4  p1w3r0ef6y  waiting   8m  🤖 C · on the full gate  31% context  (hidden)
 
     local  connected
-      this machine · started by Muster · 4 panes in ~/src/muster
+      this machine · started by Muster · 4 panes in ~/src/muster · #4a90d9
       /Users/you/.muster/daemon/release.sock
 
 After a pane's label come what its agent says about itself and anything else worth a glance:
@@ -368,8 +368,12 @@ attached has none yet, and with nothing attached at all the plain answer says so
   today adopts a daemon started yesterday if it is still answering, so what is in it may
   predate the window.
 - `panes` and `directories` say how much it holds and where.
+- `color` is the color of the machine's swatch in the agent list, `#rrggbb`: its `[[daemon]]`
+  block's `color`, or the one Muster draws from its name. The plain answer prints it at the end
+  of the machine's second line, as text rather than painted, since the colors the CLI paints are
+  the terminal's sixteen. Null when no window answered, because only a window paints a swatch.
 
-The last three are here so that ending a daemon is a decision about what it holds rather than about
+The `started_by_muster`, `panes` and `directories` fields are here so that ending a daemon is a decision about what it holds rather than about
 its age. Age picks the wrong process: of twenty daemons measured on one machine, when Muster ran
 herdr, the one holding somebody's live agent was neither the oldest nor the youngest.
 

@@ -1579,6 +1579,11 @@ message Machine {
   // `connected`, `stale` or `disconnected`.
   string state = 7;
   string detail = 8;
+
+  // The color of the machine's swatch in the agent list, `#rrggbb`: its `[[daemon]]` block's
+  // `color`, or the one drawn from its name. Empty from a daemon answering with no window, which
+  // paints no swatch.
+  string color = 9;
 }
 
 // Every action Muster has, and the chord asking for it.

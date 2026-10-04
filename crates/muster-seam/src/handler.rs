@@ -1734,10 +1734,11 @@ fn read_bindings() -> Response {
 fn read_window(window: WindowId, layout: bool) -> Response {
     let now = session::window(window, layout);
     let (layouts, grids) = laid_out(&now);
+    let colors = session::machine_colors();
     Response {
         payload: Some(response::Payload::Window(proto::Window {
             view: Some(convert::view(&now.view)),
-            roster: Some(convert::roster(&now.roster, &now.numbering, &session::machine_colors())),
+            roster: Some(convert::roster(&now.roster, &now.numbering, &colors)),
             panes: now.agents.iter().map(convert::pane_state).collect(),
             daemons: now
                 .daemons
@@ -1751,6 +1752,7 @@ fn read_window(window: WindowId, layout: bool) -> Response {
                     directories: machine.directories.clone(),
                     state: machine.health.as_str().to_string(),
                     detail: machine.detail.clone(),
+                    color: muster_core::roster::machine_color(&machine.daemon, &colors).to_string(),
                 })
                 .collect(),
             places: places(&now.view),
