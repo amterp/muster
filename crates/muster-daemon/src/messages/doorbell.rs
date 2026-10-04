@@ -65,8 +65,15 @@ const STILL: Duration = Duration::from_millis(500);
 /// waits out; the prompt, read as empty just before the ring, is the guard from then on.
 const MOVING: Duration = Duration::from_secs(5);
 
-/// When the doorbell first found each pane it would ring with its screen still moving, by pane.
-pub(crate) type Moving = HashMap<String, Instant>;
+/// When the doorbell first found each pane it would ring with its screen still moving, and when it
+/// last did, by pane.
+pub(crate) type Moving = HashMap<String, Noted>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Noted {
+    since: Instant,
+    last: Instant,
+}
 
 /// How long the thread sleeps while something is pending that no change will announce - a
 /// pane whose agent is not yet found, or whose prompt holds a draft.
@@ -157,12 +164,26 @@ pub(crate) fn moving_since(
     now: Instant,
 ) -> Option<Instant> {
     let idle = matches!(seen.activity, Some(Activity::Idle | Activity::Waiting));
-    if idle && seen.drawn_at().is_some_and(|at| at + STILL > now) {
-        Some(*moving.entry(pane.to_string()).or_insert(now))
+    let drawing = idle && seen.drawn_at().is_some_and(|at| at + STILL > now);
+    if let Some(noted) = noted(moving.get(pane).copied(), drawing, now) {
+        moving.insert(pane.to_string(), noted);
+        Some(noted.since)
     } else {
         moving.remove(pane);
         None
     }
+}
+
+/// A pane's screen found `drawing` now, after `before`. A note the doorbell has not renewed within
+/// [`LOOK_AGAIN`] - nothing was waiting to ring the pane meanwhile, so nobody looked - says nothing
+/// about now, and starts again: an old one would ring a screen drawn a moment ago at once.
+fn noted(before: Option<Noted>, drawing: bool, now: Instant) -> Option<Noted> {
+    if !drawing {
+        return None;
+    }
+    let since =
+        before.filter(|before| now <= before.last + LOOK_AGAIN).map_or(now, |before| before.since);
+    Some(Noted { since, last: now })
 }
 
 /// What a wake waits for while its agent is doing this, or nothing when it may be rung. An agent
@@ -694,6 +715,21 @@ mod tests {
         assert_eq!(waits_for(Some(Activity::Blocked), true), Some(Now::Unblocked));
         assert_eq!(waits_for(None, true), Some(Now::AtIdle));
         assert_eq!(waits_for(Some(Activity::Working), true), None);
+    }
+
+    #[test]
+    fn a_screen_is_moving_since_it_was_first_found_so_and_a_stale_note_starts_again() {
+        let start = Instant::now();
+        let at = |seconds: u64| start + Duration::from_secs(seconds);
+        let first = noted(None, true, at(0)).unwrap();
+        let renewed = noted(Some(first), true, at(4)).unwrap();
+        assert_eq!(renewed.since, at(0), "noted again within a look");
+        assert_eq!(
+            noted(Some(renewed), true, at(60)).unwrap().since,
+            at(60),
+            "nobody looked meanwhile"
+        );
+        assert_eq!(noted(Some(renewed), false, at(5)), None, "found still");
     }
 
     #[test]
