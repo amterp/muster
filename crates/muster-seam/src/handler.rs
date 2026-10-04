@@ -1156,7 +1156,7 @@ fn report_font_family(report: &proto::ReportFontFamily) -> Response {
     // A lookup takes long enough for a second save to land while it is out, and the answer to
     // the older question would raise a problem about a family nobody has configured any more.
     // The reload that changed it reports again, so nothing is lost by ignoring this one.
-    let configured = session::appearance().font.family.unwrap_or_default();
+    let configured = session::startup::appearance().font.family.unwrap_or_default();
     if configured != report.family {
         log::info(
             "font.report.stale",
@@ -1196,7 +1196,7 @@ fn report_font_family(report: &proto::ReportFontFamily) -> Response {
 ///
 /// One builder for the read and the event, on the same terms as `bindings_message`.
 fn appearance_message() -> proto::Appearance {
-    let appearance = session::appearance();
+    let appearance = session::startup::appearance();
     let color = |value: Option<config::Rgb>| value.map(|c| c.to_string()).unwrap_or_default();
 
     proto::Appearance {
@@ -1222,8 +1222,8 @@ fn appearance_message() -> proto::Appearance {
 
         divider_color: color(appearance.colors.divider),
         focus_ring_color: color(appearance.colors.focus_ring),
-        scroll_multiplier: session::feel().scroll_multiplier,
-        hide_pointer_while_typing: session::feel().hide_pointer_while_typing,
+        scroll_multiplier: session::startup::feel().scroll_multiplier,
+        hide_pointer_while_typing: session::startup::feel().hide_pointer_while_typing,
         agent_colors: Some(proto::AgentColors {
             working: color(appearance.colors.agents.working),
             blocked: color(appearance.colors.agents.blocked),
@@ -1802,7 +1802,7 @@ fn read_bindings() -> Response {
 fn read_window(window: WindowId, layout: bool) -> Response {
     let now = session::window(window, layout);
     let (layouts, grids) = laid_out(&now);
-    let colors = session::machine_colors();
+    let colors = session::startup::machine_colors();
     Response {
         payload: Some(response::Payload::Window(proto::Window {
             view: Some(convert::view(&now.view)),
@@ -1923,7 +1923,7 @@ fn bindings_message() -> proto::Bindings {
         // An action on no chord is published with an empty key rather than left out. It
         // is still a menu item - a shortcut is not the only way to pick one - and on
         // macOS an action with no item is an action nothing can reach.
-        bindings: session::bindings()
+        bindings: session::startup::bindings()
             .all()
             .map(|(action, chord)| proto::Binding {
                 action: action.as_str().to_string(),
@@ -2130,7 +2130,7 @@ fn resize_pane(window: WindowId, resize: &proto::ResizePane) -> Response {
     // divides by the cell's width and the region's width, a vertical one by their heights. The
     // cell asymmetry is the whole reason points are offered as a unit at all; the region
     // asymmetry is just which way the window happens to be shaped.
-    let step = session::feel().resize_step;
+    let step = session::startup::feel().resize_step;
     let (cell, extent) = match direction {
         Side::Left | Side::Right => (resize.cell_width, resize.region_width),
         Side::Up | Side::Down => (resize.cell_height, resize.region_height),
@@ -2217,21 +2217,21 @@ fn attach_pane(window: WindowId, pane_id: &str) -> Response {
 fn start(startup: &proto::Startup) -> Response {
     // Before the config, because applying one attaches the daemons it names and attaching a
     // local one may have to start it.
-    session::set_daemon_binary(&startup.daemon_path);
-    session::set_daemon_data(&startup.daemon_data_path);
-    session::set_remote_daemons(&startup.remote_daemons_path);
+    session::startup::set_daemon_binary(&startup.daemon_path);
+    session::startup::set_daemon_data(&startup.daemon_data_path);
+    session::startup::set_remote_daemons(&startup.remote_daemons_path);
     // Before the config too, and for a sharper reason: applying a config attaches daemons,
     // attaching publishes, and a publish before this is one that would write the arrangement
     // out to nowhere - or worse, read it back after it had been replaced.
     session::set_state_path(&startup.state_path);
     // Before the config too, because applying one can start a daemon and the locale is part of
     // the environment that daemon is born with. Set after, it would reach the second launch.
-    session::set_platform_locale(&startup.locale);
+    session::startup::set_platform_locale(&startup.locale);
     // Before the config for the same reason once more: applying one can start a daemon, and this
     // is part of the environment that daemon is born with - so a pane it spawns has `muster` on
     // its PATH from the first one onwards.
-    session::set_commands_path(&startup.commands_path);
-    session::set_daemon_records_path(&startup.daemon_records_path);
+    session::startup::set_commands_path(&startup.commands_path);
+    session::startup::set_daemon_records_path(&startup.daemon_records_path);
 
     if let Err(refusal) = start_logging(startup) {
         return *refusal;
@@ -2327,7 +2327,7 @@ fn apply_config(path: &str) {
     if path.is_empty() {
         return;
     }
-    session::set_config_path(path);
+    session::startup::set_config_path(path);
     let Some(config) = read_config(path, Reading::Launch) else {
         return;
     };
@@ -2340,15 +2340,15 @@ fn apply_config(path: &str) {
             "text_bindings" => config.input.text.len().to_string(),
         },
     );
-    session::set_bindings(config.bindings.clone());
-    session::set_pane_input(config.input.clone());
-    session::set_feel(config.feel);
-    session::set_appearance(config.appearance.clone());
+    session::startup::set_bindings(config.bindings.clone());
+    session::startup::set_pane_input(config.input.clone());
+    session::startup::set_feel(config.feel);
+    session::startup::set_appearance(config.appearance.clone());
     session::set_notifications(config.notifications);
     // Before following, so each daemon is told these the moment it is reached. Set after, a
     // pane opened in that moment would run last launch's shell.
     session::set_daemon_settings(DaemonSettings::from(&config));
-    session::set_configured_daemons(&config.daemons);
+    session::startup::set_configured_daemons(&config.daemons);
     session::follow_configured(&config);
 }
 
@@ -2482,7 +2482,7 @@ fn read_config(path: &str, reading: Reading) -> Option<config::Config> {
 /// whole-or-nothing rule the file already has, one level up: the alternative is a window running
 /// half of a file somebody is still editing.
 fn reload_config() -> Response {
-    let path = session::config_path();
+    let path = session::startup::config_path();
     if path.is_empty() {
         log::info("config.reload.none", fields! {});
         return Response::ok();
@@ -2523,9 +2523,9 @@ fn reload_config() -> Response {
         );
     }
 
-    session::set_bindings(config.bindings.clone());
-    session::set_feel(config.feel);
-    session::set_appearance(config.appearance.clone());
+    session::startup::set_bindings(config.bindings.clone());
+    session::startup::set_feel(config.feel);
+    session::startup::set_appearance(config.appearance.clone());
     session::set_notifications(config.notifications);
     // Unlike `[[daemon]]`, not left for a relaunch, because a relaunch would not fix it: the
     // daemon outlives every launch and would go on with the settings it was last told. Each
@@ -2534,7 +2534,7 @@ fn reload_config() -> Response {
     session::set_daemon_settings(DaemonSettings::from(&config));
     // Recorded even though it is not acted on, so the next reload compares against this file
     // rather than reporting the same unapplied change forever.
-    session::set_configured_daemons(&config.daemons);
+    session::startup::set_configured_daemons(&config.daemons);
     // Last of the four, because it is the one that reaches into panes that already exist.
     session::reset_pane_input(&config.input);
 

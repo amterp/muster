@@ -23,13 +23,13 @@ use muster_core::composition::{
     MusterTab, PaneKey, Presentation, RegionId, Saved, Step, View, ViewPane, WindowName, saved,
     zoom_filling,
 };
-use muster_core::config::{Appearance, Config, Feel, Rgb};
+use muster_core::config::Config;
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::diagnostics::{clock, log, poison};
 use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::focus_history::FocusHistory;
-use muster_core::input::{Bindings, InputEvent, InputSink, PaneInput, PaneInputSettings};
+use muster_core::input::{InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{
     BackendChannel, BackendIntent, Grid, MoveDestination, Outcome, Refusal, Side,
 };
@@ -65,161 +65,18 @@ use crate::proto::{
 use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
 
+pub(crate) mod startup;
+
+use startup::{
+    carried, commands_path, daemon_binary, daemon_records_path, machine_colors, pane_input,
+    platform_locale, set_pane_input,
+};
+
 /// What Muster calls the daemon it found for itself.
 ///
 /// The name for the one nobody named. A config file that lists daemons names its own, and
 /// this is what a config-less Muster calls the daemon on this machine.
 const LOCAL: &str = "local";
-
-/// The daemon binary this Muster ships, as the shell resolved it.
-///
-/// Held here rather than looked up, because where it sits is an OS and packaging question -
-/// inside a bundle for a shipped app, beside the binary for a build - and the core answers
-/// none of those. The shell hands it over at startup, the way it already does the log file
-/// and the config file.
-///
-/// None means the shell found none, which is a real state and not a default to paper over: a
-/// window with no daemon to start says so rather than rendering nothing in silence.
-static DAEMON_BINARY: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_daemon_binary(path: &str) {
-    let mut held = poison::lock(&DAEMON_BINARY, "daemon-binary");
-    *held = if path.is_empty() { None } else { Some(path.to_string()) };
-}
-
-fn daemon_binary() -> Option<String> {
-    poison::lock(&DAEMON_BINARY, "daemon-binary").clone()
-}
-
-/// The daemon's data directory, when the shell keeps it somewhere other than beside the
-/// binary. None is the directory beside it, which is where a build puts it.
-static DAEMON_DATA: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_daemon_data(path: &str) {
-    let mut held = poison::lock(&DAEMON_DATA, "daemon-data");
-    *held = if path.is_empty() { None } else { Some(path.to_string()) };
-}
-
-/// Where the shell keeps the Linux daemons it can install on another machine: a directory
-/// holding one per architecture. None is a build that carries none.
-static REMOTE_DAEMONS: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_remote_daemons(path: &str) {
-    let mut held = poison::lock(&REMOTE_DAEMONS, "remote-daemons");
-    *held = if path.is_empty() { None } else { Some(path.to_string()) };
-}
-
-/// Every daemon this app can put on another machine, and the files that go with them.
-///
-/// A remote Mac runs this Mac's own daemon, so it is sent that, with the libghostty-vt this
-/// process loaded, which is the one the daemon was built against.
-fn carried() -> remote_install::Carried {
-    let mac = daemon_binary().map(PathBuf::from);
-    let data = poison::lock(&DAEMON_DATA, "daemon-data").clone().map(PathBuf::from).or_else(|| {
-        mac.as_deref().and_then(Path::parent).map(|beside| beside.join("muster-daemon-data"))
-    });
-    // The CLI the app pointed `muster` in the commands directory at when it started, which is
-    // the one that belongs to this build.
-    let mac_cli = commands_path()
-        .and_then(|commands| Path::new(&commands).join("muster").canonicalize().ok());
-    let mac_here = cfg!(all(target_os = "macos", target_arch = "aarch64"));
-    remote_install::Carried {
-        linux: poison::lock(&REMOTE_DAEMONS, "remote-daemons").clone().map(PathBuf::from),
-        mac: mac.filter(|_| mac_here),
-        mac_cli: mac_cli.filter(|_| mac_here),
-        mac_library: muster_vt::library_path(),
-        data,
-    }
-}
-
-/// What locale this machine is set to, as the shell read it off the platform.
-///
-/// Held for the same reason the daemon binary is: only the shell can ask macOS what the user
-/// picked, and only the core decides what a daemon is entitled to. None means the platform
-/// would not name one, and nothing is invented in its place.
-static PLATFORM_LOCALE: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_platform_locale(locale: &str) {
-    let mut held = poison::lock(&PLATFORM_LOCALE, "locale");
-    *held = if locale.is_empty() { None } else { Some(locale.to_string()) };
-}
-
-fn platform_locale() -> Option<String> {
-    poison::lock(&PLATFORM_LOCALE, "locale").clone()
-}
-
-/// The directory Muster keeps its own commands in, for the daemons it starts.
-///
-/// Held here rather than asked for at each start, on the same terms as the locale above: it is a
-/// question only the shell can answer, and it is needed in the middle of attaching a daemon.
-///
-/// None means this build has no CLI to offer, and then a daemon's PATH is left exactly as it was
-/// inherited - a pane simply has no `muster` in it.
-static COMMANDS: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_commands_path(path: &str) {
-    let mut held = poison::lock(&COMMANDS, "commands");
-    *held = if path.is_empty() { None } else { Some(path.to_string()) };
-}
-
-fn commands_path() -> Option<String> {
-    poison::lock(&COMMANDS, "commands").clone()
-}
-
-/// Where Muster writes down the daemons it starts.
-///
-/// Held on the same terms as the three above. Needed at two moments that are nowhere near each
-/// other: when a daemon is started, and when somebody asks what is on this machine.
-///
-/// None means the shell found nowhere to write, and then `muster daemons` answers with nothing
-/// and says that is why - "no record" and "no daemons" are opposite things to tell somebody
-/// about to end a process.
-static DAEMON_RECORDS: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_daemon_records_path(path: &str) {
-    let mut held = poison::lock(&DAEMON_RECORDS, "daemon-records");
-    *held = if path.is_empty() { None } else { Some(path.to_string()) };
-}
-
-pub(crate) fn daemon_records_path() -> Option<String> {
-    poison::lock(&DAEMON_RECORDS, "daemon-records").clone()
-}
-
-/// Which chord asks for which action, as the config file left it.
-///
-/// Held rather than passed, for the reason the daemon binary and the state path are: a shell
-/// asks for these once at launch, and threading them through every caller in between would be
-/// a parameter nothing else in that path uses.
-static BINDINGS: Mutex<Option<Bindings>> = Mutex::new(None);
-
-pub(crate) fn set_bindings(bindings: Bindings) {
-    *poison::lock(&BINDINGS, "bindings") = Some(bindings);
-}
-
-/// The bindings in force, which with no config file is what Muster ships.
-pub(crate) fn bindings() -> Bindings {
-    poison::lock(&BINDINGS, "bindings").clone().unwrap_or_default()
-}
-
-/// What the config file said about typing, held for the panes attached after it was read.
-///
-/// Beside [`BINDINGS`] and for the same reason: a pane is attached from several places and
-/// none of them has a config file in hand.
-///
-/// Read at attach rather than per keystroke, so a pane keeps the settings it was attached
-/// with. That is what makes a change need a relaunch, and it is the honest arrangement while
-/// the encoder is built once per pane - re-reading here would leave a window whose panes
-/// disagree depending on when each was opened.
-static PANE_INPUT: Mutex<Option<PaneInputSettings>> = Mutex::new(None);
-
-pub(crate) fn set_pane_input(settings: PaneInputSettings) {
-    *poison::lock(&PANE_INPUT, "input-settings") = Some(settings);
-}
-
-/// The typing settings in force, which with no config file is what Muster ships.
-pub(crate) fn pane_input() -> PaneInputSettings {
-    poison::lock(&PANE_INPUT, "input-settings").clone().unwrap_or_default()
-}
 
 /// What each daemon is told about this window's settings (`muster_core::daemon_settings`),
 /// held for daemons reached later and sent to every one followed now whenever it changes.
@@ -233,64 +90,6 @@ pub(crate) fn set_daemon_settings(settings: DaemonSettings) {
         backend.follower.configure(&settings);
     }
     *poison::lock(&SETTINGS, "daemon-settings") = Some(settings);
-}
-
-/// The root knobs, held for whatever asks about them next.
-///
-/// Beside [`BINDINGS`] and [`PANE_INPUT`], for the same reason: a resize arrives from a
-/// keystroke, and that caller has no config file in hand.
-static FEEL: Mutex<Option<Feel>> = Mutex::new(None);
-
-pub(crate) fn set_feel(feel: Feel) {
-    *poison::lock(&FEEL, "settings") = Some(feel);
-}
-
-/// The knobs in force, which with no config file is what Muster ships.
-pub(crate) fn feel() -> Feel {
-    poison::lock(&FEEL, "settings").unwrap_or_default()
-}
-
-/// The config file this run was started with, so a reload knows what to read again.
-///
-/// Held rather than re-derived: where the file lives is the shell's answer, given once at
-/// startup, and a core that went looking for one itself would be a second answer to a question
-/// it does not own.
-static CONFIG_PATH: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_config_path(path: &str) {
-    *poison::lock(&CONFIG_PATH, "settings") = Some(path.to_string());
-}
-
-/// The file to read again, or empty when this run was started without one.
-pub(crate) fn config_path() -> String {
-    poison::lock(&CONFIG_PATH, "settings").clone().unwrap_or_default()
-}
-
-/// What the window should look like, held the same way and for the same reason.
-///
-/// Cloned on read rather than copied, because a palette and a font family are not `Copy`. It
-/// is read once at launch by a shell standing up its renderer, so the cost is a font name and
-/// sixteen colours, once.
-static APPEARANCE: Mutex<Option<Appearance>> = Mutex::new(None);
-
-pub(crate) fn set_appearance(appearance: Appearance) {
-    *poison::lock(&MACHINE_COLORS, "settings") = appearance.machine_colors.clone();
-    *poison::lock(&APPEARANCE, "settings") = Some(appearance);
-}
-
-/// The colors the config file chose for machines' marks, apart from the rest of the
-/// appearance because every roster published reads them, and cloning a palette and a font
-/// name to get at them would be work per publish for nothing.
-static MACHINE_COLORS: Mutex<BTreeMap<DaemonId, Rgb>> = Mutex::new(BTreeMap::new());
-
-pub(crate) fn machine_colors() -> BTreeMap<DaemonId, Rgb> {
-    poison::lock(&MACHINE_COLORS, "settings").clone()
-}
-
-/// The appearance in force, which with no config file is every value absent - so the renderer
-/// paints what it would have painted anyway.
-pub(crate) fn appearance() -> Appearance {
-    poison::lock(&APPEARANCE, "settings").clone().unwrap_or_default()
 }
 
 /// Takes the file's answer about which agent states are worth interrupting somebody for.
@@ -995,7 +794,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, Unattached> 
                 platform_locale().as_deref(),
                 commands_path().as_deref(),
             );
-            let data = poison::lock(&DAEMON_DATA, "daemon-data").clone();
+            let data = poison::lock(&startup::DAEMON_DATA, "daemon-data").clone();
             let (reached, welcome) = launch::ensure_running(&launch::Launch {
                 binary: binary.as_ref(),
                 data: data.as_deref().map(Path::new),
@@ -1610,18 +1409,10 @@ pub(crate) fn reset() {
     ATTACH_ENDED.notify_all();
     *poison::lock(&SESSION, "session") = Session::default();
 
-    *poison::lock(&DAEMON_BINARY, "daemon-binary") = None;
+    startup::forget();
     *poison::lock(&SET_GRACE, "grace") = None;
-    *poison::lock(&PLATFORM_LOCALE, "locale") = None;
-    *poison::lock(&COMMANDS, "commands") = None;
-    *poison::lock(&BINDINGS, "bindings") = None;
-    *poison::lock(&PANE_INPUT, "input-settings") = None;
     *poison::lock(&SETTINGS, "daemon-settings") = None;
-    *poison::lock(&FEEL, "settings") = None;
-    *poison::lock(&CONFIG_PATH, "settings") = None;
-    *poison::lock(&APPEARANCE, "settings") = None;
     *poison::lock(&PROBLEMS, "problems") = None;
-    *poison::lock(&CONFIGURED_DAEMONS, "settings") = None;
     poison::lock(&DARK, "dark-panes").clear();
 
     // Not this file's, and here anyway: what needs resetting is a property of the process
@@ -5555,7 +5346,7 @@ enum Implicitly {
 /// The endpoint rather than the id, because the id is the reader's own word and the endpoint is
 /// the part they can check.
 fn named_daemons() -> Vec<String> {
-    let configured = poison::lock(&CONFIGURED_DAEMONS, "settings");
+    let configured = poison::lock(&startup::CONFIGURED_DAEMONS, "settings");
     configured.as_deref().unwrap_or_default().iter().map(described).collect()
 }
 
@@ -5711,7 +5502,7 @@ fn local_daemon_to_fill_from(window: WindowId) -> Option<DaemonId> {
 /// The daemons on this machine, configured ones first in the config's order, each with whether
 /// this window is attached to it.
 fn local_daemons_in_order(window: WindowId) -> Vec<(DaemonId, bool)> {
-    let configured: Vec<DaemonId> = poison::lock(&CONFIGURED_DAEMONS, "settings")
+    let configured: Vec<DaemonId> = poison::lock(&startup::CONFIGURED_DAEMONS, "settings")
         .as_deref()
         .unwrap_or_default()
         .iter()
@@ -7045,18 +6836,6 @@ fn channel(daemon: &DaemonId) -> Result<Arc<dyn BackendChannel>, String> {
                  which is a bug in the core rather than a state to recover from"
         )
     })
-}
-
-/// The `[[daemon]]` blocks the running configuration was built from.
-///
-/// Held separately from what is attached, because those are different questions and only one of
-/// them is about the file. A config naming no daemons still ends up with one attached - Muster
-/// starts its own when nothing answers - so comparing a new file against what is attached would
-/// report a change on every reload of a file that never mentioned a daemon at all.
-static CONFIGURED_DAEMONS: Mutex<Option<Vec<Daemon>>> = Mutex::new(None);
-
-pub(crate) fn set_configured_daemons(daemons: &[Daemon]) {
-    *poison::lock(&CONFIGURED_DAEMONS, "settings") = Some(daemons.to_vec());
 }
 
 /// Points every attached pane at typing settings that have just been read again.
