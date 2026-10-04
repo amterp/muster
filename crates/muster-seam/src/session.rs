@@ -3660,7 +3660,7 @@ fn taken_elsewhere(pane: &PaneId, tab: &TabId, window: &WindowName) -> Refusal {
 
 /// Asks the shell for a window on behalf of somebody outside the app: a new one, or a closed one
 /// by name, or the most recently closed when the name is empty.
-pub(crate) fn ask_for_window(ask: &crate::proto::AskForWindow) {
+pub(crate) fn ask_for_window(ask: &crate::proto::AskForWindow, gone_to: bool) {
     log::info(
         "window.asked_for",
         fields! {
@@ -3674,13 +3674,19 @@ pub(crate) fn ask_for_window(ask: &crate::proto::AskForWindow) {
     );
     ffi::emit(&Event::new(event::Payload::ReopenWindow(ReopenWindow {
         name: ask.name.clone(),
-        // Already gone to by the core when any window will do (`handler::ask_for_window`).
-        show: if ask.any { String::new() } else { ask.show.clone() },
+        // Already gone to when a window was open (`handler::ask_for_window`); otherwise the
+        // window the shell opens goes there.
+        show: if gone_to { String::new() } else { ask.show.clone() },
         fresh: ask.fresh,
         any: ask.any,
         daemon: ask.daemon.clone(),
         tab: ask.tab.clone(),
     })));
+}
+
+/// Whether any window of this app has opened and not closed.
+pub(crate) fn a_window_is_open() -> bool {
+    !poison::lock(&SESSION, "session").windows.opened().is_empty()
 }
 
 /// Why a fresh window cannot be opened onto `daemon` or `tab`, if it cannot: the app follows no

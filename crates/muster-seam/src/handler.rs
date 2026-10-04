@@ -1709,7 +1709,10 @@ fn ask_for_window(ask: &proto::AskForWindow) -> Response {
     if let Some(refusal) = session::cannot_open_onto(&ask.daemon, &ask.tab) {
         return Response::failure(refusal);
     }
-    let went = if ask.any && !ask.show.is_empty() {
+    // With no window open there is nowhere to go yet: the shell opens one, and it goes there as
+    // it opens.
+    let goes_now = ask.any && !ask.show.is_empty() && session::a_window_is_open();
+    let went = if goes_now {
         // Going to a pane or a tab is going to the window holding it, which the ordinary focus
         // path finds and brings forward; the app is then brought forward as well, since the
         // launch that asked was in front.
@@ -1717,7 +1720,7 @@ fn ask_for_window(ask: &proto::AskForWindow) -> Response {
     } else {
         Response::ok()
     };
-    session::ask_for_window(ask);
+    session::ask_for_window(ask, goes_now);
     match went.payload {
         // Said rather than swallowed: a launch told it had handed over would exit as though the
         // pane it named were on screen.

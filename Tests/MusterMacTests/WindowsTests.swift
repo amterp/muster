@@ -149,6 +149,10 @@ struct WindowsTests {
     var reopen = Muster_Event()
     reopen.reopenWindow.any = true
     Core.deliver(reopen)
+    var showing = Muster_Event()
+    showing.reopenWindow.any = true
+    showing.reopenWindow.show = "p1w3r07bsd"
+    Core.deliver(showing)
     var named = Muster_Event()
     named.reopenWindow.name = "window-3"
     Core.deliver(named)
@@ -161,6 +165,7 @@ struct WindowsTests {
     #expect(
       asked == [
         Core.WindowAsked(name: "", show: "", fresh: false, any: true),
+        Core.WindowAsked(name: "", show: "p1w3r07bsd", fresh: false, any: true),
         Core.WindowAsked(name: "window-3", show: "", fresh: false),
         Core.WindowAsked(name: "", show: "", fresh: true, daemon: "devenv", tab: "t1w3r07bsd"),
       ])

@@ -34,7 +34,7 @@ public final class WindowOpening {
   /// What the core, the menu or a chord asked for.
   public func open(_ asked: Core.WindowAsked) {
     if asked.any {
-      comeForward()
+      comeForward(show: asked.show)
       return
     }
     if !asked.name.isEmpty, let open = Windows.named(asked.name) {
@@ -75,11 +75,13 @@ public final class WindowOpening {
   /// second launch asking for nothing in particular, and a click on the Dock icon, both mean.
   ///
   /// One that opens is the most recently closed window, as Reopen Closed Window is, so a Dock click
-  /// after closing the last window but one brings that window back rather than an empty one.
-  public func comeForward() {
+  /// after closing the last window but one brings that window back rather than an empty one. It
+  /// opens onto `show`, a pane or tab a launch named: with a window already open the core has gone
+  /// there, and with none it could not.
+  public func comeForward(show: String = "") {
     guard let window = Windows.inFront ?? Windows.all.last else {
-      Core.info("app.forward.opening", [:])
-      open(Core.WindowAsked(name: "", show: "", fresh: false))
+      Core.info("app.forward.opening", ["show": show])
+      open(Core.WindowAsked(name: "", show: show, fresh: false))
       return
     }
     Core.info("app.forward", ["window": window.name])

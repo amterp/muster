@@ -1134,6 +1134,25 @@ fn a_window_on_a_machine_still_attaching_waits_for_it() {
     );
 }
 
+/// A launch handed over naming a pane before any window has opened keeps the pane for the window
+/// the shell opens, since there is no window yet to go to it in.
+#[test]
+fn a_pane_asked_for_before_any_window_opens_is_kept_for_the_one_that_does() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    start(&daemon, "window-1");
+
+    assert_ok(&answer(&Request::new(request::Payload::AskForWindow(AskForWindow {
+        install: muster_daemon_proto::install::INSTALL.to_string(),
+        show: "p-later".to_string(),
+        any: true,
+        ..AskForWindow::default()
+    }))));
+
+    assert_eq!(asked_for(), vec![(String::new(), "p-later".to_string(), false)]);
+}
+
 /// The window's subscribe, whose answer carries the daemon's state.
 fn subscribes(request: &daemon_proto::Request) -> bool {
     matches!(
