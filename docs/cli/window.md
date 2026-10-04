@@ -369,6 +369,7 @@ guess. A watch on a window whose daemons are all answering prints only panes.
 Under `--json` each line is an object: `{"pane", "daemon", "state", "since", "label"}` for a
 state, with `since` and `label` as in `panes[]` and `label` left out when there is none, `{"pane", "daemon", "closed": true}` for a pane that went, and
 `{"daemon", "state", "detail"}` for a daemon, as in `daemons[]` - the one line with no `pane`.
+`muster pane wait --context` adds `context_used` to its line, the percent the agent last said.
 
 The watch holds one connection to one Muster, so outside every pane with two installs listening
 it refuses until `--socket` names one. It ends with exit 3 if the app quits under it.
