@@ -2325,6 +2325,9 @@ fn apply_config(path: &str) {
 /// keys would mean each read had to remember to clear the other's, which is a thing to forget.
 const CONFIG_PROBLEM: &str = "config";
 
+/// The problem a saved config raises while it takes out or changes a daemon that stays attached.
+const DAEMONS_PROBLEM: &str = "config.daemons";
+
 /// Which of the two moments is reading the file.
 ///
 /// The moments differ in what a failure means for the window, and that difference is real
@@ -2436,10 +2439,10 @@ fn read_config(path: &str, reading: Reading) -> Option<config::Config> {
 
 /// Reads the config file again, and makes the window match it.
 ///
-/// What a relaunch used to be for. Everything a file can say takes effect except which daemons
-/// are attached: attaching and detaching on a file save is a question about live sessions rather
-/// than about settings, and getting it wrong costs somebody their panes. So a `[[daemon]]` change
-/// is read, noticed, and reported as still needing a relaunch.
+/// What a relaunch used to be for. Everything a file can say takes effect, including a daemon
+/// added, which is attached. A daemon taken out or changed is the exception: detaching on a file
+/// save would take the tabs of agents still running out of the window, so it stays attached and
+/// is reported as waiting for a relaunch ([`session::follow_changed`]).
 ///
 /// A refusal leaves the running configuration exactly as it was, which is the same
 /// whole-or-nothing rule the file already has, one level up: the alternative is a window running
@@ -2455,18 +2458,34 @@ fn reload_config() -> Response {
         return Response::ok();
     };
 
-    // Named before anything is applied, because it is the one thing a reload cannot do and the
-    // person who just edited that block is about to wonder why nothing happened.
-    if session::daemons_differ(&config) {
+    // A daemon added is attached now. One taken out or changed waits for a relaunch, and the
+    // person who just edited that block is told so rather than left wondering.
+    let waiting = session::follow_changed(&config);
+    if waiting.is_empty() {
+        session::clear_problem(DAEMONS_PROBLEM, "matches");
+    } else {
+        let named: Vec<String> = waiting.iter().map(session::described).collect();
         log::warn(
             "config.reload.daemons",
             fields! {
                 "path" => path.clone(),
-                "impact" => "every other setting in the file took effect, but which daemons \
-                             this window is attached to did not",
-                "check" => "relaunch to pick up a [[daemon]] change; attaching and detaching \
-                            live would move panes somebody is working in",
+                "waiting" => named.join(", "),
+                "impact" => "every other setting in the file took effect, and these daemons \
+                             stay attached as they were until Muster is relaunched",
+                "check" => "relaunch to take them out or change them; detaching live would take \
+                            the tabs of agents still running out of the window",
             },
+        );
+        session::raise_problem(
+            DAEMONS_PROBLEM,
+            Severity::Warning,
+            &format!(
+                "The config no longer names {} as Muster attached it, and taking a daemon out \
+                 while Muster runs would take the tabs of agents still running on it out of the \
+                 window. So it stays attached, with its panes where they are, until Muster is \
+                 relaunched; a daemon added to the file is attached as soon as it is saved.",
+                named.join(" or ")
+            ),
         );
     }
 

@@ -562,10 +562,12 @@ reaches panes opened afterwards, because that is as far as the renderer takes it
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.
 
-The exception is `[[daemon]]`. Which machines a window is attached to is a question about live
-sessions rather than about settings, and answering it on a save would move panes somebody is
-working in - so a change there is read, noticed, and reported as still wanting a relaunch. A
-file that will not parse changes nothing at all, which means an editor that saves halfway
+`[[daemon]]` is half an exception. A block added is attached as soon as the file is saved, and
+that machine's panes arrive in the window. A block taken out, or one whose `host` or `socket`
+changed, is not acted on until Muster is relaunched: the agents on that machine keep running
+whatever the file says, and detaching it would take their tabs out of the window, which reads as
+agents gone. So it stays attached, and a warning at the foot of the agent list says it is waiting
+for a relaunch. A file that will not parse changes nothing at all, which means an editor that saves halfway
 through a thought cannot leave you running half a config.
 
 **A refused file says so at the foot of the agent list**, in the words the refusal itself used,

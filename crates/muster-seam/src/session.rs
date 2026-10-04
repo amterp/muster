@@ -1533,6 +1533,7 @@ pub(crate) fn reset() {
         let mut attaches = poison::lock(&ATTACHES, "attaches");
         attaches.generation += 1;
         attaches.under_way.clear();
+        poison::lock(&APPLIED_DAEMONS, "applied-daemons").clear();
     }
     ATTACH_ENDED.notify_all();
     *poison::lock(&SESSION, "session") = Session::default();
@@ -4339,7 +4340,57 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
 /// unreachable devenv should cost its own panes and nothing else, and a window that refused to
 /// open because a container was down would be worse than no window at all.
 pub(crate) fn follow_configured(config: &Config) {
+    poison::lock(&APPLIED_DAEMONS, "applied-daemons").clone_from(&config.daemons);
     follow_in_background(&config.daemons);
+}
+
+/// The `[[daemon]]` blocks this process attached, as they were written when it did.
+///
+/// Compared against a config saved later, rather than the config read last, because a block
+/// taken out and left waiting for a relaunch is still attached, and the next save should still
+/// say so.
+static APPLIED_DAEMONS: Mutex<Vec<Daemon>> = Mutex::new(Vec::new());
+
+/// Attaches the daemons a saved config adds, and answers the attached ones it takes out or
+/// changes, which are left as they are.
+///
+/// Adding is safe to do live: a machine's panes arrive in the window as its attach finishes,
+/// and nothing that was there moves. Taking one out is not. Its panes keep running on the
+/// daemon whatever the file says, and detaching it would take their tabs out of every window,
+/// which reads as agents gone - so it waits for a relaunch, and the caller says so. A block
+/// whose id stays and whose endpoint changes is both at once, and waits whole.
+pub(crate) fn follow_changed(config: &Config) -> Vec<Daemon> {
+    let added: Vec<Daemon> = {
+        let mut applied = poison::lock(&APPLIED_DAEMONS, "applied-daemons");
+        let added: Vec<Daemon> = config
+            .daemons
+            .iter()
+            .filter(|daemon| applied.iter().all(|held| held.id != daemon.id))
+            .filter(|daemon| !is_following(&daemon.id) && !attaching(&daemon.id))
+            .cloned()
+            .collect();
+        applied.extend(added.iter().cloned());
+        added
+    };
+    if !added.is_empty() {
+        log::info(
+            "config.reload.daemons.attaching",
+            fields! {
+                "daemons" => added.iter().map(described).collect::<Vec<_>>().join(", "),
+            },
+        );
+        follow_in_background(&added);
+    }
+    poison::lock(&APPLIED_DAEMONS, "applied-daemons")
+        .iter()
+        .filter(|held| !config.daemons.contains(held))
+        .cloned()
+        .collect()
+}
+
+/// Whether a daemon is still being attached by a launch or a reload.
+fn attaching(daemon: &DaemonId) -> bool {
+    poison::lock(&ATTACHES, "attaches").under_way.contains(daemon)
 }
 
 /// Attaches each daemon on a thread of its own, retried until it answers, and waits at most
@@ -5287,7 +5338,7 @@ fn named_daemons() -> Vec<String> {
 
 /// A daemon said the way the config named it, with the endpoint as well as the id: the id is
 /// the reader's own word, and the endpoint is the part they can check.
-fn described(daemon: &Daemon) -> String {
+pub(crate) fn described(daemon: &Daemon) -> String {
     match &daemon.endpoint {
         Endpoint::Local { socket_path: None } => format!("{} on this machine", daemon.id),
         Endpoint::Local { socket_path: Some(path) } => format!("{} at {path}", daemon.id),
@@ -6667,19 +6718,6 @@ static CONFIGURED_DAEMONS: Mutex<Option<Vec<Daemon>>> = Mutex::new(None);
 
 pub(crate) fn set_configured_daemons(daemons: &[Daemon]) {
     *poison::lock(&CONFIGURED_DAEMONS, "settings") = Some(daemons.to_vec());
-}
-
-/// Whether a file names a different set of daemons from the one this window was built from.
-///
-/// The one thing a reload does not act on, so it is the one thing worth asking about: a
-/// `[[daemon]]` change is a question about live sessions rather than about settings, and
-/// applying it would move panes somebody is working in.
-///
-/// Compared by what a person wrote rather than by what came of it - a daemon that is named and
-/// failed to attach is not a difference, it is the same wish and the same disappointment.
-pub(crate) fn daemons_differ(config: &Config) -> bool {
-    let configured = poison::lock(&CONFIGURED_DAEMONS, "settings");
-    configured.as_deref().unwrap_or_default() != config.daemons.as_slice()
 }
 
 /// Points every attached pane at typing settings that have just been read again.
