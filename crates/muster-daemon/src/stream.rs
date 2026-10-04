@@ -343,6 +343,14 @@ fn follow(stream: &mut UnixStream, io: &Arc<PaneIo>, id: u64, pane: &str) {
 /// How long a write to a bridge may make no progress before the bridge counts as gone. A slow
 /// link still moves; a forward whose far end has stopped reading does not, and its queue
 /// would otherwise be held until the connection died of something else.
+///
+/// It also cuts off a bridge that is behind only because its window is: a window whose main
+/// thread stalls stops reading its ptys, so the bridge stops reading this stream. Kept anyway,
+/// because from here the two cannot be told apart, and the stalled window costs little: its
+/// bridge attaches again and the replay redraws what it missed (`attach_after_losing` in
+/// muster-bridge), where a dead forward kept would hold its queue for good. A window stalled
+/// this long is already broken to whoever is looking at it, and a longer limit would only make
+/// every dead forward take longer to notice.
 const STALLED_WRITE: Duration = Duration::from_secs(30);
 
 /// A debug build's [`STALLED_WRITE`] in milliseconds, when set.
