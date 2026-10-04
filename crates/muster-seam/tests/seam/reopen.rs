@@ -50,7 +50,10 @@ fn a_window_writes_down_what_it_is_showing() {
 
     // Somewhere to move to, so what is written down is a choice rather than the only thing
     // there was. A new tab is what a person reaches for several times an hour.
-    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        take_focus: true,
+        ..CreateTab::default()
+    })));
     until(
         "the window to move onto the tab it asked for",
         || tab_of_first_region().is_some_and(|tab| tab != first),

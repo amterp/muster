@@ -28,7 +28,10 @@ fn back_goes_to_the_pane_in_the_tab_before_and_forward_returns() {
 
     assert_eq!(walk(false), Went::default(), "a window's first pane has nothing before it");
 
-    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        take_focus: true,
+        ..CreateTab::default()
+    })));
     let second = keyboard().expect("the new tab took the keyboard");
     assert_ne!(second, first);
 
@@ -48,7 +51,10 @@ fn going_somewhere_new_after_going_back_drops_what_was_ahead() {
     let _turn = muster::testing::fresh_session();
     let _daemon = a_window();
     let first = keyboard().expect("the window opened with the keyboard on a pane");
-    assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        take_focus: true,
+        ..CreateTab::default()
+    })));
     assert_eq!(walk(false).pane_id, first);
 
     let made = split();
@@ -200,7 +206,10 @@ fn three_tabs() -> (String, String, String) {
     let first = keyboard().expect("the window opened with the keyboard on a pane");
     let mut made = Vec::new();
     for _ in 0..2 {
-        assert_ok(&answer(request::Payload::CreateTab(CreateTab::default())));
+        assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+            take_focus: true,
+            ..CreateTab::default()
+        })));
         let before = made.last().cloned().unwrap_or_else(|| first.clone());
         until(
             "the new tab to take the keyboard",

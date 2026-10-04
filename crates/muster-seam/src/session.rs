@@ -2733,18 +2733,22 @@ pub(crate) fn submit_from(
     };
 
     let mut session = poison::lock(&SESSION, "session");
-    // A tab this request made is shown. Not for a move, which is the one request here that
-    // makes a tab without being about one: it makes a place to put a pane. Bringing that tab on
-    // screen would put the tab somebody was working in behind it, so "pull that pane out of the
-    // split" would answer by moving them somewhere they did not ask to go - and an agent
-    // pulling another agent's pane out would lose its own place doing it. The tab is listed and
-    // named, and `muster tab focus` is how anybody who does want to go there says so.
-    if !matches!(intent, BackendIntent::MovePane { .. })
-        && let Some(tab) = created_tab
-    {
+    // A tab this request made is this window's, and comes on screen only when the keyboard goes
+    // with it - the tab on screen is where the keyboard is, so showing it is moving the keyboard.
+    // cmd+T asks for that; a script does not, and an agent making three tabs must not drag
+    // somebody through all three (kan a_2WEHtnf1Y). A move never asks: it makes a place to put a
+    // pane, and bringing that on screen would answer "pull that pane out of the split" by moving
+    // them somewhere they did not ask to go. A window showing nothing shows the tab whatever was
+    // asked, because a window with a tab and nothing on screen is a blank one. The tab is listed
+    // and named either way, and `muster tab focus` goes to it.
+    if let Some(tab) = created_tab {
         let composition = &mut session.windows[window].composition;
         composition.hold(tab.clone());
-        composition.surface(daemon, tab);
+        let shown =
+            keyboard == Keyboard::Follows && !matches!(intent, BackendIntent::MovePane { .. });
+        if shown || composition.showing().is_none() {
+            composition.surface(daemon, tab);
+        }
     }
     if let Some(created) = created {
         let made = PaneKey::new(daemon, created);

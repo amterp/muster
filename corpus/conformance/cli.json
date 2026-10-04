@@ -1166,8 +1166,8 @@
       }
     },
     {
-      "name": "making a tab does not move the keyboard",
-      "why": "The rule `pane new` already follows, restated because a tab is the louder case: it comes on screen either way, so the only question is whether somebody's cursor goes with it. An agent opening three tabs must not drag it through all three.",
+      "name": "a tab made with --focus takes the keyboard",
+      "why": "The rule `pane new` follows: the keyboard moves only when asked. For a tab that also decides whether it comes on screen, because the tab on screen is where the keyboard is - so without --focus the tab is made behind the one on screen, and an agent opening three tabs does not drag anybody through all three.",
       "given": {
         "argv": [
           "tab",

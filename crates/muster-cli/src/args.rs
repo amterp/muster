@@ -745,7 +745,8 @@ enum WithTab {
         #[arg(long, value_name = "NAME")]
         name: Option<String>,
 
-        /// Move the window's keyboard to it. The tab comes on screen either way
+        /// Bring it on screen with the window's keyboard in it; without this it is made behind
+        /// the tab on screen
         #[arg(long)]
         focus: bool,
     },

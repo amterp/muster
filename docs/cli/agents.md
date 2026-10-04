@@ -184,8 +184,9 @@ that does not belong in this tab at all:
 
     C=$(muster tab new --run claude --name '🤖 C')
 
-It prints the pane it made, not the tab, because the pane is what the next line needs. The tab
-comes on screen whether or not the keyboard follows; `--focus` asks for the keyboard.
+It prints the pane it made, not the tab, because the pane is what the next line needs. The tab is
+made behind the one on screen, listed in the tab bar and the agent list, and the keyboard stays
+where it was; `--focus` brings it on screen with the keyboard in it, as `cmd+t` does.
 
 To change how much room a pane gets:
 

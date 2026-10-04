@@ -983,9 +983,10 @@ message CreateTab {
 
   // Whether this window's keyboard follows the tab's pane.
   //
-  // True is what cmd+T means: you made it, you are looking at it. False is what a script
-  // means, and it is the default for the reason SplitPane.take_focus gives - though a tab
-  // still comes on screen either way, because a tab no region shows is a tab nobody can see.
+  // True is what cmd+T means: you made it, you are looking at it, and the tab comes on screen.
+  // False is what a script means, and it is the default for the reason SplitPane.take_focus
+  // gives: the tab is made behind the one on screen, listed in the tab bar and the agent list,
+  // since the tab on screen is where the keyboard is. A window showing no tab shows it anyway.
   bool take_focus = 6;
 }
 
