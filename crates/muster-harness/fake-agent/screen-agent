@@ -10,7 +10,9 @@
 # Commands, one per line: working | blocked | idle | menu | nomenu | animate | still | quit, or
 # notify <text>, which asks the terminal to notify somebody the way Claude Code does in Ghostty
 # (OSC 777), or say <text>, which prints the text above its prompt without repainting, as an
-# inline agent prints its output: over the line its echo left, with the prompt drawn again below. `menu` paints a menu opened from the prompt, which leaves the state as it was, and
+# inline agent prints its output: over the line its echo left, with the prompt drawn again below.
+# `rest` goes idle, and `/rename <name>` of a name with `work` in it goes to work, each without
+# repainting, as an agent ends a turn and as a slash command such as `/compact` starts one. `menu` paints a menu opened from the prompt, which leaves the state as it was, and
 # `nomenu` closes it. `animate` redraws a line above the state's five times a second, whatever the
 # state, as an animated statusline or a clock does, and `still` stops it.
 #
@@ -123,6 +125,11 @@ while :; do
     case "$line" in
         say\ *)
             printf '\033[1A\r\033[K%s\n\033[KPROBE-PROMPT> ' "${line#say }"
+            continue ;;
+        rest | /rename\ *work*)
+            # The prompt drawn again over the line its echo left, empty.
+            printf '\033[1A\r\033[KPROBE-PROMPT> '
+            if [ "$line" = rest ]; then restate idle; else restate working; fi
             continue ;;
     esac
     tick=$((tick + 1))

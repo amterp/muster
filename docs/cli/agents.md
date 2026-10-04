@@ -150,9 +150,12 @@ count:
 That is what the agent printed since it last went to work: from the first row that no longer reads
 as the screen did at that moment, to the last row with anything on it. The turn before it is left
 out, and so is the brief you sent, which the harness echoed before it started. A turn runs until
-the agent is idle again, so a dialog it stopped at along the way does not start another. A pane
-whose agent has not gone to work since its daemon began watching it has no turn to read, and the
-read is refused saying so; `--rows` still answers. `--turn` and `--rows` are one or the other.
+the agent is idle again, so a dialog it stopped at along the way does not start another, and nor
+does a line Muster types into the agent for its own sake, such as the pane's name for the
+session: the read still finds the agent's last answer. A wake for a message does start one, since
+what the agent does about the message is its answer. A pane whose agent has not gone to work
+since its daemon began watching it has no turn to read, and the read is refused saying so;
+`--rows` still answers. `--turn` and `--rows` are one or the other.
 
 How far back the window goes is the daemon's limit rather than a promise made here; see
 `muster docs limits`.

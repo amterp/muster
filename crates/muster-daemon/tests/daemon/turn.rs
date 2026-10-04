@@ -7,11 +7,27 @@ use muster_harness::Input;
 
 /// Has the fake agent print `text` above its prompt, and waits until it has: a line typed before
 /// that would be echoed where the agent is about to print.
+///
+/// Typed once more if the agent has not read it after a few seconds: a signal that put the fake
+/// agent to work just before can cut its shell's `read` short and drop the line, and a line never
+/// read is never printed twice.
 fn say(daemon: &Daemon, control: &mut Control, text: &str) {
-    type_line(daemon, &format!("say {text}"));
+    let line = format!("say {text}");
+    type_line(daemon, &line);
+    let typed = std::time::Instant::now();
+    let mut again = true;
     until_some(&format!("the agent to print {text:?}"), || {
         let screen = screen_text(control, "p1");
-        (screen.contains(text) && !screen.contains("say ")).then_some(())
+        if screen.contains(text) && !screen.contains("say ") {
+            return Some(());
+        }
+        let heard = std::fs::read_to_string(daemon.root().join("home/fake-agent-heard"))
+            .is_ok_and(|heard| heard.lines().any(|heard| heard == line));
+        if again && !heard && typed.elapsed() > std::time::Duration::from_secs(5) {
+            again = false;
+            type_line(daemon, &line);
+        }
+        None
     });
 }
 
@@ -131,4 +147,27 @@ fn read_turn(control: &mut Control) -> proto::PaneText {
         Some(proto::answer::Detail::Text(text)) => text,
         _ => panic!("a turn read answered {:?}", read.answer),
     }
+}
+
+/// A line the daemon types for itself - a pane's name, typed into the agent's session - may start
+/// a turn in the agent, as a slash command does. That turn is not the agent's answer to anything,
+/// and the read goes on finding the turn before it.
+#[test]
+fn a_turn_the_daemon_started_with_a_chore_keeps_the_turn_before_it() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    daemon.unblock_agent_unasked();
+    daemon.until_agent("p1", proto::AgentState::Working);
+    say(&daemon, &mut control, "the answer");
+    type_line(&daemon, "rest");
+    daemon.until_agent("p1", proto::AgentState::Idle);
+
+    // A name the fake agent goes to work over, as Claude Code does over `/compact`.
+    let label = Some("at work".to_string());
+    let rename = proto::pane_request::Rename { pane: "p1".to_string(), label };
+    expect(&mut control, pane(proto::pane_request::Request::Rename(rename)), proto::Outcome::Done);
+    daemon.until_agent("p1", proto::AgentState::Working);
+    assert!(read_turn(&mut control).text.starts_with("the answer"), "the rename took the turn");
 }

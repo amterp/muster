@@ -195,7 +195,13 @@ struct Typed {
     /// Text somebody other than the doorbell typed. The doorbell presses Return again over its
     /// ring only while nobody has, since the screen may not show it yet.
     someones_text: Option<Instant>,
+    /// Whether the last input was a chore of the daemon's own (`Input::Chore`).
+    chore: bool,
 }
+
+/// How soon after a chore of the daemon's own the agent going to work is taken for the chore's
+/// turn rather than one of its own: an agent takes a line it is typed in well under this.
+const CHORE_TURN: Duration = Duration::from_secs(10);
 
 /// The process a pane runs, usually a shell - an agent in its place in the foreground is still
 /// there, and the shell there instead means it has left - when this daemon took it on, and when
@@ -318,12 +324,20 @@ impl PaneIo {
         poison::lock(&self.self_report, "daemon.pane.self_report").take()
     }
 
-    pub(crate) fn wrote_input(&self, at: Instant, someones_text: bool) {
+    pub(crate) fn wrote_input(&self, at: Instant, someones_text: bool, chore: bool) {
         let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
         typed.input = Some(at);
+        typed.chore = chore;
         if someones_text {
             typed.someones_text = Some(at);
         }
+    }
+
+    /// Whether a turn starting now is one a chore of the daemon's own started: the last thing
+    /// typed, a moment ago.
+    fn chores_turn(&self, now: Instant) -> bool {
+        let typed = poison::lock(&self.typed, "daemon.pane.typed");
+        typed.chore && typed.input.is_some_and(|at| now.saturating_duration_since(at) < CHORE_TURN)
     }
 
     pub(crate) fn input_at(&self) -> Option<Instant> {
@@ -1123,7 +1137,11 @@ impl Reader {
             Reported::Agent { agent, state, reported, unreadable }
         });
         if let Some(Reported::Agent { state, .. }) = &published {
-            if Turn::between(self.published, *state) == Turn::Started {
+            // A turn a chore started - a rename, say - is not the agent's answer to anything,
+            // and the mark of the turn before it is kept.
+            if Turn::between(self.published, *state) == Turn::Started
+                && !self.io.chores_turn(Instant::now())
+            {
                 self.io.mark_turn();
             }
             self.published = *state;

@@ -103,7 +103,7 @@ pub(crate) fn look<L: Line>(
                 continue;
             }
         }
-        if !seen.io.queue(Input::Ring { text: prompt::as_typed(line), enter: true }) {
+        if !seen.io.queue(Input::Chore { text: prompt::as_typed(line), enter: true }) {
             L::given_up(shared, pane, &what, "its pane would not take what was typed");
             continue;
         }
@@ -179,7 +179,7 @@ fn second_look<L: Line>(shared: &Shared, seen: &Seen, typed: &mut Typed<L::What>
             if typed.presses >= doorbell::PRESSES {
                 return Second::Ended("Return was pressed for it as often as it may be".into());
             }
-            if !seen.io.queue(Input::Ring { text: String::new(), enter: true }) {
+            if !seen.io.queue(Input::Chore { text: String::new(), enter: true }) {
                 return Second::Ended("its pane would not take the Return".to_string());
             }
             typed.presses += 1;
