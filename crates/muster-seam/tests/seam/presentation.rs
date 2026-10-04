@@ -16,11 +16,69 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    Event, OpenWindow, PresentationChanged, Request, Response, Startup, ToggleSidebar, event,
-    request, response,
+    Event, OpenWindow, PresentationChanged, ReloadConfig, Request, Response, Startup,
+    ToggleSidebar, event, request, response,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
+
+/// An error opens a roster that was put away, once. Put away again while the same error stands,
+/// the roster stays away when that error's sentence changes: the error is one somebody has seen
+/// (kan a_2P5Y6Fy7L).
+#[test]
+fn a_roster_put_away_stays_away_for_an_error_it_already_showed() {
+    let _turn = muster::testing::fresh_session();
+    // Switched off for the reason `putting_the_roster_away_is_remembered` gives: it is another
+    // error, and this test is about which errors move the roster.
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let config = daemon.muster_config();
+    let state = config.with_file_name("window.toml");
+
+    muster::ffi::muster_set_event_callback(Some(note_presentation));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: state.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    let put_away = || {
+        assert_ok(&answer(request::Payload::ToggleSidebar(ToggleSidebar {})));
+        until(
+            "the roster to be put away",
+            || latest().is_some_and(|p| !p.sidebar),
+            || format!("the core still says {:?}", latest()),
+        );
+    };
+    let original = std::fs::read_to_string(&config).unwrap_or_default();
+    let refuse = |line: &str| {
+        std::fs::write(&config, format!("{original}\n{line}\n")).expect("the config is writable");
+        let _ = answer(request::Payload::ReloadConfig(ReloadConfig {}));
+    };
+    until(
+        "the core to say what the window shows of itself",
+        || latest().is_some_and(|p| p.sidebar),
+        || format!("the core says {:?}", latest()),
+    );
+    put_away();
+
+    refuse("not_a_key_muster_reads = 1");
+    until(
+        "a refused config to open the roster it would have had nowhere to appear in",
+        || latest().is_some_and(|p| p.sidebar),
+        || format!("the core says {:?}", latest()),
+    );
+
+    put_away();
+    refuse("another_key_muster_does_not_read = 2");
+    // The reload answers after the problem is raised and every roster reconciled, so a roster
+    // opened for it would already say so.
+    assert!(
+        latest().is_some_and(|p| !p.sidebar),
+        "a roster put away was opened again for the error it had already shown: {:?}",
+        latest()
+    );
+}
 
 #[test]
 fn putting_the_roster_away_is_remembered() {

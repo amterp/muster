@@ -413,8 +413,8 @@
       }
     },
     {
-      "name": "a reported pane whose bridge ends is taken back and said again once the new wait runs out",
-      "why": "A bridge ending restarts the wait, because the replacement has to dial too, and the sentence the pane gets next knows how the last bridge ended. So the problem raised before is taken back and raised again a deadline later, and the clear says the wait started over - which is what a run log reader needs in order not to read it as the pane having recovered.",
+      "name": "a reported pane whose bridge ends stays said, and its sentence is brought up to date",
+      "why": "The pane is no more typeable after its bridge ends than before, so its problem is not taken back: taking it back and raising it a deadline later opened a roster somebody had closed, once per ending (kan a_2P5Y6Fy7L). What is known about why it waits did change - the last bridge lost its connection - so the problem is said again with the new sentence, as an update and with nothing cleared.",
       "given": {
         "deadline": 5000000000,
         "steps": [
@@ -447,12 +447,45 @@
           "pane:local/p1w3r07bsd",
           "pane:local/p1w3r07bsd"
         ],
-        "cleared": [
+        "cleared": [],
+        "asked": [],
+        "next_wake": 10000000000
+      }
+    },
+    {
+      "name": "a reported pane whose surface is rebuilt stays said once",
+      "why": "A surface torn down and built again is a bridge whose replacement has to dial, and a pane already said to be untypeable is no more typeable for it. Nothing new is known about why it waits, so nothing is said: neither taken back nor raised again. This is the path with no limit on how often it repeats, and it reopened a roster somebody had closed once per rebuild (kan a_2P5Y6Fy7L).",
+      "given": {
+        "deadline": 5000000000,
+        "steps": [
           {
-            "key": "pane:local/p1w3r07bsd",
-            "because": "restarted"
+            "opened": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "started": "local/p1w3r07bsd",
+            "at": 0
+          },
+          {
+            "reconcile": 5000000000
+          },
+          {
+            "restarted": "local/p1w3r07bsd",
+            "at": 6000000000
+          },
+          {
+            "reconcile": 7000000000
+          },
+          {
+            "reconcile": 11000000000
           }
+        ]
+      },
+      "expect": {
+        "raised": [
+          "pane:local/p1w3r07bsd"
         ],
+        "cleared": [],
         "asked": [],
         "next_wake": 10000000000
       }
@@ -1144,7 +1177,7 @@
     },
     {
       "name": "a connection that is back is not blamed for a pane still dark",
-      "why": "A wait that carried a lost connection said to check that the machine was reachable, and said it four seconds after it was (kan a_2YQD5xCFq). Once the daemon answers again that sentence is false, so one already said is taken back, and a pane still dark a deadline later says only that nothing has dialed.",
+      "why": "A wait that carried a lost connection said to check that the machine was reachable, and said it four seconds after it was (kan a_2YQD5xCFq). Once the daemon answers again that sentence is false, so one already said is said again at the next reading with only that nothing has dialed. It is brought up to date rather than taken back: the pane is still dark, and taking it back would raise it again a deadline later (kan a_2P5Y6Fy7L).",
       "given": {
         "deadline": 5000000000,
         "detail": true,
@@ -1178,12 +1211,7 @@
           "pane:devenv/p206y9p61r",
           "pane:devenv/p206y9p61r"
         ],
-        "cleared": [
-          {
-            "key": "pane:devenv/p206y9p61r",
-            "because": "restarted"
-          }
-        ],
+        "cleared": [],
         "asked": [],
         "next_wake": 10000000000,
         "detail": "The pane devenv/p206y9p61r has had a socket open for over 5s, and no bridge has attached - the bridge that draws this pane either never started or cannot reach the socket or its daemon. The pane shows what it last drew and nothing typed into it appears, so it looks frozen rather than broken; every other pane in the window is unaffected. Muster asks for another bridge every 15s and keeps asking; `muster pane reattach --pane p206y9p61r` asks now. The run log has the cause: look for `link.accept.failed`, `bridge.exited.reported` and `pane.channel.unavailable`.",
