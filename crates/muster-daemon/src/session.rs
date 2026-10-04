@@ -1469,7 +1469,8 @@ impl Session {
     }
 
     /// What a report says of the session's name, kept in step with the pane's
-    /// ([`crate::session_name`]); true when the pane took the session's name. A name counts while
+    /// ([`crate::session_name`]); true when the pane took the session's name, or a name is now to
+    /// be typed into the session that was not before - both are what the doorbell is told of. A name counts while
     /// its agent is the pane's, or before detection has found one: a statusline can report before
     /// the first probe lands.
     fn session_named(
@@ -1481,15 +1482,16 @@ impl Session {
     ) -> bool {
         let pane = &mut self.panes[index];
         let label = pane.record.label.clone();
+        let wanted = pane.session_name.wanted().map(str::to_string);
         if cleared {
             pane.session_name.cleared(&pane.record.pane, label.as_deref());
         }
-        let Some(said) = said else { return false };
-        if pane.record.agent.as_deref().is_some_and(|found| found != agent) {
-            return false;
-        }
-        let Some(taken) = pane.session_name.heard(&pane.record.pane, said, label.as_deref()) else {
-            return false;
+        let ours = pane.record.agent.as_deref().is_none_or(|found| found == agent);
+        let taken = said
+            .filter(|_| ours)
+            .and_then(|said| pane.session_name.heard(&pane.record.pane, said, label.as_deref()));
+        let Some(taken) = taken else {
+            return pane.session_name.wanted() != wanted.as_deref();
         };
         log::info("session.name.taken", fields! { "pane" => pane.record.pane, "agent" => agent });
         pane.record.label = Some(taken);

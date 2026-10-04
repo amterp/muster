@@ -280,7 +280,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
 
 /// Handles a request under the session's lock. One that renames a pane, or reports a session's
 /// name, may leave a pane's name to type into its agent's session, which the doorbell's thread
-/// does.
+/// does - but only if it changed something: a statusline repeats its report every few seconds.
 fn handle(session: &mut Session, service: Service, outbox: &Outbox, shared: &Shared) -> Handled {
     let names = matches!(
         &service,
@@ -289,7 +289,7 @@ fn handle(session: &mut Session, service: Service, outbox: &Outbox, shared: &Sha
         })
     );
     let handled = session.handle(service, outbox);
-    if names {
+    if names && matches!(&handled, Handled::Reply(reply) if reply.outcome == proto::Outcome::Done) {
         shared.doorbell.nudge();
     }
     handled
