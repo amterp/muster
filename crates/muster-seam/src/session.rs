@@ -1208,9 +1208,6 @@ pub(crate) struct Session {
 }
 
 /// One window's own state: what it holds and shows, beside the daemons every window shares.
-// `opened`, `closed` and `closing` are one lifecycle kept as three flags; an enum would say so,
-// and is the change to make when the next state joins them.
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug)]
 pub(crate) struct Window {
     /// What the record of which window holds each tab calls it, after its arrangement:
@@ -1277,36 +1274,8 @@ pub(crate) struct Window {
     /// what every test that never sets one gets.
     arrangement: Option<(String, String)>,
 
-    /// Whether this window has worked out what it is showing.
-    ///
-    /// A window with nothing on screen means two different things either side of this flag, and
-    /// both readers below turn on the difference. Before it, the composition is empty because
-    /// nobody has decided yet and [`open`] is about to; after it, empty is an answer.
-    ///
-    /// Nothing writes the arrangement before this is true. A composition nobody has opened yet is
-    /// empty, and an empty one saved over the file is a window that comes back with no tabs at
-    /// all - the exact loss the file exists to prevent. It is not hypothetical: the shell reports
-    /// its frame as soon as the window has one, which is before it asks the core to open anything,
-    /// so without this a launch would blank the arrangement it was about to restore.
-    ///
-    /// Nothing opens a region before it either. The daemons are followed on one request and the
-    /// window is opened on another, and the app builds a renderer, a menu and a window in between,
-    /// so a daemon's first bootstrap lands in that gap - and the standing rule that a daemon with
-    /// nothing on screen gets a region would answer it there, before the saved arrangement has
-    /// been read. The restore then added its own region onto the same tab, which is a pane drawn
-    /// twice and a bridge that cannot attach.
-    ///
-    /// It also keeps `--renderer-check` from overwriting somebody's arrangement with the empty
-    /// window it deliberately opens.
-    opened: bool,
-
-    /// Whether somebody closed this window, and it has not been opened again since.
-    ///
-    /// Not the same as `opened` being false, which is also every window between being taken on
-    /// and opening. A closed window holds its tabs in the record only, as a closed window in
-    /// another process does, so nothing here may give it a tab or a region: it would be bound
-    /// sockets and a composition for a window nobody can see.
-    closed: bool,
+    /// Where this window is between being taken on and being closed.
+    lifecycle: Lifecycle,
 
     /// What this launch was asked to go to, if anything: a closed window reopened onto one of its
     /// tabs, because somebody went to it from another window.
@@ -1323,11 +1292,6 @@ pub(crate) struct Window {
     /// A tab this window opens onto, taken from whichever window holds it: `muster window new
     /// --tab`. Brought in as it opens, before it would ask a machine for a tab of its own.
     brings: Option<TabId>,
-
-    /// Whether the shell has been asked to close this window and has not yet said it closed.
-    /// Counted as closed already, so two closes asked at once cannot both leave one window and
-    /// together close the last.
-    closing: bool,
 
     /// True when Muster opened the roster itself to show an error, having found it closed.
     /// Kept so that clearing the last error can put it back the way somebody left it -
@@ -1351,6 +1315,59 @@ pub(crate) struct Window {
     bridge_baselines: BTreeMap<PaneKey, u32>,
 }
 
+/// Where a window is between being taken on and being closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Lifecycle {
+    /// Taken on, and not yet worked out what it is showing: every window between being taken on
+    /// and [`open`], including a closed one on its way back.
+    ///
+    /// A window with nothing on screen means two different things either side of this, and the
+    /// readers turn on the difference. Before it opens, the composition is empty because nobody
+    /// has decided yet and [`open`] is about to; after, empty is an answer.
+    ///
+    /// Nothing writes the arrangement while a window is here. A composition nobody has opened yet
+    /// is empty, and an empty one saved over the file is a window that comes back with no tabs at
+    /// all - the exact loss the file exists to prevent. It is not hypothetical: the shell reports
+    /// its frame as soon as the window has one, which is before it asks the core to open anything,
+    /// so without this a launch would blank the arrangement it was about to restore.
+    ///
+    /// Nothing opens a region here either. The daemons are followed on one request and the window
+    /// is opened on another, and the app builds a renderer, a menu and a window in between, so a
+    /// daemon's first bootstrap lands in that gap - and the standing rule that a daemon with
+    /// nothing on screen gets a region would answer it there, before the saved arrangement has
+    /// been read. The restore then added its own region onto the same tab, which is a pane drawn
+    /// twice and a bridge that cannot attach.
+    ///
+    /// It also keeps `--renderer-check` from overwriting somebody's arrangement with the empty
+    /// window it deliberately opens.
+    Unopened,
+    /// Open, and drawn by the shell.
+    Open,
+    /// Open, and the shell has been asked to close it (`ShutWindow`) and has not yet said it
+    /// closed or that it could not.
+    ///
+    /// Still drawn and still saved, but counted as closed by [`ask_to_close_window`], so two
+    /// closes asked at once cannot both leave one window and together close the last.
+    Closing,
+    /// Somebody closed it, and it has not been opened again since.
+    ///
+    /// A closed window holds its tabs in the record only, as a closed window in another process
+    /// does, so nothing here may give it a tab or a region: it would be bound sockets and a
+    /// composition for a window nobody can see.
+    Closed,
+}
+
+impl Window {
+    /// Whether the shell is drawing this window, including one it has been asked to close.
+    fn is_open(&self) -> bool {
+        matches!(self.lifecycle, Lifecycle::Open | Lifecycle::Closing)
+    }
+
+    fn is_closed(&self) -> bool {
+        self.lifecycle == Lifecycle::Closed
+    }
+}
+
 impl Default for Window {
     /// The window of a session nobody has started, named as the holders record names a window
     /// that remembers nothing, so the two agree before startup says otherwise.
@@ -1366,12 +1383,10 @@ impl Default for Window {
             focus_history: FocusHistory::new(),
             sent: Sent::default(),
             arrangement: None,
-            opened: false,
-            closed: false,
+            lifecycle: Lifecycle::Unopened,
             show: None,
             first_tab_on: None,
             brings: None,
-            closing: false,
             opened_sidebar: false,
             shown_errors: BTreeSet::new(),
             bridge_baselines: BTreeMap::new(),
@@ -1390,7 +1405,7 @@ impl Window {
         let mut closed = Window {
             name: self.name.clone(),
             arrangement: self.arrangement.clone(),
-            closed: true,
+            lifecycle: Lifecycle::Closed,
             ..Window::default()
         };
         for daemon in self.composition.daemons().cloned() {
@@ -1436,7 +1451,7 @@ impl Windows {
 
     /// The windows that are open, which are the ones a shell is drawing.
     fn opened(&self) -> Vec<WindowId> {
-        self.iter().filter(|(_, window)| window.opened).map(|(id, _)| id).collect()
+        self.iter().filter(|(_, window)| window.is_open()).map(|(id, _)| id).collect()
     }
 
     fn iter(&self) -> impl Iterator<Item = (WindowId, &Window)> {
@@ -1747,7 +1762,7 @@ impl Session {
             self.holding.follow(followed);
         }
         let taken = self.holding.take_unheld(daemon, &described);
-        for window in self.windows.values_mut().filter(|window| !window.closed) {
+        for window in self.windows.values_mut().filter(|window| !window.is_closed()) {
             for tab in &described {
                 if self.holding.holds(&window.name, tab) {
                     window.composition.hold(tab.clone());
@@ -1834,7 +1849,7 @@ impl Session {
 
             // Every window's, since a pane is drawn by whichever window holds its tab.
             let mut wanted: Vec<PaneId> = Vec::new();
-            for window in self.windows.values().filter(|window| !window.closed) {
+            for window in self.windows.values().filter(|window| !window.is_closed()) {
                 let showing = window.composition.showing().cloned();
                 wanted.extend(
                     window
@@ -2228,7 +2243,7 @@ impl Session {
             let mirrors = self.mirrors();
             self.windows
                 .iter()
-                .filter(|(_, window)| window.opened)
+                .filter(|(_, window)| window.is_open())
                 .map(|(id, window)| {
                     let tabs: BTreeSet<&TabId> =
                         window.composition.tabs().map(|tab| &tab.id).collect();
@@ -2478,7 +2493,7 @@ impl Session {
         };
         self.windows
             .iter()
-            .filter(|(id, window)| *id != closing && window.opened)
+            .filter(|(id, window)| *id != closing && window.is_open())
             .max_by_key(|(_, window)| focused(window))
             .map_or(closing, |(id, _)| id)
     }
@@ -2539,7 +2554,7 @@ pub(crate) fn resolve(request: &Request) -> Result<Resolved, String> {
                 here.join(", ")
             )
         })?;
-        if session.windows[named].closed
+        if session.windows[named].is_closed()
             && !request.payload.as_ref().is_some_and(asks_a_closed_window)
         {
             return Err(format!(
@@ -3657,7 +3672,7 @@ pub(crate) fn move_tab(window: WindowId, tab: Option<TabId>, to: &str) -> Result
         );
         // Every window here acts on its own half at once, since either end may be one of them.
         for held in session.windows.values_mut() {
-            if held.name == to && !held.closed {
+            if held.name == to && !held.is_closed() {
                 held.composition.hold(tab.clone());
             } else {
                 held.composition.let_go(&tab);
@@ -4339,14 +4354,14 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
         // closed window is laid out from its record, as it would be if it reopened.
         let mut layouts = session.arranged(window);
         for (other, held) in session.windows.iter() {
-            if other != window && held.opened {
+            if other != window && held.is_open() {
                 layouts.extend(session.arranged(other));
             }
         }
         let open: BTreeSet<&WindowName> = session
             .windows
             .iter()
-            .filter(|(_, held)| held.opened)
+            .filter(|(_, held)| held.is_open())
             .map(|(_, held)| &held.name)
             .collect();
         for held in session.holding.holders().windows() {
@@ -4961,7 +4976,7 @@ pub(crate) enum AttachError {
 /// daemon that has not answered anything yet.
 pub(crate) fn open(window: WindowId) -> Result<(), String> {
     // First, so the window takes its tabs back as the rest of this restores them.
-    poison::lock(&SESSION, "session").windows[window].closed = false;
+    poison::lock(&SESSION, "session").windows[window].lifecycle = Lifecycle::Unopened;
     follow_implicitly_if_nothing_else(Implicitly::InBackground)?;
     restore_presentation(window);
     restore_font_sizes(window);
@@ -4975,7 +4990,7 @@ pub(crate) fn open(window: WindowId) -> Result<(), String> {
     // would turn that rule off and wait forever for a region nothing else will make.
     let brings = {
         let mut session = poison::lock(&SESSION, "session");
-        session.windows[window].opened = true;
+        session.windows[window].lifecycle = Lifecycle::Open;
         session.windows[window].brings.take()
     };
     // Before settling, so a window opened onto a tab is not empty and asks no machine for one.
@@ -5021,7 +5036,7 @@ pub(crate) fn close_window(window: WindowId) {
     {
         let mut guard = poison::lock(&SESSION, "session");
         let session = &mut *guard;
-        if !session.windows[window].opened {
+        if !session.windows[window].is_open() {
             return;
         }
         save(session, window);
@@ -5046,15 +5061,11 @@ pub(crate) fn ask_to_close_window(window: WindowId) -> Result<(), String> {
     let name = {
         let mut session = poison::lock(&SESSION, "session");
         let asked = &session.windows[window];
-        if !asked.opened || asked.closing {
+        if asked.lifecycle != Lifecycle::Open {
             return Ok(());
         }
-        let staying = session
-            .windows
-            .opened()
-            .into_iter()
-            .filter(|open| !session.windows[*open].closing)
-            .count();
+        let staying =
+            session.windows.values().filter(|open| open.lifecycle == Lifecycle::Open).count();
         if staying == 1 {
             return Err(format!(
                 "{} is the only window open, and closing the last window quits Muster, so \
@@ -5065,7 +5076,7 @@ pub(crate) fn ask_to_close_window(window: WindowId) -> Result<(), String> {
         }
         let name = asked.name.to_string();
         // Marked under the same lock as the count, so a second close asked at once counts this one.
-        session.windows[window].closing = true;
+        session.windows[window].lifecycle = Lifecycle::Closing;
         name
     };
     log::info("window.close.asked", fields! { "window" => name.clone() });
@@ -5112,7 +5123,7 @@ pub(crate) fn window_to_open(
             .map(|(id, _)| id)
     };
     if let Some(existing) = existing {
-        if session.windows[existing].opened {
+        if session.windows[existing].is_open() {
             return Opening::AlreadyOpen(existing);
         }
         if !show.is_empty() {
@@ -5714,8 +5725,7 @@ pub(crate) fn attach(window: WindowId, pane_id: &str) -> Result<Arc<AttachedPane
     {
         let mut session = poison::lock(&SESSION, "session");
         let opening = &mut session.windows[window];
-        opening.opened = true;
-        opening.closed = false;
+        opening.lifecycle = Lifecycle::Open;
         log::info(
             "window.opened",
             fields! {
@@ -5855,7 +5865,7 @@ fn reconcile_every_daemon() {
 /// region and stops.
 fn save(session: &mut Session, window: WindowId) {
     let window = &mut session.windows[window];
-    if !window.opened {
+    if !window.is_open() {
         return;
     }
     let Some((path, written)) = window.arrangement.as_mut() else { return };
@@ -6036,7 +6046,7 @@ fn publish(cause: &str) {
                 .windows
                 .ids()
                 .into_iter()
-                .filter(|window| session.windows[*window].opened)
+                .filter(|window| session.windows[*window].is_open())
                 .map(|window| {
                     let view = session.view_with(window, &mirrors);
                     let roster = session.roster_with(window, &view, &mirrors);
@@ -6198,7 +6208,7 @@ fn reconcile(daemon: &DaemonId) {
     let opened = {
         let mut session = poison::lock(&SESSION, "session");
         session.reconcile(daemon);
-        session.windows.values().any(|window| window.opened)
+        session.windows.values().any(Window::is_open)
     };
     // A standing rule rather than a launch-time one, because the states that produce a
     // daemon with nothing on screen keep arriving: a tab Muster asked for a moment ago
@@ -6588,7 +6598,7 @@ fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
             },
         );
     }
-    if poison::lock(&SESSION, "session").windows.values().any(|window| window.opened) {
+    if poison::lock(&SESSION, "session").windows.values().any(Window::is_open) {
         settle_what_every_window_shows();
     }
 }
