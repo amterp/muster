@@ -432,6 +432,9 @@ impl Detector {
                 .map(|started| now.saturating_duration_since(started)),
             pending_foreground_shell_clear: self.pending_foreground_shell_clear,
             elapsed_since_process_check: now.saturating_duration_since(self.last_process_check),
+            changed_since_process_check: self
+                .last_content_change_at
+                .is_some_and(|changed| changed > self.last_process_check),
         }) {
             return foreground;
         }
@@ -663,6 +666,7 @@ fn foreground_shell_agent_action(
 }
 
 #[derive(Debug, Clone, Copy)]
+#[expect(clippy::struct_excessive_bools, reason = "the probe decision's inputs, one each")]
 struct ProbeInput {
     identified: bool,
     foreground_group: Option<u32>,
@@ -671,6 +675,8 @@ struct ProbeInput {
     acquisition_age: Option<Duration>,
     pending_foreground_shell_clear: bool,
     elapsed_since_process_check: Duration,
+    /// Whether the screen changed while acquiring after the last probe.
+    changed_since_process_check: bool,
 }
 
 fn foreground_group_changed(foreground_group: Option<u32>, last: Option<u32>) -> bool {
@@ -701,6 +707,12 @@ fn should_probe_foreground_job(input: ProbeInput) -> bool {
             PROCESS_ACQUISITION_SLOW_RECHECK
         };
         if age <= PROCESS_ACQUISITION_WINDOW && input.elapsed_since_process_check >= interval {
+            return true;
+        }
+        // A job that execs after the window's last probe and paints before it closes would
+        // otherwise go unfound: its paint cannot open a window while this one is open, and
+        // nothing probes a pane whose group holds still once it has closed.
+        if age > PROCESS_ACQUISITION_WINDOW && input.changed_since_process_check {
             return true;
         }
     }

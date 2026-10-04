@@ -73,6 +73,7 @@ fn probe_input() -> ProbeInput {
         acquisition_age: None,
         pending_foreground_shell_clear: false,
         elapsed_since_process_check: Duration::from_secs(1),
+        changed_since_process_check: false,
     }
 }
 
@@ -1279,4 +1280,28 @@ fn a_still_screen_is_never_unreadable() {
     run.paint("nothing a rule knows");
     let published = run.run_for(reporting::DRIFT * 2, None);
     assert!(published.iter().all(|publication| !publication.unreadable), "{published:?}");
+}
+
+/// Under load a job's exec can land late in the window its group change opened: after the last
+/// probe the window makes, with the agent's first paint still inside it. That paint cannot open a
+/// window of its own while this one is open, and once it closes nothing probes a pane whose group
+/// holds still - so the agent is never found.
+#[test]
+fn an_agent_that_starts_after_the_windows_last_probe_is_still_found() {
+    let mut run = Run::new();
+    run.tick();
+    // The shell has forked the job into a group of its own and not yet exec'd it.
+    run.processes.agent = "zsh";
+    run.pane.group = Some(AGENT_GROUP);
+    run.tick();
+    let window_opened = run.now;
+    while run.now - window_opened < Duration::from_millis(7500) {
+        assert_eq!(run.tick(), None);
+    }
+
+    run.processes.agent = "claude";
+    run.paint("ready>");
+
+    let found = run.until_published(Duration::from_secs(30));
+    assert_eq!(found.map(|(_, publication)| publication.agent), Some(Some(claude())));
 }
