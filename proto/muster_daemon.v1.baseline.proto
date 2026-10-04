@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.2
+// Version: 1.3
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -163,6 +163,16 @@ message SessionRequest {
     // serving as before. While it runs, a request that changes anything is refused.
     Replace replace = 11;
     SetScrollMultiplier set_scroll_multiplier = 12;
+    // How big every pane's terminal is. A read: it changes nothing and produces no event.
+    ReadGrids read_grids = 13;
+    // Since 1.3.
+    SetNameSessions set_name_sessions = 14;
+    // Since 1.3.
+    SetHumanName set_human_name = 15;
+    // Since 1.3.
+    SetCompactAt set_compact_at = 16;
+    // Since 1.3.
+    SetResumeAgents set_resume_agents = 17;
   }
 
   message Snapshot {}
@@ -181,6 +191,13 @@ message SessionRequest {
     // The new daemon's `--data`. Absent: the directory it finds for itself.
     optional string data = 2;
   }
+
+  // Answered with Grids. A pane's size is the one its program last saw: what the last bridge to
+  // draw it asked for, or the size it was made at. A pane nothing is drawing keeps that size,
+  // which is still what wraps its output, so it is answered rather than left out. Asked rather
+  // than carried on Pane, because a window being resized changes every size many times a second
+  // and nothing but somebody asking about the layout reads them.
+  message ReadGrids {}
 
   // Answered with LogFollowed. REFUSED when the daemon's log is off.
   message FollowLog {
@@ -230,6 +247,8 @@ message PaneRequest {
     Read read = 8;
     Report report = 9;
     Seen seen = 10;
+    // Since 1.3.
+    Compact compact = 11;
   }
 
   // Somebody has seen these panes: a window with the keyboard shows them. Clears each one's
@@ -239,6 +258,19 @@ message PaneRequest {
   // does not stop the others being seen; NOT_THERE only when none of them is here.
   message Seen {
     repeated string panes = 1;
+  }
+
+  // Compacts the context of the agent in a pane, by typing what its manifest gives in `[session]
+  // compact` at its prompt once it is idle and the prompt is empty, under the doorbell's rules,
+  // never while it works (MIP-5, section 10). DONE once it is to be typed, which may be long
+  // before it is: the agent's turn ends first. REFUSED, with the reason, when the pane runs no
+  // agent, the agent's manifest says no way to compact it, or the focus cannot be typed or taken.
+  // A second request before the first is typed replaces it.
+  message Compact {
+    string pane = 1;
+    // What the compaction should keep, typed after the command where the manifest says the
+    // harness takes it. One line. Absent or blank: compacted without one.
+    optional string focus = 2;
   }
 
   // Starts a pane. A pane of that name already here answers ALREADY_SO, so a create retried
@@ -310,6 +342,12 @@ message PaneRequest {
     // than the history before them, and not the blank rest of the screen beneath a prompt. A
     // daemon that predates it reads from `first_row` as asked.
     uint32 last = 4;
+    // Since 1.3. When set, the page is what the pane's agent printed since it last went to work:
+    // from the first row that differs from what the screen showed at that moment, to the last row
+    // with anything on it, the newest kept when that passes 4 MiB. `first_row`, `rows` and
+    // `last` are not read. Refused when no turn has started since this daemon began watching the
+    // pane. A daemon that predates it answers without `PaneText.turn`.
+    bool turn = 5;
   }
 
   // Facts the agent in a pane states about itself, sent from inside the pane
@@ -334,6 +372,16 @@ message PaneRequest {
     optional AgentState state = 9;
     // What the agent is waiting on (AgentFacts.waiting). Empty clears it.
     optional string waiting = 10;
+    // Since 1.3. What the agent's harness calls its session; empty when it has no name. The
+    // pane takes a name the session is given after it started, and gives the session its own
+    // name otherwise (MIP-5, section 10). Needs its agent, and counts only while detection
+    // finds that agent in the pane, or none yet.
+    optional string session_name = 11;
+    // Since 1.3. The harness's id for its session, which its own commands name it by: a wake
+    // reaches the session through the command its manifest's `[session] wake` names
+    // (MIP-5, section 7). Needs its agent, and counts only while detection finds that agent in
+    // the pane. Empty forgets it.
+    optional string session_id = 12;
   }
 }
 
@@ -411,6 +459,32 @@ message SetClipboardWrite {
 // zero, or refused.
 message SetScrollMultiplier {
   double multiplier = 1;
+}
+
+// Whether naming a pane types its name into its agent's session, as the agent's manifest says
+// to rename it (MIP-5, section 10). A session renamed in its harness renames the pane either way.
+message SetNameSessions {
+  bool name = 1;
+}
+
+// Whether a pane whose agent reported its session's id starts that session again when a restart
+// brings the pane back, as the agent's manifest says to resume it, with the arguments the agent
+// was running with. Off: the pane comes back as a shell, as every pane did before.
+message SetResumeAgents {
+  bool resume = 1;
+}
+
+// How full an agent's context gets before the daemon compacts it, as a Compact for its pane
+// would, once each time a report crosses it. Absent: never.
+message SetCompactAt {
+  optional float percent = 1;
+}
+
+// What messages call the human where they show it (MIP-4, section 10): `who` and the framing of
+// `read` and `log` put it beside the address, which stays `@human`. Absent or empty: shown by
+// the address alone.
+message SetHumanName {
+  optional string name = 1;
 }
 
 message SetPalette {
@@ -495,6 +569,8 @@ message MsgRequest {
     Pause pause = 21;
     Resume resume = 22;
     Peer peer = 23;
+    // Since 1.3.
+    GroupDelete group_delete = 24;
   }
 
   message Caller {
@@ -539,6 +615,11 @@ message MsgRequest {
     optional string group = 1;
     repeated string to = 2;
     string body = 3;
+    // Since 1.3. Rings an agent in a pane while it works, at a prompt read as empty, rather
+    // than once it is idle, and wakes an addressee woken already. Refused as `not_urgent` when
+    // the group's policy does not let the author, and as `urgent_unsupported` when the group is
+    // kept on a machine whose daemon speaks a protocol before 1.3.
+    bool urgent = 4;
   }
 
   // The caller's unread entries, moving its cursor past them.
@@ -568,6 +649,8 @@ message MsgRequest {
     repeated string membership = 3;
     // Read when a group is made; `group set` leaves it as it is, and pause and resume change it.
     bool paused = 4;
+    // Since 1.3. Who may post urgently; none is anyone.
+    optional Names urgent = 5;
   }
 
   message Names {
@@ -607,6 +690,12 @@ message MsgRequest {
     string group = 1;
   }
 
+  // Deletes a group kept here, with its log, letting every member go; answered with Deleted.
+  // Who may is the policy's `membership`, as for any other change (MIP-4, section 8).
+  message GroupDelete {
+    string group = 1;
+  }
+
   // Answered once the caller has unread messages that would wake it: at once if it already
   // does. A newer wait for the same participant ends this one, refused as `superseded`.
   message Wait {
@@ -635,6 +724,9 @@ message MsgAnswer {
   // Why a refused request was refused, as data - `unread`, `name_in_use`, `timed_out` - where
   // the answer's reason says it in words, naming the command to run next.
   string refusal = 2;
+  // Since 1.3. What to call the human where an answer shows it, as SetHumanName set it; empty
+  // when nothing did.
+  string human_name = 3;
   oneof answer {
     Joined joined = 10;
     Left left = 11;
@@ -646,6 +738,16 @@ message MsgAnswer {
     // A resume, which wakes as a post does: `seq` is the notice it logged.
     Posted resumed = 17;
     Groups groups = 18;
+    // Since 1.3.
+    Deleted deleted = 19;
+  }
+
+  // A group deleted: how many entries its log held, and the members it let go, in this
+  // machine's names.
+  message Deleted {
+    string group = 1;
+    uint64 entries = 2;
+    repeated string let_go = 3;
   }
 
   // A change to a group. No `seq` when it changed nothing: pausing a group already paused.
@@ -704,6 +806,8 @@ message MsgAnswer {
     UNTIL_PROMPT = 2;
     // An agent to be found in the pane, which was made moments ago.
     UNTIL_AGENT = 3;
+    // Since 1.3. For an urgent post: its agent to be out of a dialog, working or idle.
+    UNTIL_UNBLOCKED = 4;
   }
 
   enum Reach {
@@ -770,6 +874,11 @@ message MsgAnswer {
     message Changed {
       string by = 1;
       Change change = 2;
+      // Since 1.3. The policy a set_policy set, so a replica taking several in one batch rings
+      // each message under the one it was posted under. Absent from a daemon before 1.3, and for
+      // an entry written before the log recorded it: the replica then reads it, as before, under
+      // the policy the batch ends with.
+      optional MsgRequest.Policy policy = 3;
     }
 
     enum Change {
@@ -784,6 +893,8 @@ message MsgAnswer {
     string author = 1;
     repeated string to = 2;
     string body = 3;
+    // Since 1.3.
+    bool urgent = 4;
   }
 
   message Members {
@@ -823,6 +934,12 @@ message MsgAnswer {
     repeated string from = 6;
     // Woken for these once already, and gone idle without reading them.
     bool again = 7;
+    // Since 1.3. How many of them were posted urgently.
+    uint64 urgent = 8;
+    // Since 1.3. On a notice to the windows, whether the human is in the group: a group whose
+    // count falls to 0 because the human read it is still theirs to list, and one they left or
+    // that was deleted is not. A daemon that predates it leaves it false.
+    bool member = 9;
   }
 }
 
@@ -857,7 +974,13 @@ message Answer {
     PaneText text = 11;
     LogFollowed followed = 12;
     MsgAnswer msg = 13;
+    Grids grids = 14;
   }
+}
+
+// Every pane's size, by the pane's name.
+message Grids {
+  map<string, Grid> panes = 1;
 }
 
 // What a FollowLog found. Records the client asked for that are older than `oldest` have left
@@ -894,18 +1017,37 @@ message Snapshot {
   // What waits for the human, per group with anything waiting: how a window that opens after
   // a message to the human is told of it.
   repeated MsgAnswer.Notice human = 7;
+  // Since 1.3. This run brought panes back from the file a previous run wrote, so every process
+  // in them was started by this run: a shell in each pane's directory, and the agents it resumes.
+  // False for a run that took its panes over from a running daemon, or had nothing saved. Kept
+  // for the whole run, so a client that connects after `restored` still learns it.
+  bool restored_from_file = 8;
 }
 
 message PaneText {
-  // The absolute row of the first line in `text`.
+  // The row of the first line in `text`. Since 1.3 rows are numbered from the start of the pane's
+  // history, so a row keeps its number as rows above it are trimmed, until a change of width
+  // rewraps them; before, from the oldest row the pane held. A read asked to start at a row
+  // already trimmed starts at `oldest_row`.
   uint64 first_row = 1;
   // One line per row, joined by newlines.
   string text = 2;
-  // Rows the pane holds in all, so a reader knows where the end is.
+  // The row after the last one the pane holds, so a reader knows where the end is: the rows it
+  // holds in all, before 1.3, when nothing above them was counted.
   uint64 total_rows = 3;
   // Rows in this page, which can be fewer than were asked for: the next page starts at
   // `first_row + rows`.
   uint32 rows = 4;
+  // Since 1.3. For a read of the turn, the row it starts at; `first_row` past it means the page
+  // was cut short at its top.
+  optional uint64 turn = 5;
+  // Since 1.3. For a read of the turn, the pane's rows have moved since the turn began - rewrapped
+  // to another width, or erased - so the turn may begin above `turn`. Rows trimmed off the top
+  // move nothing: a turn that began in them has a `turn` before `oldest_row`.
+  bool turn_moved = 6;
+  // Since 1.3. The oldest row the pane still holds. Older daemons send 0, which was its number
+  // then.
+  uint64 oldest_row = 7;
 }
 
 message Event {
@@ -1082,6 +1224,26 @@ message Pane {
   // reads it, or they read idle while the agent reports working. A harness update that changed
   // its screen is the usual cause; the pane's state then comes only from the agent's reports.
   bool screen_unreadable = 12;
+  // Since 1.3. The pane's agent can be compacted (`PaneRequest.Compact`): its manifest, as this
+  // daemon holds it, says how. False for a pane running no agent. A view offers compacting on
+  // this rather than reading a manifest of its own, which may not be the one this daemon types.
+  bool agent_compacts = 13;
+  // Whether the pane's agent reports itself, through its harness's adapter. Unsaid until the
+  // agent reports or ends a turn without having reported, and again when the agent changes or
+  // leaves. Since 1.3.
+  Adapter adapter = 14;
+}
+
+// Whether a pane's agent reports itself (`PaneRequest.Report`).
+enum Adapter {
+  // Nothing to say yet: no agent, or one that has not yet ended a turn. A harness that reports
+  // only once it is prompted, as Codex does, has not had the chance.
+  ADAPTER_UNSAID = 0;
+  // The agent has reported since it came into the pane.
+  ADAPTER_REPORTING = 1;
+  // The agent ended a turn and had reported nothing: its harness has no adapter installed, or
+  // one that is not running.
+  ADAPTER_SILENT = 2;
 }
 
 // Facts an agent reports about itself (`PaneRequest.Report`), for a view to render beside its
@@ -1181,6 +1343,14 @@ message Settings {
   optional Cursor cursor = 5;
   // Absent: 1.
   optional double scroll_multiplier = 6;
+  // Since 1.3. Absent: named.
+  optional bool name_sessions = 7;
+  // Since 1.3. Absent: the human is shown by the address alone.
+  optional string human_name = 8;
+  // Since 1.3. Absent: no agent is compacted unasked.
+  optional float compact_at = 9;
+  // Since 1.3. Absent: agents are resumed.
+  optional bool resume_agents = 10;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1480,6 +1650,13 @@ message Handoff {
     // Whether the agent reports its own state, so that its own idle report ends its turns rather
     // than the screen.
     bool reports_turns = 7;
+    // Since 1.3. The session id the pane's agent reported (Report.session_id), which its hooks
+    // say only as a session starts, so the new daemon could not learn it again for the life of
+    // the session. Absent: none reported.
+    optional string session_id = 8;
+    // Since 1.3. The number of the oldest row the pane holds, which the replay begins with, so
+    // the new daemon goes on numbering rows from the start of the pane's history.
+    uint64 oldest_row = 9;
   }
 
   // One pane's agent detection, as `muster-detect`'s detector holds it. Times are carried as
@@ -1596,6 +1773,13 @@ message PeerCall {
     // this one (MIP-4, section 10). Its names are written as the asker writes them; its answer
     // is in this machine's.
     MsgRequest carried = 18;
+    // Since 1.3. From a group's home: the group is deleted, so the replica goes, and with it
+    // what its members here had read and been woken for. Answered with `applied`.
+    Forget forget = 19;
+  }
+
+  message Forget {
+    string group = 1;
   }
 
   // Whether a group by this name is kept there.
@@ -1624,6 +1808,8 @@ message PeerCall {
     string body = 4;
     uint64 cursor = 5;
     uint64 head = 6;
+    // Since 1.3.
+    bool urgent = 7;
   }
 
   message Since {
