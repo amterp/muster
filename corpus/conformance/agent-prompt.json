@@ -498,6 +498,48 @@
       "expect": {
         "atPrompt": true
       }
+    },
+    {
+      "name": "opencode 1.18.34: the command palette over the prompt box is not the prompt",
+      "why": "The palette is drawn over the prompt box, which still shows behind it: a ring typed now would land in the palette's search, so no prompt is read.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n\n\n\n\n\n\n                                                                ▄\n\n                        Commands                                         esc\n\n                        Search\n\n             ┃          Suggested\n             ┃  Ask     Switch model                                ctrl+x m\n             ┃          Connect provider\n             ┃  Buil\n             ╹▀▀▀▀▀▀    System                                                  ▀▀▀▀▀▀▀▀\n                        Hide tips                                   ctrl+x h    commands\n                        Plugins\n                        Install plugin\n                        View status                                 ctrl+x s\n\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n\n\n",
+        "title": "OpenCode",
+        "typed": "\n\n\n\n\n\n\n                                                                ▄\n\n                        Commands                                         esc\n\n                        Search\n\n             ┃          Suggested\n             ┃  Ask     Switch model                                ctrl+x m\n             ┃          Connect provider\n             ┃  Buil\n             ╹▀▀▀▀▀▀    System                                                  ▀▀▀▀▀▀▀▀\n                        Hide tips                                   ctrl+x h    commands\n                        Plugins\n                        Install plugin\n                        View status                                 ctrl+x s\n\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "opencode 1.18.34: the session list is not the prompt",
+      "why": "The session list takes the screen; a ring typed now would land in its search.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n\n\n\n\n\n\n                                                                ▄\n\n          Sessions                                                                     esc\n\n          Search\n\n\n          No results found\n\n          pin/unpin ctrl+f  delete ctrl+d  rename ctrl+r\n\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n\n\n",
+        "title": "OpenCode",
+        "typed": "\n\n\n\n\n\n\n                                                                ▄\n\n          Sessions                                                                     esc\n\n          Search\n\n\n          No results found\n\n          pin/unpin ctrl+f  delete ctrl+d  rename ctrl+r\n\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "opencode 1.18.34: the moment a turn starts, it is not at its prompt",
+      "why": "A quarter of a second after a request is sent, the progress bar is already drawn: a ring is not typed into a turn that has just begun.",
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n  ┃\n  ┃  Without using any tools, count from 1 to 30, one number per line.\n  ┃\n\n     ▣  Build · Big Pickle\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   ■■■■⬝⬝⬝⬝  esc interrupt                                             tab agents  ctrl+p commands\n\n",
+        "title": "OpenCode",
+        "typed": "\n  ┃\n  ┃  Without using any tools, count from 1 to 30, one number per line.\n  ┃\n\n     ▣  Build · Big Pickle\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   ■■■■⬝⬝⬝⬝  esc interrupt                                             tab agents  ctrl+p commands"
+      },
+      "expect": {
+        "atPrompt": false
+      }
     }
   ]
 }

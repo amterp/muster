@@ -514,6 +514,50 @@
       },
       "name": "opencode 1.18.34: idle after interrupting",
       "why": "The turn interrupted with Esc twice: OpenCode back at its prompt box."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n\n\n\n\n\n\n                                                                ▄\n\n                        Commands                                         esc\n\n                        Search\n\n             ┃          Suggested\n             ┃  Ask     Switch model                                ctrl+x m\n             ┃          Connect provider\n             ┃  Buil\n             ╹▀▀▀▀▀▀    System                                                  ▀▀▀▀▀▀▀▀\n                        Hide tips                                   ctrl+x h    commands\n                        Plugins\n                        Install plugin\n                        View status                                 ctrl+x s\n\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n\n\n",
+        "title": "OpenCode",
+        "typed": "\n\n\n\n\n\n\n                                                                ▄\n\n                        Commands                                         esc\n\n                        Search\n\n             ┃          Suggested\n             ┃  Ask     Switch model                                ctrl+x m\n             ┃          Connect provider\n             ┃  Buil\n             ╹▀▀▀▀▀▀    System                                                  ▀▀▀▀▀▀▀▀\n                        Hide tips                                   ctrl+x h    commands\n                        Plugins\n                        Install plugin\n                        View status                                 ctrl+x s\n\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n"
+      },
+      "name": "opencode 1.18.34: the command palette",
+      "why": "The command palette opened from the prompt box: a ring typed now would land in it."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n\n\n\n\n\n\n                                                                ▄\n\n          Sessions                                                                     esc\n\n          Search\n\n\n          No results found\n\n          pin/unpin ctrl+f  delete ctrl+d  rename ctrl+r\n\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n\n\n",
+        "title": "OpenCode",
+        "typed": "\n\n\n\n\n\n\n                                                                ▄\n\n          Sessions                                                                     esc\n\n          Search\n\n\n          No results found\n\n          pin/unpin ctrl+f  delete ctrl+d  rename ctrl+r\n\n                                                             tab agents  ctrl+p commands\n\n\n\n                      ● Tip Run /connect to add an AI provider and start coding\n\n\n\n\n  /tmp/capture                                                                             1.18.34\n"
+      },
+      "name": "opencode 1.18.34: the session list",
+      "why": "The session list opened from the prompt box: a ring typed now would land in it."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "opencode",
+        "progress": "",
+        "screen": "\n  ┃\n  ┃  Without using any tools, count from 1 to 30, one number per line.\n  ┃\n\n     ▣  Build · Big Pickle\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   ■■■■⬝⬝⬝⬝  esc interrupt                                             tab agents  ctrl+p commands\n\n",
+        "title": "OpenCode",
+        "typed": "\n  ┃\n  ┃  Without using any tools, count from 1 to 30, one number per line.\n  ┃\n\n     ▣  Build · Big Pickle\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ┃\n  ┃\n  ┃\n  ┃  Build · Big Pickle OpenCode Zen\n  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n   ■■■■⬝⬝⬝⬝  esc interrupt                                             tab agents  ctrl+p commands"
+      },
+      "name": "opencode 1.18.34: the moment a turn starts",
+      "why": "A quarter of a second after the request was sent, before the model has answered."
     }
   ]
 }

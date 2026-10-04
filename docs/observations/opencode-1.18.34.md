@@ -29,6 +29,11 @@ prompt takes the box's place with no foot either. An empty box holds a suggestio
 anything…", drawn grey by color rather than faint, so a reader that blanks faint cells reads it as
 typed text. After a turn the box is empty and has no suggestion.
 
+The command palette (ctrl+p) is drawn over the box, which still shows beside it, and the session
+list takes the screen; both are titled with `esc` at the right and a `Search` line below, and a
+line typed then lands in the search. A quarter of a second after a request is sent the progress
+bar is already drawn.
+
 At work the box stays, and OpenCode draws a progress bar of `■` and `⬝` with "esc interrupt"
 below it. Herdr's rule for that bar reads every recorded working screen as working, and its
 permission rule reads the permission prompt as blocked.

@@ -20,8 +20,9 @@ approving it, idle after declining another). `--only` runs the named phases afte
 `--size` a narrower pane, where a dialog's question wraps.
 
 OpenCode's, after `start`: `draft`, `turn` (rung as the doorbell rings, at work, idle after),
-`permission` (its config asks before a shell command) and `steer` (typing while it works, and
-Esc twice). It runs with its data and config in <out> and no credentials in its environment, so
+`permission` (its config asks before a shell command), `steer` (typing while it works, and
+Esc twice), `overlays` (the command palette and the session list) and `start` (the
+first moment of a turn). It runs with its data and config in <out> and no credentials in its environment, so
 only OpenCode's free models answer; `--binary` names a build other than the one on PATH, since its
 free models refuse 1.3.15.
 
@@ -484,11 +485,40 @@ def opencode_steer(capture: Capture) -> None:
     capture.mark("idle after interrupting", "idle", "The turn interrupted with Esc twice: OpenCode back at its prompt box.")
 
 
+def opencode_overlays(capture: Capture) -> None:
+    # Pickers opened from the prompt box, drawn over the screen with the box still behind them.
+    # Nobody is waiting on anybody, and a ring typed there would land in the picker's search.
+    # A slash command's first Return takes the completion offered; the second runs it.
+    for name, keys in [("the command palette", ["\x10"]), ("the session list", ["/sessions", "\r", "\r"])]:
+        for key in keys:
+            capture.send(key)
+            capture.pump(1)
+        capture.pump(1.5)
+        capture.mark(name, "unknown", f"{name[0].upper()}{name[1:]} opened from the prompt box: a ring typed now would land in it.", skip=True)
+        capture.send("\x1b")
+        capture.pump(1.5)
+
+
+def opencode_start_of_turn(capture: Capture) -> None:
+    capture.send("\x1b[200~Without using any tools, count from 1 to 30, one number per line.\x1b[201~\r")
+    capture.pump(0.25)
+    capture.mark("the moment a turn starts", "working", "A quarter of a second after the request was sent, before the model has answered.")
+    opencode_until_idle(capture, 90)
+    capture.pump(1)
+
+
 OPENCODE = Harness(
     argv=lambda out: ["opencode", "-m", OPENCODE_MODEL],
     strip=("OPENCODE", "MUSTER_"),
     start=opencode_start,
-    phases={"draft": opencode_draft, "turn": opencode_turn, "permission": opencode_permission, "steer": opencode_steer},
+    phases={
+        "draft": opencode_draft,
+        "turn": opencode_turn,
+        "permission": opencode_permission,
+        "steer": opencode_steer,
+        "overlays": opencode_overlays,
+        "start": opencode_start_of_turn,
+    },
     environment=opencode_environment,
     credentials=False,
 )

@@ -2,7 +2,7 @@
 # agent by, since Muster identifies an agent only by the names its manifest gives; and
 # `prompt_box`, reading OpenCode's prompt for the doorbell.
 id = "opencode"
-version = "2026.10.04.1"
+version = "2026.10.04.2"
 min_engine_version = 9
 updated_at = "2026-10-04T00:00:00Z"
 aliases = ["open-code", "opencode2", "herdr:opencode"]
@@ -38,6 +38,18 @@ priority = 100
 region = "whole_recent"
 visible_working = true
 regex = ['(■|⬝){4,}']
+
+# A picker opened from the prompt box - the command palette, the session list - titled on its
+# first line with `esc` at the right and a search line below. Nobody is waiting on anybody, and a
+# ring typed now would land in its search, though the box may still show behind it: above
+# prompt_box and below every working rule, so the state stays what it was.
+[[rules]]
+id = "picker"
+state = "unknown"
+priority = 60
+region = "whole_recent"
+skip_state_update = true
+all = [{ line_regex = ['\S\s{8,}esc$'] }, { line_regex = ['^\s*Search$'] }]
 
 # OpenCode at its prompt box, which the doorbell reads before typing: the box with a bar down its
 # left side, above its foot, without the line naming the agent and model. Each of the box's lines
