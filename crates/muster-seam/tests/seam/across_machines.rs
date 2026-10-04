@@ -101,6 +101,57 @@ fn two_machines(devenv: Devenv) -> TwoMachines {
     TwoMachines { laptop, devenv: second }
 }
 
+/// A machine added to the config is attached when the file is saved, and its panes come into the
+/// window. One taken out stays attached until Muster is relaunched, because detaching it would
+/// take running agents' tabs out of the window, and a warning says so (kan a_2JtRvPUH5).
+#[test]
+fn a_machine_added_to_the_config_is_attached_and_one_taken_out_waits_for_a_relaunch() {
+    let _turn = muster::testing::fresh_session();
+    let laptop = Daemon::start_built();
+    let second = Daemon::start_built();
+    a_tab_holding_one_named_pane(&laptop, LAPTOP_TAB, LAPTOP_PANE, ON_LAPTOP);
+    a_tab_holding_one_named_pane(&second, DEVENV_TAB, DEVENV_PANE, ON_DEVENV);
+    let both =
+        std::fs::read_to_string(laptop.muster_config_naming("laptop", &[("devenv", &second)]))
+            .expect("the config was written");
+    let config = laptop.muster_config_naming("laptop", &[]);
+    let devenv_only = format!(
+        "[[daemon]]{}",
+        both.split("[[daemon]]").nth(2).expect("the second block is the devenv's")
+    );
+    watch();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the laptop's pane to be listed",
+        || pane_on("laptop").is_some(),
+        || format!("the list holds {:?}", rows()),
+    );
+
+    std::fs::write(&config, &both).expect("the config can be written");
+    assert_ok(&answer(request::Payload::ReloadConfig(muster::proto::ReloadConfig {})));
+    until(
+        "the devenv added to the config to be attached, with its pane",
+        || pane_on("devenv").is_some(),
+        || format!("the list holds {:?}", rows()),
+    );
+
+    std::fs::write(&config, &devenv_only).expect("the config can be written");
+    assert_ok(&answer(request::Payload::ReloadConfig(muster::proto::ReloadConfig {})));
+    let waiting = PROBLEMS
+        .lock()
+        .expect("a panicking reader poisoned the problems")
+        .clone()
+        .and_then(|changed| changed.problems.into_iter().find(|p| p.key == "config.daemons"));
+    let waiting = waiting.expect("taking a machine out of the config says it waits for a relaunch");
+    assert_eq!(waiting.severity, "warning");
+    assert!(waiting.detail.contains("laptop"), "it names the machine: {}", waiting.detail);
+    assert!(pane_on("laptop").is_some(), "the laptop's pane left the window: {:?}", rows());
+}
+
 /// One tab holding one pane, made on the daemon before Muster has heard of any of it, which is
 /// what a machine somebody has been working on looks like.
 fn a_tab_holding_one_named_pane(daemon: &Daemon, tab: &str, pane: &str, given: &str) {
@@ -722,7 +773,11 @@ static ROSTER: Mutex<Option<RosterChanged>> = Mutex::new(None);
 /// The last view, for the questions only the window can answer - the keyboard, and a zoom.
 static VIEW: Mutex<Option<muster::proto::ViewChanged>> = Mutex::new(None);
 
+/// The last list of problems, for what a config saved while the window runs could not do.
+static PROBLEMS: Mutex<Option<muster::proto::ProblemsChanged>> = Mutex::new(None);
+
 fn watch() {
+    *PROBLEMS.lock().expect("a panicking reader poisoned the problems") = None;
     *ROSTER.lock().expect("a panicking reader poisoned the roster") = None;
     *VIEW.lock().expect("a panicking reader poisoned the view") = None;
     muster::ffi::muster_set_event_callback(Some(note));
@@ -738,6 +793,9 @@ extern "C" fn note(bytes: *const u8, len: usize) {
         }
         Ok(Event { payload: Some(event::Payload::ViewChanged(view)), .. }) => {
             *VIEW.lock().expect("a panicking reader poisoned the view") = Some(view);
+        }
+        Ok(Event { payload: Some(event::Payload::ProblemsChanged(problems)), .. }) => {
+            *PROBLEMS.lock().expect("a panicking reader poisoned the problems") = Some(problems);
         }
         _ => {}
     }
