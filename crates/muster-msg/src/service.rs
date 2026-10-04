@@ -1798,6 +1798,7 @@ impl<S: Store> Messaging<S> {
         if let Some(participant) = self.participants.get_mut(name) {
             participant.cursors.insert(group.to_string(), seq);
             participant.woken.remove(group);
+            participant.rewoken.remove(group);
         }
         Ok(())
     }
@@ -1812,6 +1813,7 @@ impl<S: Store> Messaging<S> {
         if let Some(participant) = self.participants.get_mut(name) {
             participant.cursors.remove(group);
             participant.woken.remove(group);
+            participant.rewoken.remove(group);
         }
         Ok(())
     }

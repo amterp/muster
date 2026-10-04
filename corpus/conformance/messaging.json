@@ -675,6 +675,32 @@
       ] }
     },
     {
+      "name": "a member removed and added back is woken once more for what it leaves unread",
+      "why": "Leaving a group forgets everything the member was woken for there, the second wake included; a member added back starts afresh, and is woken once more for a post it does not read, as any member is (MIP-4, section 5).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"do": "idle", "name": "b"},
+        {"session": "a", "do": "members", "group": "g", "remove": ["b"]},
+        {"session": "a", "do": "members", "group": "g", "add": ["b"]},
+        {"session": "a", "do": "post", "body": "two"},
+        {"do": "idle", "name": "b"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "b joined g (created)",
+        "a joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a] rung p1",
+        "rewoke b [g #4-4 x1 to-you:0 from a again] rung p1",
+        "a changed the members of g (#5); removed b",
+        "a changed the members of g (#6); added b",
+        "a posted #7 to g; woke b [g #7-7 x1 to-you:0 from a] rung p1",
+        "rewoke b [g #7-7 x1 to-you:0 from a again] rung p1"
+      ] }
+    },
+    {
       "name": "an agent that exits to its shell is not counted woken by later posts",
       "why": "Woken already means it will read this too, which an agent that has left its pane will not; a post that reaches nobody else says so, and exits 6 (MIP-4, section 4).",
       "given": { "steps": [

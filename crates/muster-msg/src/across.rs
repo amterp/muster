@@ -710,6 +710,7 @@ impl<S: Store> Messaging<S> {
                 if let Some(participant) = self.participants.get_mut(name) {
                     participant.cursors.entry(key.clone()).or_insert(seq);
                     participant.woken.remove(&key);
+                    participant.rewoken.remove(&key);
                 }
                 apply(self, caught);
                 self.save()?;
