@@ -140,12 +140,14 @@ macro_rules! recovered {
 /// Turns logging on for this process.
 pub fn install(sink: Box<dyn LogSink>, process: impl Into<String>, minimum: LogLevel) {
     let process = process.into();
+    // Under the write lock, so a record emitted meanwhile waits and then reaches the sink, rather
+    // than landing in the buffer after it was drained.
+    let mut slot = recovered!(INSTALLED.write());
     let early = std::mem::take(&mut *EARLY.lock().unwrap_or_else(PoisonError::into_inner));
     for mut record in early.into_iter().filter(|record| record.level >= minimum) {
         record.process.clone_from(&process);
         sink.write(&record);
     }
-    let mut slot = recovered!(INSTALLED.write());
     *slot = Some(Installed { sink, minimum, process });
 }
 
@@ -195,9 +197,19 @@ pub fn emit(level: LogLevel, event: &str, fields: BTreeMap<String, String>) {
     let pid = unsafe { libc::getpid() };
     let Some(installed) = slot.as_ref() else {
         let mut early = EARLY.lock().unwrap_or_else(PoisonError::into_inner);
-        if early.len() < EARLY_LIMIT {
-            early.push(LogRecord::now(level, String::new(), pid, event, fields));
+        // Full, a record takes the place of the oldest of the least severe kept, if those are
+        // less severe than it, so a burst of debug records cannot crowd out the warnings this
+        // buffer exists to keep.
+        if early.len() >= EARLY_LIMIT {
+            let Some(least) =
+                early.iter().map(|kept| kept.level).min().filter(|least| *least < level)
+            else {
+                return;
+            };
+            let Some(oldest) = early.iter().position(|kept| kept.level == least) else { return };
+            early.remove(oldest);
         }
+        early.push(LogRecord::now(level, String::new(), pid, event, fields));
         return;
     };
     if level < installed.minimum {
@@ -312,6 +324,11 @@ mod tests {
     fn what_was_said_before_the_log_was_installed_reaches_it() {
         emit(LogLevel::Info, "app.claimed", std::collections::BTreeMap::new());
         emit(LogLevel::Debug, "below.the.bar", std::collections::BTreeMap::new());
+        // More debug records than the buffer holds, then a warning: the warning is kept.
+        for _ in 0..300 {
+            emit(LogLevel::Debug, "chatter", std::collections::BTreeMap::new());
+        }
+        emit(LogLevel::Warn, "app.lock.failed", std::collections::BTreeMap::new());
         let kept = Arc::new(Mutex::new(Vec::new()));
         install(Box::new(Kept(Arc::clone(&kept))), "app", LogLevel::Info);
 
@@ -321,6 +338,10 @@ mod tests {
         assert!(
             !written.iter().any(|record| record.event == "below.the.bar"),
             "a record below the installed level was written: {written:?}"
+        );
+        assert!(
+            written.iter().any(|record| record.event == "app.lock.failed"),
+            "a warning was crowded out of the buffer by debug records"
         );
     }
 
