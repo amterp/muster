@@ -85,10 +85,13 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
                 "daemon": agent.daemon_id,
                 "state": agent.state,
                 "since": since_json(agent.since_ms),
+                "label": agent.label,
             })
             .to_string()
         } else {
-            format!("{}  {}", agent.pane_id, styled(&agent.state, agent_style(&agent.state)))
+            // The label last, since it is the one field that can hold a space.
+            let state = styled(&agent.state, agent_style(&agent.state));
+            format!("{}  {state}  {}", agent.pane_id, agent.label).trim_end().to_string()
         }),
         Some(response::Payload::PaneClosed(closed)) => Ok(if json {
             json!({ "pane": closed.pane_id, "daemon": closed.daemon_id, "closed": true })

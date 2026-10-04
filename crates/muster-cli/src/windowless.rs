@@ -264,6 +264,7 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         state: state_of(pane).as_str().to_string(),
         // The daemon does not say since when, and a window says when it first saw a pane.
         since_ms: 0,
+        label: pane.label.clone().unwrap_or_else(|| directory_name(&pane.cwd)),
         reported: pane.state_reported,
         unreadable: pane.screen_unreadable,
         facts: said.then(|| muster_proto::AgentFacts {
@@ -624,7 +625,12 @@ impl Watching {
     }
 
     fn said(&self, pane: &daemon_proto::Pane) -> Response {
-        Response { payload: Some(response::Payload::PaneState(pane_state(&self.machine, pane))) }
+        let mut state = pane_state(&self.machine, pane);
+        // As from a window: a wait prints the pane that got there and nothing else.
+        if !self.until.is_empty() {
+            state.label.clear();
+        }
+        Response { payload: Some(response::Payload::PaneState(state)) }
     }
 
     fn last(&mut self, response: Response) {

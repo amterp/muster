@@ -32,6 +32,8 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
             percent: progress.percent.map(u32::from),
         }),
         rang: agent.rang,
+        // A watch fills it in; the shell and a read have the roster for it.
+        label: String::new(),
     }
 }
 

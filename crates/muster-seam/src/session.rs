@@ -6321,7 +6321,7 @@ fn announce_message(group: &GroupKey, attend: Attend) {
 /// every pane in the window, which is right for a list and far more than a single banner
 /// needs - but it is the same two decisions, taken from the same two functions, so the name
 /// on a notification and the name on its row cannot come apart.
-fn describe_pane(pane: &PaneKey) -> Option<(String, String)> {
+pub(crate) fn describe_pane(pane: &PaneKey) -> Option<(String, String)> {
     let session = poison::lock(&SESSION, "session");
     let mirror = poison::lock(&session.backends.get(&pane.daemon)?.mirror, "mirror");
     let held = mirror.pane(&pane.pane)?;

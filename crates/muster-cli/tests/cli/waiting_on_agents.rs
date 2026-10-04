@@ -115,6 +115,10 @@ fn a_watch_prints_each_change_as_it_happens(open: &Open) {
         first["pane"] == json!(open.pane) && first["since"].is_number(),
         "a watch has to begin with each pane and since when it has been in its state: {first}"
     );
+    assert!(
+        first["label"].as_str().is_some_and(|label| !label.is_empty()),
+        "a watch line says what to call its pane, as `muster window` does: {first}"
+    );
 
     open.report("working");
     let working = next_json(&lines, "the watch to print the agent starting work");

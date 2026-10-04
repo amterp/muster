@@ -318,12 +318,13 @@ shares.
 `muster window --watch` keeps answering. It prints a line for every pane as it stands, then a line
 each time a pane's agent changes state or a pane closes, and runs until it is stopped:
 
-    p1w3r07bsd  unknown
-    p1w3r0ab2n  working
-    p1w3r0ab2n  blocked
+    p1w3r07bsd  unknown  ~/src/muster
+    p1w3r0ab2n  working  🤖 A
+    p1w3r0ab2n  blocked  🤖 A
     p1w3r0cd4x  closed
 
-Pane name first, so `grep --line-buffered p1w3r0ab2n` follows one agent. Every pane is watched,
+Pane name first, so `grep --line-buffered p1w3r0ab2n` follows one agent, and its label last, as
+`muster window` prints it, so a person watching need not look each pane up. Every pane is watched,
 including panes made after the watch began. A line is printed when a pane's state or its `since`
 changes, so an agent reporting the state it is already in prints nothing.
 
@@ -337,8 +338,8 @@ Nothing about its panes arrives between the two. A daemon that is not `connected
 starts gets its line first, ahead of every pane, because what the window holds for its panes is a
 guess. A watch on a window whose daemons are all answering prints only panes.
 
-Under `--json` each line is an object: `{"pane", "daemon", "state", "since"}` for a state, with
-`since` as in `panes[]`, `{"pane", "daemon", "closed": true}` for a pane that went, and
+Under `--json` each line is an object: `{"pane", "daemon", "state", "since", "label"}` for a
+state, with `since` and `label` as in `panes[]`, `{"pane", "daemon", "closed": true}` for a pane that went, and
 `{"daemon", "state", "detail"}` for a daemon, as in `daemons[]` - the one line with no `pane`.
 
 The watch holds one connection to one Muster, so outside every pane with two installs listening

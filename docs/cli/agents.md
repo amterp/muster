@@ -70,10 +70,10 @@ handing an idle agent work, wait for it to start before waiting for it to stop:
 To follow several agents at once, watch the window instead:
 
     $ muster window --watch
-    p1w3r07bsd  unknown
-    p1w3r0ab2n  working
-    p1w3r0cd4x  working
-    p1w3r0ab2n  blocked
+    p1w3r07bsd  unknown  ~/src/muster
+    p1w3r0ab2n  working  🤖 A
+    p1w3r0cd4x  working  🤖 B
+    p1w3r0ab2n  blocked  🤖 A
 
 A line for every pane as it stands, then a line each time any of them changes state or closes,
 until you stop it. Each line is written when the change happens, so a `while read` loop or a

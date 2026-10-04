@@ -169,14 +169,14 @@ impl Watch {
 
         if self.until.is_empty() {
             for agent in &watched {
-                self.ready.push_back(Next::Answer(state_answer(agent)));
+                self.ready.push_back(Next::Answer(state_answer(agent, true)));
             }
         } else {
             let arrived: Vec<&PaneAgent> =
                 watched.iter().filter(|agent| self.arrived(agent.state)).collect();
             if !arrived.is_empty() {
                 for agent in arrived {
-                    self.ready.push_back(Next::Answer(state_answer(agent)));
+                    self.ready.push_back(Next::Answer(state_answer(agent, false)));
                 }
                 self.ready.push_back(Next::Last(Response::ok()));
                 return;
@@ -239,13 +239,13 @@ impl Watch {
             return None;
         }
         if self.until.is_empty() {
-            return Some(Next::Answer(state_answer(agent)));
+            return Some(Next::Answer(state_answer(agent, true)));
         }
         if !self.arrived(agent.state) {
             return None;
         }
         self.ready.push_back(Next::Last(Response::ok()));
-        Some(Next::Answer(state_answer(agent)))
+        Some(Next::Answer(state_answer(agent, false)))
     }
 
     fn closed(&mut self, pane: &PaneKey) -> Option<Next> {
@@ -341,8 +341,15 @@ impl Drop for Watch {
     }
 }
 
-fn state_answer(agent: &PaneAgent) -> Response {
-    Response { payload: Some(response::Payload::PaneState(convert::pane_state(agent))) }
+/// A pane's state, with its label when `labelled`: a watch is read by a person as often as by a
+/// script, and a wait prints the pane that got there and nothing else.
+fn state_answer(agent: &PaneAgent, labelled: bool) -> Response {
+    let mut state = convert::pane_state(agent);
+    if labelled {
+        state.label =
+            session::describe_pane(&agent.pane).map(|(label, _)| label).unwrap_or_default();
+    }
+    Response { payload: Some(response::Payload::PaneState(state)) }
 }
 
 /// The states a watch is waiting for, as a sentence would list them: `idle or blocked`.

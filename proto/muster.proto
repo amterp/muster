@@ -2594,6 +2594,10 @@ message PaneStateChanged {
   // A program in the pane rang the bell and nobody has looked at the pane since. A mark, never
   // a banner: shells ring for a completion that found nothing.
   bool rang = 9;
+
+  // What to call the pane, as `muster window` prints it, on a watch's answers so a person reading
+  // one does not have to look each pane up. Empty on the shell's event, whose roster carries it.
+  string label = 10;
 }
 
 message PaneProgress {
