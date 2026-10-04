@@ -410,20 +410,40 @@ pub(crate) fn problems() -> Vec<Problem> {
 /// is the real cost here and it is why the line is drawn: somebody typing when their config
 /// breaks gets their panes resized underneath them, which is accepted, because the alternative
 /// is the silence that cost an evening.
+///
+/// And only an error the window has not already shown (`Window::shown_errors`). Somebody who put
+/// the roster away while an error stood has seen it, and opening it again each time that error's
+/// sentence changed, or another problem came or went, took the roster back from them.
+///
 /// Answers whether it moved the roster, so a caller mid-announcement does not say it twice.
 ///
 /// Every window lists the same problems, so each one's roster is reconciled on its own terms:
 /// borrowed where it was closed, and given back only where it was borrowed.
 fn reconcile_sidebar_with_problems(window: WindowId) -> bool {
-    let error = poison::lock(&PROBLEMS, "problems").as_ref().is_some_and(Problems::has_error);
-    let (shown, name) = {
-        let session = poison::lock(&SESSION, "session");
-        let held = &session.windows[window];
-        (held.presentation.sidebar, held.name.to_string())
+    let errors: BTreeSet<String> = poison::lock(&PROBLEMS, "problems")
+        .as_ref()
+        .map(|problems| {
+            problems
+                .outstanding()
+                .into_iter()
+                .filter(|problem| problem.severity == Severity::Error)
+                .map(|problem| problem.key)
+                .collect()
+        })
+        .unwrap_or_default();
+    let (shown, name, unseen) = {
+        let mut session = poison::lock(&SESSION, "session");
+        let held = &mut session.windows[window];
+        let unseen = errors.difference(&held.shown_errors).next().is_some();
+        held.shown_errors.retain(|key| errors.contains(key));
+        if held.presentation.sidebar || unseen {
+            held.shown_errors.clone_from(&errors);
+        }
+        (held.presentation.sidebar, held.name.to_string(), unseen)
     };
 
-    if error {
-        if shown {
+    if !errors.is_empty() {
+        if shown || !unseen {
             return false;
         }
         poison::lock(&SESSION, "session").windows[window].opened_sidebar = true;
@@ -1308,6 +1328,12 @@ pub(crate) struct Window {
     /// borrowing the roster is defensible, keeping it is not.
     opened_sidebar: bool,
 
+    /// The errors outstanding while this window's roster was last on screen, or that it was
+    /// opened for. Somebody who put the roster away with these standing has seen them, so they
+    /// do not open it again, however often their sentences change; an error not among them does.
+    /// One that clears leaves the set, so the same error coming back later is news again.
+    shown_errors: BTreeSet<String>,
+
     /// How many bridges each of this window's panes had been given, in any window, when the
     /// pane came into this one.
     ///
@@ -1340,6 +1366,7 @@ impl Default for Window {
             first_tab_on: None,
             brings: None,
             opened_sidebar: false,
+            shown_errors: BTreeSet::new(),
             bridge_baselines: BTreeMap::new(),
         }
     }

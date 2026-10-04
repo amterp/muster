@@ -169,6 +169,10 @@ pub struct Waiting {
     /// is how a stale error outlives the pane it was about.
     reported: BTreeSet<PaneKey>,
 
+    /// What each reported pane was last said to be, so a pane still waiting whose sentence has
+    /// changed is said again, and one whose sentence has not is left alone.
+    said: BTreeMap<PaneKey, (String, Option<Remedy>)>,
+
     /// Why a reported pane stopped waiting since the last reading, for the clear that takes its
     /// problem back. Only the two ways a wait ends are written here; the others are still
     /// visible in the wait itself when the reading comes.
@@ -188,6 +192,7 @@ impl Waiting {
             waits: BTreeMap::new(),
             pending: BTreeSet::new(),
             reported: BTreeSet::new(),
+            said: BTreeMap::new(),
             settled: BTreeMap::new(),
             visible: None,
         }
@@ -213,7 +218,22 @@ impl Waiting {
     /// notice that the old surface went can arrive after the shell has reported starting the new
     /// one, and taking that start back would leave a pane nothing asks about again.
     pub fn restarted(&mut self, pane: PaneKey, at: u64) {
-        self.waits.insert(pane, Wait { since: at, started: at, last: None });
+        let (since, last) = match self.still_said(&pane) {
+            Some(wait) => (wait.since, wait.last.clone()),
+            None => (at, None),
+        };
+        self.waits.insert(pane, Wait { since, started: at, last });
+    }
+
+    /// The wait of a pane already said to be untypeable, which a bridge ending or a surface
+    /// rebuilt does not start over.
+    ///
+    /// The pane is no more typeable than it was, and starting the clock again took its problem
+    /// back and raised it a deadline later - opening a roster somebody had closed, once per
+    /// ending (kan a_2P5Y6Fy7L). What is known about why it is waiting still changes, and a
+    /// changed sentence is said again by [`Waiting::reconcile`] without being taken back.
+    fn still_said(&self, pane: &PaneKey) -> Option<&Wait> {
+        self.waits.get(pane).filter(|_| self.reported.contains(pane))
     }
 
     /// Asks for a bridge for this pane, and says whether the ask is made.
@@ -248,15 +268,17 @@ impl Waiting {
     ///
     /// Starting over is what stops a pane accusing the connection once it is back. A wait
     /// carrying a lost connection says to check that the machine is reachable, and said it four
-    /// seconds after it was (kan a_2YQD5xCFq); after this, one already said is taken back as
-    /// `restarted`, and a pane still dark a deadline later says only that nothing has dialed.
+    /// seconds after it was (kan a_2YQD5xCFq); after this, the next reading says only that nothing
+    /// has dialed. A pane already said keeps its clock, so that is an update to what it was told
+    /// rather than a problem taken back and raised again.
     pub fn reconnected(&mut self, daemon: &DaemonId, at: u64) -> Vec<PaneKey> {
         let mut unstarted = Vec::new();
         for (pane, wait) in &mut self.waits {
             if &pane.daemon != daemon {
                 continue;
             }
-            *wait = Wait { since: at, started: at, last: None };
+            let since = if self.reported.contains(pane) { wait.since } else { at };
+            *wait = Wait { since, started: at, last: None };
             if !self.pending.contains(pane) {
                 unstarted.push(pane.clone());
             }
@@ -280,7 +302,8 @@ impl Waiting {
             self.closed(&pane);
             return;
         }
-        self.waits.insert(pane, Wait { since: at, started: at, last: Some(ended) });
+        let since = self.still_said(&pane).map_or(at, |wait| wait.since);
+        self.waits.insert(pane, Wait { since, started: at, last: Some(ended) });
     }
 
     /// A bridge dialed in, so this pane can be typed into.
@@ -363,13 +386,26 @@ impl Waiting {
             .cloned()
             .collect();
 
+        // Every overdue pane not yet said, and every one already said whose sentence has changed:
+        // a condition that stays true is said once, and what is known about it is kept current.
+        let raise: Vec<(PaneKey, String, Option<Remedy>)> = overdue
+            .iter()
+            .map(|pane| {
+                let last = self.waits.get(pane).and_then(|wait| wait.last.as_ref());
+                (pane.clone(), detail(pane, deadline, last), remedy(pane, last))
+            })
+            .filter(|(pane, detail, remedy)| {
+                self.said.get(pane).is_none_or(|said| said != &(detail.clone(), remedy.clone()))
+            })
+            .collect();
+        for (pane, detail, remedy) in &raise {
+            self.said.insert(pane.clone(), (detail.clone(), remedy.clone()));
+        }
+        self.said.retain(|pane, _| overdue.contains(pane));
         let reported = Reported {
-            raise: overdue
-                .difference(&self.reported)
-                .map(|pane| {
-                    let last = self.waits.get(pane).and_then(|wait| wait.last.as_ref());
-                    (key(pane), detail(pane, deadline, last), remedy(pane, last))
-                })
+            raise: raise
+                .into_iter()
+                .map(|(pane, detail, remedy)| (key(&pane), detail, remedy))
                 .collect(),
             clear: self
                 .reported
