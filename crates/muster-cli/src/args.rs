@@ -64,6 +64,12 @@ pub enum Asking {
         request: Box<Request>,
         timeout: Option<Duration>,
     },
+    /// A layout drawn again each time it changes: `watch` says when it may have, and `read` is
+    /// asked again to find out whether it did.
+    WatchLayout {
+        watch: Box<Request>,
+        read: Box<Request>,
+    },
     Print(String),
     /// Every window on this machine, asked the same thing and answered together.
     Survey {
@@ -229,13 +235,14 @@ enum What {
         watch: bool,
 
         /// Draw every tab's panes where they sit, with each pane's size in cells, rather than
-        /// listing them; with --json, add each tab's arrangement and each pane's place and size
+        /// listing them; with --json, add each tab's arrangement and each pane's place and size;
+        /// with --watch, draw it again each time the arrangement changes
         //
         // A flag on the read rather than a verb of its own, because the arrangement is part of
         // what a window is showing and composes with everything `muster window` already does:
         // --json, --socket, and answering for every window at once. Off by default because the
         // sizes are a question to every daemon, where the ordinary read asks none.
-        #[arg(long, conflicts_with = "watch")]
+        #[arg(long)]
         layout: bool,
 
         #[command(subcommand)]
@@ -792,6 +799,13 @@ pub fn parse(
     let cli = Cli::try_parse_from(words).map_err(|error| Failure::Usage(Box::new(error)))?;
 
     let asking = match &cli.what {
+        What::Window { watch: true, layout: true, .. } => Asking::WatchLayout {
+            watch: Box::new(Request::new(request::Payload::WatchPanes(WatchPanes {
+                layout: true,
+                ..WatchPanes::default()
+            }))),
+            read: Box::new(Request::new(request::Payload::ReadWindow(ReadWindow { layout: true }))),
+        },
         What::Window { watch: true, .. } => Asking::Watch {
             request: Box::new(Request::new(request::Payload::WatchPanes(WatchPanes::default()))),
             timeout: None,
@@ -890,6 +904,10 @@ fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
         Asking::Watch { request, timeout } => {
             Asking::Watch { request: Box::new(request.for_window(window)), timeout }
         }
+        Asking::WatchLayout { watch, read } => Asking::WatchLayout {
+            watch: Box::new(watch.for_window(window)),
+            read: Box::new(read.for_window(window)),
+        },
         Asking::Print(_)
         | Asking::Survey { .. }
         | Asking::MakeWindow
@@ -1043,6 +1061,7 @@ fn wait(panes: &[String], until: &[Awaited], timeout: Option<u64>) -> Asking {
         request: Box::new(Request::new(request::Payload::WatchPanes(WatchPanes {
             pane_ids: panes.to_vec(),
             until: until.iter().map(|state| state.wire().to_string()).collect(),
+            layout: false,
         }))),
         timeout: timeout.map(Duration::from_secs),
     }

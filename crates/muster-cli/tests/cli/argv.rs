@@ -41,13 +41,22 @@ fn cli_conformance() {
                 (
                     "request",
                     match &invocation.asking {
-                        Asking::Send(request) | Asking::Watch { request, .. } => {
-                            Some(described(request))
-                        }
+                        Asking::Send(request)
+                        | Asking::Watch { request, .. }
+                        | Asking::WatchLayout { watch: request, .. } => Some(described(request)),
                         Asking::SendFrom { request, from } => match filled(request, from, given) {
                             Ok(request) => Some(described(&request)),
                             Err(refusal) => return Ok(json!({ "refused": refusal })),
                         },
+                        _ => None,
+                    },
+                ),
+                // What a layout being drawn again reads each time its watch says the layout may
+                // have moved.
+                (
+                    "rereads",
+                    match &invocation.asking {
+                        Asking::WatchLayout { read, .. } => Some(described(read)),
                         _ => None,
                     },
                 ),
@@ -57,6 +66,7 @@ fn cli_conformance() {
                     match &invocation.asking {
                         Asking::Send(request)
                         | Asking::Watch { request, .. }
+                        | Asking::WatchLayout { watch: request, .. }
                         | Asking::SendFrom { request, .. } => {
                             (!request.window.is_empty()).then(|| json!(request.window))
                         }
@@ -83,7 +93,10 @@ fn cli_conformance() {
                 (
                     "answers_here",
                     match &invocation.asking {
-                        Asking::Send(_) | Asking::SendFrom { .. } | Asking::Watch { .. } => None,
+                        Asking::Send(_)
+                        | Asking::SendFrom { .. }
+                        | Asking::Watch { .. }
+                        | Asking::WatchLayout { .. } => None,
                         Asking::Print(_) => Some(json!("printing something this binary holds")),
                         Asking::Survey { closed: false } => {
                             Some(json!("listing every open window under this home"))
@@ -335,6 +348,7 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
             "watch_panes": fields([
                 ("pane_ids", (!watch.pane_ids.is_empty()).then(|| json!(watch.pane_ids))),
                 ("until", (!watch.until.is_empty()).then(|| json!(watch.until))),
+                ("layout", watch.layout.then_some(json!(true))),
             ])
         }),
         request::Payload::ReloadConfig(_) => json!({ "reload_config": {} }),

@@ -160,6 +160,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Opened(_) => "a window opened",
         response::Payload::Reopening(_) => "the windows to reopen",
         response::Payload::AppClaim(_) => "a claim on the app",
+        response::Payload::LayoutMoved(_) => "word that the layout may have moved",
     }
 }
 

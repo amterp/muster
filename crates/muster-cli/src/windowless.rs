@@ -501,6 +501,8 @@ pub struct Watching {
     machine: String,
     panes: Option<BTreeSet<String>>,
     until: Vec<AgentState>,
+    /// Whether a tab's arrangement changing is news, for a layout being drawn again.
+    layout: bool,
     /// What was last said about each pane, so a record that changed in some other way is not
     /// said again.
     sent: BTreeMap<String, AgentState>,
@@ -587,6 +589,7 @@ pub fn follow(
         machine: this_machine(),
         panes,
         until,
+        layout: watch.layout,
         sent: BTreeMap::new(),
         ready: std::collections::VecDeque::new(),
         ended: false,
@@ -708,6 +711,17 @@ impl Watching {
                     }
                     Some(daemon_proto::event::Event::PaneClosed(closed)) => {
                         self.closed(&closed.pane);
+                    }
+                    Some(
+                        daemon_proto::event::Event::TabOpened(_)
+                        | daemon_proto::event::Event::TabChanged(_)
+                        | daemon_proto::event::Event::TabClosed(_),
+                    ) if self.layout => {
+                        self.ready.push_back(Response {
+                            payload: Some(response::Payload::LayoutMoved(
+                                muster_proto::LayoutMoved {},
+                            )),
+                        });
                     }
                     _ => {}
                 },

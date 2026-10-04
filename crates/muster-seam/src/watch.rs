@@ -40,6 +40,8 @@ pub(crate) enum Seen {
     /// How much of a daemon's truth the window has. Said again on every attempt to reconnect and
     /// twice on the way back, so it is news only when the daemon starts or stops answering.
     Health(DaemonHealth),
+    /// The window published, or was resized: something about the arrangement may have moved.
+    Layout,
 }
 
 #[derive(Debug)]
@@ -99,6 +101,8 @@ pub(crate) struct Watch {
     /// The panes named, or `None` for every pane including ones that appear later.
     panes: Option<BTreeSet<PaneKey>>,
     until: Vec<AgentState>,
+    /// Whether the caller asked to hear [`Seen::Layout`].
+    layout: bool,
     /// What was last sent about each pane, so a change heard twice is sent once.
     sent: BTreeMap<PaneKey, (AgentState, i64)>,
     /// What was last sent about each daemon. One missing is connected, so a watch on a window
@@ -111,7 +115,11 @@ pub(crate) struct Watch {
 /// Starts a watch on `panes`, or on every pane, that ends when one gets to `until`.
 ///
 /// The names are already resolved: a pane nobody holds is refused before this is called.
-pub(crate) fn start(panes: Option<BTreeSet<PaneKey>>, until: Vec<AgentState>) -> Watch {
+pub(crate) fn start(
+    panes: Option<BTreeSet<PaneKey>>,
+    until: Vec<AgentState>,
+    layout: bool,
+) -> Watch {
     let (sender, changes) = mpsc::channel();
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     poison::lock(&WATCHERS, WHAT).push(Watcher { id, changes: sender });
@@ -121,6 +129,7 @@ pub(crate) fn start(panes: Option<BTreeSet<PaneKey>>, until: Vec<AgentState>) ->
         changes,
         panes,
         until,
+        layout,
         sent: BTreeMap::new(),
         health: BTreeMap::new(),
         ready: VecDeque::new(),
@@ -201,6 +210,9 @@ impl Watch {
             Ok(Seen::State(agent)) => self.state(&agent),
             Ok(Seen::Closed(pane)) => self.closed(&pane),
             Ok(Seen::Health(heard)) => self.daemon(&heard),
+            Ok(Seen::Layout) => self.layout.then_some(Next::Answer(Response {
+                payload: Some(response::Payload::LayoutMoved(proto::LayoutMoved {})),
+            })),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => return Next::Over,
         };

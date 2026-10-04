@@ -27,6 +27,7 @@ pub mod docs;
 pub mod environment;
 pub mod messaging;
 pub mod opening;
+mod redraw;
 pub mod render;
 pub mod windowless;
 
@@ -90,6 +91,8 @@ impl Trouble {
 /// touches the process is `main`. The exception is a command line clap refused: clap renders
 /// those itself, to the stream and in the shape its own conventions call for, and re-rendering
 /// them here would be a worse version of a good error.
+// One arm per kind of command, which is the dispatch read in one place.
+#[allow(clippy::too_many_lines)]
 pub fn run(
     argv: &[String],
     environment: &BTreeMap<String, String>,
@@ -151,6 +154,18 @@ pub fn run(
             // caller with several windows listening names one with --socket.
             let answers = follow(&request, named.as_deref(), no_window, environment);
             return watch(&request, timeout, answers, json, out, errors);
+        }
+        args::Asking::WatchLayout { watch, read } => {
+            return redraw::run(
+                &watch,
+                &read,
+                named.as_deref(),
+                no_window,
+                environment,
+                json,
+                out,
+                errors,
+            );
         }
         args::Asking::Survey { closed } => {
             let answers = dial::survey(environment, &read_window());
@@ -310,7 +325,9 @@ fn follow(
 }
 
 /// A stream of answers to a watch, from a window or from this machine's daemon.
-trait Answers {
+///
+/// `Send` so a layout being drawn again can read it on a thread of its own.
+trait Answers: Send {
     fn next(
         &mut self,
         deadline: Option<std::time::Instant>,

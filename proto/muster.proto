@@ -884,7 +884,16 @@ message WatchPanes {
   // back. A wait naming no pane carries on, the way it does when one pane closes, and no wait
   // sends `backend_health`.
   repeated string until = 2;
+
+  // Also say when the arrangement of any window may have changed, with a LayoutMoved answer, for
+  // a caller keeping a drawing of the layout current. A hint rather than a description: it comes
+  // after anything that could move a tab, a pane or a divider, and after a window is resized,
+  // and the caller reads the layout again to learn whether anything did.
+  bool layout = 3;
 }
+
+// The arrangement may have changed (WatchPanes.layout).
+message LayoutMoved {}
 
 // A pane a watch was following has gone - closed, or its program ended and took it with it.
 message PaneClosed {
@@ -1292,6 +1301,7 @@ message Response {
     Opened opened = 20;
     Reopening reopening = 21;
     AppClaim app_claim = 22;
+    LayoutMoved layout_moved = 23;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.

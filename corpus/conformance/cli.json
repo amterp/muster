@@ -475,10 +475,27 @@
       "expect": { "request": { "read_window": { "layout": true } } }
     },
     {
-      "name": "a layout is a moment and a watch is a stream, so the two are not asked together",
-      "why": "A watch prints a line per change in an agent's state, and nothing about a layout fits on one of those lines.",
-      "given": { "argv": ["window", "--watch", "--layout"] },
-      "expect": { "usage": "ArgumentConflict" }
+      "name": "a layout watched is a watch that says when the layout may have moved, and the layout read again",
+      "why": "A drawing per change makes the layout a live view. The window cannot say when a drawing changed, only when it may have, so the watch asks to hear that and the CLI reads the layout again to find out; a pane's state changing is not the layout changing, and draws nothing.",
+      "given": {
+        "argv": [
+          "window",
+          "--watch",
+          "--layout"
+        ]
+      },
+      "expect": {
+        "request": {
+          "watch_panes": {
+            "layout": true
+          }
+        },
+        "rereads": {
+          "read_window": {
+            "layout": true
+          }
+        }
+      }
     },
     {
       "name": "watching a window is one request that asks for everything",

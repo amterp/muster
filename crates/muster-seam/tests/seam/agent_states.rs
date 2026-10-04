@@ -179,7 +179,11 @@ fn a_wait_ends_when_a_pane_gets_where_it_was_asked_to() {
     let now = agent(&open.socket, &open.pane);
     let mut already = watching(
         &open.socket,
-        WatchPanes { pane_ids: vec![open.pane.clone()], until: vec![now.state.clone()] },
+        WatchPanes {
+            pane_ids: vec![open.pane.clone()],
+            until: vec![now.state.clone()],
+            ..WatchPanes::default()
+        },
     );
     assert_eq!(
         state_frame(&mut already).state,
@@ -193,7 +197,11 @@ fn a_wait_ends_when_a_pane_gets_where_it_was_asked_to() {
     until_state(&open, "working");
     let mut finish = watching(
         &open.socket,
-        WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["idle".to_string()] },
+        WatchPanes {
+            pane_ids: vec![open.pane.clone()],
+            until: vec!["idle".to_string()],
+            ..WatchPanes::default()
+        },
     );
     // Registered before the agent moves, so what answers is the change and not a later picture.
     until(
@@ -237,7 +245,11 @@ fn an_agents_own_word_reaches_the_window_and_a_wait_for_idle_outlasts_waiting() 
 
     let mut finish = watching(
         &open.socket,
-        WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["idle".to_string()] },
+        WatchPanes {
+            pane_ids: vec![open.pane.clone()],
+            until: vec!["idle".to_string()],
+            ..WatchPanes::default()
+        },
     );
     until(
         "the window to hold the wait open",
@@ -264,7 +276,11 @@ fn a_wait_on_a_pane_that_closes_is_refused() {
     // Blocked, because a plain shell never is, so nothing but the close can end this.
     let mut waiting = watching(
         &open.socket,
-        WatchPanes { pane_ids: vec![made.clone()], until: vec!["blocked".to_string()] },
+        WatchPanes {
+            pane_ids: vec![made.clone()],
+            until: vec!["blocked".to_string()],
+            ..WatchPanes::default()
+        },
     );
     until(
         "the window to hold the wait open",
@@ -325,8 +341,11 @@ fn a_watch_hears_a_daemon_stop_answering_and_come_back() {
 fn a_wait_on_a_pane_whose_daemon_stops_answering_is_unanswered() {
     let _turn = muster::testing::fresh_session();
     let mut open = a_window_onto_one_pane();
-    let blocked =
-        || WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["blocked".into()] };
+    let blocked = || WatchPanes {
+        pane_ids: vec![open.pane.clone()],
+        until: vec!["blocked".into()],
+        ..WatchPanes::default()
+    };
 
     // Blocked, because a plain shell never is, so nothing but the daemon going can end this.
     let mut waiting = watching(&open.socket, blocked());
@@ -378,8 +397,22 @@ fn a_watch_on_nothing_real_is_refused() {
     let open = a_window_onto_one_pane();
 
     let refusals = [
-        (WatchPanes { pane_ids: vec!["p1nobody00".to_string()], until: vec![] }, "p1nobody00"),
-        (WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["idel".to_string()] }, "idel"),
+        (
+            WatchPanes {
+                pane_ids: vec!["p1nobody00".to_string()],
+                until: vec![],
+                ..WatchPanes::default()
+            },
+            "p1nobody00",
+        ),
+        (
+            WatchPanes {
+                pane_ids: vec![open.pane.clone()],
+                until: vec!["idel".to_string()],
+                ..WatchPanes::default()
+            },
+            "idel",
+        ),
     ];
     for (asked, named) in refusals {
         let mut refused = watching(&open.socket, asked);
@@ -393,7 +426,11 @@ fn a_watch_on_nothing_real_is_refused() {
     }
 
     // The refusal for a typo lists the states there are, so it has to list every one of them.
-    let typo = WatchPanes { pane_ids: vec![open.pane.clone()], until: vec!["idel".to_string()] };
+    let typo = WatchPanes {
+        pane_ids: vec![open.pane.clone()],
+        until: vec!["idel".to_string()],
+        ..WatchPanes::default()
+    };
     let Some(response::Payload::Failure(failure)) =
         frame(&mut watching(&open.socket, typo)).payload
     else {

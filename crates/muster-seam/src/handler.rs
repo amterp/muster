@@ -220,6 +220,8 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::SetWindowFrame(set) => {
             let frame = set.frame.unwrap_or_default();
             session::set_window_frame(window, frame.rect.map(read_rect), frame.full_screen);
+            // A resize changes every pane's size and nothing a publish would notice.
+            watch::publish(&watch::Seen::Layout);
             Response::ok()
         }
         request::Payload::ResizePane(resize) => resize_pane(window, &resize),
@@ -1404,7 +1406,7 @@ pub(crate) fn watch_panes(request: &proto::WatchPanes) -> Result<watch::Watch, B
         Some(keys)
     };
 
-    Ok(watch::start(panes, until))
+    Ok(watch::start(panes, until, request.layout))
 }
 
 /// Which daemon a request about this tab goes to: the one it named, or the one holding the tab.

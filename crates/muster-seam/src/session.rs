@@ -5659,6 +5659,10 @@ fn publish(cause: &str) {
         window.emit(cause);
     }
     drop(publishing);
+    // Every change to an arrangement ends in a publish, including one to a tab no window shows,
+    // so a watcher drawing the layout hears of each. Many publishes change nothing it draws;
+    // telling it which would mean reading every daemon's sizes here.
+    watch::publish(&Seen::Layout);
 
     tell_focus(focus);
     // After the view, so that a pane surfaced by this very publish has somewhere to be

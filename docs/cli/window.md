@@ -276,6 +276,19 @@ trees, one part each the whole width, and each `frame` is the pane's place in th
 
     muster window --layout --json | jq -r '.panes[] | "\(.pane) \(.cells.cols)x\(.cells.rows)"'
 
+`muster window --watch --layout` keeps the drawing current: it draws the layout, then draws it
+again each time the arrangement changes, until it is stopped. The arrangement is which window
+holds which tabs and in what order, which tab is on screen, each tab's parts and their widths,
+every split and its ratio, a zoom, and each pane's size. An agent changing state, a rename or
+the keyboard moving draws nothing on its own; a drawing shows them as they are when it is made.
+On a terminal each drawing replaces the last; piped, each follows the last after a blank line.
+With `--json`, each drawing is one line holding what `--layout --json` prints.
+
+The window cannot say when a drawing changed, only when it might have, so each time it might
+the layout is read again and compared. A pane's size follows its arrangement by a moment and
+announces nothing, so after a drawing changes it is read once more half a second later. With no
+window answering, the daemon's tabs are watched the same way.
+
 ## Agent states
 
 `working`, `blocked`, `idle` and `done` come from the harness running in the pane. `waiting` is an
@@ -332,6 +345,9 @@ The watch holds one connection to one Muster, so outside every pane with two ins
 it refuses until `--socket` names one. It ends with exit 3 if the app quits under it.
 `muster pane wait` is the same watch narrowed to named panes and ended by a state, or with exit
 4 when one of their daemons stops answering; `muster docs agents` has both.
+
+With `--layout` the watch draws the layout instead, and again each time the arrangement changes
+("The layout" above).
 
 ## daemons[]
 
