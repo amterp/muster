@@ -2834,12 +2834,16 @@ pub(crate) fn bridge_started(daemon: &str, pane: &str, restarts: u32) {
     // window, and only that one keeps a baseline for it.
     let latest = {
         let session = poison::lock(&SESSION, "session");
-        let baseline = session
-            .windows
-            .values()
-            .find_map(|window| window.bridge_baselines.get(&key).copied())
-            .unwrap_or(0);
-        session.respawns.restarts(&key).saturating_sub(baseline)
+        // The holder of the pane's tab rather than the first window with a baseline: between a
+        // tab moving and the next publish, the window it left still has one.
+        let holder = session
+            .locate(&key.pane)
+            .and_then(|(_, tab)| session.window_holding(&tab))
+            .filter(|window| session.windows[*window].bridge_baselines.contains_key(&key));
+        match holder {
+            Some(window) => session.bridge_restarts(window, &key),
+            None => session.respawns.restarts(&key),
+        }
     };
     let current = restarts >= latest;
     log::info(
