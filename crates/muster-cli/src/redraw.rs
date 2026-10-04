@@ -10,7 +10,7 @@ use std::io::{IsTerminal, Write};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
-use muster_proto::{Request, response};
+use muster_proto::{Request, Response, response};
 use serde_json::{Value, json};
 
 use crate::{Trouble, dial, render, report, windowless};
@@ -78,9 +78,16 @@ pub(crate) fn run(
             Some(Instant::now() + SETTLE)
         };
 
-        let first = match settle {
-            Some(at) => rings.recv_timeout(at.saturating_duration_since(Instant::now())),
-            None => rings.recv().map_err(|_| RecvTimeoutError::Disconnected),
+        // A pane's state changing is news to every other watch and moves nothing here, and
+        // reading the layout again asks every daemon for every pane's size.
+        let first = loop {
+            let heard = match settle {
+                Some(at) => rings.recv_timeout(at.saturating_duration_since(Instant::now())),
+                None => rings.recv().map_err(|_| RecvTimeoutError::Disconnected),
+            };
+            if !matches!(&heard, Ok(Ok(response)) if is_a_state(response)) {
+                break heard;
+            }
         };
         let mut heard = match first {
             Ok(heard) => heard,
@@ -136,7 +143,7 @@ fn drawn(
 }
 
 enum Answer {
-    Window(muster_proto::Response),
+    Window(Response),
     Daemon { window: muster_proto::Window, socket: String },
 }
 
@@ -163,6 +170,10 @@ fn answered(
         }
         asked => asked.map(Answer::Window),
     }
+}
+
+fn is_a_state(response: &Response) -> bool {
+    matches!(response.payload, Some(response::Payload::PaneState(_)))
 }
 
 /// What a drawing changing means: where every tab and pane sits and how big each pane is, and
