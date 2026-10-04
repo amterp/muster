@@ -119,6 +119,27 @@ fn a_transcript_opened_naming_no_daemon_is_the_one_here_and_opens_once() {
     assert_eq!(again.pane_id, went.pane_id, "a second open made a second transcript");
 }
 
+/// With two daemons on this machine, naming no daemon means the one the config names first,
+/// whatever their ids sort as.
+#[test]
+fn a_transcript_opened_naming_no_daemon_is_the_first_the_config_names() {
+    let _turn = muster::testing::fresh_session();
+    let home = Daemon::start_built();
+    let other = Daemon::start_built();
+    let mut control = home.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    open_window_with(&home.muster_config_naming("zz-home", &[("aa-other", &other)]));
+    group_of_three(&mut control);
+
+    let opened = answer(request::Payload::OpenTranscript(muster::proto::OpenTranscript {
+        daemon_id: String::new(),
+        group: "g".to_string(),
+    }));
+    let Some(response::Payload::Went(went)) = opened.payload else { panic!("{opened:?}") };
+    assert_eq!(went.daemon_id, "zz-home");
+}
+
 /// A group's name reaches a shell only as a group's name: one that could be read as a command
 /// gets no transcript, rather than a tab whose shell runs it.
 #[test]
@@ -158,9 +179,13 @@ fn group_of_three(control: &mut Control) {
 }
 
 fn open_window(daemon: &Daemon) {
+    open_window_with(&daemon.muster_config());
+}
+
+fn open_window_with(config: &std::path::Path) {
     for payload in [
         request::Payload::Startup(Startup {
-            config_path: daemon.muster_config().to_string_lossy().into_owned(),
+            config_path: config.to_string_lossy().into_owned(),
             ..Startup::default()
         }),
         request::Payload::OpenWindow(OpenWindow::default()),

@@ -4051,13 +4051,6 @@ pub(crate) fn raise(window: WindowId) {
     ffi::emit(&Event::new(event::Payload::RaiseWindow(RaiseWindow {})).for_window(name));
 }
 
-/// The daemon this app runs beside, where the human is homed (MIP-4, section 10): the one
-/// attached without a tunnel.
-pub(crate) fn home_daemon() -> Option<DaemonId> {
-    let session = poison::lock(&SESSION, "session");
-    session.backends.iter().find(|(_, backend)| backend.tunnel.is_none()).map(|(id, _)| id.clone())
-}
-
 /// The daemon this window's keyboard is on.
 ///
 /// What a request naming no daemon means, for the same reason an empty pane id means the

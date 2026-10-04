@@ -288,8 +288,10 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         ),
         // Named by a banner, and by nobody else: `muster msg open` names none, and means the
         // daemon here, since a group kept on another machine is followed here by its full name.
+        // That is where the human is homed (MIP-4, section 10): with two on this machine, the
+        // first the config names.
         request::Payload::OpenTranscript(open) if open.daemon_id.is_empty() => {
-            match session::home_daemon() {
+            match session::first_local_daemon(window) {
                 Some(daemon) => open_transcript(window, &daemon, &open.group),
                 None => Response::failure(format!(
                     "no transcript of {} was opened: this window is attached to no daemon on this \
