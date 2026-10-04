@@ -170,15 +170,17 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::AttachPane(attach) => attach_pane(window, &attach.pane_id),
         request::Payload::OpenWindow(open) => open_window(window, &open),
         request::Payload::CloseWindow(_) => {
-            session::close_window(window);
+            session::lifecycle::close_window(window);
             Response::ok()
         }
-        request::Payload::AskToCloseWindow(_) => match session::ask_to_close_window(window) {
-            Ok(()) => Response::ok(),
-            Err(refusal) => Response::failure(refusal),
-        },
+        request::Payload::AskToCloseWindow(_) => {
+            match session::lifecycle::ask_to_close_window(window) {
+                Ok(()) => Response::ok(),
+                Err(refusal) => Response::failure(refusal),
+            }
+        }
         request::Payload::StillOpen(_) => {
-            session::still_open(window);
+            session::lifecycle::still_open(window);
             Response::ok()
         }
         request::Payload::ReadReopening(read) => Response {
@@ -1692,17 +1694,18 @@ fn unanswered(detail: &str, made: Option<&PaneId>) -> Response {
 fn open_window(window: WindowId, open: &proto::OpenWindow) -> Response {
     // Answered with the window's name however it came to be open, because that name is how the
     // shell tells this window's events from another's.
-    let opening = match session::window_to_open(
+    let opening = match session::lifecycle::window_to_open(
         window,
         &open.state_path,
         &open.show,
         &open.daemon,
         &open.tab,
     ) {
-        session::Opening::AlreadyOpen(open) => return opened(open),
-        session::Opening::Unopened(opening) | session::Opening::Added(opening) => opening,
+        session::lifecycle::Opening::AlreadyOpen(open) => return opened(open),
+        session::lifecycle::Opening::Unopened(opening)
+        | session::lifecycle::Opening::Added(opening) => opening,
     };
-    match session::open(opening) {
+    match session::lifecycle::open(opening) {
         Ok(()) => opened(opening),
         Err(detail) => Response::failure(format!(
             "{detail} This window has no session behind it, so it renders nothing and \
@@ -2250,7 +2253,7 @@ fn start(startup: &proto::Startup) -> Response {
         &startup.state_path,
         &command::listening_at().unwrap_or_default(),
     );
-    session::set_show(&startup.show);
+    session::lifecycle::set_show(&startup.show);
     apply_config(&startup.config_path);
     Response::ok()
 }
@@ -2349,7 +2352,7 @@ fn apply_config(path: &str) {
     // pane opened in that moment would run last launch's shell.
     session::set_daemon_settings(DaemonSettings::from(&config));
     session::startup::set_configured_daemons(&config.daemons);
-    session::follow_configured(&config);
+    session::attaching::follow_configured(&config);
 }
 
 /// The one problem key a config file can raise.
@@ -2476,7 +2479,7 @@ fn read_config(path: &str, reading: Reading) -> Option<config::Config> {
 /// What a relaunch used to be for. Everything a file can say takes effect, including a daemon
 /// added, which is attached. A daemon taken out or changed is the exception: detaching on a file
 /// save would take the tabs of agents still running out of the window, so it stays attached and
-/// is reported as waiting for a relaunch ([`session::follow_changed`]).
+/// is reported as waiting for a relaunch ([`session::attaching::follow_changed`]).
 ///
 /// A refusal leaves the running configuration exactly as it was, which is the same
 /// whole-or-nothing rule the file already has, one level up: the alternative is a window running
@@ -2494,11 +2497,11 @@ fn reload_config() -> Response {
 
     // A daemon added is attached now. One taken out or changed waits for a relaunch, and the
     // person who just edited that block is told so rather than left wondering.
-    let waiting = session::follow_changed(&config);
+    let waiting = session::attaching::follow_changed(&config);
     if waiting.is_empty() {
         session::problems::clear_problem(DAEMONS_PROBLEM, "matches");
     } else {
-        let named: Vec<String> = waiting.iter().map(session::described).collect();
+        let named: Vec<String> = waiting.iter().map(session::attaching::described).collect();
         log::warn(
             "config.reload.daemons",
             fields! {

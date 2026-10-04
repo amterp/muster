@@ -61,7 +61,7 @@ pub fn fresh_session() -> Turn {
 /// How long starting waits for the daemons a config names before the window opens without the
 /// ones still on their way, in place of one second, until the next reset.
 pub fn set_startup_grace(grace: Duration) {
-    session::set_startup_grace(grace);
+    session::attaching::set_startup_grace(grace);
 }
 
 /// How long a pane may go without its bridge dialing in before it is reported untypeable, in
