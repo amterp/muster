@@ -74,3 +74,74 @@ impl AgentState {
         }
     }
 }
+
+/// What ends a wait on panes (`WatchPanes.until` and `context_at_least`): a state a pane gets
+/// to, or its agent saying its context is at least so full, whichever comes first.
+///
+/// A condition rather than an event, so a pane already there meets it. Parsed in one place
+/// because two watches evaluate it - the window's, and the CLI's own when no window answers -
+/// and a wait that ended differently depending on which one answered would be two features.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Until {
+    states: Vec<AgentState>,
+    context_at_least: Option<f32>,
+}
+
+impl Until {
+    /// Reads the state words a caller sent and the context it asked for, or says why there is
+    /// nothing to wait for.
+    pub fn parse(words: &[String], context_at_least: Option<f32>) -> Result<Until, String> {
+        let mut states = Vec::new();
+        for word in words {
+            // Strict rather than `from_backend`, which reads a word it does not know as
+            // `unknown`: a caller who typed `idel` would otherwise be waiting for a shell.
+            let Some(state) = AgentState::ALL.into_iter().find(|state| state.as_str() == word)
+            else {
+                let states: Vec<_> = AgentState::ALL.iter().map(|state| state.as_str()).collect();
+                return Err(format!(
+                    "`{word}` is not a state a pane can be in, so there is nothing to wait for. \
+                     The states are {}.",
+                    states.join(", ")
+                ));
+            };
+            states.push(state);
+        }
+        if let Some(percent) = context_at_least
+            && !(percent > 0.0 && percent <= 100.0)
+        {
+            return Err(format!(
+                "a wait on context {percent}% full can never end or has already ended for every \
+                 agent; context is said in percent, so ask for more than 0 and at most 100."
+            ));
+        }
+        Ok(Until { states, context_at_least })
+    }
+
+    /// Whether anything ends it. A watch with nothing to wait for runs until its caller leaves.
+    pub fn is_wait(&self) -> bool {
+        !self.states.is_empty() || self.context_at_least.is_some()
+    }
+
+    /// The context, in percent, that ends it on its own, if any.
+    pub fn context_at_least(&self) -> Option<f32> {
+        self.context_at_least
+    }
+
+    /// Whether a pane in `state`, whose agent last said its context was `context_used` percent
+    /// full, has got where this is waiting for. A pane whose agent never said is not there:
+    /// a harness without a report of its context cannot meet a wait on one.
+    pub fn met(&self, state: AgentState, context_used: Option<f32>) -> bool {
+        self.states.iter().any(|wanted| state.counts_as(*wanted))
+            || self.context_at_least.zip(context_used).is_some_and(|(wanted, used)| used >= wanted)
+    }
+
+    /// What it waits for, as a sentence would put it: `idle or blocked`, `80% context`.
+    pub fn spelled(&self) -> String {
+        let mut said: Vec<String> =
+            self.states.iter().map(|state| state.as_str().to_string()).collect();
+        if let Some(percent) = self.context_at_least {
+            said.push(format!("at {percent}% context"));
+        }
+        said.join(" or ")
+    }
+}

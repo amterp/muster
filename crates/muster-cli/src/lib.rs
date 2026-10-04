@@ -151,6 +151,9 @@ pub fn run(
         args::Asking::Watch { request, timeout } => {
             // Never asked around, unlike a read. A watch is one connection held open, and a
             // caller with several windows listening names one with --socket.
+            for note in context_unsaid(&request, named.as_deref(), no_window, environment) {
+                say_note(&note, json, errors);
+            }
             let answers = follow(&request, named.as_deref(), no_window, environment);
             return watch(&request, timeout, answers, json, out, errors);
         }
@@ -370,6 +373,77 @@ fn follow(
     }
 }
 
+/// What a wait on context says before it begins, about each pane it names whose agent has not
+/// said how full its context is: such a wait can still be met, once the agent says, and a caller
+/// whose harness never will should hear that now rather than after its timeout.
+///
+/// Read from the window, or the daemon in its place, the way `muster window` would be. Advice
+/// rather than a check, so a read that fails says nothing and leaves the wait to say what is
+/// wrong.
+fn context_unsaid(
+    request: &muster_proto::Request,
+    named: Option<&str>,
+    no_window: bool,
+    environment: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let Some(muster_proto::request::Payload::WatchPanes(watch)) = request.payload.as_ref() else {
+        return Vec::new();
+    };
+    if watch.context_at_least.is_none() {
+        return Vec::new();
+    }
+    let mut read = muster_proto::Request::new(muster_proto::request::Payload::ReadWindow(
+        muster_proto::ReadWindow::default(),
+    ));
+    read.window.clone_from(&request.window);
+    let window = if no_window {
+        windowless::ask(&read, environment).ok()
+    } else {
+        match dial::ask(&read, named, environment) {
+            Ok(response) => Some(windowless::Answered::Response(Box::new(response))),
+            Err(Trouble::Unreachable(_)) if no_window_at_all(&read, named, environment) => {
+                windowless::ask(&read, environment).ok()
+            }
+            Err(_) => None,
+        }
+    };
+    let panes = match window {
+        Some(windowless::Answered::Window { window, .. }) => window.panes,
+        Some(windowless::Answered::Response(response)) => match response.payload {
+            Some(muster_proto::response::Payload::Window(window)) => window.panes,
+            _ => return Vec::new(),
+        },
+        None => return Vec::new(),
+    };
+    watch
+        .pane_ids
+        .iter()
+        .filter(|named| {
+            panes.iter().any(|pane| {
+                &pane.pane_id == *named
+                    && pane.facts.as_ref().is_none_or(|facts| facts.context_used.is_none())
+            })
+        })
+        .map(|pane| {
+            format!(
+                "{pane} has not said how full its context is. Claude Code, Codex and OpenCode say \
+                 it once Muster's adapter is installed (`muster docs harnesses`); until {pane} \
+                 does, --context cannot end this wait."
+            )
+        })
+        .collect()
+}
+
+/// Something worth knowing that is not an answer, on stderr so a script reading the answers
+/// does not read it.
+fn say_note(note: &str, json: bool, errors: &mut impl Write) {
+    if json {
+        let _ = writeln!(errors, "{}", serde_json::json!({ "note": note }));
+    } else {
+        let _ = writeln!(errors, "muster: {note}");
+    }
+}
+
 /// A stream of answers to a watch, from a window or from this machine's daemon.
 ///
 /// `Send` so a layout being drawn again can read it on a thread of its own.
@@ -434,6 +508,10 @@ fn watch(
     errors: &mut impl Write,
 ) -> i32 {
     let deadline = timeout.map(|timeout| std::time::Instant::now() + timeout);
+    let on_context = matches!(
+        request.payload.as_ref(),
+        Some(muster_proto::request::Payload::WatchPanes(watch)) if watch.context_at_least.is_some()
+    );
     let mut answers = match answers {
         Ok(answers) => answers,
         Err(trouble) => return report(&trouble, json, errors),
@@ -454,6 +532,7 @@ fn watch(
         }
         match render::answer(&response, json) {
             Ok(line) => {
+                let line = if on_context { with_context(line, &response, json) } else { line };
                 // The reader went away - `| head -1`, a Monitor stopped. Nothing is wrong, and
                 // there is nobody left to say anything to.
                 if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
@@ -465,17 +544,39 @@ fn watch(
     }
 }
 
+/// A pane that met a wait on context, with the context it said: the state alone would not say
+/// why a wait for a full context ended on an agent still working.
+fn with_context(line: String, response: &muster_proto::Response, json: bool) -> String {
+    let Some(muster_proto::response::Payload::PaneState(agent)) = response.payload.as_ref() else {
+        return line;
+    };
+    let Some(used) = agent.facts.as_ref().and_then(|facts| facts.context_used) else {
+        return line;
+    };
+    if !json {
+        return format!("{line}  {used:.0}% context");
+    }
+    match serde_json::from_str::<serde_json::Value>(&line) {
+        Ok(mut value) => {
+            value["context_used"] = used.into();
+            value.to_string()
+        }
+        Err(_) => line,
+    }
+}
+
 /// What a wait that ran out says, naming what it was waiting for.
 fn ran_out(request: &muster_proto::Request, waited: u64) -> String {
     let Some(muster_proto::request::Payload::WatchPanes(watch)) = request.payload.as_ref() else {
         return format!("nothing arrived within {waited}s.");
     };
+    let until = muster_core::Until::parse(&watch.until, watch.context_at_least)
+        .map_or_else(|_| watch.until.join(" or "), |until| until.spelled());
     format!(
-        "{} {} not {} within {waited}s. Waiting changed nothing, so waiting again is harmless; \
-         `muster window` says what {} doing now.",
+        "{} {} not {until} within {waited}s. Waiting changed nothing, so waiting again is \
+         harmless; `muster window` says what {} doing now.",
         watch.pane_ids.join(", "),
         if watch.pane_ids.len() == 1 { "was" } else { "were" },
-        watch.until.join(" or "),
         if watch.pane_ids.len() == 1 { "it is" } else { "they are" },
     )
 }

@@ -334,6 +334,7 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
                 ("pane_ids", (!watch.pane_ids.is_empty()).then(|| json!(watch.pane_ids))),
                 ("until", (!watch.until.is_empty()).then(|| json!(watch.until))),
                 ("layout", watch.layout.then_some(json!(true))),
+                ("context_at_least", watch.context_at_least.map(|percent| json!(percent))),
             ])
         }),
         request::Payload::ReloadConfig(_) => json!({ "reload_config": {} }),

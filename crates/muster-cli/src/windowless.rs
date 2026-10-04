@@ -16,10 +16,10 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use muster_core::AgentState;
 use muster_core::composition::{Rect, ViewNode, ViewPane, places_in};
 use muster_core::mirror::backend::{PaneId, SplitAxis};
 use muster_core::pane_text::{self, PaneText};
+use muster_core::{AgentState, Until};
 use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection};
 use muster_proto::{Request, Response, request, response};
 
@@ -501,7 +501,7 @@ pub struct Watching {
     socket: PathBuf,
     machine: String,
     panes: Option<BTreeSet<String>>,
-    until: Vec<AgentState>,
+    until: Until,
     /// Whether a tab's arrangement changing is news, for a layout being drawn again.
     layout: bool,
     /// What was last said about each pane, so a record that changed in some other way is not
@@ -521,18 +521,7 @@ pub fn follow(
             "only a watch on panes follows the daemon; this is a bug in muster.".to_string(),
         ));
     };
-    let mut until = Vec::new();
-    for word in &watch.until {
-        let Some(state) = AgentState::ALL.into_iter().find(|state| state.as_str() == word) else {
-            let states: Vec<_> = AgentState::ALL.iter().map(|state| state.as_str()).collect();
-            return Err(Trouble::Refused(format!(
-                "`{word}` is not a state a pane can be in, so there is nothing to wait for. The \
-                 states are {}.",
-                states.join(", ")
-            )));
-        };
-        until.push(state);
-    }
+    let until = Until::parse(&watch.until, watch.context_at_least).map_err(Trouble::Refused)?;
     let socket = daemon::socket_or_refusal(environment)?;
     let mut stream = daemon::connect(&socket, ConnectionKind::Control)?;
     let _ = stream.set_read_timeout(Some(PATIENCE));
@@ -608,14 +597,14 @@ impl Watching {
         for pane in &watched {
             self.sent.insert(pane.pane.clone(), state_of(pane));
         }
-        if self.until.is_empty() {
+        if !self.until.is_wait() {
             for pane in watched {
                 self.ready.push_back(self.said(pane));
             }
             return;
         }
         let arrived: Vec<&daemon_proto::Pane> =
-            watched.into_iter().filter(|pane| self.arrived(state_of(pane))).collect();
+            watched.into_iter().filter(|pane| self.arrived(pane)).collect();
         if !arrived.is_empty() {
             for pane in arrived {
                 self.ready.push_back(self.said(pane));
@@ -627,7 +616,7 @@ impl Watching {
     fn said(&self, pane: &daemon_proto::Pane) -> Response {
         let mut state = pane_state(&self.machine, pane);
         // As from a window: a wait prints the pane that got there and nothing else.
-        if !self.until.is_empty() {
+        if self.until.is_wait() {
             state.label.clear();
         }
         Response { payload: Some(response::Payload::PaneState(state)) }
@@ -642,8 +631,9 @@ impl Watching {
         self.panes.as_ref().is_none_or(|panes| panes.contains(pane))
     }
 
-    fn arrived(&self, state: AgentState) -> bool {
-        self.until.iter().any(|wanted| state.counts_as(*wanted))
+    fn arrived(&self, pane: &daemon_proto::Pane) -> bool {
+        let context_used = pane.facts.as_ref().and_then(|facts| facts.context_used);
+        self.until.met(state_of(pane), context_used)
     }
 
     fn changed(&mut self, pane: &daemon_proto::Pane) {
@@ -651,12 +641,16 @@ impl Watching {
             return;
         }
         let state = state_of(pane);
-        if self.sent.insert(pane.pane.clone(), state) == Some(state) {
+        let again = self.sent.insert(pane.pane.clone(), state) == Some(state);
+        if !self.until.is_wait() {
+            if !again {
+                self.ready.push_back(self.said(pane));
+            }
             return;
         }
-        if self.until.is_empty() {
-            self.ready.push_back(self.said(pane));
-        } else if self.arrived(state) {
+        // Not deduplicated: a wait on context is met by a report that changes the agent's facts
+        // and leaves its state where it was.
+        if self.arrived(pane) {
             self.ready.push_back(self.said(pane));
             self.last(Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) });
         }
@@ -668,7 +662,7 @@ impl Watching {
         }
         let named = self.panes.as_ref().is_some_and(|panes| panes.contains(pane));
         let was_sent = self.sent.remove(pane).is_some();
-        if self.until.is_empty() {
+        if !self.until.is_wait() {
             if named || was_sent {
                 self.ready.push_back(Response {
                     payload: Some(response::Payload::PaneClosed(muster_proto::PaneClosed {
@@ -680,12 +674,11 @@ impl Watching {
             return;
         }
         if named {
-            let until: Vec<&str> = self.until.iter().map(|state| state.as_str()).collect();
             self.last(failure(format!(
                 "pane {pane} closed before it was {}, so there is nothing left to wait for. \
                  Whatever was running in it ended, or somebody closed it; `muster window` lists \
                  what this machine still holds.",
-                until.join(" or ")
+                self.until.spelled()
             )));
         }
     }

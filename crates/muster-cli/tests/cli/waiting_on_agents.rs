@@ -37,6 +37,7 @@ fn a_caller_can_wait_on_an_agent_instead_of_polling() {
     // gesture after this one needs an agent there to change it.
     open.daemon.run_agent(&open.pane);
 
+    a_wait_on_a_context_never_said_says_so(&open);
     a_watch_prints_each_change_as_it_happens(&open);
     a_wait_exits_when_the_agent_finishes(&open);
     a_layout_watch_draws_again_when_the_arrangement_moves(&open);
@@ -135,6 +136,19 @@ fn a_watch_prints_each_change_as_it_happens(open: &Open) {
         "the window to let go of the watch whose caller was killed",
         || muster::testing::watchers() == 0,
         || format!("{} watches are still open", muster::testing::watchers()),
+    );
+}
+
+/// A wait on context on an agent that has never said its context still waits - a harness can
+/// say it later - but says so as it begins, through the window as without one.
+fn a_wait_on_a_context_never_said_says_so(open: &Open) {
+    let ran =
+        muster(open, &["pane", "wait", "--pane", &open.pane, "--context", "50", "--timeout", "1"]);
+    let complaint = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(5), "{complaint}");
+    assert!(
+        complaint.contains(&format!("{} has not said how full its context is", open.pane)),
+        "{complaint}"
     );
 }
 

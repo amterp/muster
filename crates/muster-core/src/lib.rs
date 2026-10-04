@@ -30,7 +30,7 @@ pub mod roster;
 pub mod transcript;
 pub mod typeable;
 
-pub use agent_state::AgentState;
+pub use agent_state::{AgentState, Until};
 pub use attention::{Alert, Asker, Attend, Attention, GroupKey, Noticed, Notifications};
 pub use composition::{Composition, PaneKey};
 pub use config::Config;

@@ -59,7 +59,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
 - **Do not poll.** `muster pane wait --pane X --until idle,blocked` blocks until the agent gets
   there. A pane already idle answers at once, so after handing an idle agent work, wait
   `--until working` first. `waiting` is not `idle`: add it to hear of an agent waiting on its own
-  build, and give `--timeout`.
+  build, and give `--timeout`. `--context 80` also ends the wait once the agent's context is that
+  full.
 - **Do not take the keyboard.** `pane new` leaves focus where it is, which is right: the person is
   reading something. `--focus` and `muster focus` are for an agent that needs them.
 - **Name every pane you make**, `--name '🤖 A'`, so a person can tell your agents apart.

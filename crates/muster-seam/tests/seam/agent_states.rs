@@ -264,6 +264,50 @@ fn an_agents_own_word_reaches_the_window_and_a_wait_for_idle_outlasts_waiting() 
     assert_ended(&mut finish);
 }
 
+/// A wait on context is met by the agent saying it, though its state stays where it was: a report
+/// changes only its facts, and a wait that heard only state changes would never end. A pane
+/// already that full ends it at once, as a state already reached does.
+#[test]
+fn a_wait_on_context_ends_once_the_agent_says_it_is_that_full() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+    open.report(AgentState::Working);
+    until_state(&open, "working");
+    let on_context = || WatchPanes {
+        pane_ids: vec![open.pane.clone()],
+        context_at_least: Some(80.0),
+        ..WatchPanes::default()
+    };
+
+    let mut fills = watching(&open.socket, on_context());
+    until(
+        "the window to hold the wait open",
+        || muster::testing::watchers() == 1,
+        || format!("{} watches are open", muster::testing::watchers()),
+    );
+    open.say(muster_daemon_proto::pane_request::Report {
+        context_used: Some(64.0),
+        ..Default::default()
+    });
+    open.say(muster_daemon_proto::pane_request::Report {
+        context_used: Some(85.0),
+        ..Default::default()
+    });
+    let full = state_frame(&mut fills);
+    assert_eq!(
+        full.facts.and_then(|facts| facts.context_used),
+        Some(85.0),
+        "a wait for 80% answered with {:?}: 64% is short of it, and 85% met it",
+        full.state
+    );
+    assert_eq!(full.state, "working", "the wait ends on the agent's word, mid-turn");
+    assert_ended(&mut fills);
+
+    let mut already = watching(&open.socket, on_context());
+    assert_eq!(state_frame(&mut already).facts.and_then(|facts| facts.context_used), Some(85.0));
+    assert_ended(&mut already);
+}
+
 /// A wait on a pane that closes is refused, rather than left waiting on something that is gone.
 #[test]
 fn a_wait_on_a_pane_that_closes_is_refused() {

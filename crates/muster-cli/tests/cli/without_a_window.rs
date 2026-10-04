@@ -15,7 +15,7 @@ use std::time::Duration;
 use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
 use muster_daemon_proto::{self as proto, session_request};
 use muster_harness::requests::{
-    beside, close_request, create, expect, in_new_tab, make, session, until_text,
+    beside, close_request, create, expect, in_new_tab, make, pane, session, until_text,
 };
 use muster_harness::{Daemon, PATIENCE, until_some};
 use prost::Message;
@@ -131,6 +131,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     assert_eq!((&last["rows"], &last["truncated"]), (&json!(1), &json!(true)), "{last}");
 
     a_wait_ends_when_the_agent_gets_there(&here);
+    a_wait_on_context_ends_when_the_agent_says_it(&here);
     a_watch_prints_each_change(&here);
     a_wait_on_a_pane_that_closes_is_refused(&here);
     a_send_the_pane_never_shows_is_refused(&here);
@@ -186,6 +187,33 @@ fn a_wait_ends_when_the_agent_gets_there(here: &Here) {
     let ran =
         here.muster(&["pane", "wait", "--pane", "p2", "--until", "blocked", "--timeout", "1"]);
     refused_with(&ran, 5);
+}
+
+/// A wait on context says at once that the pane has not said its context, ends when the agent
+/// says it is that full, and prints how full beside the state.
+fn a_wait_on_context_ends_when_the_agent_says_it(here: &Here) {
+    let ran = here.muster(&["pane", "wait", "--pane", "p2", "--context", "80", "--timeout", "1"]);
+    let complaint = refused_with(&ran, 5);
+    assert!(
+        complaint.contains("p2 has not said how full its context is"),
+        "a wait its harness may never meet has to say so before the timeout does:\n{complaint}"
+    );
+    assert!(complaint.contains("not at 80% context within 1s"), "{complaint}");
+
+    let wait =
+        here.spawned(&["pane", "wait", "--pane", "p2", "--context", "80", "--timeout", "60"]);
+    let report = proto::pane_request::Report {
+        pane: "p2".to_string(),
+        context_used: Some(85.0),
+        ..Default::default()
+    };
+    expect(
+        &mut here.daemon.connect(),
+        pane(proto::pane_request::Request::Report(report)),
+        proto::Outcome::Done,
+    );
+    // `done`: the wait before this one left a finish nobody has looked at.
+    assert_eq!(ok(&wait.wait_with_output().unwrap()), "p2  done  85% context");
 }
 
 /// `window --watch --json` says each pane as it stands, then each change.

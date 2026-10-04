@@ -625,6 +625,91 @@
       }
     },
     {
+      "name": "a wait on context alone needs no state",
+      "why": "An orchestrator compacting a worker before it runs out wants to hear when its context fills, whatever it is doing then. The percent travels as a float because that is how an agent reports it.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--context",
+          "80"
+        ]
+      },
+      "expect": {
+        "request": {
+          "watch_panes": {
+            "pane_ids": [
+              "p1w3r07bsd"
+            ],
+            "context_at_least": 80.0
+          }
+        }
+      }
+    },
+    {
+      "name": "a wait on context and a state ends on whichever comes first",
+      "why": "A worker that finishes before its context fills has also given the orchestrator its moment, so the two are one wait rather than two in parallel.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--until",
+          "idle",
+          "--context",
+          "80"
+        ]
+      },
+      "expect": {
+        "request": {
+          "watch_panes": {
+            "pane_ids": [
+              "p1w3r07bsd"
+            ],
+            "until": [
+              "idle"
+            ],
+            "context_at_least": 80.0
+          }
+        }
+      }
+    },
+    {
+      "name": "a context no agent can be at is refused by the command line",
+      "why": "Context is said in percent. Zero is met by every agent that has said anything, and more than 100 by none, so either is a wait that means nothing.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--context",
+          "101"
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
+      "name": "a wait on nothing is refused by the command line",
+      "why": "With neither a state nor a context there is nothing that could end it, and `window --watch` is the command for hearing everything.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
       "name": "a wait that gives up at once is refused",
       "why": "Zero seconds would be answered before the window could say anything, so it reads as a pane that never got there. Somebody asking whether a pane is already somewhere asks with a second.",
       "given": {

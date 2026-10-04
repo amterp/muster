@@ -27,7 +27,7 @@ use muster_core::pane_text::{self, rows_of};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 use muster_core::transcript;
-use muster_core::{AgentState, PaneKey};
+use muster_core::{PaneKey, Until};
 
 use crate::proto::{self, Request, Response, event, request, response};
 use crate::session::{self, AttachError, AttachedPane, Keyboard, Resolved, WindowId};
@@ -1392,20 +1392,8 @@ fn watch_without_a_socket() -> Response {
 /// named a pane nobody holds or a state that does not exist is refused at once rather than left
 /// waiting on something that can never happen.
 pub(crate) fn watch_panes(request: &proto::WatchPanes) -> Result<watch::Watch, Box<Response>> {
-    let mut until = Vec::new();
-    for word in &request.until {
-        // Strict rather than `from_backend`, which reads a word it does not know as `unknown`:
-        // a caller who typed `idel` would otherwise be waiting for a shell.
-        let Some(state) = AgentState::ALL.into_iter().find(|state| state.as_str() == word) else {
-            let states: Vec<_> = AgentState::ALL.iter().map(|state| state.as_str()).collect();
-            return Err(Box::new(Response::failure(format!(
-                "`{word}` is not a state a pane can be in, so there is nothing to wait for. The \
-                 states are {}.",
-                states.join(", ")
-            ))));
-        };
-        until.push(state);
-    }
+    let until = Until::parse(&request.until, request.context_at_least)
+        .map_err(|refusal| Box::new(Response::failure(refusal)))?;
 
     let panes = if request.pane_ids.is_empty() {
         None

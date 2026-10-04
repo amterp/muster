@@ -318,3 +318,8 @@ window quits, a watch ends with exit 3.
 
 `pane new` and `tab new` print a pane's name once the window has heard of the pane, so the next
 command can name it. A wait on a name no pane has is refused at once.
+
+A wait on `--context` is met only by what an agent's adapter reports. A harness with no adapter
+never reports its context, and Muster cannot tell that apart from one that has not reported yet, so
+such a wait is not refused: it says on stderr that the pane has not said its context, and goes on
+waiting for whatever else it was asked, its `--until` states or its `--timeout`.

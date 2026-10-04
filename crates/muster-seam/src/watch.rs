@@ -24,7 +24,7 @@ use std::time::Duration;
 use muster_core::composition::DaemonId;
 use muster_core::diagnostics::poison;
 use muster_core::mirror::Health;
-use muster_core::{AgentState, PaneKey};
+use muster_core::{AgentState, PaneKey, Until};
 
 use crate::convert;
 use crate::proto::{self, Response, response};
@@ -100,7 +100,7 @@ pub(crate) struct Watch {
     changes: Receiver<Seen>,
     /// The panes named, or `None` for every pane including ones that appear later.
     panes: Option<BTreeSet<PaneKey>>,
-    until: Vec<AgentState>,
+    until: Until,
     /// Whether the caller asked to hear [`Seen::Layout`].
     layout: bool,
     /// What was last sent about each pane, so a change heard twice is sent once.
@@ -112,14 +112,10 @@ pub(crate) struct Watch {
     ended: bool,
 }
 
-/// Starts a watch on `panes`, or on every pane, that ends when one gets to `until`.
+/// Starts a watch on `panes`, or on every pane, that ends when one meets `until`.
 ///
 /// The names are already resolved: a pane nobody holds is refused before this is called.
-pub(crate) fn start(
-    panes: Option<BTreeSet<PaneKey>>,
-    until: Vec<AgentState>,
-    layout: bool,
-) -> Watch {
+pub(crate) fn start(panes: Option<BTreeSet<PaneKey>>, until: Until, layout: bool) -> Watch {
     let (sender, changes) = mpsc::channel();
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     poison::lock(&WATCHERS, WHAT).push(Watcher { id, changes: sender });
@@ -167,19 +163,19 @@ impl Watch {
             self.sent.insert(agent.pane.clone(), (agent.state, agent.since_ms));
         }
 
-        if self.until.is_empty() {
-            for agent in &watched {
-                self.ready.push_back(Next::Answer(state_answer(agent, true)));
-            }
-        } else {
+        if self.until.is_wait() {
             let arrived: Vec<&PaneAgent> =
-                watched.iter().filter(|agent| self.arrived(agent.state)).collect();
+                watched.iter().filter(|agent| self.arrived(agent)).collect();
             if !arrived.is_empty() {
                 for agent in arrived {
                     self.ready.push_back(Next::Answer(state_answer(agent, false)));
                 }
                 self.ready.push_back(Next::Last(Response::ok()));
                 return;
+            }
+        } else {
+            for agent in &watched {
+                self.ready.push_back(Next::Answer(state_answer(agent, true)));
             }
         }
 
@@ -235,13 +231,13 @@ impl Watch {
             return None;
         }
         let now = (agent.state, agent.since_ms);
-        if self.sent.insert(agent.pane.clone(), now) == Some(now) {
-            return None;
+        let again = self.sent.insert(agent.pane.clone(), now) == Some(now);
+        if !self.until.is_wait() {
+            return (!again).then(|| Next::Answer(state_answer(agent, true)));
         }
-        if self.until.is_empty() {
-            return Some(Next::Answer(state_answer(agent, true)));
-        }
-        if !self.arrived(agent.state) {
+        // Not deduplicated: a wait on context is met by a report that changes the agent's facts
+        // and leaves its state where it was.
+        if !self.arrived(agent) {
             return None;
         }
         self.ready.push_back(Next::Last(Response::ok()));
@@ -251,7 +247,7 @@ impl Watch {
     fn closed(&mut self, pane: &PaneKey) -> Option<Next> {
         let named = self.panes.as_ref().is_some_and(|panes| panes.contains(pane));
         let was_sent = self.sent.remove(pane).is_some();
-        if self.until.is_empty() {
+        if !self.until.is_wait() {
             return (named || was_sent).then(|| {
                 Next::Answer(Response {
                     payload: Some(response::Payload::PaneClosed(proto::PaneClosed {
@@ -269,7 +265,7 @@ impl Watch {
                  was running in it ended, or somebody closed it; `muster window` lists what the \
                  window still holds.",
                 pane.pane,
-                spelled(&self.until)
+                self.until.spelled()
             )))
         })
     }
@@ -287,7 +283,7 @@ impl Watch {
         if (before == Health::Connected) == (heard.health == Health::Connected) {
             return None;
         }
-        if self.until.is_empty() {
+        if !self.until.is_wait() {
             return Some(Next::Answer(Response {
                 payload: Some(response::Payload::BackendHealth(convert::backend_health(heard))),
             }));
@@ -315,7 +311,7 @@ impl Watch {
              until it is back, so whether {panes} {are} {until} cannot be known. Waiting changed \
              nothing, so waiting again is harmless once `muster window` shows {daemon} connected.",
             daemon = heard.daemon,
-            until = spelled(&self.until),
+            until = self.until.spelled(),
         ))))
     }
 
@@ -329,8 +325,8 @@ impl Watch {
         self.panes.as_ref().is_none_or(|panes| panes.contains(pane))
     }
 
-    fn arrived(&self, state: AgentState) -> bool {
-        self.until.iter().any(|wanted| state.counts_as(*wanted))
+    fn arrived(&self, agent: &PaneAgent) -> bool {
+        self.until.met(agent.state, agent.facts.context_used)
     }
 }
 
@@ -350,9 +346,4 @@ fn state_answer(agent: &PaneAgent, labelled: bool) -> Response {
             session::describe_pane(&agent.pane).map(|(label, _)| label).unwrap_or_default();
     }
     Response { payload: Some(response::Payload::PaneState(state)) }
-}
-
-/// The states a watch is waiting for, as a sentence would list them: `idle or blocked`.
-fn spelled(until: &[AgentState]) -> String {
-    until.iter().map(|state| state.as_str()).collect::<Vec<_>>().join(" or ")
 }

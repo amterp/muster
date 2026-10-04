@@ -67,6 +67,17 @@ handing an idle agent work, wait for it to start before waiting for it to stop:
     muster pane wait --pane p1w3r0ab2n --until working --timeout 60 &&
       muster pane wait --pane p1w3r0ab2n --until idle,blocked
 
+A wait can also end on how full an agent's context is, which is when an orchestrator wants to
+compact a worker rather than let it run out:
+
+    muster pane wait --pane p1w3r0ab2n --until idle --context 80
+
+It ends once the agent says its context is at least 80% full, or once it is idle, whichever comes
+first, and a pane that got there by its context prints what it said: `p1w3r0ab2n  working  83%
+context`. Only a harness whose adapter reports its context can meet `--context` (`muster docs
+harnesses`), and a fresh session may not have said it yet, so a wait on a pane that has not says so
+on stderr as it begins and goes on waiting for the rest of what it was asked.
+
 To follow several agents at once, watch the window instead:
 
     $ muster window --watch

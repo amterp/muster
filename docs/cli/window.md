@@ -363,8 +363,9 @@ state, with `since` and `label` as in `panes[]` and `label` left out when there 
 
 The watch holds one connection to one Muster, so outside every pane with two installs listening
 it refuses until `--socket` names one. It ends with exit 3 if the app quits under it.
-`muster pane wait` is the same watch narrowed to named panes and ended by a state, or with exit
-4 when one of their daemons stops answering; `muster docs agents` has both.
+`muster pane wait` is the same watch narrowed to named panes and ended by a state or by how full an
+agent's context is, or with exit 4 when one of their daemons stops answering; `muster docs agents`
+has both.
 
 With `--layout` the watch draws the layout instead, and again each time the arrangement changes
 ("The layout" above).

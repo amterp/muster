@@ -897,9 +897,10 @@ message WatchPanes {
 
   // States that end the watch, as the five words `muster window` prints.
   //
-  // Empty never ends it. Otherwise the answer carries only what ends it: every watched pane
-  // already in one of these states, or else the first to reach one, then `ok`. A condition
-  // rather than an event, so a pane that got there before the caller asked is not waited past.
+  // Empty, with no `context_at_least`, never ends it. Otherwise the answer carries only what
+  // ends it: every watched pane already in one of these states, or else the first to reach one,
+  // then `ok`. A condition rather than an event, so a pane that got there before the caller
+  // asked is not waited past.
   // `idle` is also met by `done`, which is an idle nobody has looked at - whether a pane reads
   // one or the other depends on where somebody's cursor was, and a wait must not. A watched pane
   // that closes first ends it with a failure naming the pane.
@@ -915,6 +916,15 @@ message WatchPanes {
   // after anything that could move a tab, a pane or a divider, and after a window is resized,
   // and the caller reads the layout again to learn whether anything did.
   bool layout = 3;
+
+  // Also ends the watch, as a state in `until` does: a watched pane whose agent says its context
+  // is at least this many percent full, as `muster window` shows it. Absent waits on states
+  // alone. Above 0 and at most 100.
+  //
+  // A pane whose harness never says how full its context is cannot meet it, so a wait on it ends
+  // only by a state, a closed pane, a daemon that stops answering, or the caller's timeout - the
+  // same rules `until` has. The CLI says so as the wait begins (`muster docs agents`).
+  optional float context_at_least = 4;
 }
 
 // The arrangement may have changed (WatchPanes.layout).

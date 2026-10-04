@@ -155,6 +155,7 @@ Examples:
   muster pane new --down --run claude --name '🤖 A'
   muster msg post --to p1w3r07bsd --file brief.md
   muster pane wait --pane p1w3r07bsd --until idle,blocked --timeout 600
+  muster pane wait --pane p1w3r07bsd --context 80
   muster pane move --pane p1w3r0ab2n --onto p1w3r07bsd --down
   muster tab new --run claude --name '🤖 reviewer'
   muster pane new --daemon devenv --run claude
@@ -547,7 +548,8 @@ enum Doing {
         text: Vec<String>,
     },
 
-    /// Wait until a pane's agent is in a state you name, and print which pane got there
+    /// Wait until a pane's agent is in a state you name, or its context is so full, and print
+    /// which pane got there
     //
     // The other shape of waiting on an agent: `window --watch` hears every change, and this
     // exits once, which is what a script's next line and a background job's one notification
@@ -561,8 +563,24 @@ enum Doing {
         pane: Vec<String>,
 
         /// The states to wait for, comma-separated. idle is also met by done, and not by waiting
-        #[arg(long, value_name = "STATE", required = true, value_delimiter = ',')]
+        #[arg(
+            long,
+            value_name = "STATE",
+            required_unless_present = "context",
+            value_delimiter = ','
+        )]
         until: Vec<Awaited>,
+
+        /// Also end the wait once the agent says its context is at least this many percent full
+        //
+        // A flag of its own rather than a word in --until: `--until context>80` is a shell
+        // redirect, which would wait on `context` and write a file called 80.
+        #[arg(
+            long,
+            value_name = "PERCENT",
+            value_parser = clap::value_parser!(u8).range(1..=100)
+        )]
+        context: Option<u8>,
 
         /// Give up after this many seconds, exiting 5
         #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
@@ -1030,7 +1048,7 @@ fn pane(
                 None => Asking::Send(request),
             }
         }
-        Doing::Wait { pane, until, timeout } => wait(pane, until, *timeout),
+        Doing::Wait { pane, until, context, timeout } => wait(pane, until, *context, *timeout),
         Doing::Read { pane, rows } => send(request::Payload::ReadPane(ReadPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             // Zero is what the window reads as "as far as you will go", and it is also what
@@ -1111,12 +1129,13 @@ fn pane(
 
 /// A `pane wait`: a watch that ends when a named pane gets somewhere, or when the caller's
 /// patience does.
-fn wait(panes: &[String], until: &[Awaited], timeout: Option<u64>) -> Asking {
+fn wait(panes: &[String], until: &[Awaited], context: Option<u8>, timeout: Option<u64>) -> Asking {
     Asking::Watch {
         request: Box::new(Request::new(request::Payload::WatchPanes(WatchPanes {
             pane_ids: panes.to_vec(),
             until: until.iter().map(|state| state.wire().to_string()).collect(),
             layout: false,
+            context_at_least: context.map(f32::from),
         }))),
         timeout: timeout.map(Duration::from_secs),
     }
