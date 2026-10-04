@@ -626,7 +626,7 @@ fn build(
         other => return Err(unexpected("the session", &other)),
     };
     let state = match persist::parse(&session.state) {
-        persist::Loaded::State(state) => state,
+        persist::Loaded::State(state) => *state,
         persist::Loaded::Newer(version) => {
             return refuse(
                 link,

@@ -723,8 +723,14 @@ As built in stage 3, under Decision 1 (a):
   agent there reaches the human as it reaches any member on another machine. A daemon no link
   has dialed yet keeps a human of its own, which no window hears of.
 
-The display name of this section's first paragraph is not built: messages name the human
-`@human`.
+The display name of this section's first paragraph is built after stage 5 as the config key
+`human_name`, a root key since the subject has one answer. The app sends it, or its login name
+when the file names none, to every daemon it attaches as a setting the daemon keeps across
+restarts, and the daemon puts it on every messaging answer. `who` and the framing of `read` and
+`log` show the human as `Alex (@human)`, the name beside the address rather than instead of it,
+since a model reading a transcript must still know what to put in `--to`. A wake and a post's
+answer keep the bare address: they are lines an agent acts on. A daemon no app has told shows
+`@human` alone.
 
 ### 11. Across machines
 
@@ -1152,3 +1158,4 @@ bind.
 - 2026-10-04 `group delete`: a group and its log go, every member is let go on every machine,
   and a replica that missed it forgets it at its next refetch (sections 8, 12 and 13).
   `muster msg open` goes to a group's transcript as its notification does (sections 10 and 13).
+  Messages show the human by the name `human_name` gives, or the login name (section 10).

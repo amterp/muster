@@ -39,6 +39,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             }
             Some(session_request::Request::ReadGrids(_)) => "session.read_grids",
             Some(session_request::Request::SetNameSessions(_)) => "session.set_name_sessions",
+            Some(session_request::Request::SetHumanName(_)) => "session.set_human_name",
             None => "session",
         },
         Service::Tab(asked) => match &asked.request {

@@ -53,6 +53,10 @@ pub struct Config {
     pub panes: Panes,
     /// Which agent states are worth interrupting somebody for.
     pub notifications: Notifications,
+    /// What messages between agents call you where they show you (`human_name`), beside the
+    /// address `@human`. None when the file names nobody, which the app reads as your login
+    /// name.
+    pub human_name: Option<String>,
     /// Default chords the file took for something of its own, which the actions they shipped
     /// on gave up. Empty for almost every file; the caller logs each one.
     pub given_up: Vec<GivenUp>,
@@ -551,7 +555,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 5] = ["id", "socket", "host", "ssh_options", "color"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 17] = [
+const ROOT_KEYS: [&str; 18] = [
     "daemon",
     "keymap",
     "text",
@@ -564,6 +568,7 @@ const ROOT_KEYS: [&str; 17] = [
     "scrollback_bytes",
     "clipboard_write",
     "name_sessions",
+    "human_name",
     "font",
     "colors",
     "cursor",
@@ -662,7 +667,39 @@ pub fn parse(text: &str) -> Result<Config, String> {
         appearance: Appearance { machine_colors, ..read_appearance(root)? },
         panes: read_panes(root)?,
         notifications: read_notifications(block(root, "notifications", &NOTIFICATION_KEYS)?)?,
+        human_name: read_human_name(root)?,
     })
+}
+
+/// The longest `human_name` taken, in bytes: a name, not a sentence, and every message's
+/// framing carries it.
+const LONGEST_HUMAN_NAME: usize = 64;
+
+/// `human_name`: any text a line can hold, since it is a person's name rather than an address.
+fn read_human_name(root: &toml::Table) -> Result<Option<String>, String> {
+    let Some(value) = root.get("human_name") else { return Ok(None) };
+    let refused = |what: String| {
+        format!(
+            "`human_name` in the config file is {what}. None of the file was applied. It is what \
+             messages call you beside `@human`, which stays your address."
+        )
+    };
+    let name = value
+        .as_str()
+        .ok_or_else(|| refused(format!("{}, and it has to be a string", described(value))))?
+        .trim();
+    if name.is_empty() || name.chars().any(char::is_control) {
+        return Err(refused(
+            "empty or holds a line break, and it has to be a name on one line".to_string(),
+        ));
+    }
+    if name.len() > LONGEST_HUMAN_NAME {
+        return Err(refused(format!(
+            "{} bytes long, and it can be at most {LONGEST_HUMAN_NAME}",
+            name.len()
+        )));
+    }
+    Ok(Some(name.to_string()))
 }
 
 /// `[notifications]`.

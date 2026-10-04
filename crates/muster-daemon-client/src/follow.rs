@@ -575,7 +575,21 @@ fn send_settings(
     if previous.is_none_or(|previous| previous.name_sessions != settings.name_sessions) {
         sent.push(control.set_name_sessions(settings.name_sessions));
     }
+    if previous.is_none_or(|previous| previous.human_name != settings.human_name) {
+        sent.push(control.set_human_name(human_name(settings)));
+    }
     sent
+}
+
+/// What messages call the human: the file's name for them, or else the login name of whoever
+/// runs this app (MIP-4, section 10). Sent to a daemon on another machine too, since the human
+/// it shows is this machine's.
+fn human_name(settings: &DaemonSettings) -> Option<String> {
+    settings.human_name.clone().or_else(|| {
+        ["USER", "LOGNAME"]
+            .into_iter()
+            .find_map(|name| std::env::var(name).ok().filter(|login| !login.is_empty()))
+    })
 }
 
 /// Whether the daemon has taken a setting sent earlier: it answered, and did not refuse. One not

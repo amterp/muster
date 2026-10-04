@@ -208,6 +208,7 @@ fn config_conformance() {
                     Some(json!(appearance(&parsed.appearance))).filter(|set| set != &json!([])),
                 ),
                 ("panes", Some(json!(panes(&parsed.panes))).filter(|set| set != &json!([]))),
+                ("human_name", parsed.human_name.as_ref().map(|name| json!(name))),
                 (
                     "notifications",
                     Some(json!(notifications(parsed.notifications)))

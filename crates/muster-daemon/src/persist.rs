@@ -86,7 +86,8 @@ pub(crate) fn path_for(socket: &Path) -> PathBuf {
 #[derive(Debug, PartialEq)]
 pub(crate) enum Loaded {
     Nothing,
-    State(State),
+    // Boxed: a state is several hundred bytes, and every other answer a few.
+    State(Box<State>),
     /// Written by a newer daemon, in a format this one cannot read.
     Newer(u32),
     /// Not a state this daemon could have written.
@@ -121,7 +122,7 @@ pub(crate) fn parse(bytes: &[u8]) -> Loaded {
     }
     match serde_json::from_slice::<State>(bytes) {
         Ok(state) => match validate(&state) {
-            Ok(()) => Loaded::State(state),
+            Ok(()) => Loaded::State(Box::new(state)),
             Err(why) => Loaded::Corrupt(why),
         },
         Err(error) => Loaded::Corrupt(error.to_string()),
@@ -622,7 +623,7 @@ mod tests {
     fn a_state_reads_back_as_it_was_written() {
         let scratch = Scratch::new("round-trip");
         written(&scratch, &state());
-        assert_eq!(load(&scratch.file()), Loaded::State(state()));
+        assert_eq!(load(&scratch.file()), Loaded::State(Box::new(state())));
     }
 
     #[test]
@@ -630,11 +631,15 @@ mod tests {
         let scratch = Scratch::new("cut-off");
         written(&scratch, &state());
         write_temporary(&scratch.file(), b"{\"version\": 1, \"tabs\": [{\"tab\"").unwrap();
-        assert_eq!(load(&scratch.file()), Loaded::State(state()));
+        assert_eq!(load(&scratch.file()), Loaded::State(Box::new(state())));
         let mut next = state();
         next.tabs[0].label.generation = 3;
         written(&scratch, &next);
-        assert_eq!(load(&scratch.file()), Loaded::State(next), "the leftover is written over");
+        assert_eq!(
+            load(&scratch.file()),
+            Loaded::State(Box::new(next)),
+            "the leftover is written over"
+        );
     }
 
     #[test]
@@ -741,10 +746,11 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 3] = [
+    const FIXTURES: [(&str, &[&str]); 4] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
+        ("state-v1-human-name.json", &["human_name"]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -825,7 +831,7 @@ mod tests {
     /// field added since takes its default here as it does in the file.
     #[test]
     fn a_version_1_file_reads_as_it_was_written() {
-        assert_eq!(load(&fixture("state-v1.json")), Loaded::State(fixture_v1()));
+        assert_eq!(load(&fixture("state-v1.json")), Loaded::State(Box::new(fixture_v1())));
     }
 
     /// Whatever a fixture says survives reading it and writing it again, under the same names:

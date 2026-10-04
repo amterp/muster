@@ -569,3 +569,25 @@ fn deleting_a_group_removes_its_log_and_ends_what_was_kept_to_it() {
     let logged = logging.logged_until("msg.group.deleted", std::time::Duration::from_secs(20));
     assert!(logged.iter().all(|line| !line.line.contains("need input")), "a body reached the log");
 }
+
+/// What the app calls the human reaches every answer that may show it, and an app that names
+/// nobody leaves the address to show alone (MIP-4, section 10).
+#[test]
+fn an_answer_says_what_the_app_calls_the_human() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &the_human(), "@human", "g");
+    let who = || msg(&named("a"), Asked::Who(msg_request::Who { group: None }));
+    assert_eq!(msg_answer(&expect(&mut control, who(), DONE)).human_name, "");
+
+    let name = |name: Option<&str>| {
+        let set = proto::SetHumanName { name: name.map(str::to_string) };
+        session(session_request::Request::SetHumanName(set))
+    };
+    expect(&mut control, name(Some("Alex")), DONE);
+    assert_eq!(msg_answer(&expect(&mut control, who(), DONE)).human_name, "Alex");
+    assert_eq!(snapshot(&mut control).settings.unwrap().human_name.as_deref(), Some("Alex"));
+
+    expect(&mut control, name(Some("")), DONE);
+    assert_eq!(msg_answer(&expect(&mut control, who(), DONE)).human_name, "");
+}

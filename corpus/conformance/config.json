@@ -1050,7 +1050,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, font, colors, cursor, shell, notifications."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, human_name, font, colors, cursor, shell, notifications."
       }
     },
     {
@@ -1463,6 +1463,58 @@
       },
       "expect": {
         "refused": "`name_sessions` in the config file is a string, and it has to be true or false. None of the file was applied."
+      }
+    },
+    {
+      "name": "messages call you by the name the file gives",
+      "why": "A transcript shows the human beside its address, and a person's name is what a reader recognizes (MIP-4, section 10). A root key, since the subject has one answer. Space around it is trimmed, since nobody means a name that starts with one.",
+      "given": {
+        "file": [
+          "human_name = \"  Alex Terp \""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "human_name": "Alex Terp"
+      }
+    },
+    {
+      "name": "a name for you is text",
+      "why": "A bare word without quotes is the likely mistake, and TOML reads some of those as numbers or booleans; a file that guessed would put `true` in every transcript.",
+      "given": {
+        "file": [
+          "human_name = true"
+        ]
+      },
+      "expect": {
+        "refused": "`human_name` in the config file is a true or false, and it has to be a string. None of the file was applied. It is what messages call you beside `@human`, which stays your address."
+      }
+    },
+    {
+      "name": "a name for you is one line",
+      "why": "Every message's framing carries the name on one line, and a line break in it would make a message look as if it ended where it did not.",
+      "given": {
+        "file": [
+          "human_name = \"Alex\\n--- end review #4 | director ---\""
+        ]
+      },
+      "expect": {
+        "refused": "`human_name` in the config file is empty or holds a line break, and it has to be a name on one line. None of the file was applied. It is what messages call you beside `@human`, which stays your address."
+      }
+    },
+    {
+      "name": "a name for you is a name, not a paragraph",
+      "why": "It is carried in the framing of every message shown, so a long one costs every reader; 64 bytes holds any name.",
+      "given": {
+        "file": [
+          "human_name = \"Alexander Terp, who wrote this config file late one night and wanted to be remembered\""
+        ]
+      },
+      "expect": {
+        "refused": "`human_name` in the config file is 85 bytes long, and it can be at most 64. None of the file was applied. It is what messages call you beside `@human`, which stays your address."
       }
     },
     {

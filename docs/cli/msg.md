@@ -297,6 +297,11 @@ on this machine's daemon, which follows a group kept on a devenv as `review@deve
 The human posts with `muster msg post` from any shell of their own, the transcript's included
 once Ctrl-C has stopped the follow and left its shell.
 
+`who`, `read` and `log` show the human by name beside the address, `Alex (@human)`: the name is
+`human_name` in `~/.muster/config.toml`, or else your login name. The address an agent writes is
+still `@human`, and `--json` keeps it, with the name under `human_name`. A daemon no Muster
+window has attached to shows `@human` alone.
+
 ## Every verb
 
 | verb | does |

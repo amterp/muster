@@ -161,6 +161,8 @@ message SessionRequest {
     ReadGrids read_grids = 13;
     // Since 1.3.
     SetNameSessions set_name_sessions = 14;
+    // Since 1.3.
+    SetHumanName set_human_name = 15;
   }
 
   message Snapshot {}
@@ -434,6 +436,13 @@ message SetNameSessions {
   bool name = 1;
 }
 
+// What messages call the human where they show it (MIP-4, section 10): `who` and the framing of
+// `read` and `log` put it beside the address, which stays `@human`. Absent or empty: shown by
+// the address alone.
+message SetHumanName {
+  optional string name = 1;
+}
+
 message SetPalette {
   Palette palette = 1;
 }
@@ -671,6 +680,9 @@ message MsgAnswer {
   // Why a refused request was refused, as data - `unread`, `name_in_use`, `timed_out` - where
   // the answer's reason says it in words, naming the command to run next.
   string refusal = 2;
+  // Since 1.3. What to call the human where an answer shows it, as SetHumanName set it; empty
+  // when nothing did.
+  string human_name = 3;
   oneof answer {
     Joined joined = 10;
     Left left = 11;
@@ -1241,6 +1253,8 @@ message Settings {
   optional double scroll_multiplier = 6;
   // Since 1.3. Absent: named.
   optional bool name_sessions = 7;
+  // Since 1.3. Absent: the human is shown by the address alone.
+  optional string human_name = 8;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -408,7 +408,7 @@ pub fn follow(
     let mut request = messaging.request.clone();
     loop {
         let answer = ask(&socket, &request)?;
-        let Some(entries) = render_entries(&answer)? else { return Ok(()) };
+        let Some((entries, human)) = render_entries(&answer)? else { return Ok(()) };
         let Some(Asked::Log(log)) = request.request.as_mut() else {
             unreachable!("only a log is followed")
         };
@@ -429,7 +429,7 @@ pub fn follow(
                 .collect();
             lines.join("\n")
         } else {
-            entries_text(&entries, false, false)
+            entries_text(&entries, false, false, &human)
         };
         // The reader went away - the pane closed, `| head` had enough. Nobody is left to tell.
         if !text.is_empty() && writeln!(out, "{text}").and_then(|()| out.flush()).is_err() {
@@ -439,7 +439,10 @@ pub fn follow(
 }
 
 /// A log's entries, or why there are none.
-fn render_entries(answer: &proto::Answer) -> Result<Option<msg_answer::Entries>, Trouble> {
+/// A followed log's entries, with what the answer calls the human.
+fn render_entries(
+    answer: &proto::Answer,
+) -> Result<Option<(msg_answer::Entries, String)>, Trouble> {
     let Some(proto::answer::Detail::Msg(msg)) = &answer.detail else {
         return Err(Trouble::Refused(format!(
             "the muster-daemon answered with nothing to show: {}",
@@ -450,7 +453,7 @@ fn render_entries(answer: &proto::Answer) -> Result<Option<msg_answer::Entries>,
         return Err(Trouble::Refused(answer.reason.clone()));
     }
     Ok(match &msg.answer {
-        Some(Answer::Entries(entries)) => Some(entries.clone()),
+        Some(Answer::Entries(entries)) => Some((entries.clone(), msg.human_name.clone())),
         _ => None,
     })
 }
@@ -740,9 +743,9 @@ fn render(
             if if_unread && !any_message && !json {
                 return Ok(String::new());
             }
-            entries_text(entries, reading && !if_unread, json)
+            entries_text(entries, reading && !if_unread, json, &msg.human_name)
         }
-        Answer::Members(members) => members_text(members, json),
+        Answer::Members(members) => members_text(members, json, &msg.human_name),
         Answer::Changed(changed) => changed_text(request, changed, json),
         Answer::Resumed(resumed) => {
             // Resuming is heard or not by the members, not by whoever resumed it.
@@ -908,6 +911,15 @@ fn is_human(name: &str) -> bool {
     name.strip_prefix(spelling::HUMAN).is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
 }
 
+/// A participant as text shows it: the human by the name the app set beside its address, so a
+/// reader knows who it is and a model still knows what to put in `--to` (MIP-4, section 10).
+fn shown(name: &str, human: &str) -> String {
+    if human.is_empty() || !is_human(name) {
+        return name.to_string();
+    }
+    format!("{human} ({name})")
+}
+
 /// What a post did for each participant it was for. Nobody live heard it - nobody woken, to be
 /// rung, already woken, held for a resume or a link, or the human - is [`Trouble::Unheard`],
 /// printed the same way.
@@ -1051,7 +1063,12 @@ fn activity(activity: msg_answer::Activity) -> Option<&'static str> {
 
 /// Council v1's framing, a start and an end marker per message, so a model reading several
 /// knows where each begins and whose it is.
-fn entries_text(entries: &msg_answer::Entries, say_when_empty: bool, json: bool) -> String {
+fn entries_text(
+    entries: &msg_answer::Entries,
+    say_when_empty: bool,
+    json: bool,
+    human: &str,
+) -> String {
     if json {
         let groups: Vec<_> = entries
             .groups
@@ -1065,7 +1082,11 @@ fn entries_text(entries: &msg_answer::Entries, say_when_empty: bool, json: bool)
                 })
             })
             .collect();
-        return serde_json::json!({ "groups": groups }).to_string();
+        let mut value = serde_json::json!({ "groups": groups });
+        if !human.is_empty() {
+            value["human_name"] = human.into();
+        }
+        return value.to_string();
     }
     let mut blocks = Vec::new();
     for group in &entries.groups {
@@ -1077,22 +1098,32 @@ fn entries_text(entries: &msg_answer::Entries, say_when_empty: bool, json: bool)
                     let to = if message.to.is_empty() {
                         String::new()
                     } else {
-                        format!(" -> {}", message.to.join(", "))
+                        let to: Vec<String> =
+                            message.to.iter().map(|name| shown(name, human)).collect();
+                        format!(" -> {}", to.join(", "))
                     };
                     let urgent = if message.urgent { ", urgent" } else { "" };
-                    let head = format!("--- {name} #{seq} | {}{to}{urgent} ---", message.author);
+                    let author = shown(&message.author, human);
+                    let head = format!("--- {name} #{seq} | {author}{to}{urgent} ---");
                     format!(
-                        "{head}\n{}\n--- end {name} #{seq} | {} ---",
+                        "{head}\n{}\n--- end {name} #{seq} | {author} ---",
                         message.body.trim_end_matches('\n'),
-                        message.author
                     )
                 }
-                Some(What::Created(by)) => format!("--- {name} #{seq} | created by {by} ---"),
-                Some(What::Joined(who)) => format!("--- {name} #{seq} | {who} joined ---"),
-                Some(What::Left(who)) => format!("--- {name} #{seq} | {who} left ---"),
-                Some(What::Changed(changed)) => {
-                    format!("--- {name} #{seq} | {} {} ---", changed.by, change_text(changed))
+                Some(What::Created(by)) => {
+                    format!("--- {name} #{seq} | created by {} ---", shown(by, human))
                 }
+                Some(What::Joined(who)) => {
+                    format!("--- {name} #{seq} | {} joined ---", shown(who, human))
+                }
+                Some(What::Left(who)) => {
+                    format!("--- {name} #{seq} | {} left ---", shown(who, human))
+                }
+                Some(What::Changed(changed)) => format!(
+                    "--- {name} #{seq} | {} {} ---",
+                    shown(&changed.by, human),
+                    change_text(changed)
+                ),
                 None => continue,
             });
         }
@@ -1145,7 +1176,7 @@ fn entry_json(entry: &msg_answer::Entry) -> serde_json::Value {
     value
 }
 
-fn members_text(members: &msg_answer::Members, json: bool) -> String {
+fn members_text(members: &msg_answer::Members, json: bool, human: &str) -> String {
     let liveness = |member: &msg_answer::Member| match member.liveness() {
         msg_answer::Liveness::Alive => "alive",
         msg_answer::Liveness::Gone => "gone",
@@ -1167,7 +1198,11 @@ fn members_text(members: &msg_answer::Members, json: bool) -> String {
                 })
             })
             .collect();
-        return serde_json::json!({ "members": members }).to_string();
+        let mut value = serde_json::json!({ "members": members });
+        if !human.is_empty() {
+            value["human_name"] = human.into();
+        }
+        return value.to_string();
     }
     if members.members.is_empty() {
         return "nobody".to_string();
@@ -1180,19 +1215,22 @@ fn members_text(members: &msg_answer::Members, json: bool) -> String {
             None => liveness(member).to_string(),
         })
         .collect();
-    let width = members.members.iter().map(|member| member.name.len()).max().unwrap_or(0);
+    let names: Vec<String> =
+        members.members.iter().map(|member| shown(&member.name, human)).collect();
+    let width = names.iter().map(String::len).max().unwrap_or(0);
     let state_width = states.iter().map(String::len).max().unwrap_or(0);
     members
         .members
         .iter()
         .zip(&states)
-        .map(|(member, state)| {
+        .zip(&names)
+        .map(|((member, state), name)| {
             let groups = if member.groups.is_empty() {
                 "in no group".to_string()
             } else {
                 member.groups.join(", ")
             };
-            format!("{:<width$}  {state:<state_width$}  {groups}", member.name)
+            format!("{name:<width$}  {state:<state_width$}  {groups}")
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -1304,6 +1342,55 @@ mod tests {
         assert_eq!(json["until"]["critic"], "unblocked");
     }
 
+    /// The human is shown by the name the app set, beside the address an agent writes in `--to`,
+    /// wherever a transcript names it; nobody else changes.
+    #[test]
+    fn the_human_is_shown_by_name_beside_its_address() {
+        let message = msg_answer::Message {
+            author: "@human".to_string(),
+            to: vec!["builder".to_string(), "@human@lap".to_string()],
+            body: "go".to_string(),
+            urgent: false,
+        };
+        let entry = |seq, what| msg_answer::Entry { seq, at_ms: 0, what: Some(what) };
+        let entries = msg_answer::Entries {
+            groups: vec![msg_answer::GroupEntries {
+                group: "review".to_string(),
+                entries: vec![
+                    entry(2, What::Joined("@human".to_string())),
+                    entry(3, What::Message(message)),
+                ],
+                behind: None,
+            }],
+        };
+        assert_eq!(
+            entries_text(&entries, true, false, "Alex"),
+            "--- review #2 | Alex (@human) joined ---\n\
+             --- review #3 | Alex (@human) -> builder, Alex (@human@lap) ---\ngo\n\
+             --- end review #3 | Alex (@human) ---"
+        );
+        assert!(
+            entries_text(&entries, true, false, "").starts_with("--- review #2 | @human joined")
+        );
+
+        let member = |name: &str, liveness| msg_answer::Member {
+            name: name.to_string(),
+            liveness: liveness as i32,
+            groups: vec!["review".to_string()],
+            ..msg_answer::Member::default()
+        };
+        let members = msg_answer::Members {
+            members: vec![
+                member("@human", msg_answer::Liveness::Human),
+                member("builder", msg_answer::Liveness::Gone),
+            ],
+        };
+        assert_eq!(
+            members_text(&members, false, "Alex"),
+            "Alex (@human)  human  review\nbuilder        gone   review"
+        );
+    }
+
     #[test]
     fn an_urgent_message_says_so_where_it_is_read() {
         let message = msg_answer::Message {
@@ -1324,7 +1411,7 @@ mod tests {
             }],
         };
         assert_eq!(
-            entries_text(&entries, true, false),
+            entries_text(&entries, true, false, ""),
             "--- review #4 | director -> builder, urgent ---\nstop\n--- end review #4 | director ---"
         );
     }
@@ -1427,7 +1514,7 @@ mod tests {
             }],
         };
         assert_eq!(
-            entries_text(&entries, true, false),
+            entries_text(&entries, true, false, ""),
             "nothing unread\nlap cannot be reached now, so review@lap may be missing messages \
              posted since"
         );

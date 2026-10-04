@@ -291,12 +291,29 @@ pub(crate) fn handle(
     let person_elsewhere = shared.messages().service.person_elsewhere(&caller, &panes).is_some();
     let kept = person_elsewhere.then(|| asked.clone());
     let reply = respond(shared, &caller, asked, hung_up, &panes);
-    let Some(asked) = kept else { return reply };
-    let Some(home) = carry::destination(shared, &caller, &asked, &reply, &panes) else {
-        return reply;
+    let reply = match kept {
+        None => reply,
+        Some(asked) => match carry::destination(shared, &caller, &asked, &reply, &panes) {
+            None => reply,
+            Some(home) => {
+                let asked = carry::outward(&shared.messages().service, asked, &panes);
+                peer::carry(shared, &home.machine, asked, hung_up).unwrap_or(reply)
+            }
+        },
     };
-    let asked = carry::outward(&shared.messages().service, asked, &panes);
-    peer::carry(shared, &home.machine, asked, hung_up).unwrap_or(reply)
+    naming_the_human(shared, reply)
+}
+
+/// The answer, saying what to call the human where it is shown (MIP-4, section 10). Read from
+/// the session, which keeps it with the app's other settings, and never with the messages lock
+/// held.
+fn naming_the_human(shared: &Shared, mut reply: Reply) -> Reply {
+    if let Some(Detail::Msg(answer)) = reply.detail.as_deref_mut()
+        && let Some(name) = shared.lock().human_name()
+    {
+        name.clone_into(&mut answer.human_name);
+    }
+    reply
 }
 
 /// A request the person made on `peer`'s machine, carried here to be done as the human.
@@ -1252,7 +1269,7 @@ pub(crate) fn kept_nothing(refusal: &Refusal) {
 // Answers
 
 fn answered(caller: String, answer: Answer) -> Reply {
-    let answer = proto::MsgAnswer { caller, refusal: String::new(), answer: Some(answer) };
+    let answer = proto::MsgAnswer { caller, answer: Some(answer), ..proto::MsgAnswer::default() };
     Reply { detail: Some(Box::new(Detail::Msg(answer))), ..Reply::done() }
 }
 
@@ -1264,8 +1281,11 @@ pub(super) fn refused(caller: &str, refusal: &Refusal) -> Reply {
 }
 
 pub(super) fn refused_as(caller: &str, code: &str, reason: &str) -> Reply {
-    let answer =
-        proto::MsgAnswer { caller: caller.to_string(), refusal: code.to_string(), answer: None };
+    let answer = proto::MsgAnswer {
+        caller: caller.to_string(),
+        refusal: code.to_string(),
+        ..proto::MsgAnswer::default()
+    };
     Reply { detail: Some(Box::new(Detail::Msg(answer))), ..Reply::refused(reason) }
 }
 

@@ -231,6 +231,7 @@ fn settings_reach_the_daemon() {
         cursor: Cursor { style: Some(CursorStyle::Bar), blink: Some(false) },
         clipboard_write: ClipboardWrite::Deny,
         name_sessions: false,
+        human_name: Some("Alex".to_string()),
         shell: Shell {
             mode: ShellMode::Login,
             ssh_env: Some(false),
@@ -250,6 +251,7 @@ fn settings_reach_the_daemon() {
             && settings.cursor.is_some()
             && settings.clipboard_write.is_some()
             && settings.name_sessions.is_some()
+            && settings.human_name.is_some()
             && settings.shell.is_some();
         arrived.then_some(settings)
     });
@@ -257,6 +259,7 @@ fn settings_reach_the_daemon() {
     assert_eq!((cursor.style(), cursor.blink), (proto::CursorStyle::Bar, Some(false)));
     assert_eq!(held.clipboard_write, Some(false), "a program is told it may not copy");
     assert_eq!(held.name_sessions, Some(false), "a pane's name is kept out of its agent's session");
+    assert_eq!(held.human_name.as_deref(), Some("Alex"), "messages call the human by its name");
     let shell = held.shell.expect("the shell was sent");
     assert_eq!(shell.mode(), proto::ShellMode::Login);
     assert_eq!((shell.ssh_env, shell.ssh_terminfo, shell.sudo), (Some(false), None, Some(true)));

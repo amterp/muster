@@ -317,6 +317,10 @@ impl Control {
         })))
     }
 
+    pub fn set_human_name(&self, name: Option<String>) -> Pending {
+        self.ask(session(session_request::Request::SetHumanName(proto::SetHumanName { name })))
+    }
+
     pub fn set_scroll_multiplier(&self, multiplier: f64) -> Pending {
         self.ask(session(session_request::Request::SetScrollMultiplier(
             proto::SetScrollMultiplier { multiplier },

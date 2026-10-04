@@ -23,6 +23,7 @@ scroll_multiplier = 1.5        # scales what the trackpad or wheel reported
 hide_pointer_while_typing = true  # until the mouse moves; off by default, as in Ghostty
 clipboard_write = "deny"       # allow (the default) | deny: may a program set the clipboard
 name_sessions = false          # the default true: naming a pane names its agent's session
+human_name = "Alex"            # what messages call you beside @human; omit for your login name
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
 
@@ -472,6 +473,14 @@ into their agents unasked. It stops only that direction: a session renamed in it
 renames the pane, since nothing is typed for that. The daemon is the one that types, so it is
 handed the answer as a setting, as `scrollback_bytes` is below.
 
+`human_name` is what messages between agents call you where they show you: `muster msg who`, and
+the framing of `read` and `log`, which a transcript is. It goes beside your address rather than
+in place of it - `Alex (@human)` - because an agent reading the transcript has to know what to
+put in `--to`, and the address stays `@human`. Omit it and you are called by your login name.
+It is one line of at most 64 bytes. The daemon answers the messaging commands, so it is handed
+the name as a setting too, every daemon this window attaches included, since the human a devenv
+shows is you.
+
 `[shell]` and `scrollback_bytes` are the two Muster does not act on at all. What a pane runs
 and how much of it you can scroll back through belong to the daemon that makes the pane - so
 Muster hands them to the daemon as settings over its own connection, as it hands `[font]` and
@@ -557,7 +566,7 @@ drawn when it is unreachable or holds no panes, carries the same swatch.
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `hide_pointer_while_typing`, `clipboard_write`,
-`[notifications]`, `name_sessions` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
+`[notifications]`, `name_sessions`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

@@ -330,7 +330,7 @@ fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
     let path = persist::path_for(socket);
     let (disabled, state) = match persist::load(&path) {
         persist::Loaded::Nothing => (false, None),
-        persist::Loaded::State(state) => (false, Some(state)),
+        persist::Loaded::State(state) => (false, Some(*state)),
         persist::Loaded::Newer(version) => {
             let problem = format!(
                 "{} was written by a newer muster-daemon (format {version}; this one reads up \

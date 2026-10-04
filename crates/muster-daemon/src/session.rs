@@ -929,6 +929,7 @@ impl Session {
                 S::SetCursor(set) => self.set_cursor(set),
                 S::SetScrollMultiplier(set) => self.set_scroll_multiplier(set.multiplier),
                 S::SetNameSessions(set) => self.set_name_sessions(set.name),
+                S::SetHumanName(set) => self.set_human_name(set.name),
                 S::ReadGrids(_) => self.grids(),
                 S::FollowLog(follow) => self.follow_log(asker, follow.after),
                 S::Replace(replace) => return self.replace(replace),
@@ -1939,6 +1940,21 @@ impl Session {
         }
         self.settings.name_sessions = Some(name);
         self.settings_changed()
+    }
+
+    /// An empty name is none: the human is shown by the address alone.
+    fn set_human_name(&mut self, name: Option<String>) -> Reply {
+        let name = name.filter(|name| !name.is_empty());
+        if self.settings.human_name == name {
+            return Reply::already();
+        }
+        self.settings.human_name = name;
+        self.settings_changed()
+    }
+
+    /// What messages call the human (`SetHumanName`), if anything does.
+    pub(crate) fn human_name(&self) -> Option<&str> {
+        self.settings.human_name.as_deref()
     }
 
     /// Whether a pane's name is typed into its agent's session (`SetNameSessions`).

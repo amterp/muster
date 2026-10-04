@@ -32,6 +32,9 @@ pub struct DaemonSettings {
     pub scroll_multiplier: f64,
     /// Whether the daemon types a pane's name into its agent's session as its name.
     pub name_sessions: bool,
+    /// What messages call the human, as the file names it; none for the login name, which
+    /// only the side that sends this can look up.
+    pub human_name: Option<String>,
 }
 
 /// The colours programs are told the terminal has, when they ask.
@@ -81,6 +84,7 @@ impl DaemonSettings {
             clipboard_write: config.panes.clipboard_write,
             scroll_multiplier: config.feel.scroll_multiplier,
             name_sessions: config.panes.name_sessions,
+            human_name: config.human_name.clone(),
         }
     }
 }
