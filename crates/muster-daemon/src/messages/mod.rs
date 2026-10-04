@@ -15,6 +15,7 @@ mod presence;
 mod prompt;
 mod renames;
 mod store;
+mod typist;
 mod wire;
 
 pub(crate) use doorbell::Doorbell;
