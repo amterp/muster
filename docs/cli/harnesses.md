@@ -69,6 +69,15 @@ kimi, kiro, maki, pi, qodercli.
   the context its adapter reports. Codex and OpenCode have a `/compact` of their own that Muster
   has not yet been recorded typing, so it does not type it.
 
+- **Resumed after a restart**: a pane whose agent reported its session comes back after a daemon
+  restart or a reboot running that session again, with the flags the agent was started with,
+  less what would start a session of its own (`docs/configuration.md`, `resume_agents`). Claude
+  Code's manifest spells it, `claude --resume <id>`, and its adapter's hooks report the session.
+  Codex and OpenCode spell none yet, so their panes come back as shells. A manifest says it in
+  `[session]`: `resume`, the command with `{args}` where the flags go and `{session}` for the id,
+  `resume_drops`, the flags never carried, and `resume_values`, the flags that take a value, which
+  is the only way a word after a flag is told from a first prompt (detection engine 12).
+
 The first name a session reports is the one it started with, not a rename: a pane with a name
 keeps it and gives it to the session, and a pane without one takes the session's. Neither
 direction sets off the other.

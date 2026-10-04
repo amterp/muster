@@ -24,6 +24,7 @@ hide_pointer_while_typing = true  # until the mouse moves; off by default, as in
 clipboard_write = "deny"       # allow (the default) | deny: may a program set the clipboard
 name_sessions = false          # the default true: naming a pane names its agent's session
 compact_at = 80                # compact an agent once its context is this full; omit for never
+resume_agents = false          # the default true: a restart brings an agent back in its session
 human_name = "Alex"            # what messages call you beside @human; omit for your login name
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
@@ -483,6 +484,27 @@ harness reports none is never compacted by it. Off unless the file says so, beca
 somebody's agent unasked. The daemon is the one that types, so it is handed the percent as a
 setting, as `name_sessions` is, and every daemon this window attaches gets it.
 
+`resume_agents` decides what a pane comes back as after its daemon restarts - an upgrade it could
+not hand over, a crash, a reboot. A pane always comes back, in its tab and its directory; with
+this on, a pane whose agent had reported its session comes back running that session again, as
+its harness resumes one (`claude --resume <id>`), with the flags the agent was started with:
+`claude --model opus --effort high` comes back as `claude --model opus --effort high --resume
+<id>`. The flags are read off the agent's own process when its session is reported, so an agent
+started through a wrapper script comes back with what the wrapper passed it, though not through
+the wrapper. What would start a session of its own is left out - a first prompt, `-p`, another
+`--resume` - and when a word in the flags could be a prompt as easily as a flag's value, none of
+the flags go along and the session resumes bare, rather than send that prompt again. The daemon's
+log says, in `daemon.state.resumed`, every pane it resumed and the whole command it ran. When the
+agent exits, or its session cannot be resumed, the pane drops back to its shell.
+
+It is on because an agent's work is the point of the pane. Turn it off with `false` and such a pane
+comes back as a shell, as every pane did before: a resumed agent runs unattended with the flags it
+had, a permission mode that skips prompts among them. A resumed agent is an agent like any other,
+so messages that arrived for it while its daemon was down may ring it as soon as it is back. Only
+Claude Code says how to resume it so far (`muster docs harnesses`), and it needs the adapter's
+hooks, which report the session. The daemon does the restarting, so it is handed the answer as a
+setting, as `name_sessions` is.
+
 `human_name` is what messages between agents call you where they show you: `muster msg who`, and
 the framing of `read` and `log`, which a transcript is. It goes beside your address rather than
 in place of it - `Alex (@human)` - because an agent reading the transcript has to know what to
@@ -579,7 +601,7 @@ drawn when it is unreachable or holds no panes, carries the same swatch.
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `hide_pointer_while_typing`, `clipboard_write`,
-`[notifications]`, `name_sessions`, `compact_at`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
+`[notifications]`, `name_sessions`, `compact_at`, `resume_agents`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

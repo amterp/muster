@@ -1214,9 +1214,14 @@ one never noticed.
 
 What Muster must not do here: keep its own session store, or infer an agent's resume token by reading its output.
 The first is the multiplexer non-goal and the second is the agent-framework one. Reporting a session reference the
-harness hands over is metadata about a pane and is fine; `muster-daemon report` already carries what a harness says
-about its agent, and that is where a real "resume this agent" story lives - in the harness's own session, not in the
-terminal.
+harness hands over is metadata about a pane and is fine, and that is how an agent comes back after a restart: its
+hooks report the session's id, the daemon reads the arguments the agent process was started with off the pane's
+foreground job, where detection already reads it, and the agent's manifest says how its harness resumes a session
+and which of those arguments may go along. The command that makes is saved with the pane, and a restart starts the
+pane with it (`resume_agents`). Built when the session is reported, because then the agent is running and its
+arguments can be read, and saved whole, because a restarting daemon restores before its manifests have loaded. The
+arguments come from the process rather than the command a pane was made with, so a wrapper has already expanded into
+the harness's own flags, which the manifest can describe, and an agent started by hand at the shell has them too.
 
 ## The diagnostic log
 
