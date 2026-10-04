@@ -1121,6 +1121,9 @@ fn a_first_window_starts_on_the_machine_the_config_names_first() {
     let _turn = muster::testing::fresh_session();
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     let (first, second) = (Daemon::start_built(), Daemon::start_built());
+    // Past the delay by far, since what is under test is which daemon the window starts on: at
+    // the usual second, a busy machine could take the 800 ms past it and open on `a-first`.
+    muster::testing::set_startup_grace(muster_harness::PATIENCE);
     let slow = first.delaying_answers_where(subscribes, std::time::Duration::from_millis(800));
     let config = first.root().join("two-machines.toml");
     std::fs::write(

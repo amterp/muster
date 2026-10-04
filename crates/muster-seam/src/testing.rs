@@ -58,6 +58,12 @@ pub fn fresh_session() -> Turn {
     Turn { _turn: turn }
 }
 
+/// How long starting waits for the daemons a config names before the window opens without the
+/// ones still on their way, in place of one second, until the next reset.
+pub fn set_startup_grace(grace: Duration) {
+    session::set_startup_grace(grace);
+}
+
 /// How long a pane may go without its bridge dialing in before it is reported untypeable, in
 /// place of `MUSTER_TYPEABLE_DEADLINE_MS`, until the next reset. Zero switches the watch off.
 pub fn set_typeable_deadline(deadline: Duration) {

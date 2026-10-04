@@ -1564,6 +1564,7 @@ pub(crate) fn reset() {
     *poison::lock(&SESSION, "session") = Session::default();
 
     *poison::lock(&DAEMON_BINARY, "daemon-binary") = None;
+    *poison::lock(&SET_GRACE, "grace") = None;
     *poison::lock(&PLATFORM_LOCALE, "locale") = None;
     *poison::lock(&COMMANDS, "commands") = None;
     *poison::lock(&BINDINGS, "bindings") = None;
@@ -4514,9 +4515,10 @@ fn follow_in_background(daemons: &[Daemon]) {
             attach_ended(&daemon.id, ticket);
         }
     }
+    let grace = poison::lock(&SET_GRACE, "grace").unwrap_or(GRACE);
     let attaches = poison::lock(&ATTACHES, "attaches");
     let _waited = ATTACH_ENDED
-        .wait_timeout_while(attaches, GRACE, |attaches| {
+        .wait_timeout_while(attaches, grace, |attaches| {
             attaches.generation == generation && !attaches.under_way.is_empty()
         })
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -4526,6 +4528,14 @@ fn follow_in_background(daemons: &[Daemon]) {
 /// ones still on their way. Past it, a window that has not appeared reads as a Muster that did
 /// not start.
 const GRACE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// [`GRACE`] as a test set it, until the next reset: a test whose subject is which daemon the
+/// window starts on, rather than how long starting waits, sets it past any daemon it delays.
+static SET_GRACE: Mutex<Option<std::time::Duration>> = Mutex::new(None);
+
+pub(crate) fn set_startup_grace(grace: std::time::Duration) {
+    *poison::lock(&SET_GRACE, "grace") = Some(grace);
+}
 
 /// The configured daemons still being attached, and which launch they belong to.
 ///

@@ -7,12 +7,13 @@ import Testing
 // layout, or two windows writing over each other's, or one that cannot be brought back after it
 // closes.
 
-/// A `MUSTER_HOME` of its own per test, removed afterwards.
+/// A `MUSTER_HOME` of its own per test, emptied first.
 ///
 /// A real directory rather than an injected filesystem: what this answers is which files are there
 /// and when each was written, and a stand-in for that would be a stand-in for the whole question.
+/// Under this process's pid, so another checkout running these at once does not empty it.
 private func scratch(_ named: String) -> String {
-  let home = "/tmp/muster-state-tests/\(named)"
+  let home = "/tmp/muster-state-tests/\(getpid())-\(named)"
   try? FileManager.default.removeItem(atPath: home)
   try? FileManager.default.createDirectory(
     atPath: home, withIntermediateDirectories: true)

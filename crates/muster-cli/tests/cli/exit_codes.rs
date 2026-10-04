@@ -17,12 +17,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use muster_cli::dial;
+use muster_harness::PATIENCE;
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster_proto::{PaneStateChanged, ReadWindow, Request, Response, request, response};
 use prost::Message;
 
 /// Short, because what is under test is which answer a deadline produces rather than the
-/// deadline itself.
+/// deadline itself. Only for a listener that never answers: one that does is given
+/// `PATIENCE`, so a busy machine slow to schedule it is not read as a silence.
 const BRIEFLY: Duration = Duration::from_millis(200);
 
 /// Longer than any of these tests take, held so a connection stays open rather than closing
@@ -43,7 +45,8 @@ fn a_window_that_answers_nothing_is_not_a_window_that_was_never_there() {
         }
     });
 
-    let trouble = asked(&socket).expect_err("a listener that says nothing produces no response");
+    let trouble =
+        asked(&socket, BRIEFLY).expect_err("a listener that says nothing produces no response");
 
     assert_eq!(
         trouble.code(),
@@ -71,7 +74,7 @@ fn an_answer_this_muster_cannot_read_is_still_an_answer() {
         }
     });
 
-    let trouble = asked(&socket).expect_err("a truncated varint is not a Response");
+    let trouble = asked(&socket, PATIENCE).expect_err("a truncated varint is not a Response");
 
     assert_eq!(
         trouble.code(),
@@ -99,7 +102,7 @@ fn a_window_whose_daemon_never_answered_exits_as_unanswered() {
         }
     });
 
-    let response = asked(&socket).expect("the window answered");
+    let response = asked(&socket, PATIENCE).expect("the window answered");
     let trouble = muster_cli::render::answer(&response, false)
         .expect_err("a request nobody answered is not a success");
 
@@ -117,7 +120,7 @@ fn a_window_whose_daemon_never_answered_exits_as_unanswered() {
 fn a_socket_nobody_is_listening_on_is_a_window_that_was_never_asked() {
     let socket = socket_at("nobody");
 
-    let trouble = asked(&socket).expect_err("nothing is bound to that path");
+    let trouble = asked(&socket, BRIEFLY).expect_err("nothing is bound to that path");
 
     assert_eq!(
         trouble.code(),
@@ -284,9 +287,9 @@ fn ran(argv: &[&str]) -> Ran {
 ///
 /// Which request hardly matters: what a failure means is decided by how far the exchange got,
 /// not by what was being asked for.
-fn asked(socket: &Path) -> Result<Response, muster_cli::Trouble> {
+fn asked(socket: &Path, within: Duration) -> Result<Response, muster_cli::Trouble> {
     let request = Request::new(request::Payload::ReadWindow(ReadWindow::default()));
-    dial::ask_within(&request, Some(&socket.to_string_lossy()), &BTreeMap::new(), BRIEFLY)
+    dial::ask_within(&request, Some(&socket.to_string_lossy()), &BTreeMap::new(), within)
 }
 
 fn socket_at(named: &str) -> PathBuf {

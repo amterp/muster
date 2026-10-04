@@ -39,19 +39,16 @@ fn a_slow_daemon_does_not_hold_the_window_closed() {
         config_path: relay.muster_config().to_string_lossy().into_owned(),
         ..Startup::default()
     })));
+    // Bounded by the daemon's delay itself: a start that waited for the daemon took at least
+    // that long, and any less is a start that did not, however busy the machine.
     let started_in = asked.elapsed();
     assert!(
-        started_in < Duration::from_secs(3),
+        started_in < SLOW,
         "starting took {started_in:?} waiting for a daemon {SLOW:?} slow to answer.\n  Impact: \
          the window does not appear until every daemon it names has answered."
     );
 
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
-    assert_eq!(
-        health_of("local").first().map(String::as_str),
-        Some("connecting"),
-        "the window was not told what it is waiting for"
-    );
     until(
         "the slow daemon's pane to arrive in the open window",
         || listed_panes() == 1,
@@ -61,6 +58,14 @@ fn a_slow_daemon_does_not_hold_the_window_closed() {
         "the window to be told the daemon is connected",
         || health_of("local").last().map(String::as_str) == Some("connected"),
         || format!("the window was told {:?}", health_of("local")),
+    );
+    // Told what it was waiting for before it arrived. Not necessarily first: a busy machine can
+    // leave the attach thread behind the read, or a held-back answer can read as stale first.
+    let told = health_of("local");
+    let said = |state: &str| told.iter().position(|health| health == state);
+    assert!(
+        matches!((said("connecting"), said("connected")), (Some(waiting), Some(arrived)) if waiting < arrived),
+        "the window was not told what it is waiting for: {told:?}"
     );
     drop(relay);
 }
