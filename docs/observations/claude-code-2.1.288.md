@@ -11,7 +11,8 @@ in a pane of a daemon the test started, bypassing permission prompts, and is giv
 that runs for forty seconds; ten seconds in, the test posts to it with `--urgent`. The
 transcripts are `corpus/claude-code-2.1.288/urgent-ring-*.txt`, condensed from the session's own
 log under `~/.claude/projects`. Sections 3 to 5 were measured the same day in a pseudo-terminal instead
-(`dialog-input.txt`, `plan-dialog.txt`, `rename.txt`). The screens of an agent at work are in
+(`dialog-input.txt`, `plan-dialog.txt`, `rename.txt`), and section 6 the day after
+(`background-agent.txt`). The screens of an agent at work are in
 `corpus/conformance/agent-prompt.json`, recorded by `tools/detection-capture.py`.
 
 ## 1. A line typed while it works is taken into the running turn
@@ -64,6 +65,15 @@ session has one, but a rename does not run the statusline again: it hears the na
 run, which a `refreshInterval` setting of 2 brought within two seconds. Two sessions given the
 same name at once both kept it, though the binary carries a rule giving a session another name
 when a live one holds it; it did not apply to `/rename`.
+
+## 6. A background agent leaves the session idle, not waiting
+
+A session that starts a background agent with the Agent tool and ends its turn goes idle at its
+prompt box while the agent runs, and takes a ring there as any idle session does; the agent's
+result arrives later as a turn of its own (`background-agent.txt`). It never drew "Waiting for 1
+background agent to finish", the line `claude.toml`'s `background_agents_working` rule reads,
+which came with herdr's manifests; that rule is left as it is, with no prompt, since no screen of
+it could be recorded to read one from.
 
 ## What this decides for Muster
 

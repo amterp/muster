@@ -1,0 +1,23 @@
+What Claude Code 2.1.288 draws while a background agent it started runs, and what a ring typed
+then does.
+
+Recorded 2026-10-04 on macOS 26.4.1 / arm64, Claude Code 2.1.288 logged in to a Claude Max account,
+--setting-sources project --model haiku --allowedTools 'Bash(sleep:*)', in a 100x30
+pseudo-terminal driven by a scratch script built on `tools/detection-capture.py`.
+
+Asked to start one background agent running `sleep 70` with the Agent tool's run_in_background,
+and to end its turn without waiting:
+    the turn ended at once; the session idle at its prompt box, "✳" in its title, the agent
+    listed under "⏺ main" as "◯ general-purpose ... Run sleep 70"
+    1m 17s later: "⏺ Agent "Run sleep command for 70 seconds" finished", and a short turn of its own
+    ("Background task complete ...")
+    no "Waiting for 1 background agent to finish" was drawn at any point; detection read the
+    session idle throughout, by its prompt box rule
+
+Idle with the agent running, one bracketed paste of "Before you go on, say the word PINEAPPLE.",
+then Return 1.5 s later:
+    ❯ Before you go on, say the word PINEAPPLE.
+    ⏺ PINEAPPLE
+
+An earlier run with the user's own settings loaded, whose Stop hooks kept the turn open, drew
+"running Stop hooks… 1/2" under the spinner instead, and the same ring was queued as at work.
