@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "joining-as-director",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791239726381,
+  "creator": "Alexander Terp",
+  "description": "`directed.toml` names its director role literally, so whoever convenes a directed council takes the name `director`. `muster msg join --name director` answered only \"taking part as director (taken over from a session that had gone)\", and the takeover kept that session's memberships. `muster msg who` then showed `director` in three groups left over from finished councils, whose posts would wake the new session. The convener left each by hand before making the new group.\n\nMeasured: muster 0.10.1, 2026-10-01, devenv, following the council skill's Convening section.\n\n## Things that might be true\n\n- **Have `join` list what it took over**: \"... with its place in alpha+director, demo-council, \u003cg\u003e\", so the convener knows to leave them.\n- Or let a policy name its director by a group-scoped name, so a fresh council does not need the global name `director`.\n- Have the council skill's Convening section say to check `muster msg who` after joining.",
+  "id": "a_2cW57qOIs",
+  "position": "b0j",
+  "title": "Joining as director silently keeps a gone session's groups",
+  "type": "enhancement",
+  "updated_at_millis": 1791239726381,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791239726381}
+  ]
+}

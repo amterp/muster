@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "pane-send-cannot",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791239725829,
+  "creator": "Alexander Terp",
+  "description": "`muster docs limits` says a permission prompt, a trust dialog or a menu is answered with `muster pane send`, but only Return reached the dialogs below: arrow keys, digits and letters were dropped. And `--confirm` reported success for a key that never arrived, because the key's text was already on screen.\n\n## Measured\n\n- **2026-10-01, devenv.** Three Claude Code agents started with `muster pane new --run \u003clauncher\u003e --cwd \u003cuntrusted dir\u003e` each opened at the folder-trust dialog, whose selection starts on \"No, exit\". `pane send` of a down arrow (`$'\\x1b[B'`) and of `2` left the selection where it was, as `pane read` showed. Return got through, and exited. Workaround: start agents under an already-trusted parent directory. Plan-approval and question dialogs behaved the same in earlier sessions.\n- **2026-10-05, laptop.** A Claude Code agent started Codex with `muster pane new --right --run codex`. Codex asked for approval to run `muster window --json` (\"1. Yes, proceed (y) / 2. Yes, and don't ask again for commands that start with `muster` (p) / 3. No (esc)\"). `muster pane send --pane \u003cp\u003e 'p' --confirm` exited 0, but the dialog still showed the same options. `--confirm` passed because \"(p)\" was already on screen. A bare Return to take the default was refused as well (a_2cW56eld0). The orchestrating agent could not answer the approval prompt of a Codex it had started, and handed it to the human.\n\n## Why it matters\n\nAn agent that starts another agent has to get it past its first dialog, and the docs say it can.\n\n## Things that might be true\n\n- **Deliver keys to a dialog**: arrows, digits and letters through `pane send`, or a `--key down|up|esc|...` flag.\n- **Have `--confirm` compare the pane before and after the send**, rather than look for the text anywhere on screen.\n- Otherwise correct `muster docs limits` to say only Return reaches a dialog, and name the trust dialog's default \"No\" as a reason to start agents in trusted directories.\n\nRelated: a_2ZNnTCJ4q, where `--confirm` also reports success for a send that did not do what it was meant to.",
+  "id": "a_2cW56wz6X",
+  "position": "b0R",
+  "title": "🎛️ pane send cannot answer a dialog, and --confirm says it did",
+  "type": "bug",
+  "updated_at_millis": 1791239736801,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791239725829}
+  ]
+}

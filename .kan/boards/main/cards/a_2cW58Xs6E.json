@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-socket-permission",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791239726816,
+  "creator": "Alexander Terp",
+  "description": "`muster window --json` run inside Codex's sandbox exited 3: dialing both window sockets failed with \"Operation not permitted\", and the message then said the window had quit (\"That window has quit ... Open Muster again\"). The window was open. The same command run outside the sandbox showed the local and devenv daemons connected and the calling pane working.\n\ncrates/muster-cli/src/dial.rs writes the same \"has quit\" text for every dial error, so a permission error reads like a missing listener.\n\nMeasured: 2026-10-05, laptop, Codex pane.\n\n## Things that might be true\n\n- **Tell a permission error (EPERM, EACCES) from a missing listener (ENOENT, ECONNREFUSED).** On a permission error, say the socket is there but this process may not connect to it, and suggest allowing local socket access in the agent's sandbox.",
+  "id": "a_2cW58Xs6E",
+  "position": "b0W",
+  "title": "A socket permission error is reported as a window that quit",
+  "type": "bug",
+  "updated_at_millis": 1791239726816,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791239726816}
+  ]
+}

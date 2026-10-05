@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-removed-member-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791239726245,
+  "creator": "Alexander Terp",
+  "description": "A director posted a dismissal to a member and then removed it from the group. The member's wake said \"1 new (#13), 1 to you ... Read: muster msg read --group \u003cg\u003e\", but `msg read --group \u003cg\u003e` and `msg read --as \u003cpane\u003e` both refused: \"\u003cpane\u003e is not in \u003cg\u003e; join it with `muster msg join --group \u003cg\u003e`\". Following that hint would rejoin a group the member had just been dismissed from. `muster msg log --group \u003cg\u003e` showed #13.\n\nMeasured: 2026-10-01, devenv, a directed council run the way the council skill's \"Dismiss a member who is finished\" line says.\n\n## Things that might be true\n\n- **Let `msg read` deliver what was addressed to the reader before it was removed**, or point a removed member's wake at `msg log`.\n- Drop the join hint when the group's policy removed the reader.",
+  "id": "a_2cW57cWr1",
+  "position": "b0i",
+  "title": "A removed member's wake points at msg read, which refuses it",
+  "type": "bug",
+  "updated_at_millis": 1791239726245,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791239726245}
+  ]
+}
