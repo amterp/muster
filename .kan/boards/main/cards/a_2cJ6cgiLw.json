@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-window-showed-a",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791208801308,
+  "creator": "Alexander Terp",
+  "description": "aterp-chco rebooted around 2026-10-03 08:00 UTC, taking its 0.12.0 muster-daemon and every Claude session on it with it. Until Muster was upgraded to 0.13.0 on 2026-10-05, the 0.12.0 window never started a daemon there again. It listed the devenv as `stale` (\"could not open a control connection: no daemon answered: the daemon hung up before answering the handshake\"), while every one of its 15 panes kept the state it had before the reboot: `idle`, `done`, and `waiting · on Alex`, with context percentages and session titles, aged 3d.\n\nSo the agent list said 13 agents were alive and one was asking for Alex, when none were running. Only the daemon line said otherwise, and nothing on the rows said their state was frozen. An agent woken by a message, or a person glancing at the list, would have believed it.\n\nTwo questions: whether a window should start a daemon again on an attached machine whose daemon is gone (on 0.13.0 the upgrade's relaunch did, as `started by Muster`), and whether a pane on a stale daemon should show its last state at all, or show it marked as last-known. Not yet checked whether 0.13.0 behaves differently without a relaunch; \"A daemon that can never start is reported once\" in the 0.13.0 notes is a different case.\n\nFound while upgrading to 0.13.0. The agents came back by hand with `ict --resume`, since the 0.12 hooks had not reported their session ids.",
+  "id": "a_2cJ6cgiLw",
+  "position": "b0P",
+  "title": "A window showed a rebooted devenv's dead agents as idle and waiting for two days",
+  "type": "bug",
+  "updated_at_millis": 1791208801308,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791208801308}
+  ]
+}
