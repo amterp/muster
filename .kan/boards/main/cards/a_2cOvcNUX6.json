@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "pane-send-can-only",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791222677962,
+  "creator": "Alexander Terp",
+  "description": "Doing: spawning Codex and Claude panes from an agent for a mixed-harness demo (2026-10-05, Muster 0.13.0, codex-cli 0.159.0 and 0.160.0).\n\nCodex's startup dialog \"Hooks need review\" offers `› 1. Review hooks`, `2. Trust all and continue`, `3. Continue without trusting`. The person asked the agent to pick 2 in both panes. `muster pane send --pane X 2` changed nothing: pane send delivers text as a paste, and Codex's dialogs ignore pastes (docs/observations/codex-0.154.0.md, section 6, says the same of its approval prompt). `--enter` presses Return, which takes the highlighted option, here 1. So the only answers an agent can give a dialog are the highlighted option and nothing, and the person had to press 2 in each pane by hand. Claude Code's plan dialog has the same limit (parallel-work works around it by amending before the dialog opens).\n\nWanted: a way to send keys rather than a paste, e.g. `muster pane send --key down --key enter` or `--keys`, typed as key events so a dialog's own navigation sees them. Docs (`muster docs agents`, limits) would then say which keys exist.",
+  "id": "a_2cOvcNUX6",
+  "position": "b0Q",
+  "title": "⌨️ pane send can only take a dialog's highlighted option",
+  "type": "feature",
+  "updated_at_millis": 1791222677962,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791222677962}
+  ]
+}

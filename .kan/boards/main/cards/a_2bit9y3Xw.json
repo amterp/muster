@@ -3,6 +3,14 @@
   "alias": "measure-whether",
   "alias_explicit": false,
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Measured 2026-10-05 in a mixed Claude/Codex council, Muster 0.13.0.\n\nLinux (devenv, codex-cli 0.160.0 from npm, launched by `icx` = imc-claude --harness codex --approve-for-me with network_access, i.e. workspace-write sandbox): the model's own `\"$MUSTER_DAEMON\" report --waiting ...` from its shell tool was refused: \"this report came from another codex (pid 935225), outside the process group the pane's own agent runs in\". Pid 935225 was gone moments later, and the pane's tree was rad (ict) 925566 -\u003e node /home/.npm/bin/codex 925623 -\u003e native codex 926680 (all pgid 925566) -\u003e codex-code-mode-host. Inferred, not verified: the refused report's nearest agent ancestor was Codex's per-command Linux sandbox helper, which is the codex binary re-executed, in a group of its own.\n\nmacOS (laptop, codex-cli 0.159.0 standalone, same flags): the same command exited 0 and the pane went `waiting`. The shell ran in its own group there too (shell 47380 pgid 47380, parent codex 30250 pgid 30236), so leaving the group is not the difference; on macOS the sandbox is /usr/bin/sandbox-exec, so the nearest agent ancestor is the pane's own codex.\n\nConsequence: on a Linux devenv, the SessionStart line telling Codex to run report --waiting cannot work in the sandbox, so Codex panes there read done while waiting on their own build.",
+      "created_at_millis": 1791223112738,
+      "id": "c_2cP6vhJhD"
+    }
+  ],
   "created_at_millis": 1791122485720,
   "creator": "Alexander Terp",
   "description": "Since 2026-10-04 the daemon refuses a state report whose nearest agent ancestor is in a different process group from the pane's agent (measured: Claude Code's Bash tool runs its shell in a group of its own, so a nested claude -p is refused). Not measured for Codex's and OpenCode's shell tools (no Codex runs allowed; no OpenCode 1.18 here). If they leave the group, their READMEs can drop the env -u MUSTER_DAEMON advice; if not, nested codex exec / opencode run reports still land in the outer pane.",
@@ -10,7 +18,7 @@
   "position": "b0g",
   "title": "Measure whether Codex's and OpenCode's shell tools leave the agent's process group",
   "type": "chore",
-  "updated_at_millis": 1791122485720,
+  "updated_at_millis": 1791223112738,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791122485720}
   ]

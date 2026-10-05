@@ -1,0 +1,30 @@
+{
+  "_v": 3,
+  "alias": "zooming-a-pane-in-a",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Alex, 2026-10-05: a zoom should fill the whole tab, whatever daemons its panes are on.",
+      "created_at_millis": 1791223113139,
+      "id": "c_2cP6wLknQ"
+    }
+  ],
+  "created_at_millis": 1791223026304,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-05 on 0.13.0: a tab holding one laptop pane (left region) and two devenv panes (right region). Zooming the laptop pane (cmd+shift+enter) filled only the laptop region; the devenv region kept showing both its panes beside it. Alex expected the zoomed pane to fill the tab, as it does in a one-machine tab.\n\nWhy: zoom is recorded per daemon, on that daemon's part of the tab, and `View::built` resolves each region on its own: `zoom_filling(region, layout)` checks only that region's daemon's `layout.zoomed` (crates/muster-core/src/composition/view.rs). Nothing hides the other regions, so a zoom never crosses a machine.\n\nLikely fix: when the region holding the keyboard (`held.focused_region()`) is zoomed, the view shows that region alone, and the others keep their trees and surfaces as a covered pane does (`showing` would mark their panes hidden, so the hidden-pane notifications in a_2J1KZe2ws apply). Unzooming restores the regions at their weights. docs/cli/limits.md says nothing about zoom across regions today; it should either way.",
+  "id": "a_2cP4gENQT",
+  "position": "Zt",
+  "title": "🔍 Zooming a pane in a mixed-machine tab zooms only its machine's region",
+  "type": "bug",
+  "updated_at_millis": 1791223113288,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791223026304},
+    {"field":"column","value":"next","at":1791223113288}
+  ]
+}
