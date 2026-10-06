@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-fake-agent-loses",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791252237575,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-05: turn::a_turn_the_daemon_started_with_a_chore_keeps_the_turn_before_it failed once in a full gate at load 34 ('the rename took the turn'). Investigated: not the chore exclusion. The turn started at the right row, but its first line was 'the answe' - crates/muster-harness/fake-agent/screen-agent heard 'say the answe', and the say helper (turn.rs:13-35) retried, leaving the partial print as the turn's first line. Reproduced with no daemon: a pty running the fake agent, USR2 (unblock_agent_unasked), then 'say the answer\\r' heard truncated in ~10% of runs under load; 480 runs without the signal were clean; 3 failures in ~80 stressed runs of the test. Fix belongs in the fake agent so a read after a trap cannot lose a byte; every test typing say right after unblock_agent_unasked shares the hazard. Loosening the assert to contains() would hide it.",
+  "id": "a_2cbKbB5Rs",
+  "position": "b0U",
+  "title": "🎲 The fake agent loses a line's last byte when it reads right after a USR2",
+  "type": "bug",
+  "updated_at_millis": 1791252237575,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791252237575}
+  ]
+}
