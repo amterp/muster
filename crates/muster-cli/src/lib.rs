@@ -45,6 +45,11 @@ pub enum Trouble {
     Refused(String),
     /// There was no window to ask.
     Unreachable(String),
+    /// [`Trouble::Unreachable`], for the one case this machine's daemon may answer in the
+    /// window's place: no window answered at all, rather than several answering or the one the
+    /// caller named being missing. `silent` names the windows that took the connection and did
+    /// not answer in time, so an answer from the daemon can say why it came from there.
+    NoWindow { reason: String, silent: Vec<String> },
     /// A window took the request and this command cannot say what came of it - because the
     /// window never answered, or because the daemon behind it never answered the window.
     Unanswered(String),
@@ -70,7 +75,7 @@ impl Trouble {
     pub fn code(&self) -> i32 {
         match self {
             Trouble::Refused(_) => 1,
-            Trouble::Unreachable(_) => 3,
+            Trouble::Unreachable(_) | Trouble::NoWindow { .. } => 3,
             Trouble::Unanswered(_) | Trouble::MayHaveMade { .. } => 4,
             Trouble::TimedOut(_) => 5,
             Trouble::Unheard(_) => 6,
@@ -81,6 +86,7 @@ impl Trouble {
         match self {
             Trouble::Refused(detail)
             | Trouble::Unreachable(detail)
+            | Trouble::NoWindow { reason: detail, .. }
             | Trouble::Unanswered(detail)
             | Trouble::MayHaveMade { reason: detail, .. }
             | Trouble::TimedOut(detail)
@@ -161,7 +167,8 @@ pub fn run(
             for note in context_unsaid(&request, named.as_deref(), no_window, environment) {
                 say_note(&note, json, errors);
             }
-            let answers = follow(&request, named.as_deref(), no_window, environment);
+            let answers = follow(&request, named.as_deref(), no_window, environment)
+                .map(|followed| say_passed_over(followed, json, errors));
             return watch(&request, timeout, answers, json, out, errors);
         }
         args::Asking::WatchLayout { watch, read } => {
@@ -221,7 +228,17 @@ pub fn run(
     // through to `ask`, so the message about there being no window to talk to stays the one that
     // command already wrote.
     if asks_around(&request, named.as_deref(), environment) {
-        let answers = held_by_one(&request, dial::survey_around(environment, &request));
+        let surveyed = dial::survey_around(environment, &request);
+        match surveyed.nobody_answered(environment) {
+            Some(Trouble::NoWindow { reason, silent }) => {
+                let rendered =
+                    instead_of_a_window(&request, &reason, &silent, environment, json, errors);
+                return finish(rendered, json, out, errors);
+            }
+            Some(trouble) => return report(&trouble, json, errors),
+            None => {}
+        }
+        let answers = held_by_one(&request, surveyed.answers);
         if answers.len() > 1 {
             let text = render::answers(&answers, json);
             let _ = writeln!(out, "{}", text.trim_end());
@@ -240,7 +257,7 @@ pub fn run(
         }
     }
 
-    let rendered = ask_a_window(&request, named.as_deref(), environment, json);
+    let rendered = ask_a_window(&request, named.as_deref(), environment, json, errors);
     finish(rendered, json, out, errors)
 }
 
@@ -271,12 +288,7 @@ fn held_by_one(
     request: &muster_proto::Request,
     mut answers: Vec<(String, Result<muster_proto::Response, Trouble>)>,
 ) -> Vec<(String, Result<muster_proto::Response, Trouble>)> {
-    let names_one = request.payload.as_ref().is_some_and(|payload| {
-        muster_proto::names(payload).is_some()
-            || matches!(payload, muster_proto::request::Payload::ReadPane(read)
-                if !read.pane_id.is_empty())
-    });
-    if !names_one {
+    if dial::named(request).is_none() {
         return answers;
     }
     let holds = |answer: &Result<muster_proto::Response, Trouble>| {
@@ -290,35 +302,49 @@ fn held_by_one(
     answers
 }
 
-/// Asks the window the caller means, or this machine's daemon when there is no window at all.
+/// Asks the window the caller means, or this machine's daemon when no window answers at all.
 fn ask_a_window(
     request: &muster_proto::Request,
     named: Option<&str>,
     environment: &BTreeMap<String, String>,
     json: bool,
+    errors: &mut impl Write,
 ) -> Result<String, Trouble> {
     match dial::ask(request, named, environment) {
-        Err(Trouble::Unreachable(detail)) if no_window_at_all(request, named, environment) => {
-            if windowless::can_answer(request) {
-                from_the_daemon(request, environment, json)
-                    .map_err(|trouble| neither(&detail, trouble))
-            } else {
-                Err(Trouble::Unreachable(format!("{detail} {WITHOUT_A_WINDOW}")))
-            }
+        Err(Trouble::NoWindow { reason, silent }) if request.window.is_empty() => {
+            instead_of_a_window(request, &reason, &silent, environment, json, errors)
         }
         asked => asked.and_then(|response| render::answer(&response, json)),
     }
 }
 
-/// Whether a request that reached no window found none at all, rather than one that would not
-/// answer or several to choose from: then this machine's daemon, which holds the panes, may
-/// answer in its place.
-pub(crate) fn no_window_at_all(
+/// This machine's daemon's answer to what no window answered, or why there is none. A window that
+/// was there and silent is named on stderr once the daemon has answered, so a caller knows whose
+/// answer it is reading.
+fn instead_of_a_window(
     request: &muster_proto::Request,
-    named: Option<&str>,
+    reason: &str,
+    silent: &[String],
     environment: &BTreeMap<String, String>,
-) -> bool {
-    named.is_none() && request.window.is_empty() && !dial::any_window_answers(environment)
+    json: bool,
+    errors: &mut impl Write,
+) -> Result<String, Trouble> {
+    if !windowless::can_answer(request) {
+        return Err(Trouble::Unreachable(format!("{reason} {WITHOUT_A_WINDOW}")));
+    }
+    let answered =
+        from_the_daemon(request, environment, json).map_err(|trouble| neither(reason, trouble))?;
+    for path in silent {
+        say_note(&dial::passed_over(path), json, errors);
+    }
+    Ok(answered)
+}
+
+/// Whether a window's refusal is one this machine's daemon may answer in place of: no window
+/// answered at all, and the caller named none by `--window`. Anything else - several answering,
+/// one named and missing, a socket this process may not open - is the caller's to settle.
+pub(crate) fn instead_of(trouble: &Trouble, request: &muster_proto::Request) -> bool {
+    matches!(trouble, Trouble::NoWindow { .. }) && request.window.is_empty()
 }
 
 /// Why a request found no window, and then no daemon either: both, since the first is what a
@@ -359,6 +385,15 @@ fn from_the_daemon(
     }
 }
 
+/// A watch's answers, and where they come from.
+struct Followed {
+    answers: Box<dyn Answers>,
+    /// Whether this machine's daemon is answering, in place of a window or by `--no-window`.
+    by_the_daemon: bool,
+    /// The windows passed over for not answering, which the daemon is answering instead of.
+    passed_over: Vec<String>,
+}
+
 /// Where a watch's answers come from: the window, or this machine's daemon when none answers
 /// or the caller said `--no-window`.
 fn follow(
@@ -366,18 +401,35 @@ fn follow(
     named: Option<&str>,
     no_window: bool,
     environment: &BTreeMap<String, String>,
-) -> Result<Box<dyn Answers>, Trouble> {
-    let from_the_daemon =
-        || windowless::follow(request, environment).map(|watching| Box::new(watching) as _);
+) -> Result<Followed, Trouble> {
+    let from_the_daemon = |passed_over: Vec<String>| {
+        windowless::follow(request, environment).map(|watching| Followed {
+            answers: Box::new(watching),
+            by_the_daemon: true,
+            passed_over,
+        })
+    };
     if no_window {
-        return from_the_daemon();
+        return from_the_daemon(Vec::new());
     }
     match dial::follow(request, named, environment) {
-        Err(Trouble::Unreachable(detail)) if no_window_at_all(request, named, environment) => {
-            from_the_daemon().map_err(|trouble| neither(&detail, trouble))
+        Err(Trouble::NoWindow { reason, silent }) if request.window.is_empty() => {
+            from_the_daemon(silent).map_err(|trouble| neither(&reason, trouble))
         }
-        followed => followed.map(|answers| Box::new(answers) as _),
+        followed => followed.map(|answers| Followed {
+            answers: Box::new(answers),
+            by_the_daemon: false,
+            passed_over: Vec::new(),
+        }),
     }
+}
+
+/// A watch's answers, once the windows the daemon is answering for have been named on stderr.
+fn say_passed_over(followed: Followed, json: bool, errors: &mut impl Write) -> Box<dyn Answers> {
+    for path in &followed.passed_over {
+        say_note(&dial::passed_over(path), json, errors);
+    }
+    followed.answers
 }
 
 /// What a wait on context says before it begins, about each pane it names whose agent has not
@@ -408,9 +460,7 @@ fn context_unsaid(
     } else {
         match dial::ask(&read, named, environment) {
             Ok(response) => Some(windowless::Answered::Response(Box::new(response))),
-            Err(Trouble::Unreachable(_)) if no_window_at_all(&read, named, environment) => {
-                windowless::ask(&read, environment).ok()
-            }
+            Err(trouble) if instead_of(&trouble, &read) => windowless::ask(&read, environment).ok(),
             Err(_) => None,
         }
     };

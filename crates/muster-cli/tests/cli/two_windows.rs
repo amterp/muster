@@ -17,10 +17,12 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
 
+use muster_cli::dial;
 use muster_proto::{
-    Daemons, Failure, KnownDaemon, OtherWindow, PaneText, Request, Response, RosterChanged,
-    RosterPane, RosterTab, Window, frame, request, response,
+    Daemons, Failure, KnownDaemon, Names, Ok as Accepted, OtherWindow, PaneText, Request, Response,
+    RosterChanged, RosterPane, RosterTab, Window, frame, request, response,
 };
 use prost::Message;
 
@@ -302,6 +304,157 @@ fn the_daemons_asked_of_two_apps_are_each_apps_answer() {
     assert!(!out.contains("a list of daemons"), "an app's answer was named, not shown:\n{out}");
 }
 
+/// Two apps answer, and only one holds the pane a command is about: the command goes there, and
+/// the other is asked nothing but what it is showing. This is a pane whose window quit with two
+/// apps open beside it, which used to refuse a wait and send a change to whichever app answered
+/// first (kan a_2cW584sro).
+#[test]
+fn a_pane_whose_window_quit_reaches_the_app_holding_it() {
+    let scratch = Scratch::new("holder");
+    let home = scratch.home();
+    let gone = quit_window(home, 111);
+    let elsewhere = holding(&first_socket(home, 333), "p-elsewhere");
+    let holder = holding(&first_socket(home, 444), "p-here");
+
+    for argv in [
+        &["pane", "send", "--pane", "p-here", "hi"][..],
+        &["pane", "wait", "--pane", "p-here", "--until", "idle", "--timeout", "5"],
+        &["pane", "close"],
+    ] {
+        let (code, _, errors) = run_in_pane(argv, home, &gone, "p-here");
+        assert_eq!(
+            code,
+            0,
+            "`{}` did not reach the app holding the pane: {errors}",
+            argv.join(" ")
+        );
+    }
+    assert_eq!(asked(&holder).len(), 3, "the holder was not sent all three");
+    assert_eq!(asked(&elsewhere), Vec::<Request>::new(), "the other app was sent a command");
+}
+
+/// A pane with no `$MUSTER_SOCKET` - restored after its daemon restarted, or run under something
+/// that cleared it - still says which pane it is, and reaches the app holding it.
+#[test]
+fn a_pane_with_no_socket_reaches_the_app_holding_it() {
+    let scratch = Scratch::new("unset");
+    let home = scratch.home();
+    let elsewhere = holding(&first_socket(home, 333), "p-elsewhere");
+    let holder = holding(&first_socket(home, 444), "p-here");
+
+    let environment = BTreeMap::from([("MUSTER_PANE".to_string(), "p-here".to_string())]);
+    let (code, _, errors) = run_with(&["pane", "close"], home, environment);
+
+    assert_eq!(code, 0, "{errors}");
+    assert_eq!(asked(&holder).len(), 1, "the holder was not asked to close the pane");
+    assert!(asked(&elsewhere).is_empty(), "the other app was sent the close");
+}
+
+/// On a devenv the windows are forwarded beside the daemon's socket, not kept in the state
+/// directory, so a pane with no `$MUSTER_SOCKET` looks there: the measured case was five sockets
+/// beside the daemon, four of them dead and one holding the pane.
+#[test]
+fn a_pane_with_no_socket_finds_the_windows_forwarded_beside_its_daemon() {
+    let scratch = Scratch::new("devenv");
+    let home = scratch.home();
+    let beside = home.join("daemon");
+    std::fs::create_dir_all(&beside).expect("/tmp is writable");
+    let socket = |window: &str| {
+        beside.join(format!("window-release-{window}.sock")).to_string_lossy().into_owned()
+    };
+    quit_window_at(&socket("dead"));
+    let elsewhere = holding(&socket("other"), "p-elsewhere");
+    let holder = holding(&socket("mine"), "p-here");
+
+    let environment = BTreeMap::from([
+        ("MUSTER_PANE".to_string(), "p-here".to_string()),
+        (
+            "MUSTER_DAEMON_SOCKET".to_string(),
+            beside.join("release.sock").to_string_lossy().into_owned(),
+        ),
+    ]);
+    let (code, _, errors) =
+        run_with(&["pane", "send", "--pane", "p-here", "hi"], home, environment);
+
+    assert_eq!(code, 0, "the pane did not find the window forwarded beside its daemon: {errors}");
+    assert_eq!(asked(&holder).len(), 1);
+    assert!(asked(&elsewhere).is_empty(), "the other forwarded window was sent the send");
+}
+
+/// A pane that says which pane it is is not told it is not running in a pane Muster made.
+#[test]
+fn a_pane_with_no_socket_and_no_window_is_told_what_was_searched() {
+    let scratch = Scratch::new("searched");
+    let home = scratch.home();
+
+    let environment = BTreeMap::from([("MUSTER_PANE".to_string(), "p-here".to_string())]);
+    let (code, _, errors) = run_with(&["pane", "new", "--down"], home, environment);
+
+    assert_eq!(code, 3, "{errors}");
+    assert!(
+        !errors.contains("not running in a pane Muster made"),
+        "a pane that named itself was told it is not in one:\n{errors}"
+    );
+    assert!(errors.contains("not set in this pane (p-here)"), "{errors}");
+}
+
+/// What a [`holding`] app was sent besides the question every request starts with.
+fn asked(sent: &Receiver<Request>) -> Vec<Request> {
+    sent.try_iter().collect()
+}
+
+/// An app holding one pane: what it is showing says so, a request about another pane is refused,
+/// and anything else is done. Hands back everything it was sent but the question what it is
+/// showing.
+fn holding(path: &str, pane: &str) -> Receiver<Request> {
+    let listener = UnixListener::bind(path).expect("the temporary directory is writable");
+    let pane = pane.to_string();
+    let (heard, sent) = mpsc::channel();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let Ok(bytes) = frame::read_frame(&mut stream, frame::LARGEST_MESSAGE) else {
+                continue;
+            };
+            let asked = Request::decode(bytes.as_slice()).unwrap_or_default();
+            let answer = match (&asked.payload, dial::named(&asked)) {
+                (Some(request::Payload::ReadWindow(_)), _) => {
+                    response::Payload::Window(holding_window(&pane))
+                }
+                (_, Some(Names::Pane(named))) if named != pane => {
+                    response::Payload::Failure(Failure { reason: format!("no pane {named}") })
+                }
+                _ => response::Payload::Ok(Accepted {}),
+            };
+            if !matches!(asked.payload, Some(request::Payload::ReadWindow(_))) {
+                let _ = heard.send(asked);
+            }
+            let _ = frame::write_frame(
+                &mut stream,
+                &Response { payload: Some(answer) }.encode_to_vec(),
+            );
+            let mut drained = Vec::new();
+            let _ = stream.read_to_end(&mut drained);
+        }
+    });
+    sent
+}
+
+/// A window whose one tab holds `pane`.
+fn holding_window(pane: &str) -> Window {
+    Window {
+        roster: Some(RosterChanged {
+            tabs: vec![RosterTab {
+                tab_id: format!("t-{pane}"),
+                panes: vec![RosterPane { pane_id: pane.to_string(), ..RosterPane::default() }],
+                ..RosterTab::default()
+            }],
+            ..RosterChanged::default()
+        }),
+        ..Window::default()
+    }
+}
+
 /// An app answering reads: a pane's text for the one pane it holds, refusing every other, and
 /// its daemons.
 fn reading(home: &Path, pid: u32, holds: &str) {
@@ -451,8 +604,12 @@ fn window(home: &Path, pid: u32, pane: &str) -> String {
 /// Where a window that has quit listened: its socket file left behind, with nothing answering.
 fn quit_window(home: &Path, pid: u32) -> String {
     let path = first_socket(home, pid);
-    drop(UnixListener::bind(&path).expect("the temporary directory is writable"));
+    quit_window_at(&path);
     path
+}
+
+fn quit_window_at(path: &str) {
+    drop(UnixListener::bind(path).expect("the temporary directory is writable"));
 }
 
 fn run(argv: &[&str], home: &Path, in_a_pane: Option<&str>) -> (i32, String, String) {

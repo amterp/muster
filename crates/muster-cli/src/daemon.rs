@@ -45,7 +45,21 @@ pub fn connect_welcomed(
     kind: ConnectionKind,
 ) -> Result<(UnixStream, muster_daemon_proto::Welcome), Trouble> {
     let client = format!("muster {}", env!("CARGO_PKG_VERSION"));
-    connection::connect(socket, kind, &client).map_err(|error| match error {
+    // Connected here rather than by `connection::connect`, which keeps only the error's words:
+    // a sandbox refusing the socket is not a daemon that is not running.
+    let mut stream = UnixStream::connect(socket).map_err(|error| {
+        let what = format!("the muster-daemon at {}", socket.display());
+        Trouble::Unreachable(if error.kind() == std::io::ErrorKind::PermissionDenied {
+            crate::dial::not_permitted(&what, &error)
+        } else {
+            format!(
+                "no muster-daemon answered at {} ({error}). One runs while Muster does; set \
+                 ${SOCKET} to reach another.",
+                socket.display()
+            )
+        })
+    })?;
+    let welcome = connection::open(&mut stream, kind, &client).map_err(|error| match error {
         HandshakeError::Refused(refused) => Trouble::Refused(format!(
             "the muster-daemon at {} would not talk to this muster: {}",
             socket.display(),
@@ -58,5 +72,6 @@ pub fn connect_welcomed(
                  ${SOCKET} to reach another.",
             socket.display()
         )),
-    })
+    })?;
+    Ok((stream, welcome))
 }

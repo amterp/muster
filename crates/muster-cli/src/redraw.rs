@@ -37,10 +37,14 @@ pub(crate) fn run(
     out: &mut impl Write,
     errors: &mut impl Write,
 ) -> i32 {
-    let mut answers = match crate::follow(watch, named, no_window, environment) {
-        Ok(answers) => answers,
+    let followed = match crate::follow(watch, named, no_window, environment) {
+        Ok(followed) => followed,
         Err(trouble) => return report(&trouble, json, errors),
     };
+    // The layout is read from wherever the watch is answered from, so a window passed over for
+    // not answering is not waited on again at every drawing.
+    let no_window = no_window || followed.by_the_daemon;
+    let mut answers = crate::say_passed_over(followed, json, errors);
     // Read on a thread of its own, so this one can wait for a burst to end without a deadline on
     // the connection: a read that times out part way through a frame would lose the rest of it.
     let (doorbell, rings) = mpsc::channel();
@@ -165,8 +169,8 @@ fn answered(
         return from_the_daemon();
     }
     match dial::ask(read, named, environment) {
-        Err(Trouble::Unreachable(detail)) if crate::no_window_at_all(read, named, environment) => {
-            from_the_daemon().map_err(|trouble| crate::neither(&detail, trouble))
+        Err(trouble) if crate::instead_of(&trouble, read) => {
+            from_the_daemon().map_err(|daemon| crate::neither(trouble.detail(), daemon))
         }
         asked => asked.map(Answer::Window),
     }

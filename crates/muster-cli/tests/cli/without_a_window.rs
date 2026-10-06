@@ -339,6 +339,51 @@ fn only_a_missing_window_is_answered_by_the_daemon() {
     assert!(refused.contains("needs a window"), "{refused}");
 }
 
+/// A window that takes the connection and never answers - a devenv's forward of a laptop that has
+/// gone to sleep - is passed over for the daemon as a missing one is, and the answer says so
+/// (kan a_2ZNnSyiXR). A verb only a window carries out is refused just as soon, with nothing sent.
+#[test]
+fn a_window_that_never_answers_is_answered_for_by_the_daemon() {
+    let here = Here::new(Daemon::start_built());
+    let listener = std::os::unix::net::UnixListener::bind(&here.window).unwrap();
+    std::thread::spawn(move || {
+        // Held, not read: each connection stays open and nothing ever comes back.
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+    let mut control = here.daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+
+    let started = std::time::Instant::now();
+    let sent = here.muster(&["pane", "send", "--pane", "p1", "--enter", "echo while-asleep"]);
+    ok(&sent);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(20),
+        "a send waited {:?} on a window that never answers",
+        started.elapsed()
+    );
+    let note = complained(&sent);
+    assert!(
+        note.contains(&here.window) && note.contains("muster-daemon answered instead"),
+        "the send does not say the daemon answered in place of the silent window:\n{note}"
+    );
+    until_text(&mut control, "p1", "while-asleep\n");
+
+    let read = here.muster(&["pane", "read", "--pane", "p1"]);
+    assert!(ok(&read).contains("echo while-asleep"), "{}", said(&read));
+    let listed = ok(&here.muster(&["window"]));
+    assert!(listed.starts_with("no window answered; the muster-daemon at"), "{listed}");
+
+    let refused = refused_with(&here.muster(&["pane", "new"]), 3);
+    assert!(
+        refused.contains("did not answer") && refused.contains("still work"),
+        "a verb only a window carries out does not say the window was silent:\n{refused}"
+    );
+}
+
 /// With a window open, `--no-window` answers from the daemon what the window answers.
 #[test]
 fn the_daemon_and_the_window_say_the_same_about_a_pane() {

@@ -12,14 +12,17 @@
 //! framing and the schema these listeners speak are the real ones.
 
 use std::collections::BTreeMap;
-use std::os::unix::net::UnixListener;
+use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_cli::dial;
 use muster_harness::PATIENCE;
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
-use muster_proto::{PaneStateChanged, ReadWindow, Request, Response, request, response};
+use muster_proto::{
+    PaneStateChanged, ReadPane, ReadWindow, Request, Response, Window, request, response,
+};
 use prost::Message;
 
 /// Short, because what is under test is which answer a deadline produces rather than the
@@ -40,13 +43,19 @@ fn a_window_that_answers_nothing_is_not_a_window_that_was_never_there() {
             let Ok(mut stream) = stream else { continue };
             // The request is read and nothing is written back. This is the case the whole file
             // is about: the bytes are on the far side, and it is the answer that goes missing.
-            let _ = read_frame(&mut stream, LARGEST_MESSAGE);
-            std::thread::sleep(UNTIL_THE_TEST_IS_OVER);
+            if past_the_question(&mut stream).is_some() {
+                std::thread::sleep(UNTIL_THE_TEST_IS_OVER);
+            }
         }
     });
 
+    let read = Request::new(request::Payload::ReadPane(ReadPane {
+        pane_id: "p1w3r07bsd".to_string(),
+        ..ReadPane::default()
+    }));
     let trouble =
-        asked(&socket, BRIEFLY).expect_err("a listener that says nothing produces no response");
+        dial::ask_within(&read, Some(&socket.to_string_lossy()), &BTreeMap::new(), BRIEFLY)
+            .expect_err("a listener that says nothing produces no response");
 
     assert_eq!(
         trouble.code(),
@@ -114,6 +123,80 @@ fn a_window_whose_daemon_never_answered_exits_as_unanswered() {
         trouble.code(),
         trouble.detail()
     );
+}
+
+/// A socket that takes the connection and never answers anything - sshd forwarding a window from
+/// a laptop that has gone to sleep - is not asked the request at all.
+///
+/// The question every request starts with goes unanswered, so the request is never written, and
+/// the caller hears so within moments rather than after a minute: exit 3, which is safe to send
+/// again because nothing was sent (kan a_2ZNnSyiXR).
+#[test]
+fn a_window_that_answers_nothing_at_all_is_never_sent_the_request() {
+    let socket = socket_at("asleep");
+    let listener = UnixListener::bind(&socket).expect("a scratch socket path is free");
+    let (heard, hearing) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let heard = heard.clone();
+            std::thread::spawn(move || {
+                while let Ok(bytes) = read_frame(&mut stream, LARGEST_MESSAGE) {
+                    let _ = heard.send(Request::decode(bytes.as_slice()).unwrap_or_default());
+                }
+            });
+        }
+    });
+
+    let started = Instant::now();
+    let ran = ran(&["--socket", &socket.to_string_lossy(), "pane", "send", "--pane", "p1", "hi"]);
+
+    assert_eq!(ran.code, 3, "a window that answered nothing exits {}:\n{}", ran.code, ran.errors);
+    assert!(
+        started.elapsed() < Duration::from_secs(20),
+        "a silent window held the caller for {:?}, so an agent pays that on every command while a \
+         laptop sleeps",
+        started.elapsed()
+    );
+    assert!(ran.errors.contains("did not answer"), "{}", ran.errors);
+    let sent: Vec<Request> = hearing.try_iter().collect();
+    assert!(
+        sent.iter().all(|asked| matches!(asked.payload, Some(request::Payload::ReadWindow(_)))),
+        "the send itself was written to a window that never answered, so it may land when the \
+         laptop wakes after the caller was told nothing was sent: {sent:?}"
+    );
+}
+
+/// A socket this process may not connect to is not a window that has quit: Codex's sandbox
+/// refuses every Unix socket, and the window behind it was open (kan a_2cW58Xs6E). Made here with
+/// the file's permissions, which is the same refusal from a different cause.
+#[test]
+fn a_socket_this_process_may_not_open_is_not_a_window_that_quit() {
+    let socket = socket_at("forbidden");
+    let _listener = UnixListener::bind(&socket).expect("a scratch socket path is free");
+    std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o000))
+        .expect("the socket is ours to change");
+    if UnixStream::connect(&socket).is_ok() {
+        eprintln!("skipped: this user connects to a socket it has no permission on (root?)");
+        return;
+    }
+
+    for ran in [
+        ran(&["--socket", &socket.to_string_lossy(), "window"]),
+        ran_in(&["pane", "read", "--pane", "p1"], &socket),
+    ] {
+        assert_eq!(ran.code, 3, "{}", ran.errors);
+        assert!(
+            ran.errors.contains("not permitted") && ran.errors.contains("sandbox"),
+            "a permission error does not say it is one, nor what to do in a sandbox:\n{}",
+            ran.errors
+        );
+        assert!(
+            !ran.errors.contains("has quit") && !ran.errors.contains("could have answered"),
+            "a permission error reads as a window that is not there:\n{}",
+            ran.errors
+        );
+    }
 }
 
 #[test]
@@ -227,8 +310,9 @@ fn a_wait_that_runs_out_exits_five() {
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
-            let _ = read_frame(&mut stream, LARGEST_MESSAGE);
-            std::thread::sleep(UNTIL_THE_TEST_IS_OVER);
+            if past_the_question(&mut stream).is_some() {
+                std::thread::sleep(UNTIL_THE_TEST_IS_OVER);
+            }
         }
     });
 
@@ -266,16 +350,26 @@ struct Ran {
 
 /// One run of the command in this process, with nothing on stdin and no environment.
 fn ran(argv: &[&str]) -> Ran {
+    ran_with(argv, &BTreeMap::new())
+}
+
+/// One run inside a pane whose window listens at `socket`, under a home of its own holding no
+/// other window.
+fn ran_in(argv: &[&str], socket: &Path) -> Ran {
+    let home = socket.with_extension("home");
+    let environment = BTreeMap::from([
+        ("MUSTER_SOCKET".to_string(), socket.to_string_lossy().into_owned()),
+        ("MUSTER_PANE".to_string(), "p1".to_string()),
+        ("MUSTER_HOME".to_string(), home.to_string_lossy().into_owned()),
+    ]);
+    ran_with(argv, &environment)
+}
+
+fn ran_with(argv: &[&str], environment: &BTreeMap<String, String>) -> Ran {
     let argv: Vec<String> = argv.iter().map(ToString::to_string).collect();
     let (mut out, mut errors) = (Vec::new(), Vec::new());
-    let code = muster_cli::run(
-        &argv,
-        &BTreeMap::new(),
-        None,
-        &mut std::io::empty(),
-        &mut out,
-        &mut errors,
-    );
+    let code =
+        muster_cli::run(&argv, environment, None, &mut std::io::empty(), &mut out, &mut errors);
     Ran {
         code,
         out: String::from_utf8_lossy(&out).into_owned(),
@@ -290,6 +384,19 @@ fn ran(argv: &[&str]) -> Ran {
 fn asked(socket: &Path, within: Duration) -> Result<Response, muster_cli::Trouble> {
     let request = Request::new(request::Payload::ReadWindow(ReadWindow::default()));
     dial::ask_within(&request, Some(&socket.to_string_lossy()), &BTreeMap::new(), within)
+}
+
+/// Reads a request, and answers it when it is the question every request starts with - what the
+/// window is showing - as a window holding nothing. The request when it is anything else.
+fn past_the_question(stream: &mut UnixStream) -> Option<Request> {
+    let bytes = read_frame(stream, LARGEST_MESSAGE).ok()?;
+    let asked = Request::decode(bytes.as_slice()).ok()?;
+    if matches!(asked.payload, Some(request::Payload::ReadWindow(_))) {
+        let window = Response { payload: Some(response::Payload::Window(Window::default())) };
+        let _ = write_frame(stream, &window.encode_to_vec());
+        return None;
+    }
+    Some(asked)
 }
 
 fn socket_at(named: &str) -> PathBuf {
