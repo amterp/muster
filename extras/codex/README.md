@@ -92,7 +92,8 @@ Claude Code's hooks do, would replace the tool call's result instead.
 
 Codex's `workspace-write` and `read-only` sandboxes refuse a command connecting to a Unix socket,
 the daemon's included. The hooks are not affected, but what the model runs is: its own `report
---waiting`, and `muster msg read` and `muster msg post`, all fail with "Operation not permitted".
+--waiting`, `muster msg read` and `muster msg post`, and `muster window` and the `pane` verbs, all
+fail with "Operation not permitted", which `muster` reports as the sandbox refusing the socket.
 With the messaging hooks a sandboxed Codex is still handed what it is sent, since the hooks run
 outside the sandbox, but it cannot answer. To let the model's own commands through, allow the
 sandbox the network in `~/.codex/config.toml`:

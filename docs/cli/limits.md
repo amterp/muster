@@ -14,14 +14,34 @@ On an SSH machine, a pane made by Muster 0.10.1 cannot tell one Muster's windows
 another's, so with two installs forwarding to that machine its `muster` may reach the other's
 window. A pane made since carries the install in the name it is told.
 
-## A pane restored after a daemon restart cannot say which window it is in
+## A window that never answers costs two seconds a command
+
+A socket can accept a connection with nothing behind it to answer. A devenv holds one for every
+window forwarded from a laptop that has gone to sleep, since ssh on the devenv takes the
+connection and waits for the laptop. So `muster` asks a window what it is showing before sending
+it anything, and a window that has not answered within two seconds is passed over with nothing
+sent to it: the daemon answers in its place and `muster` says so on stderr, and a verb only a
+window can carry out exits 3. While the laptop sleeps, every command run on the devenv pays
+those two seconds. A window that answers that first question and then not the request itself is
+still exit 4, below.
+
+## In an agent's sandbox, `muster` may reach no socket at all
+
+Codex's workspace-write and read-only sandboxes refuse a command connecting to any Unix socket,
+the window's and the daemon's alike. `muster` run there exits 3 and says the socket is there and
+this process is not permitted to reach it, with the Codex setting that lets it through
+(`muster docs harnesses`). It does not ask the daemon instead, since the same sandbox refuses that
+socket too.
+
+## A pane restored after a daemon restart has to ask which window holds it
 
 A daemon that restarts brings each pane back under its name, with a fresh shell, and gives it
 `$MUSTER_PANE` but not `$MUSTER_SOCKET`: that names an app, and the app that asked for the pane
 may be long gone. So `muster` run inside a restored pane knows which pane it is and not which app
-to tell, and finds one the way a command outside every pane does (below). With one install
-running that is the right one; with two, pass `--socket`. The window is still the one holding the
-pane's tab, since the pane says which pane it is.
+to tell. It asks every app it finds - the ones in Muster's state directory, and on an SSH machine
+the windows forwarded beside the pane's daemon - what each is showing, and goes to the one holding
+the pane. The same goes for a pane whose `$MUSTER_SOCKET` some program cleared. With several
+answering and none of them holding the pane, pass `--socket`.
 
 ## A pane is not told which tab it is in
 
@@ -164,7 +184,8 @@ pane, or end it with `muster pane close`, rather than make a second one.
 
 What to do instead of making the request again: `muster window` shows whether it happened, and
 `muster pane read --pane X` shows what is on a pane. What proves a request did *not* happen is
-only exit 3, where nothing was dialled at all.
+only exit 3, where the request was written to no window: none was there, or none answered when
+asked what it is showing.
 
 A daemon does not answer a send, so a `pane send` exits 4 only when the window itself did not
 answer: the window queues the text on its input connection to the pane's daemon and answers at
@@ -304,8 +325,8 @@ A development build beside the release is a second app, listening on a socket of
 caller inside a pane reaches its own app because `$MUSTER_SOCKET` says which. A caller outside
 every pane has nothing to go on, so with both running a change that names no tab or pane refuses
 and names the sockets that answered. Pass `--socket` to pick one. A change that does name one goes
-to whichever app answers first, and is refused there if that app's daemon holds no such tab or
-pane.
+to the app holding that tab or pane, which each app says when asked what it is showing; when none
+holds it, it goes to whichever answered first and is refused there.
 
 Questions do not refuse. `muster window` answers for every app that is listening, because naming
 none of them is what "what is everything doing" means. Its output grows a heading per app when
@@ -316,8 +337,8 @@ it was.
 `muster pane read` and `muster daemons` are asked of every app the same way, and cannot yet show
 what more than one of them answered: each heading is followed by the words `a pane's text` or `a
 list of daemons`, and `--json` puts them under `unreadable`. Pass `--socket` to read one app's
-answer. `muster pane wait` and `muster window --watch` refuse outright with two apps listening,
-and name the sockets.
+answer. `muster window --watch` refuses outright with two apps listening, and names the sockets;
+`muster pane wait` goes to the app holding the first pane it names.
 
 ## A zoom with nothing to zoom still succeeds
 

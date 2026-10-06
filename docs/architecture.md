@@ -711,7 +711,9 @@ when the pane is made: Muster puts `MUSTER_SOCKET` in the environment of that re
 says which pane it is, and between them a program inside a pane can drive the window it is drawn in without being
 configured. The pane outlives that process, so a pane whose app has quit asks the sockets beside its own that share
 its name up to the pid - the app running now - and every request the CLI sends from a pane says which pane it came
-from, so the app answers from the window holding that pane's tab. A name kept per arrangement was the other way, and
+from, so the app answers from the window holding that pane's tab. Before any request the CLI asks each window it
+would try what it is showing: that answer lists every tab the app holds, so of several apps answering, the request
+goes to the one holding the pane, and a pane whose `MUSTER_SOCKET` is gone or unset is still reached. A name kept per arrangement was the other way, and
 would have left every pane already running unreachable after the relaunch that brought it in.
 
 **A devenv pane is told a path on the devenv, which the window's ssh master carries back.** A unix socket path means
@@ -961,7 +963,9 @@ the next command all read - so a rename is one edit.
 **The other is a window's questions about panes when no window answers.** `muster window`, `pane read`, `pane send`
 and `pane wait` ask the same daemon when `$MUSTER_SOCKET` names a window that is not there, or none is listening: on
 an SSH devenv nothing forwards a window to, or in a pane whose window has quit with no other window of that Muster
-open. The CLI builds the window's own
+open. A window that takes the connection and does not answer what it is showing within two seconds counts as not
+there, because a devenv's forward of a sleeping laptop does exactly that; nothing but that question was sent to it,
+so passing it over cannot send a request twice. The CLI builds the window's own
 answers from the daemon's records, so one renderer prints both. It stays a second path in transport only: the rules
 the window applies on the way - paging to a pane's newest rows (`muster-daemon-proto`'s `pane_text`), counting rows
 and confirming a send (`muster-core`'s `pane_text`), and which states end a wait (`AgentState::counts_as`) - are

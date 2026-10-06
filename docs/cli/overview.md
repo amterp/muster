@@ -165,10 +165,12 @@ forwards a window to, and in a pane whose window has quit. They answer as a wind
 text, the same `--json`, the same exit codes, the same `--confirm` read-back and the same wait.
 Panes are named as a window names them.
 
-They fall back only when there is no window to ask: `$MUSTER_SOCKET` names one that does not
-answer, or, with it unset, none is listening. A Muster named with `--socket` that is not there is
-refused, and so are two apps with nothing saying which, and a window named with `--window`. `--no-window` asks the daemon even
-with a window open.
+They fall back only when there is no window to ask: `$MUSTER_SOCKET` names one that is not there,
+or with it unset none is listening, or every window there took the connection and did not answer
+within two seconds - a devenv's forward of a laptop that is asleep. That last says on stderr which
+window it passed over. A Muster named with `--socket` that is not there is refused, and so are two
+apps with nothing saying which, a window named with `--window`, and a socket this process is not
+permitted to open. `--no-window` asks the daemon even with a window open.
 
 `muster window` says when the daemon answered: its first line names the daemon, and `--json`
 carries `"answered_by": "daemon"`, which a window's answer never does. The daemon has no places,
