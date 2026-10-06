@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-s-rename",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791248651542,
+  "creator": "Alexander Terp",
+  "description": "When an agent names itself while the home of a group its pane was in is unreachable, that home keeps listing the pane name, and nothing retries the swap (peer Join with was) when the link returns. Also: a join routed to another machine always reports took_over false, and its groups list is this machine's view.",
+  "id": "a_2cZpJHPbV",
+  "position": "b0i",
+  "title": "A pane's rename never reaches a group home that was unreachable at the time",
+  "type": "bug",
+  "updated_at_millis": 1791248651542,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791248651542}
+  ]
+}

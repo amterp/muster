@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-refused-join-to-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791248651425,
+  "creator": "Alexander Terp",
+  "description": "A join routed to another machine's group renames the caller locally before the home answers, so a refusal from the home leaves the caller's name switched. A join to a group kept here checks the policy first since 2026-10-05. Fixing the routed case means asking the home before renaming; a replica's copy of the policy can be stale, so it cannot decide alone.",
+  "id": "a_2cZpJ595h",
+  "position": "b0h",
+  "title": "A refused join to a group kept elsewhere still renames the caller",
+  "type": "bug",
+  "updated_at_millis": 1791248651425,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791248651425}
+  ]
+}
