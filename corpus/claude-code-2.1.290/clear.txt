@@ -1,0 +1,34 @@
+What Claude Code does with /clear written into its prompt box four ways, judged by the session's
+own log under ~/.claude/projects, where a command run at the prompt is recorded as
+<command-name>/clear</command-name> after a <local-command-caveat>, and a chat message as the
+user's text.
+
+Recorded 2026-10-05 on macOS 26.4.1 / arm64, Claude Code 2.1.290 started as
+`claude --model haiku --permission-mode default` in a fresh folder per case, trusted with a down
+arrow and a Return, in a 100x30 pseudo-terminal driven by a scratch script built on
+tools/detection-capture.py.
+
+1. At the idle prompt, "/clear" as one bracketed paste and CR in the same write.
+   19:49:46  written; no turn started in the next 8 s (no spinner in the title)
+   log: <local-command-caveat>, then <command-name>/clear</command-name>
+
+2. At the idle prompt, "/clear" as one bracketed paste; CR alone two seconds later.
+   19:50:51  pasted: the slash-command menu is drawn under the box, /clear first
+   19:50:51  CR; no turn started in the next 8 s
+   log: <local-command-caveat>, then <command-name>/clear</command-name>
+
+3. At the idle prompt, "/" "c" "l" "e" "a" "r" one key per write, 50 ms apart, then CR.
+   19:53:38  written; no turn started in the next 8 s
+   log: <local-command-caveat>, then <command-name>/clear</command-name>
+
+4. At work: asked to run `sleep 25` with the Bash tool and allowed to; six seconds in, with the
+   title spinning ("◐ Sleep command test"), "/clear" as one bracketed paste and CR in one write.
+   19:52:03  written
+   log: the first session holds the request; a new session holds <local-command-caveat>, then
+   <command-name>/clear</command-name>, then the background task's notification
+
+In every case /clear ran as a command. None was sent to the model as a message.
+
+The same through muster-daemon, with no window: `muster pane send --pane p1 /clear --confirm`
+drew the menu with /clear first, and `muster pane send --pane p1 --enter --confirm` ran it - the
+transcript shows ❯ /clear and the box is empty.

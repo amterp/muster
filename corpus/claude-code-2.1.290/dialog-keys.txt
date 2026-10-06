@@ -1,0 +1,42 @@
+What Claude Code's folder-trust dialog does with keys and with a paste, written straight into a
+pseudo-terminal and then sent through muster-daemon by `muster pane send`.
+
+Recorded 2026-10-05 on macOS 26.4.1 / arm64, Claude Code 2.1.290 started as
+`claude --model haiku --permission-mode default` in a fresh folder under $TMPDIR, in a 100x30
+pseudo-terminal driven by a scratch script built on tools/detection-capture.py. The second run
+is the same start in a pane of a muster-daemon built from this commit, driven by this commit's
+`muster` CLI with no window answering. The folder's path is written <folder>.
+
+In the pseudo-terminal, each write on its own:
+
+19:45:10  the dialog is up
+          Accessing workspace: <folder>
+          ❯ No, exit
+            Yes, I trust this folder
+          Enter to confirm · Esc to cancel
+19:45:12  ESC [ B, a down arrow, in one write: 153 bytes drawn, "Yes, I trust this folder" selected
+19:45:14  ESC [ A, an up arrow, in one write: 125 bytes drawn, "No, exit" selected
+19:45:18  ESC [ B and CR in one write: the folder trusted, the prompt box drawn
+
+A fresh folder, the same dialog:
+19:45:53  "1" in one write: 28 bytes drawn, a redraw; "No, exit" still selected, nothing taken
+
+A fresh folder, the same dialog:
+19:46:28  ESC [ B inside a bracketed paste: 28 bytes drawn, a redraw; "No, exit" still selected
+
+Through muster-daemon, a fresh folder, the same dialog with "No, exit" selected:
+
+$ muster pane send --pane p1 1 --confirm
+  exit 1: the text was sent to pane p1 and does not show on it any more than it did before ...
+$ muster pane send --pane p1 --key hyper --confirm
+  exit 1: nothing was sent: `hyper` is not a key Muster knows. ...
+$ muster pane send --pane p1 --key down --confirm
+  exit 0; "Yes, I trust this folder" selected
+$ muster pane send --pane p1 --key down --key down --enter --confirm
+  exit 0; the selection went to "No, exit" and back to "Yes", and Return trusted the folder:
+  the session opened at its prompt box
+$ muster pane send --pane p1 --enter --confirm
+  exit 1: the keys were sent to pane p1 and nothing on it changed ... (an empty prompt box)
+
+In an earlier run through muster-daemon, a second down from "Yes, I trust this folder" selected
+"No, exit": the list wraps from its last option to its first.

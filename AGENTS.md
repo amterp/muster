@@ -15,8 +15,9 @@ first nine and one to whichever is asking for you, states an agent reports itsel
 and follows a session renamed there, trading two agents' places by dragging a row, dragging a pane by its
 handle onto another pane's edge, right-click menus on a pane, a tab and an agent row, including a split onto any
 attached machine, a focus history the mouse's back and forward buttons walk across tabs, configuration that reloads when
-you save it, a CLI that drives the window from inside a pane on either machine, a notification when an agent needs you
-that takes you to the pane that asked, a second daemon on an SSH machine in the same window - where one tab can hold a
+you save it, a CLI that drives the window from inside a pane on either machine and presses keys at another agent's
+dialog, a notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH
+machine in the same window - where one tab can hold a
 laptop pane beside a devenv pane - several windows that each hold their own tabs and hand them to each other, a newer
 Muster taking over an older daemon's panes with their agents still running, agents posting messages to each other and
 being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to

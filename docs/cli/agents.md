@@ -100,16 +100,34 @@ lines are the last the window heard.
     muster pane send --pane p1w3r0ab2n 'yes, go ahead' --enter
 
 `--enter` presses Return. Without it the text sits on the pane's prompt, which is what you want
-when a person should read it before it runs.
+when a person should read it before it runs. On its own, `muster pane send --pane p1w3r0ab2n
+--enter` presses Return and nothing else, which takes whatever a dialog has highlighted.
+
+A dialog or a menu - a folder-trust question, a plan to approve, an approval prompt - reads keys
+and ignores text, so a `2` or an arrow sent as text changes nothing there. `--key` presses one:
+
+    muster pane send --pane p1w3r0ab2n --key down --enter
+    muster pane send --pane p1w3r0ab2n --key esc
+
+A key is spelled as a keybinding in the config file is: `up`, `down`, `left`, `right`, `enter`,
+`esc`, `tab`, `space`, `backspace`, `delete`, `home`, `end`, `pageup`, `pagedown`, `f1` to `f12`,
+a letter or a digit, with `ctrl+`, `alt+`, `shift+` or `cmd+` in front (`ctrl+c`). Give `--key`
+once per key. A send goes out in one order wherever its flags are written: the text, then each
+key in the order given, then Return. Each key is pressed on its own, a moment after the last, so
+the dialog has drawn what one key did before it reads the next. Read the pane first: an option's
+place in the list, and which one starts highlighted, are the harness's, and a list can wrap from
+its last option to its first.
 
 Whether Return submits is the receiving harness's to decide, and exit 0 says the daemon took the
-text and the Return rather than that the agent heard it. Where that matters, ask:
+text and the keys rather than that the agent heard them. Where that matters, ask:
 
     muster pane send --pane p1w3r0ab2n 'yes, go ahead' --enter --confirm
 
-`--confirm` reads the pane back and exits non-zero if what was sent is not on it. It costs a
-round trip and it proves arrival rather than submission; `muster docs limits` is what it does
-and does not catch.
+`--confirm` reads the pane just before the send and again after it, and exits non-zero unless
+the text shows on the pane more times than it did before - so text the pane already showed
+proves nothing. A send of keys or Return alone has no text to find, and is confirmed once the
+pane changes at all. It costs a round trip and it proves arrival rather than submission;
+`muster docs limits` is what it does and does not catch.
 
 Multi-line text is one send. It reaches the harness as a single paste rather than as a
 submission per line - though a harness may fold a long paste into a placeholder that waits for a

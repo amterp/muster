@@ -78,7 +78,12 @@ This is about the keyboard. To tell an agent something, post it a message
 
 `muster pane send` exits 0 when the window queued the text for the pane's daemon, and the daemon
 answers nothing about it (below). That is not the same as the program in the pane having received
-the text, and two things routinely make them differ.
+the text, and three things routinely make them differ.
+
+A **dialog or a menu reads keys and ignores text.** The text goes to the pane as a paste, and the
+select lists in Claude Code's and Codex's dialogs redraw unchanged when pasted at, digits and
+letters included. `--key` presses keys, which they do read; Return, from `--enter`, was always
+one.
 
 A terminal in **canonical mode** - anything reading stdin without a line editor of its own,
 `cat` and a shell script's `read` among them - accepts a line of at most 1024 bytes including
@@ -94,15 +99,19 @@ Return, and whether Return submits is the harness's to decide: Claude Code has b
 taking 1583 bytes on one line as `[Pasted text #2]` and sitting there until a person pressed
 Return. Muster cannot fix that from here and will not special-case one harness.
 
-`--confirm` is what to reach for when it matters. It reads the pane back after the send and
-exits non-zero if what was sent is not on it, so a discarded line becomes a refusal rather than
-a success. A send is taken before the pane can have drawn it, so the read is retried for up to
-a second rather than taken once: a pane that has already drawn the text answers immediately,
-and only a genuine miss waits the second out. What it proves is **arrival, not submission**: a pane
-draws the text whether it has been submitted or is sitting in an input box, so nothing readable
-from out here separates those. A harness that folds a long paste into a placeholder draws
-neither, which reads as unconfirmed - the honest answer, since a caller that cannot see its
-message has not confirmed anything.
+`--confirm` is what to reach for when it matters. It reads the pane just before the send and again
+after it, and exits non-zero unless the text shows more times than it did before, so a discarded
+line, and a dialog that ignored a paste, become refusals rather than successes. Text the pane
+already showed proves nothing: a `p` sent to a Codex approval prompt was confirmed by its own
+`(p)` before this compared. A send of keys or Return alone has no text to find, and is confirmed
+once the pane changes at all - which says the pane changed, not that the key changed it, since an
+agent at work changes its pane on its own. A send is taken before the pane can have drawn it, so
+the read is retried for up to a second rather than taken once: a pane that has already drawn the
+text answers immediately, and only a genuine miss waits the second out. What it proves is
+**arrival, not submission**: a pane draws the text whether it has been submitted or is sitting in
+an input box, so nothing readable from out here separates those. A harness that folds a long
+paste into a placeholder draws neither, which reads as unconfirmed - the honest answer, since a
+caller that cannot see its message has not confirmed anything.
 
 Newlines are safe to send. Muster hands the text to the daemon on the verb it encodes against
 the pane's live modes, so a multi-line message reaches a harness fenced as one paste rather
@@ -127,7 +136,8 @@ Tell that agent with `muster pane send`, or have it run `muster msg read` on its
 **An agent at a dialog is not rung until somebody answers it.** A permission prompt, a trust
 dialog or a menu is not the prompt, and the doorbell never presses Return there. The post says
 `rung once idle`, and the ring waits as long as the dialog does. `muster pane wait --until
-blocked` or `muster window` says that it is waiting on you, and `muster pane send` answers it.
+blocked` or `muster window` says that it is waiting on you, and `muster pane send --key` or
+`--enter` answers it.
 A draft left in the prompt holds the ring the same way, until it is sent or cleared.
 
 **The check comes just before the write, not with it.** A dialog drawn, or a key pressed, in
