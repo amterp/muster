@@ -87,6 +87,11 @@ kimi, kiro, maki, pi, qodercli.
   `[session]`: `resume`, the command with `{args}` where the flags go and `{session}` for the id,
   `resume_drops`, the flags never carried, and `resume_values`, the flags that take a value, which
   is the only way a word after a flag is told from a first prompt (detection engine 12).
+- **Its own helpers not taken for a nested agent**: a manifest's `helpers` lists the names a
+  harness runs its own binary under for work that is not a session (detection engine 13). Codex's
+  lists its Linux sandbox, which every command the model runs goes through, so the model's own
+  `report --waiting` from its shell counts as the pane's rather than a nested Codex's
+  (`muster docs limits`).
 
 The first name a session reports is the one it started with, not a rename: a pane with a name
 keeps it and gives it to the session, and a pane without one takes the session's. Neither

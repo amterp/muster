@@ -104,12 +104,16 @@ network_access = true
 
 That lets every command the model runs reach the network, not only the daemon.
 
-## Not here yet
+## A `codex exec` started from Codex's shell
 
 A `codex exec` that Codex starts from its shell inherits `$MUSTER_PANE`, and with the plugin
 installed its own hooks report into that pane. Muster refuses a report from an agent outside the
-process group the pane's own agent runs in, but whether Codex's shell leaves that group has not
-been measured; start it as `env -u MUSTER_DAEMON codex exec ...` and its hooks do nothing.
+process group the pane's own agent runs in, and Codex's shell leaves that group: measured on
+2026-10-05 with Codex 0.159.0 on macOS, where the shell is a group of its own, and 0.160.0 on
+Linux, where each command runs under Codex's sandbox helper in a group of its own. So a nested
+`codex exec`'s reports are refused. The helper is the codex binary under another name, and the
+manifest names it, so the model's own `report --waiting` through it still counts as the pane's.
+Start a nested one as `env -u MUSTER_DAEMON codex exec ...` and its hooks do nothing at all.
 
 ## What was checked
 

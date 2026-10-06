@@ -12,7 +12,9 @@
 //! launchd - or a pane with no identified agent all accept, as every report was accepted before.
 //! Process groups rather than pids, because a harness started through a wrapper is several
 //! processes that all read as the agent, and its hooks hang off any of them; they share the
-//! group unless one leaves it, which a Bash tool's shell does.
+//! group unless one leaves it, which a Bash tool's shell does. A harness's helper - its own
+//! binary run under a name its manifest lists, as Codex runs its Linux sandbox - is not an agent,
+//! so a walk goes past it to the agent that started it.
 
 use std::collections::HashSet;
 use std::os::fd::AsRawFd;
@@ -222,6 +224,36 @@ mod tests {
         assert_eq!((own.pid, own.group, own.agent.as_str()), (20, 20, "claude"));
         let nested = nearest_agent_with(80, &daemon, &table(), &manifests()).unwrap();
         assert_eq!((nested.pid, nested.group), (60, 50), "past the hook's shell to the nested one");
+    }
+
+    /// Codex on Linux, as measured on a devenv: the pane's shell 100 runs `codex` 110 in group
+    /// 110, which runs each command under its sandbox helper 120, its own binary under another
+    /// argv[0], in a group of its own. The model's own report 140 is the pane's codex's. A
+    /// `codex exec` 150 started through that helper is a nested agent, and so is one 180 that a
+    /// shell given only that command exec'd into, a child of the pane's codex in a group of its
+    /// own: which agent sits directly above is no test, and the helper's name is.
+    #[test]
+    fn a_codex_helper_is_walked_past_and_a_nested_codex_exec_is_not() {
+        let table = Table(HashMap::from([
+            (100, ("zsh", vec!["-zsh"], 2, 100)),
+            (110, ("codex", vec!["codex"], 100, 110)),
+            (120, ("codex", vec!["codex-linux-sandbox", "--sandbox-policy", "{}"], 110, 120)),
+            (130, ("bash", vec!["/bin/bash", "-lc", "\"$MUSTER_DAEMON\" report"], 120, 120)),
+            (140, ("muster-daemon", vec!["muster-daemon", "report"], 130, 120)),
+            (150, ("codex", vec!["codex", "exec", "hi"], 130, 120)),
+            (160, ("sh", vec!["/bin/sh", "-c", "\"$MUSTER_DAEMON\" report"], 150, 120)),
+            (170, ("muster-daemon", vec!["muster-daemon", "report"], 160, 120)),
+            (180, ("codex", vec!["codex", "exec", "hi"], 110, 180)),
+            (190, ("sh", vec!["/bin/sh", "-c", "\"$MUSTER_DAEMON\" report"], 180, 180)),
+            (195, ("muster-daemon", vec!["muster-daemon", "report"], 190, 180)),
+        ]));
+        let daemon = HashSet::from([2]);
+        let own = nearest_agent_with(140, &daemon, &table, &manifests()).unwrap();
+        assert_eq!((own.pid, own.group), (110, 110), "the helper is the pane's codex's");
+        let nested = nearest_agent_with(170, &daemon, &table, &manifests()).unwrap();
+        assert_eq!((nested.pid, nested.group), (150, 120));
+        let exec_d = nearest_agent_with(195, &daemon, &table, &manifests()).unwrap();
+        assert_eq!((exec_d.pid, exec_d.group), (180, 180));
     }
 
     /// What a walk costs on this machine, from this test up through whatever ran it - when run

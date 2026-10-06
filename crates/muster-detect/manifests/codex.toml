@@ -1,7 +1,13 @@
 id = "codex"
-version = "2026.10.04.1"
-min_engine_version = 10
-updated_at = "2026-10-04T00:00:00Z"
+version = "2026.10.05.1"
+min_engine_version = 13
+updated_at = "2026-10-05T00:00:00Z"
+
+# Codex runs its own binary under these names for work that is not a session, which its 0.154.0
+# binary carries as strings. On Linux each command the model runs goes through
+# codex-linux-sandbox, in a process group of its own, and would read as a nested Codex
+# reporting into the pane.
+helpers = ["codex-linux-sandbox", "codex-execve-wrapper", "codex-code-mode-host"]
 
 # Typed at an empty composer with a Return; Codex takes the name inline, before its first turn
 # as well as after (docs/observations/codex-0.154.0.md, section 5).

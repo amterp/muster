@@ -428,6 +428,22 @@ fn a_session_table_says_how_to_rename_the_session_and_needs_engine_eight() {
 }
 
 #[test]
+fn helpers_are_program_names_and_need_engine_thirteen() {
+    let with = |engine: u32, helpers: &str| {
+        format!("helpers = {helpers}\n{}", with_prompt(engine, "idle", "whole_recent"))
+    };
+    let manifest = Manifest::parse(&with(13, r#"["codex-linux-sandbox"]"#)).unwrap();
+    assert_eq!(manifest.helpers(), ["codex-linux-sandbox"]);
+    assert!(Manifest::parse(&with(12, r#"["codex-linux-sandbox"]"#)).is_err(), "below engine 13");
+    assert!(Manifest::parse(&with(13, r#"["/usr/bin/codex"]"#)).is_err(), "a path");
+    assert!(Manifest::parse(&with(13, r#"["codex sandbox"]"#)).is_err(), "two words");
+    assert!(Manifest::parse(&with(13, r#"[""]"#)).is_err(), "empty");
+    assert!(
+        Manifest::parse(&with_prompt(12, "idle", "whole_recent")).unwrap().helpers().is_empty()
+    );
+}
+
+#[test]
 fn a_session_wake_fills_whole_arguments_and_needs_engine_ten() {
     let with = |engine: u32, wake: &str| {
         format!("{}\n[session]\nwake = {wake}\n", with_prompt(engine, "idle", "whole_recent"))

@@ -102,7 +102,7 @@ pub fn probe(
 pub fn identify_in_job(job: &Job, manifests: &Manifests) -> Option<(Agent, String)> {
     if let Some(leader) = job.leader() {
         let candidate = normalized_process_name(leader, manifests);
-        if let Some(agent) = manifests.agent_named(&candidate) {
+        if let Some(agent) = named_agent(leader, &candidate, manifests) {
             return Some((agent, candidate));
         }
     }
@@ -110,7 +110,7 @@ pub fn identify_in_job(job: &Job, manifests: &Manifests) -> Option<(Agent, Strin
     let mut best: Option<(u8, Agent, String)> = None;
     for process in &job.processes {
         let candidate = normalized_process_name(process, manifests);
-        let Some(agent) = manifests.agent_named(&candidate) else {
+        let Some(agent) = named_agent(process, &candidate, manifests) else {
             continue;
         };
         let score = process_priority(process, &candidate);
@@ -123,9 +123,25 @@ pub fn identify_in_job(job: &Job, manifests: &Manifests) -> Option<(Agent, Strin
 }
 
 /// The agent one process is, by the names detection reads a foreground by: none for a shell, a
-/// hook, or anything else no manifest names.
+/// hook, an agent's helper, or anything else no manifest names.
 pub fn identify_process(process: &Process, manifests: &Manifests) -> Option<Agent> {
-    manifests.agent_named(&normalized_process_name(process, manifests))
+    named_agent(process, &normalized_process_name(process, manifests), manifests)
+}
+
+/// The agent `name` means for `process`, unless the process is one of that agent's helpers: its
+/// own binary run under another argv[0] for work that is not a session, as Codex runs its sandbox
+/// on Linux, in a process group of its own.
+fn named_agent(process: &Process, name: &str, manifests: &Manifests) -> Option<Agent> {
+    let agent = manifests.agent_named(name)?;
+    let program = process
+        .argv0
+        .as_deref()
+        .or_else(|| process.argv.as_deref()?.first().map(String::as_str))
+        .map(path_basename);
+    match program {
+        Some(program) if manifests.is_helper(&agent, program) => None,
+        _ => Some(agent),
+    }
 }
 
 /// The agent in a job and the arguments its process was started with, after the word that names
@@ -321,6 +337,36 @@ fn is_generic_runtime_or_shell(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Codex re-runs its own binary as its Linux sandbox, so the kernel names the helper `codex`
+    /// and only its argv[0] says otherwise; macOS reports that argv[0] apart, as a basename.
+    #[test]
+    fn an_agents_helper_is_not_the_agent() {
+        let manifests = Manifests::built_in();
+        let process = |name: &str, argv0: Option<&str>, argv: &[&str]| Process {
+            pid: 7,
+            name: name.to_string(),
+            argv0: argv0.map(str::to_string),
+            argv: Some(argv.iter().map(|word| (*word).to_string()).collect()),
+        };
+        let helper = process("codex", None, &["codex-linux-sandbox", "--sandbox-policy", "{}"]);
+        assert_eq!(identify_process(&helper, &manifests), None);
+        let by_path = process("codex", None, &["/tmp/arg0/codex-linux-sandbox", "--", "bash"]);
+        assert_eq!(identify_process(&by_path, &manifests), None);
+        let on_macos = process("codex", Some("codex-execve-wrapper"), &["codex-execve-wrapper"]);
+        assert_eq!(identify_process(&on_macos, &manifests), None);
+        let job = Job { group: 7, processes: vec![helper] };
+        assert_eq!(identify_in_job(&job, &manifests), None);
+
+        let nested = process("codex", None, &["codex", "exec", "hi"]);
+        assert_eq!(identify_process(&nested, &manifests).unwrap().id(), "codex");
+        let claude = process("claude", None, &["codex-linux-sandbox"]);
+        assert_eq!(
+            identify_process(&claude, &manifests).unwrap().id(),
+            "claude",
+            "a helper is only its own agent's"
+        );
+    }
 
     #[test]
     fn plain_shell_flags_do_not_name_a_script() {

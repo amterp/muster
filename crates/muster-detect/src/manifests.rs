@@ -240,6 +240,15 @@ impl Manifests {
             .map(|&(_, index)| self.entries[index].agent.clone())
     }
 
+    /// Whether `program`, the basename of a process's argv[0], is a name the agent runs its own
+    /// binary under for work that is not a session.
+    pub fn is_helper(&self, agent: &Agent, program: &str) -> bool {
+        let program = lookup_name(program);
+        self.entry(agent).is_some_and(|entry| {
+            entry.manifest.helpers().iter().any(|helper| lookup_name(helper) == program)
+        })
+    }
+
     /// An agent's verdict on its pane. No agent is unknown; an agent whose manifest has gone
     /// since it was identified is idle, as a known agent with no matching rule is.
     pub fn detect(&self, agent: Option<&Agent>, input: Input<'_>) -> Detection {

@@ -28,9 +28,10 @@ use region::Region;
 /// how to rename the harness's session, 9 the `bar_prompt` region, a prompt box drawn with a
 /// bar down its left side, with a rule's `prompt_margin` and `prompt_placeholder`, 10 a
 /// `[session]` `wake`, the command that hands a running session a message, 11 a
-/// `[session]` `compact`, the line that compacts the session's context, and 12 a `[session]`
-/// `resume`, the command that starts a session again after a daemon restart.
-pub const ENGINE_VERSION: u32 = 12;
+/// `[session]` `compact`, the line that compacts the session's context, 12 a `[session]`
+/// `resume`, the command that starts a session again after a daemon restart, and 13
+/// `helpers`, the names the harness runs its own binary under for work that is not a session.
+pub const ENGINE_VERSION: u32 = 13;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -56,6 +57,9 @@ const COMPACT_ENGINE_VERSION: u32 = 11;
 
 /// The engine version that introduced `[session]` `resume`, `resume_drops` and `resume_values`.
 const RESUME_ENGINE_VERSION: u32 = 12;
+
+/// The engine version that introduced `helpers`.
+const HELPERS_ENGINE_VERSION: u32 = 13;
 
 /// Where a `[session]` compact's template takes what to keep, when its harness takes one.
 const FOCUS_PLACEHOLDER: &str = "{focus}";
@@ -132,6 +136,9 @@ pub struct Manifest {
     version: Option<Version>,
     aliases: Vec<String>,
     script_paths: Vec<String>,
+    /// The argv[0] names the harness runs its own binary under for work that is not a session,
+    /// such as Codex's sandbox helper: the agent's process, but not the agent.
+    helpers: Vec<String>,
     rules: Vec<Rule>,
     /// What typed at the agent's empty prompt renames its session, with `{name}` for the name.
     rename: Option<String>,
@@ -210,6 +217,11 @@ impl Manifest {
     /// Package paths that identify the agent when a runtime runs a script inside one.
     pub fn script_paths(&self) -> &[String] {
         &self.script_paths
+    }
+
+    /// The argv[0] names the harness runs its own binary under for work that is not a session.
+    pub fn helpers(&self) -> &[String] {
+        &self.helpers
     }
 
     /// Every rule is evaluated; the highest priority that matches wins, the earlier of two
@@ -462,6 +474,8 @@ struct RawManifest {
     #[serde(default)]
     script_paths: Vec<String>,
     #[serde(default)]
+    helpers: Vec<String>,
+    #[serde(default)]
     rules: Vec<RawRule>,
     session: Option<RawSession>,
 }
@@ -629,6 +643,24 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
     }
     if let Some(session) = &manifest.session {
         validate_session(manifest, session)?;
+    }
+    validate_helpers(manifest)
+}
+
+/// A helper is matched by the basename of a process's argv[0], so a name is one whole word.
+fn validate_helpers(manifest: &RawManifest) -> Result<(), String> {
+    if manifest.helpers.is_empty() {
+        return Ok(());
+    }
+    if manifest.min_engine_version.unwrap_or(0) < HELPERS_ENGINE_VERSION {
+        return Err(format!("helpers needs min_engine_version {HELPERS_ENGINE_VERSION} or later"));
+    }
+    if let Some(bad) = manifest.helpers.iter().find(|name| {
+        name.trim().is_empty()
+            || name.contains(['/', '\\'])
+            || name.chars().any(char::is_whitespace)
+    }) {
+        return Err(format!("helpers holds {bad:?}, which is not a program's name"));
     }
     Ok(())
 }
@@ -997,6 +1029,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         version: raw.version,
         aliases: raw.aliases,
         script_paths: raw.script_paths,
+        helpers: raw.helpers,
         rules,
         rename: raw.session.as_ref().and_then(|session| session.rename.clone()),
         compact: raw.session.as_ref().and_then(|session| session.compact.clone()),

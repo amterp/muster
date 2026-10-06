@@ -362,7 +362,11 @@ Every process started in a pane inherits `$MUSTER_PANE`, so an agent that the pa
 a `claude -p` from Claude Code's Bash tool, a `codex exec`, an agent in a tmux server started
 there - has hooks that report into the pane. Muster refuses such a report when the process that
 sent it sits below an agent running outside the process group the pane's own agent runs in, which
-is where Claude Code's Bash tool puts what it runs. It cannot tell a nested agent that stays in that
+is where Claude Code's Bash tool and Codex's shell put what they run. A harness's own helper is not
+an agent here: Codex on Linux runs each command under its sandbox, which is the codex binary under
+another name in a group of its own, and its manifest's `helpers` lists that name, so the agent's
+own report from its shell still counts as the pane's. A helper Muster has not been told about makes
+that agent's own reports read as a nested agent's. It cannot tell a nested agent that stays in that
 group from the pane's own, and takes its reports as before; nor can it tell anything about a
 sender it cannot see, so it takes those too. `env -u MUSTER_DAEMON` in front of the nested command
 keeps its hooks quiet whatever Muster can tell.
