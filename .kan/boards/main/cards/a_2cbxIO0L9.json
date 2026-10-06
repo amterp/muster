@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-daemon-that",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791253725076,
+  "creator": "Alexander Terp",
+  "description": "crates/muster-cli/src/daemon.rs open() uses a bare UnixStream::connect with no handshake timeout, so a daemon socket that accepts and stays silent hangs msg verbs and the windowless pane verbs - the failure muster-daemon-launch's own bounded dial (5 s handshake, SIGPIPE silenced) exists to avoid. connect_or_start (2026-10-05) calls the bounded ensure_running and then the unbounded connect_welcomed against the same socket. Predates that change; found reviewing it. The window side got a 2 s probe for the same failure (a_2ZNnSyiXR).",
+  "id": "a_2cbxIO0L9",
+  "position": "b0V",
+  "title": "⏳ A daemon that accepts and never answers hangs every muster msg verb",
+  "type": "bug",
+  "updated_at_millis": 1791253725076,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791253725076}
+  ]
+}

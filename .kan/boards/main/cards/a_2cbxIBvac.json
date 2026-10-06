@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "two-ways-to-ask",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791253724947,
+  "creator": "Alexander Terp",
+  "description": "crates/muster-cli/src/windowless.rs and crates/muster-seam/src/session.rs each compare speaks.minor with KEYS_IN_A_SEND, with near-identical refusals, while crates/muster-cli/src/messaging.rs uses a needs_minor(request) table. One helper in muster-daemon-proto::version would keep them from drifting.",
+  "id": "a_2cbxIBvac",
+  "position": "b0p",
+  "title": "Two ways to ask whether a daemon is new enough for a request",
+  "type": "chore",
+  "updated_at_millis": 1791253724947,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791253724947}
+  ]
+}

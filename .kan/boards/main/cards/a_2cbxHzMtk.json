@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "pane-send-key-paces",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791253724827,
+  "creator": "Alexander Terp",
+  "description": "Since 2026-10-05 each --key is its own write, KEY_GAP (50 ms) after the pane's last, slept on the pane's single writer thread (crates/muster-daemon/src/writer.rs Writer::write). Input::Reply (answers to terminal queries a program waits on), a person's typing and doorbell rings queue behind it, so N keys stall them ~N x 50 ms; check_sent_keys puts no cap on the count (100 keys = 5 s). Consider letting Reply bypass the pacing and capping keys per send. Also (speculative, review): doorbell press_again checks someone_typed_at, which is set only on a write, so during the pacing sleeps a Return-only ring could queue behind a dialog answer.",
+  "id": "a_2cbxHzMtk",
+  "position": "b0o",
+  "title": "pane send --key paces the whole pane's input, replies to terminal queries included",
+  "type": "enhancement",
+  "updated_at_millis": 1791253724827,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791253724827}
+  ]
+}

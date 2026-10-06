@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-join-that-fails",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791253725200,
+  "creator": "Alexander Terp",
+  "description": "crates/muster-msg/src/service.rs join: absorb has already appended Left/Joined to local groups; if a later ensure_group/add_member/save returns an error, the taken folded.tell is dropped, so replicas hear nothing until the group's next entry. absorb also removes the pane's participant before its appends, so a store error midway leaves a half-folded group with no rollback. Needs a store error to happen; found in review 2026-10-05.",
+  "id": "a_2cbxIag4S",
+  "position": "b0q",
+  "title": "A join that fails after folding a pane's place loses the notices for other machines",
+  "type": "bug",
+  "updated_at_millis": 1791253725200,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791253725200}
+  ]
+}
