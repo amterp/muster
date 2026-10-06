@@ -6,7 +6,7 @@
     "shell",
     "renderer"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -25,12 +25,13 @@
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-05 on 0.13.0: right-clicking inside any pane opens no menu, in every window, over a plain shell as well as over Claude Code, with or without shift. The agent row's menu in the sidebar works. So the pane menu, and Split on Machine with it, is unreachable from the mouse.\n\nCause: Appearance.swift tells every surface right-click-action = ignore (04c8fd12, written before the pane menu existed, on the grounds that Ghostty's right-click 'selects a word for a context menu Muster does not have'). In libghostty's mouseButtonCallback at the pin, every right-click-action except context-menu ends in 'return true', so the surface reports the press consumed, SurfaceView.rightMouseDown never calls super, and AppKit never asks menu(for:). A shift-right-click over a mouse-tracking program skips the mouse report and then lands in the same block, so the rule in docs/architecture.md that shift gets past a program cannot work either.\n\nThe gate stayed green because ContextMenuTests drive SurfaceView with RecordingSurface, which leaves the click to the host unless told otherwise; the real surface never did.\n\nFix:\n- Appearance.swift: right-click-action = context-menu (Ghostty's default: it selects the word or link under the pointer, as Ghostty does, and returns false). Update the embedded-config comment.\n- GhosttyConfigTests: the two assertions that expect ignore.\n- A real-surface test in the contract tier: a right-click over a shell opens the pane menu, and a shift-right-click over a program with mouse reporting on does too.\n- Check that ctrl-click still opens the menu over a shell, and that a plain right-click over a mouse-reporting program still goes to the program.",
   "id": "a_2cKwDpejn",
-  "position": "Zw",
+  "position": "YxV",
   "title": "Right-click never opens a pane's menu: surfaces are told right-click-action = ignore",
   "type": "bug",
-  "updated_at_millis": 1791250153137,
+  "updated_at_millis": 1791252876468,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791213168056},
-    {"field":"column","value":"in-progress","at":1791250153137}
+    {"field":"column","value":"in-progress","at":1791250153137},
+    {"field":"column","value":"done","at":1791252876468}
   ]
 }

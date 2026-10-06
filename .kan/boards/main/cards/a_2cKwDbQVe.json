@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1791213167921,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-05 on 0.13.0: window-3's title read 'muster - p2968w948d · disconnected' while muster window --json said both daemons were connected and the window drove its devenv pane fine.\n\nThe run log has the cause. The last backend health events (local stale, then reconnected) were at 13:22:20Z; window-3 was added at 14:17:37Z. Core.deliver hands .backendHealth only to the windows that exist when it arrives (Core.swift), so a window added later never hears one, its health map stays empty, and worstHealth reads an empty map as disconnected (MusterWindow.swift). A new window has to be seeded with every daemon's current health when it opens.",
   "id": "a_2cKwDbQVe",
-  "position": "Zv",
+  "position": "YxU",
   "title": "A window opened after its daemons connected says disconnected in its title",
   "type": "bug",
-  "updated_at_millis": 1791250153236,
+  "updated_at_millis": 1791252876549,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791213167921},
-    {"field":"column","value":"in-progress","at":1791250153236}
+    {"field":"column","value":"in-progress","at":1791250153236},
+    {"field":"column","value":"done","at":1791252876549}
   ]
 }
