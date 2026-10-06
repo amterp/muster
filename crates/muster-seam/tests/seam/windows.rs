@@ -808,6 +808,41 @@ fn closing_one_window_leaves_the_other_and_keeps_its_tabs() {
     }
 }
 
+/// A daemon's health is announced when it changes, to the windows open then. A window opened after
+/// that heard nothing, and its title read the daemon as disconnected while it drove the daemon's
+/// panes.
+#[test]
+fn a_window_opened_after_its_daemon_connected_is_told_so() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    start(&daemon, "window-1");
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow::default()))));
+    until(
+        "the daemon to be announced connected",
+        || healths_sent("").contains(&"connected".to_string()),
+        || format!("announced so far: {:?}", healths_sent("")),
+    );
+    forget_events();
+
+    let opened = answer(&Request::new(request::Payload::OpenWindow(OpenWindow {
+        state_path: arrangement(&daemon, "window-2").to_string_lossy().into_owned(),
+        ..OpenWindow::default()
+    })));
+    match opened.payload {
+        Some(response::Payload::Opened(opened)) => assert_eq!(opened.window, "window-2"),
+        other => panic!("opening a second window answered {other:?}"),
+    }
+
+    assert_eq!(
+        healths_sent("window-2"),
+        vec!["connected".to_string()],
+        "a window opened after its daemon connected was not told so, so its title reads it as \
+         disconnected"
+    );
+    assert!(healths_sent("window-1").is_empty(), "the window already open was told again");
+}
+
 /// A closed window is sent nothing: a tab nobody asked for does not join it, and nothing is drawn
 /// for it.
 #[test]
@@ -1530,6 +1565,19 @@ fn windows_sent(kind: impl Fn(&event::Payload) -> bool) -> Vec<String> {
         .collect();
     windows.dedup();
     windows
+}
+
+/// The health states sent naming a window, in order; `""` is the ones sent to every window.
+fn healths_sent(window: &str) -> Vec<String> {
+    let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    events
+        .iter()
+        .filter(|event| event.window == window)
+        .filter_map(|event| match &event.payload {
+            Some(event::Payload::BackendHealth(health)) => Some(health.state.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The pane a window's keyboard is on, from the last view sent to it.

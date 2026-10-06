@@ -444,7 +444,8 @@ codegen - a surface that cannot express an action is a missing message, visible 
   other exists (MIP-3, section 2).
 - **Health is per connection, and so is what a window says about it.** A laptop and a devenv have two answers and one
   title bar. The unhappiest is what shows, named - reporting one state for the window would let a dropped VPN read as
-  though every session had gone.
+  though every session had gone. A change is announced to the windows open at the time, so a window is told each
+  daemon's health as it stands when it opens.
 - **Where the keyboard is belongs to the window.** muster-daemon keeps no focus of its own, so which pane Muster's
   keyboard feeds is view-local and nothing another window does can move it. Rendering follows the same rule: the
   daemon records which pane of a tab is zoomed, but a region fills a zoomed tab with the pane its own keyboard is on,

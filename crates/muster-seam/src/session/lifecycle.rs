@@ -13,7 +13,7 @@ use super::{
     fields, focus, focus_tab, follow_implicitly_if_nothing_else, has_spoken,
     local_daemon_to_fill_from, log, mint_tab, move_tab, poison, publish,
     reconcile_sidebar_with_problems, save, saved_arrangement, saved_arrangement_at,
-    saved_presentation, settle_what_the_window_shows, submit,
+    saved_presentation, settle_what_the_window_shows, submit, tell_window_each_health,
 };
 
 /// Opens this window onto whatever the daemons hold.
@@ -73,6 +73,7 @@ pub(crate) fn open(window: WindowId) -> Result<(), String> {
             },
         );
     }
+    tell_window_each_health(window);
     publish("open");
     show_what_was_asked_for(window);
     Ok(())

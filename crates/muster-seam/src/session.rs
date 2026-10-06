@@ -5794,6 +5794,40 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
     watch::publish(&Seen::Health(heard));
 }
 
+/// Tells a window that has just opened how each daemon's connection stands.
+///
+/// [`health`] announces a change once, to the windows open at the time, so a window opened after
+/// the last change would hear nothing - and its title reads a daemon it has heard nothing about
+/// as disconnected. This answers from each mirror, and sends while holding it: a change is
+/// written to the mirror before it is announced, so one racing this is announced after it
+/// rather than overtaken by a copy from before it.
+///
+/// A daemon still being attached is `connecting`, which is what a window open at the time was
+/// told, unless its mirror already says it has connected.
+fn tell_window_each_health(window: WindowId) {
+    let session = poison::lock(&SESSION, "session");
+    let name = session.windows[window].name.to_string();
+    let attaching = poison::lock(&ATTACHES, "attaches").under_way.clone();
+    let tell = |health: crate::proto::BackendHealth| {
+        ffi::emit(&Event::new(event::Payload::BackendHealth(health)).for_window(name.clone()));
+    };
+    for (daemon, backend) in &session.backends {
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        if mirror.health() != Health::Connected && attaching.contains(daemon) {
+            tell(attaching::connecting_health(daemon));
+        } else {
+            tell(convert::backend_health(&DaemonHealth {
+                daemon: daemon.clone(),
+                health: mirror.health(),
+                detail: mirror.health_detail().to_string(),
+            }));
+        }
+    }
+    for daemon in attaching.iter().filter(|daemon| !session.backends.contains_key(*daemon)) {
+        tell(attaching::connecting_health(daemon));
+    }
+}
+
 /// The moment the pane becomes typeable: its bridge said `attached`, heard on the thread that
 /// reads the bridge's link.
 fn typeable(daemon: &DaemonId, pane: &PaneId) {

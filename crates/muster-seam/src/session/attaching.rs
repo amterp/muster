@@ -438,11 +438,16 @@ pub(super) fn restore_late_in(session: &mut Session, window: WindowId, daemon: &
 /// Its own word rather than one of the mirror's health states: those describe a connection
 /// that exists, and this daemon has none yet.
 pub(super) fn connecting(daemon: &DaemonId) {
-    ffi::emit(&Event::new(event::Payload::BackendHealth(crate::proto::BackendHealth {
+    ffi::emit(&Event::new(event::Payload::BackendHealth(connecting_health(daemon))));
+}
+
+/// What a daemon being attached is called in a health event.
+pub(super) fn connecting_health(daemon: &DaemonId) -> crate::proto::BackendHealth {
+    crate::proto::BackendHealth {
         daemon_id: daemon.to_string(),
         state: "connecting".to_string(),
         detail: String::new(),
-    })));
+    }
 }
 
 /// What to tell somebody whose daemon, configured or Muster's own, has not attached since launch.
