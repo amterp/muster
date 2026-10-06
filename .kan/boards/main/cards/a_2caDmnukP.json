@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-dev-claude-code",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791249592407,
+  "creator": "Alexander Terp",
+  "description": "So a Claude Code update that stops reading arrows in its dialogs is caught. The trust dialog needs no model turn; corpus/claude-code-2.1.290/dialog-keys.txt has the by-hand recording.",
+  "id": "a_2caDmnukP",
+  "position": "b0k",
+  "title": "A ./dev --claude-code check that --key down --enter passes folder trust",
+  "type": "chore",
+  "updated_at_millis": 1791249592407,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791249592407}
+  ]
+}

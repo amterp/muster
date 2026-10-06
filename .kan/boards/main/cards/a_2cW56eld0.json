@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1791239725692,
   "creator": "Alexander Terp",
   "description": "`muster pane send --pane \u003cp\u003e --enter` with no text exits 2: \"the following required arguments were not provided: \u003cTEXT\u003e...\". The usage line, `muster pane send [OPTIONS] [TEXT]...`, shows TEXT as optional, and pressing Return alone is what an agent needs when a menu or dialog wants one more Return. `muster pane send --pane \u003cp\u003e '' --enter` works, but nothing says so.\n\n## Measured: 2026-10-01, usage line unchanged in 0.13.0\n\nA laptop agent was ending Claude Code sessions in devenv panes with `/exit`. In one pane `/exit` opened the slash-command menu and needed one more Return. `--enter` alone was refused, and `'' --enter` delivered it. On 2026-10-05 an agent could not take the default of a Codex approval prompt with a bare Return for the same reason (a_2cW56wz6X).\n\n## Things that might be true\n\n- **Let `--enter` with no TEXT press Return alone.**\n- Or show TEXT as required in the usage line, and give `''` for a bare Return in `muster docs agents`.",
   "id": "a_2cW56eld0",
-  "position": "a0",
+  "position": "Yxd",
   "title": "pane send --enter alone is refused, though its usage shows TEXT as optional",
   "type": "bug",
-  "updated_at_millis": 1791246843795,
+  "updated_at_millis": 1791249592036,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791239725692},
-    {"field":"column","value":"in-progress","at":1791246843795}
+    {"field":"column","value":"in-progress","at":1791246843795},
+    {"field":"column","value":"done","at":1791249592036}
   ]
 }

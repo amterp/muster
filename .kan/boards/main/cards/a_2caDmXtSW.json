@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "record-codex-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791249592246,
+  "creator": "Alexander Terp",
+  "description": "pane send --key (2026-10-05) was measured against Claude Code 2.1.290's folder-trust dialog only. On this laptop codex 0.154.0 hung in a pty and on --version, so whether Codex's trust/approval prompts (crossterm/ratatui) take --key down / --key 2 is inferred. Record it on a machine where Codex runs, add an observation file for that version, and consider a ./dev --codex check.",
+  "id": "a_2caDmXtSW",
+  "position": "b0j",
+  "title": "Record Codex's dialogs answered by pane send --key",
+  "type": "chore",
+  "updated_at_millis": 1791249592246,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791249592246}
+  ]
+}

@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1791223112987,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-05, Muster 0.13.0, codex-cli 0.159.0 on the laptop (adapter reporting, so `codex queue` wakes were available), group mixed-demo: the director posted #11 `--to p297eckk7w`. The agent was woken, ran `muster msg read`, did the work, and posted #16. It then got a second, identical wake for #11; `muster msg read --group mixed-demo` answered `nothing unread`. It reported this itself as #17.\n\nOne wrinkle: #11 asked it to run `\"$MUSTER_DAEMON\" report --waiting \"director test\"`, so it declared itself waiting during that turn, and `muster window` still shows it `waiting` afterwards.\n\nUnverified guesses: (a) the `codex queue` wake started the turn after the 5 s fallback had already typed a ring, so both arrived; (b) the waiting state made the doorbell re-ring once the turn ended. The run log for the window has both wake paths.",
   "id": "a_2cP6w1lHN",
-  "position": "b0S",
+  "position": "Zu",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1791223112987,
+  "updated_at_millis": 1791249592118,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791223112987}
+    {"field":"column","value":"backlog-hi","at":1791223112987},
+    {"field":"column","value":"in-progress","at":1791249592118}
   ]
 }
