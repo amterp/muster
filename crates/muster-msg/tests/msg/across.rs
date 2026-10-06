@@ -1331,6 +1331,37 @@ fn a_member_on_another_machine_can_be_removed_and_is_let_go_there() {
     assert_eq!(wire.ended, [(Side::Devenv, ticket)]);
 }
 
+/// A member on another machine that the home removes with its dismissal unread can still read
+/// it there, once; then its machine lets go of the replica.
+#[test]
+fn a_member_removed_on_another_machine_reads_its_dismissal_there() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.post(Side::Laptop, &builder, None, &["critic"], "thanks, you are done").unwrap();
+
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let removed = laptop
+        .group_members(&builder, "review", &[], &["critic@devenv".to_string()], &[], sessions, now)
+        .unwrap();
+    wire.tell(Side::Laptop, &removed.tell);
+    wire.post(Side::Laptop, &builder, None, &[], "after").unwrap();
+
+    assert!(wire.devenv.woken_for("critic", "review@lap"), "its wake still stands");
+    assert_eq!(
+        wire.read(Side::Devenv, &critic, Some("review")),
+        ["review@lap builder@lap: thanks, you are done"]
+    );
+    assert!(wire.devenv.replicas_of("lap").is_empty(), "nothing left to refetch");
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    assert!(matches!(
+        devenv.read(&critic, Some("review"), sessions),
+        Err(Refusal::NoSuchGroup { .. })
+    ));
+}
+
 /// A replica replayed from nothing a page at a time lets a member go only by where the whole log
 /// leaves it: one that left and came back, its leave closing one page and its return in the
 /// next, keeps its cursor, its wait and the replica.

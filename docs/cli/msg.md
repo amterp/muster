@@ -260,6 +260,12 @@ and a person reads the transcript as it arrives, on a screen the daemon cannot s
 and leaves never count as unread. Your place in a group starts where you joined it; `log` shows
 what came before.
 
+A member someone else removed with `group remove` can still `read` what others had posted
+there and it had not read, once: everything before its removal, and nothing after. Its wake
+stands until then, so a member dismissed while it was busy is still woken for the dismissal.
+After that read the group is closed to it like any other it is not in. A member that leaves on
+its own is left nothing.
+
 `log --group G [--since N]` prints the transcript and moves nothing. With `--follow` it goes on
 printing each entry as it lands until interrupted, across Muster updating its daemon, and with
 `--json` prints one line per entry.
@@ -416,6 +422,10 @@ to be from a Muster that knows it; either being older refuses it, saying which, 
 urgently, which is `not_urgent`. A member on a machine whose daemon is older is rung for it as for
 an ordinary post. A `group set` from an older Muster, which knows nothing of `urgent`, leaves the
 group's list as it was.
+
+A member removed from a group kept on another machine loses what it had left to read there if
+its own daemon restarts first, since a copy of a group kept elsewhere is not written to disk.
+`log` on the group's machine still has it.
 
 A pane's place in a group kept on a machine whose daemon is older than this Muster, or on one
 that cannot be reached when the agent in the pane names itself, is not handed to the name: that

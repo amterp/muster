@@ -230,6 +230,7 @@ mod tests {
             woken: std::collections::BTreeSet::default(),
             rewoken: std::collections::BTreeSet::default(),
             pull: false,
+            removed: std::collections::BTreeMap::default(),
         };
         assert!(!Sockets.alive(&participant));
     }

@@ -875,6 +875,56 @@
       ] }
     },
     {
+      "name": "a member removed with a message unread reads it once, and nothing posted after",
+      "why": "A director posts a dismissal and removes the member, whose wake says to read the group. The read works, once, across a restart, and hands it only what was posted before it was removed; after that the group is closed to it, and the refusal says who may add it back rather than telling it to rejoin.",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"session": "sb", "do": "join", "name": "builder"},
+        {"do": "members", "group": "council", "add": ["builder"]},
+        {"session": "sd", "do": "post", "group": "council", "to": ["builder"], "body": "you are done"},
+        {"do": "members", "group": "council", "remove": ["builder"]},
+        {"session": "sd", "do": "post", "group": "council", "body": "after"},
+        {"session": "sb", "do": "wait"},
+        {"do": "restart"},
+        {"session": "sb", "do": "read", "group": "council"},
+        {"session": "sb", "do": "read", "group": "council"},
+        {"session": "sb", "do": "read"}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "director joined council",
+        "builder registered",
+        "@human changed the members of council (#5); added builder",
+        "director posted #6 to council; woke builder [council #6-6 x1 to-you:1 from director]",
+        "@human changed the members of council (#7); removed builder",
+        "director posted #8 to council",
+        "ready council #6-6 x1 to-you:1 from director",
+        "restarted",
+        "builder read council: #6 director->builder: you are done",
+        "refused not_a_member builder council, added by director,@human",
+        "builder read nothing"
+      ] }
+    },
+    {
+      "name": "a member that leaves on its own is left nothing to read",
+      "why": "Leaving is the member's own choice, so what it had not read goes with it, as before; only a member someone else removed is left what was posted for it.",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "b", "do": "leave", "group": "g"},
+        {"session": "b", "do": "read", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "b left g",
+        "refused not_a_member b g"
+      ] }
+    },
+    {
       "name": "an agent whose pane has lost its agent is gone",
       "why": "A pane closing, or detection seeing its agent exit, is how a pane participant leaves without saying so (MIP-4, section 7).",
       "given": { "steps": [

@@ -63,6 +63,18 @@ pub struct Participant {
     /// calls, and a `Stop` hook waits with `--due` once a turn ends.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pull: bool,
+    /// Groups it was removed from with messages by others unread, each with what it may still
+    /// read there: `read` hands it those, once, and nothing posted after its removal.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub removed: BTreeMap<String, Removed>,
+}
+
+/// What a participant removed from a group may still read there: the entries after where it had
+/// read to and before the one that removed it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Removed {
+    pub read: u64,
+    pub at: u64,
 }
 
 impl Participant {
@@ -76,6 +88,7 @@ impl Participant {
             woken: BTreeSet::new(),
             rewoken: BTreeSet::new(),
             pull: false,
+            removed: BTreeMap::new(),
         }
     }
 }
@@ -517,6 +530,10 @@ impl<S: Store> Messaging<S> {
                 participant
                     .rewoken
                     .retain(|group| groups.get(group).is_some_and(|g| g.home.is_none()));
+                // A replica's log is not kept, so what was left to read in one is gone.
+                participant
+                    .removed
+                    .retain(|group, _| groups.get(group).is_some_and(|g| g.home.is_none()));
                 (participant.name.clone(), participant)
             })
             .collect();
@@ -839,21 +856,26 @@ impl<S: Store> Messaging<S> {
         let groups = self.chosen_groups(&name, group)?;
         let before = self.participants[&name].clone();
         let mut read = Read { name: name.clone(), groups: Vec::new() };
+        let mut emptied = Vec::new();
         for group in groups {
-            let cursor = self.cursor(&name, &group);
+            let (cursor, until) = self.span(&name, &group);
             let log = &self.groups[&group].log;
             let head = self.groups[&group].head();
             let entries: Vec<Entry> = log
                 .iter()
-                .filter(|entry| entry.seq > cursor)
+                .filter(|entry| entry.seq > cursor && entry.seq < until)
                 .filter(|entry| {
                     entry.author() != Some(name.as_str()) && entry.subject() != Some(name.as_str())
                 })
                 .cloned()
                 .collect();
             let participant = self.participants.get_mut(&name).expect("identified");
-            // Never back: a replica held empty after a restart is behind what was read of it.
-            participant.cursors.insert(group.clone(), head.max(cursor));
+            if participant.removed.remove(&group).is_some() {
+                emptied.push(group.clone());
+            } else {
+                // Never back: a replica held empty after a restart is behind what was read of it.
+                participant.cursors.insert(group.clone(), head.max(cursor));
+            }
             participant.woken.remove(&group);
             participant.rewoken.remove(&group);
             read.groups.push((group, entries));
@@ -863,6 +885,9 @@ impl<S: Store> Messaging<S> {
         if let Err(refusal) = self.save() {
             self.participants.insert(name, before);
             return Err(refusal);
+        }
+        for group in emptied {
+            self.drop_unheld_replica(&group);
         }
         Ok(read)
     }
@@ -1126,7 +1151,7 @@ impl<S: Store> Messaging<S> {
             if !self.groups[group].members.contains(&name) {
                 return Err(self.not_a_member(&name, group));
             }
-            self.remove_member(group, &name, now_ms)?;
+            self.dismiss(group, &name, now_ms)?;
             let kept_to_it = self
                 .waiters
                 .get(&name)
@@ -1255,6 +1280,7 @@ impl<S: Store> Messaging<S> {
             participant.cursors.remove(group);
             participant.woken.remove(group);
             participant.rewoken.remove(group);
+            participant.removed.remove(group);
         }
         let waiting: Vec<String> = self
             .waiters
@@ -1778,6 +1804,9 @@ impl<S: Store> Messaging<S> {
         }
         into.woken.extend(from.woken);
         into.rewoken.extend(from.rewoken);
+        for (group, removed) in from.removed {
+            into.removed.entry(group).or_insert(removed);
+        }
         Ok(())
     }
 
@@ -1833,18 +1862,22 @@ impl<S: Store> Messaging<S> {
             .collect()
     }
 
-    /// The one group named, which the caller must be in, or every group it is in.
+    /// The one group named, which the caller must be in, or every group it is in; either way
+    /// with the groups it was removed from that still hold something for it to read.
     fn chosen_groups(&self, name: &str, group: Option<&str>) -> Result<Vec<String>, Refusal> {
-        match group {
-            Some(group) => {
-                let group = self.locate(group)?;
-                if !self.groups[&group].members.contains(name) {
-                    return Err(self.not_a_member(name, &group));
-                }
-                Ok(vec![group])
-            }
-            None => Ok(self.memberships(name)),
+        let removed = self.participants.get(name).map(|found| &found.removed);
+        let Some(group) = group else {
+            let mut groups = self.memberships(name);
+            let left = removed.into_iter().flat_map(BTreeMap::keys);
+            groups.extend(left.filter(|group| self.groups.contains_key(*group)).cloned());
+            return Ok(groups);
+        };
+        let group = self.locate(group)?;
+        let left_to_read = removed.is_some_and(|removed| removed.contains_key(&group));
+        if !self.groups[&group].members.contains(name) && !left_to_read {
+            return Err(self.not_a_member(name, &group));
         }
+        Ok(vec![group])
     }
 
     /// Creates the group with the default policy if it does not exist, saying whether it did.
@@ -1888,6 +1921,7 @@ impl<S: Store> Messaging<S> {
             participant.cursors.insert(group.to_string(), seq);
             participant.woken.remove(group);
             participant.rewoken.remove(group);
+            participant.removed.remove(group);
         }
         Ok(())
     }
@@ -1905,6 +1939,52 @@ impl<S: Store> Messaging<S> {
             participant.rewoken.remove(group);
         }
         Ok(())
+    }
+
+    /// Removes a member someone else took out of the group. What others posted that it had not
+    /// read yet - the dismissal, typically - stays for it to read, and a wake for it still
+    /// stands, so an agent busy when it was dismissed still hears so.
+    fn dismiss(&mut self, group: &str, name: &str, now_ms: u64) -> Result<(), Refusal> {
+        let read = self.cursor(name, group);
+        let kept = self.participants.get(name).map(|participant| {
+            (participant.woken.contains(group), participant.rewoken.contains(group))
+        });
+        self.remove_member(group, name, now_ms)?;
+        let at = self.groups[group].head();
+        self.leave_unread(name, group, Removed { read, at }, kept.unwrap_or_default());
+        Ok(())
+    }
+
+    /// Records what `name`, just let go of `group`, may still read there, when anything is
+    /// unread, keeping what it had been woken for there.
+    pub(crate) fn leave_unread(
+        &mut self,
+        name: &str,
+        group: &str,
+        removed: Removed,
+        (woken, rewoken): (bool, bool),
+    ) {
+        if self.unread_between(name, group, removed.read, removed.at) == 0 {
+            return;
+        }
+        let Some(participant) = self.participants.get_mut(name) else { return };
+        participant.removed.insert(group.to_string(), removed);
+        if woken {
+            participant.woken.insert(group.to_string());
+        }
+        if rewoken {
+            participant.rewoken.insert(group.to_string());
+        }
+    }
+
+    /// The entries of `group` `name` has still to read, as the seqs they lie strictly between:
+    /// after its cursor, or for a group it was removed from, up to its removal too.
+    fn span(&self, name: &str, group: &str) -> (u64, u64) {
+        let removed = self.participants.get(name).and_then(|found| found.removed.get(group));
+        match removed {
+            Some(removed) => (removed.read, removed.at),
+            None => (self.cursor(name, group), u64::MAX),
+        }
     }
 
     /// Which group a post goes to (MIP-4, section 2). `group` is one [`Self::locate`] found.
@@ -2046,10 +2126,14 @@ impl<S: Store> Messaging<S> {
     }
 
     fn unread_after(&self, name: &str, group: &str, cursor: u64) -> u64 {
+        self.unread_between(name, group, cursor, u64::MAX)
+    }
+
+    fn unread_between(&self, name: &str, group: &str, after: u64, before: u64) -> u64 {
         let count = self.groups[group]
             .log
             .iter()
-            .filter(|entry| entry.seq > cursor)
+            .filter(|entry| entry.seq > after && entry.seq < before)
             .filter(|entry| entry.author().is_some_and(|author| author != name))
             .count();
         count as u64
@@ -2104,13 +2188,13 @@ impl<S: Store> Messaging<S> {
     /// [`Self::notice`], read under `policy` rather than the group's own.
     fn notice_under(&self, name: &str, group: &str, policy: &Policy) -> Option<Notice> {
         let kept = self.groups.get(group)?;
-        let cursor = self.cursor(name, group);
+        let (cursor, until) = self.span(name, group);
         // A paused group wakes nobody but the human, however it would (MIP-4, section 8).
         if policy.paused && name != HUMAN {
             return None;
         }
         let mut notice: Option<Notice> = None;
-        for entry in kept.log.iter().filter(|entry| entry.seq > cursor) {
+        for entry in kept.log.iter().filter(|entry| entry.seq > cursor && entry.seq < until) {
             let What::Message { author, to, urgent, .. } = &entry.what else { continue };
             let addressed = to.iter().any(|addressee| addressee == name);
             let wakes = if to.is_empty() { policy.rings(author, name) } else { addressed };

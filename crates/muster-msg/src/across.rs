@@ -17,7 +17,7 @@ use crate::names::{
 use crate::service::{Draft, Group, check_body};
 use crate::{
     Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, Member, Messaging,
-    Policy, Posted, Presence, Reach, Refusal, Store, Via, Wake, What,
+    Policy, Posted, Presence, Reach, Refusal, Removed, Store, Via, Wake, What,
 };
 
 /// Another machine's daemon, as a link to it knows it.
@@ -764,11 +764,14 @@ impl<S: Store> Messaging<S> {
             Reply::Left { caught } => {
                 let Call::Leave { name, .. } = call else { return Err(mismatched(call)) };
                 apply(self, caught);
+                // Left by its own choice, so nothing is kept for it to read.
                 if let Some(participant) = self.participants.get_mut(name) {
                     participant.cursors.remove(&key);
                     participant.woken.remove(&key);
                     participant.rewoken.remove(&key);
+                    participant.removed.remove(&key);
                 }
+                self.drop_unheld_replica(&key);
                 let kept_to_it = self
                     .waiters
                     .get(name)
@@ -1158,30 +1161,53 @@ impl<S: Store> Messaging<S> {
     }
 
     /// Lets each of this machine's participants that is not a member of the replica `key` go of
-    /// it, as leaving would, and drops the replica if none is left in it, so it is not fetched
-    /// again. Returns the waits they kept to it, which the host ends. Judged by membership once
-    /// the batch is in rather than by each `Left`, so a replica replayed from nothing does not
-    /// let go of a member who left and came back.
+    /// it, as leaving would, and drops the replica if nobody here is left in it or has anything
+    /// left to read in it, so it is not fetched again. Returns the waits they kept to it, which
+    /// the host ends. Judged by membership once the batch is in rather than by each `Left`, so a
+    /// replica replayed from nothing does not let go of a member who left and came back.
     fn let_go_of(&mut self, key: &str) -> Vec<u64> {
         let members = &self.groups[key].members;
         let gone: Vec<String> =
             self.participants.keys().filter(|name| !members.contains(*name)).cloned().collect();
-        if members.iter().all(|member| split_machine(member).is_some()) {
-            self.groups.remove(key);
-        }
-        gone.iter().filter_map(|name| self.let_go(name, key)).collect()
+        let ended = gone.iter().filter_map(|name| self.let_go(name, key)).collect();
+        self.drop_unheld_replica(key);
+        ended
     }
 
     /// Lets `name`, one of this machine's participants, go of a replica its home took it out of,
-    /// as leaving would: returns the wait it kept to that group, which the host ends.
+    /// as leaving would, but for what was posted before and it has not read: a member the home
+    /// removed may still read its dismissal. Returns the wait it kept to that group, which the
+    /// host ends.
     fn let_go(&mut self, name: &str, key: &str) -> Option<u64> {
         let participant = self.participants.get_mut(name)?;
-        participant.cursors.remove(key);
-        participant.woken.remove(key);
-        participant.rewoken.remove(key);
+        let read = participant.cursors.remove(key);
+        let kept = (participant.woken.remove(key), participant.rewoken.remove(key));
+        let removal = read.and_then(|read| {
+            let left = |entry: &&Entry| {
+                entry.seq > read && matches!(&entry.what, What::Left { who } if who == name)
+            };
+            self.groups[key].log.iter().find(left).map(|entry| Removed { read, at: entry.seq })
+        });
+        if let Some(removed) = removal {
+            self.leave_unread(name, key, removed, kept);
+        }
         let kept_to_it =
             self.waiters.get(name).is_some_and(|waiter| waiter.group.as_deref() == Some(key));
         kept_to_it.then(|| self.waiters.remove(name)).flatten().map(|waiter| waiter.ticket)
+    }
+
+    /// Drops the replica `key` once nobody here is in it or has anything left to read in it, so
+    /// it is not fetched again.
+    pub(crate) fn drop_unheld_replica(&mut self, key: &str) {
+        let Some(group) = self.groups.get(key).filter(|group| group.home.is_some()) else {
+            return;
+        };
+        let member_here = group.members.iter().any(|member| split_machine(member).is_none());
+        let left_to_read =
+            self.participants.values().any(|participant| participant.removed.contains_key(key));
+        if !member_here && !left_to_read {
+            self.groups.remove(key);
+        }
     }
 
     /// A group's entries after `after`, as this machine keeps them.

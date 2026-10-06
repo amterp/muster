@@ -63,7 +63,8 @@ you wake it, and the human only when you address `@human`.
 - Decide. When members disagree, weigh it and post the decision with its reason; do not
   canvass again.
 - Keep it moving: when a thread circles, say so and close it.
-- Dismiss a member who is finished: `muster msg group remove <group> <name>`.
+- Dismiss a member who is finished: `muster msg group remove <group> <name>`. Post anything it
+  should know first; it can still read what you posted before removing it.
 - Address `@human` only for what needs a person, in one message that says exactly what you
   need. When the council's question is answered, post the outcome to `@human` and end.
 
