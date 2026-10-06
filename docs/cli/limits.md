@@ -339,10 +339,11 @@ more than one answers, and `--json` becomes `{"windows": [...]}` with each app's
 inside - so `.windows[].panes[]` reads across all of them. With one app running, it is exactly what
 it was.
 
-`muster pane read` and `muster daemons` are asked of every app the same way, and cannot yet show
-what more than one of them answered: each heading is followed by the words `a pane's text` or `a
-list of daemons`, and `--json` puts them under `unreadable`. Pass `--socket` to read one app's
-answer. `muster window --watch` refuses outright with two apps listening, and names the sockets;
+`muster pane read --pane P` answers from the app holding `P`. A `pane read` naming no pane, and
+`muster daemons`, are asked of every app the same way, and cannot yet show what more than one of
+them answered: each heading is followed by the words `a pane's text` or `a list of daemons`, and
+`--json` puts them under `unreadable`. Pass `--socket` to read one app's answer. `muster window
+--watch` refuses outright with two apps listening, and names the sockets;
 `muster pane wait` goes to the app holding the first pane it names.
 
 ## A zoom fills the tab only from the part with the keyboard
