@@ -845,6 +845,15 @@ pub(crate) fn carry(
     })
 }
 
+/// `reply`, carried back from `machine`, in this machine's names. As it came when the link
+/// went down after answering, since then there is no telling how that machine names things.
+pub(crate) fn named_here(shared: &Shared, machine: &str, reply: Reply) -> Reply {
+    match shared.peers.to(machine) {
+        Some(link) => super::carry::named_here(&link.peer, reply),
+        None => reply,
+    }
+}
+
 /// A group's home sent new entries: take them into the replica, fetching first whatever came
 /// between, and wake this machine's members for them.
 fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> Replied {

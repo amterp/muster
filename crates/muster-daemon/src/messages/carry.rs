@@ -2,9 +2,14 @@
 //! request the service refuses them for acting as the human, for changing a group kept where
 //! the human is homed, or for naming a group this machine does not hold, is carried there over
 //! the link and done as the human, and that machine's answer, in its names, is theirs.
+//!
+//! The other way too: the person on the human's own machine deleting, pausing or resuming a
+//! group kept on a linked machine has it carried to the group's home, which does it as the
+//! human, and its answer is turned into this machine's names.
 
 use muster_daemon_proto as proto;
 use muster_msg::{HumanHome, Messaging, Peer};
+use proto::msg_answer::Answer;
 use proto::msg_request::Request as Asked;
 
 use super::presence::Panes;
@@ -12,28 +17,67 @@ use super::store::Files;
 use super::{policy_from, policy_of};
 use crate::session::{Reply, Shared};
 
+/// Where a person's refused request is carried.
+pub(super) enum Destination {
+    /// The human's home, which answers in its own names.
+    HumanHome(HumanHome),
+    /// The machine keeping the group the human here asked to change, whose answer is turned
+    /// into this machine's names.
+    GroupHome(String),
+}
+
 /// Where `asked`, just answered with `reply`, is to be carried: the human's home, when `reply`
 /// refuses the person for acting as the human there, for changing a group kept there, or for
-/// naming a group this machine has none of, which the home may keep.
+/// naming a group this machine has none of, which the home may keep; or, for the human here,
+/// the home of a group kept elsewhere that they asked to delete, pause or resume.
 pub(super) fn destination(
     shared: &Shared,
     caller: &muster_msg::Caller,
     asked: &Asked,
     reply: &Reply,
     panes: &Panes,
-) -> Option<HumanHome> {
+) -> Option<Destination> {
     let code = match reply.detail.as_deref() {
         Some(proto::answer::Detail::Msg(answer)) => answer.refusal.as_str(),
         _ => return None,
     };
     let messages = shared.messages();
-    let home = messages.service.person_elsewhere(caller, panes)?;
+    let Some(home) = messages.service.person_elsewhere(caller, panes) else {
+        let group = carried_to_its_home(asked)?;
+        if code != "kept_elsewhere" || !messages.service.is_person(caller, panes) {
+            return None;
+        }
+        return messages.service.home_of(group).map(Destination::GroupHome);
+    };
     match code {
-        "human_elsewhere" | "no_such_group" => Some(home),
+        "human_elsewhere" | "no_such_group" => Some(Destination::HumanHome(home)),
         "kept_elsewhere" => {
             let kept = messages.service.home_of(group_of(asked)?)?;
-            (kept == home.machine).then_some(home)
+            (kept == home.machine).then_some(Destination::HumanHome(home))
         }
+        _ => None,
+    }
+}
+
+/// Whether `asked` may be carried if this machine refuses it, which is what it is kept for.
+pub(super) fn may_carry(
+    service: &Messaging<Files>,
+    caller: &muster_msg::Caller,
+    asked: &Asked,
+    panes: &Panes,
+) -> bool {
+    service.person_elsewhere(caller, panes).is_some()
+        || (carried_to_its_home(asked).is_some() && service.is_person(caller, panes))
+}
+
+/// The group a request the human here may have carried to the group's home changes. Only the
+/// verbs that name nothing but the group: the names in a policy or a member list are turned
+/// for the other direction, where this machine is not the human's home.
+fn carried_to_its_home(asked: &Asked) -> Option<&str> {
+    match asked {
+        Asked::GroupDelete(delete) => Some(&delete.group),
+        Asked::Pause(pause) => Some(&pause.group),
+        Asked::Resume(resume) => Some(&resume.group),
         _ => None,
     }
 }
@@ -128,6 +172,34 @@ fn turned(
         }
         other => other,
     }
+}
+
+/// A group's home's answer to a request carried there, in this machine's names: `peer` is
+/// that home, as this machine knows it.
+pub(super) fn named_here(peer: &Peer, mut reply: Reply) -> Reply {
+    let Some(proto::answer::Detail::Msg(answer)) = reply.detail.as_deref_mut() else {
+        return reply;
+    };
+    let name = |name: &mut String| *name = peer.inward(name);
+    if !answer.caller.is_empty() {
+        name(&mut answer.caller);
+    }
+    match &mut answer.answer {
+        Some(Answer::Changed(changed)) => {
+            name(&mut changed.group);
+            changed.added.iter_mut().chain(&mut changed.removed).for_each(name);
+        }
+        Some(Answer::Deleted(deleted)) => {
+            name(&mut deleted.group);
+            deleted.let_go.iter_mut().for_each(name);
+        }
+        Some(Answer::Resumed(resumed)) => {
+            name(&mut resumed.group);
+            resumed.reached.iter_mut().for_each(|reached| name(&mut reached.name));
+        }
+        _ => {}
+    }
+    reply
 }
 
 /// What a carried request came to, for the link.

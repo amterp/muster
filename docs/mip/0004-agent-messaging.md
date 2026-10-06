@@ -730,6 +730,12 @@ As built in stage 3, under Decision 1 (a):
   the caller hangs up. Only with no link up does the person see `human_elsewhere`, saying so. An
   agent there reaches the human as it reaches any member on another machine. A daemon no link
   has dialed yet keeps a human of its own, which no window hears of.
+- **The human's own changes go the other way too**, added later so the sidebar can delete a
+  group kept on a devenv. A delete, pause or resume the human makes on the app's machine of a
+  group kept on a far one is refused there as `kept_elsewhere` and carried to the group's home
+  over the same call, done as `@human@laptop`, and its answer turned into the app's machine's
+  names. Changing a policy or members is not carried: their names are turned for the direction
+  above, where the far machine is not the human's home.
 
 The display name of this section's first paragraph is built after stage 5 as the config key
 `human_name`, a root key since the subject has one answer. The app sends it, or its login name

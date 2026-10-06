@@ -573,3 +573,62 @@ fn the_persons_requests_on_the_dialed_machine_are_carried_to_the_near_one() {
     assert_eq!(msg_answer(&refused).refusal, "human_elsewhere", "{}", refused.answer.reason);
     assert!(refused.answer.reason.contains("no link"), "{}", refused.answer.reason);
 }
+
+/// The human on the app's machine pauses, resumes and deletes a group kept on the dialed one,
+/// as from the sidebar: the near daemon refuses each as kept elsewhere and carries it there,
+/// where it is done as the human, and the answer comes back in the near machine's names. A
+/// deleted group is no longer listed for the human. An agent on the near machine is still
+/// refused, and so is the human once the link is cut.
+#[test]
+fn the_humans_changes_to_a_group_kept_on_the_dialed_machine_are_carried_there() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let holding = link(&near, &far, &mut near_log, 1);
+    let person = msg_request::Caller::default();
+    join(&mut far_control, &named("critic"), "critic", "review");
+    join(&mut far_control, &named("critic"), "critic", "desk");
+    assert_eq!(join(&mut near_control, &person, "@human", "review"), "review@far");
+    assert_eq!(join(&mut near_control, &named("builder"), "builder", "desk"), "desk@far");
+
+    let asked = Asked::Pause(msg_request::Pause { group: "review@far".to_string() });
+    let paused = expect(&mut near_control, msg(&person, asked), proto::Outcome::Done);
+    let Some(Answer::Changed(changed)) = &msg_answer(&paused).answer else { panic!("{paused:?}") };
+    assert_eq!(changed.group, "review@far");
+    let asked = Asked::Resume(msg_request::Resume { group: "review@far".to_string() });
+    let resumed = expect(&mut near_control, msg(&person, asked), proto::Outcome::Done);
+    let Some(Answer::Resumed(resumed)) = &msg_answer(&resumed).answer else {
+        panic!("{resumed:?}")
+    };
+    assert_eq!(resumed.group, "review@far");
+
+    let delete = |group: &str| Asked::GroupDelete(msg_request::GroupDelete { group: group.into() });
+    let refused = near_control.ask(msg(&named("builder"), delete("desk@far")));
+    assert_eq!(msg_answer(&refused).refusal, "kept_elsewhere", "{}", refused.answer.reason);
+
+    let deleted =
+        expect(&mut near_control, msg(&person, delete("review@far")), proto::Outcome::Done);
+    let Some(Answer::Deleted(deleted)) = &msg_answer(&deleted).answer else {
+        panic!("{deleted:?}")
+    };
+    assert_eq!(deleted.group, "review@far");
+    let mut let_go = deleted.let_go.clone();
+    let_go.sort();
+    assert_eq!(let_go, ["@human", "critic@far"], "in the near machine's names");
+    let groups = expect(
+        &mut far_control,
+        msg(&named("critic"), Asked::Groups(msg_request::Groups {})),
+        proto::Outcome::Done,
+    );
+    let Some(Answer::Groups(groups)) = &msg_answer(&groups).answer else { panic!("{groups:?}") };
+    let kept: Vec<&str> = groups.groups.iter().map(|group| group.name.as_str()).collect();
+    assert_eq!(kept, ["desk"], "deleted where it was kept");
+    until_some("the near machine to stop listing the group for the human", || {
+        let listed = snapshot(&mut near_control).human;
+        listed.iter().all(|notice| notice.group != "review@far").then_some(())
+    });
+
+    cut(holding, &mut near_log, &mut far_log, 1);
+    let refused = near_control.ask(msg(&person, delete("desk@far")));
+    assert_eq!(msg_answer(&refused).refusal, "kept_elsewhere", "{}", refused.answer.reason);
+}

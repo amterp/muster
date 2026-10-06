@@ -409,7 +409,10 @@ from the other:
   review critic@devenv` removes a member on another machine, which lets it go as a leave would.
   A pause holds wakes on both machines, and a resume wakes each machine's members. A delete
   lets go of the members on every machine: one whose link is down when it happens forgets the
-  group when the link returns.
+  group when the link returns. You are not an agent: on the laptop, your `group delete`, `pause`
+  and `resume` of a group kept on a devenv are carried there while the link is up, done as you,
+  and answered in the laptop's names, `review@devenv`. With no link they are refused,
+  `kept_elsewhere`. `group set`, `group add` and `group remove` still run only on the devenv.
 - **The human is on the laptop.** `@human` in a policy means you wherever the group is kept, and
   a devenv post that wakes you notifies through the laptop's windows. The guard never holds your
   post, on either machine. Once the laptop has linked to a devenv, the devenv has no human of its

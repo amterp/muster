@@ -41,6 +41,7 @@ use proto::msg_answer::{self, Answer};
 use proto::msg_request::Request as Asked;
 
 use crate::session::{HANDING_OVER, Reply, Shared};
+use carry::Destination;
 use doorbell::{By, Now};
 use presence::Panes;
 use store::Files;
@@ -310,6 +311,8 @@ impl Messages {
 ///
 /// A person's request this machine refuses because the human is homed elsewhere is carried
 /// there, when a link to it is up, and answered as that machine answers it (MIP-4, section 10).
+/// So is the human's own delete, pause or resume of a group kept on another machine, to that
+/// machine.
 pub(crate) fn handle(
     shared: &Arc<Shared>,
     request: proto::MsgRequest,
@@ -321,16 +324,22 @@ pub(crate) fn handle(
         return peer::hold(shared, &peer.name, &peer.socket, hung_up);
     }
     let panes = Panes::of(shared);
-    let person_elsewhere = shared.messages().service.person_elsewhere(&caller, &panes).is_some();
-    let kept = person_elsewhere.then(|| asked.clone());
+    let carriable = carry::may_carry(&shared.messages().service, &caller, &asked, &panes);
+    let kept = carriable.then(|| asked.clone());
     let reply = respond(shared, &caller, asked, hung_up, &panes);
     let reply = match kept {
         None => reply,
         Some(asked) => match carry::destination(shared, &caller, &asked, &reply, &panes) {
             None => reply,
-            Some(home) => {
+            Some(Destination::HumanHome(home)) => {
                 let asked = carry::outward(&shared.messages().service, asked, &panes);
                 peer::carry(shared, &home.machine, asked, hung_up).unwrap_or(reply)
+            }
+            Some(Destination::GroupHome(machine)) => {
+                let asked = carry::outward(&shared.messages().service, asked, &panes);
+                peer::carry(shared, &machine, asked, hung_up)
+                    .map(|carried| peer::named_here(shared, &machine, carried))
+                    .unwrap_or(reply)
             }
         },
     };

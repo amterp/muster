@@ -1012,9 +1012,15 @@ impl<S: Store> Messaging<S> {
     /// group kept there, is carried there and done as the human (MIP-4, section 10).
     pub fn person_elsewhere(&self, caller: &Caller, presence: &dyn Presence) -> Option<HumanHome> {
         let home = self.human_elsewhere(presence)?;
+        self.is_person(caller, presence).then(|| home.clone())
+    }
+
+    /// Whether the caller is this machine's person: a shell with no agent identity, or one
+    /// acting as the human.
+    pub fn is_person(&self, caller: &Caller, presence: &dyn Presence) -> bool {
         let addressed = Self::addressed(caller, presence);
         let named = addressed.as_name.clone().or_else(|| self.lookup(&addressed));
-        (named.as_deref() == Some(HUMAN)).then(|| home.clone())
+        named.as_deref() == Some(HUMAN)
     }
 
     /// The machine `group` is kept on, when that is another one.
