@@ -768,6 +768,9 @@ message MsgAnswer {
     bool created = 3;
     // The name belonged to a participant that had gone, whose cursors this caller now has.
     bool took_over = 4;
+    // Since 1.4. Every group the name is in once joined, `group` included: a name taken over
+    // brings the gone participant's groups with it.
+    repeated string groups = 5;
   }
 
   message Left {

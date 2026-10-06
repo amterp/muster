@@ -35,7 +35,14 @@ Every verb works out who is asking, in this order:
 `join --name NAME` takes a name. A session that runs any other verb first is registered under
 the last part of its working directory - `muster-5` for a session in `~/src/muster-5` - with
 `-2`, `-3` added when a live session already has that name. Joining under the name of a
-participant whose session has gone takes it over, with its place in every group. A session may
+participant whose session has gone takes it over, with its place in every group, and `join`
+names those groups so you can leave the ones you are done with:
+
+    taking part as director, taken over from a session that had gone, with its place in
+    alpha+director, demo-council; `muster msg leave --group <group>` leaves one you are done with
+
+A join that leaves you in groups besides the one it joined says so too, `; also in review`. A
+session may
 not become one that is still running, with `join --name` or with `--as`; a shell or a script,
 which has no session of its own to move, may act `--as` anyone. A participant nothing can wake,
 such as one made by `join --name` from a plain shell, counts as gone.

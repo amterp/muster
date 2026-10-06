@@ -704,6 +704,7 @@ fn joining(
         group: joined.group,
         created: joined.created,
         took_over: joined.took_over,
+        groups: joined.groups,
     });
     answered(joined.name, answer)
 }

@@ -90,7 +90,9 @@ its pane may name itself with `muster msg join --name <name>` and keeps its plac
 
 An agent convening a council it will direct itself names itself first, then makes and fills
 the group, and needs no brief: `muster msg join --name director`, then the first two lines
-above.
+above. The name `director` outlives each council, so the join may say it took over a place in
+groups an earlier director left behind; leave each with `muster msg leave --group <group>`
+before making the new one, or their posts will wake you.
 
 `muster msg pause review` holds every wake while you catch up; `muster msg resume review` wakes
 each member once for what it missed.

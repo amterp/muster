@@ -237,7 +237,7 @@
         "builder joined g",
         "died",
         "builder posted #4 to g; gone critic",
-        "critic registered (took over)",
+        "critic registered (took over; in g)",
         "critic read g: #3 builder joined | #4 builder: while you were away",
         "refused name_in_use builder at /tmp/cc-socks/s2.sock"
       ] }
@@ -464,7 +464,7 @@
         "director joined g",
         "director posted #4 to g; woke builder [g #4-4 x1 to-you:0 from director]",
         "died",
-        "builder registered (took over)",
+        "builder registered (took over; in g)",
         "director posted #5 to g; woke builder [g #4-5 x2 to-you:0 from director]"
       ] }
     },
@@ -922,6 +922,22 @@
         "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
         "b left g",
         "refused not_a_member b g"
+      ] }
+    },
+    {
+      "name": "joining under a gone participant's name says which groups came with it",
+      "why": "A preset names its director literally, so whoever convenes the next council takes over the name `director` from the last one, and with it every group that one was in, whose posts would wake the new session. The join names them, so the convener can leave them.",
+      "given": { "steps": [
+        {"session": "s1", "do": "join", "name": "director", "group": "old"},
+        {"session": "s1", "do": "join", "name": "director", "group": "older"},
+        {"session": "s1", "do": "dies"},
+        {"session": "s2", "do": "join", "name": "director", "group": "new"}
+      ] },
+      "expect": { "said": [
+        "director joined old (created)",
+        "director joined older (created)",
+        "died",
+        "director joined new (created) (took over; in old,older)"
       ] }
     },
     {

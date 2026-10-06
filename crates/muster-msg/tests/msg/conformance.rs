@@ -473,6 +473,30 @@ fn group_step(
     }
 }
 
+fn joined_text(joined: &muster_msg::Joined) -> String {
+    let mut line = match &joined.group {
+        Some(group) => format!("{} joined {group}", joined.name),
+        None => format!("{} registered", joined.name),
+    };
+    if joined.created {
+        line.push_str(" (created)");
+    }
+    let others: Vec<&str> = joined
+        .groups
+        .iter()
+        .filter(|group| Some(*group) != joined.group.as_ref())
+        .map(String::as_str)
+        .collect();
+    match (joined.took_over, others.as_slice()) {
+        (false, _) => {}
+        (true, []) => line.push_str(" (took over)"),
+        (true, others) => {
+            let _ = write!(line, " (took over; in {})", others.join(","));
+        }
+    }
+    line
+}
+
 fn left_text(left: &muster_msg::Left) -> String {
     let line = if left.stopped && left.groups.is_empty() {
         format!("{} stopped", left.name)
@@ -517,22 +541,7 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
                 }
                 Ok(joined)
             })
-            .map(|joined| {
-                let mut line = format!("{} joined", joined.name);
-                if let Some(group) = &joined.group {
-                    line = format!("{line} {group}");
-                }
-                if joined.group.is_none() {
-                    line = format!("{} registered", joined.name);
-                }
-                if joined.created {
-                    line.push_str(" (created)");
-                }
-                if joined.took_over {
-                    line.push_str(" (took over)");
-                }
-                line
-            }),
+            .map(|joined| joined_text(&joined)),
         "leave" => service.leave(&who, text("group"), sessions, now).map(|left| left_text(&left)),
         "post" => {
             let to = strings(step.get("to"));

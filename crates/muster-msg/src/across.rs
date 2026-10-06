@@ -758,6 +758,7 @@ impl<S: Store> Messaging<S> {
                     group: Some(key),
                     created: false,
                     took_over: false,
+                    groups: self.memberships(name),
                     tell: Vec::new(),
                 }))
             }

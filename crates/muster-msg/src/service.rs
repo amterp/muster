@@ -291,6 +291,8 @@ pub struct Joined {
     pub group: Option<String>,
     pub created: bool,
     pub took_over: bool,
+    /// Every group the name is in once joined: a name taken over brings the gone session's.
+    pub groups: Vec<String>,
     pub tell: Vec<Tell>,
 }
 
@@ -602,7 +604,8 @@ impl<S: Store> Messaging<S> {
             tell.extend(self.tell(group, after, None));
         }
         self.save()?;
-        Ok(Joined { name, group: group.map(str::to_string), created, took_over, tell })
+        let groups = self.memberships(&name);
+        Ok(Joined { name, group: group.map(str::to_string), created, took_over, groups, tell })
     }
 
     /// Refuses joining `group` as `name` before the caller is renamed, so a refused join leaves

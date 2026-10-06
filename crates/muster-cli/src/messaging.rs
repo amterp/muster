@@ -6,6 +6,7 @@
 //! wakes and refusals read too, so a rename is one edit there.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
@@ -879,6 +880,7 @@ fn joined_text(joined: &msg_answer::Joined, json: bool) -> String {
             "group": joined.group,
             "created": joined.created,
             "took_over": joined.took_over,
+            "groups": joined.groups,
         })
         .to_string();
     }
@@ -889,8 +891,29 @@ fn joined_text(joined: &msg_answer::Joined, json: bool) -> String {
         Some(group) => format!("joined {group} as {}", joined.name),
         None => format!("taking part as {}", joined.name),
     };
-    if joined.took_over {
-        text.push_str(" (taken over from a session that had gone)");
+    let others: Vec<&str> = joined
+        .groups
+        .iter()
+        .filter(|group| Some(*group) != joined.group.as_ref())
+        .map(String::as_str)
+        .collect();
+    match (joined.took_over, others.is_empty()) {
+        (true, true) => text.push_str(" (taken over from a session that had gone)"),
+        // A name like `director` outlives the council it directed, and the session taking it
+        // over would be woken by every group the gone one was in.
+        (true, false) => {
+            let leave = spelling::command(LEAVE, "--group <group>");
+            let others = others.join(", ");
+            let _ = write!(
+                text,
+                ", taken over from a session that had gone, with its place in {others}; `{leave}` \
+                 leaves one you are done with"
+            );
+        }
+        (false, false) => {
+            let _ = write!(text, "; also in {}", others.join(", "));
+        }
+        (false, true) => {}
     }
     text
 }
@@ -1252,6 +1275,37 @@ fn notice_json(notice: &msg_answer::Notice) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A join says which groups the name is in besides the one joined, and a name taken over
+    /// says so together with how to leave what came with it.
+    #[test]
+    fn a_join_says_what_else_the_name_is_in() {
+        let joined = |took_over, groups: &[&str]| msg_answer::Joined {
+            name: "director".to_string(),
+            group: Some("review".to_string()),
+            created: false,
+            took_over,
+            groups: groups.iter().map(ToString::to_string).collect(),
+        };
+        assert_eq!(joined_text(&joined(false, &["review"]), false), "joined review as director");
+        assert_eq!(
+            joined_text(&joined(false, &["alpha", "review"]), false),
+            "joined review as director; also in alpha"
+        );
+        assert_eq!(
+            joined_text(&joined(true, &["review"]), false),
+            "joined review as director (taken over from a session that had gone)"
+        );
+        let took_over = joined_text(&joined(true, &["alpha", "demo", "review"]), false);
+        assert!(
+            took_over.starts_with(
+                "joined review as director, taken over from a session that had gone, with its \
+                 place in alpha, demo; `"
+            ),
+            "{took_over}"
+        );
+        assert!(took_over.ends_with("leave --group <group>` leaves one you are done with"));
+    }
 
     #[test]
     fn what_protocol_1_0_does_not_know_is_asked_of_1_1_or_later_only() {
