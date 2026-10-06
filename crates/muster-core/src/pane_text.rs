@@ -160,6 +160,12 @@ pub fn before_sending(read: impl FnOnce(u32) -> Result<String, String>) -> Strin
 /// pane too. A dialog that ignores what it was sent redraws itself unchanged, which reads as
 /// both of these not arriving.
 ///
+/// **Short text is common text.** A `y` or a `2` already shows many times in the rows read, and
+/// an agent printing after it scrolls old copies out as fast as new ones arrive, so its count can
+/// fall although it arrived - and a refusal invites the caller to send it twice. So text that was
+/// already there also counts as arrived once the pane changes and still shows it, which is as
+/// much as keys alone can prove. A pane that does not change still refuses it.
+///
 /// **It answers arrival and not submission.** A pane draws the text whether it has been
 /// submitted or is sitting in an input box waiting for a Return, and nothing in a pane's
 /// rendered rows separates those. A harness that folds a long paste into a placeholder draws
@@ -178,7 +184,11 @@ pub fn confirm(
     let wanted = looked_for(sent);
     let shown_before = times_on(before, &wanted);
     let arrived = |after: &str| {
-        if wanted.is_empty() { after != before } else { times_on(after, &wanted) > shown_before }
+        if wanted.is_empty() {
+            return after != before;
+        }
+        let shown = times_on(after, &wanted);
+        shown > shown_before || (shown_before > 0 && shown > 0 && after != before)
     };
     let deadline = std::time::Instant::now() + CONFIRM_WITHIN;
     // Whatever the last read said, so a pane that could not be read at all is reported as that
@@ -287,6 +297,16 @@ mod tests {
             Ok(if rows == 0 { "$ make\nlots\n".to_string() } else { "lots\n".to_string() })
         });
         assert_eq!(scrolled, Ok(()), "output that scrolled the text away does not hide it");
+    }
+
+    /// A `y` sent to an agent that then prints scrolls copies of `y` off the top of the rows read
+    /// as fast as it adds them, so its count does not rise; the pane changing is what shows it
+    /// arrived.
+    #[test]
+    fn short_text_already_on_the_pane_is_confirmed_by_the_pane_changing() {
+        let before = "yes\nyours\nContinue? (y/n)\n";
+        let after = "yours\nContinue? (y/n) y\nok\n";
+        assert_eq!(confirm("p1", "y", before, |_| Ok(after.to_string())), Ok(()));
     }
 
     /// Keys have no text to find, so what shows they arrived is the pane changing at all.

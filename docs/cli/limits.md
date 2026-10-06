@@ -122,8 +122,11 @@ Return. Muster cannot fix that from here and will not special-case one harness.
 `--confirm` is what to reach for when it matters. It reads the pane just before the send and again
 after it, and exits non-zero unless the text shows more times than it did before, so a discarded
 line, and a dialog that ignored a paste, become refusals rather than successes. Text the pane
-already showed proves nothing: a `p` sent to a Codex approval prompt was confirmed by its own
-`(p)` before this compared. A send of keys or Return alone has no text to find, and is confirmed
+already showed confirms only a send that changed the pane: a `p` sent to a Codex approval prompt
+was confirmed by its own `(p)` before this compared. Short text such as a `y` shows many times in
+the rows read, and an agent printing after it scrolls old copies away as fast as it adds new ones,
+so for text that was already there a changed pane still showing it counts as arrived - which, as
+for keys, says the pane changed rather than that the text changed it. A send of keys or Return alone has no text to find, and is confirmed
 once the pane changes at all - which says the pane changed, not that the key changed it, since an
 agent at work changes its pane on its own. A send is taken before the pane can have drawn it, so
 the read is retried for up to a second rather than taken once: a pane that has already drawn the
