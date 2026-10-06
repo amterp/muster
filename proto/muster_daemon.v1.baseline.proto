@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.3
+// Version: 1.4
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -774,6 +774,9 @@ message MsgAnswer {
     bool created = 3;
     // The name belonged to a participant that had gone, whose cursors this caller now has.
     bool took_over = 4;
+    // Since 1.4. Every group the name is in once joined, `group` included: a name taken over
+    // brings the gone participant's groups with it.
+    repeated string groups = 5;
   }
 
   message Left {
@@ -1414,11 +1417,20 @@ message InputEvent {
   }
 
   // `muster pane send`: the text as a paste, fenced when the pane asked for bracketed paste but
-  // never held, since a program or agent is speaking rather than a clipboard; then Return, if
-  // asked, encoded as the key against the pane's modes.
+  // never held, since a program or agent is speaking rather than a clipboard; then each key; then
+  // Return, if asked. Keys and the Return are encoded against the pane's modes.
+  //
+  // With no keys, the text and its Return are one write. Each key is a write of its own, at
+  // least a moment after the pane's last, and so is a Return that follows keys: a program reading
+  // several keys in one read can take them as a paste, and a dialog wants to have drawn one
+  // key's answer before it reads the next.
   message Send {
     string text = 1;
     bool enter = 2;
+    // Since 1.4. Each spelled as Muster's config spells a keybinding: `down`, `esc`, `2`,
+    // `ctrl+c`. A send holding one the daemon cannot read is not written at all, since a Return
+    // after a key that went missing can take the wrong answer.
+    repeated string keys = 3;
   }
 
   // Focus in or out, reported to a program that asked (mode 1004).
@@ -1792,6 +1804,10 @@ message PeerCall {
     string name = 1;
     string group = 2;
     uint64 head = 3;
+    // Since 1.4. The asker's member that `name` takes the place of, without the policy being
+    // asked: the pane an agent was added by, before it joined under a name of its own. A home
+    // before 1.4 reads this as an ordinary join, which the policy may refuse.
+    optional string was = 4;
   }
 
   message Leave {
