@@ -8,6 +8,7 @@ members = [
     "crates/muster-core",
     "crates/muster-daemon",
     "crates/muster-daemon-client",
+    "crates/muster-daemon-launch",
     "crates/muster-daemon-proto",
     "crates/muster-detect",
     "crates/muster-frame",
@@ -34,6 +35,7 @@ libc = "0.2"
 muster-cli = { path = "crates/muster-cli" }
 muster-core = { path = "crates/muster-core" }
 muster-daemon-client = { path = "crates/muster-daemon-client" }
+muster-daemon-launch = { path = "crates/muster-daemon-launch" }
 muster-daemon-proto = { path = "crates/muster-daemon-proto" }
 muster-detect = { path = "crates/muster-detect" }
 muster-frame = { path = "crates/muster-frame" }

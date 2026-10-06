@@ -1,0 +1,16 @@
+[package]
+name = "muster-daemon-launch"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# Starting this machine's daemon, apart from the rest of `muster-daemon-client` so the `muster`
+# CLI can start one too without linking what only the app needs: ssh, the remote install's
+# archive and digest, and agent detection.
+[dependencies]
+libc.workspace = true
+muster-core.workspace = true
+muster-daemon-proto.workspace = true
+
+[lints]
+workspace = true

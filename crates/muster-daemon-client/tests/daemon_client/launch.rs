@@ -46,6 +46,7 @@ impl Scratch {
             data: Some(DAEMON_DATA.as_ref()),
             socket: &self.socket,
             environment: &self.environment,
+            impact: "this window has no session behind it",
         }
     }
 }
@@ -200,6 +201,7 @@ fn daemon_launch_conformance() {
             data: data.as_deref(),
             socket: &socket,
             environment: &environment,
+            impact: "this window has no session behind it",
         };
         Ok(match route(&binary) {
             Route::Spawn => fields([("route", Some(json!("spawn")))]),

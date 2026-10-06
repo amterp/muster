@@ -662,6 +662,7 @@ dependencies = [
  "conformance",
  "libc",
  "muster-core",
+ "muster-daemon-launch",
  "muster-daemon-proto",
  "muster-detect",
  "muster-harness",
@@ -671,6 +672,15 @@ dependencies = [
  "serde_json",
  "sha2",
  "tar",
+]
+
+[[package]]
+name = "muster-daemon-launch"
+version = "0.13.0"
+dependencies = [
+ "libc",
+ "muster-core",
+ "muster-daemon-proto",
 ]
 
 [[package]]

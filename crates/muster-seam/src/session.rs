@@ -612,6 +612,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, Unattached> 
                 data: data.as_deref().map(Path::new),
                 socket: &socket,
                 environment: &given,
+                impact: "this window has no session behind it",
             })?;
             let handover = (reached == launch::Reached::Adopted)
                 .then(|| {

@@ -1698,8 +1698,9 @@ if lint:
     // The Linux halves of the daemon and of detection are code a Mac never compiles otherwise.
     // One target is enough: the two differ only in libc's per-architecture constants.
     $`cargo clippy -p muster-daemon -p muster-detect -p muster-msg --all-targets --target aarch64-unknown-linux-musl -- -D warnings`
-    // The CLI's own code only: its tests drive a window, whose seam is macOS's.
-    $`cargo clippy -p muster-cli --target aarch64-unknown-linux-musl -- -D warnings`
+    // The CLI's own code only: its tests drive a window, whose seam is macOS's. With it the
+    // daemon start it links, whose Linux half no Mac build compiles either.
+    $`cargo clippy -p muster-cli -p muster-daemon-launch --target aarch64-unknown-linux-musl -- -D warnings`
 
 if test:
     announce("test")

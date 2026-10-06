@@ -57,6 +57,8 @@ other platform pays nothing.
 **Backend adapter** (`muster-daemon-client`). Translates the Muster vocabulary to muster-daemon's protocol, and is the
 one place the core's requests become that protocol; the core never sees it. The daemon has been Muster's own since
 MIP-3 replaced herdr, so its protocol is part of Muster's contract, and a second backend would be a second adapter.
+Starting this machine's daemon is `muster-daemon-launch`, which the adapter re-exports. It is a crate of its own so
+the `muster` CLI can start a daemon too without linking what the app needs to install one on another machine.
 
 **Muster ships its daemon and runs it, and talks to no other.** It is what makes the rest of this document mean
 anything. The suite runs against the daemon built from the same commit, so a Muster attached to some other daemon is a
