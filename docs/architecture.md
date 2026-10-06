@@ -969,8 +969,8 @@ the next command all read - so a rename is one edit.
 **The other is a window's questions about panes when no window answers.** `muster window`, `pane read`, `pane send`
 and `pane wait` ask the same daemon when `$MUSTER_SOCKET` names a window that is not there, or none is listening: on
 an SSH devenv nothing forwards a window to, or in a pane whose window has quit with no other window of that Muster
-open. A window that takes the connection and does not answer what it is showing within two seconds counts as not
-there, because a devenv's forward of a sleeping laptop does exactly that; nothing but that question was sent to it,
+open. A window that takes the connection and does not answer what it is showing within two seconds (ten for a verb
+the daemon cannot answer instead) counts as not there, because a devenv's forward of a sleeping laptop does exactly that; nothing but that question was sent to it,
 so passing it over cannot send a request twice. The CLI builds the window's own
 answers from the daemon's records, so one renderer prints both. It stays a second path in transport only: the rules
 the window applies on the way - paging to a pane's newest rows (`muster-daemon-proto`'s `pane_text`), counting rows

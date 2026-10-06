@@ -37,6 +37,13 @@ const PATIENCE: Duration = Duration::from_mins(1);
 /// there pays this once while the laptop sleeps, rather than a minute.
 const ALIVE_WITHIN: Duration = Duration::from_secs(2);
 
+/// How long a window has to answer that when no daemon could carry the command instead.
+///
+/// Passing a window over buys a command something only when the daemon can answer it. One only a
+/// window can carry out - making a pane, a tab, a rename - would fail either way, so a window
+/// slowed by a loaded machine gets longer to answer than a sleeping laptop's forward is worth.
+const ALONE_WITHIN: Duration = Duration::from_secs(10);
+
 /// Sends one request to a window and hands back what it said.
 pub fn ask(
     request: &Request,
@@ -441,7 +448,9 @@ fn reach(
     probe: &Request,
     patience: Duration,
 ) -> Result<Live, Trouble> {
-    let within = patience.min(ALIVE_WITHIN);
+    let alive_within =
+        if crate::windowless::can_answer(request) { ALIVE_WITHIN } else { ALONE_WITHIN };
+    let within = patience.min(alive_within);
     if let Some(path) = socket {
         return probed(path, probe, within).map_err(|miss| {
             Trouble::Unreachable(format!(
@@ -565,19 +574,21 @@ fn nobody(
         return Trouble::Unreachable(miss.said(path));
     }
     let silent = silent(missed);
-    let beside: Vec<&str> = missed
+    let beside: Vec<(&str, Duration)> = missed
         .iter()
-        .filter(|(path, miss)| Some(path.as_str()) != own && matches!(miss, Miss::Silent(_)))
-        .map(|(path, _)| path.as_str())
+        .filter(|(path, _)| Some(path.as_str()) != own)
+        .filter_map(|(path, miss)| match miss {
+            Miss::Silent(waited) => Some((path.as_str(), *waited)),
+            _ => None,
+        })
         .collect();
-    let also = if beside.is_empty() {
-        String::new()
-    } else {
-        format!(
-            " {} took the connection and did not answer within {ALIVE_WITHIN:?}, so nothing \
-             was sent there either.",
-            beside.join(", ")
-        )
+    let also = match beside.first() {
+        None => String::new(),
+        Some((_, waited)) => format!(
+            " {} took the connection and did not answer within {waited:?}, so nothing was sent \
+             there either.",
+            beside.iter().map(|(path, _)| *path).collect::<Vec<_>>().join(", ")
+        ),
     };
     let pane = environment.get(environment::PANE_NAME).filter(|pane| !pane.is_empty());
     let socket = environment::WINDOW_SOCKET;

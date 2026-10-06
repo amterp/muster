@@ -20,10 +20,12 @@ A socket can accept a connection with nothing behind it to answer. A devenv hold
 window forwarded from a laptop that has gone to sleep, since ssh on the devenv takes the
 connection and waits for the laptop. So `muster` asks a window what it is showing before sending
 it anything, and a window that has not answered within two seconds is passed over with nothing
-sent to it: the daemon answers in its place and `muster` says so on stderr, and a verb only a
-window can carry out exits 3. While the laptop sleeps, every command run on the devenv pays
-those two seconds. A window that answers that first question and then not the request itself is
-still exit 4, below.
+sent to it: the daemon answers in its place and `muster` says so on stderr. While the laptop
+sleeps, every command run on the devenv pays those two seconds. A verb only a window can carry
+out - `pane new`, a rename, anything about tabs - has no daemon to fall back on, so it gives a
+window ten seconds, which a window slowed by a loaded machine needs more than a sleeping laptop
+does, and then exits 3 with nothing sent. A window that answers that first question and then not
+the request itself is still exit 4, below.
 
 ## In an agent's sandbox, `muster` may reach no socket at all
 
