@@ -449,7 +449,8 @@ codegen - a surface that cannot express an action is a missing message, visible 
 - **Where the keyboard is belongs to the window.** muster-daemon keeps no focus of its own, so which pane Muster's
   keyboard feeds is view-local and nothing another window does can move it. Rendering follows the same rule: the
   daemon records which pane of a tab is zoomed, but a region fills a zoomed tab with the pane its own keyboard is on,
-  and uses the daemon's zoomed pane only when its keyboard is on none (`zoom_filling` in `composition/view.rs`).
+  and uses the daemon's zoomed pane only when its keyboard is on none (`zoom_filling` in `composition/view.rs`). A
+  zoomed region holding the keyboard fills the whole tab, its other machines' regions covered rather than closed.
   Following the daemon there would let another window decide what this one paints, and would leave ⌘2 inside a zoomed
   tab typing into a pane nobody can see.
 - **A pane is shown once a tree places it.** The daemon announces a pane as opened before the change to the tab that

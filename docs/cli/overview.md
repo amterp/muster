@@ -194,7 +194,7 @@ goes to a terminal only - a pipe, a file, or `NO_COLOR` gets none. A refusal goe
 either way, under `--json` as `{"error": "..."}`, so stdout holds the answer or nothing.
 
 A few verbs have no page of their own, because `--help` says all there is: `muster pane rename`
-names a pane, `muster zoom` fills a region with one pane and puts the others back, `muster tab
+names a pane, `muster zoom` fills the tab with one pane and puts the others back, `muster tab
 close` closes a tab, `muster reload` reads the config again, `muster sidebar` shows or hides the
 agent list, `muster font larger`, `smaller` and `reset` size the text of the pane the keyboard is
 on, and `muster completions <shell>` prints a completion script. `muster docs` lists these pages.

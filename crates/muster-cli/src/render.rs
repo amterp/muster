@@ -512,11 +512,19 @@ fn drawn_tab_line(
     layout: &muster_proto::TabLayout,
 ) -> String {
     let mut heading = tab_line(widths, tab);
-    if let Some(zoomed) = layout.regions.iter().find(|region| region.zoomed) {
+    let zoomed =
+        covering_zoom(layout).or_else(|| layout.regions.iter().find(|region| region.zoomed));
+    if let Some(zoomed) = zoomed {
         heading.push_str("  ");
         heading.push_str(&styled(&format!("zoomed on {}", zoomed.pane_id), QUIET));
     }
     heading
+}
+
+/// The zoomed part holding the keyboard, which fills the whole tab whatever machines the other
+/// parts are on, as the window draws it.
+fn covering_zoom(layout: &muster_proto::TabLayout) -> Option<&muster_proto::ViewRegion> {
+    layout.regions.iter().find(|region| region.region_id == layout.focused_region && region.zoomed)
 }
 
 /// What `--layout` draws from: every tab's arrangement and every pane's size, from an answer
@@ -557,11 +565,22 @@ impl<'a> Drawing<'a> {
         // A zoomed part is drawn as the one pane filling it, which is what is on screen and what
         // its daemon sizes that pane to. The panes behind it keep the sizes they had before the
         // zoom, and drawn in the tree beside a pane sized to the whole tab their boxes and their
-        // sizes would disagree, so they are named under the drawing instead.
+        // sizes would disagree, so they are named under the drawing instead. While that part
+        // holds the keyboard it fills the whole tab, and every other part is behind it too.
         let mut behind: Vec<&str> = Vec::new();
+        let covering = covering_zoom(layout);
+        let drawn = |region: &&muster_proto::ViewRegion| {
+            covering.is_none_or(|covering| covering.region_id == region.region_id)
+        };
+        for region in layout.regions.iter().filter(|region| !drawn(region)) {
+            if let Some(root) = region.root.as_ref() {
+                tree(root, &mut behind);
+            }
+        }
         let parts: Vec<Part> = layout
             .regions
             .iter()
+            .filter(drawn)
             .map(|region| {
                 let root = match region.root.as_ref() {
                     Some(root) if region.zoomed && !region.pane_id.is_empty() => {
@@ -1619,6 +1638,84 @@ mod tests {
         assert!(text.contains("160x40"), "the zoomed pane is drawn at its size: {text}");
         assert!(!text.contains("79x40"), "a pane behind the zoom is drawn: {text}");
         assert!(text.contains("behind the zoom: p2"), "{text}");
+    }
+
+    /// A zoom in the part holding the keyboard fills the whole tab, so another machine's part is
+    /// behind it too rather than drawn beside it.
+    #[test]
+    fn a_zoom_with_the_keyboard_is_drawn_filling_a_tab_on_two_machines() {
+        use muster_proto::{
+            PaneGrid, RosterChanged, RosterPane, RosterTab, TabLayout, ViewNode, ViewPane,
+            ViewRegion, ViewSplit, Window, view_node,
+        };
+        let leaf = |pane: &str| ViewNode {
+            node: Some(view_node::Node::Pane(ViewPane {
+                pane_id: pane.to_string(),
+                ..ViewPane::default()
+            })),
+        };
+        let grid = |pane: &str, cols: u32| PaneGrid {
+            pane_id: pane.to_string(),
+            cols,
+            rows: 40,
+            ..PaneGrid::default()
+        };
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![RosterTab {
+                    tab_id: "t1".to_string(),
+                    panes: ["p1", "p2", "p3"]
+                        .map(|pane| RosterPane {
+                            pane_id: pane.to_string(),
+                            ..RosterPane::default()
+                        })
+                        .to_vec(),
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            layouts: vec![TabLayout {
+                tab_id: "t1".to_string(),
+                focused_region: "r1".to_string(),
+                regions: vec![
+                    ViewRegion {
+                        region_id: "r0".to_string(),
+                        daemon_id: "laptop".to_string(),
+                        pane_id: "p1".to_string(),
+                        weight: 1.0,
+                        root: Some(leaf("p1")),
+                        ..ViewRegion::default()
+                    },
+                    ViewRegion {
+                        region_id: "r1".to_string(),
+                        daemon_id: "devenv".to_string(),
+                        pane_id: "p3".to_string(),
+                        zoomed: true,
+                        weight: 1.0,
+                        root: Some(ViewNode {
+                            node: Some(view_node::Node::Split(Box::new(ViewSplit {
+                                axis: "columns".to_string(),
+                                ratio: 0.5,
+                                first: Some(Box::new(leaf("p2"))),
+                                second: Some(Box::new(leaf("p3"))),
+                            }))),
+                        }),
+                        ..ViewRegion::default()
+                    },
+                ],
+                ..TabLayout::default()
+            }],
+            grids: vec![grid("p1", 79), grid("p2", 39), grid("p3", 160)],
+            ..Window::default()
+        };
+        let text = window_text(&window, 0, Others::All, false);
+        assert!(text.contains("zoomed on p3"), "{text}");
+        assert!(text.contains("160x40"), "the zoomed pane is drawn at its size: {text}");
+        assert!(
+            !text.contains("79x40"),
+            "the other machine's pane is drawn beside the zoom: {text}"
+        );
+        assert!(text.contains("behind the zoom: p1, p2"), "{text}");
     }
 
     /// Idle and unknown are the resting answer and the row already prints the word, so neither

@@ -40,7 +40,8 @@ pub struct View {
     /// still drawing, which is how a pane painting frames came to report itself hidden.
     ///
     /// A zoom is the one thing that hides a pane without closing its tab, so a zoomed region
-    /// contributes the one pane filling it.
+    /// contributes the one pane filling it, and while that region holds the keyboard it is the
+    /// only region contributing anything.
     showing: BTreeSet<PaneKey>,
 }
 
@@ -187,11 +188,28 @@ impl View {
     ) -> View {
         let mut showing = BTreeSet::new();
         let tab = held.id.clone();
+        let arranged = |region: &Region| {
+            let daemon = mirror(&region.daemon)?;
+            daemon.tab(&tab).filter(|layout| arranges(daemon, &tab, layout))
+        };
+        // A zoom fills the whole tab, whatever machines its parts are on: when the part holding
+        // the keyboard is zoomed, it is the only part drawn. Here because each daemon records a
+        // zoom on its own part and knows nothing of the others. The other parts keep their
+        // weights in composition and come back at them on unzooming, and their panes are off
+        // screen meanwhile, as a covered pane in the zoomed part is.
+        let covering = match zoom {
+            Zoom::Resolved => held
+                .focused_region()
+                .filter(|region| zoom_filling(region, arranged(region)).is_some())
+                .map(|region| region.id),
+            Zoom::Kept => None,
+        };
         let regions = held
             .regions()
+            .filter(|region| covering.is_none_or(|covering| covering == region.id))
             .filter_map(|region| {
                 let held = mirror(&region.daemon)?;
-                let layout = held.tab(&tab).filter(|layout| arranges(held, &tab, layout));
+                let layout = arranged(region);
                 // What this region has on screen, which is the tab it shows rather than the
                 // tree it was last told about. The tree decides the arrangement and a zoom
                 // decides what is covered; neither absence puts a pane away, and reading this
@@ -577,7 +595,8 @@ impl ViewNode {
     }
 }
 
-/// The one pane filling a region, when its tab is zoomed.
+/// The one pane filling a region, when its tab is zoomed - and the whole tab, when that region
+/// holds the keyboard (`View::of`).
 ///
 /// Which pane that is is this window's own answer first: the keyboard feeds `region.pane`, and a
 /// zoom showing anything else is somebody typing into a pane they cannot see. So moving the

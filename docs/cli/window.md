@@ -221,6 +221,9 @@ for almost every tab. JSON only. A person reading the plain output has the windo
 them; a script arranging one has neither that nor any other way to tell how wide each machine's
 part is or which order they sit in.
 
+A zoom in the part the keyboard is in fills the whole tab, so while it lasts that part is the only
+entry; the others are still in `--layout`'s `tabs[].regions`, at the weights they come back at.
+
 - `region` - Muster's name for the part.
 - `daemon` - which machine's panes it is showing.
 - `pane` - the pane in it the keyboard feeds while this region is focused. Empty while the daemon
@@ -271,7 +274,8 @@ Each box names its pane and says its label, what its agent is doing and how big 
 in columns by rows; with more than one machine attached, which one it is on. `▸` is the pane the
 keyboard is on. A zoomed tab says `zoomed on` the pane filling it and draws that pane alone,
 filling the tab, since that is what is on screen and the size its program sees; the panes behind
-the zoom are named on a line under it, `behind the zoom: p1w3r0ab2n`. The drawing is as wide as the terminal, and boxes too small for their text
+the zoom, other machines' panes among them, are named on a line under it, `behind the zoom:
+p1w3r0ab2n`. The drawing is as wide as the terminal, and boxes too small for their text
 are cut rather than dropped, so every pane is named even where a ratio cannot be drawn exactly.
 
 A pane's size is the one its program last saw, as its daemon holds it: what it is drawn at, or

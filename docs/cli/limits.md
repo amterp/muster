@@ -340,6 +340,13 @@ list of daemons`, and `--json` puts them under `unreadable`. Pass `--socket` to 
 answer. `muster window --watch` refuses outright with two apps listening, and names the sockets;
 `muster pane wait` goes to the app holding the first pane it names.
 
+## A zoom fills the tab only from the part with the keyboard
+
+A zoom fills the whole tab, whatever machines its panes are on, and each machine records the zoom
+on its own part. Move the keyboard to another machine's pane while one is zoomed - from the agent
+list, or with `muster pane focus` - and that part comes back beside the zoomed one, which then
+fills only its own part. Moving the keyboard back fills the tab again.
+
 ## A zoom with nothing to zoom still succeeds
 
 `muster zoom` in a tab holding one pane exits 0 and changes nothing you can see. A single pane
