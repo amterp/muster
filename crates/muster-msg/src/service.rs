@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::across::{HumanHome, Peer, Tell};
+use crate::across::{Found, HumanHome, Peer, Tell};
 use crate::names::{check_addressee, check_group, check_participant, is_human, split_machine};
 use crate::{
     Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Policy, Refusal, Saved, Store, What,
@@ -179,9 +179,9 @@ pub struct Draft<'a> {
     /// The group to post to; none for the one its author and addressees share.
     pub group: Option<&'a str>,
     pub to: &'a [String],
-    /// `name@machine` for each name in `to` that means nobody here and another machine said it
-    /// has (MIP-4, section 11).
-    pub found: &'a [String],
+    /// What each name in `to` that means nobody here means on a machine that said it has one
+    /// (MIP-4, section 11).
+    pub found: &'a [Found],
     pub body: &'a str,
     /// To reach its addressees mid-turn, even those woken already, rather than once they are
     /// idle.
@@ -1060,7 +1060,7 @@ impl<S: Store> Messaging<S> {
 
     /// Adds and removes members. Names are read as a post's `--to` reads them, so a pane can
     /// be added before its agent ever joined anything, and `found` holds what other machines
-    /// said a name means there, as [`Self::post_found`] takes it.
+    /// said a name means there, as [`Draft::found`] does.
     #[allow(clippy::too_many_arguments)]
     pub fn group_members(
         &mut self,
@@ -1068,7 +1068,7 @@ impl<S: Store> Messaging<S> {
         group: &str,
         add: &[String],
         remove: &[String],
-        found: &[String],
+        found: &[Found],
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Changed, Refusal> {
@@ -1372,7 +1372,7 @@ impl<S: Store> Messaging<S> {
         &mut self,
         author: &str,
         to: &[String],
-        found: &[String],
+        found: &[Found],
         group: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<Vec<String>, Refusal> {
@@ -1390,26 +1390,32 @@ impl<S: Store> Messaging<S> {
         Ok(addressees)
     }
 
-    /// The participant `name` means in a post's `--to`: a member of the group named, or of the
-    /// author's groups, by exactly that name, or the one on another machine by that name, so
-    /// `critic` reaches `critic@devenv` (MIP-4, section 11); else a participant by that name;
-    /// else the one in the pane of that name; else, for a pane with an agent in it, a
-    /// participant made for it, named after the pane, which is what lets a post reach an agent
-    /// that never joined (MIP-4, section 3). The human is made on first address too. Else the
-    /// one another machine said it has, in `found`.
+    /// The participant `name` means in a post's `--to`: the one holding the pane of that name,
+    /// whatever it calls itself; else a member of the group named, or of the author's groups, by
+    /// exactly that name, or the one on another machine by that name, so `critic` reaches
+    /// `critic@devenv` (MIP-4, section 11); else a participant by that name; else, for a pane
+    /// with an agent in it, a participant made for it, named after the pane, which is what lets
+    /// a post reach an agent that never joined (MIP-4, section 3). The human is made on first
+    /// address too. Else the one another machine said the name means, in `found`.
     fn addressee(
         &mut self,
         name: &str,
         author: &str,
-        found: &[String],
+        found: &[Found],
         group: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
+        let asked = name;
         let name = self.own(name);
         if name == HUMAN
             && let Some(home) = self.human_elsewhere(presence)
         {
             return Ok(home.human());
+        }
+        // Before any name: a participant named after a pane that it no longer holds is what an
+        // agent that renamed itself left behind, and the pane means whoever is in it now.
+        if let Some(holder) = self.by_pane(name) {
+            return Ok(holder);
         }
         let scope: Vec<String> = match group {
             Some(group) => vec![group.to_string()],
@@ -1438,18 +1444,13 @@ impl<S: Store> Messaging<S> {
         if self.participants.contains_key(name) {
             return Ok(name.to_string());
         }
-        if let Some(holder) = self.by_pane(name) {
-            return Ok(holder);
-        }
         if self.make_addressed(name, presence) {
             return Ok(name.to_string());
         }
         let found: Vec<String> = found
             .iter()
-            .filter(|each| {
-                *each == name || split_machine(each).is_some_and(|(base, _)| base == name)
-            })
-            .cloned()
+            .filter(|each| each.name == asked || each.name == name)
+            .map(|each| each.there.clone())
             .collect();
         match found.as_slice() {
             [] => Err(Refusal::NoSuchParticipant { name: name.to_string() }),

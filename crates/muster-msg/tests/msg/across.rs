@@ -6,9 +6,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use muster_msg::{
-    Action, Call, Caller, Caught, Draft, Entry, HUMAN, Inbox, Liveness, Member, Memory, Messaging,
-    Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply, Route, Settled, Tell, Via,
-    Wake, What,
+    Action, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Liveness, Member, Memory,
+    Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply, Route, Settled,
+    Tell, Via, Wake, What,
 };
 
 #[derive(Default)]
@@ -283,7 +283,7 @@ impl Wire {
 
     /// What the other machine says each of `names` means there, as a daemon asks when a name
     /// means nobody here. Asked of every name, which is the same answer for those known here.
-    fn found(&mut self, side: Side, names: &[String]) -> Vec<String> {
+    fn found(&mut self, side: Side, names: &[String]) -> Vec<Found> {
         if !self.up {
             return Vec::new();
         }
@@ -295,7 +295,7 @@ impl Wire {
                 continue;
             }
             if let Ok(Settled::Named(Some(there))) = self.send(side, &call) {
-                found.push(there);
+                found.push(Found { name: name.clone(), there });
             }
         }
         found
@@ -586,6 +586,39 @@ fn a_post_to_a_pane_on_another_machine_rings_it_there() {
 
     let refused = wire.post(Side::Laptop, &builder, None, &["nobody"], "anyone?");
     assert_eq!(refused.unwrap_err(), Refusal::NoSuchParticipant { name: "nobody".to_string() });
+}
+
+/// A pane on another machine is still an address once the agent in it has joined under a name
+/// of its own: the other machine answers with that name, and the post reaches it.
+#[test]
+fn a_post_to_a_pane_on_another_machine_reaches_the_name_its_agent_took() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Devenv, "p2dev");
+    let src = Caller { pane: Some("p2dev".to_string()), ..session("src") };
+    wire.join(Side::Devenv, &src, Some("src"), "far");
+    let builder = session("builder");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+
+    let posted = wire.post(Side::Laptop, &builder, None, &["p2dev"], "report back").unwrap();
+    assert_eq!(
+        (posted.group.as_str(), woke(&posted)),
+        ("builder+src", vec![("src@devenv", Reach::Woken)])
+    );
+    wire.read(Side::Laptop, &builder, None);
+    let posted = wire.post(Side::Laptop, &builder, None, &["p2dev@devenv"], "again").unwrap();
+    assert_eq!(posted.group, "builder+src");
+    assert_eq!(
+        wire.read(Side::Devenv, &src, Some("builder+src")),
+        ["builder+src@lap builder@lap: report back", "builder+src@lap builder@lap: again"]
+    );
+
+    let found = wire.found(Side::Laptop, &["p2dev".to_string()]);
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let added = laptop
+        .group_members(&builder, "review", &["p2dev".to_string()], &[], &found, sessions, now)
+        .unwrap();
+    assert_eq!(added.added, ["src@devenv"]);
 }
 
 /// The group of this machine's `critic` and `builder` goes by `builder+critic`, so the group of

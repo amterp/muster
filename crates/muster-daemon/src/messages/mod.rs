@@ -32,7 +32,7 @@ use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
 use muster_msg::{
-    Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Draft, Entry, Inbox,
+    Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Draft, Entry, Found, Inbox,
     LARGEST_BODY, LONGEST_GROUP, Liveness, Messaging, Policy, Presence, Reach, Refusal, Route,
     Settled, Tell, Via, Wake, What,
 };
@@ -954,7 +954,7 @@ fn urgent_unsupported(
     })
 }
 
-fn draft_of<'a>(post: &'a proto::msg_request::Post, found: &'a [String]) -> Draft<'a> {
+fn draft_of<'a>(post: &'a proto::msg_request::Post, found: &'a [Found]) -> Draft<'a> {
     Draft {
         group: post.group.as_deref(),
         to: &post.to,
@@ -1002,8 +1002,8 @@ fn membering(
 /// later step of the same request to take.
 fn finding<T>(
     shared: &Shared,
-    mut act: impl FnMut(&[String]) -> Result<T, Refusal>,
-) -> Result<(T, Vec<String>), Refusal> {
+    mut act: impl FnMut(&[Found]) -> Result<T, Refusal>,
+) -> Result<(T, Vec<Found>), Refusal> {
     let mut found = Vec::new();
     let mut asked = BTreeSet::new();
     loop {
@@ -1013,7 +1013,7 @@ fn finding<T>(
                 if there.is_empty() {
                     return Err(Refusal::NoSuchParticipant { name });
                 }
-                found.extend(there);
+                found.extend(there.into_iter().map(|there| Found { name: name.clone(), there }));
             }
             Err(refusal) => return Err(refusal),
             Ok(outcome) => return Ok((outcome, found)),

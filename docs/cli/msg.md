@@ -61,7 +61,8 @@ says otherwise.
 
 **`--to` takes a pane's name too**, such as the one `muster pane new` prints. An agent in that
 pane need not have joined anything, or even have started yet: it becomes a participant named
-after the pane, and whatever runs `muster msg` in that pane from then on is it. A name or pane
+after the pane, and whatever runs `muster msg` in that pane from then on is it. Once the agent
+there has joined under a name of its own, the pane's name means that participant. A name or pane
 that means nobody on this machine is looked for on the machines linked to it (below).
 
 ## A group's policy
@@ -352,7 +353,8 @@ from the other:
   `unchecked`: join by the full name once the link is back, or make the group here with `group
   new`.
 - **`--to` reaches the other machine.** A name or pane nobody on this machine goes by is asked
-  of each linked machine, or of the one `name@machine` names. A post to someone who shares no
+  of each linked machine, or of the one `name@machine` names. A pane there means whoever is in
+  it, so `--to p2w3r07bsd` reaches the agent in it as `src@devenv` once it has joined as `src`. A post to someone who shares no
   group with you makes the group of the two of you on your machine, as on one machine: the
   laptop's `builder+critic` is `builder+critic@your-laptop` on the devenv. A pane named this way
   becomes a participant on its own machine and is rung there. `group add` finds names the same

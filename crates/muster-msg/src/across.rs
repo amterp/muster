@@ -380,6 +380,17 @@ fn reached_before(lately: Option<&Lately>, head: u64, entries: &[Entry]) -> Vec<
     }
 }
 
+/// What a name a request used means on another machine, which the host asked with
+/// [`Call::Whom`] because it meant nobody here. Kept beside the name asked, since the answer may
+/// share nothing with it: a pane's name means whoever holds the pane there, under its own name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found {
+    /// The name as the request gave it.
+    pub name: String,
+    /// Whom it means there, as this machine writes it: `src@devenv`.
+    pub there: String,
+}
+
 /// A request answered by another machine, as it ends on this one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settled {
@@ -533,7 +544,7 @@ impl<S: Store> Messaging<S> {
     ///
     /// A `--to` name that means nobody here is refused as [`Refusal::NoSuchParticipant`]; the
     /// host asks linked machines with [`Call::Whom`] and routes again with what they said in
-    /// `found`, as [`Self::post_found`] takes it.
+    /// `found`, as [`Draft::found`] holds it.
     pub fn route_post(
         &mut self,
         caller: &Caller,
@@ -1090,18 +1101,19 @@ impl<S: Store> Messaging<S> {
         answered
     }
 
-    /// The participant `name` means on this machine, for another that has nobody by it: one by
-    /// that name, or the one in the pane of that name, or the pane itself while an agent may
-    /// start there, as a post's `--to` reads it here. The human is not asked for: it is homed
-    /// where the app runs, and every machine names it already.
+    /// The participant `name` means on this machine, for another that has nobody by it: the one
+    /// in the pane of that name, or one by that name, or the pane itself while an agent may start
+    /// there, as a post's `--to` reads it here. The human is not asked for: it is homed where the
+    /// app runs, and every machine names it already.
     pub fn whom(&self, name: &str, presence: &dyn Presence) -> Option<String> {
         if name == HUMAN {
             return None;
         }
-        if self.participants.contains_key(name) {
-            return Some(name.to_string());
+        if let Some(holder) = self.by_pane(name) {
+            return Some(holder);
         }
-        self.by_pane(name).or_else(|| presence.has_pane(name).then(|| name.to_string()))
+        let named = self.participants.contains_key(name) || presence.has_pane(name);
+        named.then(|| name.to_string())
     }
 
     /// Starts the cursor of `name`, if it is one of this machine's participants, at its join to

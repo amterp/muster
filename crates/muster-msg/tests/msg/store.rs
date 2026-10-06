@@ -181,3 +181,39 @@ fn a_delete_whose_save_fails_still_ends_the_waits_kept_to_its_group() {
     assert!(deleted.unsaved.is_some(), "{deleted:?}");
     assert_eq!(service.log("g", 0), Err(Refusal::NoSuchGroup { group: "g".to_string() }));
 }
+
+/// A participant named after a pane it no longer holds is what an agent that named itself, and
+/// was not folded into the name, left on disk. The pane means whoever is in it now.
+#[test]
+fn a_pane_means_whoever_holds_it_over_a_participant_named_after_it() {
+    let saved: Saved = serde_json::from_value(serde_json::json!({
+        "participants": [
+            { "name": "p1", "cursors": { "g": 2 } },
+            { "name": "builder", "pane": "p1", "cursors": { "g": 2 } },
+            { "name": "a", "inbox": { "socket": "/tmp/cc-socks/a.sock", "inode": 1 },
+              "cursors": { "g": 3 } },
+        ],
+        "groups": [],
+    }))
+    .unwrap();
+    let joined = |seq, who: &str| muster_msg::Entry {
+        seq,
+        at_ms: 0,
+        what: What::Joined { who: who.to_string() },
+    };
+    let logs = BTreeMap::from([(
+        "g".to_string(),
+        vec![
+            muster_msg::Entry { seq: 1, at_ms: 0, what: What::Created { by: "p1".to_string() } },
+            joined(2, "p1"),
+            joined(3, "a"),
+        ],
+    )]);
+    let mut service = Messaging::restore(Memory::default(), saved, logs);
+    let to = ["p1".to_string()];
+    let posted = service.post(&session("a"), None, &to, "who is in p1?", &Everyone, 4).unwrap();
+    assert_eq!(posted.group, "a+builder");
+    assert_eq!(posted.reached.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(), [
+        "builder"
+    ]);
+}
