@@ -3,7 +3,8 @@ import Testing
 
 @testable import MusterMac
 
-// The right-click menus on a pane, a tab and an agent row, and the request each item becomes.
+// The right-click menus on a pane, a tab, an agent row and a message group, and the request each
+// item becomes.
 //
 // Recorded at the seam, like every other gesture: what these assert is the message the core
 // would get, which is the one a chord and the CLI send. The thing worth pinning hardest is that
@@ -251,6 +252,32 @@ struct ContextMenuTests {
       ])
     #expect(item("Close Pane", in: hidden)?.isEnabled == false)
     #expect(item("Close Pane", in: shown)?.isEnabled == true)
+  }
+
+  /// Leaving is what takes a group off the list for the human; deleting it ends it for everyone,
+  /// so the menu hands that to the window to ask first rather than sending it.
+  @Test("a group row leaves the group it names, and asks before deleting it")
+  func aGroupRowsMenu() {
+    let recorder = recorder()
+    var deletes = 0
+    let menu = ContextMenus.groupRow(daemon: "laptop", group: "review@devenv") { deletes += 1 }
+    let mark = recorder.requests.count
+
+    #expect(titles(menu) == ["Leave Group", "-", "Delete Group…"])
+    #expect(menu.items.allSatisfy { $0.keyEquivalent.isEmpty })
+    choose("Leave Group", in: menu)
+    choose("Delete Group…", in: menu)
+
+    let left = recorder.sent(since: mark) {
+      if case .leaveGroup = $0.payload { true } else { false }
+    }.map(\.leaveGroup)
+    #expect(left.map(\.daemonID) == ["laptop"])
+    #expect(left.map(\.group) == ["review@devenv"])
+    let deleted = recorder.sent(since: mark) {
+      if case .deleteGroup = $0.payload { true } else { false }
+    }
+    #expect(deleted.isEmpty, "a delete went out before anybody was asked")
+    #expect(deletes == 1)
   }
 
   @Test("a tab's menu names the tab, and grows a new tab from that tab's pane")

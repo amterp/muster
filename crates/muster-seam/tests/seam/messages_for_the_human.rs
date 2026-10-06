@@ -3,8 +3,8 @@
 //! raises nothing (MIP-4, section 10).
 
 use muster::proto::{
-    AttentionChanged, Event, FocusAsking, GroupsChanged, OpenWindow, ReadWindow, Request, Response,
-    Startup, WindowFocus, event, request, response,
+    AttentionChanged, DeleteGroup, Event, FocusAsking, GroupsChanged, LeaveGroup, OpenWindow,
+    ReadWindow, Request, Response, Startup, WindowFocus, event, request, response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{self, Answer};
@@ -101,6 +101,71 @@ fn the_humans_groups_are_listed_with_what_waits_in_each_until_they_leave() {
     let leave = Asked::Leave(msg_request::Leave { group: Some("g".to_string()) });
     expect(&mut control, msg(&the_human(), leave), daemon_proto::Outcome::Done);
     until_groups(&[]);
+}
+
+/// The sidebar's verbs on a group row: leaving takes the group off the list and leaves it be,
+/// deleting takes it off the list and off its daemon, and a refusal comes back in the daemon's
+/// words.
+#[test]
+fn a_group_left_or_deleted_through_the_window_is_no_longer_listed() {
+    let _turn = muster::testing::fresh_session();
+    muster::ffi::muster_set_event_callback(Some(note));
+    GROUPS.lock().expect("a panicking test poisoned the log").take();
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    open_window(&daemon);
+    group_of_three(&mut control);
+    for (caller, name) in [(the_human(), "@human"), (named("a"), "a")] {
+        let join = Asked::Join(msg_request::Join {
+            name: Some(name.to_string()),
+            group: Some("h".to_string()),
+            pull: false,
+        });
+        expect(&mut control, msg(&caller, join), daemon_proto::Outcome::Done);
+    }
+    until_groups(&[("g", 0, 0), ("h", 0, 0)]);
+    let daemon_id = GROUPS
+        .lock()
+        .expect("a panicking test poisoned the log")
+        .as_ref()
+        .map_or(String::new(), |told| told.groups[0].daemon_id.clone());
+    let leave = |group: &str| {
+        request::Payload::LeaveGroup(LeaveGroup {
+            daemon_id: daemon_id.clone(),
+            group: group.into(),
+        })
+    };
+    let delete = |group: &str| {
+        let daemon_id = daemon_id.clone();
+        request::Payload::DeleteGroup(DeleteGroup { daemon_id, group: group.into() })
+    };
+
+    assert_ok(&answer(leave("g")));
+    until_groups(&[("h", 0, 0)]);
+    assert_ok(&answer(delete("h")));
+    until_groups(&[]);
+    assert_eq!(groups_held(&mut control), ["g"], "g was left, not deleted, and h is gone");
+
+    let refused = answer(delete("nope"));
+    let Some(response::Payload::Failure(failure)) = &refused.payload else {
+        panic!("a delete of no group answered {refused:?}");
+    };
+    assert!(failure.reason.contains("nope"), "in the daemon's words: {}", failure.reason);
+}
+
+/// The groups the daemon keeps, by name.
+fn groups_held(control: &mut Control) -> Vec<String> {
+    let asked = msg(&named("a"), Asked::Groups(msg_request::Groups {}));
+    let held = expect(control, asked, daemon_proto::Outcome::Done);
+    match held.answer.detail {
+        Some(daemon_proto::answer::Detail::Msg(daemon_proto::MsgAnswer {
+            answer: Some(Answer::Groups(groups)),
+            ..
+        })) => groups.groups.into_iter().map(|group| group.name).collect(),
+        other => panic!("a groups request answered with {other:?}"),
+    }
 }
 
 /// Waits until the shell was last told exactly these groups, as (group, unread, to you).

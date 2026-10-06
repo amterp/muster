@@ -28,6 +28,7 @@ use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 use muster_core::transcript;
 use muster_core::{PaneKey, Until};
+use muster_daemon_proto::msg_request::{self, Request as Asked};
 
 use crate::proto::{self, Request, Response, event, request, response};
 use crate::session::{self, AttachError, AttachedPane, Keyboard, Resolved, WindowId};
@@ -311,6 +312,18 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::OpenTranscript(open) => {
             open_transcript(window, &DaemonId::new(&open.daemon_id), &open.group)
         }
+        request::Payload::LeaveGroup(leave) => as_human_in(
+            &leave.daemon_id,
+            &leave.group,
+            "left",
+            Asked::Leave(msg_request::Leave { group: Some(leave.group.clone()) }),
+        ),
+        request::Payload::DeleteGroup(delete) => as_human_in(
+            &delete.daemon_id,
+            &delete.group,
+            "deleted",
+            Asked::GroupDelete(msg_request::GroupDelete { group: delete.group.clone() }),
+        ),
         request::Payload::FocusTab(tab) => focus_tab(window, &tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(window, &arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(window, set),
@@ -1596,6 +1609,19 @@ fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response
         session::read_as_human(daemon, group);
     }
     response
+}
+
+/// Asks the daemon that listed a group to do `asked` to it as the human: the sidebar's verbs on
+/// a group row, which are the `muster msg` verbs the human's own shell would run.
+fn as_human_in(daemon: &str, group: &str, done: &str, asked: Asked) -> Response {
+    if daemon.is_empty() || group.is_empty() {
+        return Response::failure(format!(
+            "a request about a message group named no daemon or no group (daemon {daemon:?}, \
+             group {group:?}), so no group was {done}. The shell takes both from the row it \
+             lists, so this is a bug there."
+        ));
+    }
+    relayed(session::ask_as_human(&DaemonId::new(daemon), asked).map(|()| Response::ok()))
 }
 
 /// Moves the line between two regions of the window.

@@ -1086,9 +1086,29 @@ extension MusterWindow {
       return ContextMenus.tab(
         row.tab, firstPane: first, machines: speaking { Core.machines() }.map(\.daemon),
         window: name, rename: { [weak self] in self?.rename(tab: $0) })
-    case .machine, .messages, .group:
+    case .group:
+      let (daemon, group) = (row.daemon, row.label)
+      return ContextMenus.groupRow(daemon: daemon, group: group, window: name) {
+        [weak self] in self?.confirmDelete(daemon: daemon, group: group)
+      }
+    case .machine, .messages:
       return nil
     }
+  }
+
+  /// Asks before deleting a group: its log goes for every member, unread messages included,
+  /// and nothing brings it back.
+  private func confirmDelete(daemon: String, group: String) {
+    ConfirmSheet.ask(
+      on: window, question: "Delete \(group)?",
+      body: "Deletes the group and its log for every member, unread messages included, on the "
+        + "machine that keeps it, and lets each member go. To stop seeing it yourself, Leave "
+        + "Group instead.",
+      confirm: "Delete Group",
+      then: { [weak self] in
+        let deleted = self?.speaking { Core.deleteGroup(daemonID: daemon, group: group) }
+        if deleted == false { NSSound.beep() }
+      })
   }
 
   /// This window's roster entry for a pane, if it has one.

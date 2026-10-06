@@ -87,6 +87,8 @@ message Request {
     AskToCloseWindow ask_to_close_window = 67;
     CompactPane compact_pane = 68;
     StillOpen still_open = 69;
+    LeaveGroup leave_group = 70;
+    DeleteGroup delete_group = 71;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -1256,6 +1258,23 @@ message Went {
 // --follow`, or a new tab running it when there is none. Going there is the human reading the
 // group, so the daemon is told, and says nothing waits for them there any more.
 message OpenTranscript {
+  string daemon_id = 1;
+  string group = 2;
+}
+
+// Takes the human out of a group, as `muster msg leave --group G` from their own shell does,
+// asked of the daemon that listed it in GroupsChanged. Leaving is what closes a group for the
+// human: the daemon stops listing it once they are out, and nothing waits for them there.
+// Answered once the daemon has, with its refusal's words as the failure when it refuses.
+message LeaveGroup {
+  string daemon_id = 1;
+  string group = 2;
+}
+
+// Deletes a group and its log for every member, as `muster msg group delete G` from the
+// human's own shell does, asked of the daemon that listed it. A group kept on another machine is
+// deleted there: the daemon carries the request over its link while one is up.
+message DeleteGroup {
   string daemon_id = 1;
   string group = 2;
 }

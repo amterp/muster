@@ -3563,6 +3563,44 @@ pub(crate) fn read_as_human(daemon: &DaemonId, group: &str) {
     session.read_as_human(&GroupKey { daemon: daemon.clone(), group: group.to_string() });
 }
 
+/// How long a daemon has to answer a request the window makes of its messaging as the human. A
+/// delete of a group kept elsewhere waits on that machine as well.
+const AS_HUMAN_PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Asks `daemon`'s messaging something as the human, as their own shell would, and says what
+/// came of it: refused in the daemon's own words, which name the command that gets past it.
+pub(crate) fn ask_as_human(
+    daemon: &DaemonId,
+    request: muster_daemon_proto::msg_request::Request,
+) -> Result<(), Refusal> {
+    let pending = {
+        let session = poison::lock(&SESSION, "session");
+        let Some(backend) = session.backends.get(daemon) else {
+            return Err(Refusal::Declined(format!(
+                "this window is attached to no daemon called {daemon}, so nothing was asked of                  its messages. The group came from a list that daemon sent; it may have                  detached since."
+            )));
+        };
+        backend.follower.as_human(request)
+    };
+    // Waited on with the session let go: the daemon may be carrying it to another machine.
+    let Some(pending) = pending else {
+        return Err(Refusal::Declined(format!(
+            "{daemon} is not connected, so nothing was sent; it is reconnecting on its own"
+        )));
+    };
+    let answer = pending.wait(AS_HUMAN_PATIENCE).map_err(|why| Refusal::Unanswered {
+        detail: format!(
+            "{daemon} did not answer ({why}); it may still have done it, in which case the \
+             group leaves the window's list of the human's groups"
+        ),
+        made: None,
+    })?;
+    match answer.outcome() {
+        muster_daemon_proto::Outcome::Done | muster_daemon_proto::Outcome::AlreadySo => Ok(()),
+        _ => Err(Refusal::Declined(answer.reason)),
+    }
+}
+
 /// Why a numbered chord reached nothing, said in the terms of whatever it was counting.
 ///
 /// One refusal per branch rather than one for all three, because "this window holds 2 panes"

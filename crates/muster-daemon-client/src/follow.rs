@@ -228,6 +228,12 @@ impl Follower {
         true
     }
 
+    /// Asks the daemon's messaging something as the human, for the caller to wait on. None while
+    /// not connected.
+    pub fn as_human(&self, request: proto::msg_request::Request) -> Option<Pending> {
+        Some(self.connection.control()?.as_human(request))
+    }
+
     /// Tells the daemon these settings now, if connected, and at every connect after. Only
     /// what differs from the last settings is sent, once the daemon has taken those.
     pub fn configure(&self, settings: &DaemonSettings) {

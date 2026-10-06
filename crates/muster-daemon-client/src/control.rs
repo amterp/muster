@@ -348,11 +348,16 @@ impl Control {
     /// Reads a group's messages as the human, which is what the human looking at the group's
     /// transcript is: the daemon then says nothing waits for them there (MIP-4, section 10).
     pub fn read_as_human(&self, group: &str) -> Pending {
-        use proto::msg_request::{Caller, Read, Request};
+        use proto::msg_request::{Read, Request};
+        self.as_human(Request::Read(Read { group: Some(group.to_string()) }))
+    }
+
+    /// Asks the daemon's messaging something as the human, as their own shell would.
+    pub fn as_human(&self, request: proto::msg_request::Request) -> Pending {
         self.ask(Service::Msg(proto::MsgRequest {
             // Carrying nothing that names an agent, which is who the human is.
-            caller: Some(Caller::default()),
-            request: Some(Request::Read(Read { group: Some(group.to_string()) })),
+            caller: Some(proto::msg_request::Caller::default()),
+            request: Some(request),
         }))
     }
 

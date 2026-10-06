@@ -13,6 +13,10 @@ public enum ContextChoice: Equatable, Sendable {
   case splitOnto(machine: String)
   /// Make a tab on this machine.
   case newTabOn(machine: String)
+  /// `muster msg leave --group G`, as the human.
+  case leaveGroup
+  /// `muster msg group delete G`, as the human.
+  case deleteGroup
 }
 
 /// One line of a right-click menu.
@@ -29,7 +33,8 @@ public enum ContextEntry: Equatable, Sendable {
 /// What each right-click menu offers.
 ///
 /// Pure, so what a menu holds can be asserted without a window. Every item is one of the core's
-/// actions or a copy of an id, so a right-click does nothing a chord or the CLI cannot.
+/// actions, a copy of an id, or a `muster msg` verb, so a right-click does nothing a chord or the
+/// CLI cannot.
 public enum ContextMenuModel {
   /// A pane's menu, modeled on the one Ghostty's own surface opens.
   ///
@@ -99,6 +104,12 @@ public enum ContextMenuModel {
       .separator,
       .item(.action("close_pane"), enabled: onScreen),
     ]
+  }
+
+  /// A message group's row. Leaving is what closes a group for the human, and takes it off the
+  /// list; deleting ends it for everyone.
+  public static func groupRow() -> [ContextEntry] {
+    [.item(.leaveGroup), .separator, .item(.deleteGroup)]
   }
 }
 
@@ -186,6 +197,8 @@ final class ContextMenu: NSMenu {
     case .copyPaneID: "Copy Pane ID"
     case .copyTabID: "Copy Tab ID"
     case .splitOnto(let machine), .newTabOn(let machine): machine
+    case .leaveGroup: "Leave Group"
+    case .deleteGroup: "Delete Group…"
     }
   }
 }
@@ -261,6 +274,24 @@ public enum ContextMenus {
       case .newTabOn(let machine): Core.createTab(daemonID: machine)
       case .copyTabID: copy(tab, "tab", to: pasteboard)
       default: unhandled(choice, menu: "tab")
+      }
+    }
+  }
+
+  /// A message group row's menu. `delete` is called rather than the group deleted outright,
+  /// because a delete takes every member's log with it and the window asks first.
+  public static func groupRow(
+    daemon: String, group: String, window: String = "",
+    delete: @escaping @MainActor () -> Void
+  ) -> NSMenu {
+    ContextMenu.build(
+      ContextMenuModel.groupRow(), subject: ["daemon": daemon, "group": group], window: window
+    ) { choice in
+      switch choice {
+      case .leaveGroup:
+        if !Core.leaveGroup(daemonID: daemon, group: group) { NSSound.beep() }
+      case .deleteGroup: delete()
+      default: unhandled(choice, menu: "group")
       }
     }
   }

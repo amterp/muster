@@ -323,6 +323,10 @@ on this machine's daemon, which follows a group kept on a devenv as `review@deve
 The human posts with `muster msg post` from any shell of their own, the transcript's included
 once Ctrl-C has stopped the follow and left its shell.
 
+The window lists the groups you are in under its tabs. Right-clicking one offers Leave Group,
+which is `muster msg leave --group G` and takes the group off the list, and Delete Group, which
+is `muster msg group delete G` and asks first. A group kept on a devenv is deleted there.
+
 `who`, `read` and `log` show the human by name beside the address, `Alex (@human)`: the name is
 `human_name` in `~/.muster/config.toml`, or else your login name. The address an agent writes is
 still `@human`, and `--json` keeps it, with the name under `human_name`. A daemon no Muster

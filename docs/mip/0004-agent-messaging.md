@@ -710,7 +710,9 @@ As built in stage 3, under Decision 1 (a):
   notice to the windows says whether the human is still in the group (`member`, since 1.3), and
   a group joined is told of before anything is posted there. A group kept on another machine is
   listed by its replica's full name once the replica exists here. The core puts the groups in
-  one list for the whole app, and the shell draws it.
+  one list for the whole app, and the shell draws it. A row's right-click leaves the group or
+  deletes it, asking the daemon that listed it as `muster msg leave` and `group delete` from the
+  human's shell would; leaving is what takes a group off the list.
 - **The human's home publishes.** For a group homed elsewhere, the home daemon's replica wakes
   the human the way a local post does (section 11), and a window takes what waits for the human
   only from a daemon on its own machine, so only the daemon on the app's machine ever tells a

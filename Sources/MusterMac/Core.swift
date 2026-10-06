@@ -967,6 +967,39 @@ public enum Core {
     send(request)
   }
 
+  /// Takes the human out of a group, which takes it off the sidebar: `muster msg leave --group G`
+  /// from their own shell. Says whether the daemon did; its refusal is in the run log.
+  @discardableResult
+  public static func leaveGroup(daemonID: String, group: String) -> Bool {
+    var leave = Muster_LeaveGroup()
+    leave.daemonID = daemonID
+    leave.group = group
+    var request = Muster_Request()
+    request.leaveGroup = leave
+    return !isRefused(send(request))
+  }
+
+  /// Deletes a group and its log for every member, on the machine that keeps it: `muster msg
+  /// group delete G` from the human's own shell. Says whether the daemon did.
+  @discardableResult
+  public static func deleteGroup(daemonID: String, group: String) -> Bool {
+    var delete = Muster_DeleteGroup()
+    delete.daemonID = daemonID
+    delete.group = group
+    var request = Muster_Request()
+    request.deleteGroup = delete
+    return !isRefused(send(request))
+  }
+
+  /// A refusal, or no answer at all. An unanswered request may still have happened, so it is not
+  /// one.
+  private static func isRefused(_ payload: Muster_Response.OneOf_Payload?) -> Bool {
+    switch payload {
+    case .failure, nil: true
+    default: false
+    }
+  }
+
   /// Steps the keyboard one pane along: `next` or `previous`.
   ///
   /// A direction rather than a pane, because the shell does not get to decide what is next -
@@ -1283,6 +1316,8 @@ public enum Core {
     case .closeWindow: return "close_window"
     case .askToCloseWindow: return "ask_to_close_window"
     case .stillOpen: return "still_open"
+    case .leaveGroup: return "leave_group"
+    case .deleteGroup: return "delete_group"
     case .readReopening: return "read_reopening"
     case .askForWindow: return "ask_for_window"
     case .claimApp: return "claim_app"
