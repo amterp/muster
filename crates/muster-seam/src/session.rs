@@ -3577,7 +3577,9 @@ pub(crate) fn ask_as_human(
         let session = poison::lock(&SESSION, "session");
         let Some(backend) = session.backends.get(daemon) else {
             return Err(Refusal::Declined(format!(
-                "this window is attached to no daemon called {daemon}, so nothing was asked of                  its messages. The group came from a list that daemon sent; it may have                  detached since."
+                "this window is attached to no daemon called {daemon}, so nothing was asked of \
+                 its messages. The group came from a list that daemon sent; it may have \
+                 detached since."
             )));
         };
         backend.follower.as_human(request)
