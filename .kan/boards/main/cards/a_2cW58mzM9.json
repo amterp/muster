@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1791239726964,
   "creator": "Alexander Terp",
   "description": "A Codex agent cannot report its own state from its shell tool: the daemon refuses it as a nested agent. `\"$MUSTER_DAEMON\" report --waiting \"\u003cwhat\u003e\"` exited 1: \"pane \u003cp\u003e runs codex, and this report came from another codex (pid N), outside the process group the pane's own agent runs in; it inherited the pane's environment, and its reports are not the pane's\". `muster msg join` from the same tool call succeeded, and `muster window` still showed the Codex adapter's own reports.\n\n## Measured: muster 0.13.0, 2026-10-05, devenv\n\nSeen twice, in two reviewer panes of one council. Codex ran the command through its exec tool (`exec_command`). Inferred, not checked: the process that runs Codex's commands is itself a codex process in a process group of its own, so the attribution added for a_2XssfzCUV reads it as a nested agent. That answers a_2bit9y3Xw for Codex on Linux: its shell tool does leave the agent's process group.\n\n## Why it matters\n\nThe SessionStart line tells every agent, Codex included, to run this command before ending a turn to wait. A Codex agent that follows it gets an error, and its wait is never declared.\n\n## Things that might be true\n\n- **Take a report whose nearest codex ancestor sits directly below the pane's codex as the pane's own.**\n- Or drop the report line from the Codex SessionStart hook until a Codex agent can report, and say in `muster docs limits` that it cannot.",
   "id": "a_2cW58mzM9",
-  "position": "Zv",
+  "position": "Yxb",
   "title": "🚫 A Codex agent's own report --waiting is refused as a nested codex",
   "type": "bug",
-  "updated_at_millis": 1791249364716,
+  "updated_at_millis": 1791250149752,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791239726964},
-    {"field":"column","value":"in-progress","at":1791249364716}
+    {"field":"column","value":"in-progress","at":1791249364716},
+    {"field":"column","value":"done","at":1791250149752}
   ]
 }

@@ -5,17 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-05: cause not pinned from code; the run log is on another machine. Three paths could hand a wake over twice: (1) codex queue succeeded but the pane still read idle/waiting 5 s later, so unanswered_commands typed it too - log msg.rang via=command, msg.ring.command_untaken, then a typed msg.rang; (2) codex queue outlasted PATIENCE (5 s; the 223 MB binary can sit \u003e15 s in _dyld_start) and was killed after storing - msg.ring.command_failed refused=false, then a typed msg.rang; (3) the pane participant left behind when the agent named itself (fixed as a_2cW57OXLB) re-rung from outstanding() after a restart/takeover - daemon.started or a takeover between the read and the second ring. Ruled out: the declared wait re-ringing (went_idle fires only on Idle, and says still unread). Paths 1 and 2 type the second copy on purpose (a wake too many over one lost); changing that needs evidence of which fired. Check the next occurrence's daemon log against these.",
+      "created_at_millis": 1791250149946,
+      "id": "c_2caSI6YiA"
+    }
+  ],
   "created_at_millis": 1791223112987,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-05, Muster 0.13.0, codex-cli 0.159.0 on the laptop (adapter reporting, so `codex queue` wakes were available), group mixed-demo: the director posted #11 `--to p297eckk7w`. The agent was woken, ran `muster msg read`, did the work, and posted #16. It then got a second, identical wake for #11; `muster msg read --group mixed-demo` answered `nothing unread`. It reported this itself as #17.\n\nOne wrinkle: #11 asked it to run `\"$MUSTER_DAEMON\" report --waiting \"director test\"`, so it declared itself waiting during that turn, and `muster window` still shows it `waiting` afterwards.\n\nUnverified guesses: (a) the `codex queue` wake started the turn after the 5 s fallback had already typed a ring, so both arrived; (b) the waiting state made the doorbell re-ring once the turn ended. The run log for the window has both wake paths.",
   "id": "a_2cP6w1lHN",
-  "position": "Zu",
+  "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1791249592118,
+  "updated_at_millis": 1791250150019,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
-    {"field":"column","value":"in-progress","at":1791249592118}
+    {"field":"column","value":"in-progress","at":1791249592118},
+    {"field":"column","value":"backlog-hi","at":1791250150019}
   ]
 }

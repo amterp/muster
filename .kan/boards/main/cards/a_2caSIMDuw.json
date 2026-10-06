@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "check-on-a-linux",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791250150136,
+  "creator": "Alexander Terp",
+  "description": "Since 2026-10-05 the daemon walks past Codex's helper processes (codex-linux-sandbox etc., named from the 0.154.0 binary's strings, not observed on Linux). Run report --waiting from Codex's shell under the workspace-write sandbox on a devenv: the daemon log should have no daemon.report.foreign_agent, and muster window should show the pane waiting. If refused, the log names the process; its argv[0] is the name to add to codex.toml helpers.",
+  "id": "a_2caSIMDuw",
+  "position": "b0l",
+  "title": "Check on a Linux devenv that a Codex agent's own report --waiting is taken",
+  "type": "chore",
+  "updated_at_millis": 1791250150136,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791250150136}
+  ]
+}

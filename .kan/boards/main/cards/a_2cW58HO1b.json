@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1791239726661,
   "creator": "Alexander Terp",
   "description": "Agents read the SessionStart line about `report --waiting` as covering a wait for a message, declare it, and then show `waiting` rather than `idle`, so a director's `muster pane wait --until idle` on them never ends. The line, from extras/claude-code/hooks/hooks.json and extras/codex/hooks/hooks.json, is: In Muster: if you end a turn to wait on work you started, first run \"$MUSTER_DAEMON\" report --waiting \"\u003cwhat\u003e\".\n\n## Measured: 2026-10-05, devenv, convening a directed council\n\nThe director started three agents with the first prompt \"run `muster msg join --name X`, then end your turn; your brief arrives as a message\", then ran `muster pane wait --pane \u003cp\u003e --until idle,blocked --timeout 400` on each before `group add`. All three ran `\"$MUSTER_DAEMON\" report --waiting \"brief from muster msg\"` before ending their turn. `muster window` showed them `waiting`, and the first wait timed out (exit 5) after 400 s with that agent at its prompt, waiting only for a message.\n\n## Things that might be true\n\n- **Say in the hook line that waiting for a message or a person is just ending the turn**, and that only work the agent started (a build, a background job, a sub-agent) is a wait to report.\n- Or treat a waiting reason that names `muster msg` as idle.\n- Or let a `pane wait` caller count `waiting` as met when it asks to.",
   "id": "a_2cW58HO1b",
-  "position": "Zw",
+  "position": "Yxc",
   "title": "⏳ Agents declare waiting for a message, so pane wait --until idle times out",
   "type": "docs",
-  "updated_at_millis": 1791249364630,
+  "updated_at_millis": 1791250149675,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791239726661},
-    {"field":"column","value":"in-progress","at":1791249364630}
+    {"field":"column","value":"in-progress","at":1791249364630},
+    {"field":"column","value":"done","at":1791250149675}
   ]
 }
