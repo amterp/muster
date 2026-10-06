@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
+use muster_core::input::check_sent_keys;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
@@ -571,17 +572,31 @@ enum Doing {
         focus: Vec<String>,
     },
 
-    /// Type text into a pane, whether or not anything is showing it
+    /// Type text into a pane and press keys in it, whether or not anything is showing it
+    //
+    // In a fixed order - the text, each key, then Return - because clap does not say how flags
+    // and the text were interleaved, and nothing measured needed a key ahead of text. A caller
+    // who does sends twice.
     Send {
         /// The pane to type into, or the one this is running in
         #[arg(long, value_name = "REF")]
         pane: Option<String>,
 
-        /// Press Return afterwards. Whether that submits is the harness's to decide
+        /// Press a key after the text, as a keystroke rather than pasted, so a dialog or menu
+        /// reads it: down, up, esc, tab, a digit or letter, ctrl+c. Give it once per key
+        //
+        // Spelled as a keybinding in the config file is, by the same parser, so there is one
+        // vocabulary for keys and its refusal already lists the names. No comma-separated form,
+        // since a comma is itself a key.
+        #[arg(long = "key", value_name = "KEY")]
+        keys: Vec<String>,
+
+        /// Press Return last. Whether that submits is the harness's to decide
         #[arg(long)]
         enter: bool,
 
-        /// Read the pane back and exit non-zero if the text is not on it
+        /// Exit non-zero unless the text shows on the pane more than it did before, or for keys
+        /// alone, unless the pane changed
         #[arg(long)]
         confirm: bool,
 
@@ -595,7 +610,7 @@ enum Doing {
         file: Option<String>,
 
         /// The text, joined with spaces if it arrives in pieces. `-` reads it from stdin
-        #[arg(required_unless_present = "file", value_name = "TEXT")]
+        #[arg(required_unless_present_any = ["file", "keys", "enter"], value_name = "TEXT")]
         text: Vec<String>,
     },
 
@@ -1087,7 +1102,8 @@ fn pane(
             ..RenamePane::default()
         })),
         Doing::Compact { pane, focus } => compact(pane.as_ref(), focus, environment),
-        Doing::Send { pane, enter, confirm, file, text } => {
+        Doing::Send { pane, keys, enter, confirm, file, text } => {
+            check_sent_keys(keys).map_err(Failure::Refused)?;
             // Only a hyphen standing alone reads stdin. One inside a sentence is text, so
             // `muster pane send a - b` still means what it says.
             let from = match file {
@@ -1100,6 +1116,7 @@ fn pane(
                 text: if from.is_some() { String::new() } else { text.join(" ") },
                 enter: *enter,
                 confirm: *confirm,
+                keys: keys.clone(),
                 ..SendToPane::default()
             })));
             match from {

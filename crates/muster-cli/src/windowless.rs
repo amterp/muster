@@ -225,6 +225,9 @@ fn read_page(
 
 /// Types into a pane on the daemon's input connection, which answers nothing, then confirms it
 /// by reading back when asked to - as the window does, by the same rule.
+///
+/// What goes on the connection is the request's own text, keys and Return, untouched: the window
+/// hands its daemon the same three, so a harness cannot tell which of the two sent it.
 fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> Response {
     // The input connection says nothing about a pane it does not have, so a name nobody holds
     // is refused here, as the window refuses it, rather than reported sent.
@@ -239,30 +242,44 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
         }
         Err(trouble) => return failure(trouble.detail().to_string()),
     }
-    let typed = daemon::connect(socket, ConnectionKind::Input).and_then(|mut stream| {
-        let event = daemon_proto::InputEvent {
-            pane: pane.to_string(),
-            input: Some(daemon_proto::input_event::Input::Send(daemon_proto::input_event::Send {
-                text: send.text.clone(),
-                enter: send.enter,
-            })),
-        };
-        connection::send(&mut stream, &event).map_err(|error| {
-            Trouble::Unreachable(format!(
-                "nothing was sent to {pane}: the muster-daemon at {} would not take it ({error}).",
-                socket.display()
-            ))
-        })
-    });
+    let read = |rows| read_pane(socket, pane, Scope::Newest(rows)).map(|read| read.text);
+    let before = if send.confirm { pane_text::before_sending(read) } else { String::new() };
+    let typed = daemon::connect_welcomed(socket, ConnectionKind::Input).and_then(
+        |(mut stream, welcome)| {
+            let speaks = welcome.protocol.unwrap_or_default();
+            if !send.keys.is_empty() && speaks.minor < daemon_proto::version::KEYS_IN_A_SEND {
+                return Err(Trouble::Refused(format!(
+                    "this machine's muster-daemon speaks protocol {speaks}, which cannot press \
+                     keys, so nothing was sent. Update Muster; a new daemon takes over from an \
+                     old one when the app starts."
+                )));
+            }
+            let event = daemon_proto::InputEvent {
+                pane: pane.to_string(),
+                input: Some(daemon_proto::input_event::Input::Send(
+                    daemon_proto::input_event::Send {
+                        text: send.text.clone(),
+                        enter: send.enter,
+                        keys: send.keys.clone(),
+                    },
+                )),
+            };
+            connection::send(&mut stream, &event).map_err(|error| {
+                Trouble::Unreachable(format!(
+                    "nothing was sent to {pane}: the muster-daemon at {} would not take it \
+                     ({error}).",
+                    socket.display()
+                ))
+            })
+        },
+    );
     if let Err(trouble) = typed {
         return failure(trouble.detail().to_string());
     }
     if !send.confirm {
         return Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) };
     }
-    match pane_text::confirm(pane, &send.text, |rows| {
-        read_pane(socket, pane, Scope::Newest(rows)).map(|read| read.text)
-    }) {
+    match pane_text::confirm(pane, &send.text, &before, read) {
         Ok(()) => Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) },
         Err(refusal) => failure(refusal),
     }

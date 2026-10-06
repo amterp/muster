@@ -13,7 +13,11 @@ fn event(pane: &str, input: input_event::Input) -> proto::InputEvent {
 }
 
 fn sent(text: &str, enter: bool) -> input_event::Input {
-    input_event::Input::Send(input_event::Send { text: text.to_string(), enter })
+    input_event::Input::Send(input_event::Send {
+        text: text.to_string(),
+        enter,
+        ..Default::default()
+    })
 }
 
 fn open(daemon: &Daemon) -> Input {

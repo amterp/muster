@@ -43,7 +43,7 @@ fn a_whole_history_larger_than_a_mebibyte_reaches_its_caller() {
     let mut input = Input::connect(daemon.socket_path());
     let print = "awk 'BEGIN { for (i = 0; i < 30000; i++) printf \"%070d\\n\", i; \
                  print \"LONG-END\" }'";
-    let send = input_event::Send { text: print.to_string(), enter: true };
+    let send = input_event::Send { text: print.to_string(), enter: true, ..Default::default() };
     input.send("p1", input_event::Input::Send(send));
     until_text(&mut daemon.connect(), "p1", "LONG-END\n");
 
@@ -79,7 +79,8 @@ fn a_read_of_the_last_turn_is_what_the_agent_printed_since_it_went_to_work() {
         dispatch(payload);
     }
     let say = |control: &mut muster_harness::Control, text: &str| {
-        let send = input_event::Send { text: format!("say {text}"), enter: true };
+        let send =
+            input_event::Send { text: format!("say {text}"), enter: true, ..Default::default() };
         Input::connect(daemon.socket_path()).send("p1", input_event::Input::Send(send));
         until_some(&format!("the agent to print {text:?}"), || {
             let screen = screen_text(control, "p1");

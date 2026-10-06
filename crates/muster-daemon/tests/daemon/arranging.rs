@@ -175,7 +175,7 @@ fn a_panes_name_and_its_programs_title_are_kept_apart() {
     let mut input = Input::connect(daemon.socket_path());
     let mut set_title = |title: &str| {
         let text = format!("printf '\\033]2;{title}\\007'");
-        input.send("a", Event::Send(input_event::Send { text, enter: true }));
+        input.send("a", Event::Send(input_event::Send { text, enter: true, ..Default::default() }));
     };
     let record = |control: &mut Control| {
         snapshot(control).panes.into_iter().find(|record| record.pane == "a").unwrap()

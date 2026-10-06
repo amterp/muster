@@ -121,7 +121,14 @@ pub(super) fn start(
 }
 
 pub(super) fn prompt(input: &mut Input, pane: &str, text: &str) {
-    input.send(pane, Event::Send(input_event::Send { text: text.to_string(), enter: true }));
+    input.send(
+        pane,
+        Event::Send(input_event::Send {
+            text: text.to_string(),
+            enter: true,
+            ..Default::default()
+        }),
+    );
 }
 
 pub(super) fn environment() -> Vec<(&'static str, String)> {

@@ -190,6 +190,49 @@ fn a_send_to_a_daemon_that_has_gone_is_refused() {
     );
 }
 
+/// A dialog that ignores a paste is answered with keys, and `--confirm` tells the two apart: a
+/// pasted `2` the dialog ignored is refused although "2." was on screen all along, which is what
+/// a Codex approval prompt was confirmed for while ignoring it; a pressed `down` that moved the
+/// selection, and the Return that took it, are confirmed by the pane changing.
+#[test]
+fn a_dialog_is_answered_with_keys_and_a_paste_it_ignored_is_not_confirmed() {
+    let _turn = muster::testing::fresh_session();
+    let drawing = scratch("confirmed-send-dialog");
+    let daemon = daemon_running(&dialog_fixture(&drawing));
+
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    let pane = the_only_pane();
+    wait_until_reading(&pane);
+
+    let send = |text: &str, keys: &[&str], enter: bool| {
+        answer(request::Payload::SendToPane(SendToPane {
+            pane_id: pane.clone(),
+            text: text.to_string(),
+            keys: keys.iter().map(ToString::to_string).collect(),
+            enter,
+            confirm: true,
+            ..SendToPane::default()
+        }))
+    };
+    let ignored = refused(&send("2", &[], false));
+    assert!(ignored.contains("--key"), "the refusal points at keys: {ignored}");
+
+    let unknown = refused(&send("", &["down", "hyper+q"], false));
+    assert!(unknown.contains("nothing was sent"), "{unknown}");
+    assert!(read(&pane).contains("> 1. Review"), "a send with an unknown key wrote nothing");
+
+    assert_ok(&send("", &["down"], false));
+    assert!(read(&pane).contains("> 2. Trust all"), "the pane shows {:?}", read(&pane));
+    assert_ok(&send("", &[], true));
+    assert!(read(&pane).contains("chose 2. Trust all"), "the pane shows {:?}", read(&pane));
+
+    let _ = std::fs::remove_dir_all(&drawing);
+}
+
 /// A daemon holding one pane, running `program` in place of an interactive shell.
 fn daemon_running(program: &Path) -> Daemon {
     let daemon = Daemon::start_built();
@@ -312,6 +355,49 @@ while True:
         # escape bytes on the screen for a reader to trip over.
         text = chunk.replace(b"\x1b[200~", b"").replace(b"\x1b[201~", b"")
         os.write(1, text[:{DRAWS}] + b"\r\n")
+"#
+        ),
+    )
+    .expect("the scratch directory should be writable");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .expect("the fixture should be executable");
+    script
+}
+
+/// A program drawing a two-option dialog the way a harness's select widget behaves: a down or up
+/// arrow moves the selection and Return takes it, while a paste - digits and all - only redraws
+/// the dialog as it was.
+fn dialog_fixture(drawing: &Path) -> PathBuf {
+    let script = drawing.join("dialog.py");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/usr/bin/env python3
+import os, select, tty
+
+tty.setraw(0)
+options = ["1. Review", "2. Trust all"]
+chosen = 0
+
+def draw():
+    rows = ["{READING}"] + [("> " if i == chosen else "  ") + o for i, o in enumerate(options)]
+    os.write(1, b"\x1b[2J\x1b[H" + "\r\n".join(rows).encode() + b"\r\n")
+
+draw()
+while True:
+    if not select.select([0], [], [], 0.2)[0]:
+        continue
+    chunk = os.read(0, 65536)
+    if chunk.startswith(b"\x1b[200~"):
+        draw()
+    elif chunk in (b"\x1b[B", b"\x1bOB"):
+        chosen = min(chosen + 1, len(options) - 1)
+        draw()
+    elif chunk in (b"\x1b[A", b"\x1bOA"):
+        chosen = max(chosen - 1, 0)
+        draw()
+    elif chunk == b"\r":
+        os.write(1, ("chose " + options[chosen]).encode() + b"\r\n")
 "#
         ),
     )

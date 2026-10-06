@@ -8,6 +8,7 @@ mod keymap;
 mod option_as_alt;
 mod pane_channel;
 mod pane_input;
+mod pressed;
 mod settings;
 
 pub use bindings::{Action, Bindings, Chord, ghostty_equivalent, renamed_action};
@@ -18,4 +19,5 @@ pub use keymap::{Binding, Keymap, Resolution, TEXT_EDITING};
 pub use option_as_alt::OptionAsAlt;
 pub use pane_channel::{InputEvent, InputSink, Mouse, MouseAction, MouseButton, NotSent, Wheel};
 pub use pane_input::PaneInput;
+pub use pressed::check_sent_keys;
 pub use settings::PaneInputSettings;

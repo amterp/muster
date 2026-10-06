@@ -84,6 +84,7 @@ impl Agent {
             proto::input_event::Input::Send(proto::input_event::Send {
                 text: text.to_string(),
                 enter,
+                ..Default::default()
             }),
         );
     }
@@ -201,6 +202,7 @@ fn a_pane_typed_into_is_rung_only_once_it_has_been_quiet() {
         proto::input_event::Input::Send(proto::input_event::Send {
             text: "a person typing".to_string(),
             enter: true,
+            ..Default::default()
         }),
     );
     let posted = agent.post("p1", "a brief");

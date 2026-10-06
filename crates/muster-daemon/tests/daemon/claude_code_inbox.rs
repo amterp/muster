@@ -522,7 +522,7 @@ fn two_claude_sessions_exchange_messages_through_the_daemon() {
     }
     let say = |input: &mut Input, pane: &str, text: String| {
         use proto::input_event::{Input as Event, Send};
-        input.send(pane, Event::Send(Send { text, enter: true }));
+        input.send(pane, Event::Send(Send { text, enter: true, ..Default::default() }));
     };
 
     let nonce = format!("k{}", std::process::id());

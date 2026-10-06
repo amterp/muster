@@ -438,8 +438,8 @@
       }
     },
     {
-      "name": "a send with neither text nor a file is refused",
-      "why": "There is nothing to type. An empty string is still text and still allowed, because `pane send \"\" --enter` is how a caller presses Return on its own.",
+      "name": "a send with nothing to type and nothing to press is refused",
+      "why": "There is nothing to send. Text, a file, a key or a Return each make a send, and an empty string is still text, so `pane send \"\"` is allowed - it is the command line with none of the four that has no reading.",
       "given": {
         "argv": [
           "pane",
@@ -450,6 +450,101 @@
       },
       "expect": {
         "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "a return alone needs no text",
+      "why": "Pressing Return is what a dialog or a menu wants when its highlighted answer is the one wanted, and the usage line has always shown TEXT as optional. It was refused for want of text, and `\"\" --enter` worked without anything saying so (kan a_2cW56eld0).",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd",
+          "--enter"
+        ]
+      },
+      "expect": {
+        "request": {
+          "send_to_pane": {
+            "pane_id": "p1w3r07bsd",
+            "text": "",
+            "enter": true
+          }
+        }
+      }
+    },
+    {
+      "name": "keys are pressed in the order given, and Return after them",
+      "why": "A dialog ignores a paste and reads keys, so answering one that is not on its highlighted option takes keys (kan a_2cOvcNUX6). Each is named as the config names a chord and given once per key, since a comma is itself a key; the order is the caller's, and the Return comes last because it takes whatever the keys moved to.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd",
+          "--key",
+          "down",
+          "--key",
+          "down",
+          "--enter"
+        ]
+      },
+      "expect": {
+        "request": {
+          "send_to_pane": {
+            "pane_id": "p1w3r07bsd",
+            "text": "",
+            "keys": [
+              "down",
+              "down"
+            ],
+            "enter": true
+          }
+        }
+      }
+    },
+    {
+      "name": "text comes before keys wherever the flags are written",
+      "why": "The order of a send is fixed - text, keys, then Return - because nothing on the command line says how flags and words were interleaved. A key written before the text is still pressed after it, which `muster docs agents` says, and a caller who wants a key first sends twice.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd",
+          "--key",
+          "tab",
+          "yes"
+        ]
+      },
+      "expect": {
+        "request": {
+          "send_to_pane": {
+            "pane_id": "p1w3r07bsd",
+            "text": "yes",
+            "keys": [
+              "tab"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "a key nobody knows is refused before anything is sent",
+      "why": "The daemon answers nothing on the connection a send goes out on, so a key it could not read would be a send that exits 0 and does nothing. Refused here, in the keybindings' own words, which list the names there are.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "p1w3r07bsd",
+          "--key",
+          "hyper+q"
+        ]
+      },
+      "expect": {
+        "refused": "nothing was sent: `hyper` is not a key Muster knows. Letters and digits are themselves, and the rest are spelled out: left, right, up, down, enter, tab, space, escape, backspace, delete, home, end, pageup, pagedown, f1 to f12."
       }
     },
     {

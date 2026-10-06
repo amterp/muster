@@ -175,6 +175,7 @@ fn a_keystroke_reaches_the_program_and_its_echo_draws() {
             input: Some(input_event::Input::Send(input_event::Send {
                 text: "echo bridged-$((6*7))".to_string(),
                 enter: true,
+                ..Default::default()
             })),
         })
         .unwrap();
@@ -214,6 +215,7 @@ fn a_bridge_follows_its_pane_to_the_daemon_that_replaced_its_own() {
             input: Some(input_event::Input::Send(input_event::Send {
                 text: "echo handed-$((6*7))".to_string(),
                 enter: true,
+                ..Default::default()
             })),
         })
         .unwrap();
@@ -297,6 +299,7 @@ fn type_line(input: &Input, text: &str) {
             input: Some(input_event::Input::Send(input_event::Send {
                 text: text.to_string(),
                 enter: true,
+                ..Default::default()
             })),
         })
         .unwrap();

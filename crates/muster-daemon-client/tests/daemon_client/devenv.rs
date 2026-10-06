@@ -131,7 +131,11 @@ fn muster_is_on_the_path_over_there(control: &mut Control, local: &Path) {
     // The integration adds the directory once the shell has drawn its first prompt, so a line
     // typed before that finds no `muster`; the loop types again until one does.
     until_some("muster typed at a prompt over there to answer", || {
-        let send = proto::input_event::Send { text: "muster --version".into(), enter: true };
+        let send = proto::input_event::Send {
+            text: "muster --version".into(),
+            enter: true,
+            ..Default::default()
+        };
         input.send("p3", proto::input_event::Input::Send(send));
         std::thread::sleep(Duration::from_millis(500));
         let text = read_text(control, "p3", 0, 0).text;

@@ -125,6 +125,7 @@ fn told_its_name(daemon: &Daemon, pane: &str) -> String {
         input_event::Input::Send(input_event::Send {
             text: format!("printf '%s' \"$MUSTER_PANE\" > {}", dump.display()),
             enter: true,
+            ..Default::default()
         }),
     );
     let written = until_some("the shell in the new pane to write out its name", || {

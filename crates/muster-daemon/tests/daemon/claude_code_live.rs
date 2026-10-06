@@ -93,7 +93,14 @@ pub(super) fn until_ready(control: &mut Control, input: &mut Input, pane: &str) 
     loop {
         let screen = read_text(control, pane, 0, 0).text;
         if screen.contains("trust") && screen.contains("folder") {
-            input.send(pane, Event::Send(input_event::Send { text: String::new(), enter: true }));
+            input.send(
+                pane,
+                Event::Send(input_event::Send {
+                    text: String::new(),
+                    enter: true,
+                    ..Default::default()
+                }),
+            );
         } else if screen.contains("? for shortcuts") || screen.contains('❯') {
             break;
         }
@@ -111,7 +118,7 @@ fn prompt(control: &mut Control, input: &mut Input, pane: &str) {
     let text =
         "Without using any tools, write the numbers from 1 to 80, one per line, and nothing else."
             .to_string();
-    input.send(pane, Event::Send(input_event::Send { text, enter: true }));
+    input.send(pane, Event::Send(input_event::Send { text, enter: true, ..Default::default() }));
 }
 
 /// A daemon for a live check, with `project` made under its root, and the arguments Claude Code
@@ -215,7 +222,14 @@ fn claude_code_at_its_plan_approval_dialog_reads_blocked_through_both_paths() {
                 Do not explore anything: call the ExitPlanMode tool with that plan right away."
         .to_string();
     for name in PANES {
-        input.send(name, Event::Send(input_event::Send { text: text.clone(), enter: true }));
+        input.send(
+            name,
+            Event::Send(input_event::Send {
+                text: text.clone(),
+                enter: true,
+                ..Default::default()
+            }),
+        );
     }
     let mut looking = daemon.connect();
     let deadline = Instant::now() + TURN;
@@ -288,7 +302,7 @@ fn a_pane_and_its_claude_code_session_take_each_others_names() {
 
     std::thread::sleep(Duration::from_secs(4));
     let text = "/rename named in claude".to_string();
-    input.send("named", Event::Send(input_event::Send { text, enter: true }));
+    input.send("named", Event::Send(input_event::Send { text, enter: true, ..Default::default() }));
     loop {
         if label(&mut control).as_deref() == Some("named in claude") {
             break;

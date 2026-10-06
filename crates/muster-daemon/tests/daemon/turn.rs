@@ -37,6 +37,7 @@ fn type_line(daemon: &Daemon, text: &str) {
         proto::input_event::Input::Send(proto::input_event::Send {
             text: text.to_string(),
             enter: true,
+            ..Default::default()
         }),
     );
 }

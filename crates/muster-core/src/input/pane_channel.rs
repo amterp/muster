@@ -19,8 +19,10 @@ pub enum InputEvent {
     /// that would run several lines as typed until somebody confirms it; `confirmed` is that
     /// confirmation.
     Paste { text: String, confirmed: bool },
-    /// Text an agent or a script sends, as a paste that is never held, then Return if asked.
-    Send { text: String, enter: bool },
+    /// Text an agent or a script sends, as a paste that is never held, then each key pressed in
+    /// turn, then Return if asked. Keys are named as the config names a chord, and the daemon
+    /// reads them with [`super::Chord::parse`].
+    Send { text: String, keys: Vec<String>, enter: bool },
     /// Bytes written as they are, with no encoding at all: what a `text:` binding in the
     /// config writes, and what an input method commits.
     Bytes(Vec<u8>),

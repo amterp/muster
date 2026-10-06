@@ -542,8 +542,10 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
         census = census.display(),
         answered = answered.display()
     );
-    Input::connect(&socket)
-        .send(&pane.pane, input_event::Input::Send(input_event::Send { text, enter: true }));
+    Input::connect(&socket).send(
+        &pane.pane,
+        input_event::Input::Send(input_event::Send { text, enter: true, ..Default::default() }),
+    );
     until_file(&answered, "a pane to answer what `muster window` said");
     app.stop();
 

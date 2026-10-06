@@ -451,6 +451,7 @@ fn typed(pane: &PaneId, text: &str) -> proto::InputEvent {
         input: Some(proto::input_event::Input::Send(proto::input_event::Send {
             text: text.into(),
             enter: true,
+            ..Default::default()
         })),
     }
 }

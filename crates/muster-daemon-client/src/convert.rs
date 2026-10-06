@@ -259,8 +259,8 @@ pub fn input(
         InputEvent::Paste { text, confirmed } => {
             input_event::Input::Paste(input_event::Paste { text, confirmed })
         }
-        InputEvent::Send { text, enter } => {
-            input_event::Input::Send(input_event::Send { text, enter })
+        InputEvent::Send { text, keys, enter } => {
+            input_event::Input::Send(input_event::Send { text, enter, keys })
         }
         InputEvent::Bytes(bytes) => input_event::Input::Perform(input_event::Perform {
             action: Some(input_event::perform::Action::Raw(bytes)),

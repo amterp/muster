@@ -181,6 +181,10 @@ impl Daemon {
 fn type_line(daemon: &Daemon, pane: &str, text: &str) {
     Input::connect(daemon.socket_path()).send(
         pane,
-        input_event::Input::Send(input_event::Send { text: text.to_string(), enter: true }),
+        input_event::Input::Send(input_event::Send {
+            text: text.to_string(),
+            enter: true,
+            ..Default::default()
+        }),
     );
 }

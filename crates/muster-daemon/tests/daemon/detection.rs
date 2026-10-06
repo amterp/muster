@@ -82,7 +82,14 @@ fn run_agent(control: &mut Control, input: &mut Input, pane: &str, agent: &Path)
 }
 
 fn type_line(input: &mut Input, pane: &str, text: &str) {
-    input.send(pane, Event::Send(input_event::Send { text: text.to_string(), enter: true }));
+    input.send(
+        pane,
+        Event::Send(input_event::Send {
+            text: text.to_string(),
+            enter: true,
+            ..Default::default()
+        }),
+    );
 }
 
 fn record(control: &mut Control, pane: &str) -> proto::Pane {

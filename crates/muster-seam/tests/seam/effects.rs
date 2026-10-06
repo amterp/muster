@@ -138,7 +138,7 @@ fn open_window(daemon: &Daemon) -> std::path::PathBuf {
 fn typing(daemon: &Daemon) -> impl FnMut(&str) {
     let mut input = Input::connect(daemon.socket_path());
     move |line: &str| {
-        let send = input_event::Send { text: line.to_string(), enter: true };
+        let send = input_event::Send { text: line.to_string(), enter: true, ..Default::default() };
         input.send("p1", input_event::Input::Send(send));
     }
 }

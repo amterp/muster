@@ -24,7 +24,14 @@ pub(crate) fn stop(daemon: &mut Daemon, control: &mut Control) {
 }
 
 fn type_line(input: &mut Input, pane: &str, text: &str) {
-    input.send(pane, Event::Send(input_event::Send { text: text.to_string(), enter: true }));
+    input.send(
+        pane,
+        Event::Send(input_event::Send {
+            text: text.to_string(),
+            enter: true,
+            ..Default::default()
+        }),
+    );
 }
 
 fn directory(daemon: &Daemon, name: &str) -> PathBuf {

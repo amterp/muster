@@ -165,7 +165,10 @@ fn answer_trust_unrung(
         "claude-code: nothing was rung for {}s at the trust dialog; answering it",
         RINGS_WITHIN.as_secs()
     );
-    input.send(pane, Event::Send(input_event::Send { text: String::new(), enter: true }));
+    input.send(
+        pane,
+        Event::Send(input_event::Send { text: String::new(), enter: true, ..Default::default() }),
+    );
 }
 
 /// Waits until Claude Code shows its trust dialog or its prompt, and says whether it was the

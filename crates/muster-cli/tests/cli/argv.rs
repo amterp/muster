@@ -267,6 +267,7 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
             "send_to_pane": fields([
                 ("pane_id", said(&send.pane_id)),
                 ("text", Some(json!(send.text))),
+                ("keys", (!send.keys.is_empty()).then(|| json!(send.keys))),
                 ("enter", send.enter.then_some(json!(true))),
                 ("confirm", send.confirm.then_some(json!(true))),
             ])

@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::support::*;
-use muster_core::input::{Key, KeyAction, KeyEvent, OptionAsAlt};
+use muster_core::input::{Chord, Key, KeyAction, KeyEvent, OptionAsAlt};
 use muster_harness::Input;
 use muster_vt::{KeyEncoder, KeyModes, MouseEncoder, MouseGeometry, Terminal, encode_paste};
 use proto::event::Event as Payload;
@@ -174,7 +174,9 @@ fn sent_text_goes_as_a_paste_and_is_submitted_with_a_return() {
     let fenced = receiving(&mut control, &daemon, "fenced", b"\x1b[?2004h");
     let plain = receiving(&mut control, &daemon, "plain", b"");
     let mut input = Input::connect(daemon.socket_path());
-    let send = |text: &str| Event::Send(input_event::Send { text: text.to_string(), enter: true });
+    let send = |text: &str| {
+        Event::Send(input_event::Send { text: text.to_string(), enter: true, ..Default::default() })
+    };
     input.send("fenced", send("line one\nline two"));
     input.send("plain", send("line one\nline two"));
 
@@ -202,13 +204,73 @@ fn an_empty_send_with_a_return_is_the_return_alone() {
     let mut control = daemon.connect();
     let fenced = receiving(&mut control, &daemon, "fenced", b"\x1b[?2004h");
     let mut input = Input::connect(daemon.socket_path());
-    input.send("fenced", Event::Send(input_event::Send { text: String::new(), enter: true }));
+    input.send(
+        "fenced",
+        Event::Send(input_event::Send { text: String::new(), enter: true, ..Default::default() }),
+    );
 
     let encoder = key_encoder(&after(b"\x1b[?2004h"));
     let mut expected = encoder.encode(&KeyEvent::press(Key::Enter)).unwrap();
     let release = KeyEvent { action: KeyAction::Release, ..KeyEvent::press(Key::Enter) };
     expected.extend(encoder.encode(&release).unwrap());
     received(&fenced, &expected);
+}
+
+/// Keys a send names are pressed after its text, one at a time, each encoded against the
+/// program's own modes as a keystroke is - which is what lets a dialog that ignores a paste see
+/// them - and a Return after keys is pressed after them.
+#[test]
+fn keys_a_send_names_are_pressed_after_its_text_against_the_programs_modes() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let modes = b"\x1b[?2004h\x1b[?1h\x1b[>1u";
+    let dialog = receiving(&mut control, &daemon, "dialog", modes);
+    let plain = receiving(&mut control, &daemon, "plain", b"");
+    let mut input = Input::connect(daemon.socket_path());
+    let send = || {
+        Event::Send(input_event::Send {
+            text: "hi".to_string(),
+            keys: ["down", "2", "ctrl+c"].map(String::from).to_vec(),
+            enter: true,
+        })
+    };
+    input.send("dialog", send());
+    input.send("plain", send());
+
+    let mut encoder = key_encoder(&after(modes));
+    encoder.set_option_as_alt(OptionAsAlt::Always);
+    let mut expected = encode_paste("hi", true);
+    for chord in ["down", "2", "ctrl+c", "enter"] {
+        let key = Chord::parse(chord).expect("a chord").pressed();
+        expected.extend(encoder.encode(&key).unwrap());
+        let release = KeyEvent { action: KeyAction::Release, ..key };
+        expected.extend(encoder.encode(&release).unwrap());
+    }
+    received(&dialog, &expected);
+    received(&plain, b"hi\x1b[B2\x03\r");
+}
+
+/// A send naming a key the daemon cannot read is not written at all, text and Return included:
+/// a Return after a key that went missing would take a dialog's other answer.
+#[test]
+fn a_send_naming_a_key_nobody_knows_writes_nothing_of_itself() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let out = receiving(&mut control, &daemon, "raw", b"");
+    let mut input = Input::connect(daemon.socket_path());
+    input.send(
+        "raw",
+        Event::Send(input_event::Send {
+            text: "first".to_string(),
+            keys: vec!["down".to_string(), "hyper+q".to_string()],
+            enter: true,
+        }),
+    );
+    input.send(
+        "raw",
+        Event::Send(input_event::Send { text: "after".to_string(), ..Default::default() }),
+    );
+    received(&out, b"after");
 }
 
 /// A long send reaches a program reading raw input whole, in however many writes the pty takes.
@@ -219,7 +281,10 @@ fn a_long_send_reaches_a_raw_reader_whole() {
     let out = receiving(&mut control, &daemon, "raw", b"");
     let text = "0123456789".repeat(1000);
     let mut input = Input::connect(daemon.socket_path());
-    input.send("raw", Event::Send(input_event::Send { text: text.clone(), enter: false }));
+    input.send(
+        "raw",
+        Event::Send(input_event::Send { text: text.clone(), enter: false, ..Default::default() }),
+    );
     received(&out, text.as_bytes());
 }
 
@@ -242,7 +307,10 @@ fn a_line_sent_to_a_line_reader_arrives_whole() {
     until_text(&mut control, "lines", "ready");
     let line = "x".repeat(1023);
     let mut input = Input::connect(daemon.socket_path());
-    input.send("lines", Event::Send(input_event::Send { text: line.clone(), enter: true }));
+    input.send(
+        "lines",
+        Event::Send(input_event::Send { text: line.clone(), enter: true, ..Default::default() }),
+    );
     received(&out, format!("{line}\n").as_bytes());
 }
 

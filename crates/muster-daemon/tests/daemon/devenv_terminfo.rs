@@ -73,7 +73,8 @@ fn ssh_from_a_pane_installs_the_entry_on_a_host_once() {
     );
     let mut input = Input::connect(daemon.socket_path());
     let mut typed = |line: &str| {
-        let send = proto::input_event::Send { text: line.to_string(), enter: true };
+        let send =
+            proto::input_event::Send { text: line.to_string(), enter: true, ..Default::default() };
         input.send("p1", proto::input_event::Input::Send(send));
     };
     // Counting each shell's prompts says which one the next line reaches. bash's on the host is

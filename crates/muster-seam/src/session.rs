@@ -5393,12 +5393,13 @@ pub(crate) fn toggle_sidebar(window: WindowId) {
 /// Types text into a pane by name, whether or not a region is showing it.
 ///
 /// Through the daemon's input connection, which never blocks and answers nothing: the daemon
-/// writes it as a paste it never holds, then presses Return if asked. Whether it arrived is
-/// what a caller's read-back is for.
+/// writes it as a paste it never holds, then presses each key, then Return if asked. Whether it
+/// arrived is what a caller's read-back is for.
 pub(crate) fn send_to_pane(
     daemon: &DaemonId,
     pane: &PaneId,
     text: String,
+    keys: Vec<String>,
     enter: bool,
 ) -> Result<(), Refusal> {
     let input = {
@@ -5414,9 +5415,24 @@ pub(crate) fn send_to_pane(
                  closed while this was in flight."
             )));
         }
+        // An older daemon would ignore the keys and press the Return alone, which can take a
+        // dialog's other answer. A window hands an older daemon over to this build's when it can,
+        // so this is a daemon that refused the handover.
+        let speaks =
+            backend.follower.connection().control().and_then(|control| control.welcome().protocol);
+        if let Some(speaks) = speaks
+            && !keys.is_empty()
+            && speaks.minor < muster_daemon_proto::version::KEYS_IN_A_SEND
+        {
+            return Err(Refusal::Declined(format!(
+                "{daemon} runs a muster-daemon speaking protocol {speaks}, which cannot press \
+                 keys, so nothing was sent. Update Muster; a new daemon takes over from an old \
+                 one when the app starts."
+            )));
+        }
         Arc::clone(&backend.input)
     };
-    input.send(pane, InputEvent::Send { text, enter }).map_err(|not_sent| {
+    input.send(pane, InputEvent::Send { text, keys, enter }).map_err(|not_sent| {
         Refusal::Declined(format!(
             "nothing was sent to {pane}: {not_sent}. The window reconnects to a daemon on its \
              own; `muster window` says whether {daemon} is connected, and sending again once it \

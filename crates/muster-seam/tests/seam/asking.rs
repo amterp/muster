@@ -47,7 +47,11 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     // Whichever tab is not on screen asks, so going there has to change what is shown.
     let (hidden_tab, hidden_pane) = if shown == "t1" { ("t2", "p2") } else { ("t1", "p1") };
     let mut input = Input::connect(daemon.socket_path());
-    let send = input_event::Send { text: r"printf '\033]9;look here\a'".to_string(), enter: true };
+    let send = input_event::Send {
+        text: r"printf '\033]9;look here\a'".to_string(),
+        enter: true,
+        ..Default::default()
+    };
     input.send(hidden_pane, input_event::Input::Send(send));
     until(
         "the program's notification to ask for somebody",

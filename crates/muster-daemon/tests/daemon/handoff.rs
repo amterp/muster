@@ -8,7 +8,14 @@ use proto::input_event::{self, Input as Event};
 use proto::{pane_request, session_request, tab_request};
 
 fn type_line(input: &mut Input, pane: &str, text: &str) {
-    input.send(pane, Event::Send(input_event::Send { text: text.to_string(), enter: true }));
+    input.send(
+        pane,
+        Event::Send(input_event::Send {
+            text: text.to_string(),
+            enter: true,
+            ..Default::default()
+        }),
+    );
 }
 
 /// Two panes side by side in a labeled tab, the second zoomed and labeled, each shell having

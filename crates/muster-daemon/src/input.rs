@@ -11,7 +11,7 @@ use std::sync::{Arc, Weak};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_core::input::{KeyAction, Modifiers, OptionAsAlt};
+use muster_core::input::{Chord, KeyAction, Modifiers, OptionAsAlt};
 use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, input_event, input_event::perform};
 use muster_vt::{MouseAction, MouseButton, MouseEvent};
@@ -128,7 +128,7 @@ pub(crate) fn input_of(input: input_event::Input) -> Option<Input> {
             position: position(wheel.x, wheel.y),
         })),
         Event::Paste(paste) => Some(Input::Paste { text: paste.text, confirmed: paste.confirmed }),
-        Event::Send(send) => Some(Input::Send { text: send.text, enter: send.enter }),
+        Event::Send(send) => sent(send),
         Event::Focus(focus) => Some(Input::Focus(focus.focused)),
         Event::Perform(input_event::Perform { action: Some(action), key }) => match action {
             perform::Action::Raw(bytes) => Some(Input::Bound(bytes)),
@@ -136,6 +136,30 @@ pub(crate) fn input_of(input: input_event::Input) -> Option<Input> {
             perform::Action::ClearScreen(_) => Some(Input::ClearScreen { key: key.map(owned_key) }),
         },
         Event::Perform(input_event::Perform { action: None, .. }) => None,
+    }
+}
+
+/// A `pane send`, with its keys read the way the config reads a chord, or nothing at all when
+/// one of them does not read: a Return after a key that went missing would answer a dialog the
+/// key was meant to move first.
+fn sent(send: input_event::Send) -> Option<Input> {
+    let keys = send.keys.iter().map(|name| Chord::parse(name).map(Chord::pressed));
+    match keys.collect::<Result<Vec<_>, _>>() {
+        Ok(keys) => Some(Input::Send { text: send.text, keys, enter: send.enter }),
+        Err(refusal) => {
+            log::warn(
+                "daemon.input.unread_key",
+                fields! {
+                    "keys" => send.keys.join(" "),
+                    "error" => refusal,
+                    "impact" => "nothing of this pane send was written, its text included",
+                    "check" => "the client sending it checks each key before it sends, so this \
+                                is a client that skipped the check or names keys this daemon \
+                                does not know - an older daemon than the client",
+                },
+            );
+            None
+        }
     }
 }
 

@@ -75,8 +75,14 @@ fn what_a_pane_is_sent_never_reaches_the_log() {
     follow(&mut control, None);
     make(&mut control, create("p1", in_new_tab("t1")));
     let secret = "hunter2-correct-horse";
-    input
-        .send("p1", Event::Send(input_event::Send { text: format!("echo {secret}"), enter: true }));
+    input.send(
+        "p1",
+        Event::Send(input_event::Send {
+            text: format!("echo {secret}"),
+            enter: true,
+            ..Default::default()
+        }),
+    );
     until_text(&mut control, "p1", &format!("{secret}\n"));
     make(&mut control, create("p2", in_new_tab("t2")));
 

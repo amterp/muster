@@ -175,7 +175,7 @@ fn handed_over(local: &Path, older: u64, home: &Path) -> muster_daemon_proto::We
 }
 
 fn type_line(input: &mut Input, text: &str) {
-    let send = input_event::Send { text: text.to_string(), enter: true };
+    let send = input_event::Send { text: text.to_string(), enter: true, ..Default::default() };
     input.send("p1", input_event::Input::Send(send));
 }
 

@@ -187,7 +187,14 @@ fn until_ready(control: &mut Control, pane: &str) {
 }
 
 pub(super) fn type_line(input: &mut Input, pane: &str, text: &str) {
-    input.send(pane, Event::Send(input_event::Send { text: text.to_string(), enter: true }));
+    input.send(
+        pane,
+        Event::Send(input_event::Send {
+            text: text.to_string(),
+            enter: true,
+            ..Default::default()
+        }),
+    );
 }
 
 const PANES: [&str; 2] = ["hooked", "screen"];
@@ -492,7 +499,11 @@ fn a_codex_holding_a_draft_is_woken_by_codex_queue_and_keeps_the_draft() {
     std::thread::sleep(Duration::from_secs(4));
     input.send(
         "worker",
-        Event::Send(input_event::Send { text: "half typed".to_string(), enter: false }),
+        Event::Send(input_event::Send {
+            text: "half typed".to_string(),
+            enter: false,
+            ..Default::default()
+        }),
     );
 
     let nonce = format!("q{}", std::process::id());

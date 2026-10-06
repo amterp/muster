@@ -1079,6 +1079,7 @@ fn a_pane_a_split_has_only_just_made_can_be_typed_into_at_once() {
         text: SENT.to_string(),
         enter: false,
         confirm: false,
+        ..Default::default()
     })));
     until(
         "the text to reach the pane that was just made",

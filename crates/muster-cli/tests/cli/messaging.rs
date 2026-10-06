@@ -253,6 +253,7 @@ fn agents_in_panes() -> Daemon {
         proto::input_event::Input::Send(proto::input_event::Send {
             text: "half a thought".to_string(),
             enter: false,
+            ..Default::default()
         }),
     );
     until_text(&mut control, "p3", "half a thought");

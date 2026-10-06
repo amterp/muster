@@ -135,6 +135,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     a_watch_prints_each_change(&here);
     a_wait_on_a_pane_that_closes_is_refused(&here);
     a_send_the_pane_never_shows_is_refused(&here);
+    keys_are_pressed_without_a_window(&here);
 
     let refused = refused_with(&here.muster(&["pane", "read"]), 1);
     assert!(refused.contains("--pane"), "with no window there is no keyboard's pane:\n{refused}");
@@ -288,7 +289,31 @@ fn a_send_the_pane_never_shows_is_refused(here: &Here) {
     let long = format!("{}end", "x".repeat(1100));
     let ran = here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm", &long]);
     let refused = refused_with(&ran, 1);
-    assert!(refused.contains("is not on it") && refused.contains("canonical mode"), "{refused}");
+    assert!(
+        refused.contains("does not show on it") && refused.contains("canonical mode"),
+        "{refused}"
+    );
+}
+
+/// Keys go to the daemon as the window sends them, and a Return pressed alone is a send of its
+/// own. A key nobody knows is refused before anything is sent.
+fn keys_are_pressed_without_a_window(here: &Here) {
+    ok(&here.muster(&[
+        "pane",
+        "send",
+        "--pane",
+        "p2",
+        "--key",
+        "enter",
+        "--confirm",
+        "echo keyed",
+    ]));
+    let mut control = here.daemon.connect();
+    until_text(&mut control, "p2", "keyed\n");
+    ok(&here.muster(&["pane", "send", "--pane", "p2", "--enter", "--confirm"]));
+    let refused =
+        refused_with(&here.muster(&["pane", "send", "--pane", "p2", "--key", "hyper"]), 1);
+    assert!(refused.contains("nothing was sent"), "{refused}");
 }
 
 #[test]

@@ -113,7 +113,11 @@ impl Daemon {
     pub(crate) fn send_line(&mut self, pane: &str, line: &str) {
         self.input.send(
             pane,
-            input_event::Input::Send(input_event::Send { text: line.to_string(), enter: true }),
+            input_event::Input::Send(input_event::Send {
+                text: line.to_string(),
+                enter: true,
+                ..Default::default()
+            }),
         );
     }
 

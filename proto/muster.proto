@@ -882,7 +882,8 @@ message SendToPane {
   // one and not the other is the common case, not the exotic one.
   bool enter = 4;
 
-  // Read the pane back afterwards, and refuse if what was sent is not on it.
+  // Read the pane back afterwards, and refuse if what was sent does not show on it more than it
+  // did just before - or, for keys alone, if the pane did not change.
   //
   // A send that reaches nothing is otherwise indistinguishable from one that lands: the
   // daemon takes the request either way, so the answer is the same whether the program in the
@@ -896,6 +897,17 @@ message SendToPane {
   // neither, which reads as unconfirmed. Off by default: it costs a round trip, and a caller
   // sending into a pane it is watching anyway does not need one.
   bool confirm = 5;
+
+  // Keys to press after the text and before the Return, in order, each spelled as a keybinding
+  // in the config file spells one: `down`, `esc`, `2`, `ctrl+c`.
+  //
+  // Pressed rather than pasted, which is the whole of why they are not text: a dialog or a menu
+  // reads keys and ignores a paste, so a digit or an arrow sent as text never reaches one. Each
+  // is its own write a moment after the last, the way a person presses them, so a dialog has
+  // drawn the first before it reads the next. Names rather than key codes, so a caller without
+  // libghostty can say them, and so this window and a CLI talking to a daemon directly hand the
+  // daemon the same thing.
+  repeated string keys = 6;
 }
 
 // Keeps answering with what panes' agents are doing, instead of answering once.

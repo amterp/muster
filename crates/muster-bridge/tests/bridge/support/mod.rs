@@ -166,6 +166,7 @@ impl Typing {
             input_event::Input::Send(input_event::Send {
                 text: format!("echo running-$((6*7)); {command}"),
                 enter: true,
+                ..Default::default()
             }),
         );
         self.expect_on_screen(

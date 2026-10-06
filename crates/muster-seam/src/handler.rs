@@ -18,7 +18,7 @@ use muster_core::equalize::Evenly;
 use muster_core::font::{self, FontReport};
 use muster_core::input::{
     CompositionOutcome, InputEvent, Modifiers, Mouse, MouseAction, MouseButton, Wheel,
-    composition_outcome,
+    check_sent_keys, composition_outcome,
 };
 use muster_core::intent::Refusal;
 use muster_core::intent::{BackendIntent, Branch, Side};
@@ -2059,8 +2059,11 @@ fn split_onto(
     relayed(session::submit_from(window, onto, &intent, keyboard, split.as_ref()).map(made_or_ok))
 }
 
-/// Types text into a pane, named rather than focused.
+/// Types text into a pane and presses keys in it, named rather than focused.
 fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
+    if let Err(refusal) = check_sent_keys(&send.keys) {
+        return Response::failure(refusal);
+    }
     // The keyboard never moves for this. Being sent something is not the same as being looked
     // at, and an agent telling two others what to do would otherwise pull the user's cursor
     // onto whichever it addressed last.
@@ -2071,18 +2074,30 @@ fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
     let Some(pane) = target.pane.clone() else {
         return nothing_to_act_on(window, &target.daemon);
     };
-    if let Err(refusal) =
-        session::send_to_pane(&target.daemon, &pane, send.text.clone(), send.enter)
-    {
+    let before = if send.confirm {
+        pane_text::before_sending(|rows| {
+            session::read_pane(&target.daemon, &pane, Scope::Newest(rows)).map(|read| read.text)
+        })
+    } else {
+        String::new()
+    };
+    let queued = session::send_to_pane(
+        &target.daemon,
+        &pane,
+        send.text.clone(),
+        send.keys.clone(),
+        send.enter,
+    );
+    if let Err(refusal) = queued {
         return placed(Err(refusal), &target);
     }
     if !send.confirm {
         return Response::ok();
     }
-    confirm_it_arrived(window, send)
+    confirm_it_arrived(&pane, send, &before)
 }
 
-/// Reads the pane back and refuses if the message that was just sent does not appear on it.
+/// Reads the pane back and refuses if what was just sent does not show on it, against `before`.
 ///
 /// How long to read and what to say is `pane_text::confirm`'s, which the CLI also uses when it
 /// sends straight to a daemon, so a caller asking for the same certainty gets the same answer.
@@ -2090,24 +2105,16 @@ fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
 /// **Refusal rather than a field on the answer**, because an exit code is the only part of this
 /// a script branches on without reading English, and a send that cannot be seen is exactly the
 /// case `--confirm` was asked for.
-fn confirm_it_arrived(window: WindowId, send: &proto::SendToPane) -> Response {
-    let pane = if send.pane_id.is_empty() {
-        match session::focused_pane(window) {
-            Some(pane) => pane,
-            None => return Response::ok(),
-        }
-    } else {
-        PaneId::new(&send.pane_id)
-    };
-    let Some(daemon) = pane_holder(&pane, &send.daemon_id) else {
+fn confirm_it_arrived(pane: &PaneId, send: &proto::SendToPane, before: &str) -> Response {
+    let Some(daemon) = pane_holder(pane, &send.daemon_id) else {
         return Response::failure(format!(
-            "the text was sent and pane {pane} then went away, so nothing could be read back to \
-             confirm it. Whatever was sent may well have arrived; this is the confirmation \
-             going missing, not the send."
+            "what was sent went to pane {pane}, which then went away, so nothing could be read \
+             back to confirm it. Whatever was sent may well have arrived; this is the \
+             confirmation going missing, not the send."
         ));
     };
-    let confirmed = pane_text::confirm(pane.as_str(), &send.text, |rows| {
-        session::read_pane(&daemon, &pane, Scope::Newest(rows)).map(|read| read.text)
+    let confirmed = pane_text::confirm(pane.as_str(), &send.text, before, |rows| {
+        session::read_pane(&daemon, pane, Scope::Newest(rows)).map(|read| read.text)
     });
     match confirmed {
         Ok(()) => Response::ok(),

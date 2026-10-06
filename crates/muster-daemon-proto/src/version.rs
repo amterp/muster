@@ -13,6 +13,10 @@ use crate::Version;
 /// baseline follows, and the `compatible` test holds the two together.
 pub const PROTOCOL: Version = Version { major: 1, minor: 4 };
 
+/// The first minor whose daemon presses the keys a `pane send` names. An older one ignores the
+/// field and would write the send's Return without them, so a client asks before sending any.
+pub const KEYS_IN_A_SEND: u32 = 4;
+
 /// Whether two ends speaking these versions can talk.
 pub fn compatible(ours: &Version, theirs: &Version) -> bool {
     ours.major == theirs.major

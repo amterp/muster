@@ -178,6 +178,7 @@ mod tests {
             input: Some(proto::input_event::Input::Send(proto::input_event::Send {
                 text: text.into(),
                 enter: false,
+                ..Default::default()
             })),
         }
     }

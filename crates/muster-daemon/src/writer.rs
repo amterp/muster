@@ -14,7 +14,7 @@ use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, Weak};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -39,6 +39,15 @@ const DISCRETE_MULTIPLIER: f64 = 3.0;
 /// A cell's height when no surface has said, so a precise scroll still moves by rows.
 const FALLBACK_CELL: f64 = 16.0;
 
+/// The least time between a pane's last write and a key that `pane send` presses.
+///
+/// A key is a write of its own so that the program reads it alone: Claude Code took a line of
+/// keys arriving in one write as nothing at all (corpus/claude-code-2.1.288/dialog-input.txt).
+/// And it waits a moment after the last, as a person's next key does, so a dialog has drawn
+/// what one key did before it reads the next - a Return that arrives with the arrow before it is
+/// at the mercy of the program reading both before it redraws.
+const KEY_GAP: Duration = Duration::from_millis(50);
+
 /// Something for a pane's program to read.
 #[derive(Debug)]
 pub(crate) enum Input {
@@ -54,10 +63,14 @@ pub(crate) enum Input {
         text: String,
         confirmed: bool,
     },
+    /// `pane send`: text, then keys pressed one at a time, then Return if asked.
     Send {
         text: String,
+        keys: Vec<KeyEvent>,
         enter: bool,
     },
+    /// One key of a send, written on its own a moment after the pane's last write (`KEY_GAP`).
+    Press(KeyEvent),
     /// The doorbell's own wake, or its Return pressed again: written as a send is, and told
     /// apart from it only so a pane knows whether anyone else has typed since.
     Ring {
@@ -107,6 +120,7 @@ impl Input {
                 | Input::Wheel(_)
                 | Input::Paste { .. }
                 | Input::Send { .. }
+                | Input::Press(_)
                 | Input::Ring { .. }
                 | Input::Chore { .. }
         )
@@ -115,8 +129,40 @@ impl Input {
     /// Whether this is text somebody other than the doorbell typed: what can sit in an agent's
     /// prompt beside a ring, where a Return would send it. The pointer puts no text there.
     fn is_someones_text(&self) -> bool {
-        matches!(self, Input::Bound(_) | Input::Key(_) | Input::Paste { .. } | Input::Send { .. })
+        matches!(
+            self,
+            Input::Bound(_)
+                | Input::Key(_)
+                | Input::Paste { .. }
+                | Input::Send { .. }
+                | Input::Press(_)
+        )
     }
+
+    /// What is written for this input, in order, and whether each waits out `KEY_GAP` first.
+    ///
+    /// A send with no keys is one write, its text and its Return together, which is how a
+    /// harness has been measured taking a slash command at its prompt; one with keys is its
+    /// text, then each key alone, then its Return alone, since a Return after keys belongs to
+    /// whatever they opened.
+    fn writes(self) -> Vec<(Input, bool)> {
+        match self {
+            Input::Send { text, keys, enter } if !keys.is_empty() => {
+                let text = (!text.is_empty())
+                    .then(|| (Input::Send { text, keys: Vec::new(), enter: false }, false));
+                let enter = enter.then(|| KeyEvent::press(Key::Enter));
+                text.into_iter()
+                    .chain(keys.into_iter().chain(enter).map(|key| (Input::Press(key), true)))
+                    .collect()
+            }
+            input => vec![(input, false)],
+        }
+    }
+}
+
+/// How long a paced write waits, given when the pane was last written to.
+fn pause_before(last_write: Option<Instant>, now: Instant) -> Duration {
+    last_write.map_or(Duration::ZERO, |last| (last + KEY_GAP).saturating_duration_since(now))
 }
 
 /// A key as it arrives: libghostty's numbering, and the app's option-as-alt setting.
@@ -256,6 +302,8 @@ pub(crate) struct Writer {
     reports: Reports,
     buttons_held: u8,
     scroll: Scroll,
+    /// When something was last written to the pane, for the gap a key a send asked for leaves.
+    last_write: Option<Instant>,
 }
 
 /// The bytes of text a program or agent sent. Not a clipboard, so never held; fenced when the
@@ -280,7 +328,16 @@ impl Writer {
         io: Weak<PaneIo>,
         reports: Reports,
     ) -> Writer {
-        Writer { pane, serial, encoding, io, reports, buttons_held: 0, scroll: Scroll::default() }
+        Writer {
+            pane,
+            serial,
+            encoding,
+            io,
+            reports,
+            buttons_held: 0,
+            scroll: Scroll::default(),
+            last_write: None,
+        }
     }
 
     /// Writes everything queued for a pane until the pane lets go of its queue, or of its PTY.
@@ -295,38 +352,57 @@ impl Writer {
                 },
                 input => input,
             };
-            let typed = input.is_typed();
-            let someones = input.is_someones_text();
-            let chore = matches!(input, Input::Chore { .. });
-            // The encoding is released before the write, which can wait on a program that is
-            // not reading, so the reader's refresh never waits on it.
-            let bytes = self.encode(input);
-            if bytes.is_empty() {
-                continue;
-            }
-            // Before the write and after each piece of it the program takes: a write the program
-            // is slow to take is echoed piece by piece while it goes on.
-            let wrote_input = || {
-                if typed && let Some(io) = self.io.upgrade() {
-                    io.wrote_input(Instant::now(), someones, chore);
+            for (input, paced) in input.writes() {
+                let pause = if paced {
+                    pause_before(self.last_write, Instant::now())
+                } else {
+                    Duration::ZERO
+                };
+                if !pause.is_zero() {
+                    std::thread::sleep(pause);
                 }
-            };
-            wrote_input();
-            if let Err(error) = write_all(master, wake, &bytes, wrote_input) {
-                if error.kind() != io::ErrorKind::BrokenPipe {
-                    log::warn(
-                        "daemon.pane.write_failed",
-                        fields! {
-                            "pane" => self.pane,
-                            "error" => error,
-                            "impact" => "the pane's program stops receiving input; its pane is \
-                                         closing or its terminal has gone",
-                        },
-                    );
+                if !self.write_one(input, master, wake) {
+                    return;
                 }
-                return;
             }
         }
+    }
+
+    /// Encodes one input and writes it. False once the pane can take no more.
+    fn write_one(&mut self, input: Input, master: &OwnedFd, wake: &OwnedFd) -> bool {
+        let typed = input.is_typed();
+        let someones = input.is_someones_text();
+        let chore = matches!(input, Input::Chore { .. });
+        // The encoding is released before the write, which can wait on a program that is
+        // not reading, so the reader's refresh never waits on it.
+        let bytes = self.encode(input);
+        if bytes.is_empty() {
+            return true;
+        }
+        // Before the write and after each piece of it the program takes: a write the program
+        // is slow to take is echoed piece by piece while it goes on.
+        let wrote_input = || {
+            if typed && let Some(io) = self.io.upgrade() {
+                io.wrote_input(Instant::now(), someones, chore);
+            }
+        };
+        wrote_input();
+        if let Err(error) = write_all(master, wake, &bytes, wrote_input) {
+            if error.kind() != io::ErrorKind::BrokenPipe {
+                log::warn(
+                    "daemon.pane.write_failed",
+                    fields! {
+                        "pane" => self.pane,
+                        "error" => error,
+                        "impact" => "the pane's program stops receiving input; its pane is \
+                                     closing or its terminal has gone",
+                    },
+                );
+            }
+            return false;
+        }
+        self.last_write = Some(Instant::now());
+        true
     }
 
     fn encode(&mut self, input: Input) -> Vec<u8> {
@@ -394,18 +470,19 @@ impl Writer {
                 }
                 encode_paste(&text, false)
             }
-            Input::Send { text, enter }
+            Input::Send { text, enter, .. }
             | Input::Ring { text, enter }
             | Input::Chore { text, enter } => {
                 let mut bytes = sent_text(text, modes.bracketed_paste);
                 if enter {
-                    for action in [KeyAction::Press, KeyAction::Release] {
-                        let key = KeyEvent { action, ..KeyEvent::press(Key::Enter) };
-                        let encoded = encoding.key.encode(&key);
-                        bytes.extend(self.encoded(encoded));
-                    }
+                    bytes.extend(self.pressed(&mut encoding, &KeyEvent::press(Key::Enter)));
                 }
                 bytes
+            }
+            Input::Press(key) => {
+                // Somebody naming alt in a chord means the modifier, not option's compose layer.
+                encoding.key.set_option_as_alt(OptionAsAlt::Always);
+                self.pressed(&mut encoding, &key)
             }
             Input::Focus(focused) => {
                 if !modes.focus_events {
@@ -431,6 +508,17 @@ impl Writer {
             Input::ClearScreen { key } => Input::after_clear(io.clear_screen(key.as_ref()), key),
             _ => None,
         }
+    }
+
+    /// A key pressed and let go, encoded against the pane's modes: the release is written only
+    /// to a program that asked for releases, which the encoder decides.
+    fn pressed(&self, encoding: &mut Encoding, key: &KeyEvent) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for action in [KeyAction::Press, KeyAction::Release] {
+            let key = KeyEvent { action, ..key.clone() };
+            bytes.extend(self.encoded(encoding.key.encode(&key)));
+        }
+        bytes
     }
 
     /// A keystroke, encoded against the pane's modes.
@@ -754,9 +842,9 @@ mod tests {
             crate::input::input_of(Event::Paste(input_event::Paste { text, confirmed: true }))
                 .expect("a paste"),
         );
-        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(5);
         while writing.io.input_at().is_none() && Instant::now() < deadline {
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(10));
         }
         assert!(writing.io.input_at().is_some(), "a paste nobody has read yet is not typed");
     }
@@ -774,7 +862,7 @@ mod tests {
             .expect("a paste"),
         );
         let started = until_input(&writing, None);
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(50));
         let mut taken = vec![0; 256 * 1024];
         writing.written.read_exact(&mut taken).expect("the writer wrote");
         until_input(&writing, Some(started));
@@ -782,7 +870,7 @@ mod tests {
 
     /// Waits for the pane's input time to be set, and later than `after`.
     fn until_input(writing: &Writing, after: Option<Instant>) -> Instant {
-        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             if let Some(at) =
                 writing.io.input_at().filter(|&at| after.is_none_or(|after| at > after))
@@ -790,7 +878,7 @@ mod tests {
                 return at;
             }
             assert!(Instant::now() < deadline, "no input time after {after:?}");
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 
@@ -881,5 +969,56 @@ mod tests {
         assert_eq!(decide(InputModes::default(), (0, 3)), Wheeled::Nothing);
         let no_alternate_scroll = InputModes { alternate_screen: true, ..InputModes::default() };
         assert_eq!(decide(no_alternate_scroll, (0, 3)), Wheeled::Nothing);
+    }
+
+    fn send(text: &str, keys: &[&str], enter: bool) -> Event {
+        Event::Send(input_event::Send {
+            text: text.to_string(),
+            enter,
+            keys: keys.iter().map(ToString::to_string).collect(),
+        })
+    }
+
+    /// What a send is written as, in order: its text, each key alone and spaced, its Return
+    /// alone and spaced too once keys came before it.
+    #[test]
+    fn a_send_with_keys_is_its_text_then_each_key_then_its_return_each_spaced() {
+        let input = crate::input::input_of(send("hi", &["down", "2"], true)).expect("a send");
+        let writes: Vec<String> =
+            input.writes().iter().map(|(input, paced)| format!("{input:?} {paced}")).collect();
+        assert_eq!(writes.len(), 4, "{writes:#?}");
+        assert!(
+            writes[0].starts_with("Send { text: \"hi\", keys: [], enter: false")
+                && writes[0].ends_with("false")
+        );
+        assert!(writes[1].contains("ArrowDown") && writes[1].ends_with("true"));
+        assert!(writes[2].contains("Digit2") && writes[2].ends_with("true"));
+        assert!(writes[3].contains("Enter") && writes[3].ends_with("true"));
+        let plain = crate::input::input_of(send("hi", &[], true)).expect("a send");
+        assert_eq!(plain.writes().len(), 1, "with no keys, text and Return are one write");
+    }
+
+    #[test]
+    fn a_send_naming_a_key_nobody_knows_writes_nothing() {
+        assert!(crate::input::input_of(send("hi", &["down", "hyper+q"], true)).is_none());
+    }
+
+    #[test]
+    fn a_paced_key_waits_out_the_gap_since_the_last_write_and_no_longer() {
+        let now = Instant::now();
+        assert_eq!(pause_before(None, now), Duration::ZERO);
+        assert_eq!(pause_before(Some(now), now), KEY_GAP);
+        assert_eq!(pause_before(Some(now), now + KEY_GAP / 2), KEY_GAP / 2);
+        assert_eq!(pause_before(Some(now), now + KEY_GAP * 2), Duration::ZERO);
+    }
+
+    /// A key a send presses is typed by someone, as a keystroke is, so the doorbell knows a
+    /// prompt was touched.
+    #[test]
+    fn a_key_a_send_presses_counts_as_typed() {
+        let mut writing = Writing::new();
+        let written = writing.written(send("", &["down"], false));
+        assert_eq!(written, b"\x1b[B");
+        assert!(writing.io.input_at().is_some());
     }
 }

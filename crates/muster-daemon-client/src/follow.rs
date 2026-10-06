@@ -654,6 +654,7 @@ mod tests {
             input: Some(proto::input_event::Input::Send(proto::input_event::Send {
                 text: text.into(),
                 enter: true,
+                ..Default::default()
             })),
         };
         // Typed until it shows, as a person would: what went before the writer found the

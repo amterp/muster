@@ -42,6 +42,7 @@ fn resizing_the_surface_resizes_the_pane() {
         input_event::Input::Send(input_event::Send {
             text: "while :; do stty size; sleep 0.1; done".to_string(),
             enter: true,
+            ..Default::default()
         }),
     );
 

@@ -148,6 +148,7 @@ fn shell_prompts_are_marked(daemon: &Daemon, shell: &str, command: Option<&str>)
         proto::input_event::Input::Send(proto::input_event::Send {
             text: String::new(),
             enter: true,
+            ..Default::default()
         })
     };
     let mut output = Vec::new();
@@ -254,7 +255,8 @@ fn shell_says_on(
     make(&mut control, create("p1", in_new_tab("t1")));
     let mut input = muster_harness::Input::connect(daemon.socket_path());
     until_some(&format!("{shell} to say {wanted:?}"), || {
-        let send = proto::input_event::Send { text: line.to_string(), enter: true };
+        let send =
+            proto::input_event::Send { text: line.to_string(), enter: true, ..Default::default() };
         input.send("p1", proto::input_event::Input::Send(send));
         std::thread::sleep(std::time::Duration::from_millis(300));
         let text = read_text(&mut control, "p1", 0, 0).text;
