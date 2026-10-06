@@ -84,7 +84,8 @@ muster msg post --to p1w3r07bsd --file brief.md     # the director's brief
 ```
 
 The director's brief tells it to run `muster msg join --name director --group review` first:
-the director has to join from its own session, so that it is the one woken.
+the director has to join from its own session, so that it is the one woken. A member added by
+its pane may name itself with `muster msg join --name <name>` and keeps its place in the group.
 
 An agent convening a council it will direct itself names itself first, then makes and fills
 the group, and needs no brief: `muster msg join --name director`, then the first two lines

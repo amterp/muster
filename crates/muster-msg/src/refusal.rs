@@ -70,6 +70,9 @@ pub enum Refusal {
     NotAMember {
         name: String,
         group: String,
+        /// Who may add `name`, when the group's policy does not let it join on its own: a join
+        /// would be refused too.
+        permitted: Option<Vec<String>>,
     },
     AddresseeNotInGroup {
         name: String,

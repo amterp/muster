@@ -146,9 +146,11 @@ fn refused(refusal: &Refusal) -> String {
         | Refusal::PairTooLong { group }
         | Refusal::GroupExists { group } => group.clone(),
         Refusal::GroupNameClash { group, existing } => format!("{group} {existing}"),
-        Refusal::NotAMember { name, group } | Refusal::AddresseeNotInGroup { name, group } => {
-            format!("{name} {group}")
+        Refusal::NotAMember { name, group, permitted: Some(permitted) } => {
+            format!("{name} {group}, added by {}", permitted.join(","))
         }
+        Refusal::NotAMember { name, group, permitted: None }
+        | Refusal::AddresseeNotInGroup { name, group } => format!("{name} {group}"),
         Refusal::WhichGroup { candidates } => candidates.join(","),
         Refusal::Unread { group, count } => format!("{group} {count}"),
         Refusal::BodyTooLarge { bytes } => bytes.to_string(),
@@ -377,6 +379,24 @@ fn idle(service: &mut Messaging<Memory>, sessions: &Sessions, name: &str, now: u
     }
 }
 
+/// The host stops and starts again from what its store kept: the logs it appended, and the
+/// state it last saved.
+fn restart(service: &mut Messaging<Memory>) -> String {
+    let store = service.store();
+    let mut logs: BTreeMap<String, Vec<muster_msg::Entry>> = BTreeMap::new();
+    for (group, entry) in &store.appended {
+        logs.entry(group.clone()).or_default().push(entry.clone());
+    }
+    let saved = store.saved.clone().unwrap_or_default();
+    let kept = Memory {
+        appended: store.appended.clone(),
+        saved: store.saved.clone(),
+        ..Memory::default()
+    };
+    *service = Messaging::restore(kept, saved, logs);
+    "restarted".to_string()
+}
+
 /// A window starts attending, or with `off` stops.
 fn attend(sessions: &Sessions, attending: bool) -> String {
     sessions.attended.set(attending);
@@ -569,6 +589,7 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
         "pane" => Ok(pane(sessions, step)),
         "idle" => Ok(idle(service, sessions, text("name").unwrap_or_default(), now)),
         "attend" => Ok(attend(sessions, text("state") != Some("off"))),
+        "restart" => Ok(restart(service)),
         "human" => Ok(waits_for_the_human(service)),
         "dies" => {
             sessions.dead.borrow_mut().insert(socket(text("session").unwrap_or_default()));

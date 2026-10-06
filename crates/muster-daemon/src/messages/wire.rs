@@ -258,7 +258,12 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.candidates = permitted;
         }
         Refusal::NotAParticipant { name } => refused.name = name.unwrap_or_default(),
-        Refusal::NotAMember { name, group } | Refusal::AddresseeNotInGroup { name, group } => {
+        Refusal::NotAMember { name, group, permitted } => {
+            refused.name = name;
+            refused.group = group;
+            refused.candidates = permitted.unwrap_or_default();
+        }
+        Refusal::AddresseeNotInGroup { name, group } => {
             refused.name = name;
             refused.group = group;
         }
@@ -318,7 +323,11 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         }
         "group_exists" => Refusal::GroupExists { group },
         "not_a_participant" => Refusal::NotAParticipant { name: optional(name) },
-        "not_a_member" => Refusal::NotAMember { name, group },
+        // No candidates is a policy that lets the name join, or a daemon that predates saying.
+        "not_a_member" => {
+            let permitted = (!candidates.is_empty()).then_some(candidates);
+            Refusal::NotAMember { name, group, permitted }
+        }
         "addressee_not_in_group" => Refusal::AddresseeNotInGroup { name, group },
         "addressed_self" => Refusal::AddressedSelf,
         "no_group" => Refusal::NoGroup,
@@ -395,7 +404,12 @@ mod tests {
             },
             Refusal::GroupExists { group: "g".into() },
             Refusal::NotAParticipant { name: Some("a".into()) },
-            Refusal::NotAMember { name: "a".into(), group: "g".into() },
+            Refusal::NotAMember { name: "a".into(), group: "g".into(), permitted: None },
+            Refusal::NotAMember {
+                name: "a".into(),
+                group: "g".into(),
+                permitted: Some(vec!["director".into(), "@human".into()]),
+            },
             Refusal::AddresseeNotInGroup { name: "a".into(), group: "g".into() },
             Refusal::AddressedSelf,
             Refusal::NoGroup,

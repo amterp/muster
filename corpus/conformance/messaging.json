@@ -399,7 +399,7 @@
       "why": "Each group's log is a file named after it, and a file name has at most 255 bytes (MIP-4, section 12).",
       "given": { "steps": [
         {"session": "a", "do": "join", "name": "a", "group": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"},
-        {"session": "a", "do": "join", "group": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"}
+        {"session": "a", "do": "join", "name": "a", "group": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"}
       ] },
       "expect": { "said": [
         "refused bad_name ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg+hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii",
@@ -792,13 +792,15 @@
     },
     {
       "name": "an agent addressed by its pane that joins under a name takes the pane's messages",
-      "why": "The agent the post rang is the one joining, so the brief it was rung for is read under its new name rather than stranded with the name of its pane (MIP-4, section 3).",
+      "why": "The agent the post rang is the one joining, so the brief it was rung for is read under its new name rather than stranded with the name of its pane (MIP-4, section 3). The log says the pane left and the name joined, which is how the name is still the member after a restart.",
       "given": { "steps": [
         {"do": "agent", "pane": "p1", "state": "idle"},
         {"session": "a", "do": "join", "name": "a"},
         {"session": "a", "do": "post", "to": ["p1"], "body": "brief"},
         {"session": "s1", "do": "join", "name": "builder", "pane": "p1"},
         {"session": "s1", "do": "read", "pane": "p1"},
+        {"do": "who", "group": "a+p1"},
+        {"do": "restart"},
         {"do": "who", "group": "a+p1"}
       ] },
       "expect": { "said": [
@@ -806,8 +808,70 @@
         "a registered",
         "a posted #4 to a+p1; woke p1 [a+p1 #4-4 x1 to-you:1 from a] rung p1",
         "builder registered",
-        "builder read a+p1: #4 a->p1: brief",
+        "builder read a+p1: #4 a->p1: brief | #5 p1 left",
+        "a alive, builder alive (idle)",
+        "restarted",
         "a alive, builder alive (idle)"
+      ] }
+    },
+    {
+      "name": "an agent added to a directed council by its pane takes a name in it, having read its brief",
+      "why": "A director adds a member by its pane and briefs it, and the agent there reads the brief before naming itself, which gives the pane's participant its inbox. The name it joins under is still that agent, so it takes the pane's place in the council without asking the policy, and keeps it across a restart.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director", "group": "council"},
+        {"do": "members", "group": "council", "add": ["p1"]},
+        {"session": "sd", "do": "post", "group": "council", "to": ["p1"], "body": "brief"},
+        {"session": "s1", "do": "read", "pane": "p1"},
+        {"session": "s1", "do": "join", "name": "tracer", "group": "council", "pane": "p1"},
+        {"session": "s1", "do": "post", "group": "council", "body": "done", "pane": "p1"},
+        {"do": "restart"},
+        {"do": "who", "group": "council"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "@human made council (#3)",
+        "director joined council",
+        "@human changed the members of council (#5); added p1",
+        "director posted #6 to council; woke p1 [council #6-6 x1 to-you:1 from director] rung p1",
+        "p1 read council: #6 director->p1: brief",
+        "tracer joined council",
+        "tracer posted #9 to council; woke director [council #9-9 x1 to-you:0 from tracer]",
+        "restarted",
+        "@human human, director alive, tracer alive (idle)"
+      ] }
+    },
+    {
+      "name": "a join a policy refuses leaves the caller as it was",
+      "why": "Joining under a name renames the caller only once the join is allowed, so a refused join neither strands its name nor its pane's place.",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "s1", "do": "join", "name": "scout"},
+        {"session": "s1", "do": "join", "name": "tracer", "group": "council"},
+        {"do": "who"}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "scout registered",
+        "refused not_permitted tracer join council (only director,@human)",
+        "@human human, scout alive"
+      ] }
+    },
+    {
+      "name": "a post by someone a policy keeps out says who may add it",
+      "why": "Telling a caller to join a group whose policy refuses its join sends it to a second refusal; it is told who may add it instead.",
+      "given": { "steps": [
+        {"do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "s1", "do": "join", "name": "scout"},
+        {"session": "s1", "do": "post", "group": "council", "body": "let me in"},
+        {"session": "s1", "do": "read", "group": "council"}
+      ] },
+      "expect": { "said": [
+        "@human made council (#3)",
+        "scout registered",
+        "refused not_a_member scout council, added by director,@human",
+        "refused not_a_member scout council, added by director,@human"
       ] }
     },
     {

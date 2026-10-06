@@ -1413,9 +1413,16 @@ pub(super) fn words(refusal: &Refusal) -> String {
             "{} not taking part, so there is nothing to leave",
             name.as_ref().map_or("this session is".to_string(), |name| format!("{name} is"))
         ),
-        Refusal::NotAMember { name, group } => {
+        Refusal::NotAMember { name, group, permitted: None } => {
             format!("{name} is not in {group}; join it with `{}`", join(group))
         }
+        Refusal::NotAMember { name, group, permitted: Some(permitted) } => format!(
+            "{name} is not in {group}, and its policy lets only {} add members; ask one of them \
+             to run `{}`. `{}` shows what is posted there",
+            names(permitted),
+            messaging::command(GROUP, &format!("add {group} {name}")),
+            messaging::command(LOG, &format!("--group {group}"))
+        ),
         Refusal::AddresseeNotInGroup { name, group } => format!(
             "{name} is not in {group}; post without --group to reach {name} directly, or ask \
              {name} to run `{}`",

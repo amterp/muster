@@ -213,7 +213,8 @@ fn a_pane_means_whoever_holds_it_over_a_participant_named_after_it() {
     let to = ["p1".to_string()];
     let posted = service.post(&session("a"), None, &to, "who is in p1?", &Everyone, 4).unwrap();
     assert_eq!(posted.group, "a+builder");
-    assert_eq!(posted.reached.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(), [
-        "builder"
-    ]);
+    assert_eq!(
+        posted.reached.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(),
+        ["builder"]
+    );
 }

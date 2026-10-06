@@ -438,6 +438,8 @@ pub struct Messaging<S: Store> {
     /// Whom each replica's last batch of new entries reached, for a later batch carrying the
     /// same entries (`across::Lately`). Not kept: it answers a race between two deliveries.
     pub(crate) lately_reached: BTreeMap<String, crate::across::Lately>,
+    /// What folding a pane into a name told no machine yet: see [`Self::take_folded`].
+    folded: Vec<Tell>,
 }
 
 impl<S: Store> Messaging<S> {
@@ -531,6 +533,7 @@ impl<S: Store> Messaging<S> {
             called: BTreeSet::new(),
             unanswered: BTreeSet::new(),
             lately_reached: BTreeMap::new(),
+            folded: Vec::new(),
             human_home: saved.human_home,
         };
         messaging.kept = messaging.snapshot();
@@ -557,15 +560,20 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Joined, Refusal> {
+        if let Some(group) = group {
+            check_group(group)?;
+            if let Some(name) = name {
+                self.may_join_as(caller, name, group, presence)?;
+            }
+        }
         let (name, took_over) = match name {
             None => self.identify_reporting(caller, presence)?,
             Some(name) => (name.to_string(), self.become_named(caller, name, presence)?),
         };
         self.seen(&name, caller);
         let mut created = false;
-        let mut tell = Vec::new();
+        let mut tell = self.take_folded();
         if let Some(group) = group {
-            check_group(group)?;
             if let Some(existing) = self.groups.get(group)
                 && !existing.members.contains(&name)
             {
@@ -574,10 +582,28 @@ impl<S: Store> Messaging<S> {
             created = self.ensure_group(group, &name, now_ms)?;
             let after = self.groups[group].head();
             self.add_member(group, &name, now_ms)?;
-            tell = self.tell(group, after, None);
+            tell.extend(self.tell(group, after, None));
         }
         self.save()?;
         Ok(Joined { name, group: group.map(str::to_string), created, took_over, tell })
+    }
+
+    /// Refuses joining `group` as `name` before the caller is renamed, so a refused join leaves
+    /// it as it was: what `group`'s policy says, unless the caller will be a member once it is
+    /// `name` - already by that name, or as the pane it is folded in from.
+    pub(crate) fn may_join_as(
+        &self,
+        caller: &Caller,
+        name: &str,
+        group: &str,
+        presence: &dyn Presence,
+    ) -> Result<(), Refusal> {
+        let Some(existing) = self.groups.get(group) else { return Ok(()) };
+        let addressed = Self::addressed(caller, presence);
+        let folded = self.made_by_address(&addressed, presence);
+        let member = existing.members.contains(name)
+            || folded.is_some_and(|pane| existing.members.contains(&pane));
+        if member { Ok(()) } else { self.permitted(group, name, Action::Join) }
     }
 
     /// Makes the caller the participant `name`, as `join --name` does, saying whether it took
@@ -598,10 +624,10 @@ impl<S: Store> Messaging<S> {
             .participants
             .get(name)
             .is_some_and(|existing| existing.inbox.is_some() && existing.inbox != caller.inbox);
-        let addressed = self.made_by_address(caller).filter(|made| made != name);
+        let addressed = self.made_by_address(caller, presence).filter(|made| made != name);
         self.adopt(name, caller);
         if let Some(made) = addressed {
-            self.absorb(name, &made);
+            self.absorb(name, &made, caller.at_ms)?;
         }
         Ok(took_over)
     }
@@ -628,7 +654,7 @@ impl<S: Store> Messaging<S> {
         let left = if let Some(group) = group {
             let group = &self.locate(group)?;
             if !self.groups[group].members.contains(&name) {
-                return Err(Refusal::NotAMember { name, group: group.clone() });
+                return Err(self.not_a_member(&name, group));
             }
             self.here(group)?;
             self.permitted(group, &name, Action::Leave)?;
@@ -1098,7 +1124,7 @@ impl<S: Store> Messaging<S> {
                 return Err(Refusal::NoSuchParticipant { name: name.clone() });
             };
             if !self.groups[group].members.contains(&name) {
-                return Err(Refusal::NotAMember { name, group: group.to_string() });
+                return Err(self.not_a_member(&name, group));
             }
             self.remove_member(group, &name, now_ms)?;
             let kept_to_it = self
@@ -1357,6 +1383,18 @@ impl<S: Store> Messaging<S> {
             action,
             permitted: policy.membership.clone(),
         })
+    }
+
+    /// `name` is not in `group`, saying who may add it when the group's policy does not let it
+    /// join on its own: then telling it to join would only be refused again.
+    pub(crate) fn not_a_member(&self, name: &str, group: &str) -> Refusal {
+        let permitted = self
+            .groups
+            .get(group)
+            .map(|kept| &kept.policy)
+            .filter(|policy| !policy.permits(name))
+            .map(|policy| policy.membership.clone());
+        Refusal::NotAMember { name: name.to_string(), group: group.to_string(), permitted }
     }
 
     /// The participant a name means, by its own name or its pane's, without making one.
@@ -1682,31 +1720,65 @@ impl<S: Store> Messaging<S> {
         }
     }
 
-    /// The participant a post made by addressing the caller's pane (MIP-4, section 3): named
-    /// after the pane, holding it, and with no inbox of its own yet.
-    pub(crate) fn made_by_address(&self, caller: &Caller) -> Option<String> {
+    /// The participant a post or `group add` made by naming the caller's pane (MIP-4, section
+    /// 3): named after the pane and holding it. Whatever runs in the pane is it, so the agent
+    /// there that ran a command first, which gave it its inbox, is it too. Only another session
+    /// still running, such as an agent nested in the pane's own, keeps it.
+    pub(crate) fn made_by_address(
+        &self,
+        caller: &Caller,
+        presence: &dyn Presence,
+    ) -> Option<String> {
         let pane = caller.pane.as_ref()?;
         let made = self.participants.get(pane)?;
-        (made.pane.as_ref() == Some(pane) && made.inbox.is_none()).then(|| pane.clone())
+        let another = made.inbox.as_ref().filter(|inbox| caller.inbox.as_ref() != Some(*inbox));
+        let theirs = another.is_some_and(|inbox| {
+            let mut session = Participant::named(pane);
+            session.inbox = Some(inbox.clone());
+            presence.alive(&session)
+        });
+        (made.pane.as_ref() == Some(pane) && !theirs).then(|| pane.clone())
     }
 
     /// Folds `from` into `into`: its groups, where it had read to, and what it was woken for.
     /// An agent addressed by its pane that then joins under a name of its own is one agent, and
     /// the brief it was rung for must be readable under that name.
-    pub(crate) fn absorb(&mut self, into: &str, from: &str) {
-        let Some(from) = self.participants.remove(from) else { return };
-        for group in self.groups.values_mut() {
-            if group.members.remove(&from.name) {
-                group.members.insert(into.to_string());
+    ///
+    /// In a group kept here the fold is `from` leaving and `into` joining in the log, since a
+    /// restart reads members back from the log; `into` keeps `from`'s place rather than starting
+    /// at its join. No policy is asked: the group's membership already held this agent. What to
+    /// tell other machines about those entries is kept for the host in [`Self::take_folded`].
+    pub(crate) fn absorb(&mut self, into: &str, from: &str, at_ms: u64) -> Result<(), Refusal> {
+        let Some(from) = self.participants.remove(from) else { return Ok(()) };
+        for group in self.memberships(&from.name) {
+            if self.groups[&group].home.is_some() {
+                let members = &mut self.groups.get_mut(&group).expect("a membership").members;
+                members.remove(&from.name);
+                members.insert(into.to_string());
+                continue;
             }
+            let after = self.groups[&group].head();
+            self.append(&group, What::Left { who: from.name.clone() }, at_ms)?;
+            if !self.groups[&group].members.contains(into) {
+                self.append(&group, What::Joined { who: into.to_string() }, at_ms)?;
+            }
+            let tell = self.tell(&group, after, None);
+            self.folded.extend(tell);
         }
         self.waiters.remove(&from.name);
-        let Some(into) = self.participants.get_mut(into) else { return };
+        let Some(into) = self.participants.get_mut(into) else { return Ok(()) };
         for (group, cursor) in from.cursors {
             into.cursors.entry(group).or_insert(cursor);
         }
         into.woken.extend(from.woken);
         into.rewoken.extend(from.rewoken);
+        Ok(())
+    }
+
+    /// What a join's fold of a pane into a name appended that other machines with members in
+    /// those groups must be told, once the join has been routed wherever it goes.
+    pub fn take_folded(&mut self) -> Vec<Tell> {
+        std::mem::take(&mut self.folded)
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1761,7 +1833,7 @@ impl<S: Store> Messaging<S> {
             Some(group) => {
                 let group = self.locate(group)?;
                 if !self.groups[&group].members.contains(name) {
-                    return Err(Refusal::NotAMember { name: name.to_string(), group });
+                    return Err(self.not_a_member(name, &group));
                 }
                 Ok(vec![group])
             }
@@ -1899,7 +1971,7 @@ impl<S: Store> Messaging<S> {
     ) -> Result<(), Refusal> {
         let members = &self.group(group)?.members;
         if !members.contains(author) {
-            return Err(Refusal::NotAMember { name: author.to_string(), group: group.to_string() });
+            return Err(self.not_a_member(author, group));
         }
         if let Some(outside) = addressees.iter().find(|name| !members.contains(*name)) {
             return Err(Refusal::AddresseeNotInGroup {

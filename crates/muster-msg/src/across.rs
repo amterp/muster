@@ -106,9 +106,11 @@ impl Peer {
             |name: String| if name == "*" || name == HUMAN { name } else { self.inward(&name) };
         match refusal {
             Refusal::NoSuchGroup { group: g } => Refusal::NoSuchGroup { group: group(g) },
-            Refusal::NotAMember { name: n, group: g } => {
-                Refusal::NotAMember { name: name(n), group: group(g) }
-            }
+            Refusal::NotAMember { name: n, group: g, permitted } => Refusal::NotAMember {
+                name: name(n),
+                group: group(g),
+                permitted: permitted.map(|permitted| permitted.into_iter().map(role).collect()),
+            },
             Refusal::AddresseeNotInGroup { name: n, group: g } => {
                 Refusal::AddresseeNotInGroup { name: name(n), group: group(g) }
             }
@@ -624,7 +626,7 @@ impl<S: Store> Messaging<S> {
             let Some(machine) = self.groups[&key].home.clone() else { continue };
             self.reachable(&key, &machine)?;
             if !self.groups[&key].members.contains(&name) {
-                return Err(Refusal::NotAMember { name, group: key });
+                return Err(self.not_a_member(&name, &key));
             }
             let call =
                 Call::Leave { name: name.clone(), group: base(&key), head: self.head_of(&key) };
@@ -1218,7 +1220,7 @@ impl<S: Store> Messaging<S> {
         }
         let who = peer.inward(name);
         if !self.groups[group].members.contains(&who) {
-            return Err(Refusal::NotAMember { name: who, group: group.to_string() });
+            return Err(self.not_a_member(&who, group));
         }
         self.permitted(group, &who, Action::Leave)?;
         let after = self.groups[group].head();

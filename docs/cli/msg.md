@@ -61,9 +61,11 @@ says otherwise.
 
 **`--to` takes a pane's name too**, such as the one `muster pane new` prints. An agent in that
 pane need not have joined anything, or even have started yet: it becomes a participant named
-after the pane, and whatever runs `muster msg` in that pane from then on is it. Once the agent
-there has joined under a name of its own, the pane's name means that participant. A name or pane
-that means nobody on this machine is looked for on the machines linked to it (below).
+after the pane, and whatever runs `muster msg` in that pane from then on is it. When that agent
+joins under a name of its own, the name takes the pane's place in every group the pane was in,
+whatever their policies say about joining, and the log shows the pane leaving and the name
+joining. From then on the pane's name means that participant. A name or pane that means nobody
+on this machine is looked for on the machines linked to it (below).
 
 ## A group's policy
 
