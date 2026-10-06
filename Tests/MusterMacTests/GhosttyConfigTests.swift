@@ -151,7 +151,7 @@ import Testing
     #expect(
       lines == [
         "keybind = clear", "clipboard-read = deny", "clipboard-write = deny",
-        "right-click-action = ignore", "middle-click-action = ignore",
+        "right-click-action = context-menu", "middle-click-action = ignore",
       ])
     #expect(ghostty_config_diagnostics_count(config) == 0)
     #expect(color(config, "background") == color(defaults, "background"))
@@ -182,14 +182,15 @@ import Testing
     #expect(name(config, "clipboard-write") == "deny")
   }
 
-  @Test func aSurfaceLeavesTheOtherButtonsToTheProgram() throws {
-    // Ghostty's own right click selects a word for a context menu Muster does not have, and its
-    // middle click pastes into a surface whose writes the bridge drops. Both buttons still reach
-    // the pane's program through its daemon when it asked for the mouse.
+  @Test func aSurfaceLeavesARightClickToThePanesMenu() throws {
+    // `context-menu` is the one right-click action libghostty does not report consumed, so it is
+    // the only one under which AppKit asks for the pane's menu; every other action took the menu
+    // away. The middle click pastes into a surface whose writes the bridge drops. Both buttons
+    // still reach the pane's program through its daemon when it asked for the mouse.
     let config = try loaded(ghosttyConfiguration(Appearance()))
     defer { ghostty_config_free(config) }
 
-    #expect(name(config, "right-click-action") == "ignore")
+    #expect(name(config, "right-click-action") == "context-menu")
     #expect(name(config, "middle-click-action") == "ignore")
   }
 

@@ -169,14 +169,18 @@ public func ghosttyConfiguration(_ appearance: Appearance) -> [String] {
 ///
 /// No bindings: every key a surface sees has already been given to the program, and a Ghostty
 /// binding firing on it underneath Muster's would act twice on one keystroke. No clipboard: a
-/// program's OSC 52 reaches the daemon too, and the daemon's is the one that is applied. No
-/// right or middle click of its own: Ghostty's selects a word for a context menu Muster does not
-/// have, and pastes into a surface whose writes the bridge drops.
+/// program's OSC 52 reaches the daemon too, and the daemon's is the one that is applied.
+///
+/// A right click is `context-menu`, Ghostty's own default, because it is the only action that
+/// leaves the click to the host: every other one reports the press consumed, and AppKit then
+/// never asks for the pane's menu. It selects the word or link under the pointer first, as Ghostty
+/// does, which is what the menu's Copy copies. No middle click: Ghostty's pastes into a surface
+/// whose writes the bridge drops.
 private let embedded = [
   "keybind = clear",
   "clipboard-read = deny",
   "clipboard-write = deny",
-  "right-click-action = ignore",
+  "right-click-action = context-menu",
   "middle-click-action = ignore",
 ]
 

@@ -504,7 +504,7 @@ SKIPPED_SUITES = [
       "note": "reach the network on a free model; ./dev --opencode runs them" },
     { "language": "Rust", "suite": "muster-contract's launch checks", "skipped": 15,
       "note": "need a logged-in session; ./dev --contract runs them" },
-    { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 5,
+    { "language": "Swift", "suite": "SurfaceGUITests", "skipped": 7,
       "note": "need a logged-in session; ./dev --contract runs them" },
 ]
 

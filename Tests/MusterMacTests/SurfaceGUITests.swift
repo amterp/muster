@@ -26,6 +26,10 @@ import os
 // Then freeing a surface while its threads wait on the main thread, which froze a window for
 // three hours: only a real surface has those threads.
 //
+// Then a right-click, which opens the pane's menu only when the surface says it left the press
+// alone. A surface configured to consume every one opened no menu in any pane through 0.13.0,
+// with every test of the menu green against a recording.
+//
 // Real surfaces: a real runtime, a real command behind a pty, and a Metal layer on a view. Two
 // runtimes in one process hang, so the tests share one and take turns.
 //
@@ -190,6 +194,81 @@ extension SurfaceGUITests {
     }
     #expect(opened.first == OpenedLink(kind: .hyperlink, url: "https://example.com/muster"))
   }
+}
+
+extension SurfaceGUITests {
+  /// Whether a right-click opens the pane's menu is libghostty's answer, not the view's: the view
+  /// asks AppKit for the menu only when the surface says it left the press alone. A surface told
+  /// a right-click action that consumes every press opened no menu anywhere, and the tests that
+  /// replace the surface with a recording could not see it, because a recording consumes nothing
+  /// unless told to.
+  @MainActor
+  @Test("leaves a right-click and a ctrl-click over a shell to the pane's menu")
+  func aRightClickOverAShellOpensTheMenu() async throws {
+    let (view, asked) = try await surfaceView(reportingTheMouse: false)
+
+    view.rightMouseDown(with: mouse(.rightMouseDown))
+    view.rightMouseUp(with: mouse(.rightMouseUp))
+    #expect(asked() == 1, "a right-click over a shell did not ask for the pane's menu")
+
+    _ = view.menu(for: mouse(.leftMouseDown, [.control]))
+    #expect(asked() == 2, "a ctrl-click over a shell did not ask for the pane's menu")
+  }
+
+  /// Ghostty's rule: a program that asked for the mouse gets a right-click and a ctrl-click, and
+  /// shift gets past it to the menu.
+  @MainActor
+  @Test("gives a right-click to a program reporting the mouse, unless shift is held")
+  func aRightClickOverAProgramIsTheProgramsUnlessShifted() async throws {
+    let (view, asked) = try await surfaceView(reportingTheMouse: true)
+
+    view.rightMouseDown(with: mouse(.rightMouseDown))
+    view.rightMouseUp(with: mouse(.rightMouseUp))
+    #expect(asked() == 0, "a right-click the program asked for opened the pane's menu")
+
+    _ = view.menu(for: mouse(.leftMouseDown, [.control]))
+    #expect(asked() == 0, "a ctrl-click the program asked for opened the pane's menu")
+
+    view.rightMouseDown(with: mouse(.rightMouseDown, [.shift]))
+    view.rightMouseUp(with: mouse(.rightMouseUp, [.shift]))
+    #expect(asked() == 1, "a shift-right-click over the program did not ask for the pane's menu")
+  }
+}
+
+/// A pane's view around a real surface, once its first row is drawn, and how many times it has
+/// asked for its menu. The menu it is handed is nil, so nothing opens on the machine running this.
+@MainActor
+private func surfaceView(reportingTheMouse: Bool) async throws -> (SurfaceView, () -> Int) {
+  let renderer = try sharedRenderer()
+  let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+  let mode = reportingTheMouse ? "\\033[?1000h" : ""
+  let surface = try renderer.makeSurface(
+    in: view, command: "/bin/sh -c \"printf '\(mode)%s-over-me\\n' click; sleep 10\"")
+  surface.setSize(width: 800, height: 600)
+  view.attach(surface, typeable: true)
+  var reports: [SearchReport] = []
+  surface.onSearch = { reports.append($0) }
+  // The mode arrives through the pty ahead of the text, so a drawn row means the surface knows
+  // whether the program wants the mouse.
+  try await answered("the row to be drawn") {
+    surface.search(nil)
+    surface.search("click-over-me")
+    return await polled(within: .milliseconds(250)) { reports.contains(.total(1)) }
+  }
+  surface.search(nil)
+
+  var asked = 0
+  view.onMenu = {
+    asked += 1
+    return nil
+  }
+  return (view, { asked })
+}
+
+private func mouse(_ type: NSEvent.EventType, _ flags: NSEvent.ModifierFlags = []) -> NSEvent {
+  NSEvent.mouseEvent(
+    with: type, location: NSPoint(x: 4, y: 290), modifierFlags: flags, timestamp: 0,
+    windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
 }
 
 /// Whether a shift-drag across the first row selects it, over a program reporting the mouse that
