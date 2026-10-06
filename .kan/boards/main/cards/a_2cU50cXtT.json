@@ -5,17 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1791234955370,
   "creator": "Alexander Terp",
   "description": "Alex, 2026-10-05: the sidebar's MESSAGES list held three finished groups with unread dots (two 1:1 groups with agents long gone, one demo council) and he asked how to close them. The window has no action for it; only `muster msg group delete G`, which also drops the log. For a group kept on a devenv (`demo-council@devenv`), the laptop's CLI refuses (\"is kept on devenv ... this machine only holds a copy\"), so it had to be deleted with the devenv's muster.\n\nWanted: a right-click (or swipe) on a group row to close it: at least leave/hide it for the human, with delete as the stronger option, routed to whichever daemon keeps the group. A group whose other members have all gone could also be offered for closing once read.",
   "id": "a_2cU50cXtT",
-  "position": "Zu",
+  "position": "YxW",
   "title": "🗂️ No way to close a message group from the sidebar",
   "type": "feature",
-  "updated_at_millis": 1791252265294,
+  "updated_at_millis": 1791252841814,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791234955370},
-    {"field":"column","value":"in-progress","at":1791252265294}
+    {"field":"column","value":"in-progress","at":1791252265294},
+    {"field":"column","value":"done","at":1791252841814}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-laptop-s-human",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791252841934,
+  "creator": "Alexander Terp",
+  "description": "Since 2026-10-05 the human on the laptop can delete, pause and resume a group kept on a linked machine (carried over the existing carried peer call). group set/add/remove stay refused kept_elsewhere: carry::outward's name rules are written for the devenv-to-laptop direction and would turn policy and member names wrong. Also: a refused Leave/Delete from the sidebar only beeps; the reason is in the run log, not shown.",
+  "id": "a_2cbaJyI3Q",
+  "position": "b0n",
+  "title": "The laptop's human cannot set, add or remove members of a devenv-kept group",
+  "type": "enhancement",
+  "updated_at_millis": 1791252841934,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791252841934}
+  ]
+}
