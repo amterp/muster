@@ -226,7 +226,7 @@ impl Wire {
             };
         }
         let (service, sessions) = self.split(side);
-        match route {
+        let joined = match route {
             Route::Away(away) => match self.send(side, &away.call).unwrap() {
                 Settled::Joined(joined) => joined.group.unwrap(),
                 other => panic!("a join settles as joined: {other:?}"),
@@ -237,6 +237,18 @@ impl Wire {
                 joined.group.unwrap()
             }
             Route::Ask { .. } => panic!("asked twice"),
+        };
+        self.fold(side);
+        joined
+    }
+
+    /// Tells the homes of the groups a join folded a pane into a name in, as a daemon does once
+    /// the join is answered.
+    fn fold(&mut self, side: Side) {
+        let folded = self.service(side).take_folded();
+        self.tell(side, &folded.tell);
+        for away in folded.away {
+            self.send(side, &away.call).expect("the home takes the name in place of the pane");
         }
     }
 
@@ -778,6 +790,56 @@ fn directed(membership: &[&str]) -> Policy {
     }
 }
 
+/// A director on the laptop adds a devenv pane to its council and briefs it. The agent there
+/// reads the brief, which gives the pane's participant its inbox, and names itself: the
+/// laptop is told the name took the pane's place, so its policy does not hold the name out.
+/// Whether the name is taken with the join or on its own, the council has it and not the pane.
+#[test]
+fn a_devenv_pane_added_to_a_laptop_council_takes_a_name_in_it() {
+    for joining_the_council in [true, false] {
+        let mut wire = Wire::new();
+        wire.pane(Side::Devenv, "p9");
+        let director = session("director");
+        let now = wire.tick();
+        let (laptop, sessions) = wire.split(Side::Laptop);
+        laptop.join(&director, Some("director"), None, sessions, now).unwrap();
+        let policy = Some(directed(&["director", HUMAN]));
+        laptop.group_new(&director, "council", policy, sessions, now).unwrap();
+        let found = wire.found(Side::Laptop, &["p9".to_string()]);
+        let now = wire.tick();
+        let (laptop, sessions) = wire.split(Side::Laptop);
+        let added = laptop
+            .group_members(&director, "council", &["p9".to_string()], &[], &found, sessions, now)
+            .unwrap();
+        wire.tell(Side::Laptop, &added.tell);
+        wire.post(Side::Laptop, &director, Some("council"), &["p9"], "brief").unwrap();
+
+        let tracer = Caller { pane: Some("p9".to_string()), ..session("tracer") };
+        assert_eq!(wire.read(Side::Devenv, &tracer, None), ["council@lap director@lap: brief"]);
+        if joining_the_council {
+            assert_eq!(wire.join(Side::Devenv, &tracer, Some("tracer"), "council"), "council@lap");
+        } else {
+            let now = wire.tick();
+            let (devenv, sessions) = wire.split(Side::Devenv);
+            devenv.join(&tracer, Some("tracer"), None, sessions, now).unwrap();
+            wire.fold(Side::Devenv);
+        }
+
+        let posted = wire.post(Side::Devenv, &tracer, None, &["director"], "done").unwrap();
+        assert_eq!(woke(&posted), [("director@lap", Reach::Woken)]);
+        let members = |wire: &Wire, side: Side, group: &str| {
+            let service = match side {
+                Side::Laptop => &wire.laptop,
+                Side::Devenv => &wire.devenv,
+            };
+            let summary = service.groups().into_iter().find(|summary| summary.name == group);
+            summary.unwrap().members
+        };
+        assert_eq!(members(&wire, Side::Laptop, "council"), ["director", "tracer@devenv"]);
+        assert_eq!(members(&wire, Side::Devenv, "council@lap"), ["director@lap", "tracer"]);
+    }
+}
+
 /// A post forwarded to the group's home runs through the home's policy, as one made there
 /// does, and its refusal comes back in the author's names.
 #[test]
@@ -1086,11 +1148,28 @@ fn a_call_acting_as_this_machines_own_or_naming_no_name_is_refused() {
         head: 0,
     };
     let forged = [
-        Call::Join { name: "builder@lap".to_string(), group: "review".to_string(), head: 0 },
+        Call::Join {
+            name: "builder@lap".to_string(),
+            group: "review".to_string(),
+            head: 0,
+            was: None,
+        },
+        // Taking the place of this machine's own member, which only this machine may move.
+        Call::Join {
+            name: "critic".to_string(),
+            group: "review".to_string(),
+            head: 0,
+            was: Some("builder@lap".to_string()),
+        },
         Call::Leave { name: "builder@lap".to_string(), group: "review".to_string(), head: 0 },
         post("@human@lap", &[]),
         post("critic", &["a b"]),
-        Call::Join { name: "critic".to_string(), group: "x'; sh; '".to_string(), head: 0 },
+        Call::Join {
+            name: "critic".to_string(),
+            group: "x'; sh; '".to_string(),
+            head: 0,
+            was: None,
+        },
         Call::Since { group: "review@lap".to_string(), after: 0 },
     ];
     let before = wire.laptop.log("review", 0).unwrap();

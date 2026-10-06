@@ -360,7 +360,9 @@ from the other:
   group with you makes the group of the two of you on your machine, as on one machine: the
   laptop's `builder+critic` is `builder+critic@your-laptop` on the devenv. A pane named this way
   becomes a participant on its own machine and is rung there. `group add` finds names the same
-  way.
+  way. When the agent in such a pane joins under a name of its own, its machine asks each
+  group's home to put the name in the pane's place, which that home does whatever its policy
+  says about joining.
 - **Each machine wakes its own agents.** A post is numbered on the group's machine, and the guard
   counts what you have not read there, so it holds across machines as it does on one. A post's
   answer says what each machine did for its own agents.
@@ -414,6 +416,11 @@ to be from a Muster that knows it; either being older refuses it, saying which, 
 urgently, which is `not_urgent`. A member on a machine whose daemon is older is rung for it as for
 an ordinary post. A `group set` from an older Muster, which knows nothing of `urgent`, leaves the
 group's list as it was.
+
+A pane's place in a group kept on a machine whose daemon is older than this Muster, or on one
+that cannot be reached when the agent in the pane names itself, is not handed to the name: that
+group still lists the pane, and posts to it find nobody. `group add` there adds the agent by its
+new name.
 
 A daemon links only to the machines a window attaches it to, so an agent on one devenv cannot
 reach an agent or a group on another: messages cross from the laptop to each devenv and back,

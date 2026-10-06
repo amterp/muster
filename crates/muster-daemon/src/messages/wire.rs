@@ -13,7 +13,9 @@ use super::{activity_of, entry_of, member_of, policy_from, policy_of, reach_of};
 pub(super) fn call_to(call: &Call) -> Called {
     match call.clone() {
         Call::Find { group } => Called::Find(peer_call::Find { group }),
-        Call::Join { name, group, head } => Called::Join(peer_call::Join { name, group, head }),
+        Call::Join { name, group, head, was } => {
+            Called::Join(peer_call::Join { name, group, head, was })
+        }
         Call::Leave { name, group, head } => Called::Leave(peer_call::Leave { name, group, head }),
         Call::Post { author, group, to, body, urgent, cursor, head } => {
             Called::Post(peer_call::Post { author, group, to, body, cursor, head, urgent })
@@ -29,7 +31,9 @@ pub(super) fn call_to(call: &Call) -> Called {
 pub(super) fn call_from(called: Called) -> Option<Call> {
     Some(match called {
         Called::Find(find) => Call::Find { group: find.group },
-        Called::Join(join) => Call::Join { name: join.name, group: join.group, head: join.head },
+        Called::Join(join) => {
+            Call::Join { name: join.name, group: join.group, head: join.head, was: join.was }
+        }
         Called::Leave(leave) => {
             Call::Leave { name: leave.name, group: leave.group, head: leave.head }
         }
@@ -421,6 +425,16 @@ mod tests {
         ];
         for refusal in refusals {
             assert_eq!(refusal_from(refusal_to(&refusal)), refusal);
+        }
+    }
+
+    /// A join that puts a name in a pane's place says which pane, and one that does not says
+    /// nothing, which an older daemon's join also says.
+    #[test]
+    fn a_join_crosses_the_link_with_the_member_it_replaces() {
+        for was in [None, Some("p9".to_string())] {
+            let call = Call::Join { name: "tracer".into(), group: "g".into(), head: 4, was };
+            assert_eq!(call_from(call_to(&call)), Some(call));
         }
     }
 

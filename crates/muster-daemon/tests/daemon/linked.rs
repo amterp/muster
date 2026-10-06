@@ -364,6 +364,7 @@ fn a_peer_acting_as_this_machines_own_is_refused() {
             name: "builder@here".to_string(),
             group: "review".to_string(),
             head: 0,
+            was: None,
         }),
         peer_call::Call::Leave(peer_call::Leave {
             name: "builder@here".to_string(),

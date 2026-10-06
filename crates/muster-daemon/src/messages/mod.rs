@@ -677,37 +677,12 @@ fn joining(
         Ok(Route::Ask { group }) => ask_around(shared, caller, name, &group, panes),
         other => other,
     };
-    let joined = match route {
-        Err(refusal) => return refused("", &refusal),
-        Ok(Route::Away(away)) => {
-            let (settle, holding) = peer::call_away(shared, &away);
-            ring(shared, holding);
-            match settle.result {
-                Ok(Settled::Joined(joined)) => joined,
-                Ok(other) => return mismatched("join", &other),
-                Err(refusal) => return refused("", &refusal),
-            }
-        }
-        Ok(_) => {
-            let joined = {
-                let mut messages = shared.messages();
-                if messages.handing_over {
-                    return refused_as("", "handing_over", HANDING_OVER);
-                }
-                let joined = messages.service.join(caller, name, group, panes, now_ms());
-                messages.appended();
-                joined
-            };
-            match joined {
-                Ok(joined) => {
-                    peer::tell(shared, &joined.tell);
-                    let told = shared.messages().take_told();
-                    tell_human(shared, told);
-                    joined
-                }
-                Err(refusal) => return refused("", &refusal),
-            }
-        }
+    let joined = joined_by(shared, caller, name, group, route, panes);
+    // A join that renamed the caller did so whether or not the group took it.
+    send_folded(shared);
+    let joined = match joined {
+        Ok(joined) => joined,
+        Err(reply) => return reply,
     };
     // Its hooks fetch its messages, wherever the group it joined is kept (MIP-4, section 6).
     if join.pull
@@ -731,6 +706,76 @@ fn joining(
         took_over: joined.took_over,
     });
     answered(joined.name, answer)
+}
+
+/// Joins where `route` says: through the group's home, or here.
+fn joined_by(
+    shared: &Arc<Shared>,
+    caller: &Caller,
+    name: Option<&str>,
+    group: Option<&str>,
+    route: Result<Route, Refusal>,
+    panes: &Panes,
+) -> Result<muster_msg::Joined, Reply> {
+    match route {
+        Err(refusal) => Err(refused("", &refusal)),
+        Ok(Route::Away(away)) => {
+            let (settle, holding) = peer::call_away(shared, &away);
+            ring(shared, holding);
+            match settle.result {
+                Ok(Settled::Joined(joined)) => Ok(joined),
+                Ok(other) => Err(mismatched("join", &other)),
+                Err(refusal) => Err(refused("", &refusal)),
+            }
+        }
+        Ok(_) => {
+            let joined = {
+                let mut messages = shared.messages();
+                if messages.handing_over {
+                    return Err(refused_as("", "handing_over", HANDING_OVER));
+                }
+                let joined = messages.service.join(caller, name, group, panes, now_ms());
+                messages.appended();
+                joined
+            };
+            let joined = joined.map_err(|refusal| refused("", &refusal))?;
+            peer::tell(shared, &joined.tell);
+            let told = shared.messages().take_told();
+            tell_human(shared, told);
+            Ok(joined)
+        }
+    }
+}
+
+/// Sends what a join's folding a pane into a name left for other machines: the entries it
+/// appended to groups kept here, and the joins that put the name in the pane's place in groups
+/// kept elsewhere.
+fn send_folded(shared: &Arc<Shared>) {
+    let folded = {
+        let mut messages = shared.messages();
+        messages.appended();
+        messages.service.take_folded()
+    };
+    peer::tell(shared, &folded.tell);
+    for away in folded.away {
+        let (settle, holding) = peer::call_away(shared, &away);
+        ring(shared, holding);
+        if let Err(refusal) = settle.result {
+            log::warn(
+                "msg.fold.refused",
+                fields! {
+                    "machine" => away.machine,
+                    "group" => away.call.group(),
+                    "why" => words(&refusal),
+                    "impact" => "the group still lists the agent by its pane's name there, and \
+                                 posts to that name find nobody here to wake",
+                    "check" => "whether that machine's daemon speaks a protocol before 1.4, which \
+                                takes this as an ordinary join its policy may refuse, or the \
+                                link dropped; there, `group add` adds the agent by its new name",
+                },
+            );
+        }
+    }
 }
 
 /// Asks each linked machine whether it keeps a group by this name, and joins it there if one

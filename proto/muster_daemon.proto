@@ -1786,6 +1786,10 @@ message PeerCall {
     string name = 1;
     string group = 2;
     uint64 head = 3;
+    // Since 1.4. The asker's member that `name` takes the place of, without the policy being
+    // asked: the pane an agent was added by, before it joined under a name of its own. A home
+    // before 1.4 reads this as an ordinary join, which the policy may refuse.
+    optional string was = 4;
   }
 
   message Leave {

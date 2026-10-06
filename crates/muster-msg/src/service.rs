@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::across::{Found, HumanHome, Peer, Tell};
+use crate::across::{Away, Call, Folded, Found, HumanHome, Peer, Tell, base};
 use crate::names::{check_addressee, check_group, check_participant, is_human, split_machine};
 use crate::{
     Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Policy, Refusal, Saved, Store, What,
@@ -439,7 +439,7 @@ pub struct Messaging<S: Store> {
     /// same entries (`across::Lately`). Not kept: it answers a race between two deliveries.
     pub(crate) lately_reached: BTreeMap<String, crate::across::Lately>,
     /// What folding a pane into a name told no machine yet: see [`Self::take_folded`].
-    folded: Vec<Tell>,
+    pub(crate) folded: Folded,
 }
 
 impl<S: Store> Messaging<S> {
@@ -533,7 +533,7 @@ impl<S: Store> Messaging<S> {
             called: BTreeSet::new(),
             unanswered: BTreeSet::new(),
             lately_reached: BTreeMap::new(),
-            folded: Vec::new(),
+            folded: Folded::default(),
             human_home: saved.human_home,
         };
         messaging.kept = messaging.snapshot();
@@ -572,7 +572,7 @@ impl<S: Store> Messaging<S> {
         };
         self.seen(&name, caller);
         let mut created = false;
-        let mut tell = self.take_folded();
+        let mut tell = std::mem::take(&mut self.folded.tell);
         if let Some(group) = group {
             if let Some(existing) = self.groups.get(group)
                 && !existing.members.contains(&name)
@@ -1746,15 +1746,21 @@ impl<S: Store> Messaging<S> {
     ///
     /// In a group kept here the fold is `from` leaving and `into` joining in the log, since a
     /// restart reads members back from the log; `into` keeps `from`'s place rather than starting
-    /// at its join. No policy is asked: the group's membership already held this agent. What to
-    /// tell other machines about those entries is kept for the host in [`Self::take_folded`].
+    /// at its join. No policy is asked: the group's membership already held this agent. A group
+    /// kept elsewhere is changed by its home, which is asked to put `into` in `from`'s place,
+    /// and the replica follows when the home answers. What to send is kept for the host in
+    /// [`Self::take_folded`].
     pub(crate) fn absorb(&mut self, into: &str, from: &str, at_ms: u64) -> Result<(), Refusal> {
         let Some(from) = self.participants.remove(from) else { return Ok(()) };
         for group in self.memberships(&from.name) {
-            if self.groups[&group].home.is_some() {
-                let members = &mut self.groups.get_mut(&group).expect("a membership").members;
-                members.remove(&from.name);
-                members.insert(into.to_string());
+            if let Some(machine) = self.groups[&group].home.clone() {
+                let call = Call::Join {
+                    name: into.to_string(),
+                    group: base(&group),
+                    head: self.head_of(&group),
+                    was: Some(from.name.clone()),
+                };
+                self.folded.away.push(Away { machine, call });
                 continue;
             }
             let after = self.groups[&group].head();
@@ -1763,7 +1769,7 @@ impl<S: Store> Messaging<S> {
                 self.append(&group, What::Joined { who: into.to_string() }, at_ms)?;
             }
             let tell = self.tell(&group, after, None);
-            self.folded.extend(tell);
+            self.folded.tell.extend(tell);
         }
         self.waiters.remove(&from.name);
         let Some(into) = self.participants.get_mut(into) else { return Ok(()) };
@@ -1775,9 +1781,9 @@ impl<S: Store> Messaging<S> {
         Ok(())
     }
 
-    /// What a join's fold of a pane into a name appended that other machines with members in
-    /// those groups must be told, once the join has been routed wherever it goes.
-    pub fn take_folded(&mut self) -> Vec<Tell> {
+    /// What a join's fold of a pane into a name has for other machines, once the join has been
+    /// answered wherever it went: see [`Folded`].
+    pub fn take_folded(&mut self) -> Folded {
         std::mem::take(&mut self.folded)
     }
 

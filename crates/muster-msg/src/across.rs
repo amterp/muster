@@ -164,6 +164,10 @@ pub enum Call {
         name: String,
         group: String,
         head: u64,
+        /// The asker's member that `name` takes the place of: the pane an agent was added by,
+        /// before it joined under a name of its own. The home lets it in without asking the
+        /// policy, as the asker's own join would have been.
+        was: Option<String>,
     },
     Leave {
         name: String,
@@ -205,7 +209,11 @@ impl Call {
         }
         check_group(self.group())?;
         match self {
-            Call::Join { name, .. } | Call::Leave { name, .. } => check_participant(name),
+            Call::Join { name, was, .. } => {
+                check_participant(name)?;
+                was.as_deref().map_or(Ok(()), check_participant)
+            }
+            Call::Leave { name, .. } => check_participant(name),
             Call::Post { author, to, .. } => {
                 check_participant(author)?;
                 to.iter().try_for_each(|name| check_addressee(name))
@@ -393,6 +401,15 @@ pub struct Found {
     pub there: String,
 }
 
+/// What folding a pane into a name did that other machines must hear of, which the host sends
+/// once the join that folded it is answered: new entries in groups kept here, and the joins
+/// that put the name in the pane's place in groups kept elsewhere.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Folded {
+    pub tell: Vec<Tell>,
+    pub away: Vec<Away>,
+}
+
 /// A request answered by another machine, as it ends on this one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settled {
@@ -536,7 +553,16 @@ impl<S: Store> Messaging<S> {
             None => self.identify(caller, presence)?,
         };
         self.save()?;
-        let call = Call::Join { name, group: base(&key), head: self.head_of(&key) };
+        // The fold's own join to this group's home is this one.
+        let group = base(&key);
+        let away = &mut self.folded.away;
+        let folded =
+            away.iter().position(|each| each.machine == machine && each.call.group() == group);
+        let was = folded.and_then(|at| match away.remove(at).call {
+            Call::Join { was, .. } => was,
+            _ => None,
+        });
+        let call = Call::Join { name, group, head: self.head_of(&key), was };
         Ok(Route::Away(Away { machine, call }))
     }
 
@@ -1089,8 +1115,8 @@ impl<S: Store> Messaging<S> {
             }
             Call::Who { group } => Reply::Members(self.members_here(peer, &group, presence)),
             Call::Whom { name } => Reply::Named(self.whom(&name, presence)),
-            Call::Join { name, group, head } => self
-                .join_from(peer, &name, &group, head, now_ms, &mut answered)
+            Call::Join { name, group, head, was } => self
+                .join_from(peer, &name, was.as_deref(), &group, head, now_ms, &mut answered)
                 .unwrap_or_else(refused),
             Call::Leave { name, group, head } => self
                 .leave_from(peer, &name, &group, head, now_ms, &mut answered)
@@ -1182,10 +1208,14 @@ impl<S: Store> Messaging<S> {
         Ok(Caught { group: group.to_string(), policy: kept.policy.clone(), entries, more })
     }
 
+    /// A join from `peer`, which with `was` puts `name` in the place of that member of the
+    /// peer's: a member's own machine is the one that says what it is called.
+    #[allow(clippy::too_many_arguments)]
     fn join_from(
         &mut self,
         peer: &Peer,
         name: &str,
+        was: Option<&str>,
         group: &str,
         head: u64,
         now_ms: u64,
@@ -1195,10 +1225,16 @@ impl<S: Store> Messaging<S> {
             return Err(Refusal::NoSuchGroup { group: group.to_string() });
         }
         let who = peer.inward(name);
-        if !self.groups[group].members.contains(&who) {
+        let members = &self.groups[group].members;
+        let was = was.map(|was| peer.inward(was)).filter(|was| members.contains(was));
+        let after = self.groups[group].head();
+        if let Some(was) = &was
+            && !members.contains(&who)
+        {
+            self.remove_member(group, was, now_ms)?;
+        } else if !members.contains(&who) {
             self.permitted(group, &who, Action::Join)?;
         }
-        let after = self.groups[group].head();
         self.add_member(group, &who, now_ms)?;
         let seq = self.groups[group].head();
         answered.tell = self.tell(group, after, Some(&peer.name));
@@ -1292,7 +1328,7 @@ impl<S: Store> Messaging<S> {
         self.groups.get(group).is_some_and(|kept| kept.home.is_none())
     }
 
-    fn head_of(&self, key: &str) -> u64 {
+    pub(crate) fn head_of(&self, key: &str) -> u64 {
         self.groups.get(key).map_or(0, Group::head)
     }
 
@@ -1387,7 +1423,7 @@ impl Target {
 }
 
 /// A replica's key without its machine: the name its home keeps it under.
-fn base(key: &str) -> String {
+pub(crate) fn base(key: &str) -> String {
     split_machine(key).map_or(key, |(base, _)| base).to_string()
 }
 
