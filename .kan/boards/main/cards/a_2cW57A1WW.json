@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1791239725965,
   "creator": "Alexander Terp",
   "description": "`muster msg post --to \u003cpane\u003e` exited 1, \"nobody here or on a machine linked to this one is called \u003cpane\u003e\", for a devenv pane whose agent had joined as `src`. `muster docs msg` says `--to` takes a pane name even if its agent \"need not have joined anything\", and that a pane nobody here goes by is looked for on linked machines.\n\n## Measured: 2026-10-01, laptop to devenv\n\nA laptop agent ended a Claude Code session in a devenv pane, resumed the same session in the same pane, and then tried to report back to it. `--to \u003cpane\u003e` and `--to \u003cpane\u003e@devenv` were both refused. The devenv daemon was connected, and `muster window` showed the pane running claude. `--group \u003cme\u003e+src@devenv` worked and woke the same agent, which had kept its participant name `src` across the resume.\n\nInferred, not checked: a pane name stops resolving once a participant holds the pane, at least from another machine.\n\n## Things that might be true\n\n- **Resolve `--to \u003cpane\u003e` to whichever participant is in that pane**, on this machine or a linked one.\n- Failing that, have the refusal name the participant: \"\u003cpane\u003e is src@devenv\".",
   "id": "a_2cW57A1WW",
-  "position": "b0S",
+  "position": "Zw",
   "title": "📨 msg post --to \u003cpane\u003e is refused once a participant holds the pane",
   "type": "bug",
-  "updated_at_millis": 1791239725965,
+  "updated_at_millis": 1791246844100,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791239725965}
+    {"field":"column","value":"backlog-hi","at":1791239725965},
+    {"field":"column","value":"in-progress","at":1791246844100}
   ]
 }

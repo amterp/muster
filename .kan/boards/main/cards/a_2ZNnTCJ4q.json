@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1790776691390,
   "creator": "Alexander Terp",
   "description": "With no window running, the daemon's `pane send` delivers a slash command to Claude Code as a chat message rather than as the command, while the same two sends through the window run it. `--confirm` reports success either way.\n\n## Measured: muster 0.12.0, 2026-09-30\n\nAn agent in a dev-box pane gave two worker agents (Claude Code, in panes beside it) a fresh context before their next assignment, the way the parallel-work flow says to:\n\n    muster pane send --pane \u003cp\u003e \"/clear\" --confirm \u0026\u0026 muster pane send --pane \u003cp\u003e \"\" --enter\n\n- With the window attached, the first worker's context was cleared: its title reset and its context meter dropped.\n- Minutes later the window had quit, and the daemon answered the same two sends for the second worker (`nothing is listening on ~/.muster/daemon/window-release-\u003cid\u003e.sock ... pane send ... still work, answered by this machine's muster-daemon`). Both exited 0. The worker's next turn was a user message whose whole text was `/clear`; nothing was cleared, and the worker spent the turn investigating the odd message and reported \"your /clear reached me as a chat message, not as the command\".\n\n**Known and not known.** The two outcomes are measured, from the workers' own reports and the pane's context meter. That the daemon path delivers the text as a bracketed paste, which Claude Code takes as text rather than a command, is inference: nothing here has checked the bytes either path writes.\n\n## Why it matters\n\n`/clear` and `/compact` sent from one agent to another are how an orchestrating agent manages a worker's context, and they only work as prompts. A send that turns them into chat costs the worker a turn and leaves its context as it was, and `--confirm` says it worked. It also means the daemon fallback is not a like-for-like substitute for the window, which is what its message promises.\n\n## Things that might be true\n\n- **Make the daemon's send write what the window's does**, so the receiving harness cannot tell them apart.\n- **Type a leading slash command as keys, not as a paste**, on both paths.\n- **Have `--confirm` tell a slash command taken as a command from one taken as text**, or say in the fallback message and in `muster docs limits` that slash commands need the window.\n\nRelated: a_2I7Acusq4 (done) is the paste placeholder that swallowed a Return; this is the case where the Return did submit, but as the wrong thing.",
   "id": "a_2ZNnTCJ4q",
-  "position": "b0O",
+  "position": "Zx",
   "title": "💬 pane send without a window delivers a slash command as chat",
   "type": "bug",
-  "updated_at_millis": 1790776691390,
+  "updated_at_millis": 1791246844024,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1790776691390}
+    {"field":"column","value":"backlog-hi","at":1790776691390},
+    {"field":"column","value":"in-progress","at":1791246844024}
   ]
 }

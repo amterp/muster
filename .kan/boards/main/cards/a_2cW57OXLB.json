@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1791239726103,
   "creator": "Alexander Terp",
   "description": "A pane the director had already added to a directed group was refused when it tried to take a name in that group. `muster msg join --group \u003cg\u003e --name prod-tracer` answered \"\u003cg\u003e's policy does not let prod-tracer join it; ... only director or @human may\". The director had briefed the member with that line, and the council skill does not say how a member added as a pane should name itself.\n\n## Measured: 2026-10-01, devenv, a directed council\n\nAfter the refusal, `muster msg join --name prod-tracer` (no group) switched the pane's identity, so `muster msg post --group \u003cg\u003e` then failed: \"prod-tracer is not in \u003cg\u003e\". The member got through with `post --as \u003cpane\u003e`. Councils convened since work around it: the director starts each member with a first prompt to run `muster msg join --name X`, then adds it to the group by that name, then posts the brief.\n\n## Things that might be true\n\n- **Let an added pane join under a name, the name taking over the pane's membership.**\n- Or have the council skill (extras/skill/council/SKILL.md, Convening) tell directors to have members name themselves before `group add`, and add them by name.\n- Either way, the refusal could say \"you are already a member as \u003cpane\u003e\".",
   "id": "a_2cW57OXLB",
-  "position": "b0T",
+  "position": "Zv",
   "title": "A pane added to a directed group cannot take a name in it",
   "type": "bug",
-  "updated_at_millis": 1791239726103,
+  "updated_at_millis": 1791246844173,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791239726103}
+    {"field":"column","value":"backlog-hi","at":1791239726103},
+    {"field":"column","value":"in-progress","at":1791246844173}
   ]
 }
