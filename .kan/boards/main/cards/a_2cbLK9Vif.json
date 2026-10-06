@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "check-whether-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791252265452,
+  "creator": "Alexander Terp",
+  "description": "Since 2026-10-05 a muster msg verb starts this install's daemon when none runs. On the Mac a bundle's daemon goes through Launch Services, outside the caller's sandbox; on a devenv it is spawned, so a daemon started from Codex's Linux sandbox (landlock + seccomp) might inherit it, and every pane it starts with it. macOS's deny-network profile fails cleanly (the daemon cannot listen, exit 3). Check with ./dev --codex or --ssh: muster msg who with no daemon, inside Codex's Linux sandbox.",
+  "id": "a_2cbLK9Vif",
+  "position": "b0m",
+  "title": "Check whether a sandboxed agent on a devenv can start a daemon that carries its sandbox",
+  "type": "chore",
+  "updated_at_millis": 1791252265452,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791252265452}
+  ]
+}
