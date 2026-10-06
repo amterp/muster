@@ -182,13 +182,22 @@ fn session_start_context(harness: &Harness, variables: &[(&str, &str)]) -> Strin
 
 /// An agent in a Muster pane is told, in one line, how to say it is waiting on its own work.
 /// Nowhere else: the line costs every session some context, and outside Muster it means nothing.
+/// The line also says a wait for a message or a person is just ending the turn: an agent that
+/// declared one read `waiting`, and a `pane wait --until idle` on it never returned.
 #[test]
 fn only_a_session_in_a_muster_pane_is_told_how_to_say_it_is_waiting() {
+    let in_a_pane = [("MUSTER_PANE", "p1"), ("MUSTER_DAEMON", "/bin/true")];
+    let first = session_start_context(&HARNESSES[0], &in_a_pane);
     for harness in &HARNESSES {
-        let in_a_pane = [("MUSTER_PANE", "p1"), ("MUSTER_DAEMON", "/bin/true")];
         let told = session_start_context(harness, &in_a_pane);
         assert_eq!(told.lines().count(), 1, "{}: {told}", harness.extras);
         assert!(told.contains("report --waiting"), "{}: {told}", harness.extras);
+        assert!(
+            told.contains("to wait for a message or a person, just end your turn"),
+            "{}: {told}",
+            harness.extras
+        );
+        assert_eq!(told, first, "{} is told something else", harness.extras);
         assert_eq!(session_start_context(harness, &[("MUSTER_DAEMON", "/bin/true")]), "");
         assert_eq!(session_start_context(harness, &[]), "");
     }

@@ -55,7 +55,9 @@ since Muster runs it through one.
 
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Codex ends a
 turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`.
-Muster then holds off calling the pane done until a later turn ends without the agent declaring
+The line also says that waiting for a message or a person is just ending the turn, since an agent
+that reads `waiting` is not idle and a `muster pane wait --until idle` on it would not return; a
+message wakes it either way. Muster then holds off calling the pane done until a later turn ends without the agent declaring
 it again, or until you prompt it.
 
 ## Context and model
