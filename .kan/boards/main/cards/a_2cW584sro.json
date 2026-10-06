@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791239726525,
   "creator": "Alexander Terp",
   "description": "When the window `$MUSTER_SOCKET` names has gone, pane verbs try the windows beside it and refuse if more than one answers, though only one of them draws the calling pane's tab. With `$MUSTER_SOCKET` unset they try none of them. In both cases `$MUSTER_PANE` is set, and the pane's daemon knows which window draws the pane.\n\n## Measured\n\n- **2026-10-01, devenv.** In a pane whose `$MUSTER_SOCKET` named a `window-\u003cid\u003e.sock` that no longer existed, `muster pane new` worked, but `pane wait --pane \u003cnew\u003e` and `pane read` refused: \"2 Muster windows are listening and nothing says which one this is about: .../window-release-\u003ca\u003e.sock, .../window-release-\u003cb\u003e.sock. Run this inside one of their panes, where $MUSTER_SOCKET names it, or pick one with --socket.\" The agent was inside a pane. Only one of the two windows drew its tab, and `--socket` with that one worked.\n- **2026-10-05, devenv, 0.13.0.** After the agent's Claude Code session was resumed in the same pane, `$MUSTER_SOCKET` was unset while `$MUSTER_PANE` was still set. Why it was unset is not known; a launcher wrapper did the resume. `muster pane close` refused: \"no Muster window is listening. $MUSTER_SOCKET is not set, so this is not running in a pane Muster made\". Five `window-*.sock` files were under `~/.muster/daemon`; four did not answer and one drew the tab. Finding it took a loop over every socket.\n\n## Things that might be true\n\n- **When several windows answer, pick the one whose layout holds the calling pane** (or the target pane) instead of refusing.\n- **With `$MUSTER_PANE` set and `$MUSTER_SOCKET` unset or gone, ask the pane's daemon which window draws the pane.**\n- Say in the error that `$MUSTER_SOCKET` was stale, and do not say \"not running in a pane Muster made\" when `$MUSTER_PANE` is set.\n\nRelated: a_2YCgaUTuS (done) taught a pane whose window quit to try the windows beside it; this is the case where more than one answers.",
   "id": "a_2cW584sro",
-  "position": "b0U",
+  "position": "Yxa",
   "title": "🔌 A pane with a stale or unset $MUSTER_SOCKET refuses when several windows answer",
   "type": "bug",
-  "updated_at_millis": 1791239726525,
+  "updated_at_millis": 1791250846176,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791239726525}
+    {"field":"column","value":"backlog-hi","at":1791239726525},
+    {"field":"column","value":"done","at":1791250846176}
   ]
 }
