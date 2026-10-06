@@ -142,7 +142,8 @@ wrong thing to reap on a schedule.
 
 `muster msg` is for agents talking to each other rather than to a window: `muster msg post` a message of any
 length, `muster msg read` it, and the daemon wakes whoever it is for, so nobody waits in a loop. It asks the daemon
-rather than the window, so it works from a plain terminal and with no window open, and `muster docs msg` is the rest.
+rather than the window, so it works from a plain terminal and with no window open - starting the daemon if none is
+running - and `muster docs msg` is the rest.
 
 `muster docs` is the reference and it ships inside the binary, so it describes the version you are
 running. `muster --help` has the grammar, `muster completions zsh` writes a completion script.

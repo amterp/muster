@@ -15,6 +15,15 @@ These talk to the daemon, not to a window, so they work with no window open and 
 terminal as well as a pane. The daemon is the one `$MUSTER_DAEMON_SOCKET` names, which every pane
 Muster makes has, and otherwise this install's daemon under `~/.muster/daemon/`.
 
+When nothing is listening there, a msg verb starts this install's daemon, as the app would, and
+says so on stderr. That is the daemon beside this `muster`: the app's, through Launch Services, for
+the `muster` in Muster.app or linked to it, and the installed one on an SSH machine. A window
+opened later uses it. It brings back the tabs it saved when it last ran, each pane as a shell,
+which is what a daemon does whenever it starts. Nothing is started for a `$MUSTER_DAEMON_SOCKET`
+that names some other socket, or by a `muster` with no daemon beside it; those exit 3, saying why.
+A sandbox that refuses sockets refuses the start too: under a macOS sandbox that denies the
+network, as Codex's does, the daemon cannot listen, and the verb exits 3 with what it said.
+
 An agent in a pane on an SSH machine does the same with the agents on that machine. Muster
 installs a `muster` there beside the daemon, every pane there finds it on its `PATH`, and it asks
 that machine's daemon. While a window is attached to both machines, agents on each reach the
@@ -340,7 +349,7 @@ window has attached to shows `@human` alone.
 | `open --group G` | goes to the group's transcript in the window, as its notification does |
 
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, including
-by a group's policy, 3 no daemon to ask, 4 no answer, so it may or may not have happened (the
+by a group's policy, 3 no daemon to ask and none started, 4 no answer, so it may or may not have happened (the
 daemon hung up, or another machine never answered), 5 a wait that timed out, 6 a post that woke
 nobody live.
 

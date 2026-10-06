@@ -192,13 +192,122 @@ fn a_wait_in_progress_when_the_daemon_hands_over_is_answered_by_the_new_one() {
     assert_eq!(ok(&waited), "[muster] g: 1 new (#4), from a. Read: muster msg read --group g");
 }
 
+/// A socket somebody named is a daemon somebody chose, so nothing is started there.
 #[test]
-fn no_daemon_to_ask_exits_3() {
+fn no_daemon_at_a_named_socket_exits_3_and_starts_none() {
     let nowhere =
         std::env::temp_dir().join(format!("muster-no-daemon-{}.sock", std::process::id()));
     let ran = muster_with(&nowhere, &["msg", "who"], None);
     assert_eq!(ran.status.code(), Some(3), "{}", complained(&ran));
     assert!(complained(&ran).contains("no muster-daemon answered"), "{}", complained(&ran));
+    assert!(complained(&ran).contains("none was started"), "{}", complained(&ran));
+    assert!(!nowhere.exists());
+}
+
+/// A `muster` laid out as an install lays it out, with a scratch Muster home and no daemon
+/// running: the CLI and the daemon side by side, as a build and a devenv install hold them, and
+/// the daemon's data beside it. Linked rather than copied, so macOS does not hold a binary it
+/// has never seen while it scans it, and under the target directory, where a debug daemon finds
+/// libghostty-vt by a path relative to itself. Whatever daemon a test started is stopped when it
+/// ends.
+struct Installed {
+    folder: std::path::PathBuf,
+    home: std::path::PathBuf,
+}
+
+impl Installed {
+    fn new(with_a_daemon: bool) -> Installed {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let folder = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("start-{}-{n}", std::process::id()));
+        // Short, since the daemon's socket goes under it.
+        let home =
+            std::path::PathBuf::from(format!("/tmp/muster-test/s{}-{n}", std::process::id()));
+        for directory in [&folder, &home] {
+            let _ = std::fs::remove_dir_all(directory);
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        place(Path::new(env!("CARGO_BIN_EXE_muster")), &folder.join("muster"));
+        if with_a_daemon {
+            place(&muster_harness::built_daemon(), &folder.join("muster-daemon"));
+            std::os::unix::fs::symlink(
+                muster_harness::DAEMON_DATA,
+                folder.join("muster-daemon-data"),
+            )
+            .unwrap();
+        }
+        Installed { folder, home }
+    }
+
+    fn socket(&self) -> std::path::PathBuf {
+        proto::install::socket_path(&self.home)
+    }
+
+    fn muster(&self, arguments: &[&str]) -> Output {
+        Command::new(self.folder.join("muster"))
+            .args(arguments)
+            .env_clear()
+            .env("HOME", &self.home)
+            .env("MUSTER_HOME", &self.home)
+            .env("PATH", "/usr/bin:/bin")
+            .stdin(Stdio::null())
+            .output()
+            .expect("the muster binary runs")
+    }
+}
+
+impl Drop for Installed {
+    fn drop(&mut self) {
+        let _ = muster_daemon_client::launch::stop(&self.socket(), Duration::from_secs(5));
+        let _ = std::fs::remove_dir_all(&self.folder);
+        let _ = std::fs::remove_dir_all(&self.home);
+    }
+}
+
+fn place(from: &Path, to: &Path) {
+    if std::fs::hard_link(from, to).is_err() {
+        std::fs::copy(from, to).unwrap();
+    }
+}
+
+/// MIP-4 section 1: with no daemon running, a msg verb starts this install's, on the socket a
+/// window would look for it on and written down where a window writes its own, then asks it.
+#[test]
+fn a_msg_verb_with_no_daemon_running_starts_one() {
+    let installed = Installed::new(true);
+    let first = installed.muster(&["msg", "who"]);
+    assert_eq!(first.status.code(), Some(0), "{}", complained(&first));
+    assert!(
+        complained(&first).contains("no muster-daemon was running")
+            && complained(&first).contains("so this is starting one"),
+        "{}",
+        complained(&first)
+    );
+    let records = installed.home.join("state").join("daemons");
+    let written: Vec<String> = std::fs::read_dir(&records)
+        .unwrap_or_else(|error| panic!("no record under {}: {error}", records.display()))
+        .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect();
+    let socket = installed.socket().display().to_string();
+    assert!(written.iter().any(|record| record.contains(&socket)), "{written:?}");
+
+    let again = installed.muster(&["msg", "who"]);
+    assert_eq!(again.status.code(), Some(0), "{}", complained(&again));
+    assert_eq!(complained(&again), "", "a running daemon is asked, not started again");
+}
+
+/// A `muster` with no daemon beside it, as one copied onto a machine on its own would be,
+/// starts nothing and says where it looked.
+#[test]
+fn a_muster_with_no_daemon_beside_it_says_where_it_looked() {
+    let installed = Installed::new(false);
+    let ran = installed.muster(&["msg", "who"]);
+    assert_eq!(ran.status.code(), Some(3), "{}", complained(&ran));
+    let beside = installed.folder.canonicalize().unwrap().join("muster-daemon");
+    assert!(complained(&ran).contains("none was started"), "{}", complained(&ran));
+    assert!(complained(&ran).contains(&beside.display().to_string()), "{}", complained(&ran));
+    assert!(!installed.socket().exists());
 }
 
 #[test]

@@ -21,6 +21,10 @@ libc.workspace = true
 # when it asks a daemon with no window answering. The core links no libghostty - that is
 # muster-vt, and the seam - so this keeps the promise below.
 muster-core.workspace = true
+# Starting this machine's daemon when a `muster msg` verb finds none, by the app's own code. Not
+# the daemon client, which would bring ssh, the remote install's archive and digest, and agent
+# detection with it.
+muster-daemon-launch.workspace = true
 muster-daemon-proto.workspace = true
 muster-proto.workspace = true
 prost.workspace = true

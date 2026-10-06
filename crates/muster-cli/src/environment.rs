@@ -2,23 +2,11 @@
 //!
 //! Two variables, set by Muster in the `env` of the very request that creates a pane, and the
 //! whole of how a program inside one can drive its own window: which pane it is, and which
-//! Muster to tell.
-//!
-//! Spelled out here rather than imported. The app sets them from `muster-daemon-client`, and the
-//! CLI is a pure client that links neither the daemon client nor anything behind it. So the two
-//! spellings are separate on purpose, and `tests/cli/pane_variables.rs` fails if they ever stop
-//! matching.
+//! Muster to tell. Spelled once, in `muster-daemon-launch`, which the app sets them from and
+//! this reads them through: a drift would leave every running pane under the old name, so an
+//! agent asking which pane it is would silently act on whichever one has the keyboard.
 
-/// What a pane reads to find out which pane it is.
-pub const PANE_NAME: &str = "MUSTER_PANE";
-
-/// What a pane reads to find the window it is in.
-///
-/// Set per window rather than looked up, because a machine can have several Musters open and a
-/// pane belongs to exactly one. A pane on a machine attached over ssh is told the path there
-/// that the window's ssh master forwards back to it. Named after the window's process, so a pane
-/// whose window has quit asks the windows beside it instead (`dial::siblings`).
-pub const WINDOW_SOCKET: &str = "MUSTER_SOCKET";
+pub use muster_daemon_launch::environment::{PANE_NAME, WINDOW_SOCKET};
 
 /// Where Muster keeps everything that is its own rather than the user's.
 ///

@@ -603,6 +603,7 @@ dependencies = [
  "libc",
  "muster-core",
  "muster-daemon-client",
+ "muster-daemon-launch",
  "muster-daemon-proto",
  "muster-harness",
  "muster-proto",

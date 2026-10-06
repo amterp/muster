@@ -23,6 +23,7 @@ use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_daemon_proto::{self as proto, ConnectionKind, request::Service};
 
 use crate::args::{Failure, TextSource};
+use crate::daemon::MayStart;
 use crate::environment;
 use crate::{Trouble, daemon};
 
@@ -392,7 +393,7 @@ pub fn run(
         }
     }
     let socket = daemon::socket_or_refusal(environment)?;
-    let answer = ask(&socket, &messaging.request)?;
+    let answer = ask(&socket, &messaging.request, Some(MayStart { environment, json }))?;
     render(&messaging.request, &answer, messaging.if_unread, json)
 }
 
@@ -407,8 +408,11 @@ pub fn follow(
 ) -> Result<(), Trouble> {
     let socket = daemon::socket_or_refusal(environment)?;
     let mut request = messaging.request.clone();
+    // Only the first ask may start a daemon: after that one has answered, nothing listening is
+    // a handover in progress.
+    let mut may_start = Some(MayStart { environment, json });
     loop {
-        let answer = ask(&socket, &request)?;
+        let answer = ask(&socket, &request, may_start.take())?;
         let Some((entries, human)) = render_entries(&answer)? else { return Ok(()) };
         let Some(Asked::Log(log)) = request.request.as_mut() else {
             unreachable!("only a log is followed")
@@ -541,14 +545,19 @@ const RETRY: Duration = Duration::from_millis(200);
 const PATIENCE: Duration = Duration::from_mins(1);
 
 /// Asks, and asks again while the daemon is handing over to a new one: it refuses changes
-/// until the new one serves, and ends the connections of waits in progress.
-fn ask(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trouble> {
+/// until the new one serves, and ends the connections of waits in progress. With `may_start`,
+/// a first ask that finds nothing listening starts this machine's daemon and asks that.
+fn ask(
+    socket: &Path,
+    request: &proto::MsgRequest,
+    may_start: Option<MayStart>,
+) -> Result<proto::Answer, Trouble> {
     let mut patience = Patience::default();
     let waits = blocks(request);
     let mut answered_before = false;
     loop {
         let began = Instant::now();
-        let answer = ask_once(socket, request);
+        let answer = ask_once(socket, request, may_start.filter(|_| !answered_before));
         let again = match &answer {
             Ok(answer) => matches!(refusal_of(answer), "handing_over" | "ended"),
             // A wait whose daemon went away mid-wait, and the moment after, when nothing
@@ -649,8 +658,15 @@ fn says_who_may_urge(request: &proto::MsgRequest) -> bool {
     policy.is_some_and(|policy| policy.urgent.is_some())
 }
 
-fn ask_once(socket: &Path, request: &proto::MsgRequest) -> Result<proto::Answer, Trouble> {
-    let (mut stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Control)?;
+fn ask_once(
+    socket: &Path,
+    request: &proto::MsgRequest,
+    may_start: Option<MayStart>,
+) -> Result<proto::Answer, Trouble> {
+    let (mut stream, welcome) = match may_start {
+        Some(may) => daemon::connect_or_start(socket, ConnectionKind::Control, may)?,
+        None => daemon::connect_welcomed(socket, ConnectionKind::Control)?,
+    };
     let speaks = welcome.protocol.unwrap_or_default();
     if let Some((cannot, minor)) = needs_minor(request)
         && speaks.minor < minor

@@ -946,8 +946,9 @@ green on its own.
    As built, the devenv half of the Claude proof is not run: no Linux machine this repository
    reaches has Claude Code with credentials. The `--ssh` tier proves the same exchange there
    between two callers of the installed `muster`, one of them woken from a blocked `wait`. Left
-   for later: a `msg` verb starting a daemon when none runs, which needs the launch code out of
-   `muster-daemon-client`, and a remote pane's `PATH` reaching `~/.muster/bin`. A daemon adopted
+   for later: a `msg` verb starting a daemon when none runs, which needed the launch code out of
+   `muster-daemon-client` (built 2026-10-05), and a remote pane's `PATH` reaching
+   `~/.muster/bin`. A daemon adopted
    rather than installed got the CLI only at its next install, until adopting one whose machine
    has no CLI installed it there.
 
@@ -1178,6 +1179,8 @@ bind.
   and 8). Detection engine 6 reads a working agent's prompt.
 - 2026-10-04 `group delete`: a group and its log go, every member is let go on every machine,
   and a replica that missed it forgets it at its next refetch (sections 8, 12 and 13).
+- 2026-10-05 A msg verb that finds no daemon running starts this install's, as section 1
+  promised, through `muster-daemon-launch`, the app's own start moved to a crate the CLI links.
   `muster msg open` goes to a group's transcript as its notification does (sections 10 and 13).
   Messages show the human by the name `human_name` gives, or the login name (section 10).
 - 2026-10-04 An entry setting a policy records the policy it set, so a replica taking several in

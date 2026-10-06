@@ -44,6 +44,24 @@ pub fn for_far_daemon(environment: &BTreeMap<String, String>) -> BTreeMap<String
     given
 }
 
+/// The whole environment to start this machine's daemon with from a shell, which is what the
+/// `muster` CLI does when a `muster msg` verb finds none running.
+///
+/// [`for_daemon`] with no platform locale, which only the app's shell can ask for, and less
+/// `SSH_AUTH_SOCK` when the shell is an ssh session's: there it names that one connection's
+/// agent forwarding, which goes stale for every pane once the connection ends, the reason
+/// [`for_far_daemon`] drops it. A pane's own `SSH_AUTH_SOCK` came from its daemon and is kept.
+pub fn for_daemon_from_a_shell(
+    environment: &BTreeMap<String, String>,
+    commands: Option<&str>,
+) -> BTreeMap<String, String> {
+    let mut given = for_daemon(environment, None, commands);
+    if environment.get("SSH_CONNECTION").is_some_and(|connection| !connection.is_empty()) {
+        given.remove("SSH_AUTH_SOCK");
+    }
+    given
+}
+
 /// What a daemon is entitled to inherit from whoever launched Muster.
 ///
 /// An allowlist, because a denylist has to keep up with every tool that invents a variable and
@@ -187,3 +205,40 @@ const CARRIED: &[&str] = &[
     // machine does not carry it (`for_far_daemon`).
     "SSH_AUTH_SOCK",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn environment(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs.iter().map(|(name, value)| ((*name).to_string(), (*value).to_string())).collect()
+    }
+
+    #[test]
+    fn a_shell_keeps_its_own_ssh_agent_and_drops_an_ssh_sessions() {
+        let at_the_machine = environment(&[("HOME", "/h"), ("SSH_AUTH_SOCK", "/agent")]);
+        assert_eq!(
+            for_daemon_from_a_shell(&at_the_machine, None).get("SSH_AUTH_SOCK").map(String::as_str),
+            Some("/agent")
+        );
+        let over_ssh = environment(&[
+            ("HOME", "/h"),
+            ("SSH_AUTH_SOCK", "/tmp/ssh-x/agent.1"),
+            ("SSH_CONNECTION", "10.0.0.1 5000 10.0.0.2 22"),
+        ]);
+        let given = for_daemon_from_a_shell(&over_ssh, None);
+        assert_eq!(given.get("SSH_AUTH_SOCK"), None);
+        assert_eq!(given.get("HOME").map(String::as_str), Some("/h"));
+        assert_eq!(given.get("SSH_CONNECTION"), None);
+    }
+
+    #[test]
+    fn a_shell_puts_the_commands_directory_in_front_and_supplies_no_locale() {
+        let given = for_daemon_from_a_shell(
+            &environment(&[("PATH", "/usr/bin:/bin")]),
+            Some("/h/.muster/bin"),
+        );
+        assert_eq!(given.get("PATH").map(String::as_str), Some("/h/.muster/bin:/usr/bin:/bin"));
+        assert_eq!(given.get("LANG"), None);
+    }
+}

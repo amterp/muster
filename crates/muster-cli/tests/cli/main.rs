@@ -7,7 +7,6 @@ mod driving_a_window;
 mod exit_codes;
 mod harness;
 mod messaging;
-mod pane_variables;
 mod two_windows;
 mod waiting_on_agents;
 mod without_a_window;

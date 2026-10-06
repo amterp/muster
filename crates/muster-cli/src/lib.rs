@@ -30,6 +30,7 @@ pub mod messaging;
 pub mod opening;
 mod redraw;
 pub mod render;
+mod starting;
 pub mod windowless;
 
 /// Why a run ended without an answer.
@@ -505,7 +506,7 @@ fn context_unsaid(
 
 /// Something worth knowing that is not an answer, on stderr so a script reading the answers
 /// does not read it.
-fn say_note(note: &str, json: bool, errors: &mut impl Write) {
+pub(crate) fn say_note(note: &str, json: bool, errors: &mut impl Write) {
     if json {
         let _ = writeln!(errors, "{}", serde_json::json!({ "note": note }));
     } else {
