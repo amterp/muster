@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "rich-usage-telemetry",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1791417434924,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-10-05: \"telemetry for usage\". Confirmed 2026-10-07: \"There may be some cross-daemon telemetry sharing, just so, I really want some rich telemetry to be tracked to help improve the product. And to understand how it gets used, where it goes right, where it goes wrong, what features are being used, what features are being not, etc. We don't really know the use cases yet necessarily for how this telemetry will be used, but let's just track a bunch of it.\"\n\nSo: rich, local, long-lived usage records - which chords, verbs, menu items and settings are used and which never are, what fails and how often, how agents use the CLI - kept on this machine, with a devenv daemon's records gathered to the laptop. Nothing leaves the user's machines.\n\nDifferent from the run log, which is one run's debugging timeline. The constraint that carries over: what was typed into a pane is never recorded. Needs a design pass (what is recorded, where it lives, retention, how it is read back - a `muster` verb?) before building.",
+  "id": "a_2die8Xhxs",
+  "position": "aT",
+  "title": "📈 Rich usage telemetry, kept on the user's machines and gathered across daemons",
+  "type": "feature",
+  "updated_at_millis": 1791417434924,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1791417434924}
+  ]
+}

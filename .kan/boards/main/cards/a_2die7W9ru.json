@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-made-quiet-at",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791417434298,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-09-04: \"ability on pane launch to not get notifications\". Confirmed 2026-10-07, with the motivation: \"often I'll do what we're doing right now, which is I'll have some agents that I intend to talk to, and it's using muster sub-agents. And I'm ultimately not interested in getting notifications from those sub-agents ... I'm concerned with the main agent ... So perhaps the main agent can spawn these panes with the understanding that ... the human is not going to be interested in notifications for those sub-agents.\"\n\nSo: a pane can be made quiet at launch (`muster pane new --quiet` or similar), and a quiet pane raises no `done` / `blocked` / `programs` banner for the human. Probably also a right-click toggle. The agent that made it is the one that cares, and it is already woken by messaging, so nothing is lost.\n\nOpen: whether a quiet pane's `blocked` should still reach someone (its spawner?), since a sub-agent stuck at a permission prompt is exactly what its spawner cannot see by itself. Stage 1 of the sub-agents card (a_2die894mw).",
+  "id": "a_2die7W9ru",
+  "position": "b0Y",
+  "title": "🔕 A pane made quiet at launch: an agent's sub-agents never notify the human",
+  "type": "feature",
+  "updated_at_millis": 1791417447103,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791417434298}
+  ]
+}

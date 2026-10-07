@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "with-the-laptop-gone",
+  "alias_explicit": false,
+  "area": [
+    "devenv"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791417434173,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-10-07: \"let's say that the main daemon ... is on machine A, and then ... machine B ... has its own daemon ... if machine A is shut down, are agents running on machine B ... able to still run muster commands through its own daemon? Or are they gonna have issues because the main daemon on machine A is down? That's one thing to just kind of check and potentially fix.\"\n\nWhat the docs say today (`muster docs overview` \"With no window\", `muster docs limits`): B's agents keep running, since B's daemon owns their PTYs. `muster msg` asks B's daemon and works for groups kept on B. `window`, `pane read`, `pane send`, `pane wait` and `pane compact` fall back to B's daemon, but while A sleeps with its forward open each command first pays a 2 s probe. Everything else - `pane new`, `pane rename`, `pane close`, anything about tabs - needs a window and exits 3 after 10 s. So an orchestrating agent on B cannot spawn a worker while the laptop is gone, and a group kept on A (one with @human in it) is out of reach.\n\nTo do: check each of those on a real devenv with the laptop's window quit, asleep and gone; then fix what can be fixed. `pane rename` and `pane close` are the daemon's to do already. `pane new` with no window needs somewhere for the pane to live, which is the hidden-pane card's question (a_2die7jO4X) too.",
+  "id": "a_2die7Kz7l",
+  "position": "b0X",
+  "title": "🔌 With the laptop gone, a devenv agent cannot make, rename or close panes",
+  "type": "bug",
+  "updated_at_millis": 1791417447201,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791417434173}
+  ]
+}

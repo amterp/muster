@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "codex-0-160-in-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "in-progress",
+  "created_at_millis": 1791417433814,
+  "creator": "Alexander Terp",
+  "description": "GitHub issue #1 (amterp, 2026-10-07), parts 1, 3 and 4, from Codex CLI 0.160.1 in Muster 0.14.0 panes on the laptop and a Linux devenv:\n\n1. Codex's managed app-server runs tool commands outside the pane. Shared and long-lived on macOS, it keeps the first session's MUSTER_PANE / MUSTER_SOCKET, so later sessions report as a dead pane. Per session on Linux, it is in its own process group under the name `codex`, so the daemon refuses its reports as \"another codex\". `daemon_auto_start = false` under `[features]` in ~/.codex/config.toml fixes both.\n3. Codex's \"Hooks need review\" startup dialog reads as idle, so a director's brief lands behind it.\n4. `muster harness install codex` registers ~/.muster/daemon/\u003cversion\u003e/extras where Claude Code gets the ~/.muster/extras symlink, so the Codex adapter goes stale on every upgrade.\n\nPart 2 is its own card. The issue text is the full account.",
+  "id": "a_2die6kvWY",
+  "position": "a0",
+  "title": "🧩 Codex 0.160 in a pane: its app-server acts as the wrong pane, its startup dialogs read idle, its adapter path goes stale",
+  "type": "bug",
+  "updated_at_millis": 1791417433814,
+  "history": [
+    {"field":"column","value":"in-progress","at":1791417433814}
+  ]
+}

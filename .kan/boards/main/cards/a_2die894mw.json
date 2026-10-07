@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "an-agent-s-sub",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1791417434682,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-10-07, on the hidden/headless note: \"you could kind of imagine ... in the parallel work skill example, like the main integrator agent maybe like has some way to express with muster that these agents are sub agents or they belong to my group, and so therefore it has like the option to spawn them hidden, and there's some easy connected way to kind of see and like bring them forward, unhide them and see them.\" \"This might take some design thought.\"\n\nThe idea that ties three notes together: a pane can belong to the agent that made it. Its sub-agents could then be made hidden (a_2die7jO4X) and quiet (a_2die7W9ru) by default, listed together under it, and brought forward together. A council or a parallel-work round is the motivating case: the human talks to the integrator, and the workers are the integrator's business.\n\nNeeds a MIP before building: what records the relation (the pane that ran `pane new`? a msg group?), what it changes by default, how it shows in the agent list and `muster window`, and what happens when the parent goes away. Build a_2die7jO4X and a_2die7W9ru first; this composes them.",
+  "id": "a_2die894mw",
+  "position": "aR",
+  "title": "👪 An agent's sub-agents: made as its own, hidden and quiet, brought forward together",
+  "type": "feature",
+  "updated_at_millis": 1791417447151,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1791417434682}
+  ]
+}

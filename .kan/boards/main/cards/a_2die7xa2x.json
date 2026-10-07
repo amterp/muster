@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "upgrade-muster-from",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791417434563,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-09-04: \"self upgrade so don't have to do in ghostty\". Confirmed 2026-10-07.\n\nToday upgrading means switching to another terminal for `brew upgrade --cask muster`, because the cask's `uninstall quit:` quits the app whose window you would type it in. The pane itself would survive, since the daemon owns it, but nothing brings the window back.\n\nShape proposed and agreed: an \"Upgrade Muster\" menu item and a `muster upgrade` verb that run the brew upgrade in a pane on this machine's daemon, so it outlives the app quitting under it, and relaunch the app when it finishes. Nothing checks for new versions on its own unless that is decided separately (it would be the app reaching the network).\n\nOpen: a build not installed by Homebrew (a checkout's bundle) has nothing to upgrade with - say so rather than guess.",
+  "id": "a_2die7xa2x",
+  "position": "b0a",
+  "title": "⬆️ Upgrade Muster from inside Muster",
+  "type": "feature",
+  "updated_at_millis": 1791417434563,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791417434563}
+  ]
+}
