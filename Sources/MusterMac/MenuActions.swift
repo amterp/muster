@@ -111,6 +111,11 @@ public enum MenuActions {
     "move_pane_to_new_tab": Described(
       title: "Move Pane to New Tab", selector: #selector(MusterWindow.movePaneToNewTab(_:)),
       group: .pane),
+    "hide_pane": Described(
+      title: "Hide Pane", selector: #selector(MusterWindow.hidePane(_:)), group: .pane),
+    // A checkmark rather than two titles, as a toggle is drawn everywhere else on the platform.
+    "quiet_pane": Described(
+      title: "Quiet Pane", selector: #selector(MusterWindow.quietPane(_:)), group: .pane),
     "close_pane": Described(
       title: "Close Pane", selector: #selector(MusterWindow.closePane(_:)), group: .pane),
     "next_pane": Described(

@@ -780,8 +780,14 @@ extension MusterWindow: NSMenuItemValidation {
   /// can compact. AppKit asks as the menu opens and as the item's chord is pressed; both answers
   /// are ones the core already sent, so validating asks it nothing. Every other item this window
   /// targets is always available.
+  ///
+  /// Quiet Pane is checked while the keyboard's pane is quiet.
   public func validateMenuItem(_ item: NSMenuItem) -> Bool {
-    Self.isAvailable(item.action, keyboard: namedPane(keyboardKey))
+    let keyboard = namedPane(keyboardKey)
+    if item.action == #selector(quietPane(_:)) {
+      item.state = keyboard?.quiet == true ? .on : .off
+    }
+    return Self.isAvailable(item.action, keyboard: keyboard)
   }
 
   /// `keyboard` is the roster's row for the pane the keyboard is on, if the roster has one.
@@ -965,6 +971,16 @@ extension MusterWindow {
     Core.compactPane()
   }
 
+  /// Hides the pane the keyboard is on.
+  @objc public func hidePane(_ sender: Any?) {
+    Core.hidePane()
+  }
+
+  /// Makes the pane the keyboard is on quiet, or lets it notify again.
+  @objc public func quietPane(_ sender: Any?) {
+    Core.quietPane()
+  }
+
   /// Names the tab the keyboard's pane is in, having asked what to call it.
   @objc public func renameTab(_ sender: Any?) {
     askToName(subject: "tab", current: tabHolding(keyboardKey)?.givenName ?? "") { name in
@@ -1067,19 +1083,23 @@ extension MusterWindow {
     ContextMenus.pane(
       pane, surface: surfaces.chrome(for: pane)?.surface,
       machines: speaking { Core.machines() }.map(\.daemon),
-      canCompact: namedPane(pane)?.compactable ?? false, window: name,
-      rename: { [weak self] in self?.rename(pane: $0) })
+      canCompact: namedPane(pane)?.compactable ?? false, quiet: namedPane(pane)?.quiet ?? false,
+      window: name, rename: { [weak self] in self?.rename(pane: $0) })
   }
 
   /// A right-clicked row's menu. A machine's row has none: clicking it already makes a tab
   /// there, and its name is the config file's to change.
   func menu(for row: SidebarModel.Row) -> NSMenu? {
     switch row.kind {
+    case .pane where row.hidden:
+      guard let pane = row.pane else { return nil }
+      return ContextMenus.hiddenRow(
+        pane, quiet: row.quiet, window: name, rename: { [weak self] in self?.rename(pane: $0) })
     case .pane:
       guard let pane = row.pane else { return nil }
       return ContextMenus.agentRow(
         pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
-        window: name,
+        quiet: row.quiet, window: name,
         rename: { [weak self] in self?.rename(pane: $0) })
     case .tab:
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
@@ -1091,7 +1111,7 @@ extension MusterWindow {
       return ContextMenus.groupRow(daemon: daemon, group: group, window: name) {
         [weak self] in self?.confirmDelete(daemon: daemon, group: group)
       }
-    case .machine, .messages:
+    case .machine, .messages, .hidden:
       return nil
     }
   }

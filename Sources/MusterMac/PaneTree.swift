@@ -101,7 +101,8 @@ extension Roster {
           id: machine.daemonID, state: machine.state, panes: Int(machine.panes),
           color: machine.color, restarted: machine.restarted)
       },
-      numbering: Roster.Numbering(changed.counting))
+      numbering: Roster.Numbering(changed.counting),
+      hidden: changed.hidden.map(Roster.Tab.init))
   }
 }
 
@@ -131,7 +132,8 @@ extension Roster.Pane {
       subtitle: pane.subtitle,
       givenName: pane.givenName,
       onScreen: pane.onScreen,
-      compactable: pane.compactable)
+      compactable: pane.compactable,
+      quiet: pane.quiet)
   }
 }
 

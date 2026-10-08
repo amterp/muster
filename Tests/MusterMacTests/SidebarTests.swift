@@ -201,7 +201,7 @@ struct SidebarTests {
   }
 
   @Test("a row says whether anything is showing its pane")
-  func hiddenPanesAreMarked() {
+  func offScreenPanesAreMarked() {
     let roster = roster([
       tab(
         "local",
@@ -486,6 +486,43 @@ struct SidebarTests {
     let none = SidebarModel.rows(
       roster: roster([tab("local", panes: [pane("local", "w1:p1")])]), agents: [:])
     #expect(!none.contains { $0.label == "Messages" }, "no caption over no groups")
+  }
+
+  /// A hidden pane is out of every window, so it is listed apart and numbered by nothing; picking
+  /// its row goes to it, which brings it back.
+  @Test("hidden panes are listed under a caption of their own, after the window's tabs")
+  func hiddenPanesAreListedApart() {
+    let hiddenTab = tab(
+      "local", "w1:t9", place: 0, panes: [pane("local", "w1:p9", place: 0, press: 0)])
+    let base = roster([tab("local", panes: [pane("local", "w1:p1")])])
+    let roster = Roster(
+      tabs: base.tabs, machines: base.machines, numbering: base.numbering, hidden: [hiddenTab])
+    let groups = [SidebarModel.MessageGroup(daemon: "local", group: "review", unread: 0, toYou: 0)]
+    let rows = SidebarModel.rows(roster: roster, agents: [:], groups: groups)
+
+    #expect(rows.map(\.label) == ["w1:p1", "Hidden", "w1:p9", "Messages", "review"])
+    let caption = rows[1]
+    #expect(caption.kind == .hidden && caption.isHeader && !caption.isDestination)
+    let hidden = rows[2]
+    #expect(hidden.hidden && hidden.isPane && hidden.isDestination)
+    #expect(hidden.kind == .pane(tabPress: 0, press: 0), "no chord reaches a hidden pane")
+    #expect(!rows[0].hidden)
+    #expect(roster.panes.map(\.key.pane) == ["w1:p1"], "a hidden pane is drawn by nothing")
+    #expect(SidebarModel.draggedTab(of: hidden, in: rows) == nil)
+
+    let none = SidebarModel.rows(roster: base, agents: [:])
+    #expect(!none.contains { $0.kind == .hidden }, "no caption over no hidden panes")
+  }
+
+  @Test("a quiet pane's row is marked, wherever it is listed")
+  func quietPanesAreMarked() {
+    let quiet = Roster.Pane(
+      key: PaneKey(daemon: "local", pane: "w1:p1"), place: 1, press: 1, label: "w1:p1",
+      onScreen: true, quiet: true)
+    let rows = SidebarModel.rows(roster: roster([tab("local", panes: [quiet])]), agents: [:])
+
+    #expect(rows.first?.quiet == true)
+    #expect(SidebarModel.accessories(of: rows[0]) == [.quiet])
   }
 
   @Test("a group says which machine keeps it while more than one is attached")

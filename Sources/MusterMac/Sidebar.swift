@@ -44,9 +44,13 @@ public struct Roster: Equatable {
     /// Whether its daemon can compact its agent. What Compact Agent greys itself out on.
     public let compactable: Bool
 
+    /// Whether nothing about it is raised for the person. What Quiet Pane is checked by.
+    public let quiet: Bool
+
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
-      subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false
+      subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false,
+      quiet: Bool = false
     ) {
       self.key = key
       self.place = place
@@ -57,6 +61,7 @@ public struct Roster: Equatable {
       self.givenName = givenName
       self.onScreen = onScreen
       self.compactable = compactable
+      self.quiet = quiet
     }
   }
 
@@ -185,14 +190,24 @@ public struct Roster: Equatable {
 
   public let numbering: Numbering
 
-  public init(tabs: [Tab], machines: [Machine] = [], numbering: Numbering = .panes) {
+  /// The tabs no window shows, which hiding a pane makes. Nothing numbers or draws them.
+  public let hidden: [Tab]
+
+  public init(
+    tabs: [Tab], machines: [Machine] = [], numbering: Numbering = .panes, hidden: [Tab] = []
+  ) {
     self.tabs = tabs
     self.machines = machines
     self.numbering = numbering
+    self.hidden = hidden
   }
 
-  /// Every pane in the window, in the order they are listed.
+  /// Every pane in the window, in the order they are listed. Not the hidden ones, which the
+  /// window draws nothing of: a surface held for one would be a terminal kept for nobody.
   public var panes: [Pane] { tabs.flatMap(\.panes) }
+
+  /// Every hidden pane, in the order they are listed.
+  public var hiddenPanes: [Pane] { hidden.flatMap(\.panes) }
 
   /// Whether more than one machine is attached, which is when a pane row says which it is on.
   ///
@@ -244,6 +259,8 @@ public enum SidebarModel {
     case pane(tabPress: Int, press: Int)
     /// A machine with something to say its panes cannot: unreachable, or holding nothing.
     case machine
+    /// The caption over the panes no window shows.
+    case hidden
     /// The caption over the groups the human is in.
     case messages
     /// A group the human is in, with how many messages there would wake them and how many of
@@ -345,7 +362,14 @@ public enum SidebarModel {
     /// named and what the next keystroke will do.
     public let isSecondPress: Bool
 
-    public var isHeader: Bool { kind == .machine || kind == .messages }
+    /// Whether this pane says nothing to the person, which the row marks.
+    public var quiet = false
+
+    /// Whether this pane is one no window shows, listed under the hidden caption. Picking it
+    /// brings it back, since going to a hidden pane does.
+    public var hidden = false
+
+    public var isHeader: Bool { kind == .machine || kind == .messages || kind == .hidden }
 
     /// Whether picking this row means something.
     ///
@@ -353,7 +377,7 @@ public enum SidebarModel {
     /// pane on it, which is the only way into a machine holding nothing (kan a_2HpkpfIfq) and
     /// what makes it safe to stop giving every machine a column of its own (kan a_2I6h18OU6).
     /// A group's opens its transcript.
-    public var isDestination: Bool { kind != .messages }
+    public var isDestination: Bool { kind != .messages && kind != .hidden }
 
     public var isMachine: Bool { kind == .machine }
 
@@ -459,7 +483,8 @@ public enum SidebarModel {
             hasKeyboard: pane.key == keyboard,
             reservedPresses: twoPress ? 2 : 0,
             machine: mark(pane.key.daemon),
-            isSecondPress: tab.armed))
+            isSecondPress: tab.armed,
+            quiet: pane.quiet))
       }
     }
     for machine in roster.machines where machine.worthDrawing {
@@ -469,6 +494,26 @@ public enum SidebarModel {
           subtitle: machine.restarted, givenName: "", state: machine.state, agent: nil,
           onScreen: false,
           hasKeyboard: false, reservedPresses: 0, machine: mark(machine.id), isSecondPress: false))
+    }
+    if !roster.hidden.isEmpty {
+      rows.append(
+        Row(
+          kind: .hidden, daemon: "", tab: "", pane: nil, label: "Hidden", subtitle: "",
+          givenName: "", state: "", agent: nil, onScreen: false, hasKeyboard: false,
+          reservedPresses: 0, machine: nil, isSecondPress: false))
+    }
+    for tab in roster.hidden {
+      for pane in tab.panes {
+        let agent = agents[pane.key] ?? "unknown"
+        rows.append(
+          Row(
+            kind: .pane(tabPress: 0, press: 0), daemon: pane.key.daemon, tab: tab.id,
+            pane: pane.key, label: pane.label, subtitle: subtitle(pane.subtitle, agent: agent),
+            givenName: pane.givenName, state: agent.state, agent: agent, onScreen: false,
+            hasKeyboard: false, reservedPresses: twoPress ? 2 : 0,
+            machine: mark(pane.key.daemon), isSecondPress: false, quiet: pane.quiet,
+            hidden: true))
+      }
     }
     if !groups.isEmpty {
       rows.append(
@@ -509,6 +554,8 @@ public enum SidebarModel {
     case toYou(Int)
     /// How full the agent's context is, from 0 to 100, as a ring.
     case context(Float)
+    /// Nothing about the pane is raised for the person.
+    case quiet
   }
 
   /// The marks a row carries, left to right. The ones that ask somebody to look come first,
@@ -520,6 +567,7 @@ public enum SidebarModel {
     }
     guard let agent = row.agent else { return [] }
     var marks: [Accessory] = []
+    if row.quiet { marks.append(.quiet) }
     if agent.unreadable { marks.append(.unreadable) }
     if agent.rang { marks.append(.bell) }
     if agent.subagents > 0 { marks.append(.subagents(agent.subagents)) }
@@ -646,7 +694,8 @@ public enum SidebarModel {
   /// Under a caption a pane row takes no tab, because there the caption is how to move one.
   public static func draggedTab(of row: Row, in rows: [Row]) -> String? {
     if row.isTab { return row.tab }
-    guard row.isPane, !rows.contains(where: \.isTab) else { return nil }
+    // A hidden pane's tab is one no window holds, so there is nothing to take into another.
+    guard row.isPane, !row.hidden, !rows.contains(where: \.isTab) else { return nil }
     return row.tab
   }
 
@@ -1034,7 +1083,7 @@ public final class SidebarView: NSView {
       onMachinePicked?(rows[clicked].daemon)
     case .group:
       onGroupPicked?(rows[clicked].daemon, rows[clicked].label)
-    case .messages:
+    case .messages, .hidden:
       break
     }
   }
@@ -1283,7 +1332,7 @@ final class SidebarRowView: NSView {
     }
 
     switch row.kind {
-    case .machine, .messages:
+    case .machine, .messages, .hidden:
       name.font = .systemFont(ofSize: 10, weight: .semibold)
       name.stringValue = row.label.uppercased()
       name.textColor = .secondaryLabelColor
@@ -1409,6 +1458,8 @@ final class SidebarRowView: NSView {
       return symbol("at", tint: .controlAccentColor, saying: "\(count) addressed to you")
     case .context(let used):
       return ContextRing(used: used)
+    case .quiet:
+      return symbol("bell.slash", tint: .tertiaryLabelColor, saying: "quiet")
     }
   }
 

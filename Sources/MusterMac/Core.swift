@@ -536,6 +536,39 @@ public enum Core {
     send(request)
   }
 
+  /// Takes a pane out of every window into the hidden list, its agent still running. Naming no
+  /// pane means the keyboard's.
+  public static func hidePane(daemonID: String = "", paneID: String = "") {
+    var hide = Muster_HidePane()
+    hide.daemonID = daemonID
+    hide.paneID = paneID
+    var request = Muster_Request()
+    request.hidePane = hide
+    send(request)
+  }
+
+  /// Brings a hidden pane back into this window, in a tab of its own, with the keyboard on it.
+  public static func showPane(daemonID: String, paneID: String) {
+    var show = Muster_ShowPane()
+    show.daemonID = daemonID
+    show.paneID = paneID
+    show.takeFocus = true
+    var request = Muster_Request()
+    request.showPane = show
+    send(request)
+  }
+
+  /// Makes a pane quiet if it is not and lets it notify if it is, as a menu item means. Naming
+  /// no pane means the keyboard's.
+  public static func quietPane(daemonID: String = "", paneID: String = "") {
+    var quiet = Muster_QuietPane()
+    quiet.daemonID = daemonID
+    quiet.paneID = paneID
+    var request = Muster_Request()
+    request.quietPane = quiet
+    send(request)
+  }
+
   /// Calls a tab what somebody wants to call it.
   ///
   /// An empty tab id means the tab the keyboard's pane is in, which is what a menu item means -

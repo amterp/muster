@@ -17,11 +17,16 @@ public enum ContextChoice: Equatable, Sendable {
   case leaveGroup
   /// `muster msg group delete G`, as the human.
   case deleteGroup
+  /// `muster pane show --focus`, for a hidden pane's row. Not one of the core's actions: it
+  /// names a pane no keyboard can be on.
+  case showPane
 }
 
 /// One line of a right-click menu.
 public enum ContextEntry: Equatable, Sendable {
   case item(ContextChoice, enabled: Bool)
+  /// An item that is on or off, drawn with a checkmark when on.
+  case toggle(ContextChoice, on: Bool)
   case submenu(title: String, [ContextEntry])
   /// Move Tab to Window, which asks the core for the other windows when it opens.
   case moveTabToWindow
@@ -41,7 +46,8 @@ public enum ContextMenuModel {
   /// The machine submenu is left out while one machine is attached. It would list only the
   /// machine the pane is already on, and most windows never attach a second.
   public static func pane(
-    machines: [String], hasSelection: Bool, canPaste: Bool, canCompact: Bool = false
+    machines: [String], hasSelection: Bool, canPaste: Bool, canCompact: Bool = false,
+    quiet: Bool = false
   ) -> [ContextEntry] {
     var entries: [ContextEntry] = [
       .item(.copy, enabled: hasSelection),
@@ -62,6 +68,8 @@ public enum ContextMenuModel {
       .item(.action("move_pane_to_new_tab")),
       .item(.action("rename_pane")),
       .item(.action("compact_pane"), enabled: canCompact),
+      .item(.action("hide_pane")),
+      .toggle(.action("quiet_pane"), on: quiet),
       .separator,
       .item(.copyPaneID),
       .separator,
@@ -94,15 +102,34 @@ public enum ContextMenuModel {
   ///
   /// Compact Agent is greyed out on both menus where the pane's daemon says nothing would be
   /// typed: no agent, or one whose manifest gives no compact line.
-  public static func agentRow(onScreen: Bool, canCompact: Bool = false) -> [ContextEntry] {
+  public static func agentRow(
+    onScreen: Bool, canCompact: Bool = false, quiet: Bool = false
+  ) -> [ContextEntry] {
     [
       .item(.action("rename_pane")),
       .item(.action("compact_pane"), enabled: canCompact),
       .item(.action("move_pane_to_new_tab")),
+      .item(.action("hide_pane")),
+      .toggle(.action("quiet_pane"), on: quiet),
       .separator,
       .item(.copyPaneID),
       .separator,
       .item(.action("close_pane"), enabled: onScreen),
+    ]
+  }
+
+  /// A hidden pane's row. Close is offered although nothing shows the pane: the rule that greys
+  /// it out on an agent row keeps a destructive verb to panes somebody can see, and a hidden pane
+  /// is one somebody put away on purpose and is looking at in this list.
+  public static func hiddenRow(quiet: Bool) -> [ContextEntry] {
+    [
+      .item(.showPane),
+      .toggle(.action("quiet_pane"), on: quiet),
+      .item(.action("rename_pane")),
+      .separator,
+      .item(.copyPaneID),
+      .separator,
+      .item(.action("close_pane")),
     ]
   }
 
@@ -148,6 +175,10 @@ final class ContextMenu: NSMenu {
       case .item(let choice, let enabled):
         guard let item = menu.item(for: choice, perform: perform) else { continue }
         item.isEnabled = enabled
+        menu.addItem(item)
+      case .toggle(let choice, let on):
+        guard let item = menu.item(for: choice, perform: perform) else { continue }
+        item.state = on ? .on : .off
         menu.addItem(item)
       case .submenu(let title, let inner):
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
@@ -199,6 +230,7 @@ final class ContextMenu: NSMenu {
     case .splitOnto(let machine), .newTabOn(let machine): machine
     case .leaveGroup: "Leave Group"
     case .deleteGroup: "Delete Group…"
+    case .showPane: "Show Pane"
     }
   }
 }
@@ -225,12 +257,12 @@ public enum ContextMenus {
   /// only in a test that has none.
   public static func pane(
     _ pane: PaneKey, surface: SurfaceView?, machines: [String], canCompact: Bool = false,
-    window: String = "", rename: @escaping @MainActor (PaneKey) -> Void
+    quiet: Bool = false, window: String = "", rename: @escaping @MainActor (PaneKey) -> Void
   ) -> NSMenu {
     let pasteboard = surface?.pasteboard ?? .general
     let entries = ContextMenuModel.pane(
       machines: machines, hasSelection: surface?.hasSelection ?? false,
-      canPaste: surface?.canPaste ?? false, canCompact: canCompact)
+      canPaste: surface?.canPaste ?? false, canCompact: canCompact, quiet: quiet)
     return ContextMenu.build(entries, subject: subject(pane), window: window) { choice in
       switch choice {
       case .copy: surface?.copy(nil)
@@ -244,13 +276,25 @@ public enum ContextMenus {
   }
 
   public static func agentRow(
-    _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false,
+    _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, quiet: Bool = false,
     pasteboard: NSPasteboard = .general, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void
   ) -> NSMenu {
     ContextMenu.build(
-      ContextMenuModel.agentRow(onScreen: onScreen, canCompact: canCompact),
+      ContextMenuModel.agentRow(onScreen: onScreen, canCompact: canCompact, quiet: quiet),
       subject: subject(pane), window: window
+    ) {
+      perform($0, on: pane, pasteboard: pasteboard, rename: rename)
+    }
+  }
+
+  /// A hidden pane's row.
+  public static func hiddenRow(
+    _ pane: PaneKey, quiet: Bool, pasteboard: NSPasteboard = .general, window: String = "",
+    rename: @escaping @MainActor (PaneKey) -> Void
+  ) -> NSMenu {
+    ContextMenu.build(
+      ContextMenuModel.hiddenRow(quiet: quiet), subject: subject(pane), window: window
     ) {
       perform($0, on: pane, pasteboard: pasteboard, rename: rename)
     }
@@ -313,6 +357,9 @@ public enum ContextMenus {
     case .action("move_pane_to_new_tab"): Core.movePaneToNewTab(pane)
     case .action("rename_pane"): rename(pane)
     case .action("compact_pane"): Core.compactPane(daemonID: pane.daemon, paneID: pane.pane)
+    case .action("hide_pane"): Core.hidePane(daemonID: pane.daemon, paneID: pane.pane)
+    case .action("quiet_pane"): Core.quietPane(daemonID: pane.daemon, paneID: pane.pane)
+    case .showPane: Core.showPane(daemonID: pane.daemon, paneID: pane.pane)
     case .action("close_pane"): Core.closePane(daemonID: pane.daemon, paneID: pane.pane)
     case .copyPaneID: copy(pane.pane, "pane", to: pasteboard)
     default: unhandled(choice, menu: "pane")

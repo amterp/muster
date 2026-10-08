@@ -26,8 +26,8 @@ struct ContextMenuTests {
     #expect(
       titles(menu) == [
         "Copy", "Paste", "-", "Split Right", "Split Down", "Split Left", "Split Up", "-",
-        "Zoom Pane", "Move Pane to New Tab", "Rename Pane…", "Compact Agent", "-",
-        "Copy Pane ID", "-", "Close Pane",
+        "Zoom Pane", "Move Pane to New Tab", "Rename Pane…", "Compact Agent", "Hide Pane",
+        "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
       ])
   }
 
@@ -242,16 +242,68 @@ struct ContextMenuTests {
   @Test("an agent row offers Close Pane only for a pane on screen")
   func anAgentRowsMenu() {
     _ = recorder()
-    let hidden = ContextMenus.agentRow(laptopPane, onScreen: false, rename: { _ in })
+    let offScreen = ContextMenus.agentRow(laptopPane, onScreen: false, rename: { _ in })
     let shown = ContextMenus.agentRow(laptopPane, onScreen: true, rename: { _ in })
 
     #expect(
-      titles(hidden) == [
-        "Rename Pane…", "Compact Agent", "Move Pane to New Tab", "-", "Copy Pane ID", "-",
-        "Close Pane",
+      titles(offScreen) == [
+        "Rename Pane…", "Compact Agent", "Move Pane to New Tab", "Hide Pane", "Quiet Pane", "-",
+        "Copy Pane ID", "-", "Close Pane",
       ])
-    #expect(item("Close Pane", in: hidden)?.isEnabled == false)
+    #expect(item("Close Pane", in: offScreen)?.isEnabled == false)
     #expect(item("Close Pane", in: shown)?.isEnabled == true)
+  }
+
+  /// Hiding and quieting act on the pane that was right-clicked. Quiet goes as a toggle, which is
+  /// what a menu item means, and is checked while the pane is quiet.
+  @Test("Hide Pane and Quiet Pane act on the pane that was right-clicked")
+  func hidingAndQuietingNameTheirPane() {
+    let recorder = recorder()
+    let menus = [
+      ContextMenus.pane(laptopPane, surface: nil, machines: [], quiet: true, rename: { _ in }),
+      ContextMenus.agentRow(laptopPane, onScreen: false, quiet: true, rename: { _ in }),
+    ]
+    let mark = recorder.requests.count
+
+    for menu in menus {
+      #expect(item("Quiet Pane", in: menu)?.state == .on)
+      choose("Hide Pane", in: menu)
+      choose("Quiet Pane", in: menu)
+    }
+
+    let hidden = recorder.sent(since: mark) {
+      if case .hidePane = $0.payload { true } else { false }
+    }.map(\.hidePane)
+    let quieted = recorder.sent(since: mark) {
+      if case .quietPane = $0.payload { true } else { false }
+    }.map(\.quietPane)
+    #expect(hidden.count == 2 && quieted.count == 2)
+    #expect(hidden.allSatisfy { $0.daemonID == "laptop" && $0.paneID == "p1w3r07bsd" })
+    #expect(quieted.allSatisfy { $0.paneID == "p1w3r07bsd" && !$0.hasQuiet })
+    let loud = ContextMenus.agentRow(laptopPane, onScreen: true, rename: { _ in })
+    #expect(item("Quiet Pane", in: loud)?.state == .off)
+  }
+
+  /// A hidden pane's row brings it back, with the keyboard on it, and closes it though nothing
+  /// shows it: it was put away on purpose and is being looked at in the list.
+  @Test("a hidden pane's row shows it, and offers Close Pane")
+  func aHiddenRowsMenu() {
+    let recorder = recorder()
+    let menu = ContextMenus.hiddenRow(laptopPane, quiet: false, rename: { _ in })
+    let mark = recorder.requests.count
+
+    #expect(
+      titles(menu) == [
+        "Show Pane", "Quiet Pane", "Rename Pane…", "-", "Copy Pane ID", "-", "Close Pane",
+      ])
+    #expect(item("Close Pane", in: menu)?.isEnabled == true)
+    choose("Show Pane", in: menu)
+
+    let shown = recorder.sent(since: mark) {
+      if case .showPane = $0.payload { true } else { false }
+    }.map(\.showPane)
+    #expect(shown.map(\.paneID) == ["p1w3r07bsd"])
+    #expect(shown.allSatisfy { $0.daemonID == "laptop" && $0.takeFocus })
   }
 
   /// Leaving is what takes a group off the list for the human; deleting it ends it for everyone,
