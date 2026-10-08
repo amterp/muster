@@ -1695,13 +1695,16 @@ fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response
 }
 
 /// What the tab an upgrade runs in is called.
-const UPGRADE_PANE: &str = "⬆️ Upgrade Muster";
+const UPGRADE_TAB: &str = "⬆️ Upgrade Muster";
 
 /// Runs the shell's upgrade line in a new tab on this machine's daemon, with the keyboard on it.
 ///
 /// This machine's, whichever machine the asking pane is on: it is this machine's app being
 /// upgraded, and the pane has to be one the upgrade quitting the app leaves running. Always a new
 /// tab, since one left from an earlier upgrade has finished; two at once are Homebrew's to refuse.
+///
+/// The tab carries the name and the pane does not: an earlier upgrade's pane outlives the app it
+/// upgraded, and a daemon refuses a pane a name another live pane holds, where tabs may share one.
 fn upgrade(window: WindowId) -> Response {
     let command = match session::startup::upgrade() {
         Upgrade::Run(command) => command,
@@ -1722,9 +1725,22 @@ fn upgrade(window: WindowId) -> Response {
              [[daemon]] block that has no host.",
         );
     };
-    let making =
-        Making { cwd: None, run: Some(command), name: Some(UPGRADE_PANE.into()), quiet: false };
-    open_a_tab(window, &daemon, None, Keyboard::Follows, making, false)
+    let making = Making { cwd: None, run: Some(command), name: None, quiet: false };
+    let response = open_a_tab(window, &daemon, None, Keyboard::Follows, making, false);
+    if let Some(response::Payload::Made(made)) = &response.payload
+        && let Some(tab) = session::tab_of(&daemon, &PaneId::new(&made.pane_id))
+        && let Err(refusal) = session::rename_tab(window, &tab, Some(UPGRADE_TAB))
+    {
+        log::warn(
+            "upgrade.tab.unnamed",
+            fields! {
+                "tab" => tab.to_string(),
+                "reason" => refusal.to_string(),
+                "impact" => "the upgrade runs, in a tab captioned like any other",
+            },
+        );
+    }
+    response
 }
 
 /// Asks the daemon that listed a group to do `asked` to it as the human: the sidebar's verbs on
