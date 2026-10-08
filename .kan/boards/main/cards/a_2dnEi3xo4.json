@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "shell-completion",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791428373909,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-07 with pane names. muster completions writes a static clap_complete script, so --pane and --to complete nothing. Offering live names needs clap_complete's dynamic completer, which changes how muster completions works for every shell (the script calls back into muster). The word list was built with unique three-letter prefixes partly so this would be pleasant.",
+  "id": "a_2dnEi3xo4",
+  "position": "b0w",
+  "title": "Shell completion offers live pane names",
+  "type": "enhancement",
+  "updated_at_millis": 1791428373909,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791428373909}
+  ]
+}
