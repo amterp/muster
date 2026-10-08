@@ -118,6 +118,37 @@ pub(super) fn commands_path() -> Option<String> {
     poison::lock(&COMMANDS, "commands").clone()
 }
 
+/// How this app upgrades itself, as the shell worked it out at launch (UpgradeMuster).
+///
+/// Held as the shell's answer rather than built here: the line is Homebrew's on macOS and would be
+/// something else on another platform, and the core only runs it in a pane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Upgrade {
+    /// The shell line that upgrades this app.
+    Run(String),
+    /// The shell's sentence saying why nothing here can, such as a build Homebrew did not install.
+    Refused(String),
+    /// The shell named no way to upgrade at all.
+    Unknown,
+}
+
+static UPGRADE: Mutex<Option<Upgrade>> = Mutex::new(None);
+
+pub(crate) fn set_upgrade(command: &str, refused: &str) {
+    let upgrade = if !command.is_empty() {
+        Upgrade::Run(command.to_string())
+    } else if !refused.is_empty() {
+        Upgrade::Refused(refused.to_string())
+    } else {
+        Upgrade::Unknown
+    };
+    *poison::lock(&UPGRADE, "upgrade") = Some(upgrade);
+}
+
+pub(crate) fn upgrade() -> Upgrade {
+    poison::lock(&UPGRADE, "upgrade").clone().unwrap_or(Upgrade::Unknown)
+}
+
 /// Where Muster writes down the daemons it starts.
 ///
 /// Held on the same terms as the three above. Needed at two moments that are nowhere near each
@@ -248,6 +279,7 @@ pub(super) fn forget() {
     *poison::lock(&DAEMON_BINARY, "daemon-binary") = None;
     *poison::lock(&PLATFORM_LOCALE, "locale") = None;
     *poison::lock(&COMMANDS, "commands") = None;
+    *poison::lock(&UPGRADE, "upgrade") = None;
     *poison::lock(&BINDINGS, "bindings") = None;
     *poison::lock(&PANE_INPUT, "input-settings") = None;
     *poison::lock(&FEEL, "settings") = None;

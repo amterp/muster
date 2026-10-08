@@ -64,6 +64,14 @@ pub enum Action {
     /// again; this one ends processes holding somebody's work, and a chord it shipped on is a
     /// chord somebody presses by accident.
     QuitAndCloseSessions,
+    /// Upgrades the app through whatever installed it, in a tab of its own on this machine's
+    /// daemon, which keeps running while the upgrade quits and reopens the app.
+    ///
+    /// Answered by the core, but only with a line the shell worked out at launch: how an app
+    /// upgrades itself is a packaging question, and on macOS the answer is Homebrew's.
+    ///
+    /// Unbound by default: it is reached for once a release, from the menu or `muster upgrade`.
+    UpgradeMuster,
     NewTab,
     NextTab,
     PreviousTab,
@@ -189,7 +197,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 61] = [
+    pub const ALL: [Action; 62] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -251,6 +259,7 @@ impl Action {
         Action::ReloadConfig,
         Action::ShowShortcuts,
         Action::QuitAndCloseSessions,
+        Action::UpgradeMuster,
     ];
 
     /// The name a config file, a log line and the seam all spell it with.
@@ -316,6 +325,7 @@ impl Action {
             Action::NewWindow => "new_window",
             Action::ShowShortcuts => "show_shortcuts",
             Action::QuitAndCloseSessions => "quit_and_close_sessions",
+            Action::UpgradeMuster => "upgrade_muster",
         }
     }
 
@@ -360,8 +370,9 @@ impl Action {
             // own, and a chord invented for either would be one nobody asked for. Ending the
             // sessions is the odd one out and is unbound for safety rather than for parity:
             // every other action here is undone by doing it again, and that one ends processes
-            // holding somebody's work. `[keymap]` is one line away for anybody who disagrees
-            // with any of them.
+            // holding somebody's work. Upgrading is reached for once a release, and a chord
+            // for it would be taken from something used daily. `[keymap]` is one line away for
+            // anybody who disagrees with any of them.
             Action::SplitLeft
             | Action::SplitUp
             | Action::MovePaneToNewTab
@@ -371,6 +382,7 @@ impl Action {
             | Action::CloseTab
             | Action::ReopenWindow
             | Action::QuitAndCloseSessions
+            | Action::UpgradeMuster
             | Action::ResetTerminal => None,
             // Muster's own, since Ghostty has no equivalent. ⌘⇧N is free on this platform for
             // a terminal - a command chord never reaches a pane - and naming panes is what

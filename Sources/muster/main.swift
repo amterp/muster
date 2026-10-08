@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       logPath: logPath, configPath: config, daemon: daemon, statePath: arrangement,
       commandSocketPath: commandSocketPath(), commandsPath: commands,
       daemonRecordsPath: daemonRecordsPath(), tabHoldersPath: holders,
-      show: launchShow(arguments: launched))
+      show: launchShow(arguments: launched), upgrade: Upgrading.here())
     Core.info(
       "app.launch",
       [

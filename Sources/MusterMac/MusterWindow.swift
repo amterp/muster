@@ -1288,6 +1288,13 @@ extension MusterWindow {
     }
   }
 
+  /// Runs the upgrade in a tab of its own, or says in a sheet why there is nothing to run: a
+  /// refusal from a menu has nowhere else a person would see it.
+  @objc public func upgradeMuster(_ sender: Any?) {
+    guard let refused = Core.upgradeMuster() else { return }
+    ConfirmSheet.tell(on: window, heading: "muster can’t upgrade itself here", body: refused)
+  }
+
   @objc public func focusNextTab(_ sender: Any?) {
     Core.focus(tabStep: "next")
   }

@@ -81,6 +81,13 @@ public enum AppMenu {
 
     let appItem = NSMenuItem()
     let appMenu = LoggedMenu()
+    // The platform puts quitting last, so the app's other items go above the pair.
+    let quitting = ["quit_and_close_sessions"]
+    let others = items.filter { $0.group == .app && !quitting.contains($0.name) }
+    for item in others {
+      appMenu.addItem(entry(for: item, target: target))
+    }
+    if !others.isEmpty { appMenu.addItem(.separator()) }
     // Named for what it leaves behind rather than just "Quit muster". Quitting has always left
     // every session running, which is the founding promise and stays the default - and it was
     // invisible, so nobody could rely on it and nobody could ask for the other thing. The pair
@@ -88,7 +95,7 @@ public enum AppMenu {
     appMenu.addItem(
       withTitle: "Quit muster, Leaving Sessions Running",
       action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-    for item in items where item.group == .app {
+    for item in items where item.group == .app && quitting.contains(item.name) {
       appMenu.addItem(entry(for: item, target: target))
     }
     appItem.submenu = appMenu

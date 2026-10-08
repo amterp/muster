@@ -16,6 +16,9 @@ import AppKit
 /// commits because the whole gesture is type-and-enter; here, the reflex this exists to
 /// interrupt is exactly a keystroke, and a sheet that took one would be no sheet at all. Escape
 /// still cancels, because a way out is not the same as a way through.
+///
+/// `tell` is the same sheet with nothing to agree to: one button, on Return, for an act that was
+/// refused and has to say why somewhere a person will see it.
 @MainActor
 public enum ConfirmSheet {
   /// Runs the sheet, and calls back only if it was confirmed.
@@ -31,6 +34,24 @@ public enum ConfirmSheet {
     preview: String? = nil, then act: @escaping () -> Void,
     otherwise cancelled: @escaping () -> Void = {}
   ) {
+    present(
+      on: host, heading: question, body: body, confirm: confirm, cancel: "Cancel",
+      preview: preview, then: act, otherwise: cancelled)
+  }
+
+  /// Says why something did not happen, with one button to put the sheet away.
+  public static func tell(on host: NSWindow, heading: String, body: String) {
+    present(
+      on: host, heading: heading, body: body, confirm: "OK", cancel: nil, preview: nil,
+      then: {}, otherwise: {})
+  }
+
+  /// The sheet both of the above run. With no `cancel` the one button is the way out, so Return
+  /// takes it.
+  private static func present(
+    on host: NSWindow, heading question: String, body: String, confirm: String, cancel: String?,
+    preview: String?, then act: @escaping () -> Void, otherwise cancelled: @escaping () -> Void
+  ) {
     let sheet = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 420, height: 10),
       styleMask: [.titled], backing: .buffered, defer: false)
@@ -45,14 +66,15 @@ public enum ConfirmSheet {
     // take one from and would otherwise measure itself as one very long line.
     detail.preferredMaxLayoutWidth = 380
 
-    let cancel = NSButton(title: "Cancel", target: nil, action: nil)
-    cancel.bezelStyle = .rounded
-    cancel.keyEquivalent = "\u{1b}"
+    let cancelling = cancel.map { NSButton(title: $0, target: nil, action: nil) }
+    cancelling?.bezelStyle = .rounded
+    cancelling?.keyEquivalent = "\u{1b}"
 
     let confirming = NSButton(title: confirm, target: nil, action: nil)
     confirming.bezelStyle = .rounded
+    if cancelling == nil { confirming.keyEquivalent = "\r" }
 
-    let buttons = NSStackView(views: [cancel, confirming])
+    let buttons = NSStackView(views: [cancelling, confirming].compactMap { $0 })
     buttons.orientation = .horizontal
     buttons.spacing = 12
 
@@ -80,8 +102,8 @@ public enum ConfirmSheet {
     buttons.trailingAnchor.constraint(equalTo: stack.trailingAnchor).isActive = true
 
     let finish = Finisher(host: host, sheet: sheet, act: act, cancelled: cancelled)
-    cancel.target = finish
-    cancel.action = #selector(Finisher.cancel)
+    cancelling?.target = finish
+    cancelling?.action = #selector(Finisher.cancel)
     confirming.target = finish
     confirming.action = #selector(Finisher.confirm)
     // Held by the sheet, because a button's target is weak and nothing else refers to this -

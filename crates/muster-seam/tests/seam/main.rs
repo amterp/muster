@@ -40,5 +40,6 @@ mod surface_input;
 mod text_size;
 mod unanswered;
 mod untypeable;
+mod upgrading;
 mod window_frame;
 mod windows;

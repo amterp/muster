@@ -92,6 +92,7 @@ message Request {
     HidePane hide_pane = 72;
     ShowPane show_pane = 73;
     QuietPane quiet_pane = 74;
+    UpgradeMuster upgrade_muster = 75;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -1320,6 +1321,15 @@ message OpenTranscript {
   string group = 2;
 }
 
+// Upgrades this app, as the Upgrade Muster menu item and `muster upgrade` both ask.
+//
+// Runs the shell's Startup.upgrade_command in a new tab on this machine's daemon, with the
+// keyboard following it, and answers Made with its pane. A pane, because the upgrade quits the
+// app that asked for it and the pane is the daemon's; this machine's daemon, because it is this
+// machine's app being upgraded, whichever machine the asking pane is on. A Failure carries
+// Startup.upgrade_refused when the shell found nothing to upgrade with.
+message UpgradeMuster {}
+
 // Takes the human out of a group, as `muster msg leave --group G` from their own shell does,
 // asked of the daemon that listed it in GroupsChanged. Leaving is what closes a group for the
 // human: the daemon stops listing it once they are out, and nothing waits for them there.
@@ -1939,6 +1949,19 @@ message Startup {
   // architecture as `linux-x86_64/muster-daemon` and `linux-aarch64/muster-daemon`. Empty
   // means a build that carries none, and a Linux machine with no daemon is then refused.
   string remote_daemons_path = 18;
+
+  // The shell line that upgrades this app in place, or empty when nothing can.
+  //
+  // How an app upgrades itself is a packaging question, as where its daemon sits is, so the shell
+  // answers it and the core runs what it is handed in a pane (UpgradeMuster) without knowing what
+  // the line does. On macOS it is a Homebrew upgrade of the cask followed by opening the app
+  // again: the pane is the daemon's, so it outlives the app the upgrade quits.
+  string upgrade_command = 19;
+
+  // Why there is no upgrade_command, for UpgradeMuster to refuse with: a sentence naming what
+  // the shell looked for and found, such as a build that Homebrew did not install. Empty with
+  // no command means a shell that has no way to upgrade at all.
+  string upgrade_refused = 20;
 
   // trace, debug, info, warn, error. Empty means debug.
   string log_level = 2;

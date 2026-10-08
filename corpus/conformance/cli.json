@@ -2170,6 +2170,20 @@
       }
     },
     {
+      "name": "upgrading is asked of the window, naming nothing",
+      "why": "The menu item and this send the one request, so both run the same upgrade. It names no pane and no daemon, because the upgrade is of the app, and the app is the only thing that knows whether Homebrew installed it and where. Run from a pane on a devenv it still upgrades the app on this side of the ssh, in a tab on this machine's daemon.",
+      "given": {
+        "argv": [
+          "upgrade"
+        ]
+      },
+      "expect": {
+        "request": {
+          "upgrade_muster": {}
+        }
+      }
+    },
+    {
       "name": "the config file is read again on request",
       "why": "The fourth door onto one action: a chord, a menu item, a saved file and this all arrive at the same reload. Worth having from a script because editing the file and applying it are two acts, and a script that writes one wants to finish the job.",
       "given": {

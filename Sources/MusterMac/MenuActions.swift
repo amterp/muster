@@ -197,6 +197,10 @@ public enum MenuActions {
     "show_shortcuts": Described(
       title: "muster Shortcuts", selector: #selector(MusterWindow.showShortcuts(_:)),
       group: .help),
+    // No ellipsis, because it asks nothing first: Homebrew changes nothing when Muster is up to
+    // date, and the quit it makes costs nothing, since the daemon keeps every pane.
+    "upgrade_muster": Described(
+      title: "Upgrade muster", selector: #selector(MusterWindow.upgradeMuster(_:)), group: .app),
     // The ellipsis is the platform's promise that this asks before it does anything, which
     // matters more here than on the two rename items: it is the only thing in this menu that
     // ends somebody's work.

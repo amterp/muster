@@ -406,6 +406,42 @@ struct AppMenuTests {
   }
 
   @MainActor
+  @Test("upgrading sits above the two ways out, which stay last as the platform puts them")
+  func upgradingSitsAboveQuitting() {
+    let menu = AppMenu.build(
+      target: MusterWindow.self,
+      bindings: AppMenuTests.published + [
+        Core.Binding(action: "quit_and_close_sessions", key: "", modifiers: []),
+        Core.Binding(action: "upgrade_muster", key: "", modifiers: []),
+      ])
+    let titles = menu.items.first?.submenu?.items.map(\.title) ?? []
+
+    #expect(
+      titles == [
+        "Upgrade muster", "", "Quit muster, Leaving Sessions Running",
+        "Quit muster and Close Sessions…",
+      ])
+  }
+
+  @MainActor
+  @Test("the menu's upgrade is the request `muster upgrade` sends, and hands back a refusal")
+  func upgradingIsOneRequest() {
+    let recorder = recorder()
+
+    #expect(Core.upgradeMuster() == nil)
+    guard case .upgradeMuster = recorder.requests.last?.payload else {
+      Issue.record("an upgrade sent \(String(describing: recorder.requests.last?.payload))")
+      return
+    }
+
+    var failure = Muster_Failure()
+    failure.reason = "Muster was not upgraded: there is no Homebrew here."
+    let refusing = failure
+    _ = seam(RecordingDispatcher(answering: { _ in .failure(refusing) }))
+    #expect(Core.upgradeMuster() == failure.reason)
+  }
+
+  @MainActor
   @Test("the item that ends sessions is not filed under a menu about windows")
   func quittingIsNotInTheWindowMenu() {
     let items = AppMenu.paneItems([

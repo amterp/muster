@@ -8,5 +8,6 @@ mod exit_codes;
 mod harness;
 mod messaging;
 mod two_windows;
+mod upgrading;
 mod waiting_on_agents;
 mod without_a_window;

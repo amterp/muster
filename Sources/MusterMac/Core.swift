@@ -27,7 +27,7 @@ public enum Core {
     logPath: String?, configPath: String? = nil, daemon: DaemonLocation? = nil,
     statePath: String? = nil, commandSocketPath: String? = nil, commandsPath: String? = nil,
     daemonRecordsPath: String? = nil, tabHoldersPath: String? = nil, show: String? = nil,
-    process: String = "app"
+    upgrade: Upgrading.Plan? = nil, process: String = "app"
   ) {
     muster_set_event_callback(coreEventArrived)
 
@@ -43,6 +43,11 @@ public enum Core {
     startup.daemonRecordsPath = daemonRecordsPath ?? ""
     startup.tabHoldersPath = tabHoldersPath ?? ""
     startup.show = show ?? ""
+    switch upgrade {
+    case .run(let command): startup.upgradeCommand = command
+    case .refused(let why): startup.upgradeRefused = why
+    case nil: break
+    }
     startup.locale = platformLocale() ?? ""
     startup.logLevel = ProcessInfo.processInfo.environment["MUSTER_LOG_LEVEL"] ?? ""
     startup.process = process
@@ -1002,6 +1007,15 @@ public enum Core {
     send(request)
   }
 
+  /// Upgrades the app, as `muster upgrade` does: nil once the upgrade's tab is open, or the
+  /// core's reason when there is nothing here to upgrade with.
+  public static func upgradeMuster() -> String? {
+    var request = Muster_Request()
+    request.upgradeMuster = Muster_UpgradeMuster()
+    guard case .failure(let failure) = send(request) else { return nil }
+    return failure.reason
+  }
+
   /// Takes the human out of a group, which takes it off the sidebar: `muster msg leave --group G`
   /// from their own shell. Says whether the daemon did; its refusal is in the run log.
   @discardableResult
@@ -1359,6 +1373,7 @@ public enum Core {
     case .adoptOldState: return "adopt_old_state"
     case .focusHistory: return "focus_history"
     case .openTranscript: return "open_transcript"
+    case .upgradeMuster: return "upgrade_muster"
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"
     case .windowFocus: return "window_focus"

@@ -26,7 +26,7 @@ use muster_proto::{
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
     HidePane, MoveTab, OpenTranscript, QuietPane, ReadDaemons, ReadPane, ReadWindow, ReattachPane,
     ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane, ShowPane, SplitPane,
-    ToggleSidebar, WatchPanes, ZoomPane, request,
+    ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -288,6 +288,13 @@ enum What {
     // this is about the machine, and the daemons worth knowing about are exactly the ones no
     // window is showing.
     Daemons,
+
+    /// Upgrade the Muster app through Homebrew, in a tab of its own, and open it again after
+    //
+    // Asked of the window rather than run here, because only the app knows whether Homebrew
+    // installed it and where, and a pane on a devenv means the app on this side of the ssh.
+    // The window prints the pane the upgrade runs in, as `tab new` does.
+    Upgrade,
 
     /// Put the window's keyboard on a pane, or step it somewhere
     //
@@ -974,6 +981,7 @@ pub fn parse(
             send(request::Payload::ReadWindow(ReadWindow { layout: *layout }))
         }
         What::Daemons => send(request::Payload::ReadDaemons(ReadDaemons {})),
+        What::Upgrade => send(request::Payload::UpgradeMuster(UpgradeMuster {})),
         // The window's verb among the daemon's: a transcript is a pane, which only a window
         // can open. No daemon is named, which the core reads as this machine's: the human is
         // homed here, and a group kept elsewhere is followed here as `group@machine`.
@@ -1020,29 +1028,7 @@ pub fn parse(
                 (*up, "up"),
                 (*down, "down"),
             ]);
-            if let Some(step) = stepped {
-                send(request::Payload::FocusRelative(FocusRelative { direction: step.to_string() }))
-            } else if let Some(place) = place {
-                send(request::Payload::FocusPaneAt(FocusPaneAt { place: *place }))
-            } else {
-                // The only command where an empty pane is not an answer: everywhere else the
-                // core reads it as "the pane the keyboard is on", and asking to focus the
-                // focused pane is not something to ask for. So it is refused here, where the
-                // reason is known.
-                let named = pane.clone().or_else(|| running_in(environment)).ok_or_else(|| {
-                    Failure::Refused(format!(
-                        "`muster focus` needs a pane, a direction or a place, and ${} is not \
-                         set - so this is not running inside a pane Muster made. Name one: \
-                         `muster focus p1w3r07bsd`, or say `--next`. `muster window` lists \
-                         them.",
-                        environment::PANE_NAME
-                    ))
-                })?;
-                send(request::Payload::FocusPane(FocusPane {
-                    pane_id: named,
-                    ..FocusPane::default()
-                }))
-            }
+            focus(pane.as_deref(), stepped, *place, environment)?
         }
         What::Zoom { pane } => send(request::Payload::ZoomPane(ZoomPane {
             pane_id: pane_ref(pane.as_ref(), environment),
@@ -1068,6 +1054,36 @@ pub fn parse(
         (Some(window), _) => for_window(asking, window)?,
     };
     Ok(Invocation { asking, json: cli.json, socket: cli.socket, no_window: cli.no_window })
+}
+
+/// Where `muster focus` puts the keyboard: a step, a place, or a pane, in that order.
+fn focus(
+    pane: Option<&str>,
+    stepped: Option<&'static str>,
+    place: Option<u32>,
+    environment: &BTreeMap<String, String>,
+) -> Result<Asking, Failure> {
+    Ok(if let Some(step) = stepped {
+        send(request::Payload::FocusRelative(FocusRelative { direction: step.to_string() }))
+    } else if let Some(place) = place {
+        send(request::Payload::FocusPaneAt(FocusPaneAt { place }))
+    } else {
+        // The only command where an empty pane is not an answer: everywhere else the
+        // core reads it as "the pane the keyboard is on", and asking to focus the
+        // focused pane is not something to ask for. So it is refused here, where the
+        // reason is known.
+        let named =
+            pane.map(str::to_string).or_else(|| running_in(environment)).ok_or_else(|| {
+                Failure::Refused(format!(
+                    "`muster focus` needs a pane, a direction or a place, and ${} is not \
+                     set - so this is not running inside a pane Muster made. Name one: \
+                     `muster focus p1w3r07bsd`, or say `--next`. `muster window` lists \
+                     them.",
+                    environment::PANE_NAME
+                ))
+            })?;
+        send(request::Payload::FocusPane(FocusPane { pane_id: named, ..FocusPane::default() }))
+    })
 }
 
 /// The window `window close` closes: the one it names, which `--window` may name instead. Two

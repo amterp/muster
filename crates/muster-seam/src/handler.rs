@@ -31,6 +31,7 @@ use muster_core::{PaneKey, Until};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
 use crate::proto::{self, Request, Response, event, request, response};
+use crate::session::startup::Upgrade;
 use crate::session::{self, AttachError, AttachedPane, Keyboard, Resolved, WindowId};
 use crate::{command, convert, watch};
 use prost::Message;
@@ -312,6 +313,7 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::OpenTranscript(open) => {
             open_transcript(window, &DaemonId::new(&open.daemon_id), &open.group)
         }
+        request::Payload::UpgradeMuster(_) => upgrade(window),
         request::Payload::LeaveGroup(leave) => as_human_in(
             &leave.daemon_id,
             &leave.group,
@@ -1687,6 +1689,39 @@ fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response
     response
 }
 
+/// What the tab an upgrade runs in is called.
+const UPGRADE_PANE: &str = "⬆️ Upgrade Muster";
+
+/// Runs the shell's upgrade line in a new tab on this machine's daemon, with the keyboard on it.
+///
+/// This machine's, whichever machine the asking pane is on: it is this machine's app being
+/// upgraded, and the pane has to be one the upgrade quitting the app leaves running. Always a new
+/// tab, since one left from an earlier upgrade has finished; two at once are Homebrew's to refuse.
+fn upgrade(window: WindowId) -> Response {
+    let command = match session::startup::upgrade() {
+        Upgrade::Run(command) => command,
+        Upgrade::Refused(why) => return Response::failure(why),
+        Upgrade::Unknown => {
+            return Response::failure(
+                "Muster was not upgraded: the app that started this window named no way to \
+                 upgrade itself. Only the macOS app knows one, through Homebrew; any other \
+                 build is upgraded the way it was installed.",
+            );
+        }
+    };
+    let Some(daemon) = session::first_local_daemon(window) else {
+        return Response::failure(
+            "Muster was not upgraded: this window is attached to no daemon on this machine, and \
+             the upgrade has to run in a pane there, because it quits the app and a pane on \
+             this machine's daemon is what keeps running while it does. Attach one with a \
+             [[daemon]] block that has no host.",
+        );
+    };
+    let making =
+        Making { cwd: None, run: Some(command), name: Some(UPGRADE_PANE.into()), quiet: false };
+    open_a_tab(window, &daemon, None, Keyboard::Follows, making, false)
+}
+
 /// Asks the daemon that listed a group to do `asked` to it as the human: the sidebar's verbs on
 /// a group row, which are the `muster msg` verbs the human's own shell would run.
 fn as_human_in(daemon: &str, group: &str, done: &str, asked: Asked) -> Response {
@@ -2361,6 +2396,7 @@ fn start(startup: &proto::Startup) -> Response {
     // is part of the environment that daemon is born with - so a pane it spawns has `muster` on
     // its PATH from the first one onwards.
     session::startup::set_commands_path(&startup.commands_path);
+    session::startup::set_upgrade(&startup.upgrade_command, &startup.upgrade_refused);
     session::startup::set_daemon_records_path(&startup.daemon_records_path);
 
     if let Err(refusal) = start_logging(startup) {
