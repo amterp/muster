@@ -3,6 +3,14 @@
   "alias": "codex-and-opencode",
   "alias_explicit": false,
   "column": "next",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-07: the OpenAI account is at its usage limit until 2026-11-02 (hit during ./dev --codex), so Codex recordings that need model turns wait until then.",
+      "created_at_millis": 1791420393678,
+      "id": "c_2djt6lHMN"
+    }
+  ],
   "created_at_millis": 1791120807068,
   "creator": "Alexander Terp",
   "description": "Both harnesses have a /compact. Codex 0.154 needs an OpenAI login (not run, the account is near its monthly limit); OpenCode needs 1.18+ (not installed). Record each working as typed at an idle prompt, whether it takes a focus, then add [session] compact to codex.toml and opencode.toml (engine 11). Claude Code's is recorded in corpus/claude-code-2.1.289/compact.txt.",
@@ -10,7 +18,7 @@
   "position": "Zx",
   "title": "Codex and OpenCode compaction: record /compact as typed and add it to their manifests",
   "type": "feature",
-  "updated_at_millis": 1791131314388,
+  "updated_at_millis": 1791420393678,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791120807068},
     {"field":"column","value":"next","at":1791131314388}

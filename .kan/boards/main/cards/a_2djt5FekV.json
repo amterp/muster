@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-return-sent-by",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791420392804,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-07 recording Codex 0.160.0: a Return from `muster pane send` (with the text, or alone a second later) does not submit a command typed into Codex's `!` shell mode, while a raw \\\\r written to the pty does. Not needed by anything yet; it would matter to a director driving Codex's shell mode.",
+  "id": "a_2djt5FekV",
+  "position": "b0s",
+  "title": "A Return sent by pane send into Codex's ! shell mode is not taken",
+  "type": "bug",
+  "updated_at_millis": 1791420392804,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791420392804}
+  ]
+}

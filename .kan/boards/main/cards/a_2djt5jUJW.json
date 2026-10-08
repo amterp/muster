@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "record-codex-0-160-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791420393139,
+  "creator": "Alexander Terp",
+  "description": "Codex 0.160.0's binary holds a \"Try new model / Use existing model\" startup dialog that could not be brought up offline on 2026-10-07, so it has no detection rule and would read idle like the other startup dialogs did before 476d23af's fix. Record it when it next appears (tools/detection-capture.py has the codex-startup scaffolding) and add a blocked rule to codex.toml.",
+  "id": "a_2djt5jUJW",
+  "position": "b0t",
+  "title": "Record Codex 0.160's Try new model dialog and give it a rule",
+  "type": "chore",
+  "updated_at_millis": 1791420393139,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791420393139}
+  ]
+}
