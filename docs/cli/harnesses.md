@@ -92,6 +92,11 @@ kimi, kiro, maki, pi, qodercli.
   lists its Linux sandbox, which every command the model runs goes through, so the model's own
   `report --waiting` from its shell counts as the pane's rather than a nested Codex's
   (`muster docs limits`).
+- **Its server refused**: a manifest's `[server]` names the subcommand under which a harness's
+  binary serves sessions other than its own, with what a person does about it (detection engine
+  14). Codex's names `app-server`, which by default runs every Codex session's commands and hooks
+  with the environment of the session that started it, so Muster refuses every report that comes
+  through it and says how to turn it off (`muster docs limits`).
 
 The first name a session reports is the one it started with, not a rename: a pane with a name
 keeps it and gives it to the session, and a pane without one takes the session's. Neither

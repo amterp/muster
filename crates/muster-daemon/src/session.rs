@@ -1484,19 +1484,27 @@ impl Session {
     }
 
     /// A refusal for a report whose sender's nearest agent is not the pane's own: one running
-    /// outside the process group the pane's agent was found in. None - take the report - for
-    /// anything else, including a pane with no agent identified or no group known for it
-    /// ([`crate::attribution`]).
+    /// outside the process group the pane's agent was found in. And for any report that came
+    /// through a harness's shared server, whatever pane it names, since the pane it names is the
+    /// one whose session started the server ([`crate::attribution`]). None - take the report - for
+    /// anything else, including a pane with no agent identified or no group known for it.
     pub(crate) fn foreign_report(
         &self,
         service: &Service,
-        sender: &crate::attribution::Nearest,
+        sender: &crate::attribution::Sender,
     ) -> Option<Reply> {
         let Service::Pane(proto::PaneRequest {
             request: Some(pane_request::Request::Report(report)),
         }) = service
         else {
             return None;
+        };
+        let sender = match sender {
+            crate::attribution::Sender::Server(server) => {
+                crate::attribution::refused_through_server(&report.pane, server);
+                return Some(Reply::refused(server.refusal()));
+            }
+            crate::attribution::Sender::Agent(nearest) => nearest,
         };
         let pane = &self.panes[self.pane_index(&report.pane)?];
         let own = pane.record.agent.as_deref()?;

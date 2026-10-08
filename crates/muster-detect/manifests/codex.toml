@@ -1,13 +1,23 @@
 id = "codex"
-version = "2026.10.05.1"
-min_engine_version = 13
-updated_at = "2026-10-05T00:00:00Z"
+version = "2026.10.07.1"
+min_engine_version = 14
+updated_at = "2026-10-07T00:00:00Z"
 
 # Codex runs its own binary under these names for work that is not a session, which its 0.154.0
 # binary carries as strings. On Linux each command the model runs goes through
 # codex-linux-sandbox, in a process group of its own, and would read as a nested Codex
 # reporting into the pane.
 helpers = ["codex-linux-sandbox", "codex-execve-wrapper", "codex-code-mode-host"]
+
+# Codex 0.160.0 runs every session's commands and hooks in one app-server, `codex app-server
+# --listen unix:// --managed-daemon`, which the first session starts and later ones join, so they
+# all carry the first session's environment, `MUSTER_PANE` included. Nothing below it can say which
+# pane it is from (docs/observations/codex-0.160.0.md, section 1).
+[server]
+subcommand = "app-server"
+remedy = """run `codex features disable daemon_auto_start` and `codex app-server daemon stop`, \
+then restart Codex, so that each session runs its own commands and hooks; or start Codex as \
+`codex --no-daemon`"""
 
 # Typed at an empty composer with a Return; Codex takes the name inline, before its first turn
 # as well as after (docs/observations/codex-0.154.0.md, section 5).

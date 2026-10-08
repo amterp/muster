@@ -72,3 +72,41 @@ fn a_pane_with_no_agent_takes_a_report_from_an_agent_process() {
     assert_eq!(until_reported(&daemon, 1), ["nested 0"]);
     assert_eq!(context_of(&mut control, "p1"), Some(55.0));
 }
+
+fn served_said(daemon: &Daemon) -> String {
+    std::fs::read_to_string(daemon.root().join("home/fake-agent-served-said")).unwrap_or_default()
+}
+
+/// A report through the agent's server is refused even with the pane's own agent above it, as
+/// Codex's shared app-server is its first session's child: the server runs every session's
+/// hooks with that session's environment, so the pane it names says nothing.
+#[test]
+fn a_report_through_the_agents_server_is_refused_and_says_what_to_do() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    daemon.type_into("p1", "hook --context-used 42");
+    assert_eq!(until_reported(&daemon, 1), ["hook 0"]);
+
+    daemon.type_into("p1", "served --context-used 77");
+    assert_eq!(until_reported(&daemon, 2)[1], "served 1", "a report through a server was taken");
+    assert_eq!(context_of(&mut control, "p1"), Some(42.0), "the server's report's facts landed");
+    let said = served_said(&daemon);
+    assert!(said.contains("`claude serve`"), "the refusal does not name the server: {said}");
+    assert!(said.contains("run the fake agent without its server"), "no remedy: {said}");
+}
+
+/// The same report is refused in a pane with no agent, which takes any other report: what it
+/// names is no more that pane than any other.
+#[test]
+fn a_pane_with_no_agent_refuses_a_report_through_a_server() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    let agent = daemon.agent_path();
+    daemon.type_into("p1", &format!("{} serve --context-used 55 &", agent.display()));
+    assert_eq!(until_reported(&daemon, 1), ["served 1"]);
+    assert_eq!(context_of(&mut control, "p1"), None);
+}

@@ -29,9 +29,10 @@ use region::Region;
 /// bar down its left side, with a rule's `prompt_margin` and `prompt_placeholder`, 10 a
 /// `[session]` `wake`, the command that hands a running session a message, 11 a
 /// `[session]` `compact`, the line that compacts the session's context, 12 a `[session]`
-/// `resume`, the command that starts a session again after a daemon restart, and 13
-/// `helpers`, the names the harness runs its own binary under for work that is not a session.
-pub const ENGINE_VERSION: u32 = 13;
+/// `resume`, the command that starts a session again after a daemon restart, 13 `helpers`, the
+/// names the harness runs its own binary under for work that is not a session, and 14 a
+/// `[server]` table, the subcommand under which that binary serves sessions other than its own.
+pub const ENGINE_VERSION: u32 = 14;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -60,6 +61,9 @@ const RESUME_ENGINE_VERSION: u32 = 12;
 
 /// The engine version that introduced `helpers`.
 const HELPERS_ENGINE_VERSION: u32 = 13;
+
+/// The engine version that introduced the `[server]` table.
+const SERVER_ENGINE_VERSION: u32 = 14;
 
 /// Where a `[session]` compact's template takes what to keep, when its harness takes one.
 const FOCUS_PLACEHOLDER: &str = "{focus}";
@@ -139,6 +143,7 @@ pub struct Manifest {
     /// The argv[0] names the harness runs its own binary under for work that is not a session,
     /// such as Codex's sandbox helper: the agent's process, but not the agent.
     helpers: Vec<String>,
+    server: Option<Server>,
     rules: Vec<Rule>,
     /// What typed at the agent's empty prompt renames its session, with `{name}` for the name.
     rename: Option<String>,
@@ -149,6 +154,17 @@ pub struct Manifest {
     compact: Option<String>,
     /// The command that starts the session again after a daemon restart.
     resume: Option<resume::Spelling>,
+}
+
+/// The harness's binary serving sessions other than its own, as Codex's shared app-server does:
+/// what it runs carries the environment of whichever session started it, so nothing below it
+/// can say which pane it belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Server {
+    /// The subcommand the harness's binary was run with: the word after the one naming it.
+    pub subcommand: String,
+    /// What a person does so that the harness runs each session's work in that session.
+    pub remedy: String,
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +238,11 @@ impl Manifest {
     /// The argv[0] names the harness runs its own binary under for work that is not a session.
     pub fn helpers(&self) -> &[String] {
         &self.helpers
+    }
+
+    /// How the harness's binary looks when it serves sessions other than its own, if it does.
+    pub fn server(&self) -> Option<&Server> {
+        self.server.as_ref()
     }
 
     /// Every rule is evaluated; the highest priority that matches wins, the earlier of two
@@ -475,9 +496,17 @@ struct RawManifest {
     script_paths: Vec<String>,
     #[serde(default)]
     helpers: Vec<String>,
+    server: Option<RawServer>,
     #[serde(default)]
     rules: Vec<RawRule>,
     session: Option<RawSession>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawServer {
+    subcommand: String,
+    remedy: String,
 }
 
 /// How the harness's session is named, as a person at its prompt would name it.
@@ -644,7 +673,30 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
     if let Some(session) = &manifest.session {
         validate_session(manifest, session)?;
     }
-    validate_helpers(manifest)
+    validate_helpers(manifest)?;
+    validate_server(manifest)
+}
+
+/// A server is matched by the word after the one naming its agent, so the subcommand is one whole
+/// word; the remedy is said to a person, so it says something.
+fn validate_server(manifest: &RawManifest) -> Result<(), String> {
+    let Some(server) = &manifest.server else {
+        return Ok(());
+    };
+    if manifest.min_engine_version.unwrap_or(0) < SERVER_ENGINE_VERSION {
+        return Err(format!(
+            "the manifest has a [server] table but min_engine_version is below \
+             {SERVER_ENGINE_VERSION}"
+        ));
+    }
+    let subcommand = &server.subcommand;
+    if subcommand.trim().is_empty() || subcommand.chars().any(char::is_whitespace) {
+        return Err(format!("[server] subcommand {subcommand:?} is not one word"));
+    }
+    if server.remedy.trim().is_empty() {
+        return Err("[server] remedy must say what a person can do".to_string());
+    }
+    Ok(())
 }
 
 /// A helper is matched by the basename of a process's argv[0], so a name is one whole word.
@@ -1030,6 +1082,9 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         aliases: raw.aliases,
         script_paths: raw.script_paths,
         helpers: raw.helpers,
+        server: raw
+            .server
+            .map(|server| Server { subcommand: server.subcommand, remedy: server.remedy }),
         rules,
         rename: raw.session.as_ref().and_then(|session| session.rename.clone()),
         compact: raw.session.as_ref().and_then(|session| session.compact.clone()),

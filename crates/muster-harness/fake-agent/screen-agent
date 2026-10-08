@@ -22,8 +22,12 @@
 # `hook <args>` runs `"$MUSTER_DAEMON" report <args>` through a shell it starts, as a harness
 # runs a hook: a child of the agent, in its process group. `nested <args>` starts a copy of this
 # script in a process group of its own, which runs the same report the same way, as an agent's
-# Bash tool starts a `claude -p` whose hooks report. Each appends `hook <status>` or
-# `nested <status>` to $HOME/fake-agent-reported once the report has answered.
+# Bash tool starts a `claude -p` whose hooks report. `served <args>` starts a copy as
+# `claude serve`, the subcommand fake-agent/claude.toml names as its server, in a process group
+# of its own, which runs the report the same way, as Codex's shared app-server runs its hooks.
+# Each appends `hook <status>`, `nested <status>` or `served <status>` to
+# $HOME/fake-agent-reported once the report has answered, and the server's report also leaves
+# what it printed in $HOME/fake-agent-served-said.
 #
 # Every line it reads is also appended to $HOME/fake-agent-heard, which is how a test sees what
 # was typed into it (a daemon's doorbell, say) after the screen has been painted over.
@@ -49,6 +53,14 @@ if [ "$1" = nested-report ]; then
     shift
     sh -c '"$MUSTER_DAEMON" report "$@" >/dev/null 2>&1' report "$@"
     printf 'nested %s\n' "$?" >> "$HOME/fake-agent-reported"
+    exit 0
+fi
+
+# The copy `served` starts, as the agent's server: it reports and leaves, painting nothing.
+if [ "$1" = serve ]; then
+    shift
+    sh -c '"$MUSTER_DAEMON" report "$@" >/dev/null 2>"$HOME/fake-agent-served-said"' report "$@"
+    printf 'served %s\n' "$?" >> "$HOME/fake-agent-reported"
     exit 0
 fi
 
@@ -143,6 +155,12 @@ while :; do
             set -m
             # shellcheck disable=SC2086
             "$0" nested-report ${line#nested } &
+            wait $!
+            set +m ;;
+        served\ *)
+            set -m
+            # shellcheck disable=SC2086
+            "$0" serve ${line#served } &
             wait $!
             set +m ;;
         notify\ *) printf '\033]777;notify;Claude Code;%s\a' "${line#notify }" ;;

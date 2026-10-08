@@ -404,3 +404,14 @@ that agent's own reports read as a nested agent's. It cannot tell a nested agent
 group from the pane's own, and takes its reports as before; nor can it tell anything about a
 sender it cannot see, so it takes those too. `env -u MUSTER_DAEMON` in front of the nested command
 keeps its hooks quiet whatever Muster can tell.
+
+Codex's shared app-server is refused whatever it reports. With its default settings, Codex 0.160
+runs the commands and hooks of every Codex session on the machine in one `codex app-server`
+process, which the first session starts and later sessions join, so all of them carry the first
+session's `$MUSTER_PANE`. The process tree cannot say which session a report came from: while the
+first session runs, the app-server is its child. So Muster refuses every report that comes through
+an app-server, even into a pane that has gone or runs no agent, and the refusal names the fix:
+`codex features disable daemon_auto_start` turns the app-server off for sessions started later,
+one already running still serves them until `codex app-server daemon stop`, and `codex
+--no-daemon` keeps a single session out of it. `muster msg` run from under the app-server still
+acts as the first session's pane.

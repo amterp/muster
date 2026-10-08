@@ -17,7 +17,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::manifest::{ENGINE_VERSION, Manifest};
+use crate::manifest::{ENGINE_VERSION, Manifest, Server};
 use crate::{Agent, Detection, Input, Prompt, State};
 
 const BUILT_IN: &[(&str, &str)] = &[
@@ -247,6 +247,11 @@ impl Manifests {
         self.entry(agent).is_some_and(|entry| {
             entry.manifest.helpers().iter().any(|helper| lookup_name(helper) == program)
         })
+    }
+
+    /// How `agent`'s binary looks when it serves sessions other than its own, if it does.
+    pub fn server(&self, agent: &Agent) -> Option<&Server> {
+        self.entry(agent)?.manifest.server()
     }
 
     /// An agent's verdict on its pane. No agent is unknown; an agent whose manifest has gone

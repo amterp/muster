@@ -23,9 +23,9 @@ use std::sync::Arc;
 
 pub use detector::{Carried, CarriedReport, Detector, Drift, Pane, Publication, Tick};
 pub use identify::{
-    Probe, agent_arguments, agent_program, identify_in_job, identify_process, probe,
+    Probe, agent_arguments, agent_program, identify_in_job, identify_process, probe, server_of,
 };
-pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Prompt, Version};
+pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Prompt, Server, Version};
 pub use manifests::{Manifests, Source, Warning};
 pub use osc::{Progress, title};
 pub use process::{Job, Placed, Process, Processes, System};

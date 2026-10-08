@@ -289,7 +289,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
 fn handle(
     session: &mut Session,
     service: Service,
-    sender: Option<&attribution::Nearest>,
+    sender: Option<&attribution::Sender>,
     outbox: &Outbox,
     shared: &Shared,
 ) -> Handled {
@@ -324,12 +324,12 @@ fn sender_of(
     peer: Option<u32>,
     service: Option<&Service>,
     shared: &Shared,
-) -> Option<attribution::Nearest> {
+) -> Option<attribution::Sender> {
     let report = matches!(
         service,
         Some(Service::Pane(proto::PaneRequest { request: Some(pane_request::Request::Report(_)) }))
     );
-    attribution::nearest_agent(peer.filter(|_| report)?, &*shared.detecting.manifests()?)
+    attribution::sender(peer.filter(|_| report)?, &*shared.detecting.manifests()?)
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is

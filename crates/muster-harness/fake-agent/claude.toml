@@ -9,11 +9,17 @@
 # claude session.
 
 id = "claude"
-version = "2026.10.04.3"
-min_engine_version = 12
+version = "2026.10.07.1"
+min_engine_version = 14
 
 # What renames a session, as Claude Code's own manifest says it: the fake writes down every line
 # it reads, so a test sees the rename typed.
+# The fake agent's server, as Codex's manifest names its shared app-server: a copy of the fake run
+# as `claude serve`, whose reports are refused whatever pane they name.
+[server]
+subcommand = "serve"
+remedy = "run the fake agent without its server"
+
 [session]
 rename = "/rename {name}"
 # What compacts a session, as Claude Code's own manifest says it, written down the same way.

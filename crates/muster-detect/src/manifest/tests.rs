@@ -444,6 +444,24 @@ fn helpers_are_program_names_and_need_engine_thirteen() {
 }
 
 #[test]
+fn a_server_is_one_subcommand_with_a_remedy_and_needs_engine_fourteen() {
+    let with = |engine: u32, subcommand: &str, remedy: &str| {
+        format!(
+            "{}\n[server]\nsubcommand = {subcommand:?}\nremedy = {remedy:?}\n",
+            with_prompt(engine, "idle", "whole_recent")
+        )
+    };
+    let manifest = Manifest::parse(&with(14, "app-server", "turn it off")).unwrap();
+    let server = manifest.server().unwrap();
+    assert_eq!((server.subcommand.as_str(), server.remedy.as_str()), ("app-server", "turn it off"));
+    assert!(Manifest::parse(&with(13, "app-server", "turn it off")).is_err(), "below engine 14");
+    assert!(Manifest::parse(&with(14, "app server", "turn it off")).is_err(), "two words");
+    assert!(Manifest::parse(&with(14, "", "turn it off")).is_err(), "empty");
+    assert!(Manifest::parse(&with(14, "app-server", " ")).is_err(), "a remedy saying nothing");
+    assert!(Manifest::parse(&with_prompt(13, "idle", "whole_recent")).unwrap().server().is_none());
+}
+
+#[test]
 fn a_session_wake_fills_whole_arguments_and_needs_engine_ten() {
     let with = |engine: u32, wake: &str| {
         format!("{}\n[session]\nwake = {wake}\n", with_prompt(engine, "idle", "whole_recent"))

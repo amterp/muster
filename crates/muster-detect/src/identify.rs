@@ -14,7 +14,7 @@
 use std::path::Path;
 
 use crate::process::{Job, Process, Processes};
-use crate::{Agent, Manifests};
+use crate::{Agent, Manifests, Server};
 
 /// What a probe of a pane's foreground found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,14 +123,46 @@ pub fn identify_in_job(job: &Job, manifests: &Manifests) -> Option<(Agent, Strin
 }
 
 /// The agent one process is, by the names detection reads a foreground by: none for a shell, a
-/// hook, an agent's helper, or anything else no manifest names.
+/// hook, an agent's helper or server, or anything else no manifest names.
 pub fn identify_process(process: &Process, manifests: &Manifests) -> Option<Agent> {
     named_agent(process, &normalized_process_name(process, manifests), manifests)
 }
 
-/// The agent `name` means for `process`, unless the process is one of that agent's helpers: its
+/// The agent whose binary `process` is, serving sessions other than its own, as Codex's shared
+/// app-server does - with the manifest's account of it - or None for any other process.
+pub fn server_of(process: &Process, manifests: &Manifests) -> Option<(Agent, Server)> {
+    let agent = manifests.agent_named(&normalized_process_name(process, manifests))?;
+    let server = serving(process, &agent, manifests)?.clone();
+    Some((agent, server))
+}
+
+fn serving<'m>(process: &Process, agent: &Agent, manifests: &'m Manifests) -> Option<&'m Server> {
+    let server = manifests.server(agent)?;
+    let subcommand = arguments_after_agent(process, agent, manifests)?.first()?;
+    (*subcommand == server.subcommand).then_some(server)
+}
+
+/// What `process` was told after the word that names `agent`: `["--model", "opus"]` for `claude
+/// --model opus`, and the same for `node .../claude/cli.js --model opus`. Everything after its
+/// first word when no word names it.
+fn arguments_after_agent<'p>(
+    process: &'p Process,
+    agent: &Agent,
+    manifests: &Manifests,
+) -> Option<&'p [String]> {
+    let argv = process.argv.as_deref()?;
+    let names_it = |token: &str| {
+        agent_name_from_path_token(token, manifests)
+            .and_then(|name| manifests.agent_named(&name))
+            .is_some_and(|named| named == *agent)
+    };
+    let at = argv.iter().position(|word| names_it(word)).unwrap_or(0);
+    argv.get(at + 1..)
+}
+
+/// The agent `name` means for `process`, unless the process is one of that agent's helpers - its
 /// own binary run under another argv[0] for work that is not a session, as Codex runs its sandbox
-/// on Linux, in a process group of its own.
+/// on Linux, in a process group of its own - or its server.
 fn named_agent(process: &Process, name: &str, manifests: &Manifests) -> Option<Agent> {
     let agent = manifests.agent_named(name)?;
     let program = process
@@ -140,6 +172,7 @@ fn named_agent(process: &Process, name: &str, manifests: &Manifests) -> Option<A
         .map(path_basename);
     match program {
         Some(program) if manifests.is_helper(&agent, program) => None,
+        _ if serving(process, &agent, manifests).is_some() => None,
         _ => Some(agent),
     }
 }
@@ -151,19 +184,13 @@ fn named_agent(process: &Process, name: &str, manifests: &Manifests) -> Option<A
 /// None when no process is an agent, or the kernel would not give the agent's arguments.
 pub fn agent_arguments(job: &Job, manifests: &Manifests) -> Option<(Agent, Vec<String>)> {
     let (agent, _) = identify_in_job(job, manifests)?;
-    let names_it = |token: &str| {
-        agent_name_from_path_token(token, manifests)
-            .and_then(|name| manifests.agent_named(&name))
-            .is_some_and(|named| named == agent)
-    };
     let process = job
         .leader()
         .into_iter()
         .chain(&job.processes)
         .find(|process| identify_process(process, manifests).as_ref() == Some(&agent))?;
-    let argv = process.argv.as_deref()?;
-    let at = argv.iter().position(|word| names_it(word)).unwrap_or(0);
-    Some((agent, argv.get(at + 1..).unwrap_or_default().to_vec()))
+    let arguments = arguments_after_agent(process, &agent, manifests)?.to_vec();
+    Some((agent, arguments))
 }
 
 /// The path the job's agent was started from, when its first word is one and names the agent
@@ -366,6 +393,43 @@ mod tests {
             "claude",
             "a helper is only its own agent's"
         );
+    }
+
+    /// Codex's shared app-server, as Codex 0.160.0 starts it on macOS: its own binary, copied
+    /// into its home, run with the subcommand that marks it (`corpus/codex-0.160.0/app-server.txt`).
+    #[test]
+    fn an_agents_server_is_not_the_agent_and_says_what_it_is() {
+        let manifests = Manifests::built_in();
+        let server = Process {
+            pid: 7,
+            name: "codex".to_string(),
+            argv0: None,
+            argv: Some(
+                [
+                    "/Users/me/.codex/packages/app-server-daemon/releases/0.160.0/bin/codex",
+                    "app-server",
+                    "--listen",
+                    "unix://",
+                    "--managed-daemon",
+                ]
+                .map(str::to_string)
+                .to_vec(),
+            ),
+        };
+        assert_eq!(identify_process(&server, &manifests), None);
+        let (agent, said) = server_of(&server, &manifests).unwrap();
+        assert_eq!((agent.id(), said.subcommand.as_str()), ("codex", "app-server"));
+        assert!(said.remedy.contains("daemon_auto_start"), "{}", said.remedy);
+
+        let session = Process { argv: Some(vec!["codex".to_string()]), ..server.clone() };
+        assert_eq!(identify_process(&session, &manifests).unwrap().id(), "codex");
+        assert_eq!(server_of(&session, &manifests), None);
+        let claude = Process {
+            name: "claude".to_string(),
+            argv: Some(vec!["claude".to_string(), "app-server".to_string()]),
+            ..server
+        };
+        assert_eq!(server_of(&claude, &manifests), None, "a server is only its own agent's");
     }
 
     #[test]
