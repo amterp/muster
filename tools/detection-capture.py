@@ -26,6 +26,14 @@ first moment of a turn). It runs with its data and config in <out> and no creden
 only OpenCode's free models answer; `--binary` names a build other than the one on PATH, since its
 free models refuse 1.3.15.
 
+`codex-startup` and `codex-signin` record Codex's startup screens rather than its turns, as cases
+for `codex`, with its home in <out> and a model provider at 127.0.0.1:9, so nothing they run
+reaches the network or any account: `codex-startup` the folder trust dialog and the hooks review,
+which <out> being a fresh git repository and a hook in its config bring up, `codex-signin` the
+sign-in screen a home with no provider and no login shows, and `codex-update` the update dialog,
+which a version Codex is told was released brings up. Only Esc is pressed there: Return would
+run the update.
+
 It spends a few short requests against whatever account the harness is logged in to, and runs it
 in <out>, which it trusts when asked. Nothing is sent to the network by this script itself.
 """
@@ -145,6 +153,8 @@ class Harness:
     environment: Callable[[Path], dict[str, str]] = lambda out: {}
     # Whether it may see the credentials in this environment.
     credentials: bool = True
+    # The manifest the cases are for, when not the harness's own name.
+    agent: str = ""
 
 
 # --- Claude Code -------------------------------------------------------------------------------
@@ -374,6 +384,101 @@ CODEX = Harness(
     phases={"draft": codex_draft, "approval": codex_approval, "turn": codex_turn, "steer": codex_steer},
 )
 
+# Codex with its home in the capture's folder and no credentials, for the screens it shows before
+# a session starts. `--no-daemon` keeps it from leaving a shared app-server running behind it.
+def codex_home(out: Path, config: str, check_for_update: bool = False) -> dict[str, str]:
+    home = out / ".codex-home"
+    home.mkdir(exist_ok=True)
+    checks = "true" if check_for_update else "false"
+    (home / "config.toml").write_text(f"check_for_update_on_startup = {checks}\n" + config)
+    return {"CODEX_HOME": str(home)}
+
+
+# A model provider nothing listens at, so Codex asks for no login and no turn reaches a model.
+UNREACHABLE_PROVIDER = """model = "dummy"
+model_provider = "unreachable"
+[model_providers.unreachable]
+name = "unreachable"
+base_url = "http://127.0.0.1:9/v1"
+"""
+
+
+def codex_startup_environment(out: Path) -> dict[str, str]:
+    # A fresh repository is a folder Codex asks to trust, and a hook it has not seen is one it
+    # asks to review.
+    subprocess.run(["git", "init", "-q", str(out)], check=True)
+    hook = '[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "true"\n'
+    return codex_home(out, UNREACHABLE_PROVIDER + hook)
+
+
+def codex_startup(capture: Capture) -> None:
+    # Codex draws a dialog's words apart with cursor moves, so single words are waited for.
+    capture.pump(20, b"folder?")
+    capture.pump(2)
+    capture.mark("folder trust dialog", "blocked", "Codex asks whether to trust a folder it has not seen, its composer drawn above the dialog.")
+    capture.send("\r")
+    capture.pump(15, b"review")
+    capture.pump(2)
+    capture.mark("hooks review dialog", "blocked", "Codex asks about hooks it has not seen before it takes a prompt, its composer drawn above the dialog.")
+    capture.send("\x1b")
+    capture.pump(4)
+    capture.mark("idle after skipping the hooks review", "idle", "The hooks review skipped with Esc: Codex at its composer, the dialog gone.")
+
+
+def codex_update_environment(out: Path) -> dict[str, str]:
+    # Where Codex keeps the last version it heard of, checked just now, so it asks nobody.
+    environment = codex_home(out, UNREACHABLE_PROVIDER, check_for_update=True)
+    checked = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    version = {"latest_version": "99.0.0", "last_checked_at": checked, "dismissed_version": None}
+    (out / ".codex-home" / "version.json").write_text(json.dumps(version))
+    return environment
+
+
+def codex_update(capture: Capture) -> None:
+    capture.pump(20, b"Skip")
+    capture.pump(2)
+    capture.mark("update dialog", "blocked", "Codex offers to update before it starts, its composer drawn above the dialog.")
+    capture.send("\x1b")
+    capture.pump(4)
+    capture.mark("idle after skipping the update", "idle", "The update skipped with Esc: Codex at its composer, the dialog gone.")
+
+
+def codex_signin(capture: Capture) -> None:
+    capture.pump(20, b"ChatGPT")
+    capture.pump(2)
+    capture.mark("sign-in screen", "blocked", "A Codex with no login and no other provider asks how to sign in before anything else.")
+
+
+CODEX_STARTUP = Harness(
+    argv=lambda out: ["codex", "--no-daemon"],
+    strip=("CODEX_", "MUSTER_"),
+    start=codex_startup,
+    phases={},
+    environment=codex_startup_environment,
+    credentials=False,
+    agent="codex",
+)
+
+CODEX_UPDATE = Harness(
+    argv=lambda out: ["codex", "--no-daemon"],
+    strip=("CODEX_", "MUSTER_"),
+    start=codex_update,
+    phases={},
+    environment=codex_update_environment,
+    credentials=False,
+    agent="codex",
+)
+
+CODEX_SIGNIN = Harness(
+    argv=lambda out: ["codex", "--no-daemon"],
+    strip=("CODEX_", "MUSTER_"),
+    start=codex_signin,
+    phases={},
+    environment=lambda out: codex_home(out, ""),
+    credentials=False,
+    agent="codex",
+)
+
 # --- OpenCode ----------------------------------------------------------------------------------
 
 OPENCODE_MODEL = "opencode/big-pickle"
@@ -523,7 +628,14 @@ OPENCODE = Harness(
     credentials=False,
 )
 
-HARNESSES = {"claude": CLAUDE, "codex": CODEX, "opencode": OPENCODE}
+HARNESSES = {
+    "claude": CLAUDE,
+    "codex": CODEX,
+    "codex-startup": CODEX_STARTUP,
+    "codex-signin": CODEX_SIGNIN,
+    "codex-update": CODEX_UPDATE,
+    "opencode": OPENCODE,
+}
 
 
 def main() -> int:
@@ -560,7 +672,7 @@ def main() -> int:
     (out / "raw").write_bytes(bytes(capture.raw))
     (out / "marks.json").write_text(
         json.dumps(
-            {"agent": arguments.harness, "version": version, "columns": columns, "rows": rows, "marks": capture.marks},
+            {"agent": harness.agent or arguments.harness, "version": version, "columns": columns, "rows": rows, "marks": capture.marks},
             indent=2,
         )
         + "\n"

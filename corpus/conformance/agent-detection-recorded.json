@@ -2,7 +2,7 @@
   "concept": "detection.recordedScreens",
   "source": "recorded",
   "regenerate": "python3 tools/detection-capture.py [--harness H] [--size COLUMNSxROWS] [--only PHASES] <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
-  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. Codex 0.160.0's screens before a session starts were recorded with its home in the capture directory and a model provider nothing listens at, so they reached no account; the update dialog's newer version is one Codex was told of, not a release. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
   "cases": [
     {
       "expect": {
@@ -558,6 +558,90 @@
       },
       "name": "opencode 1.18.34: the moment a turn starts",
       "why": "A quarter of a second after the request was sent, before the model has answered."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  Folder access\n  /tmp/capture\n\n  Trust this folder? Codex can read, edit, and run files here, subject to your permission\n  settings. Folder settings can run code automatically, even without a model request. Continue\n  only if you trust these files. Your trust decision will be saved.\n\n› 1. Trust and continue\n  2. Quit\n\n  enter continue · esc quit\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "title": "",
+        "typed": "\n  Folder access\n\n\n\n  Trust this folder? Codex can read, edit, and run files here, subject to your permission\n  settings. Folder settings can run code automatically, even without a model request. Continue\n  only if you trust these files. Your trust decision will be saved.\n\n› 1. Trust and continue\n  2. Quit\n\n  enter            esc"
+      },
+      "name": "codex 0.160.0: folder trust dialog",
+      "why": "Codex asks whether to trust a folder it has not seen, its composer drawn above the dialog."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  Hooks need review\n  1 hook is new or changed.\n  Hooks can run outside the sandbox after you trust them.\n\n\n› 1. Review hooks\n  2. Trust all and continue\n  3. Continue without trusting (hooks won't run)\n\n  enter confirm · esc skip\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "title": "",
+        "typed": "\n  Hooks need review\n  1 hook is new or changed.\n\n\n\n› 1. Review hooks\n  2. Trust all and continue\n  3. Continue without trusting (hooks won't run)\n\n  enter           esc"
+      },
+      "name": "codex 0.160.0: hooks review dialog",
+      "why": "Codex asks about hooks it has not seen before it takes a prompt, its composer drawn above the dialog."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.160.0)\n     /tmp/capture\n\n  Show me the bit that’s being weird.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  dummy default · /tmp/capture\n  ? for shortcuts\n",
+        "title": "cap-startup",
+        "typed": "\n  >_ OpenAI Codex\n\n\n  Show me the bit that’s being weird.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n›\n\n  dummy default · /tmp/capture\n  ? for shortcuts"
+      },
+      "name": "codex 0.160.0: idle after skipping the hooks review",
+      "why": "The hooks review skipped with Esc: Codex at its composer, the dialog gone."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  Update available · 0.160.0 → 99.0.0\n  Release notes: https://github.com/openai/codex/releases/latest\n\n› 1. Update now (runs `brew upgrade --cask codex`)\n  2. Skip\n  3. Skip until next version\n\n  enter continue · esc skip\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "title": "",
+        "typed": "\n  Update available\n\n\n› 1. Update now (runs `brew upgrade --cask codex`)\n  2. Skip\n  3. Skip until next version\n\n  enter            esc"
+      },
+      "name": "codex 0.160.0: update dialog",
+      "why": "Codex offers to update before it starts, its composer drawn above the dialog."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "╭─────────────────────────────────────────────────╮\n│ ✨ Update available! 0.160.0 -> 99.0.0          │\n│ Run brew upgrade --cask codex to update.        │\n│                                                 │\n│ See full release notes:                         │\n│ https://github.com/openai/codex/releases/latest │\n╰─────────────────────────────────────────────────╯\n\n\n  >_ OpenAI Codex (v0.160.0)\n     /tmp/capture\n\n  How deep does this codebase go?\n\n  To get started, describe a task or try one of these commands:\n\n  /init - create an AGENTS.md file with instructions for Codex\n  /status - show current session configuration\n  /permissions - choose what Codex is allowed to do\n  /model - choose what model and reasoning effort to use\n  /review - review any changes and find issues\n\n\n\n\n\n› Ask Codex to do anything\n\n  dummy default · /tmp/capture\n  ? for shortcuts\n",
+        "title": "cap-update",
+        "typed": "\n  ✨ Update available! 0.160.0 -> 99.0.0\n  Run brew upgrade --cask codex to update.\n\n  See full release notes:\n  https://github.com/openai/codex/releases/latest\n\n\n\n  >_ OpenAI Codex\n\n\n  How deep does this codebase go?\n\n\n\n  /init\n  /status\n  /permissions\n  /model\n  /review\n\n\n\n\n\n›\n\n  dummy default · /tmp/capture\n  ? for shortcuts"
+      },
+      "name": "codex 0.160.0: idle after skipping the update",
+      "why": "The update skipped with Esc: Codex at its composer, the dialog gone."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "  Welcome to Codex, OpenAI's command-line coding agent\n\n  Sign in with ChatGPT to use Codex as part of your paid plan\n  or connect an API key for usage-based billing\n\n> 1. Sign in with ChatGPT\n     Usage included with Plus, Pro, Business, and Enterprise plans\n\n  2. Sign in with Device Code\n     Sign in from another device with a one-time code\n\n  3. Provide your own API key\n     Pay for what you use\n\n  Press enter to continue\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "title": "",
+        "typed": "  Welcome to Codex, OpenAI's command-line coding agent\n\n  Sign in with ChatGPT to use Codex as part of your paid plan\n  or connect an API key for usage-based billing\n\n     Sign in with ChatGPT\n\n\n  2. Sign in with Device Code\n\n\n  3. Provide your own API key\n\n\n        enter"
+      },
+      "name": "codex 0.160.0: sign-in screen",
+      "why": "A Codex with no login and no other provider asks how to sign in before anything else."
     }
   ]
 }

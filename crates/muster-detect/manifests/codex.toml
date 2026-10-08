@@ -1,5 +1,5 @@
 id = "codex"
-version = "2026.10.07.1"
+version = "2026.10.07.2"
 min_engine_version = 14
 updated_at = "2026-10-07T00:00:00Z"
 
@@ -67,14 +67,45 @@ all = [
   { regex = ['(?s)Do\s+you\s+trust\s+the\s+contents\s+of\s+this\s+directory\?'] },
 ]
 
+# Codex's dialogs before a session starts mark the chosen option with the composer's caret,
+# `› 1. ...`, which live_prompt would read as the composer holding a draft. Each is read by the
+# options it offers. The update dialog's two outlast a change of its title and footer between
+# 0.154.0 and 0.160.0, and the banner left above the composer once it is skipped holds neither
+# (docs/observations/codex-0.160.0.md, section 3).
 [[rules]]
 id = "startup_update"
 state = "blocked"
 priority = 950
 region = "bottom_non_empty_lines(20)"
 visible_blocker = true
-contains = ["Update available!", "Update now"]
-regex = ['Skip\s+until\s+next\s+version', 'Press enter to continue\s*\z']
+contains = ["Update now", "Skip until next version"]
+
+# 0.160.0's folder trust dialog, which replaced trust_directory's question.
+[[rules]]
+id = "trust_folder"
+state = "blocked"
+priority = 950
+region = "bottom_non_empty_lines(20)"
+visible_blocker = true
+contains = ["Trust this folder?", "Trust and continue"]
+
+# Hooks it has not seen, which it asks about before it takes a prompt.
+[[rules]]
+id = "hooks_review"
+state = "blocked"
+priority = 950
+region = "bottom_non_empty_lines(20)"
+visible_blocker = true
+contains = ["Hooks need review", "Trust all and continue"]
+
+# No login and no other provider: nothing runs until somebody signs in.
+[[rules]]
+id = "sign_in"
+state = "blocked"
+priority = 950
+region = "bottom_non_empty_lines(20)"
+visible_blocker = true
+contains = ["Sign in with ChatGPT", "Provide your own API key"]
 
 [[rules]]
 id = "live_strong_blocker"
