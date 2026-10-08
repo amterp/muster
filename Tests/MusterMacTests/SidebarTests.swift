@@ -508,6 +508,9 @@ struct SidebarTests {
     #expect(hidden.kind == .pane(tabPress: 0, press: 0), "no chord reaches a hidden pane")
     #expect(!rows[0].hidden)
     #expect(roster.panes.map(\.key.pane) == ["w1:p1"], "a hidden pane is drawn by nothing")
+    #expect(
+      roster.pane(PaneKey(daemon: "local", pane: "w1:p9"))?.key.pane == "w1:p9",
+      "a hidden pane's entry is found, so renaming its row starts from its name")
     #expect(SidebarModel.draggedTab(of: hidden, in: rows) == nil)
     #expect(!SidebarModel.canArrange(PaneKey(daemon: "local", pane: "w1:p1"), onto: hidden))
 

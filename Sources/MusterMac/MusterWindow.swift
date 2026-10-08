@@ -1133,8 +1133,7 @@ extension MusterWindow {
 
   /// This window's roster entry for a pane, if it has one.
   func namedPane(_ key: PaneKey?) -> Roster.Pane? {
-    guard let key else { return nil }
-    return roster.panes.first { $0.key == key }
+    key.flatMap(roster.pane)
   }
 
   /// The tab holding a pane, as the roster listed it.

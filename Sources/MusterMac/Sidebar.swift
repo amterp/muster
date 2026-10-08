@@ -209,6 +209,12 @@ public struct Roster: Equatable {
   /// Every hidden pane, in the order they are listed.
   public var hiddenPanes: [Pane] { hidden.flatMap(\.panes) }
 
+  /// The entry for a pane, hidden or not: a hidden pane's row can be renamed and opens a menu
+  /// like any other.
+  public func pane(_ key: PaneKey) -> Pane? {
+    panes.first { $0.key == key } ?? hiddenPanes.first { $0.key == key }
+  }
+
   /// Whether more than one machine is attached, which is when a pane row says which it is on.
   ///
   /// On one machine the answer is the same on every row and says nothing, and the window reads
