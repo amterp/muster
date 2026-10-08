@@ -11,6 +11,7 @@ use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, Option
 use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::{
     Adapter, AgentFacts, LayoutNode, Pane, PaneId, Progress, ProgressState, SplitAxis, Tab, TabId,
+    UnreadInput,
 };
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
 use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
@@ -155,6 +156,12 @@ pub fn pane(record: proto::Pane) -> Pane {
         reported: record.state_reported,
         unreadable: record.screen_unreadable,
         adapter,
+        unread_input: record.unread_input.map(|unread| UnreadInput {
+            bytes: unread.bytes,
+            since_ms: unread.since_ms,
+            program: unread.program,
+            pid: unread.pid,
+        }),
     }
 }
 

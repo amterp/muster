@@ -261,12 +261,13 @@ fn withdrawn(pane: &PaneKey) -> String {
 /// `{ "notifications": { "blocked": true, "done": false, "muted": false } }`, or nothing.
 ///
 /// Partial, the way the file is: a case naming one key changes one answer and leaves the
-/// other two at what Muster ships.
+/// others at what Muster ships.
 fn read_notifications(given: &Value) -> Option<Notifications> {
     let block = given.get("notifications")?.as_object()?;
     let mut notifications = Notifications::default();
     for (key, held) in [
         ("blocked", &mut notifications.blocked),
+        ("stuck", &mut notifications.stuck),
         ("programs", &mut notifications.programs),
         ("messages", &mut notifications.messages),
         ("done", &mut notifications.done),

@@ -684,10 +684,11 @@ public enum Core {
     }
   }
 
-  /// The five agent states as `#rrggbb`, or nil each for the one Muster ships.
+  /// The agent states as `#rrggbb`, or nil each for the one Muster ships.
   public struct AgentColors: Sendable {
     public var working: String?
     public var blocked: String?
+    public var stuck: String?
     public var waiting: String?
     public var done: String?
     public var idle: String?
@@ -695,12 +696,12 @@ public enum Core {
 
     /// Which states a person repainted, for the run log. The states rather than the values,
     /// because what a reader is asking when a colour looks wrong is whether the file reached
-    /// Muster at all - and six hex triples on a log line answers that no better than five
+    /// Muster at all - and seven hex triples on a log line answers that no better than seven
     /// words do.
     var described: String {
       let named = [
-        ("working", working), ("blocked", blocked), ("waiting", waiting), ("done", done),
-        ("idle", idle), ("unknown", unknown),
+        ("working", working), ("blocked", blocked), ("stuck", stuck), ("waiting", waiting),
+        ("done", done), ("idle", idle), ("unknown", unknown),
       ].filter { $0.1 != nil }.map(\.0)
       return named.isEmpty ? "(default)" : named.joined(separator: " ")
     }
@@ -751,6 +752,7 @@ public enum Core {
         agents: AgentColors(
           working: named(answer.agentColors.working),
           blocked: named(answer.agentColors.blocked),
+          stuck: named(answer.agentColors.stuck),
           waiting: named(answer.agentColors.waiting),
           done: named(answer.agentColors.done),
           idle: named(answer.agentColors.idle),

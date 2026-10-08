@@ -314,20 +314,26 @@ fn compact_pane(socket: &Path, pane: &str, focus: &str) -> Result<Response, Trou
 
 /// The word a window paints for a pane, from the daemon's record alone.
 ///
-/// The window's rule (`Pane::presented_state`, then `Attention::presented`): an idle agent
-/// that said what it is waiting on is `waiting`, and a finish nobody has seen is `done` unless
-/// the agent is busy again. A window also clears `done` for a pane it shows with the keyboard;
-/// with no window, nobody has.
+/// The window's rule (`Pane::state` and `Pane::presented_state`, then `Attention::presented`):
+/// an agent whose program has stopped reading is `stuck`, an idle agent that said what it is
+/// waiting on is `waiting`, and a finish nobody has seen is `done` unless the agent is busy
+/// again. A window also clears `done` for a pane it shows with the keyboard; with no window,
+/// nobody has.
 pub fn state_of(pane: &daemon_proto::Pane) -> AgentState {
     let waiting = pane.facts.as_ref().is_some_and(|facts| facts.waiting.is_some());
+    let stuck = pane.agent.is_some() && pane.unread_input.is_some();
     let state = match pane.agent_state() {
+        _ if stuck => AgentState::Stuck,
         daemon_proto::AgentState::Working => AgentState::Working,
         daemon_proto::AgentState::Blocked => AgentState::Blocked,
         daemon_proto::AgentState::Idle if waiting => AgentState::Waiting,
         daemon_proto::AgentState::Idle => AgentState::Idle,
         daemon_proto::AgentState::Unknown => AgentState::Unknown,
     };
-    let busy = matches!(state, AgentState::Working | AgentState::Blocked | AgentState::Waiting);
+    let busy = matches!(
+        state,
+        AgentState::Working | AgentState::Blocked | AgentState::Waiting | AgentState::Stuck
+    );
     if !busy && pane.finished_unseen { AgentState::Done } else { state }
 }
 
@@ -354,6 +360,12 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         progress: None,
         rang: false,
         adapter: harnesses::standing(pane.agent.as_deref(), adapter_of(pane)).as_str().to_string(),
+        unread_input: pane.unread_input.as_ref().map(|unread| muster_proto::UnreadInput {
+            bytes: unread.bytes,
+            since_ms: i64::try_from(unread.since_ms).unwrap_or(i64::MAX),
+            program: unread.program.clone(),
+            pid: unread.pid,
+        }),
     }
 }
 
@@ -689,13 +701,29 @@ impl Watching {
             return;
         }
         let arrived: Vec<&daemon_proto::Pane> =
-            watched.into_iter().filter(|pane| self.arrived(pane)).collect();
+            watched.iter().copied().filter(|pane| self.arrived(pane)).collect();
         if !arrived.is_empty() {
             for pane in arrived {
                 self.ready.push_back(self.said(pane));
             }
             self.last(Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) });
+            return;
         }
+        if let Some(stranded) = watched.into_iter().find_map(|pane| self.stranded(pane)) {
+            self.last(stranded);
+        }
+    }
+
+    /// The refusal ending a wait on a pane that went stuck, on the window's terms
+    /// (`muster_seam::watch`): only a pane the wait names.
+    fn stranded(&self, pane: &daemon_proto::Pane) -> Option<Response> {
+        let named = self.panes.as_ref().is_some_and(|panes| panes.contains(&pane.pane));
+        if !named || !self.until.stranded(state_of(pane)) {
+            return None;
+        }
+        let program =
+            pane.unread_input.as_ref().map(|unread| (unread.program.as_str(), unread.bytes));
+        Some(failure(self.until.stranded_because(&pane.pane, program)))
     }
 
     fn said(&self, pane: &daemon_proto::Pane) -> Response {
@@ -738,6 +766,8 @@ impl Watching {
         if self.arrived(pane) {
             self.ready.push_back(self.said(pane));
             self.last(Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) });
+        } else if let Some(stranded) = self.stranded(pane) {
+            self.last(stranded);
         }
     }
 

@@ -1242,6 +1242,7 @@ fn appearance_message() -> proto::Appearance {
         agent_colors: Some(proto::AgentColors {
             working: color(appearance.colors.agents.working),
             blocked: color(appearance.colors.agents.blocked),
+            stuck: color(appearance.colors.agents.stuck),
             waiting: color(appearance.colors.agents.waiting),
             done: color(appearance.colors.agents.done),
             idle: color(appearance.colors.agents.idle),

@@ -57,6 +57,28 @@
       "why": "A caller can wait for an agent to settle into waiting on its work, as for any state.",
       "given": { "state": "waiting", "wanted": "waiting" },
       "expect": { "counts": true }
+    },
+    {
+      "name": "a stuck agent has not finished",
+      "why": "An agent whose program stopped reading will not finish, answer or take a message until it reads again. A caller waiting for it to be idle is waiting for something that has not happened, and is told so by the wait ending refused rather than by being answered.",
+      "given": {
+        "state": "stuck",
+        "wanted": "idle"
+      },
+      "expect": {
+        "counts": false
+      }
+    },
+    {
+      "name": "stuck counts as itself",
+      "why": "A caller can wait for an agent to get stuck, which is how a script watching a fleet learns that one needs freeing.",
+      "given": {
+        "state": "stuck",
+        "wanted": "stuck"
+      },
+      "expect": {
+        "counts": true
+      }
     }
   ]
 }

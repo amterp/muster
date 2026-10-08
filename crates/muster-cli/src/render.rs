@@ -841,14 +841,19 @@ fn pane_line(
     line
 }
 
-/// What else is worth a glance about a pane's agent, each a few words: how full its context is,
-/// its sub-agents, whether its screen can be read, an adapter that could report and does not, a
-/// bell nobody heard, and a program's progress.
+/// What else is worth a glance about a pane's agent, each a few words: a program that has
+/// stopped reading, how full its context is, its sub-agents, whether its screen can be read, an
+/// adapter that could report and does not, a bell nobody heard, and a program's progress.
 ///
 /// The model and the cost are left to `--json`: they change what somebody does next less often
 /// than they would lengthen every line.
 fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
     let mut notes = Vec::new();
+    // First, since it says why the state is what it is. On any pane, agent or not: a shell's
+    // program that stopped reading is just as unable to take what is sent to it.
+    if let Some(unread) = &agent.unread_input {
+        notes.push(format!("({} has not read {} of input)", unread.program, bytes(unread.bytes)));
+    }
     if let Some(facts) = &agent.facts {
         if let Some(used) = facts.context_used {
             notes.push(format!("{used:.0}% context"));
@@ -879,6 +884,10 @@ fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
     notes
 }
 
+fn bytes(count: u32) -> String {
+    if count == 1 { "1 byte".to_string() } else { format!("{count} bytes") }
+}
+
 /// What each word means at a glance, so a window with fifteen panes can be read without counting.
 ///
 /// The legend is the window's rather than this file's: `PaneAppearance.borderColor` in
@@ -899,6 +908,10 @@ fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
 /// matters less here than it did for working: a waiting agent needs nobody, so its row is one
 /// to skip rather than to find.
 ///
+/// Stuck is magenta, which no other state has and the window's pink is nearest to: an agent that
+/// will not go on until somebody frees its program. Not red, which the window keeps for a nearly
+/// full context ring so that a ring is never read as an agent asking for something.
+///
 /// Only the states worth a colour get one. `unknown` is the ordinary answer for a pane running a
 /// shell rather than an agent, and colouring it would put a signal on almost every row; `idle` goes
 /// bare for the reason the window draws it no border, that no colour is what resting looks like in
@@ -907,6 +920,7 @@ fn agent_style(state: &str) -> Style {
     match state {
         "working" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Cyan))),
         "blocked" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Yellow))),
+        "stuck" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Magenta))),
         "done" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Green))),
         "waiting" => Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Blue))),
         _ => QUIET,
@@ -1074,6 +1088,14 @@ fn window_json(window: &Window, others: Others) -> Value {
                 }),
                 "rang": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.rang),
                 "adapter": states.get(pane.pane_id.as_str()).map(|agent| agent.adapter.as_str()).filter(|adapter| !adapter.is_empty()),
+                "unread_input": states.get(pane.pane_id.as_str()).and_then(|agent| agent.unread_input.as_ref()).map_or(Value::Null, |unread| {
+                    json!({
+                        "bytes": unread.bytes,
+                        "since": since_json(unread.since_ms),
+                        "program": unread.program,
+                        "pid": unread.pid,
+                    })
+                }),
                 "on_screen": pane.on_screen,
                 "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
                 // Null rather than zeroes for a pane the window is not drawing, so this and
@@ -1499,6 +1521,7 @@ mod tests {
             "the window paints blocked orange, and yellow is the nearest of the sixteen"
         );
         assert_eq!(agent_style("done"), hue(AnsiColor::Green), "the window paints done green");
+        assert_eq!(agent_style("stuck"), hue(AnsiColor::Magenta), "the window paints stuck pink");
     }
 
     /// An adapter that could report and does not is a note on the pane's row; one with nothing to
@@ -1537,6 +1560,60 @@ mod tests {
         let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
         assert!(row("p1").contains("(adapter not reporting)"), "{text}");
         assert!(!row("p2").contains("adapter"), "{text}");
+    }
+
+    /// A program that stopped reading is a note on its row, naming it and what it left, and an
+    /// object in `--json`; a pane whose program reads has neither.
+    #[test]
+    fn a_program_that_stopped_reading_is_noted() {
+        use muster_proto::{
+            PaneStateChanged, RosterChanged, RosterPane, RosterTab, UnreadInput, Window,
+        };
+        let unread = UnreadInput {
+            bytes: 2817,
+            since_ms: 1_700_000_000_000,
+            program: "codex".to_string(),
+            pid: 4242,
+        };
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![RosterTab {
+                    tab_id: "t1".to_string(),
+                    panes: ["p1", "p2"]
+                        .map(|pane| RosterPane {
+                            pane_id: pane.to_string(),
+                            ..RosterPane::default()
+                        })
+                        .to_vec(),
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            panes: vec![
+                PaneStateChanged {
+                    pane_id: "p1".to_string(),
+                    state: "stuck".to_string(),
+                    unread_input: Some(unread),
+                    ..PaneStateChanged::default()
+                },
+                PaneStateChanged {
+                    pane_id: "p2".to_string(),
+                    state: "idle".to_string(),
+                    ..PaneStateChanged::default()
+                },
+            ],
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert_eq!(json["panes"][0]["state"], "stuck", "{json}");
+        assert_eq!(json["panes"][0]["unread_input"]["bytes"], 2817, "{json}");
+        assert_eq!(json["panes"][0]["unread_input"]["program"], "codex", "{json}");
+        assert!(json["panes"][1]["unread_input"].is_null(), "{json}");
+        let text = window_text(&window, 0, Others::All, false);
+        let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
+        assert!(row("p1").contains("stuck"), "{text}");
+        assert!(row("p1").contains("(codex has not read 2817 bytes of input)"), "{text}");
+        assert!(!row("p2").contains("has not read"), "{text}");
     }
 
     /// Under `--layout`, a pane in another window, open or closed, has a frame in its own tab like

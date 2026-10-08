@@ -810,6 +810,21 @@ struct SidebarTests {
     #expect(quiet.map(SidebarModel.details(of:)) == "muster · codex\nidle")
   }
 
+  @Test("hovering a stuck row names the program that stopped reading and what it left")
+  func detailsNameAProgramThatStoppedReading() {
+    let key = PaneKey(daemon: "local", pane: "w1:p1")
+    let roster = roster([tab("local", panes: [pane("local", "w1:p1", label: "muster · codex")])])
+    var agent = PaneAgent(state: "stuck")
+    agent.unreadInput = .init(bytes: 2817, sinceMS: 1_700_000_000_000, program: "codex", pid: 4242)
+    let row = SidebarModel.rows(roster: roster, agents: [key: agent]).first { $0.isPane }
+    let lines = row.map(SidebarModel.details(of:))?.split(separator: "\n").map(String.init) ?? []
+    #expect(lines.prefix(2) == ["muster · codex", "stuck"])
+    // The time is the reader's own clock and locale, so only what surrounds it is pinned.
+    #expect(lines.count == 3)
+    #expect(lines.last?.hasPrefix("codex (pid 4242) has not read its input since ") == true)
+    #expect(lines.last?.hasSuffix(" - 2817 bytes are waiting") == true)
+  }
+
   @Test("a row with a second line is taller, and only that row")
   func onlyASecondLineCostsHeight() {
     // The reason this is asserted rather than left to look right: a list of fifteen agents is

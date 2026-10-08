@@ -2422,6 +2422,98 @@
           "t1"
         ]
       }
+    },
+    {
+      "name": "an agent whose program stops reading is stuck until it reads again",
+      "why": "The daemon puts what the program left unread on the pane's record and leaves the state detection read alone, since the screen still shows what it showed. The mirror lays stuck over it, as a change of state like any other, so the clock beside the row, attention and the run log all hear it go stuck and come back. A pane with no agent carrying the same fact is described and keeps its state: what its program left is for the painting watch to explain.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            },
+            {
+              "id": "t2",
+              "root": "p2"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src",
+              "agent": "codex"
+            },
+            {
+              "id": "p2",
+              "agentState": "unknown",
+              "cwd": "/src"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "agent": "codex",
+            "unreadInput": {
+              "bytes": 2817,
+              "program": "codex"
+            }
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p2",
+            "agentState": "unknown",
+            "cwd": "/src",
+            "unreadInput": {
+              "bytes": 5,
+              "program": "sh"
+            }
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "idle",
+            "cwd": "/src",
+            "agent": "codex"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "p1",
+          "p2"
+        ],
+        "tabs": [
+          "t1",
+          "t2"
+        ],
+        "paneTabs": {
+          "p1": "t1",
+          "p2": "t2"
+        },
+        "agentStates": {
+          "p1": "idle",
+          "p2": "unknown"
+        },
+        "layouts": {
+          "t1": "p1",
+          "t2": "p2"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "agentStateChanged:p1:idle->stuck",
+          "agentDescribed:p1",
+          "agentDescribed:p2",
+          "agentStateChanged:p1:stuck->idle",
+          "agentDescribed:p1"
+        ]
+      }
     }
   ]
 }

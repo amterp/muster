@@ -713,6 +713,32 @@
         },
         "reported": []
       }
+    },
+    {
+      "name": "an agent that finished and then stopped reading is stuck, not done",
+      "why": "A finish asks somebody to look; a program that stopped reading asks somebody to free it, which is the thing actually wanted now. Painting it done would send a person to read output from an agent that cannot take their answer.",
+      "given": {
+        "focused": false,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "idle",
+            "finished": true
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "stuck",
+            "finished": true
+          }
+        ]
+      },
+      "expect": {
+        "states": {
+          "local/w1:p1": "stuck"
+        },
+        "reported": []
+      }
     }
   ]
 }

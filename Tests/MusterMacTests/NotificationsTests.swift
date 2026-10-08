@@ -33,12 +33,14 @@ struct NotificationsTests {
     #expect(PaneNotification.reason(state: "blocked") == "is waiting on you")
     #expect(PaneNotification.reason(state: "done") == "has finished")
     #expect(PaneNotification.reason(state: "blocked") != PaneNotification.reason(state: "done"))
+    // Held up too, but not by a question a keystroke answers: its program has to be freed.
+    #expect(PaneNotification.reason(state: "stuck") == "has stopped reading its input")
   }
 
   @Test("a state the core never raises still says something true")
   func anUnknownStateIsNotBlank() {
-    // The core raises `blocked`, `notified` and `done` for a pane and nothing else, so this is
-    // a seam disagreement.
+    // The core raises `blocked`, `stuck`, `notified` and `done` for a pane and nothing else, so
+    // this is a seam disagreement.
     // A banner is the wrong place to report one, and an empty body is worse than a vague one.
     #expect(!PaneNotification.reason(state: "compacting").isEmpty)
   }

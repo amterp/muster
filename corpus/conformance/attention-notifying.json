@@ -1407,6 +1407,91 @@
           "local/review message"
         ]
       }
+    },
+    {
+      "name": "an agent that stops reading while nobody is looking asks for somebody",
+      "why": "Its program will not go on until somebody frees it, and the window is not showing it, so nothing on screen would ever say so. It asks after a blocked agent, whose answer is one keystroke.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "state": "stuck"
+          },
+          {
+            "pane": "local/w1:p3",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 stuck",
+          "local/w1:p3 blocked"
+        ],
+        "asking": [
+          "local/w1:p3 blocked",
+          "local/w1:p2 stuck"
+        ]
+      }
+    },
+    {
+      "name": "an agent that reads again takes its request back",
+      "why": "A program that reads again needs nobody, and a banner left standing would send somebody to free what already freed itself.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "stuck"
+          },
+          {
+            "pane": "local/w1:p1",
+            "state": "idle"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p1 stuck",
+          "local/w1:p1 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "stuck can be switched off apart from blocked",
+      "why": "Its own key, so somebody who finds it noisy keeps the banner for an agent asking a question. It still asks, without a banner: the state decides what a pane is, the file only what interrupts.",
+      "given": {
+        "focused": true,
+        "visible": [],
+        "notifications": {
+          "stuck": false
+        },
+        "events": [
+          {
+            "pane": "local/w1:p1",
+            "state": "stuck"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked"
+        ],
+        "asking": [
+          "local/w1:p2 blocked",
+          "local/w1:p1 stuck"
+        ]
+      }
     }
   ]
 }

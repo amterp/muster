@@ -104,6 +104,19 @@ pub struct Pane {
     pub unreadable: bool,
     /// Whether the agent reports itself through its harness's adapter, as its daemon judged it.
     pub adapter: Adapter,
+    /// The pane's program has stopped reading its input, as its daemon measured it.
+    pub unread_input: Option<UnreadInput>,
+}
+
+/// Input a pane's program has left unread, as it stood when its daemon called it stopped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadInput {
+    pub bytes: u32,
+    /// Since when, in milliseconds since the Unix epoch, by the daemon's clock.
+    pub since_ms: u64,
+    /// The program holding the terminal, as its daemon names it.
+    pub program: String,
+    pub pid: i32,
 }
 
 /// Whether a pane's agent reports itself, as its daemon judged it ([`crate::harnesses`] says
@@ -120,14 +133,27 @@ pub enum Adapter {
 }
 
 impl Pane {
-    /// The state a window paints for this pane before attention lays `done` over it: `waiting`
-    /// for an idle agent that said it is waiting on its own work, and otherwise what the daemon
-    /// said.
-    pub fn presented_state(&self) -> AgentState {
-        if self.agent_state == AgentState::Idle && self.facts.waiting.is_some() {
-            AgentState::Waiting
+    /// What the daemon says the pane's agent is doing: what detection read, or `stuck` once the
+    /// agent's program has stopped reading its input, whatever detection read - its screen
+    /// shows what it showed before it stopped. A pane running no agent is never stuck: what
+    /// its program left unread is for the painting watch to explain.
+    pub fn state(&self) -> AgentState {
+        if self.agent.is_some() && self.unread_input.is_some() {
+            AgentState::Stuck
         } else {
             self.agent_state
+        }
+    }
+
+    /// The state a window paints for this pane before attention lays `done` over it: `waiting`
+    /// for an idle agent that said it is waiting on its own work, and otherwise
+    /// [`Pane::state`].
+    pub fn presented_state(&self) -> AgentState {
+        let state = self.state();
+        if state == AgentState::Idle && self.facts.waiting.is_some() {
+            AgentState::Waiting
+        } else {
+            state
         }
     }
 }

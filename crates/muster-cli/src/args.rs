@@ -455,13 +455,14 @@ enum AboutWindows {
 
 /// A state `muster pane wait --until` can name.
 ///
-/// The six words `muster window` prints, so a caller can send back what it read. A ValueEnum
+/// The words `muster window` prints, so a caller can send back what it read. A ValueEnum
 /// rather than free text so that `idel` is refused by the command line instead of waiting for a
 /// state nothing is ever in.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum Awaited {
     Working,
     Blocked,
+    Stuck,
     Waiting,
     Idle,
     Done,
@@ -473,6 +474,7 @@ impl Awaited {
         match self {
             Awaited::Working => "working",
             Awaited::Blocked => "blocked",
+            Awaited::Stuck => "stuck",
             Awaited::Waiting => "waiting",
             Awaited::Idle => "idle",
             Awaited::Done => "done",

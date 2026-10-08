@@ -113,6 +113,16 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         reported: given.get("reported").and_then(Value::as_bool).unwrap_or_default(),
         unreadable: given.get("unreadable").and_then(Value::as_bool).unwrap_or_default(),
         adapter: muster_core::mirror::Adapter::default(),
+        unread_input: given.get("unreadInput").map(|unread| muster_core::mirror::UnreadInput {
+            bytes: unread
+                .get("bytes")
+                .and_then(Value::as_u64)
+                .and_then(|bytes| u32::try_from(bytes).ok())
+                .unwrap_or_default(),
+            since_ms: unread.get("sinceMs").and_then(Value::as_u64).unwrap_or_default(),
+            program: text(unread, "program"),
+            pid: 0,
+        }),
     }
 }
 

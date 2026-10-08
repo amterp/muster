@@ -51,6 +51,7 @@ public enum PaneAppearance {
     switch state {
     case "working": return NSColor.systemCyan
     case "blocked": return NSColor.systemOrange
+    case "stuck": return NSColor.systemPink
     case "waiting": return NSColor.systemIndigo
     case "done": return NSColor.systemGreen
     case "idle": return NSColor.systemGray
@@ -92,6 +93,7 @@ public enum PaneAppearance {
     switch state {
     case "working": named = configured.agents.working
     case "blocked": named = configured.agents.blocked
+    case "stuck": named = configured.agents.stuck
     case "waiting": named = configured.agents.waiting
     case "done": named = configured.agents.done
     case "idle": named = configured.agents.idle
@@ -131,7 +133,7 @@ public enum PaneAppearance {
   /// pane carrying none: the border exists to be noticed, and it is only noticeable if
   /// the resting state is bare.
   public static func isHighlighted(state: String) -> Bool {
-    state == "working" || state == "blocked" || state == "done"
+    state == "working" || state == "blocked" || state == "stuck" || state == "done"
   }
 
   /// How big the number drawn over a pane should be, for a pane this size.

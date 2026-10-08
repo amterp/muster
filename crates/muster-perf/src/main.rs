@@ -542,6 +542,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         reported: true,
         unreadable: false,
         adapter: muster_core::mirror::Adapter::Reporting,
+        unread_input: None,
     }
 }
 

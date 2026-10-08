@@ -10,10 +10,16 @@
 ///
 /// Nor is `Waiting`. It is an idle agent that said it ended its turn to wait on work it started
 /// itself, a gate or a build: it has not finished, and nobody is holding it up.
+///
+/// Nor is `Stuck`, though the daemon measures it: an agent whose program has stopped reading its
+/// input, which the daemon puts on the pane's record beside whatever detection last read. The
+/// screen shows what it showed before it stopped, so detection reads on as if nothing happened;
+/// a stuck agent will not finish, answer a dialog or take a message until it reads again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AgentState {
     Working,
     Blocked,
+    Stuck,
     Waiting,
     Idle,
     Done,
@@ -22,9 +28,10 @@ pub enum AgentState {
 
 impl AgentState {
     /// Every state, so a test can assert the corpus covers them all.
-    pub const ALL: [AgentState; 6] = [
+    pub const ALL: [AgentState; 7] = [
         AgentState::Working,
         AgentState::Blocked,
+        AgentState::Stuck,
         AgentState::Waiting,
         AgentState::Idle,
         AgentState::Done,
@@ -42,6 +49,7 @@ impl AgentState {
         match value {
             "working" => AgentState::Working,
             "blocked" => AgentState::Blocked,
+            "stuck" => AgentState::Stuck,
             "waiting" => AgentState::Waiting,
             "idle" => AgentState::Idle,
             "done" => AgentState::Done,
@@ -58,7 +66,8 @@ impl AgentState {
     /// a caller asking for `done` is asking about the unseen ones specifically.
     ///
     /// `Waiting` counts only as itself. A caller waiting for `idle` is waiting for an agent to
-    /// have finished, and one waiting on its own gate has not.
+    /// have finished, and one waiting on its own gate has not. So does `Stuck`: an agent that has
+    /// stopped reading has not finished anything.
     pub fn counts_as(self, wanted: AgentState) -> bool {
         self == wanted || (self == AgentState::Done && wanted == AgentState::Idle)
     }
@@ -67,6 +76,7 @@ impl AgentState {
         match self {
             AgentState::Working => "working",
             AgentState::Blocked => "blocked",
+            AgentState::Stuck => "stuck",
             AgentState::Waiting => "waiting",
             AgentState::Idle => "idle",
             AgentState::Done => "done",
@@ -133,6 +143,31 @@ impl Until {
     pub fn met(&self, state: AgentState, context_used: Option<f32>) -> bool {
         self.states.iter().any(|wanted| state.counts_as(*wanted))
             || self.context_at_least.zip(context_used).is_some_and(|(wanted, used)| used >= wanted)
+    }
+
+    /// Whether a pane in `state` can no longer get where this waits for, so the wait ends refused
+    /// rather than waiting on: a stuck agent gets nowhere until its program reads again, which
+    /// nothing in a wait can make it do. A wait that asks for `stuck` is waiting for exactly that.
+    pub fn stranded(&self, state: AgentState) -> bool {
+        self.is_wait() && state == AgentState::Stuck && !self.states.contains(&AgentState::Stuck)
+    }
+
+    /// Why a wait on `pane` ends refused, once [`Until::stranded`] says it does: which program
+    /// stopped reading, and how many bytes it left, when its daemon said.
+    pub fn stranded_because(&self, pane: &str, program: Option<(&str, u32)>) -> String {
+        let stopped = match program {
+            Some((program, bytes)) => format!(
+                "its program, {program}, has stopped reading its input and left {bytes} bytes \
+                 unread"
+            ),
+            None => "its program has stopped reading its input".to_string(),
+        };
+        format!(
+            "pane {pane} is stuck: {stopped}, so it will not be {} until it reads again, and \
+             nothing a wait does can make it. Interrupting the program, or ending it and resuming \
+             its session, frees it; `--until stuck` waits for a pane to get stuck instead.",
+            self.spelled()
+        )
     }
 
     /// What it waits for, as a sentence would put it: `idle or blocked`, `80% context`.

@@ -51,6 +51,16 @@
       "why": "The shape a missing field takes after a permissive decode. Same reasoning as an unrecognized name, reached by the more likely route.",
       "given": { "backendValue": "" },
       "expect": { "state": "unknown" }
+    },
+    {
+      "name": "stuck",
+      "why": "An agent whose program has stopped reading its input. No daemon sends it as a state: the daemon measures the input left unread and puts it on the pane's record, a window presents an agent carrying it this way, and the seam and the CLI read the word back.",
+      "given": {
+        "backendValue": "stuck"
+      },
+      "expect": {
+        "state": "stuck"
+      }
     }
   ]
 }

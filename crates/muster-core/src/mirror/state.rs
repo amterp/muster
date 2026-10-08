@@ -112,11 +112,11 @@ impl Mirror {
             match previous_panes.get(id) {
                 None => changes.push(Change::PaneAdded(id.clone())),
                 Some(before) => {
-                    if before.agent_state != pane.agent_state {
+                    if before.state() != pane.state() {
                         changes.push(Change::AgentStateChanged {
                             pane: id.clone(),
-                            from: before.agent_state,
-                            to: pane.agent_state,
+                            from: before.state(),
+                            to: pane.state(),
                         });
                     }
                     if before.finished_unseen != pane.finished_unseen {
@@ -257,11 +257,11 @@ impl Mirror {
         };
         pane.tab = before.tab.clone();
         let mut changes = Vec::new();
-        if before.agent_state != pane.agent_state {
+        if before.state() != pane.state() {
             changes.push(Change::AgentStateChanged {
                 pane: id.clone(),
-                from: before.agent_state,
-                to: pane.agent_state,
+                from: before.state(),
+                to: pane.state(),
             });
         }
         if before.finished_unseen != pane.finished_unseen {
@@ -446,7 +446,7 @@ impl Mirror {
     }
 
     pub fn agent_state(&self, id: &PaneId) -> Option<AgentState> {
-        self.panes.get(id).map(|pane| pane.agent_state)
+        self.panes.get(id).map(Pane::state)
     }
 }
 
@@ -466,6 +466,7 @@ fn described(before: &Pane, now: &Pane) -> bool {
         || before.reported != now.reported
         || before.unreadable != now.unreadable
         || before.adapter != now.adapter
+        || before.unread_input != now.unread_input
 }
 
 /// Whether a tab's tree or its zoom has moved.

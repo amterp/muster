@@ -198,15 +198,16 @@ pub struct Colors {
     pub palette: Option<[Rgb; 16]>,
 }
 
-/// The five agent states, as `[colors] agent_*`.
+/// The agent states, as `[colors] agent_*`.
 ///
 /// Prefixed rather than given a block of their own, because `[colors]` is already the table
 /// for this subject and its keys are already compound - `selection_background`, `cursor_text`.
-/// A nested table would be this file's first, to group five keys that read as grouped already.
+/// A nested table would be this file's first, to group keys that read as grouped already.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AgentColors {
     pub working: Option<Rgb>,
     pub blocked: Option<Rgb>,
+    pub stuck: Option<Rgb>,
     pub waiting: Option<Rgb>,
     pub done: Option<Rgb>,
     pub idle: Option<Rgb>,
@@ -595,7 +596,7 @@ const ROOT_KEYS: [&str; 20] = [
 const FONT_KEYS: [&str; 2] = ["family", "size"];
 
 /// The keys `[colors]` may carry.
-const COLOR_KEYS: [&str; 18] = [
+const COLOR_KEYS: [&str; 19] = [
     "background",
     "foreground",
     "cursor",
@@ -607,6 +608,7 @@ const COLOR_KEYS: [&str; 18] = [
     "focus_ring",
     "agent_working",
     "agent_blocked",
+    "agent_stuck",
     "agent_waiting",
     "agent_done",
     "agent_idle",
@@ -623,7 +625,7 @@ const CURSOR_KEYS: [&str; 2] = ["style", "blink"];
 const SHELL_KEYS: [&str; 5] = ["command", "mode", "ssh_env", "ssh_terminfo", "sudo"];
 
 /// The keys `[notifications]` may carry.
-const NOTIFICATION_KEYS: [&str; 5] = ["blocked", "programs", "messages", "done", "muted"];
+const NOTIFICATION_KEYS: [&str; 6] = ["blocked", "stuck", "programs", "messages", "done", "muted"];
 
 /// Reads a config file's text.
 ///
@@ -727,6 +729,7 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
     let mut notifications = Notifications::default();
     for (key, held) in [
         ("blocked", &mut notifications.blocked),
+        ("stuck", &mut notifications.stuck),
         ("programs", &mut notifications.programs),
         ("messages", &mut notifications.messages),
         ("done", &mut notifications.done),
@@ -736,7 +739,7 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
             *held = value.as_bool().ok_or_else(|| {
                 format!(
                     "`{key}` in the config file's [notifications] is {}, and it has to be true \
-                     or false. None of the file was applied. `muted` silences both without \
+                     or false. None of the file was applied. `muted` silences them all without \
                      forgetting which of them you wanted.",
                     described(value)
                 )
@@ -1043,6 +1046,7 @@ fn read_colors(block: Option<&toml::Table>) -> Result<Colors, String> {
         agents: AgentColors {
             working: color(block, "agent_working")?,
             blocked: color(block, "agent_blocked")?,
+            stuck: color(block, "agent_stuck")?,
             waiting: color(block, "agent_waiting")?,
             done: color(block, "agent_done")?,
             idle: color(block, "agent_idle")?,

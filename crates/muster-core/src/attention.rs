@@ -35,15 +35,19 @@ use crate::composition::{DaemonId, PaneKey};
 
 /// What a pane is asking of the person, when it is asking anything.
 ///
-/// Two of the states ask, and they ask the same question from opposite ends: `blocked` is an
-/// agent that has stopped and wants an answer, and `done` is an agent that has stopped and
-/// nobody has noticed. Neither `working`, `waiting` nor `idle` asks for anybody, and `unknown`
-/// is the absence of an answer rather than one. The third is not a state: a program in the pane
-/// asked for a notification, in words of its own.
+/// Three of the states ask. Two ask the same question from opposite ends: `blocked` is an agent
+/// that has stopped and wants an answer, and `done` is an agent that has stopped and nobody has
+/// noticed. `stuck` is an agent that cannot go on until somebody does something about its
+/// program, which has stopped reading. Neither `working`, `waiting` nor `idle` asks for anybody,
+/// and `unknown` is the absence of an answer rather than one. The rest are not states: a program
+/// in the pane asked for a notification, in words of its own, or a message waits for the human.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Alert {
     /// An agent waiting on somebody. First, because it is the one somebody is holding up.
     Blocked,
+    /// An agent whose program has stopped reading its input. Next, because it is held up too,
+    /// and nothing but somebody can free it; after `blocked`, whose answer is one keystroke.
+    Stuck,
     /// A message for the human. Next, because addressing the human is the one interruption an
     /// agent chooses to make, where a program's notification is one it makes by habit.
     Message,
@@ -57,6 +61,7 @@ impl Alert {
     pub fn as_str(self) -> &'static str {
         match self {
             Alert::Blocked => "blocked",
+            Alert::Stuck => "stuck",
             Alert::Message => "message",
             Alert::Notified => "notified",
             Alert::Done => "done",
@@ -137,6 +142,7 @@ pub struct Note {
 #[expect(clippy::struct_excessive_bools, reason = "one answer per key of `[notifications]`")]
 pub struct Notifications {
     pub blocked: bool,
+    pub stuck: bool,
     pub programs: bool,
     /// Messages for the human. On, because a message only notifies when an agent chose to
     /// address the person, or a group was convened to ring them.
@@ -147,7 +153,14 @@ pub struct Notifications {
 
 impl Default for Notifications {
     fn default() -> Notifications {
-        Notifications { blocked: true, programs: true, messages: true, done: true, muted: false }
+        Notifications {
+            blocked: true,
+            stuck: true,
+            programs: true,
+            messages: true,
+            done: true,
+            muted: false,
+        }
     }
 }
 
@@ -156,6 +169,7 @@ impl Notifications {
         !self.muted
             && match alert {
                 Alert::Blocked => self.blocked,
+                Alert::Stuck => self.stuck,
                 Alert::Message => self.messages,
                 Alert::Notified => self.programs,
                 Alert::Done => self.done,
@@ -387,6 +401,8 @@ impl Attention {
         }
         if state == AgentState::Blocked {
             self.ask_silently(pane, Alert::Blocked);
+        } else if state == AgentState::Stuck {
+            self.ask_silently(pane, Alert::Stuck);
         } else if finished {
             self.ask_silently(pane, Alert::Done);
         }
@@ -418,6 +434,8 @@ impl Attention {
         }
         let attend = if state == AgentState::Blocked {
             self.raise(pane, Alert::Blocked)
+        } else if state == AgentState::Stuck {
+            self.raise(pane, Alert::Stuck)
         } else if self.alert(pane) == Some(Alert::Notified) {
             // A program's request stands until somebody looks, whatever its agent does next.
             None
@@ -458,7 +476,7 @@ impl Attention {
     pub fn notified(&mut self, pane: &PaneKey, note: Note, agent: Option<&str>) -> Option<Attend> {
         if agent.is_some()
             || self.seen(pane)
-            || matches!(self.alert(pane), Some(Alert::Blocked | Alert::Notified))
+            || matches!(self.alert(pane), Some(Alert::Blocked | Alert::Stuck | Alert::Notified))
         {
             return None;
         }
@@ -486,9 +504,14 @@ impl Attention {
     /// A finish is `done` whether the agent is idle or has left the pane, which is how a crash
     /// or a one-shot run ends. The daemon clears it when the agent works or waits on somebody
     /// again, so a busy state should never arrive carrying one; if it does, the busy state wins.
-    /// So does `waiting`, which the daemon sets no finish under and clears one for.
+    /// So does `waiting`, which the daemon sets no finish under and clears one for, and `stuck`:
+    /// an agent that finished and then stopped reading needs somebody for the second, not the
+    /// first.
     pub fn presented(&self, pane: &PaneKey, state: AgentState) -> AgentState {
-        let busy = matches!(state, AgentState::Working | AgentState::Blocked | AgentState::Waiting);
+        let busy = matches!(
+            state,
+            AgentState::Working | AgentState::Blocked | AgentState::Waiting | AgentState::Stuck
+        );
         if !busy && self.finished.contains(pane) && !self.reported.contains(pane) {
             AgentState::Done
         } else {

@@ -28,6 +28,7 @@ struct PaneChromeTests {
   func restingStatesAreBare() {
     #expect(PaneAppearance.isHighlighted(state: "working"))
     #expect(PaneAppearance.isHighlighted(state: "blocked"))
+    #expect(PaneAppearance.isHighlighted(state: "stuck"))
     #expect(PaneAppearance.isHighlighted(state: "done"))
     // Every pane carrying a border all the time is every pane carrying none.
     #expect(PaneAppearance.isHighlighted(state: "idle") == false)
@@ -36,7 +37,7 @@ struct PaneChromeTests {
 
   @Test("the window's palette is the canonical default legend")
   func theLegendIsCanonical() {
-    // A change-detector on purpose. `muster window` paints these same five rows in the
+    // A change-detector on purpose. `muster window` paints these same rows in the
     // terminal's own sixteen, and nothing checks the two across the language line - so this
     // exists to make changing the canon a decision that fails a build and hands you the other
     // two places it has to change: `crates/muster-cli/src/render.rs` and
@@ -48,6 +49,7 @@ struct PaneChromeTests {
     #expect(PaneAppearance.defaultBorderColor(state: "working") == NSColor.systemCyan)
     #expect(PaneAppearance.defaultBorderColor(state: "waiting") == NSColor.systemIndigo)
     #expect(PaneAppearance.defaultBorderColor(state: "blocked") == NSColor.systemOrange)
+    #expect(PaneAppearance.defaultBorderColor(state: "stuck") == NSColor.systemPink)
     #expect(PaneAppearance.defaultBorderColor(state: "done") == NSColor.systemGreen)
     #expect(PaneAppearance.defaultBorderColor(state: "idle") == NSColor.systemGray)
     #expect(PaneAppearance.defaultBorderColor(state: "unknown") == NSColor.tertiaryLabelColor)

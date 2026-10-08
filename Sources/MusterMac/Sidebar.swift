@@ -561,6 +561,14 @@ public enum SidebarModel {
     var state = agent.state
     if agent.reported { state += ", as the agent reports" }
     lines.append(state)
+    if let unread = agent.unreadInput {
+      let since = Date(timeIntervalSince1970: TimeInterval(unread.sinceMS) / 1000)
+      let at = since.formatted(date: .omitted, time: .shortened)
+      let waiting = unread.bytes == 1 ? "1 byte is" : "\(unread.bytes) bytes are"
+      lines.append(
+        "\(unread.program) (pid \(unread.pid)) has not read its input since \(at) - \(waiting) waiting"
+      )
+    }
     if agent.unreadable { lines.append("Muster cannot read this agent's screen") }
     if agent.adapter == "silent" {
       lines.append("its adapter is not reporting (muster docs harnesses)")
@@ -663,7 +671,7 @@ public enum SidebarModel {
 
   /// The dot beside a row, and whether to draw one at all.
   ///
-  /// The same colors the pane borders use, because they are the same five states and a
+  /// The same colors the pane borders use, because they are the same states and a
   /// sidebar that disagreed with the window beside it would be worse than no sidebar. Unlike
   /// a border, the dot is drawn for every state including idle: a border exists to be
   /// noticed against a resting default, where a list with gaps in a column reads as missing

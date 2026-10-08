@@ -16,7 +16,17 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
     public var percent: Int?
   }
 
-  /// `working`, `blocked`, `waiting`, `idle`, `done` or `unknown`.
+  /// What the pane's program has left unread, once it has stopped reading its input.
+  public struct UnreadInput: Equatable, Sendable {
+    public var bytes: Int
+    /// Since when, in milliseconds since the epoch.
+    public var sinceMS: Int64
+    /// The program holding the terminal: `codex`.
+    public var program: String
+    public var pid: Int
+  }
+
+  /// `working`, `blocked`, `stuck`, `waiting`, `idle`, `done` or `unknown`.
   public var state: String
   /// Whether the state is the agent's own report rather than what Muster read off its screen.
   public var reported = false
@@ -35,6 +45,8 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
   /// `reporting`, `silent` (an adapter Muster ships is not reporting), `none` (its harness has
   /// no adapter), or empty while there is nothing to say yet.
   public var adapter = ""
+  /// Set while the pane's program has stopped reading its input, agent or not.
+  public var unreadInput: UnreadInput?
 
   public init(state: String) {
     self.state = state
@@ -57,6 +69,12 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
       model = facts.model
       costUSD = facts.hasCostUsd ? facts.costUsd : nil
       waiting = facts.waiting
+    }
+    if changed.hasUnreadInput {
+      let unread = changed.unreadInput
+      unreadInput = UnreadInput(
+        bytes: Int(unread.bytes), sinceMS: unread.sinceMs, program: unread.program,
+        pid: Int(unread.pid))
     }
     if changed.hasProgress {
       progress = Progress(

@@ -1729,6 +1729,7 @@ impl Session {
             progress,
             rang: self.attention.has_rung(key),
             adapter: muster_core::harnesses::standing(pane.agent.as_deref(), pane.adapter),
+            unread_input: pane.unread_input.clone().map(Box::new),
         }
     }
 
@@ -3920,6 +3921,9 @@ pub(crate) struct PaneAgent {
     /// A bell in the pane has gone unseen.
     pub rang: bool,
     pub adapter: muster_core::harnesses::Standing,
+    /// What the pane's program has left unread, while it has stopped reading. Boxed because it
+    /// is rare, and this travels by value to every watch.
+    pub unread_input: Option<Box<muster_core::mirror::UnreadInput>>,
 }
 
 /// How much of one daemon's truth the window has, as the shell and a watch are told it.

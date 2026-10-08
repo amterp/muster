@@ -27,9 +27,10 @@ public enum PaneNotification {
   public static func reason(state: String) -> String {
     switch state {
     case "blocked": return "is waiting on you"
+    case "stuck": return "has stopped reading its input"
     case "done": return "has finished"
     case "notified": return "has something for you"
-    // Never sent by the core for a pane, which raises only those three; a message for the
+    // Never sent by the core for a pane, which raises only those four; a message for the
     // human is worded by `MessageNotification`. A banner is the wrong place to report a seam
     // disagreement, so this says the honest minimum rather than nothing.
     default: return "needs you"

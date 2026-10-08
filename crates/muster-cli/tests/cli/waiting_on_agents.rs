@@ -43,6 +43,7 @@ fn a_caller_can_wait_on_an_agent_instead_of_polling() {
     a_wait_exits_when_the_agent_finishes(&open);
     a_layout_watch_draws_again_when_the_arrangement_moves(&open);
     a_pane_just_made_can_be_waited_on(&open);
+    a_wait_on_an_agent_that_stops_reading_is_refused(&open);
 
     let ran = muster(&open, &["pane", "wait", "--pane", "p1nobody00", "--until", "idle"]);
     assert_eq!(
@@ -198,6 +199,45 @@ fn a_wait_exits_when_the_agent_finishes(open: &Open) {
         said,
         format!("{}  done", open.pane),
         "a wait prints the pane that got there and the state it is in, and nothing else"
+    );
+}
+
+/// An agent whose program stops reading gets nowhere until it reads again, so a wait for it to
+/// ask for somebody ends refused with 1, saying why, as the window answers it; once it reads, it
+/// is the agent it was.
+fn a_wait_on_an_agent_that_stops_reading_is_refused(open: &Open) {
+    let sent = muster(open, &["pane", "send", "--pane", &open.pane, "--enter", "deaf 12"]);
+    assert_eq!(sent.status.code(), Some(0), "{}", String::from_utf8_lossy(&sent.stderr));
+    // Read, and so the evidence that this program reads, before anything waits unread.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let wait = command(
+        open,
+        &["pane", "wait", "--pane", &open.pane, "--until", "blocked", "--timeout", "60"],
+    )
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap_or_else(|error| panic!("the muster binary could not be run: {error}"));
+    let sent = muster(open, &["pane", "send", "--pane", &open.pane, "--enter", "are you there"]);
+    assert_eq!(sent.status.code(), Some(0), "{}", String::from_utf8_lossy(&sent.stderr));
+    let ended = wait.wait_with_output().expect("the wait was spawned by this test");
+    let said = String::from_utf8_lossy(&ended.stderr);
+    assert_eq!(ended.status.code(), Some(1), "{said}");
+    assert!(said.contains("is stuck") && said.contains("stopped reading its input"), "{said}");
+
+    // A wait would be refused while it is stuck, so the window is asked until it reads again.
+    until(
+        "the agent to read again once it stops sleeping",
+        || {
+            let listed = muster(open, &["--json", "window"]);
+            let listed: Value = serde_json::from_slice(&listed.stdout).unwrap_or_default();
+            listed["panes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|pane| pane["pane"] == json!(open.pane) && pane["state"] != json!("stuck"))
+        },
+        || "it still reads as stuck".to_string(),
     );
 }
 

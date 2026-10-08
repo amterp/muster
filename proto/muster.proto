@@ -486,6 +486,7 @@ message AgentColors {
   string idle = 4;
   string unknown = 5;
   string waiting = 6;
+  string stuck = 7;
 }
 
 // Grows a pane against its neighbour, by a step.
@@ -2729,10 +2730,12 @@ message PaneStateChanged {
   string daemon_id = 3;
   string pane_id = 1;
 
-  // working, blocked, waiting, idle, done, or unknown. Never empty - a pane whose harness the
-  // backend cannot classify is `unknown`, which renders as itself. An agent we failed to
-  // read is not an agent that finished. `waiting` is an idle agent that said it ended its
-  // turn to wait on work it started itself, and `facts.waiting` says on what.
+  // working, blocked, stuck, waiting, idle, done, or unknown. Never empty - a pane whose
+  // harness the backend cannot classify is `unknown`, which renders as itself. An agent we
+  // failed to read is not an agent that finished. `waiting` is an idle agent that said it
+  // ended its turn to wait on work it started itself, and `facts.waiting` says on what.
+  // `stuck` is an agent whose program has stopped reading its input, and `unread_input` says
+  // what it left.
   string state = 2;
 
   // When the agent last changed what it was doing, in milliseconds since the epoch.
@@ -2774,6 +2777,22 @@ message PaneStateChanged {
   // `muster harness install` installs; `none`, the same for a harness Muster has no adapter
   // for. Empty while there is nothing to say: no agent, or one that has not yet ended a turn.
   string adapter = 11;
+
+  // The pane's program has stopped reading its input: having been seen to read, it has left
+  // input unread for several seconds and read nothing since, as its daemon measured it. Absent
+  // while it reads. Set for any pane, agent or not; only an agent's makes its state `stuck`.
+  UnreadInput unread_input = 12;
+}
+
+// What a pane's program has left unread, as it stood when its daemon called it stopped.
+message UnreadInput {
+  // Bytes waiting for the program to read: whole lines only, when the terminal is line by line.
+  uint32 bytes = 1;
+  // Since when, in milliseconds since the epoch, by the pane's daemon's clock.
+  int64 since_ms = 2;
+  // The program holding the terminal, as its daemon names it: `codex`.
+  string program = 3;
+  int32 pid = 4;
 }
 
 message PaneProgress {

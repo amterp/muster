@@ -173,6 +173,10 @@ impl Watch {
                 self.ready.push_back(Next::Last(Response::ok()));
                 return;
             }
+            if let Some(stranded) = watched.iter().find_map(|agent| self.stranded(agent)) {
+                self.ready.push_back(stranded);
+                return;
+            }
         } else {
             for agent in &watched {
                 self.ready.push_back(Next::Answer(state_answer(agent, true)));
@@ -238,7 +242,7 @@ impl Watch {
         // Not deduplicated: a wait on context is met by a report that changes the agent's facts
         // and leaves its state where it was.
         if !self.arrived(agent) {
-            return None;
+            return self.stranded(agent);
         }
         self.ready.push_back(Next::Last(Response::ok()));
         Some(Next::Answer(state_answer(agent, false)))
@@ -327,6 +331,20 @@ impl Watch {
 
     fn arrived(&self, agent: &PaneAgent) -> bool {
         self.until.met(agent.state, agent.facts.context_used)
+    }
+
+    /// The refusal ending a wait on a pane that went stuck, which gets nowhere until its program
+    /// reads again. Only a pane the wait names: waiting on every pane, one stuck is one fewer
+    /// that could get there, as one closing is.
+    fn stranded(&self, agent: &PaneAgent) -> Option<Next> {
+        let named = self.panes.as_ref().is_some_and(|panes| panes.contains(&agent.pane));
+        if !named || !self.until.stranded(agent.state) {
+            return None;
+        }
+        let program =
+            agent.unread_input.as_ref().map(|unread| (unread.program.as_str(), unread.bytes));
+        let why = self.until.stranded_because(agent.pane.pane.as_str(), program);
+        Some(Next::Last(Response::failure(why)))
     }
 }
 

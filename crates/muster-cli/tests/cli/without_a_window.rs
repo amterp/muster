@@ -136,6 +136,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     a_wait_on_a_pane_that_closes_is_refused(&here);
     a_send_the_pane_never_shows_is_refused(&here);
     keys_are_pressed_without_a_window(&here);
+    a_wait_on_an_agent_that_stops_reading_is_refused(&here);
 
     let refused = refused_with(&here.muster(&["pane", "read"]), 1);
     assert!(refused.contains("--pane"), "with no window there is no keyboard's pane:\n{refused}");
@@ -278,6 +279,33 @@ fn a_wait_on_a_pane_that_closes_is_refused(here: &Here) {
     let ended = wait.wait_with_output().unwrap();
     let refused = refused_with(&ended, 1);
     assert!(refused.contains("pane p3 closed before it was blocked"), "{refused}");
+}
+
+/// An agent whose program stops reading gets nowhere until it reads again, so a wait for it to
+/// ask for somebody ends refused, naming why; `muster window` says it is stuck and what it left; and a wait
+/// for `stuck` is answered.
+fn a_wait_on_an_agent_that_stops_reading_is_refused(here: &Here) {
+    ok(&here.muster(&["pane", "send", "--pane", "p2", "--enter", "deaf 30"]));
+    // Read, and so the evidence that this program reads, before anything waits unread.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let wait =
+        here.spawned(&["pane", "wait", "--pane", "p2", "--until", "blocked", "--timeout", "60"]);
+    ok(&here.muster(&["pane", "send", "--pane", "p2", "--enter", "are you there"]));
+    let ended = wait.wait_with_output().unwrap();
+    let refused = refused_with(&ended, 1);
+    assert!(
+        refused.contains("pane p2 is stuck") && refused.contains("stopped reading its input"),
+        "{refused}"
+    );
+    assert_eq!(
+        ok(&here.muster(&["pane", "wait", "--pane", "p2", "--until", "stuck"])),
+        "p2  stuck"
+    );
+    let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).unwrap();
+    let p2 = listed["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!("p2"));
+    let p2 = p2.unwrap_or_else(|| panic!("p2 is listed: {listed}"));
+    assert_eq!(p2["state"], json!("stuck"), "{listed}");
+    assert_eq!(p2["unread_input"]["bytes"], json!(14), "the line sent, and its Return: {listed}");
 }
 
 /// A line over 1024 bytes into `cat`, which reads in canonical mode, is discarded whole, and a

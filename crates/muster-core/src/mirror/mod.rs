@@ -10,7 +10,7 @@ pub mod ordered;
 pub mod restart;
 pub mod state;
 
-pub use backend::{Adapter, AgentFacts, Health, Pane, PaneId, Snapshot, Tab, TabId};
+pub use backend::{Adapter, AgentFacts, Health, Pane, PaneId, Snapshot, Tab, TabId, UnreadInput};
 pub use event::{BackendEvent, Change, Restored};
 pub use restart::Restart;
 pub use state::Mirror;
