@@ -35,6 +35,18 @@ this process is not permitted to reach it, with the Codex setting that lets it t
 (`muster docs harnesses`). It does not ask the daemon instead, since the same sandbox refuses that
 socket too.
 
+## An upgrade has to be allowed to quit Muster, and quits every copy
+
+Homebrew quits Muster by asking it to, with an Apple Event. Asked from a pane, the request comes
+from Muster Sessions, the helper app the daemon runs as, so the first upgrade may ask whether
+Muster Sessions may control Muster. Refused, brew waits ten seconds, says the app did not quit,
+and carries on with the upgrade; quit Muster yourself to run the new version. System Settings,
+Privacy & Security, Automation is where the answer can be changed.
+
+The request names Muster by its bundle id, which every build shares, so a build from a checkout
+that is open at the time quits too. The app is opened again from where Homebrew put it, with the
+default home: a Muster running under a `MUSTER_HOME` of its own comes back without it.
+
 ## A pane restored after a daemon restart has to ask which window holds it
 
 A daemon that restarts brings each pane back under its name, with a fresh shell, and gives it

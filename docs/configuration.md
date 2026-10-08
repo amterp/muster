@@ -102,7 +102,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `find_next`, `find_previous`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
-`reload_config`, `show_shortcuts`, and `quit_and_close_sessions`. On macOS these become menu items, which is where the
+`reload_config`, `show_shortcuts`, `quit_and_close_sessions`, and `upgrade_muster`. On macOS these become menu items, which is where the
 platform dispatches a key equivalent from - so a rebound action moves in the menu too, and
 System Settings can move it again.
 
@@ -124,7 +124,7 @@ Ghostty's actions are about its own windows, tabs and clipboard, and are not off
 `rename_tab` used to ship unbound, on the theory that a tab is named once and a pane several
 times an hour; tabs turned out to be renamed often enough to want one.
 
-Ten of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
+Eleven of them ship with no chord at all. Ghostty has `split_left` and `split_up` as actions and
 binds neither, so Muster does the same rather than inventing a shortcut for them - they are in
 the menu, one click away and one `[keymap]` line from a chord.
 
@@ -163,6 +163,10 @@ keeps nothing in particular; `muster pane compact` is the way to say what to kee
 takes the pane the keyboard is on out of the window into the Hidden list, its agent still running.
 Quiet Pane stops that pane raising anything for you, and is checked in the menu while it is quiet
 (`muster docs agents`, "Out of sight").
+
+`upgrade_muster` is the eleventh: it is reached for once a release, and a chord for it would be
+taken from something used every day. Upgrade muster in the app menu and `muster upgrade` are the
+same act (`muster docs overview`, "Upgrading").
 
 **The mouse's back and forward buttons go back to the pane you were on, and forward again.**
 Every pane the keyboard lands on is recorded, however it got there, so a step back can change

@@ -17,6 +17,9 @@ Apple Silicon, macOS 14 or newer. One command brings the app and the `muster` co
 are one artifact - the CLI is a file inside the bundle, built from the same commit and carrying the
 same signature.
 
+To upgrade, choose Upgrade muster in the app menu or run `muster upgrade`. Homebrew upgrades Muster
+in a pane of its own, your agents keep running, and the app opens again when it is done.
+
 ## What it is
 
 Split a window into panes, put a coding agent in each, and read the whole lot at a glance. Every

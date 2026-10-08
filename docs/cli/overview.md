@@ -186,8 +186,23 @@ docs msg`), and `harness install`, `docs` and `completions`, which ask neither. 
 moving panes and tabs is laying out a window's tabs, which a window composes from its regions;
 focus, the asking chord, font, the sidebar and reload are about what a window shows; which window
 holds a tab is a window's record; and `muster daemons` marks which daemons that window is using.
+`muster upgrade` needs the app, since only the app knows whether Homebrew installed it.
 `pane rename` and `pane close` are the daemon's to do and could work without a window, but do not
 yet.
+
+## Upgrading
+
+`muster upgrade`, or Upgrade muster in the app menu, upgrades the app through Homebrew. It opens a
+tab on this machine's daemon running `brew upgrade --cask` for the cask Homebrew installed, then
+opens the app again, and prints that tab's pane. Brew quits Muster partway through; the tab keeps
+running because its daemon owns it, as every pane's does, so the window comes back on it with
+brew's output there. When Muster is already up to date, brew says so and quits nothing.
+
+Only the Muster that Homebrew installed can do this. A build from a checkout, or one downloaded
+from a release, is refused with what was looked for and found. Run from a pane on an SSH machine,
+it upgrades the app on this side of the ssh, and that machine gets the new daemon when the app
+attaches to it again. Nothing checks for a new version on its own: the network is reached only
+when you ask, and only by brew.
 
 ## Output
 

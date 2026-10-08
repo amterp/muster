@@ -49,7 +49,9 @@ cask "muster" do
   # Quit first, because Muster owns a bridge process per pane and a copy of the
   # app deleted out from under a running one leaves those to be reaped. The
   # session daemon is meant to outlive the app and does: agents keep working,
-  # and `zap` is what takes them down with everything else.
+  # and `zap` is what takes them down with everything else. It is also what lets
+  # Muster upgrade itself: Upgrade muster runs `brew upgrade` in a pane, which
+  # the daemon keeps running while this quits the app.
   #
   # `quit:` names a bundle id, so it closes any Muster carrying it - a build run
   # from a checkout included, not only the one brew installed. That is the right
