@@ -223,7 +223,7 @@ impl Tunnel {
     /// stops working when the tunnel is dropped, which is the honest lifetime: the master is
     /// what makes it free.
     pub fn remote(&self) -> Remote {
-        Remote::over(&self.forward.host, &self.forward.control_path)
+        Remote::of(&self.forward)
     }
 
     pub fn host(&self) -> &str {
@@ -511,6 +511,11 @@ fn sleep_unless_stopping(wait: Duration, stopping: &Arc<AtomicBool>) -> bool {
 /// ssh's own words are folded into the error rather than inherited, unlike [`spawn`]: a host
 /// that is away would otherwise print "Control socket connect: No such file or directory" to
 /// this process's stderr every second for as long as the outage lasts.
+/// Whether a master answers at this control path.
+pub(crate) fn master_answers(host: &str, control_path: &str) -> bool {
+    bounded(control_path, "-O check", ["-O", "check", "-S", control_path, host]).is_ok()
+}
+
 fn control(forward: &Forward, request: &str) -> Result<(), Unanswered> {
     bounded(
         &forward.control_path,
@@ -601,7 +606,7 @@ fn forward_back(forward: &Forward) {
         ))
     } else {
         let directory = reverse.remote_path.rsplit_once('/').map_or(".", |(parent, _)| parent);
-        Remote::over(&forward.host, &forward.control_path)
+        Remote::of(forward)
             .shell(&format!(
                 "mkdir -p {} && rm -f {}",
                 quoted(directory),
@@ -643,7 +648,7 @@ fn forward_back(forward: &Forward) {
 /// otherwise hold that up for as long as ssh takes to notice.
 fn take_back(forward: &Forward) {
     let Some(reverse) = &forward.reverse else { return };
-    let mut arguments = client_arguments(&forward.host, &forward.control_path);
+    let mut arguments = client_arguments(&forward.host, &forward.options, &forward.control_path);
     arguments.extend(["rm".to_string(), "-f".to_string(), quoted(&reverse.remote_path)]);
     let removed = bounded(&forward.control_path, "rm -f", arguments);
     if let Err(detail) = removed.map_err(Unanswered::into_detail) {
@@ -738,7 +743,7 @@ fn confirm(
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    Remote::over(&forward.host, &forward.control_path)
+    Remote::of(forward)
         .run(&["true"])
         .map(|_| ())
         .map_err(|error| format!("the master would not carry a command ({error})"))

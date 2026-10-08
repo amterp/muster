@@ -16,6 +16,10 @@
 //! that holds its socket and does not answer is wedged rather than gone and is never started
 //! over, and two starts at once leave one daemon, since a daemon holds a lock beside its socket
 //! and a second exits.
+//!
+//! On an ssh host the question is asked through the forward, which cannot tell a daemon that
+//! has gone from a connection that has: a tunnel that flapped, or a laptop waking, reads as
+//! nothing answering. So nothing is started there while the connection itself is down.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -66,6 +70,14 @@ impl There {
     }
 }
 
+/// Why an attempt started nothing.
+enum NotStarted {
+    /// Whether the daemon has gone cannot be told yet, so nothing was tried.
+    Unknowable(String),
+    /// It was tried, and this is why it failed.
+    Failed(String),
+}
+
 impl StartAgain {
     /// Where it runs, for a log line.
     fn host(&self) -> &str {
@@ -75,17 +87,29 @@ impl StartAgain {
         }
     }
 
-    fn ensure_running(&self) -> Result<launch::Reached, String> {
+    fn ensure_running(&self) -> Result<launch::Reached, NotStarted> {
         match self {
             StartAgain::Here => start_here(
                 "this machine's panes stay unreachable in the window until its daemon answers",
             )
             .map(|here| here.reached)
-            .map_err(|unattached| match unattached {
-                Unattached::Failed(why) | Unattached::Lasting(why) => why,
-                Unattached::Abandoned => "the window was reset".to_string(),
+            .map_err(|unattached| {
+                NotStarted::Failed(match unattached {
+                    Unattached::Failed(why) | Unattached::Lasting(why) => why,
+                    Unattached::Abandoned => "the window was reset".to_string(),
+                })
             }),
-            StartAgain::There(there) => there.ensure_running().map(|(reached, _)| reached),
+            // Asked first, because with the master down the forward answers nothing whether or
+            // not the daemon is there, and the start would install over a live daemon's files.
+            StartAgain::There(there) if !there.remote.master_answers() => {
+                Err(NotStarted::Unknowable(format!(
+                    "the ssh connection to {} is down, so a daemon that stopped answering cannot                      be told from a connection that did",
+                    there.host
+                )))
+            }
+            StartAgain::There(there) => {
+                there.ensure_running().map(|(reached, _)| reached).map_err(NotStarted::Failed)
+            }
         }
     }
 }
@@ -142,7 +166,24 @@ fn start_again(daemon: &DaemonId, start: &StartAgain, mirror: &Arc<Mutex<Mirror>
             }
             // Something answers, and the follower is already dialing it.
             Ok(launch::Reached::Adopted) => return,
-            Err(why) => {
+            Err(NotStarted::Unknowable(why)) => {
+                let retry = attempts.failed();
+                if retry.logged {
+                    log::info(
+                        "daemon.start_again.waiting",
+                        fields! {
+                            "daemon" => daemon.to_string(),
+                            "host" => start.host(),
+                            "detail" => why,
+                            "impact" => "nothing is started there yet; its panes read \
+                                         unreachable until the connection is back, and then \
+                                         either its daemon answers or it is started again",
+                        },
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_nanos(retry.after));
+            }
+            Err(NotStarted::Failed(why)) => {
                 let retry = attempts.failed();
                 if retry.logged {
                     log::warn(

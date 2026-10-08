@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+use crate::tunnel::{Forward, master_answers};
+
 /// The machine at the other end of a master somebody is already holding open.
 ///
 /// Everything here rides that connection with `-S`, so nothing pays a handshake. The master
@@ -13,6 +15,9 @@ use std::process::{Command, Stdio};
 #[derive(Debug, Clone)]
 pub struct Remote {
     host: String,
+    /// The `[[daemon]]` block's own ssh options, which say how to reach this host when the
+    /// master is not there to ride and ssh connects on its own.
+    options: Vec<String>,
     control_path: String,
 }
 
@@ -35,12 +40,27 @@ impl Platform {
 }
 
 impl Remote {
-    pub fn over(host: &str, control_path: &str) -> Remote {
-        Remote { host: host.to_string(), control_path: control_path.to_string() }
+    /// The far end of the master this forward opens.
+    pub(crate) fn of(forward: &Forward) -> Remote {
+        Remote {
+            host: forward.host.clone(),
+            options: forward.options.clone(),
+            control_path: forward.control_path.clone(),
+        }
     }
 
     pub fn host(&self) -> &str {
         &self.host
+    }
+
+    /// Whether the master this rides is up, which is whether the connection reaches the far
+    /// machine at all: a master exits once its connection stops answering.
+    ///
+    /// Worth asking before anything here is run, when the answer matters. With the master
+    /// gone, a command does not fail - ssh connects on its own instead - so a command run to
+    /// learn whether the far machine is there says yes or no about a different connection.
+    pub fn master_answers(&self) -> bool {
+        master_answers(&self.host, &self.control_path)
     }
 
     /// Runs one command over the master and hands back what it printed.
@@ -57,7 +77,7 @@ impl Remote {
     /// The same, with bytes on the command's standard input.
     fn run_on(&self, argv: &[&str], input: &[u8]) -> Result<String, String> {
         let mut child = Command::new("ssh")
-            .args(client_arguments(&self.host, &self.control_path))
+            .args(client_arguments(&self.host, &self.options, &self.control_path))
             .args(argv)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -166,8 +186,13 @@ impl Remote {
 /// supervisor's `-O check` called that tunnel healthy for 40 and then 75 minutes while every
 /// request to the daemon was refused (kan a_2NnC4pyPm). `-O` requests need no pin: they are
 /// only ever a client.
-pub(crate) fn client_arguments(host: &str, control_path: &str) -> Vec<String> {
-    [
+///
+/// With the master gone the client connects by itself, so it is also told what the master was:
+/// the `[[daemon]]` block's own options, and a connect timeout after them so that one named there
+/// wins. Without them it reached a host the config said to reach some other way, and waited out
+/// the operating system's TCP timeout on one that was not answering.
+pub(crate) fn client_arguments(host: &str, options: &[String], control_path: &str) -> Vec<String> {
+    let mut arguments: Vec<String> = [
         "-S",
         control_path,
         "-o",
@@ -176,10 +201,13 @@ pub(crate) fn client_arguments(host: &str, control_path: &str) -> Vec<String> {
         "ControlMaster=no",
         "-o",
         "ControlPersist=no",
-        host,
     ]
     .map(str::to_string)
-    .to_vec()
+    .to_vec();
+    arguments.extend(options.iter().cloned());
+    arguments.extend(["-o".to_string(), "ConnectTimeout=15".to_string()]);
+    arguments.push(host.to_string());
+    arguments
 }
 
 /// One shell word, whatever is in it.
@@ -206,7 +234,7 @@ mod tests {
         // would own it with no forward and persist past its command, and `-O check` would call
         // that tunnel healthy while every request to the daemon was refused (kan a_2NnC4pyPm).
         // ssh takes the first value it is given, so both pins have to come before the host.
-        let told = client_arguments("dev@devenv", "/tmp/m.ctl");
+        let told = client_arguments("dev@devenv", &[], "/tmp/m.ctl");
         let host = told.iter().position(|word| word == "dev@devenv").expect("the host is there");
         for pin in ["ControlMaster=no", "ControlPersist=no"] {
             let at = told.iter().position(|word| word == pin);
@@ -215,6 +243,31 @@ mod tests {
                 "{pin} is not pinned ahead of the host, so a personal config decides it: {told:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_command_with_no_master_reaches_the_host_as_the_config_says() {
+        // With the master gone ssh connects by itself, so it needs what the master was told,
+        // and a timeout: the config's own come first so that a ConnectTimeout named there wins.
+        let options = ["-p".to_string(), "2222".to_string()];
+        let told = client_arguments("dev@devenv", &options, "/tmp/m.ctl");
+        let at = |word: &str| told.iter().position(|said| said == word);
+        let host = at("dev@devenv").expect("the host is there");
+        let port = at("2222").expect("the config's options are there");
+        let timeout = at("ConnectTimeout=15").expect("a connect timeout is there");
+        assert!(told[port - 1] == "-p" && port < timeout && timeout < host, "{told:?}");
+        assert_eq!(host, told.len() - 1, "nothing follows the host but the command: {told:?}");
+    }
+
+    #[test]
+    fn no_master_at_the_control_path_does_not_answer() {
+        // Asked of the control socket alone, so this reaches no network.
+        let remote = Remote {
+            host: "nowhere.invalid".to_string(),
+            options: Vec::new(),
+            control_path: "/tmp/muster-test-no-such-master.ctl".to_string(),
+        };
+        assert!(!remote.master_answers());
     }
 
     #[test]
