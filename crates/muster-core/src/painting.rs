@@ -23,8 +23,8 @@
 //! That guard is about saying something new. A warning already raised stays raised when its pane
 //! leaves the screen, because looking away does not make it untrue: a wedged bridge used to lose
 //! its warning to a tab switch and stay frozen for three more minutes with nobody told (kan
-//! a_2LWqtPd8E). It goes when something answers it - the pane painting, closing, or its machine
-//! going away - so a warning that went away says which of those happened.
+//! a_2LWqtPd8E). It goes when something answers it - the pane painting, closing, being hidden,
+//! or its machine going away - so a warning that went away says which of those happened.
 //!
 //! **Only while the pane's daemon is answering.** A machine that has gone away already raises one
 //! problem naming itself; accusing each of its eight panes as well is the nagging that keying a
@@ -75,6 +75,9 @@ pub enum Cleared {
     /// The pane is gone.
     Closed,
 
+    /// The pane was hidden, so no window draws it and it has no bridge to paint through.
+    Hidden,
+
     /// The pane's daemon stopped answering, and the machine's own problem says so instead.
     DaemonAway,
 
@@ -88,6 +91,7 @@ impl Cleared {
         match self {
             Cleared::Painted => "painted",
             Cleared::Closed => "closed",
+            Cleared::Hidden => "hidden",
             Cleared::DaemonAway => "daemon_away",
             Cleared::Off => "off",
         }
@@ -242,6 +246,18 @@ impl Painting {
         self.asked.remove(pane);
         self.not_reading.remove(pane);
         self.settle(pane, Cleared::Closed);
+    }
+
+    /// The pane went into a tab no window shows, so nothing is owed about it until it is shown.
+    ///
+    /// Unlike leaving the screen, which keeps a warning raised: a hidden pane has no bridge, so it
+    /// never paints, and a warning kept for it would stand until it closed - offering a Reattach
+    /// that has nothing to reattach. Answers whether that changed anything, so a caller told on
+    /// every reconcile wakes the clock only when it did.
+    pub fn hidden(&mut self, pane: &PaneKey) -> bool {
+        let owed = self.asked.remove(pane).is_some();
+        self.settle(pane, Cleared::Hidden);
+        owed
     }
 
     /// Compares the unanswered panes against the clock and says what the problem list owes.

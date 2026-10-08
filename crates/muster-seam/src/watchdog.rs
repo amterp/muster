@@ -271,6 +271,14 @@ pub(crate) fn closed(pane: &PaneKey) {
     KNOCK.notify_all();
 }
 
+/// The pane was hidden, so it has no bridge and nothing is owed about its painting. Told on
+/// every prune that finds it hidden, so the clock is woken only when that changed something.
+pub(crate) fn hidden(pane: &PaneKey) {
+    if poison::lock(&PAINTING, "painting").hidden(pane) {
+        KNOCK.notify_all();
+    }
+}
+
 /// Which panes the window is drawing, straight from the view it just published.
 ///
 /// Nothing is started here. A pane the window began drawing waits a full deadline from now,

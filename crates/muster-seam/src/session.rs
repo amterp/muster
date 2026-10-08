@@ -1518,7 +1518,11 @@ impl Session {
         }
         let attached = self.panes.entry(daemon.clone()).or_default();
         attached.retain(|pane, _| {
-            let held = mirror.pane(pane).is_some();
+            let held = mirror.pane(pane);
+            if held.is_some_and(|held| mirror.tab(&held.tab).is_some_and(|tab| tab.hidden)) {
+                watchdog::hidden(&PaneKey::new(daemon, pane));
+            }
+            let held = held.is_some();
             if !held {
                 // Before the channel is dropped, so that an error about a pane that never
                 // became typeable goes with the pane rather than outliving it in the roster,

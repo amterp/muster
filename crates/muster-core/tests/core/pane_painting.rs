@@ -37,6 +37,8 @@ fn pane_painting_conformance() {
                 painting.painted(&pane_key(pane)?);
             } else if let Some(pane) = step.get("closed").and_then(Value::as_str) {
                 painting.closed(&pane_key(pane)?);
+            } else if let Some(pane) = step.get("hidden").and_then(Value::as_str) {
+                painting.hidden(&pane_key(pane)?);
             } else if let Some(pane) = step.get("stoppedReading").and_then(Value::as_str) {
                 let reader = Reader {
                     program: step.get("program").and_then(Value::as_str).unwrap_or("").to_string(),
