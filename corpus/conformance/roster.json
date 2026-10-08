@@ -3079,7 +3079,7 @@
           "w1:t3 on=local place=2 label=\"Tab 2\" off-screen"
         ],
         "hidden": [
-          "w1:t2 on=local place=0 label=\"hidden\" off-screen",
+          "w1:t2 on=local place=0 label=\"\" off-screen",
           "local/w1:p2 place=0 tab=w1:t2 label=\"beta \u00b7 claude\" off-screen quiet",
           "local/w1:p3 place=0 tab=w1:t2 label=\"gamma\" off-screen"
         ]

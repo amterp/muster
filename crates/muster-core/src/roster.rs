@@ -669,7 +669,8 @@ impl Roster {
 /// Every hidden tab the window's daemons hold, a tab spanning machines once, in the order the
 /// daemons are attached and then the order each opened its tabs.
 ///
-/// A hidden tab nobody named is called `hidden` rather than numbered: nothing places it.
+/// A hidden tab nobody named has an empty label rather than a number, since nothing places it,
+/// and is listed under a heading that already says what it is.
 fn hidden_tabs<'a>(
     composition: &Composition,
     mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
@@ -686,7 +687,7 @@ fn hidden_tabs<'a>(
                     id: part.id.clone(),
                     daemons: Vec::new(),
                     place: 0,
-                    label: name.unwrap_or("hidden").to_string(),
+                    label: name.unwrap_or_default().to_string(),
                     on_screen: false,
                     given_name: name.map(str::to_string),
                     panes: Vec::new(),
