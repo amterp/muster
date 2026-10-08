@@ -15,7 +15,7 @@
 //! members are all idle with everything read is also what a finished group looks like, and an
 //! expectation of a reply is not something Muster can observe.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -150,8 +150,14 @@ impl Stalls {
     }
 
     /// Weighs what holds each group now, `members` being every member a message waits on, and
-    /// says what to do. Pure, so every rule here is a unit test.
-    pub(crate) fn judge(&mut self, members: &[Member], now_ms: u64) -> Vec<Act> {
+    /// says what to do; `called` is what each pane and each participant named after one is
+    /// called, by id, to say them by. Pure, so every rule here is a unit test.
+    pub(crate) fn judge(
+        &mut self,
+        members: &[Member],
+        called: &BTreeMap<String, String>,
+        now_ms: u64,
+    ) -> Vec<Act> {
         let mut acts = Vec::new();
         let mut holding: Vec<(String, String)> = Vec::new();
         for member in members {
@@ -193,7 +199,7 @@ impl Stalls {
                             episode.stage = Stage::WokenAgain { at_ms: now_ms };
                         }
                         Unlock::Tell => {
-                            acts.push(tell(member, now_ms));
+                            acts.push(tell(member, called, now_ms));
                             episode.stage = Stage::Told;
                         }
                         Unlock::Nothing => episode.stage = Stage::Told,
@@ -202,7 +208,7 @@ impl Stalls {
                 // Woken again and still held up: what is left is to tell whoever waits.
                 Stage::WokenAgain { at_ms } if now_ms.saturating_sub(at_ms) >= self.after_ms => {
                     if !waiting_on(member).is_empty() {
-                        acts.push(tell(member, now_ms));
+                        acts.push(tell(member, called, now_ms));
                     }
                     episode.stage = Stage::Told;
                 }
@@ -251,19 +257,27 @@ fn waiting_on(member: &Member) -> Vec<String> {
         .collect()
 }
 
-fn tell(member: &Member, now_ms: u64) -> Act {
+fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64) -> Act {
     let held = &member.holding;
     let waited = now_ms.saturating_sub(held.first_at_ms) / 1000;
     let waited =
         if waited >= 120 { format!("{} minutes", waited / 60) } else { format!("{waited}s") };
+    // As the CLI shows a name: `otter (p29te12q4t)`, the id being what still reaches it once
+    // another pane goes by the name.
+    let shown = |id: &str| match called.get(id) {
+        Some(name) if name != id => format!("{name} ({id})"),
+        _ => id.to_string(),
+    };
+    // A member named after its pane has already said which pane it is.
+    let pane =
+        if held.pane == held.name { String::new() } else { format!(", {}", shown(&held.pane)) };
     let body = format!(
         "{name} has not read #{first}, from {authors}, {waited} after it was posted: {why}. \
-         Muster says this once; `muster window` shows its pane, {pane}.",
-        name = held.name,
+         Muster says this once; `muster window` shows its pane{pane}.",
+        name = shown(&held.name),
         first = held.first,
-        authors = held.authors.join(", "),
+        authors = held.authors.iter().map(|author| shown(author)).collect::<Vec<_>>().join(", "),
         why = why(member),
-        pane = held.pane,
     );
     Act::Tell { group: held.group.clone(), to: waiting_on(member), body }
 }
@@ -316,8 +330,8 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls) -> Duration {
     }
     stalls.due = now + stalls.every;
     let panes = Panes::of(shared);
-    let (members, others) = {
-        let messages = shared.messages();
+    let (members, others, mut called) = {
+        let mut messages = shared.messages();
         if messages.handing_over {
             return stalls.every;
         }
@@ -338,9 +352,14 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls) -> Duration {
             })
             .collect();
         let others = described(&messages.service, &panes, &members);
-        (members, others)
+        (members, others, messages.service.called(&panes))
     };
-    let acts = stalls.judge(&members, now_ms());
+    for member in &members {
+        if let Some(name) = panes.name_of(&member.holding.pane) {
+            called.insert(member.holding.pane.clone(), name);
+        }
+    }
+    let acts = stalls.judge(&members, &called, now_ms());
     for act in acts {
         act_on(shared, &panes, act, &others);
     }
@@ -517,21 +536,61 @@ mod tests {
     #[test]
     fn a_wake_that_never_landed_is_sent_again_and_then_the_poster_told_once() {
         let mut stalls = stalls();
-        assert!(stalls.judge(&[worker()], 1000 + AFTER - 1).is_empty(), "not yet");
-        let acts = stalls.judge(&[worker()], 1000 + AFTER);
+        assert!(
+            stalls.judge(&[worker()], &BTreeMap::new(), 1000 + AFTER - 1).is_empty(),
+            "not yet"
+        );
+        let acts = stalls.judge(&[worker()], &BTreeMap::new(), 1000 + AFTER);
         assert_eq!(kinds(&acts), ["stalled", "wake_again"]);
 
         let mut woken = worker();
         woken.holding.woken = true;
-        assert!(stalls.judge(&[woken.clone()], 1000 + 2 * AFTER - 1).is_empty());
-        let acts = stalls.judge(&[woken.clone()], 1000 + 2 * AFTER);
+        assert!(stalls.judge(&[woken.clone()], &BTreeMap::new(), 1000 + 2 * AFTER - 1).is_empty());
+        let acts = stalls.judge(&[woken.clone()], &BTreeMap::new(), 1000 + 2 * AFTER);
         assert_eq!(kinds(&acts), ["tell"]);
         let Act::Tell { to, body, .. } = &acts[0] else { unreachable!() };
         assert_eq!(to, &["director"]);
         assert!(body.contains("worker has not read #4") && body.contains("rung"), "{body}");
 
-        assert!(stalls.judge(&[woken.clone()], 1000 + 10 * AFTER).is_empty(), "said twice");
-        assert_eq!(kinds(&stalls.judge(&[], 1000 + 11 * AFTER)), ["moving"]);
+        assert!(
+            stalls.judge(&[woken.clone()], &BTreeMap::new(), 1000 + 10 * AFTER).is_empty(),
+            "said twice"
+        );
+        assert_eq!(kinds(&stalls.judge(&[], &BTreeMap::new(), 1000 + 11 * AFTER)), ["moving"]);
+    }
+
+    /// Whoever waits is told about the member by the names agents address each other by, each
+    /// with the id that still reaches it once another pane goes by the name.
+    #[test]
+    fn a_tell_names_members_and_panes_as_the_cli_does() {
+        let called: BTreeMap<String, String> =
+            [("p2", "otter"), ("p1", "heron")].map(|(id, name)| (id.into(), name.into())).into();
+        let in_its_pane = Member {
+            holding: Holding {
+                name: "p2".to_string(),
+                authors: vec!["p1".to_string(), "director".to_string()],
+                ..worker().holding
+            },
+            activity: Some(Activity::Blocked),
+            ..worker()
+        };
+        let acts = Stalls::after(Duration::from_millis(AFTER), Instant::now(), 0).judge(
+            &[in_its_pane],
+            &called,
+            1000 + AFTER,
+        );
+        let Some(Act::Tell { body, .. }) = acts.last() else { panic!("{acts:?}") };
+        assert!(
+            body.starts_with("otter (p2) has not read #4, from heron (p1), director"),
+            "{body}"
+        );
+        assert!(body.ends_with("shows its pane."), "{body}");
+
+        let joined = Member { activity: Some(Activity::Blocked), ..worker() };
+        let acts = stalls().judge(&[joined], &called, 1000 + AFTER);
+        let Some(Act::Tell { body, .. }) = acts.last() else { panic!("{acts:?}") };
+        assert!(body.starts_with("worker has not read #4"), "{body}");
+        assert!(body.ends_with("shows its pane, otter (p2)."), "{body}");
     }
 
     /// A program that stopped reading cannot be rung, so whoever waits is told, naming it.
@@ -543,7 +602,7 @@ mod tests {
             stopped: Some(("codex".to_string(), 2817)),
             ..worker()
         };
-        let acts = stalls.judge(&[stuck], 1000 + AFTER);
+        let acts = stalls.judge(&[stuck], &BTreeMap::new(), 1000 + AFTER);
         assert_eq!(kinds(&acts), ["stalled", "tell"]);
         let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
         assert!(body.contains("codex, has stopped reading its input"), "{body}");
@@ -555,9 +614,15 @@ mod tests {
     fn work_restarts_the_clock() {
         let mut stalls = stalls();
         let working = Member { activity: Some(Activity::Working), ..worker() };
-        assert!(stalls.judge(&[working], 1000 + AFTER).is_empty());
-        assert!(stalls.judge(&[worker()], 1000 + 2 * AFTER - 1).is_empty(), "free only since");
-        assert_eq!(kinds(&stalls.judge(&[worker()], 1000 + 2 * AFTER)), ["stalled", "wake_again"]);
+        assert!(stalls.judge(&[working], &BTreeMap::new(), 1000 + AFTER).is_empty());
+        assert!(
+            stalls.judge(&[worker()], &BTreeMap::new(), 1000 + 2 * AFTER - 1).is_empty(),
+            "free only since"
+        );
+        assert_eq!(
+            kinds(&stalls.judge(&[worker()], &BTreeMap::new(), 1000 + 2 * AFTER)),
+            ["stalled", "wake_again"]
+        );
     }
 
     /// Reading some of what waited ends the stall, and what is left is a new one with a clock of
@@ -565,12 +630,18 @@ mod tests {
     #[test]
     fn reading_part_of_it_starts_a_new_stall() {
         let mut stalls = stalls();
-        stalls.judge(&[worker()], 1000 + AFTER);
+        stalls.judge(&[worker()], &BTreeMap::new(), 1000 + AFTER);
         let mut later = worker();
         later.holding.first = 7;
         later.holding.first_at_ms = 1000 + AFTER;
-        assert_eq!(kinds(&stalls.judge(&[later.clone()], 1000 + AFTER + 1)), ["moving"]);
-        assert_eq!(kinds(&stalls.judge(&[later], 1000 + 2 * AFTER)), ["stalled", "wake_again"]);
+        assert_eq!(
+            kinds(&stalls.judge(&[later.clone()], &BTreeMap::new(), 1000 + AFTER + 1)),
+            ["moving"]
+        );
+        assert_eq!(
+            kinds(&stalls.judge(&[later], &BTreeMap::new(), 1000 + 2 * AFTER)),
+            ["stalled", "wake_again"]
+        );
     }
 
     /// A daemon that has just started, after a restart or taking over from another, holds no
@@ -581,13 +652,25 @@ mod tests {
         let started = 1000 + 10 * AFTER;
         let mut stalls = Stalls::after(Duration::from_millis(AFTER), Instant::now(), started);
         let coming = Member { activity: None, doorbell: Ringable::AgentToCome, ..worker() };
-        assert!(stalls.judge(&[coming], started + 1).is_empty(), "its agent is resuming");
-        assert!(stalls.judge(&[worker()], started + AFTER).is_empty(), "free only since it came");
+        assert!(
+            stalls.judge(&[coming], &BTreeMap::new(), started + 1).is_empty(),
+            "its agent is resuming"
+        );
+        assert!(
+            stalls.judge(&[worker()], &BTreeMap::new(), started + AFTER).is_empty(),
+            "free only since it came"
+        );
 
         let mut stalls = Stalls::after(Duration::from_millis(AFTER), Instant::now(), started);
-        assert!(stalls.judge(&[worker()], started + 1).is_empty(), "posted before the start");
-        assert!(stalls.judge(&[worker()], started + AFTER - 1).is_empty());
-        assert_eq!(kinds(&stalls.judge(&[worker()], started + AFTER)), ["stalled", "wake_again"]);
+        assert!(
+            stalls.judge(&[worker()], &BTreeMap::new(), started + 1).is_empty(),
+            "posted before the start"
+        );
+        assert!(stalls.judge(&[worker()], &BTreeMap::new(), started + AFTER - 1).is_empty());
+        assert_eq!(
+            kinds(&stalls.judge(&[worker()], &BTreeMap::new(), started + AFTER)),
+            ["stalled", "wake_again"]
+        );
     }
 
     /// A member only Muster has written to holds nothing, and a member nobody else waits on is
@@ -600,7 +683,7 @@ mod tests {
             holding: Holding { authors: vec![muster_msg::MUSTER.to_string()], ..worker().holding },
             ..worker()
         };
-        let acts = stalls.judge(&[blocked], 1000 + AFTER);
+        let acts = stalls.judge(&[blocked], &BTreeMap::new(), 1000 + AFTER);
         assert_eq!(kinds(&acts), ["stalled"]);
         assert!(matches!(acts[0], Act::Stalled { unlock: Unlock::Nothing, .. }));
     }

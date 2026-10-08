@@ -1004,7 +1004,8 @@ fn a_group_held_up_on_an_agent_that_stopped_reading_is_told_why_once() {
     let read = agent.read_as("integrator");
     assert_eq!(read.len(), 1, "{read:?}");
     assert!(
-        read[0].starts_with("@muster: p1 has not read #4, from integrator")
+        read[0].starts_with("@muster: ")
+            && read[0].contains(" (p1) has not read #4, from integrator")
             && read[0].contains("stopped reading its input"),
         "{read:?}"
     );
