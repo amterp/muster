@@ -21,8 +21,9 @@
 //! has gone from a connection that has: a tunnel that flapped, or a laptop waking, reads as
 //! nothing answering. So nothing is started there while the connection itself is down.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use muster_core::composition::DaemonId;
@@ -115,8 +116,50 @@ impl StartAgain {
 }
 
 /// The daemons a thread is starting again, so that a daemon that goes stale on every reconnect
-/// it tries is started by one thread at a time.
-static STARTING: Mutex<BTreeSet<DaemonId>> = Mutex::new(BTreeSet::new());
+/// it tries is started by one thread at a time - each with the claim of the thread starting it.
+static STARTING: Mutex<BTreeMap<DaemonId, u64>> = Mutex::new(BTreeMap::new());
+
+/// Where each claim's number comes from.
+static CLAIMS: AtomicU64 = AtomicU64::new(0);
+
+/// One thread's claim on starting a daemon again, given back when it is dropped - by a thread
+/// that finished, panicked or never started alike.
+///
+/// Numbered, because [`forget`] empties the set while a thread from before may still be asleep
+/// in its backoff: when that one wakes and lets go, it must not take back a claim a thread
+/// started since has made on the same daemon.
+struct Claim {
+    daemon: DaemonId,
+    number: u64,
+}
+
+impl Claim {
+    /// Claims `daemon`, unless a thread is starting it already.
+    fn on(daemon: &DaemonId) -> Option<Claim> {
+        let number = CLAIMS.fetch_add(1, Ordering::Relaxed);
+        let mut starting = poison::lock(&STARTING, "starting-again");
+        if starting.contains_key(daemon) {
+            return None;
+        }
+        starting.insert(daemon.clone(), number);
+        Some(Claim { daemon: daemon.clone(), number })
+    }
+}
+
+impl Drop for Claim {
+    fn drop(&mut self) {
+        let mut starting = poison::lock(&STARTING, "starting-again");
+        if starting.get(&self.daemon) == Some(&self.number) {
+            starting.remove(&self.daemon);
+        }
+    }
+}
+
+/// Forgets which daemons are being started again, for a session starting over. A thread still
+/// asleep finds the daemon no longer followed when it wakes, and stops.
+pub(super) fn forget() {
+    poison::lock(&STARTING, "starting-again").clear();
+}
 
 /// `daemon` has stopped answering: starts it again, on a thread of its own, if Muster manages
 /// it and nothing is starting it already.
@@ -130,17 +173,13 @@ pub(super) fn gone(daemon: &DaemonId) {
         let Some(start) = backend.start_again.clone() else { return };
         (start, Arc::clone(&backend.mirror))
     };
-    if !poison::lock(&STARTING, "starting-again").insert(daemon.clone()) {
-        return;
-    }
-    let id = daemon.clone();
+    let Some(claim) = Claim::on(daemon) else { return };
     let spawned =
         std::thread::Builder::new().name(format!("muster-start-again-{daemon}")).spawn(move || {
-            start_again(&id, &start, &mirror);
-            poison::lock(&STARTING, "starting-again").remove(&id);
+            start_again(&claim.daemon, &start, &mirror);
         });
+    // A thread that could not be made dropped its claim with the closure that held it.
     if let Err(error) = spawned {
-        poison::lock(&STARTING, "starting-again").remove(daemon);
         log::warn(
             "daemon.start_again.unstarted",
             fields! {
@@ -251,4 +290,24 @@ fn answered(daemon: &DaemonId, host: &str, mirror: &Arc<Mutex<Mirror>>, reached:
         backend.started = true;
     }
     backend.follower.retry_now();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_claim_from_before_a_reset_lets_go_of_nothing_claimed_since() {
+        let daemon = DaemonId::new("claimed-across-a-reset");
+        let before = Claim::on(&daemon).expect("nothing is starting it");
+        assert!(Claim::on(&daemon).is_none(), "two threads may start one daemon");
+
+        forget();
+        let since = Claim::on(&daemon).expect("a reset forgets every claim");
+        drop(before);
+        assert!(Claim::on(&daemon).is_none(), "the old claim let go of the new one");
+
+        drop(since);
+        assert!(Claim::on(&daemon).is_some(), "a dropped claim is given back");
+    }
 }

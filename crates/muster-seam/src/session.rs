@@ -1278,6 +1278,7 @@ pub(crate) fn reset() {
     *poison::lock(&SET_GRACE, "grace") = None;
     *poison::lock(&SETTINGS, "daemon-settings") = None;
     problems::forget();
+    starting_again::forget();
     poison::lock(&DARK, "dark-panes").clear();
 
     // Not this file's, and here anyway: what needs resetting is a property of the process
