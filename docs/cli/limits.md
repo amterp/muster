@@ -249,6 +249,20 @@ running in the pane's surface, which lives in the window and which nothing out h
 What `muster` has instead is `muster pane read`, the pane's history as the daemon holds it, and a
 caller can search that text itself.
 
+## A pane's name is not completed, and on another machine a message shows its id
+
+A pane's name (`muster docs overview`) is typed in full: the shell completion `muster
+completions` writes knows the commands and their flags, and nothing about the panes open now. The
+words no two of which begin alike are chosen so three letters say which, for when it does.
+
+`muster msg` shows an agent known by its pane as `otter (p1w3r07bsd)` only for a pane on its own
+machine. One on another machine is shown by its id and machine, `p2w3r07bsd@devenv`, since the
+machine that has the pane is the one that knows what it is called; `--to otter@devenv` still
+reaches it.
+
+`$MUSTER_PANE_NAME` is what a pane was called as it was made. A program's environment cannot
+follow a rename, so after one it is out of date; `muster window` says what the pane is called now.
+
 ## Closing with no --pane closes the pane you are in
 
 `muster pane close` acts on the pane it is running in unless told otherwise, like every other

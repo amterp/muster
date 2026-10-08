@@ -152,7 +152,10 @@ and asking again once it is answered closes it.
 
 One entry per pane every followed daemon holds, on screen or not.
 
-- `pane` - its name, and what to pass to `--pane`.
+- `pane` - its id, which `--pane` takes and which is never reused, so the one to keep.
+- `name` - what it is called, which `--pane` and `msg post --to` take too: the name somebody gave
+  it, or the word its daemon drew (`otter`). Unique on its machine; `name@daemon` says which when
+  two machines each have one. Null only for a pane nobody named, on a daemon older than names.
 - `place` - where it sits in the window's whole pane order, counting from one across every
   daemon and every tab. What `muster focus --place` takes; ⌘1 to ⌘9 name tabs first instead.
 - `daemon` - which machine holds it.
@@ -160,7 +163,7 @@ One entry per pane every followed daemon holds, on screen or not.
   place, so that one read is enough to act on: this is how a pane finds its own tab, since
   nothing in its environment says which one holds it.
 - `label` - what to call it to somebody who did not open it: the name somebody gave it, or
-  failing that its directory and the harness detected in it.
+  failing that its word, then its directory and the harness detected in it.
 - `given_name` - the name somebody gave it, empty when nobody has.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
 - `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done` or `unknown`.

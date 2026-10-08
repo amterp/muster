@@ -78,7 +78,9 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   no `--pane` and end your turn; the compaction runs once it has ended.
 - **Do not take the keyboard.** `pane new` leaves focus where it is, which is right: the person is
   reading something. `--focus` and `muster focus` are for an agent that needs them.
-- **Name every pane you make**, `--name '🤖 A'`, so a person can tell your agents apart.
+- **Name every pane you make**, `--name builder`, so a person can tell your agents apart. A pane
+  you do not name goes by a word Muster drew (`otter`), and `--pane` and `msg post --to` take
+  either name as they take the pane's id; keep the id for anything that must outlive the pane.
 - **`muster tab rename` without `--tab` renames the tab the person's keyboard is in**, not yours:
   name it from the `tab` on your own row of `muster window --json`.
 - **Fix a layout with `muster pane move`, never by closing a working agent.**

@@ -450,6 +450,15 @@ codegen - a surface that cannot express an action is a missing message, visible 
   a request that names a pane and no daemon finds the daemon from the pane. The empty pane means "the one this
   window's keyboard is on", which is what a keybinding means and what every menu item sends. The one daemon detail the
   shell is handed is `ViewRegion`'s `daemon_socket`, for the bridge, which streams a pane from the daemon directly.
+- **A pane also has a name to type**, because nobody remembers `p1w3r07bsd`: the name somebody gave it, or else a
+  word its daemon drew as it made the pane (`otter`, from `crates/muster-core/src/words.rs`). The daemon draws, and
+  not the window, because it knows which words its open panes hold and has to name a pane no window asked for; it
+  refuses to give two open panes one name. So a name is unique on one machine and not across machines, and
+  `otter@devenv` says which. The id stays the address everything is kept by - the daemon's requests, the logs, the
+  message log - and a name is read into an id where a person or an agent types one: by the window over every mirror
+  it holds, before anything else reads the request, or by the CLI over its daemon's panes when no window answers
+  (`crates/muster-core/src/pane_address.rs`). A drawn word is never typed into an agent's session, as a given name
+  is.
 - **Muster names its own tabs too, for the other half of the reason.** `t1w3r07bsd`, from the same registry and passed
   in the request that makes the tab, as a pane's name is. Nothing has to tell a tab which tab it is, so there is no
   `MUSTER_TAB` in any pane's environment. What the name buys is uniqueness: a request that names a tab and no daemon

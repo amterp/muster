@@ -26,16 +26,26 @@ panes keep working - and the window keeps its tabs, so reopening it comes back t
 
 ## Pane names
 
-A pane's name looks like `p1w3r07bsd`. Muster mints it rather than borrowing the daemon's own
-id, and it is unique across every machine a window shows - so a name is a complete address and
-needs nothing beside it.
+A pane has an id and a name, and every command takes either.
+
+The id looks like `p1w3r07bsd`. Muster mints it rather than borrowing the daemon's own, it is
+unique across every machine a window shows, and it is never reused - so an id is a complete
+address on its own, and the one a script should keep.
+
+The name is what you type. It is the name somebody gave the pane, with `pane new --name` or `pane
+rename`, or else a short word its daemon drew when it made the pane: `otter`, `maple`, `cobalt`,
+no two of which begin with the same three letters. A name is unique among one machine's open
+panes and free again once its pane closes. Two machines can each have an `otter`, and
+`otter@devenv` says which, by the machine name below; a name two panes share is refused, naming
+each one. `muster window` leads a pane's row with its name, and `--json` carries it as `name`.
 
 Every command that acts on a pane takes `--pane`. Leaving it out means the pane the command is
 running in, read from `$MUSTER_PANE`, and failing that the pane the window's keyboard is on.
 
-Muster sets `$MUSTER_PANE` in every pane it creates. A pane created by something else has a
-name and can be addressed by anybody, but has nothing in its environment - see `muster docs
-limits`.
+Muster sets `$MUSTER_PANE`, the id, in every pane it creates, and `$MUSTER_PANE_NAME`, what the
+pane was called as it was made: a program's environment cannot follow a rename, so `muster
+window` says what a pane is called now. A pane created by something else has an id and a name
+and can be addressed by anybody, but has nothing in its environment - see `muster docs limits`.
 
 ## Tab names
 
@@ -69,7 +79,7 @@ you were leaving:
 
 On a machine already showing panes this splits the one that machine's region has the keyboard
 on. On a machine showing nothing it opens the first pane there, which is the only reason the
-flag exists: a pane's name is already a complete address, so the machine is worth naming only
+flag exists: a pane's id is already a complete address, so the machine is worth naming only
 when you have no pane on it.
 
 That is the state a devenv is in the day you name it in your config, and the state your own
@@ -179,7 +189,8 @@ carries `"answered_by": "daemon"`, which a window's answer never does. The daemo
 no keyboard and nothing on screen, so those are left out rather than made up; a tab has no label
 unless somebody gave it one, and the machine is called by its host name. The other three print
 exactly what they print through a window, since their answer means the same thing either way.
-With no window there is no keyboard, so a pane is named with `--pane` or `$MUSTER_PANE`.
+With no window there is no keyboard, so a pane is named with `--pane` or `$MUSTER_PANE`, and a
+pane's name is read among the panes of this machine, called by its host name.
 
 Every other verb needs a window, and says so, except `muster msg`, which asks the daemon (`muster
 docs msg`), and `harness install`, `docs` and `completions`, which ask neither. Making, splitting, arranging, resizing, zooming and

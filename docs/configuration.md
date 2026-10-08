@@ -490,8 +490,10 @@ harness's own rename, `/rename <name>`, at the agent's prompt once it is idle (`
 harnesses`). It is on because a pane and its session going by one name is the point of naming
 either; `false` keeps the pane's name in Muster, for anyone who would rather nothing were typed
 into their agents unasked. It stops only that direction: a session renamed in its harness still
-renames the pane, since nothing is typed for that. The daemon is the one that types, so it is
-handed the answer as a setting, as `scrollback_bytes` is below.
+renames the pane, since nothing is typed for that. The word a pane goes by until somebody names
+it (`otter`, `muster docs overview`) is never typed into a session either way: a session keeps
+its own name until a person names the pane. The daemon is the one that types, so it is handed the
+answer as a setting, as `scrollback_bytes` is below.
 
 `compact_at` is how full, in percent, an agent's context gets before Muster compacts it unasked,
 by typing the harness's compact command at its prompt once it is idle and the prompt is empty, as

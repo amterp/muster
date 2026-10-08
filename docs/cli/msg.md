@@ -41,9 +41,12 @@ Every verb works out who is asking, in this order:
   shell in a pane with no agent in it. On a devenv the laptop has linked to, that is you as the
   laptop's member, `@human@<laptop>` (below).
 
-`join --name NAME` takes a name. A session that runs any other verb first is registered under
-the last part of its working directory - `muster-5` for a session in `~/src/muster-5` - with
-`-2`, `-3` added when a live session already has that name. Joining under the name of a
+`join --name NAME` takes a name. An agent in a pane that runs any other verb first is its pane:
+known by the pane's id, which is never reused, and shown by the pane's name beside it, `otter
+(p29te12q4t)`, so naming a pane with `pane new --name` names the agent in it here too. Any other
+session that runs another verb first is registered under the last part of its working directory
+- `muster-5` for a session in `~/src/muster-5` - with `-2`, `-3` added when a live session
+already has that name. Joining under the name of a
 participant whose session has gone takes it over, with its place in every group, and `join`
 names those groups so you can leave the ones you are done with:
 
@@ -75,13 +78,17 @@ an unaddressed post from someone in several, is refused until it says which.
 message in it. An unaddressed post wakes every member but its author, unless the group's policy
 says otherwise.
 
-**`--to` takes a pane's name too**, such as the one `muster pane new` prints. An agent in that
-pane need not have joined anything, or even have started yet: it becomes a participant named
-after the pane, and whatever runs `muster msg` in that pane from then on is it. When that agent
-joins under a name of its own, the name takes the pane's place in every group the pane was in,
-whatever their policies say about joining, and the log shows the pane leaving and the name
-joining. From then on the pane's name means that participant. A name or pane that means nobody
-on this machine is looked for on the machines linked to it (below).
+**`--to` takes a pane too**, by its id, such as the one `muster pane new` prints, or by its name,
+`otter` (`muster docs overview`). An agent in that pane need not have joined anything, or even
+have started yet: it becomes a participant known by the pane's id and shown by the pane's name,
+and whatever runs `muster msg` in that pane from then on is it. A group made for a pair is named
+by what its panes are called, `muster-integrator+otter`. Once the pane closes its name is free,
+and the log goes on showing the participant by the name its pane last had, beside the id; the
+name then means whichever pane holds it now. When that agent joins under a name of its own, the
+name takes the pane's place in every group the pane was in, whatever their policies say about
+joining, and the log shows the pane leaving and the name joining. From then on the pane means
+that participant. A name or pane that means nobody on this machine is looked for on the machines
+linked to it (below), so `otter@devenv` reaches the devenv's `otter`.
 
 ## A group's policy
 

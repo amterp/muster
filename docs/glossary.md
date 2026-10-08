@@ -60,9 +60,13 @@ One name per concept; docs and code use these terms. Alphabetical.
   away.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.
 - **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
-- **pane name** - what Muster calls a pane: `p1w3r07bsd`, minted by Muster rather than borrowed from the backend,
-  unique across every attached machine, and never reused. What every message and every CLI argument means by a pane.
-  A pane reads its own from `MUSTER_PANE`.
+- **pane id** - what Muster calls a pane for good: `p1w3r07bsd`, minted by Muster rather than borrowed from the
+  backend, unique across every attached machine, and never reused. What every message and log means by a pane. A pane
+  reads its own from `MUSTER_PANE`. The code calls it the pane's name (`muster_core::names`), from before panes had
+  the name below.
+- **pane name** - what a person types for a pane: the name somebody gave it, or else the **word** its daemon drew
+  (`otter`). Unique among one daemon's open panes and free again once the pane closes; `otter@devenv` when two
+  machines both have one. Taken wherever a pane id is.
 - **pane tree** - the split layout inside one tab; daemon truth.
 - **participant** - an agent, or the human as `@human`, known by name to one daemon's messaging, with a place in
   the log of every group it has joined. Another machine's participant is `name@machine` there.
