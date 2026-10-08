@@ -169,8 +169,9 @@ One entry per pane every followed daemon holds, on screen or not.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
 - `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done`, `unknown` or `unreachable`.
 - `last_state` - what the pane read before its machine stopped answering, while `state` is
-  `unreachable`; `null` otherwise. Such a pane leaves out `facts`, `progress`, `unread_input`,
-  `rang` and `reported`, which would read as the present, and the fields it keeps are from then.
+  `unreachable`; `null` otherwise. Such a pane leaves out `subtitle`, `facts`, `progress`,
+  `unread_input`, `rang` and `reported`, which would read as the present, and the fields it keeps
+  are from then.
 - `reported` - whether the state is the agent's own report rather than what Muster read off its
   screen.
 - `unreadable` - whether Muster's rules have stopped reading this agent's screen. Its state is

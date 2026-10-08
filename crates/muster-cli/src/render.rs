@@ -1102,7 +1102,7 @@ fn unplaced_tab_json(
 /// a script that reads `unread_input` off a pane in this window reads it off a hidden one too.
 ///
 /// An unreachable pane leaves out every field that would read as the present - its facts, its
-/// progress, its unread input, a bell and whether it reports - so a filter such as
+/// progress, its unread input, a bell, whether it reports, and its title - so a filter such as
 /// `.facts.context_used > 80` does not find an agent that may be gone. `last_state` says what it
 /// was.
 fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) -> Value {
@@ -1127,13 +1127,13 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
             })
         }),
     });
-    if let (Value::Object(row_fields), Value::Object(mut said)) = (&mut row, said) {
+    if let (Value::Object(row_fields), Value::Object(said)) = (&mut row, said) {
+        row_fields.extend(said);
         if agent.is_some_and(|agent| agent.state == "unreachable") {
-            for stale in ["facts", "progress", "unread_input", "rang", "reported"] {
-                said.remove(stale);
+            for stale in ["facts", "progress", "unread_input", "rang", "reported", "subtitle"] {
+                row_fields.remove(stale);
             }
         }
-        row_fields.extend(said);
     }
     row
 }
@@ -1771,7 +1771,7 @@ mod tests {
         assert_eq!(json["panes"][0]["state"], "unreachable", "{json}");
         assert_eq!(json["panes"][0]["last_state"], "blocked", "{json}");
         assert!(json["panes"][1]["last_state"].is_null(), "{json}");
-        for stale in ["facts", "progress", "unread_input", "rang", "reported"] {
+        for stale in ["facts", "progress", "unread_input", "rang", "reported", "subtitle"] {
             assert!(json["panes"][0].get(stale).is_none(), "{stale} read as current: {json}");
             assert!(json["panes"][1].get(stale).is_some(), "a live pane lost {stale}: {json}");
         }
