@@ -52,8 +52,10 @@ pub(crate) struct Member {
     pub(crate) holding: Holding,
     /// Its agent's state, or nothing when no agent is in its pane any more.
     pub(crate) activity: Option<Activity>,
-    /// Whether its agent's prompt can be read, without which it is never rung.
-    pub(crate) rings: bool,
+    /// Whether its agent can be rung: one whose prompt cannot be read never is, and one still
+    /// to come in a new pane, as every agent is while a restarted daemon finds them again, is
+    /// not held up yet.
+    pub(crate) doorbell: Ringable,
     /// A wake for it is queued, rung and not yet taken, or handed to a command.
     pub(crate) waking: bool,
     /// The program in its pane that has stopped reading, and what it left unread.
@@ -98,8 +100,8 @@ struct Episode {
     /// The oldest message it has not read, which names the episode: reading past it ends this
     /// one, and anything older still unread begins another.
     first: u64,
-    /// When the member was last free to read it: the message's posting, or the last time its
-    /// agent was seen at work since.
+    /// When the member was last free to read it: the message's posting, this daemon's start, or
+    /// the last time its agent was seen at work since, whichever is latest.
     since_ms: u64,
     stage: Stage,
 }
@@ -118,20 +120,33 @@ pub(crate) struct Stalls {
     every: Duration,
     due: Instant,
     episodes: HashMap<(String, String), Episode>,
-    /// When each member was last seen at work, in the host's milliseconds.
+    /// When each member was last seen at work, or with its agent still to come, in the host's
+    /// milliseconds.
     working: HashMap<String, u64>,
+    /// When this daemon started, in the host's milliseconds. Nothing posted before it has been
+    /// waiting on this daemon's watch, so no clock starts earlier: a daemon that restarted, or
+    /// took over from another, would otherwise find every unread message stalled at its first
+    /// look.
+    started_ms: u64,
 }
 
 impl Stalls {
     pub(crate) fn new(now: Instant) -> Stalls {
-        Stalls::after(stall_after(), now)
+        Stalls::after(stall_after(), now, now_ms())
     }
 
-    fn after(after: Duration, now: Instant) -> Stalls {
+    fn after(after: Duration, now: Instant, started_ms: u64) -> Stalls {
         let after_ms = u64::try_from(after.as_millis()).unwrap_or(u64::MAX);
         // Often enough that a stall is said within a quarter of its own length of starting.
         let every = (after / 4).clamp(Duration::from_millis(250), Duration::from_secs(30));
-        Stalls { after_ms, every, due: now, episodes: HashMap::new(), working: HashMap::new() }
+        Stalls {
+            after_ms,
+            every,
+            due: now,
+            episodes: HashMap::new(),
+            working: HashMap::new(),
+            started_ms,
+        }
     }
 
     /// Weighs what holds each group now, `members` being every member a message waits on, and
@@ -141,12 +156,14 @@ impl Stalls {
         let mut holding: Vec<(String, String)> = Vec::new();
         for member in members {
             let key = (member.holding.name.clone(), member.holding.group.clone());
-            if member.activity == Some(Activity::Working) {
+            if member.activity == Some(Activity::Working)
+                || member.doorbell == Ringable::AgentToCome
+            {
                 self.working.insert(key.0.clone(), now_ms);
                 continue;
             }
             holding.push(key.clone());
-            let free_since = self.working.get(&key.0).copied().unwrap_or_default();
+            let free_since = self.working.get(&key.0).copied().unwrap_or(self.started_ms);
             let since_ms = member.holding.first_at_ms.max(free_since);
             let episode = self.episodes.entry(key.clone()).or_insert(Episode {
                 first: member.holding.first,
@@ -214,7 +231,7 @@ impl Stalls {
 /// could take one, and otherwise whoever waits on it told why.
 fn unlock(member: &Member) -> Unlock {
     let ringable = matches!(member.activity, Some(Activity::Idle | Activity::Waiting));
-    if !member.holding.woken && !member.waking && member.rings && ringable {
+    if !member.holding.woken && !member.waking && member.doorbell == Ringable::Rings && ringable {
         Unlock::WakeAgain
     } else if waiting_on(member).is_empty() {
         Unlock::Nothing
@@ -265,7 +282,7 @@ fn why(member: &Member) -> String {
         Some(Activity::Blocked) => {
             "it is at a dialog, waiting for somebody to answer it".to_string()
         }
-        _ if !member.rings => {
+        _ if member.doorbell != Ringable::Rings => {
             "its agent's prompt cannot be read, so it is never rung; it sees the message when it \
              next reads"
                 .to_string()
@@ -313,7 +330,7 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls) -> Duration {
                 let waking = messages.wakes_for(&holding.name, &holding.group);
                 Member {
                     activity: seen.and_then(|seen| seen.activity),
-                    rings: panes.doorbell(&holding.pane) == Ringable::Rings,
+                    doorbell: panes.doorbell(&holding.pane),
                     stopped: seen.and_then(|seen| seen.stopped.clone()),
                     waking,
                     holding,
@@ -393,7 +410,7 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
                     "authors" => held.authors.join(","),
                     "woken" => held.woken,
                     "waking" => member.waking,
-                    "rings" => member.rings,
+                    "rings" => member.doorbell == Ringable::Rings,
                     "program" => program,
                     "unread_bytes" => bytes,
                     "members" => others.get(&held.group).cloned().unwrap_or_default(),
@@ -461,7 +478,7 @@ mod tests {
     const AFTER: u64 = 120_000;
 
     fn stalls() -> Stalls {
-        Stalls::after(Duration::from_millis(AFTER), Instant::now())
+        Stalls::after(Duration::from_millis(AFTER), Instant::now(), 0)
     }
 
     /// `worker` in `p2`, idle, with #4 from `director` unread since 1000 and its ring given up.
@@ -477,7 +494,7 @@ mod tests {
                 woken: false,
             },
             activity: Some(Activity::Idle),
-            rings: true,
+            doorbell: Ringable::Rings,
             waking: false,
             stopped: None,
         }
@@ -554,6 +571,23 @@ mod tests {
         later.holding.first_at_ms = 1000 + AFTER;
         assert_eq!(kinds(&stalls.judge(&[later.clone()], 1000 + AFTER + 1)), ["moving"]);
         assert_eq!(kinds(&stalls.judge(&[later], 1000 + 2 * AFTER)), ["stalled", "wake_again"]);
+    }
+
+    /// A daemon that has just started, after a restart or taking over from another, holds no
+    /// member to account for what waited before it: the clock starts at its start, and a member
+    /// whose agent is still to come in its pane is not held up at all until it has come.
+    #[test]
+    fn a_restarted_daemon_starts_every_clock_at_its_own_start() {
+        let started = 1000 + 10 * AFTER;
+        let mut stalls = Stalls::after(Duration::from_millis(AFTER), Instant::now(), started);
+        let coming = Member { activity: None, doorbell: Ringable::AgentToCome, ..worker() };
+        assert!(stalls.judge(&[coming], started + 1).is_empty(), "its agent is resuming");
+        assert!(stalls.judge(&[worker()], started + AFTER).is_empty(), "free only since it came");
+
+        let mut stalls = Stalls::after(Duration::from_millis(AFTER), Instant::now(), started);
+        assert!(stalls.judge(&[worker()], started + 1).is_empty(), "posted before the start");
+        assert!(stalls.judge(&[worker()], started + AFTER - 1).is_empty());
+        assert_eq!(kinds(&stalls.judge(&[worker()], started + AFTER)), ["stalled", "wake_again"]);
     }
 
     /// A member only Muster has written to holds nothing, and a member nobody else waits on is
