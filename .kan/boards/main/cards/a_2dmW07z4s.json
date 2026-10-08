@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "reach-the-hidden",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791426655307,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-07 with hidden panes. Hidden panes are listed in the agent list's Hidden section and in muster window, but with the sidebar closed there is no way to see or bring one back except a chord to a pane or the CLI. A Window-menu (or menu-bar) Hidden submenu listing them by label and state would cover it.",
+  "id": "a_2dmW07z4s",
+  "position": "b0v",
+  "title": "Reach the Hidden list from the menu bar while the sidebar is closed",
+  "type": "enhancement",
+  "updated_at_millis": 1791426655307,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791426655307}
+  ]
+}

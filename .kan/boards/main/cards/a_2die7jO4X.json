@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791417434427,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-05: \"temporary hide or archive\", and 2026-10-07: \"headless muster agents ie No visible pane but can bring forward\". Confirmed 2026-10-07: \"I was kind of imagining like a right click where you can hide a pane, and it goes into like a hidden menu where you can then later bring them back if you want to.\" And: \"I guess the hidden is kind of the same as headless, right?\"\n\nSo: right-click a pane -\u003e Hide. The pane leaves its tab and its agent keeps running. A Hidden list (menu or sidebar section) shows hidden panes with their states and brings one back. The CLI gets the same: `muster pane hide`, `muster pane show`, and `muster pane new --hidden` for a pane made hidden from the start, which is the headless agent.\n\nOpen design questions: where a shown pane goes (its old tab and place, the current tab, a new tab); whether a hidden pane still notifies (see the quiet-pane card (a_2die7W9ru)); what `muster window` prints for it (today `(hidden)` means a pane in a tab not on screen, a different thing); and whether the daemon can hold a pane in no tab at all, which the laptop-gone card (a_2die7Kz7l) also wants.\n\nThe bigger shape this is stage 1 of is the sub-agents card (a_2die894mw).",
   "id": "a_2die7jO4X",
-  "position": "b0Z",
+  "position": "YxN",
   "title": "🫥 Hide a pane from a right-click, and bring it back from a Hidden list",
   "type": "feature",
-  "updated_at_millis": 1791417447054,
+  "updated_at_millis": 1791427103767,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791417434427}
+    {"field":"column","value":"backlog-hi","at":1791417434427},
+    {"field":"column","value":"done","at":1791427103767}
   ]
 }
