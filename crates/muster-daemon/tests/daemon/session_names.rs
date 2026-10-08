@@ -141,6 +141,35 @@ fn the_name_a_session_starts_with_gives_way_to_the_name_its_pane_already_has() {
     assert_eq!(p1.renames_heard(), ["/rename lexer"]);
 }
 
+/// The word a pane goes by until somebody names it is the daemon's, and not a name for the
+/// session: typing it in would rename every agent's session after a word nobody chose, and the
+/// session keeps whatever it is called.
+#[test]
+fn the_word_a_pane_was_drawn_is_never_typed_into_its_session() {
+    let mut p1 = Pane::named(None);
+    p1.daemon.run_agent("p1");
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.renames_heard(), Vec::<String>::new());
+    p1.reports("resumed");
+    assert_eq!(p1.label().as_deref(), Some("resumed"), "the session's name still names the pane");
+}
+
+/// Two panes here cannot share a name, and a session's name is no exception: the pane keeps the
+/// name it has rather than taking one another pane goes by.
+#[test]
+fn a_session_name_another_pane_has_does_not_rename_the_pane() {
+    let mut p1 = Pane::named(None);
+    let p2 = proto::pane_request::Create {
+        label: Some("critic".to_string()),
+        ..create("p2", beside("p1", proto::Side::Right))
+    };
+    make(&mut p1.control, p2);
+    p1.daemon.run_agent("p1");
+    p1.reports("");
+    p1.reports("critic");
+    assert_eq!(p1.label(), None);
+}
+
 #[test]
 fn a_session_name_needs_its_agent_and_counts_only_from_the_agent_in_the_pane() {
     let mut p1 = Pane::named(None);

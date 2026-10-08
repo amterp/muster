@@ -16,6 +16,20 @@ pub mod version;
 
 include!(concat!(env!("OUT_DIR"), "/muster.daemon.rs"));
 
+impl Pane {
+    /// What the pane is called: the name somebody gave it, or failing that the word its daemon
+    /// drew. Here so that every reader of a record derives it one way, since a name is an
+    /// address and two readers disagreeing would send a request to the wrong pane. None only
+    /// from a daemon before 1.5 for a pane nobody named.
+    pub fn name(&self) -> Option<&str> {
+        self.label
+            .as_deref()
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+            .or_else(|| self.word.as_deref().filter(|word| !word.is_empty()))
+    }
+}
+
 /// What a request asks, as `pane.read` or `session.subscribe`: the name a log gives it on both
 /// sides of the socket, so a line in the app and a line in the daemon about one request read
 /// alike. Nothing of what the request carries, which can be what somebody typed.

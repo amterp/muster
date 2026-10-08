@@ -187,6 +187,7 @@ impl Shared {
                     reports,
                     host: effects::host_name(),
                     reserved: HashSet::new(),
+                    naming: HashMap::new(),
                     persister,
                     log,
                     stopping: false,
@@ -376,6 +377,9 @@ pub(crate) struct Session {
     /// Pane and tab names a create has claimed while its process starts, so a second create
     /// cannot claim them too.
     reserved: HashSet<String>,
+    /// Pane names a create or a restore has claimed while its process starts, and the pane each
+    /// is for, so that no other pane can be called the same meanwhile.
+    naming: HashMap<String, String>,
     /// Writes down what a restart needs, whenever it changes.
     persister: Arc<Persister>,
     /// The daemon's own log, which a connection can follow. None when logging is off.
@@ -968,6 +972,8 @@ fn keep_what_was_lost(path: &Path, lost: &Lost) -> bool {
 pub(crate) struct Starting {
     pane: String,
     label: Option<String>,
+    /// The word drawn for it, and claimed in `naming` with the name it was given, if any.
+    word: String,
     command: Option<String>,
     quiet: bool,
     target: Target,
@@ -1233,6 +1239,12 @@ impl Session {
         if create.command.as_deref() == Some("") {
             return Err(Reply::refused("the command is empty; leave it out to start a shell"));
         }
+        let given = given_name(create.label.as_deref()).map(str::to_string);
+        if let Some(given) = &given
+            && let Some(holder) = self.called(given, &create.pane)
+        {
+            return Err(name_held(given, holder));
+        }
         let target = self.target(create.placement, &create.pane)?;
         let neighbour = match &target {
             Target::Beside { pane, .. } => self.pane_index(pane).map(|index| &self.panes[index]),
@@ -1247,15 +1259,23 @@ impl Session {
             None => neighbour.and_then(Pane::live_cwd).unwrap_or_else(|| self.home.clone()),
         };
 
-        let (argv, environment) = self.launch(&create.pane, create.command.as_deref(), &create.env);
+        let word = self.draw_word(given.as_deref());
+        let name = given.clone().unwrap_or_else(|| word.clone());
+        let (argv, environment) =
+            self.launch(&create.pane, &name, create.command.as_deref(), &create.env);
 
         self.reserved.insert(create.pane.clone());
         if let Target::NewTab { name, .. } = &target {
             self.reserved.insert(name.clone());
         }
+        self.naming.insert(word.clone(), create.pane.clone());
+        if let Some(given) = given {
+            self.naming.insert(given, create.pane.clone());
+        }
         Ok(Starting {
             pane: create.pane,
             label: create.label,
+            word,
             command: create.command,
             quiet: create.quiet,
             target,
@@ -1271,18 +1291,19 @@ impl Session {
     fn launch(
         &self,
         pane: &str,
+        name: &str,
         command: Option<&str>,
         requested: &HashMap<String, String>,
     ) -> Launched {
         let shell = self.settings.shell.clone().unwrap_or_default();
-        self.launch_with(&shell, pane, command, requested)
+        self.launch_with(&shell, spawn::Which { pane, name }, command, requested)
     }
 
     /// As [`Session::launch`], under `shell` rather than the configured one.
     fn launch_with(
         &self,
         shell: &proto::Shell,
-        pane: &str,
+        which: spawn::Which<'_>,
         command: Option<&str>,
         requested: &HashMap<String, String>,
     ) -> Launched {
@@ -1290,7 +1311,7 @@ impl Session {
         let environment = spawn::environment(
             &self.inherited,
             requested,
-            pane,
+            which,
             command,
             &self.data,
             &self.reachable,
@@ -1319,6 +1340,7 @@ impl Session {
         if let Target::NewTab { name, .. } = &starting.target {
             self.reserved.remove(name);
         }
+        self.naming.retain(|_, pane| *pane != starting.pane);
         let program = &starting.argv[0];
         let (master, child) = match started {
             Ok(started) => started,
@@ -1345,6 +1367,7 @@ impl Session {
         let record = proto::Pane {
             pane: starting.pane.clone(),
             label: starting.label,
+            word: Some(starting.word),
             cwd: starting.cwd.display().to_string(),
             command: starting.command,
             quiet: starting.quiet,
@@ -1813,6 +1836,22 @@ impl Session {
         let Some(taken) = taken else {
             return pane.session_name.wanted() != wanted.as_deref();
         };
+        let changed = pane.session_name.wanted() != wanted.as_deref();
+        let name = pane.record.pane.clone();
+        if let Some(holder) = given_name(Some(&taken)).and_then(|taken| self.called(taken, &name)) {
+            log::info(
+                "session.name.held",
+                fields! {
+                    "pane" => name,
+                    "agent" => agent,
+                    "holder" => holder,
+                    "impact" => "the pane keeps its name, since another pane here is called what \
+                                 its agent's session is",
+                },
+            );
+            return changed;
+        }
+        let pane = &mut self.panes[index];
         log::info("session.name.taken", fields! { "pane" => pane.record.pane, "agent" => agent });
         pane.record.label = Some(taken);
         let record = pane.record.clone();
@@ -2088,11 +2127,28 @@ impl Session {
         let Some(index) = self.pane_index(&rename.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", rename.pane));
         };
-        let record = &mut self.panes[index].record;
-        if record.label == rename.label {
+        if self.panes[index].record.label == rename.label {
             return Reply::already();
         }
+        let given = given_name(rename.label.as_deref());
+        if let Some(given) = given
+            && let Some(holder) = self.called(given, &rename.pane)
+        {
+            return name_held(given, holder);
+        }
+        // Back to its word, which another pane may have been named since.
+        let word = self.panes[index].record.word.clone();
+        let redrawn = match (given, word) {
+            (None, Some(word)) if self.called(&word, &rename.pane).is_some() => {
+                Some(self.draw_word(None))
+            }
+            _ => None,
+        };
+        let record = &mut self.panes[index].record;
         record.label = rename.label;
+        if redrawn.is_some() {
+            record.word = redrawn;
+        }
         let record = record.clone();
         let pane = &mut self.panes[index];
         pane.session_name.named(&record.pane, record.label.as_deref());
@@ -2499,6 +2555,7 @@ impl Session {
                 .map(|pane| persist::Pane {
                     name: pane.record.pane.clone(),
                     label: pane.record.label.clone(),
+                    word: pane.record.word.clone(),
                     cwd: PathBuf::from(&pane.record.cwd),
                     grid: pane.io.grid(),
                     resume: pane.resume.clone(),
@@ -2556,6 +2613,18 @@ impl Session {
                 lost.panes.push(name.to_string());
                 continue;
             }
+            // The word it had, unless a client's pane took it first; a state file from before
+            // words has none, and gets one now.
+            let mut pane = pane.clone();
+            let word = pane
+                .word
+                .take()
+                .filter(|word| self.called(word, name).is_none())
+                .unwrap_or_else(|| self.draw_word(given_name(pane.label.as_deref())));
+            self.naming.insert(word.clone(), name.to_string());
+            pane.word = Some(word.clone());
+            let called = given_name(pane.label.as_deref()).unwrap_or(&word).to_string();
+            let which = spawn::Which { pane: name, name: &called };
             let shell = self.settings.shell.clone().unwrap_or_default();
             let resume = pane.resume.clone().filter(|_| self.resumes_agents());
             let command = resume.as_ref().map(|resume| {
@@ -2564,11 +2633,11 @@ impl Session {
                     &resume.command,
                 )
             });
-            let launch = self.launch_with(&shell, name, command.as_deref(), &HashMap::new());
-            let plain = self.launch_with(&shell, name, None, &HashMap::new());
+            let launch = self.launch_with(&shell, which, command.as_deref(), &HashMap::new());
+            let plain = self.launch_with(&shell, which, None, &HashMap::new());
             let fallback = proto::Shell { command: None, ..shell };
-            let fallback = self.launch_with(&fallback, name, None, &HashMap::new());
-            panes.push(RestoringPane { saved: pane.clone(), resume, launch, plain, fallback });
+            let fallback = self.launch_with(&fallback, which, None, &HashMap::new());
+            panes.push(RestoringPane { saved: pane, resume, launch, plain, fallback });
         }
         self.reserved.insert(tab.name.clone());
         for pane in &panes {
@@ -2584,6 +2653,7 @@ impl Session {
         self.reserved.remove(&tab.name);
         for pane in &panes {
             self.reserved.remove(&pane.saved.name);
+            self.naming.retain(|_, restoring| *restoring != pane.saved.name);
         }
         let mut back = HashSet::new();
         for (pane, Restarted { cwd, program, started, resumed }) in panes.into_iter().zip(started) {
@@ -2606,6 +2676,7 @@ impl Session {
             let record = proto::Pane {
                 pane: name.clone(),
                 label: pane.saved.label,
+                word: pane.saved.word,
                 cwd: cwd.display().to_string(),
                 command: resume.as_ref().map(|resume| resume.command.join(" ")),
                 quiet: pane.saved.quiet,
@@ -2820,7 +2891,7 @@ impl Session {
     /// nothing until [`Session::release_readers`].
     pub(crate) fn adopt(
         &mut self,
-        record: proto::Pane,
+        mut record: proto::Pane,
         grid: Grid,
         master: OwnedFd,
         process: Option<i32>,
@@ -2830,6 +2901,10 @@ impl Session {
         let mut screen = Screen::new(grid, &self.settled).map_err(|error| error.to_string())?;
         drop(screen.output(replay));
         screen.replayed_from(resuming.oldest_row);
+        // A daemon from before words hands its panes over with none.
+        if record.word.is_none() {
+            record.word = Some(self.draw_word(given_name(record.label.as_deref())));
+        }
         self.next_serial += 1;
         let watching = Watching {
             ended: &self.ended,
@@ -2936,6 +3011,21 @@ impl Session {
         self.panes.iter().position(|candidate| candidate.record.pane == pane)
     }
 
+    /// The pane other than `except` that is called `name` here: one open, or one starting.
+    fn called(&self, name: &str, except: &str) -> Option<&str> {
+        self.panes
+            .iter()
+            .map(|pane| &pane.record)
+            .find(|record| record.pane != except && record.name() == Some(name))
+            .map(|record| record.pane.as_str())
+            .or_else(|| self.naming.get(name).filter(|pane| *pane != except).map(String::as_str))
+    }
+
+    /// A word for a pane that no pane here is called, nor `besides`, the name it is being given.
+    fn draw_word(&self, besides: Option<&str>) -> String {
+        muster_core::words::draw(|word| besides == Some(word) || self.called(word, "").is_some())
+    }
+
     fn tab_index(&self, tab: &str) -> Option<usize> {
         self.tabs.iter().position(|candidate| candidate.name == tab)
     }
@@ -2954,6 +3044,19 @@ fn scrollback(settings: &proto::Settings) -> usize {
 
 /// Muster's names are minted as short ASCII words (`p1w3r07bsd`). The daemon holds any name to
 /// that shape, since it becomes an environment variable's value and, later, a line in a file.
+/// The name somebody gave a pane, as its record reads it (`proto::Pane::name`): blank is none.
+fn given_name(label: Option<&str>) -> Option<&str> {
+    label.map(str::trim).filter(|label| !label.is_empty())
+}
+
+/// A pane cannot be called what another pane here is, because a name says which pane it is.
+fn name_held(name: &str, holder: &str) -> Reply {
+    Reply::refused(format!(
+        "pane {holder} on this daemon is already called {name:?}, and two panes cannot share a \
+         name, since a name says which pane it is; choose another, or rename {holder} first"
+    ))
+}
+
 pub(crate) fn valid_name(what: &str, name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > 64 || !name.bytes().all(|byte| byte.is_ascii_graphic()) {
         return Err(format!(

@@ -25,6 +25,7 @@ mod log;
 mod messaging;
 mod migration;
 mod opencode_live;
+mod pane_names;
 mod panes;
 mod persistence;
 mod relay;

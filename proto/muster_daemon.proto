@@ -1256,6 +1256,13 @@ message Pane {
   // A view raises nothing for the person about this pane: no banner, and no ask. Set when the
   // pane is made or with `PaneRequest.Quiet`, and written to the state file. Since 1.5.
   bool quiet = 16;
+  // Since 1.5. A short word the daemon drew for the pane (`otter`) as it was made, which the pane
+  // goes by while it has no `label`. A pane's name is its label, or failing that this word, and
+  // no two live panes on one daemon share a name, so a name says which pane it is on this
+  // machine. A drawn word is never typed into the agent's session, as a label is. Kept for the
+  // pane's life and written to the state file; free for another pane once this one closes.
+  // Absent from a daemon before 1.5.
+  optional string word = 17;
 }
 
 // Input a pane's program has left unread (`Pane.unread_input`), as it stood when the daemon

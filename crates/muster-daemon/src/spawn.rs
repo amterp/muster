@@ -15,6 +15,11 @@ use crate::shell_integration::{self, Integration};
 /// overrides: a pane must not be told it is some other pane.
 const PANE_NAME: &str = "MUSTER_PANE";
 
+/// What the pane was called as it was made: the name somebody gave it, or the word its daemon
+/// drew. An agent can say it, and `--pane` and `--to` take it. Not kept current, since nothing
+/// can change a running process's environment, so `muster window` says what it is called now.
+const PANE_CALLED: &str = "MUSTER_PANE_NAME";
+
 /// Where a pane's command travels to its shell (`argv` says why), which the command and
 /// everything it starts can also read.
 pub(crate) const PANE_COMMAND: &str = "MUSTER_PANE_COMMAND";
@@ -43,8 +48,15 @@ pub(crate) struct Reachable {
 /// `MUSTER_SOCKET`; the daemon supplies the others. `MUSTER_LOG_FILE` names the log of the run
 /// that started the daemon, which the daemon outlives: a `muster` run in a pane would write
 /// into that run's file, so only a pane's create may name one.
-const NOT_INHERITED: [&str; 6] =
-    [PANE_NAME, "MUSTER_SOCKET", PANE_COMMAND, DAEMON, DAEMON_SOCKET, "MUSTER_LOG_FILE"];
+const NOT_INHERITED: [&str; 7] = [
+    PANE_NAME,
+    PANE_CALLED,
+    "MUSTER_SOCKET",
+    PANE_COMMAND,
+    DAEMON,
+    DAEMON_SOCKET,
+    "MUSTER_LOG_FILE",
+];
 
 /// Where Ghostty's integration finds the `ghostty` its ssh features run, and the directory its
 /// `path` feature appends to the PATH (`Data::bin`).
@@ -252,6 +264,13 @@ fn shell_features(cursor: Option<&proto::Cursor>, shell: &proto::Shell) -> Strin
 }
 
 /// The settings a pane's environment follows.
+/// Which pane an environment is for: its id, and what it is called.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Which<'a> {
+    pub(crate) pane: &'a str,
+    pub(crate) name: &'a str,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Settings<'a> {
     pub(crate) shell: &'a proto::Shell,
@@ -273,7 +292,7 @@ pub(crate) struct Settings<'a> {
 pub(crate) fn environment(
     inherited: &[(OsString, OsString)],
     requested: &HashMap<String, String>,
-    pane: &str,
+    which: Which<'_>,
     command: Option<&str>,
     data: &Data,
     reachable: &Reachable,
@@ -289,7 +308,7 @@ pub(crate) fn environment(
     let mut requested: Vec<_> = requested.iter().collect();
     requested.sort();
     for (name, value) in requested {
-        if ![PANE_NAME, PANE_COMMAND, DAEMON, DAEMON_SOCKET].contains(&name.as_str()) {
+        if ![PANE_NAME, PANE_CALLED, PANE_COMMAND, DAEMON, DAEMON_SOCKET].contains(&name.as_str()) {
             put(&mut environment, name, value);
         }
     }
@@ -302,7 +321,8 @@ pub(crate) fn environment(
     put(&mut environment, "TERM_PROGRAM", "ghostty");
     put(&mut environment, "TERM_PROGRAM_VERSION", GHOSTTY_VERSION);
     put(&mut environment, "GHOSTTY_SHELL_FEATURES", shell_features(cursor, shell));
-    put(&mut environment, PANE_NAME, pane);
+    put(&mut environment, PANE_NAME, which.pane);
+    put(&mut environment, PANE_CALLED, which.name);
     if let Some(command) = command {
         put(&mut environment, PANE_COMMAND, command);
     }
@@ -445,6 +465,7 @@ mod tests {
         let inherited = pairs(&[
             ("PATH", "/bin"),
             ("MUSTER_PANE", "p-stale"),
+            ("MUSTER_PANE_NAME", "stale"),
             ("MUSTER_SOCKET", "/stale.sock"),
             ("MUSTER_PANE_COMMAND", "stale"),
             ("MUSTER_DAEMON_SOCKET", "/stale-daemon.sock"),
@@ -454,13 +475,14 @@ mod tests {
         let requested = HashMap::from([
             ("MUSTER_SOCKET".to_string(), "/window.sock".to_string()),
             ("MUSTER_PANE".to_string(), "p-requested".to_string()),
+            ("MUSTER_PANE_NAME".to_string(), "requested".to_string()),
             ("PATH".to_string(), "/usr/bin".to_string()),
             ("MUSTER_DAEMON".to_string(), "/requested/daemon".to_string()),
         ]);
         let environment = environment(
             &inherited,
             &requested,
-            "p1",
+            Which { pane: "p1", name: "otter" },
             None,
             &Data::unchecked(PathBuf::from(DATA)),
             &reachable(),
@@ -473,6 +495,7 @@ mod tests {
                 ("MUSTER_DAEMON", "/opt/muster/muster-daemon"),
                 ("MUSTER_DAEMON_SOCKET", "/run/daemon.sock"),
                 ("MUSTER_PANE", "p1"),
+                ("MUSTER_PANE_NAME", "otter"),
                 ("MUSTER_SOCKET", "/window.sock"),
                 ("PATH", "/usr/bin"),
                 ("TERM", "xterm-ghostty"),
@@ -508,7 +531,7 @@ mod tests {
             environment(
                 &inherited,
                 &HashMap::new(),
-                "p1",
+                Which { pane: "p1", name: "otter" },
                 None,
                 &data,
                 &reachable(),
@@ -549,7 +572,7 @@ mod tests {
         let environment = environment(
             &inherited,
             &requested,
-            "p1",
+            Which { pane: "p1", name: "otter" },
             None,
             &Data::unchecked(PathBuf::from(DATA)),
             &reachable(),
@@ -563,6 +586,7 @@ mod tests {
                 ("MUSTER_DAEMON", "/opt/muster/muster-daemon"),
                 ("MUSTER_DAEMON_SOCKET", "/run/daemon.sock"),
                 ("MUSTER_PANE", "p1"),
+                ("MUSTER_PANE_NAME", "otter"),
                 ("TERM", "xterm-ghostty"),
                 ("GHOSTTY_BIN_DIR", "/data/bin"),
                 ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo:"),

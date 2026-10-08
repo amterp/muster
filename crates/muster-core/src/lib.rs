@@ -31,6 +31,7 @@ pub mod respawn;
 pub mod roster;
 pub mod transcript;
 pub mod typeable;
+pub mod words;
 
 pub use agent_state::{AgentState, Until};
 pub use attention::{Alert, Asker, Attend, Attention, GroupKey, Noticed, Notifications};
