@@ -6,8 +6,8 @@
 quit and the same Muster is running again - relaunched - `muster` asks the new app instead, on
 this machine and on an SSH machine alike, and the app answers from whichever window holds the
 pane. With no app running at all, the pane's own daemon answers what it can in the window's
-place: `muster window`, `pane read`, `pane send`, `pane wait`, `pane compact`, `pane hide`, `pane
-show` and `pane quiet` work on that machine's own panes (`muster docs overview`, "With no
+place: `muster window` and `pane new`, `rename`, `read`, `send`, `wait`, `compact`, `hide`,
+`show`, `quiet` and `close` work on that machine's own panes (`muster docs overview`, "With no
 window"), and everything else waits for a window.
 
 On an SSH machine, a pane made by Muster 0.10.1 cannot tell one Muster's windows there from
@@ -22,10 +22,28 @@ connection and waits for the laptop. So `muster` asks a window what it is showin
 it anything, and a window that has not answered within two seconds is passed over with nothing
 sent to it: the daemon answers in its place and `muster` says so on stderr. While the laptop
 sleeps, every command run on the devenv pays those two seconds. A verb only a window can carry
-out - `pane new`, a rename, anything about tabs - has no daemon to fall back on, so it gives a
-window ten seconds, which a window slowed by a loaded machine needs more than a sleeping laptop
-does, and then exits 3 with nothing sent. A window that answers that first question and then not
-the request itself is still exit 4, below.
+out - anything about tabs, a zoom, a pane put on another machine - has no daemon to fall back on,
+so it gives a window ten seconds, which a window slowed by a loaded machine needs more than a
+sleeping laptop does, and then exits 3 with nothing sent. A window that answers that first
+question and then not the request itself is still exit 4, below.
+
+## With the laptop gone, a group kept there is out of reach
+
+Agents on a devenv keep working when the laptop holding the window is shut, asleep or off the
+network, and so do groups kept on the devenv. A group kept on the laptop - every group made there -
+is out of reach, and Muster does not move it to the devenv. What an agent on the devenv sees
+depends on how the laptop went:
+
+- **Gone**: Muster quit, or the ssh connection dropped. A post, join or leave in a group kept on
+  the laptop is refused at once, exit 1, `unreachable`, naming the machine. A request the devenv
+  carries to the human on the laptop is refused `human_elsewhere`.
+- **Asleep**: the connection is still open and nothing answers. The same request waits before it
+  is refused, exit 4, `unanswered`: 15 seconds for a post, 5 for a join or leave, a minute for
+  what is carried to the human. It may have landed, so read `muster msg log` before posting
+  again. Every such request pays the wait until ssh gives the connection up.
+
+`read`, `log` and `wait` answer from the devenv's own copy meanwhile, and what was posted reaches
+the devenv when the laptop is back (`muster docs msg`, "Without the link, nothing crosses").
 
 ## In an agent's sandbox, `muster` may reach no socket at all
 

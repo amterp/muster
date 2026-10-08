@@ -166,11 +166,12 @@ pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to 
 
 ## With no window
 
-Eight verbs work with no window at all: `muster window` (and `window --watch`), `pane read`, `pane
-send`, `pane wait`, `pane compact`, `pane hide`, `pane show` and `pane quiet`. What agents are
-doing and what a pane printed are the daemon's to know, a compaction is the daemon's to type, and
-whether a pane is hidden or quiet is the daemon's to keep, so a window only relays them. A pane
-shown with no window open joins the next window that opens. When no window answers, these ask the
+Eleven verbs work with no window at all: `muster window` (and `window --watch`), `pane new`, `pane
+rename`, `pane read`, `pane send`, `pane wait`, `pane compact`, `pane hide`, `pane show`, `pane
+quiet` and `pane close`. What agents are doing and what a pane printed are the daemon's to know, a
+compaction is the daemon's to type, and where a pane is, what it is called and whether it is
+hidden or quiet are the daemon's to keep, so a window only relays them. A pane shown or made with no window open joins the
+next window that opens. When no window answers, these ask the
 daemon holding the panes: the one `$MUSTER_DAEMON_SOCKET` names, which
 every pane has, and otherwise this install's. That is what makes them work on an SSH devenv nothing
 forwards a window to, and in a pane whose window has quit. They answer as a window would: the same
@@ -192,14 +193,20 @@ exactly what they print through a window, since their answer means the same thin
 With no window there is no keyboard, so a pane is named with `--pane` or `$MUSTER_PANE`, and a
 pane's name is read among the panes of this machine, called by its host name.
 
+`pane new` with no window splits the pane named, in its tab, and a window that comes back shows
+the new pane there. `--hidden` puts it in a hidden tab of its own, starting in the named pane's
+directory. With no pane named at all, as from a plain terminal, it gets a tab of its own. It is
+told the `$MUSTER_SOCKET` of the command that made it, so it drives that window once the window is
+back. `--focus` moves nothing, since there is no keyboard, and a pane on another machine
+(`--daemon`) needs a window, which is what knows the machine by that name.
+
 Every other verb needs a window, and says so, except `muster msg`, which asks the daemon (`muster
-docs msg`), and `harness install`, `docs` and `completions`, which ask neither. Making, splitting, arranging, resizing, zooming and
-moving panes and tabs is laying out a window's tabs, which a window composes from its regions;
-focus, the asking chord, font, the sidebar and reload are about what a window shows; which window
-holds a tab is a window's record; and `muster daemons` marks which daemons that window is using.
+docs msg`), and `harness install`, `docs` and `completions`, which ask neither. Arranging,
+resizing, zooming and moving panes, and anything about tabs, is laying out a window's tabs, which
+a window composes from its regions, a tab's parts on several machines included; focus, the
+asking chord, font, the sidebar and reload are about what a window shows; which window holds a
+tab is a window's record; and `muster daemons` marks which daemons that window is using.
 `muster upgrade` needs the app, since only the app knows whether Homebrew installed it.
-`pane rename` and `pane close` are the daemon's to do and could work without a window, but do not
-yet.
 
 ## Upgrading
 
