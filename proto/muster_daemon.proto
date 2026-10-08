@@ -805,6 +805,8 @@ message MsgAnswer {
     UNTIL_AGENT = 3;
     // Since 1.3. For an urgent post: its agent to be out of a dialog, working or idle.
     UNTIL_UNBLOCKED = 4;
+    // Since 1.5. Its agent's program to read its input again, having stopped.
+    UNTIL_READING = 5;
   }
 
   enum Reach {
@@ -839,6 +841,8 @@ message MsgAnswer {
     ACTIVITY_IDLE = 3;
     // Idle, having said it is waiting on work of its own.
     ACTIVITY_WAITING = 4;
+    // Since 1.5. Its program has stopped reading its input (`Pane.unread_input`).
+    ACTIVITY_STUCK = 5;
   }
 
   // What `read` and `log` return, a group at a time.

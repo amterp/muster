@@ -856,3 +856,68 @@ fn a_reported_session_id_is_handed_over_with_its_pane() {
         agent.woken().iter().any(|woken| woken.starts_with("019a-s1|")).then_some(())
     });
 }
+
+/// A pane's record says its program has stopped reading, once it has.
+fn until_stopped_reading(agent: &mut Agent) {
+    until_some("p1's program to be published as having stopped reading", || {
+        snapshot(&mut agent.control)
+            .panes
+            .into_iter()
+            .find(|record| record.pane == "p1")
+            .and_then(|record| record.unread_input)
+    });
+}
+
+/// A connection the daemon's log streams to from its first line.
+fn following(daemon: &Daemon) -> Control {
+    let mut logging = daemon.connect();
+    let follow = proto::session_request::Request::FollowLog(proto::session_request::FollowLog {
+        after: None,
+    });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+    logging
+}
+
+/// An agent whose program has stopped reading is not rung: the ring would wait in its terminal
+/// with what was already sent. The post says so, and the agent is rung once it reads again.
+#[test]
+fn an_agent_that_stopped_reading_is_rung_once_it_reads_again() {
+    let mut agent = Agent::in_a_pane();
+    agent.type_in("deaf 14", true);
+    // Read, and so the evidence that this program reads, before anything waits unread.
+    std::thread::sleep(Duration::from_secs(2));
+    agent.type_in("are you there", true);
+    until_stopped_reading(&mut agent);
+
+    let posted = agent.post("p1", "a brief");
+    let reached = &posted.reached[0];
+    assert_eq!(reached.reach(), msg_answer::Reach::Deferred);
+    assert_eq!(reached.activity(), msg_answer::Activity::Stuck);
+    assert_eq!(reached.until(), msg_answer::Until::Reading);
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert_eq!(agent.rung(), Vec::<String>::new(), "a pane that is not reading was rung");
+
+    let rung = agent.until_rung(1);
+    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+}
+
+/// A ring typed into an agent whose program then stops reading is not taken, and not pressed
+/// again: it ends, saying why, rather than being counted as woken for as long as the agent sits
+/// there - which is how a director came to wait on an agent that would never answer.
+#[test]
+fn a_ring_an_agent_stops_reading_before_taking_ends() {
+    let mut agent = Agent::in_a_pane();
+    let mut logging = following(&agent.daemon);
+    agent.type_in("deaf 20", true);
+    let posted = agent.post("p1", "a brief");
+    assert_eq!(posted.reached[0].activity(), msg_answer::Activity::Idle, "not stopped yet");
+
+    let ended = r#""event":"msg.ring.ended""#;
+    let logged = logging.logged_until(ended, Duration::from_secs(30));
+    let line = logged
+        .iter()
+        .find(|line| line.line.contains(ended))
+        .unwrap_or_else(|| panic!("the ring never ended"));
+    assert!(line.line.contains("its program has stopped reading its input"), "{}", line.line);
+    assert_eq!(agent.pressed(), 0, "Return was pressed again into a pane that was not reading");
+}

@@ -268,9 +268,10 @@ impl Reports {
 pub(crate) fn publish(receiver: &Receiver<Report>, shared: &Weak<Shared>) {
     publish_with(receiver, |report| {
         let Some(shared) = shared.upgrade() else { return false };
-        let agent = matches!(report.what, Reported::Agent { .. });
+        let agent = matches!(report.what, Reported::Agent { .. } | Reported::UnreadInput(_));
         shared.lock().reported(report);
-        // An agent that went idle may be rung now, or woken again (MIP-4, sections 5 and 6).
+        // An agent that went idle may be rung now, or woken again (MIP-4, sections 5 and 6); one
+        // whose program reads again may be rung, and one that stopped has a ring to end.
         if agent {
             shared.doorbell.nudge();
         }

@@ -94,7 +94,7 @@ pub(crate) fn look<L: Line>(
                 doorbell::sooner(next, at);
                 continue;
             }
-            Now::AtIdle | Now::Unblocked => continue,
+            Now::AtIdle | Now::Unblocked | Now::Reading => continue,
         }
         match prompt::look(&seen.io, &seen.agent, &shared.detecting, false) {
             AtPrompt::Empty { .. } => {}

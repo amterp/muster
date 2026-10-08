@@ -1027,7 +1027,7 @@ fn posted_text(posted: &msg_answer::Posted, urgent: bool, json: bool) -> Result<
         if !woken.is_empty() {
             lines.push(format!("woke: {}", woken.join(", ")));
         }
-        for until in [Until::Idle, Until::Unblocked, Until::Prompt, Until::Agent] {
+        for until in [Until::Idle, Until::Unblocked, Until::Prompt, Until::Agent, Until::Reading] {
             let later: Vec<String> = deferred
                 .iter()
                 .filter(|reached| reached.until() == until)
@@ -1077,6 +1077,7 @@ fn until_text(until: Until) -> &'static str {
         Until::Unblocked => "it is not blocked",
         Until::Prompt => "its prompt is empty",
         Until::Agent => "an agent is found",
+        Until::Reading => "it reads its input",
     }
 }
 
@@ -1086,6 +1087,7 @@ fn until_key(until: Until) -> &'static str {
         Until::Unblocked => "unblocked",
         Until::Prompt => "prompt",
         Until::Agent => "agent",
+        Until::Reading => "reading",
     }
 }
 
@@ -1097,6 +1099,7 @@ fn activity(activity: msg_answer::Activity) -> Option<&'static str> {
         msg_answer::Activity::Blocked => Some("blocked"),
         msg_answer::Activity::Idle => Some("idle"),
         msg_answer::Activity::Waiting => Some("waiting"),
+        msg_answer::Activity::Stuck => Some("stuck"),
     }
 }
 
@@ -1410,6 +1413,30 @@ mod tests {
             serde_json::from_str(&posted_text(&posted, true, true).unwrap()).unwrap();
         assert_eq!(json["urgent"], true);
         assert_eq!(json["until"]["critic"], "unblocked");
+    }
+
+    /// A post to an agent whose program stopped reading says so, and that it is rung once the
+    /// program reads, rather than `woke: worker (idle)` about an agent that will never see it.
+    #[test]
+    fn a_post_to_a_stuck_agent_says_it_waits_for_the_agent_to_read() {
+        let posted = msg_answer::Posted {
+            group: "review".to_string(),
+            seq: 4,
+            reached: vec![msg_answer::Reached {
+                name: "worker".to_string(),
+                reach: msg_answer::Reach::Deferred.into(),
+                activity: msg_answer::Activity::Stuck.into(),
+                until: Until::Reading.into(),
+            }],
+        };
+        assert_eq!(
+            posted_text(&posted, false, false).unwrap(),
+            "posted #4 to review\nrung once it reads its input: worker (stuck)"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&posted_text(&posted, false, true).unwrap()).unwrap();
+        assert_eq!(json["doing"]["worker"], "stuck");
+        assert_eq!(json["until"]["worker"], "reading");
     }
 
     /// The human is shown by the name the app set, beside the address an agent writes in `--to`,

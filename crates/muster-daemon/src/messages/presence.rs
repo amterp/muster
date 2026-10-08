@@ -133,6 +133,10 @@ impl Panes {
 }
 
 fn activity(record: &proto::Pane) -> Option<Activity> {
+    // Whatever detection read: the screen shows what it showed before the program stopped.
+    if record.unread_input.is_some() {
+        return Some(Activity::Stuck);
+    }
     let waiting = record.facts.as_ref().is_some_and(|facts| facts.waiting.is_some());
     match record.agent_state() {
         proto::AgentState::Working => Some(Activity::Working),

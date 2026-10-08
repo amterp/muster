@@ -19,9 +19,9 @@
 # Its last line is its prompt, `PROBE-PROMPT> `, left for the terminal's echo of what is typed,
 # so a line half typed into it shows there as it would in an agent's prompt.
 #
-# `deaf <seconds>` stops reading for that long, leaving the screen as it was, as a harness that
-# has hung stops taking what is typed: what is sent meanwhile waits in the terminal, read once it
-# reads again.
+# `deaf <seconds>` stops reading for that long, as a harness that has hung stops taking what is
+# typed: its empty prompt painted, and nothing echoed, as a frozen agent in raw mode shows; what is
+# sent meanwhile waits in the terminal, read once it reads again.
 #
 # `hook <args>` runs `"$MUSTER_DAEMON" report <args>` through a shell it starts, as a harness
 # runs a hook: a child of the agent, in its process group. `nested <args>` starts a copy of this
@@ -168,7 +168,12 @@ while :; do
             wait $!
             set +m ;;
         notify\ *) printf '\033]777;notify;Claude Code;%s\a' "${line#notify }" ;;
-        deaf\ *) sleep "${line#deaf }" ;;
+        deaf\ *)
+            paint
+            modes=$(stty -g)
+            stty -echo
+            sleep "${line#deaf }"
+            stty "$modes" ;;
         *animate*) animate ;;
         *still*)
             [ -n "$animator" ] && kill "$animator"

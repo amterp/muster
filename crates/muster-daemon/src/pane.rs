@@ -386,6 +386,12 @@ impl PaneIo {
         self.reset_detection.swap(false, Ordering::AcqRel)
     }
 
+    /// How many bytes of input wait in the pane's terminal for its program to read, when the
+    /// terminal will say ([`pty::queued`]).
+    pub(crate) fn unread_bytes(&self) -> Option<u32> {
+        pty::queued(self.master.as_fd()).ok().map(|queued| queued.bytes)
+    }
+
     /// The process group holding the pane's terminal, when it says.
     pub(crate) fn foreground_group(&self) -> Option<i32> {
         pty::foreground_group(self.master.as_fd())

@@ -145,6 +145,7 @@ fn member_from(member: msg_answer::Member) -> Member {
         msg_answer::Activity::Blocked => Some(muster_msg::Activity::Blocked),
         msg_answer::Activity::Idle => Some(muster_msg::Activity::Idle),
         msg_answer::Activity::Waiting => Some(muster_msg::Activity::Waiting),
+        msg_answer::Activity::Stuck => Some(muster_msg::Activity::Stuck),
     };
     Member {
         name: member.name,

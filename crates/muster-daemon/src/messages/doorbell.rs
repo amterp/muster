@@ -125,6 +125,9 @@ pub(crate) struct Rung {
     /// How many times a ring typed at work and not yet returned found its prompt empty: a screen
     /// that has not shown what was typed yet, until it has been looked at too often for that.
     blank: u8,
+    /// How many times a returned ring found its prompt empty with input still unread in its
+    /// terminal: not taken, only not yet read, until it has waited too long for that.
+    unread: u8,
 }
 
 /// Whether a pane may be rung now.
@@ -138,6 +141,9 @@ pub(crate) enum Now {
     Unblocked,
     /// Not until this moment, when nothing will have been typed into it for [`QUIET`].
     At(Instant),
+    /// Not until its program reads its input again: anything typed now would wait in the
+    /// terminal unread, urgent or not.
+    Reading,
 }
 
 /// Whether a pane may be rung now; `urgent` for a wake that may ring its agent at work, and
@@ -193,6 +199,7 @@ fn noted(before: Option<Noted>, drawing: bool, now: Instant) -> Option<Noted> {
 /// in a state nobody can read is not called blocked: what it is waiting for is to be idle.
 fn waits_for(activity: Option<Activity>, urgent: bool) -> Option<Now> {
     match activity {
+        Some(Activity::Stuck) => Some(Now::Reading),
         Some(Activity::Idle | Activity::Waiting) => None,
         Some(Activity::Working) if urgent => None,
         Some(Activity::Blocked) if urgent => Some(Now::Unblocked),
@@ -244,6 +251,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                         returned: !at_work,
                         covered: false,
                         blank: 0,
+                        unread: 0,
                     });
                     came.push(Came::Rang);
                 } else {
@@ -683,7 +691,9 @@ fn look(
                             sooner(&mut next, at);
                             messages.pending.push(wake);
                         }
-                        By::Typing(Now::AtIdle | Now::Unblocked) => messages.pending.push(wake),
+                        By::Typing(Now::AtIdle | Now::Unblocked | Now::Reading) => {
+                            messages.pending.push(wake);
+                        }
                     }
                     continue;
                 }
@@ -829,6 +839,12 @@ fn unanswered_rings(
     for rung in std::mem::take(&mut messages.rung) {
         let Via::Pane(pane) = &rung.wake.via else { continue };
         let Some(seen) = panes.get(pane) else { continue };
+        // What was typed waits in its terminal, unread, which is neither taken nor worth a
+        // Return pressed again: the agent was rung for nothing until it reads.
+        if seen.activity == Some(Activity::Stuck) {
+            ended(messages, &rung, "its program has stopped reading its input");
+            continue;
+        }
         let urgent = is_urgent(&rung.wake);
         let taken = (rung.returned && waits_for(seen.activity, urgent).is_some())
             || !messages.service.woken_for(&rung.wake.name, &rung.wake.notice.group);
@@ -910,7 +926,21 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
             AtPrompt::Empty { .. } if !rung.returned => {
                 ending.push((rung, "its prompt stayed empty, and its Return was never pressed"));
             }
-            AtPrompt::Empty { .. } => {}
+            // An empty prompt is a ring sent - unless what was typed still waits in the terminal,
+            // which a program that has stopped reading shows as the empty prompt it painted
+            // before it stopped. Kept, so the next look can say it stopped, or that it read.
+            AtPrompt::Empty { .. } => {
+                if seen.io.unread_bytes().is_none_or(|bytes| bytes == 0) {
+                    continue;
+                }
+                if rung.unread >= PRESSES {
+                    ending.push((rung, "it waited unread in its pane's terminal"));
+                } else {
+                    rung.unread += 1;
+                    rung.at = Instant::now();
+                    pressed.push(rung);
+                }
+            }
             AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring")),
             AtPrompt::Not(_) if !rung.returned => {
                 rung.covered = true;

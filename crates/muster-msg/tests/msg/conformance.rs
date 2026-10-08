@@ -111,6 +111,7 @@ fn activity(activity: Activity) -> &'static str {
         Activity::Blocked => "blocked",
         Activity::Idle => "idle",
         Activity::Waiting => "waiting",
+        Activity::Stuck => "stuck",
     }
 }
 
@@ -352,6 +353,7 @@ fn agent(sessions: &Sessions, step: &Value) -> String {
         "blocked" => Some(Activity::Blocked),
         "idle" => Some(Activity::Idle),
         "waiting" => Some(Activity::Waiting),
+        "stuck" => Some(Activity::Stuck),
         "unreadable" => {
             sessions.unreadable.borrow_mut().insert(pane.clone());
             Some(Activity::Idle)

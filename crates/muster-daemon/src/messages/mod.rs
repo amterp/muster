@@ -613,6 +613,7 @@ impl Messages {
                 }
                 Some((By::Typing(Now::AtIdle), _)) => msg_answer::Until::Idle,
                 Some((By::Typing(Now::Unblocked), _)) => msg_answer::Until::Unblocked,
+                Some((By::Typing(Now::Reading), _)) => msg_answer::Until::Reading,
                 Some((By::Typing(Now::At(_)), _)) => msg_answer::Until::Prompt,
                 None => msg_answer::Until::Agent,
             };
@@ -1677,6 +1678,7 @@ pub(super) fn activity_of(activity: Option<Activity>) -> msg_answer::Activity {
         Some(Activity::Working) => msg_answer::Activity::Working,
         Some(Activity::Blocked) => msg_answer::Activity::Blocked,
         Some(Activity::Idle) => msg_answer::Activity::Idle,
+        Some(Activity::Stuck) => msg_answer::Activity::Stuck,
         Some(Activity::Waiting) => msg_answer::Activity::Waiting,
     }
 }

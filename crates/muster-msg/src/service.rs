@@ -102,6 +102,8 @@ pub enum Activity {
     Idle,
     /// Idle, having said it is waiting on work of its own.
     Waiting,
+    /// Its program has stopped reading its input: nothing typed reaches it until it reads again.
+    Stuck,
 }
 
 /// What the host can tell about participants: whether one is still there - for a Claude
