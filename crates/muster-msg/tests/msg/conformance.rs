@@ -153,6 +153,7 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::NameInUse { name, inbox } => {
             format!("{name} at {}", inbox.as_deref().unwrap_or("no inbox"))
         }
+        Refusal::NameOfPane { name, pane } => format!("{name} {pane}"),
         Refusal::NoSuchGroup { group }
         | Refusal::PairTooLong { group }
         | Refusal::GroupExists { group } => group.clone(),

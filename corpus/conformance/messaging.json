@@ -1509,6 +1509,60 @@
         "integrator registered",
         "integrator posted #4 to integrator+p1; woke p1 [integrator+p1 #4-4 x1 to-you:1 from integrator] rung p1"
       ] }
+    },
+    {
+      "name": "a pane's id means that pane before any pane's name does",
+      "why": "A pane may be renamed to anything, another pane's id included, and an id is what still reaches a pane whatever it is called. So a post reads what it is given as an id first, as `muster pane send` does, and a name only after.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
+        {"do": "agent", "pane": "p2", "state": "idle", "called": "p1"},
+        {"session": "i", "do": "join", "name": "integrator"},
+        {"session": "i", "do": "post", "to": ["p1"], "body": "brief"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "p2 idle",
+        "integrator registered",
+        "integrator posted #4 to integrator+otter; woke p1 [integrator+otter #4-4 x1 to-you:1 from integrator] rung p1"
+      ] }
+    },
+    {
+      "name": "a name both a pane and a participant answer to is refused, naming each",
+      "why": "A pane renamed to what an agent elsewhere joined by would otherwise take its posts, or lose them to it. Neither is nearer, so the post says which it could be and reaches neither, and an agent joining by a name a pane already goes by is refused instead.",
+      "given": { "steps": [
+        {"session": "c", "do": "join", "name": "heron"},
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "heron"},
+        {"do": "agent", "pane": "p2", "state": "idle", "called": "otter"},
+        {"session": "i", "do": "join", "name": "integrator", "group": "crew"},
+        {"session": "i", "do": "post", "to": ["heron"], "body": "brief"},
+        {"do": "members", "group": "crew", "add": ["heron"]},
+        {"session": "d", "do": "join", "name": "otter"},
+        {"session": "s2", "do": "join", "name": "otter", "pane": "p2"}
+      ] },
+      "expect": { "said": [
+        "heron registered",
+        "p1 idle",
+        "p2 idle",
+        "integrator joined crew (created)",
+        "refused which_participant heron p1,heron",
+        "refused which_participant heron p1,heron",
+        "refused name_of_pane otter p2",
+        "otter registered"
+      ] }
+    },
+    {
+      "name": "a group's member is added by its pane's name",
+      "why": "`group add` takes a pane wherever `--to` does, by its name as by its id.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
+        {"session": "i", "do": "join", "name": "integrator", "group": "crew"},
+        {"do": "members", "group": "crew", "add": ["otter"]}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "integrator joined crew (created)",
+        "@human changed the members of crew (#3); added p1"
+      ] }
     }
   ]
 }

@@ -54,10 +54,10 @@ names those groups so you can leave the ones you are done with:
     alpha+director, demo-council; `muster msg leave --group <group>` leaves one you are done with
 
 A join that leaves you in groups besides the one it joined says so too, `; also in review`. A
-session may
-not become one that is still running, with `join --name` or with `--as`; a shell or a script,
-which has no session of its own to move, may act `--as` anyone. A participant nothing can wake,
-such as one made by `join --name` from a plain shell, counts as gone.
+session may not become one that is still running, with `join --name` or with `--as`; a shell or a
+script, which has no session of its own to move, may act `--as` anyone. Nor may it take a new name
+that a pane other than its own goes by, since `--to` that name would then mean two agents. A
+participant nothing can wake, such as one made by `join --name` from a plain shell, counts as gone.
 
 Names are letters, digits, `.`, `_` and `-`. They are not authentication: anything running as
 you can post as anyone.
@@ -89,6 +89,12 @@ name takes the pane's place in every group the pane was in, whatever their polic
 joining, and the log shows the pane leaving and the name joining. From then on the pane means
 that participant. A name or pane that means nobody on this machine is looked for on the machines
 linked to it (below), so `otter@devenv` reaches the devenv's `otter`.
+
+A name is read the way `muster pane send --pane` reads one: a pane's id first, whatever any pane
+is called, then a name. A name that means more than one agent - a pane here and a pane on a
+linked machine, or a pane and a participant who joined by that name - is refused, naming each,
+and its id or `name@machine` says which. A daemon draws no pane a word somebody here joined by.
+`group add` takes a pane by its name as `--to` does.
 
 ## A group's policy
 

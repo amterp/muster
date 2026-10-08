@@ -24,11 +24,11 @@ pub(crate) use peer::Peers;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use muster_core::diagnostics::log;
+use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
@@ -89,6 +89,9 @@ pub(crate) struct Messages {
     /// Changes made by the request being handled, for the other machines with members in
     /// their groups to be sent once this lock is let go.
     telling: Vec<Tell>,
+    /// The names participants took for themselves, which the session draws no pane's word from.
+    /// A lock of its own, taken last and alone, so the session reads it without this one.
+    joined: Arc<Mutex<BTreeSet<String>>>,
 }
 
 #[derive(Debug)]
@@ -107,6 +110,7 @@ impl Messages {
         let service = Messaging::restore(files, found.saved, found.logs);
         // A window that attends this daemon is told these by its snapshot.
         let human_groups = service.human_groups();
+        let joined = Arc::new(Mutex::new(service.joined_names()));
         Messages {
             // A wake the daemon before this one deferred and never rang is lost with it, and one
             // it rang cannot be told from one it did not, so each is rung again once its pane
@@ -127,7 +131,17 @@ impl Messages {
             human_groups,
             follows: Vec::new(),
             telling: Vec::new(),
+            joined,
         }
+    }
+
+    /// The names participants took for themselves, kept current after every request.
+    pub(crate) fn joined(&self) -> Arc<Mutex<BTreeSet<String>>> {
+        Arc::clone(&self.joined)
+    }
+
+    fn note_joined(&self) {
+        *poison::lock(&self.joined, "daemon.messages.joined") = self.service.joined_names();
     }
 
     /// What waits for the human, in each group with anything waiting.
@@ -330,6 +344,7 @@ pub(crate) fn handle(
     let carriable = carry::may_carry(&shared.messages().service, &caller, &asked, &panes);
     let kept = carriable.then(|| asked.clone());
     let reply = respond(shared, &caller, asked, hung_up, &panes);
+    shared.messages().note_joined();
     let reply = match kept {
         None => reply,
         Some(asked) => match carry::destination(shared, &caller, &asked, &reply, &panes) {
@@ -960,7 +975,7 @@ fn posting(
     post: &proto::msg_request::Post,
     panes: &Panes,
 ) -> Reply {
-    let routed = finding(shared, |found| {
+    let routed = finding(shared, panes, &post.to, |found| {
         let mut messages = shared.messages();
         if messages.handing_over {
             return Ok(None);
@@ -1049,7 +1064,7 @@ fn membering(
     members: &proto::msg_request::GroupMembers,
     panes: &Panes,
 ) -> Reply {
-    let result = finding(shared, |found| {
+    let result = finding(shared, panes, &members.add, |found| {
         let mut messages = shared.messages();
         if messages.handing_over {
             return Ok(None);
@@ -1072,17 +1087,30 @@ fn membering(
     }
 }
 
-/// Runs `act` with the names other machines said they have, starting with none. Each time it
-/// is refused for a name that means nobody here, asks the machines linked to this one whom
-/// that name means there (MIP-4, section 11) and runs it again, until it is refused for a name
-/// already asked about, or for anything else. Returns what was found with the outcome, for a
-/// later step of the same request to take.
+/// Runs `act` with the names other machines said they have. Each time it is refused for a name
+/// that means nobody here, asks the machines linked to this one whom that name means there
+/// (MIP-4, section 11) and runs it again, until it is refused for a name already asked about,
+/// or for anything else. Returns what was found with the outcome, for a later step of the same
+/// request to take.
+///
+/// Of `addressed`, the names the request addresses somebody by, those a pane here goes by are
+/// asked about first: a pane on another machine may go by the same name, and then the name
+/// says neither, as it says neither to `muster pane send`.
 fn finding<T>(
     shared: &Shared,
+    panes: &Panes,
+    addressed: &[String],
     mut act: impl FnMut(&[Found]) -> Result<T, Refusal>,
 ) -> Result<(T, Vec<Found>), Refusal> {
     let mut found = Vec::new();
     let mut asked = BTreeSet::new();
+    for name in addressed.iter().filter(|name| panes.pane_named(name).is_some()) {
+        if asked.insert(name.clone()) {
+            found.extend(
+                whom(shared, name).into_iter().map(|there| Found { name: name.clone(), there }),
+            );
+        }
+    }
     loop {
         match act(&found) {
             Err(Refusal::NoSuchParticipant { name }) if asked.insert(name.clone()) => {
@@ -1436,6 +1464,10 @@ pub(super) fn words(refusal: &Refusal) -> String {
              name",
             inbox.as_deref().unwrap_or("it has no inbox")
         ),
+        Refusal::NameOfPane { name, pane } => format!(
+            "pane {pane} is called {name}, and a post to {name} reaches the agent in it; join \
+             under another name, or rename that pane first"
+        ),
         Refusal::NoSuchGroup { group } => {
             format!("there is no group {group}; create it with `{}`", join(group))
         }
@@ -1456,7 +1488,7 @@ pub(super) fn words(refusal: &Refusal) -> String {
             )
         }
         Refusal::WhichParticipant { name, candidates } => {
-            format!("{name} could be {}; say which, as name@machine", candidates.join(" or "))
+            format!("{name} could be {}; say which, by one of those", candidates.join(" or "))
         }
         Refusal::Unreachable { group, machine } => format!(
             "{group} is kept on {machine}, which this machine cannot reach now: messages cross \

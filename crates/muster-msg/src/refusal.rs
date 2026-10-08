@@ -10,6 +10,12 @@ pub enum Refusal {
         name: String,
         inbox: Option<String>,
     },
+    /// A pane other than the caller's goes by this name, which a post's `--to` reads as that
+    /// pane.
+    NameOfPane {
+        name: String,
+        pane: String,
+    },
     NoSuchGroup {
         group: String,
     },
@@ -131,6 +137,7 @@ impl Refusal {
         match self {
             Refusal::BadName { .. } => "bad_name",
             Refusal::NameInUse { .. } => "name_in_use",
+            Refusal::NameOfPane { .. } => "name_of_pane",
             Refusal::NoSuchGroup { .. } => "no_such_group",
             Refusal::GroupNameClash { .. } => "group_name_clash",
             Refusal::PairTooLong { .. } => "pair_too_long",

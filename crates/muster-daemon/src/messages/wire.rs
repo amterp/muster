@@ -226,6 +226,10 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.name = name;
             refused.existing = inbox.unwrap_or_default();
         }
+        Refusal::NameOfPane { name, pane } => {
+            refused.name = name;
+            refused.existing = pane;
+        }
         Refusal::NoSuchGroup { group }
         | Refusal::PairTooLong { group }
         | Refusal::GroupExists { group } => refused.group = group,
@@ -312,6 +316,7 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
     match code.as_str() {
         "bad_name" => Refusal::BadName { name },
         "name_in_use" => Refusal::NameInUse { name, inbox: optional(existing) },
+        "name_of_pane" => Refusal::NameOfPane { name, pane: existing },
         "no_such_group" => Refusal::NoSuchGroup { group },
         "group_name_clash" => Refusal::GroupNameClash { group, existing },
         "pair_too_long" => Refusal::PairTooLong { group },
@@ -386,6 +391,7 @@ mod tests {
         let refusals = [
             Refusal::BadName { name: "a b".into() },
             Refusal::NameInUse { name: "a".into(), inbox: Some("/tmp/a.sock".into()) },
+            Refusal::NameOfPane { name: "otter".into(), pane: "p1".into() },
             Refusal::NoSuchGroup { group: "g".into() },
             Refusal::GroupNameClash { group: "G".into(), existing: "g".into() },
             Refusal::PairTooLong { group: "a+b".into() },

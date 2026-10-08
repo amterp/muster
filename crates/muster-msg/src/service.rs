@@ -1218,8 +1218,7 @@ impl<S: Store> Messaging<S> {
         // Told from before the change too, so the machine of a member removed there lets it go.
         let before = self.tell(group, after, None);
         for name in add {
-            check_addressee(name)?;
-            let name = self.addressee(name, &by, found, Some(group), presence)?;
+            let name = self.addressed_as(name, &by, found, Some(group), presence)?;
             if !self.groups[group].members.contains(&name) {
                 self.add_member(group, &name, now_ms)?;
                 changed.added.push(name);
@@ -1524,14 +1523,7 @@ impl<S: Store> Messaging<S> {
     ) -> Result<Vec<String>, Refusal> {
         let mut addressees: Vec<String> = Vec::new();
         for name in to {
-            // A pane's name means that pane, as its id does, and is matched before the syntax of
-            // a participant's name is asked of it: somebody may have named a pane `🤖 A`.
-            let pane = (name != HUMAN).then(|| presence.pane_named(name)).flatten();
-            if pane.is_none() {
-                check_addressee(name)?;
-            }
-            let name = pane.as_ref().unwrap_or(name);
-            let name = self.addressee(name, author, found, group, presence)?;
+            let name = self.addressed_as(name, author, found, group, presence)?;
             if name == author {
                 return Err(Refusal::AddressedSelf);
             }
@@ -1540,6 +1532,57 @@ impl<S: Store> Messaging<S> {
             }
         }
         Ok(addressees)
+    }
+
+    /// The participant `name` means where somebody is addressed, by a pane's name as by its id.
+    fn addressed_as(
+        &mut self,
+        name: &str,
+        author: &str,
+        found: &[Found],
+        group: Option<&str>,
+        presence: &dyn Presence,
+    ) -> Result<String, Refusal> {
+        // A pane's name is matched before the syntax of a participant's name is asked of it:
+        // somebody may have named a pane `🤖 A`.
+        let pane = self.pane_called(name, found, presence)?;
+        if pane.is_none() {
+            check_addressee(name)?;
+        }
+        self.addressee(pane.as_deref().unwrap_or(name), author, found, group, presence)
+    }
+
+    /// The pane here that `typed` is the name of, read as a pane is everywhere
+    /// (`muster_core::pane_address`): an id goes on as typed, whatever a pane is called, and a
+    /// name that means somebody else as well - a participant who joined by that name, or
+    /// whoever another machine said it means in `found` - is refused, naming each, rather than
+    /// reaching whichever is nearest. Nothing, when no pane here goes by `typed`.
+    fn pane_called(
+        &self,
+        typed: &str,
+        found: &[Found],
+        presence: &dyn Presence,
+    ) -> Result<Option<String>, Refusal> {
+        let an_id = presence.has_pane(typed)
+            || self
+                .participants
+                .get(typed)
+                .is_some_and(|known| known.pane.as_deref() == Some(typed));
+        if typed == HUMAN || an_id {
+            return Ok(None);
+        }
+        let Some(pane) = presence.pane_named(typed) else { return Ok(None) };
+        let holder = self.by_pane(&pane).unwrap_or_else(|| pane.clone());
+        let mut candidates = vec![holder.clone()];
+        if typed != holder && self.participants.contains_key(typed) {
+            candidates.push(typed.to_string());
+        }
+        candidates
+            .extend(found.iter().filter(|each| each.name == typed).map(|each| each.there.clone()));
+        if candidates.len() > 1 {
+            return Err(Refusal::WhichParticipant { name: typed.to_string(), candidates });
+        }
+        Ok(Some(pane))
     }
 
     /// The participant `name` means in a post's `--to`: the one holding the pane of that name,
@@ -1627,6 +1670,17 @@ impl<S: Store> Messaging<S> {
         true
     }
 
+    /// The names participants here took for themselves, rather than being their panes': no
+    /// pane should be drawn one, or a post to it would mean two agents.
+    pub fn joined_names(&self) -> BTreeSet<String> {
+        self.participants
+            .values()
+            .filter(|known| known.pane.as_deref() != Some(known.name.as_str()))
+            .filter(|known| known.name != HUMAN && split_machine(&known.name).is_none())
+            .map(|known| known.name.clone())
+            .collect()
+    }
+
     /// What each participant named after its pane is called, refreshed from the panes open now,
     /// for an answer to show it by: `otter` rather than `p29te12q4t`. A pane closed since keeps
     /// the name it last had here, which another pane may go by by now.
@@ -1701,13 +1755,23 @@ impl<S: Store> Messaging<S> {
     /// session: `join --name` and `--as` alike (MIP-4, section 3). The caller's addresses would
     /// replace the live one's, and it would never be woken again. A caller carrying no address,
     /// such as a script, moves nothing, so it may act as anyone.
+    ///
+    /// A new name is refused too while a pane here other than the caller's goes by it: `--to`
+    /// that name would then mean two agents, and say neither.
     pub(crate) fn may_become(
         &self,
         name: &str,
         caller: &Caller,
         presence: &dyn Presence,
     ) -> Result<(), Refusal> {
-        let Some(existing) = self.participants.get(name) else { return Ok(()) };
+        let Some(existing) = self.participants.get(name) else {
+            return match presence.pane_named(name) {
+                Some(pane) if caller.pane.as_ref() != Some(&pane) => {
+                    Err(Refusal::NameOfPane { name: name.to_string(), pane })
+                }
+                _ => Ok(()),
+            };
+        };
         let elsewhere = (caller.inbox.is_some() && existing.inbox != caller.inbox)
             || (caller.pane.is_some() && existing.pane.is_some() && existing.pane != caller.pane);
         if name != HUMAN && elsewhere && alive(existing, presence) {

@@ -1140,9 +1140,9 @@ impl<S: Store> Messaging<S> {
     }
 
     /// The participant `name` means on this machine, for another that has nobody by it: the one
-    /// in the pane of that name, or one by that name, or the pane itself while an agent may start
-    /// there, as a post's `--to` reads it here. The human is not asked for: it is homed where the
-    /// app runs, and every machine names it already.
+    /// in the pane of that id, or the pane itself while an agent may start there, or the one in
+    /// the pane of that name, or one by that name, as a post's `--to` reads it here. The human
+    /// is not asked for: it is homed where the app runs, and every machine names it already.
     pub fn whom(&self, name: &str, presence: &dyn Presence) -> Option<String> {
         if name == HUMAN {
             return None;
@@ -1150,11 +1150,13 @@ impl<S: Store> Messaging<S> {
         if let Some(holder) = self.by_pane(name) {
             return Some(holder);
         }
+        if presence.has_pane(name) {
+            return Some(name.to_string());
+        }
         if let Some(pane) = presence.pane_named(name) {
             return Some(self.by_pane(&pane).unwrap_or(pane));
         }
-        let named = self.participants.contains_key(name) || presence.has_pane(name);
-        named.then(|| name.to_string())
+        self.participants.contains_key(name).then(|| name.to_string())
     }
 
     /// Starts the cursor of `name`, if it is one of this machine's participants, at its join to

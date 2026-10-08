@@ -19,7 +19,7 @@
 //! manifests and reads the override directory without it, and `pane.read` formats its page
 //! without it.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::os::fd::OwnedFd;
@@ -154,6 +154,7 @@ impl Shared {
             let detecting = Detecting::start(overrides);
             let messages = Messages::load(&socket.path);
             let human = messages.human();
+            let joined = messages.joined();
             Shared {
                 messages: Mutex::new(messages),
                 doorbell: Doorbell::default(),
@@ -177,6 +178,7 @@ impl Shared {
                         .into_iter()
                         .map(|notice| (notice.group.clone(), (0, notice)))
                         .collect(),
+                    joined,
                     inherited,
                     home,
                     data,
@@ -359,6 +361,8 @@ pub(crate) struct Session {
     /// message service decided it in: two posts decided one after the other can reach here the
     /// other way round, and the older must not overwrite the newer.
     human: BTreeMap<String, (u64, proto::msg_answer::Notice)>,
+    /// The names agents joined messaging by, which no pane is drawn, as messaging keeps them.
+    joined: Arc<Mutex<BTreeSet<String>>>,
     /// The daemon's own environment, which every pane's starts from.
     inherited: Vec<(OsString, OsString)>,
     /// Where a pane starts when nothing says where.
@@ -3021,9 +3025,13 @@ impl Session {
             .or_else(|| self.naming.get(name).filter(|pane| *pane != except).map(String::as_str))
     }
 
-    /// A word for a pane that no pane here is called, nor `besides`, the name it is being given.
+    /// A word for a pane that no pane here is called, nor `besides`, the name it is being given,
+    /// nor an agent here joined messaging by: a post to that word would mean both.
     fn draw_word(&self, besides: Option<&str>) -> String {
-        muster_core::words::draw(|word| besides == Some(word) || self.called(word, "").is_some())
+        let joined = poison::lock(&self.joined, "daemon.messages.joined");
+        muster_core::words::draw(|word| {
+            besides == Some(word) || self.called(word, "").is_some() || joined.contains(word)
+        })
     }
 
     fn tab_index(&self, tab: &str) -> Option<usize> {

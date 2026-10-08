@@ -101,3 +101,29 @@ fn a_pane_is_told_what_it_is_called() {
     let drawn = said(&mut control, "p2", "t2", None);
     assert_eq!(drawn.trim_end(), word_of(&mut control, "p2"));
 }
+
+/// A post to a word would mean both a pane drawn it and an agent that joined messaging by it, so
+/// no pane is drawn a word an agent here has joined by.
+#[test]
+fn no_pane_is_drawn_a_word_an_agent_joined_by() {
+    use proto::msg_request::{self, Request as Asked};
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let (taken, left) = WORDS.split_at(WORDS.len() - 1);
+    for word in taken {
+        let caller =
+            msg_request::Caller { as_name: Some((*word).to_string()), ..Default::default() };
+        let join = Asked::Join(msg_request::Join {
+            name: Some((*word).to_string()),
+            group: Some("crew".to_string()),
+            pull: false,
+        });
+        let asked = proto::request::Service::Msg(proto::MsgRequest {
+            caller: Some(caller),
+            request: Some(join),
+        });
+        expect(&mut control, asked, proto::Outcome::Done);
+    }
+    make(&mut control, create("p1", in_new_tab("t1")));
+    assert_eq!(word_of(&mut control, "p1"), left[0]);
+}

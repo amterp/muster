@@ -510,6 +510,35 @@ fn a_post_to_a_pane_on_the_linked_machine_rings_it_there() {
     assert_eq!(msg_answer(&refused).refusal, "no_such_participant", "{}", refused.answer.reason);
 }
 
+/// A name a pane goes by here and one goes by on the linked machine means neither, as it means
+/// neither to `muster pane send`: the near daemon asks the far one before it settles on its own.
+#[test]
+fn a_name_panes_go_by_on_both_linked_machines_is_refused_naming_each() {
+    let (near, far) = (daemon(), Daemon::start_detecting());
+    let otter = |pane: &str, tab: &str| proto::pane_request::Create {
+        label: Some("otter".to_string()),
+        ..create(pane, in_new_tab(tab))
+    };
+    let mut far_control = far.connect();
+    make(&mut far_control, otter("p2", "t2"));
+    far.run_agent("p2");
+    let mut near_control = near.connect();
+    make(&mut near_control, otter("p1", "t1"));
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+
+    let refused = near_control.ask(post(&named("builder"), None, &["otter"], "which?"));
+    assert_eq!(msg_answer(&refused).refusal, "which_participant", "{}", refused.answer.reason);
+    assert!(refused.answer.reason.contains("p1 or p2@far"), "{}", refused.answer.reason);
+    let posted = expect(
+        &mut near_control,
+        post(&named("builder"), None, &["otter@far"], "carry on"),
+        proto::Outcome::Done,
+    );
+    assert_eq!(reached(&posted)[0].0, "p2@far");
+}
+
 fn messages_of(asked: &muster_harness::Asked) -> Vec<String> {
     let Some(Answer::Entries(entries)) = &msg_answer(asked).answer else {
         panic!("expected entries, got {:?}", msg_answer(asked));

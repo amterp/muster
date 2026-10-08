@@ -630,6 +630,33 @@ fn a_post_to_a_pane_on_another_machine_by_its_name_rings_it_there() {
     }
 }
 
+/// A name a pane goes by on each machine means neither, as it does to `muster pane send`: the
+/// post is refused naming both, and the machine or the id says which.
+#[test]
+fn a_name_panes_go_by_on_both_machines_is_refused_naming_each() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Laptop, "p1lap");
+    wire.pane(Side::Devenv, "p2dev");
+    for pane in ["p1lap", "p2dev"] {
+        wire.sessions.names.borrow_mut().insert(pane.to_string(), "otter".to_string());
+    }
+    let builder = session("builder");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+
+    let refused = wire.post(Side::Laptop, &builder, None, &["otter"], "which?").unwrap_err();
+    assert_eq!(
+        refused,
+        Refusal::WhichParticipant {
+            name: "otter".to_string(),
+            candidates: vec!["p1lap".to_string(), "p2dev@devenv".to_string()],
+        }
+    );
+    let posted = wire.post(Side::Laptop, &builder, None, &["otter@devenv"], "there").unwrap();
+    assert_eq!(woke(&posted), vec![("p2dev@devenv", Reach::Woken)]);
+    let posted = wire.post(Side::Laptop, &builder, None, &["p1lap"], "here").unwrap();
+    assert_eq!(woke(&posted), vec![("p1lap", Reach::Woken)]);
+}
+
 /// A pane on another machine is still an address once the agent in it has joined under a name
 /// of its own: the other machine answers with that name, and the post reaches it.
 #[test]
