@@ -523,3 +523,136 @@ fn a_codex_holding_a_draft_is_woken_by_codex_queue_and_keeps_the_draft() {
     eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
     assert!(replied, "the worker never replied with the word, or its draft was lost");
 }
+
+/// A `CODEX_HOME` of a test's own, outside the daemon's folder so that it outlasts the daemon's
+/// panes, and what a Codex started there leaves running, which outlives that Codex: its shared
+/// app-server, which ignores SIGTERM and is ended by `codex app-server daemon stop`, and the
+/// app-server's update loop, which that does not end. All of it is ended when the test ends,
+/// however it ends; declared before the daemon, so its panes have closed by then and none of
+/// them starts another.
+struct CodexHome(std::path::PathBuf);
+
+impl CodexHome {
+    fn new(name: &str) -> CodexHome {
+        let home = std::env::temp_dir().join(format!("muster-codex-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        CodexHome(std::fs::canonicalize(home).unwrap())
+    }
+}
+
+impl Drop for CodexHome {
+    fn drop(&mut self) {
+        let _ = Command::new("codex")
+            .args(["app-server", "daemon", "stop"])
+            .env("CODEX_HOME", &self.0)
+            .stdin(Stdio::null())
+            .output();
+        let updater = std::fs::read_to_string(self.0.join("app-server-daemon/daemon-updater.pid"))
+            .ok()
+            .and_then(|said| serde_json::from_str::<serde_json::Value>(&said).ok())
+            .and_then(|said| said["pid"].as_u64());
+        if let Some(pid) = updater {
+            let pid = pid.to_string();
+            let running = Command::new("ps").args(["-o", "command=", "-p", &pid]).output();
+            // Only the loop this home's Codex started: a pid file can outlive its process.
+            if running.is_ok_and(|ps| {
+                String::from_utf8_lossy(&ps.stdout).starts_with(&*self.0.to_string_lossy())
+            }) {
+                let _ = Command::new("kill").arg(&pid).status();
+            }
+        }
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// With its defaults, Codex runs a session's hooks in a shared app-server that carries the
+/// environment of whichever session started it, so a hook's report is refused, naming the
+/// setting; with that setting off, the same report is the pane's. Each Codex first asks to review
+/// the hook, which reads blocked, and is answered as a person would. No model is asked anything:
+/// each Codex has a home of its own with a provider nothing listens at, so none of this reaches
+/// the network (docs/observations/codex-0.160.0.md, sections 1 and 3).
+#[test]
+#[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
+fn a_report_through_codexs_shared_app_server_is_refused_and_the_setting_keeps_it_in_the_pane() {
+    if !asked_for("a report through Codex's shared app-server is refused") {
+        return;
+    }
+    let homes = [CodexHome::new("shared"), CodexHome::new("own")];
+    let daemon = codex_daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    let panes = [("shared", ""), ("own", "[features]\ndaemon_auto_start = false\n")];
+    for (index, ((name, settings), home)) in panes.into_iter().zip(&homes).enumerate() {
+        let folder = daemon.root().join(name);
+        std::fs::create_dir_all(&folder).unwrap();
+        let folder = std::fs::canonicalize(folder).unwrap();
+        let (home, said, hook) = (&home.0, folder.join("said"), folder.join("hook.sh"));
+        let said_word = quoted(&said.display().to_string());
+        std::fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\n\"$MUSTER_DAEMON\" report --waiting checking 2> {said_word}\n\
+                 echo \"exit $?\" >> {said_word}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        std::fs::write(
+            home.join("config.toml"),
+            format!(
+                "check_for_update_on_startup = false\nmodel = \"dummy\"\n\
+                 model_provider = \"unreachable\"\n{settings}\
+                 [model_providers.unreachable]\nname = \"unreachable\"\n\
+                 base_url = \"http://127.0.0.1:9/v1\"\n\
+                 [[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\n\
+                 type = \"command\"\ncommand = {:?}\n",
+                hook.display().to_string()
+            ),
+        )
+        .unwrap();
+        // Nothing else on the command line: any flag there keeps Codex out of its app-server.
+        let command = format!("CODEX_HOME={} codex", quoted(&home.display().to_string()));
+        let placement =
+            if index == 0 { in_new_tab("t1") } else { beside("shared", proto::Side::Right) };
+        make(
+            &mut control,
+            proto::pane_request::Create {
+                command: Some(command),
+                cwd: Some(folder.display().to_string()),
+                grid: Some(proto::Grid { cols: 100, rows: 30, width_px: 1000, height_px: 600 }),
+                ..create(name, placement)
+            },
+        );
+        until_text(&mut control, name, "Hooks need review");
+        let blocked =
+            until_turns(Duration::from_secs(20), "the hooks review to read blocked", || {
+                snapshot(&mut control).panes.into_iter().any(|pane| {
+                    pane.pane == name && pane.agent_state() == proto::AgentState::Blocked
+                })
+            });
+        assert!(blocked, "{name}: {}", read_text(&mut control, name, 0, 0).text);
+        // "Trust all and continue", by its keys, as `muster pane send --key down` then `--enter`.
+        let down = vec!["down".to_string()];
+        input.send(name, Event::Send(input_event::Send { keys: down, ..Default::default() }));
+        std::thread::sleep(Duration::from_millis(500));
+        type_line(&mut input, name, "");
+        until_ready(&mut control, name);
+        std::thread::sleep(Duration::from_secs(1));
+        type_line(&mut input, name, "hi");
+        let answered = until_turns(Duration::from_secs(30), "the hook's report to answer", || {
+            std::fs::read_to_string(&said).is_ok_and(|said| said.contains("exit "))
+        });
+        let said = std::fs::read_to_string(&said).unwrap_or_default();
+        eprintln!("codex: {name}: {said}");
+        assert!(answered, "{name}: {}", read_text(&mut control, name, 0, 0).text);
+        if name == "shared" {
+            assert!(said.contains("exit 1"), "the app-server's report was taken: {said}");
+            assert!(said.contains("`codex app-server`"), "the refusal names no server: {said}");
+            assert!(said.contains("daemon_auto_start"), "the refusal names no fix: {said}");
+        } else {
+            assert!(said.contains("exit 0"), "a session of its own was refused: {said}");
+        }
+    }
+}
