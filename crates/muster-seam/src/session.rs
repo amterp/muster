@@ -2228,13 +2228,16 @@ impl Session {
     }
 
     /// Whether a window's keyboard can go to a pane by itself: a daemon here still holds the pane,
-    /// and no other window holds its tab, as this process last heard.
+    /// it is not hidden, and no other window holds its tab, as this process last heard.
     fn reachable(&self, window: WindowId, pane: &PaneKey) -> bool {
         let Some(backend) = self.backends.get(&pane.daemon) else { return false };
-        let Some(tab) =
-            poison::lock(&backend.mirror, "mirror").pane(&pane.pane).map(|held| held.tab.clone())
-        else {
-            return false;
+        let tab = {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            let Some(held) = mirror.pane(&pane.pane) else { return false };
+            if mirror.tab(&held.tab).is_some_and(|tab| tab.hidden) {
+                return false;
+            }
+            held.tab.clone()
         };
         self.holding.elsewhere(&self.windows[window].name, &tab).is_none()
     }
@@ -2961,9 +2964,10 @@ pub(crate) fn focus(asked: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result
 /// Puts the keyboard back on the pane it was on before, or forward again after going back.
 ///
 /// `None` is nowhere to go, which is no failure: the first pane a window showed has nothing
-/// before it. A pane that has gone since is passed over, and so is one whose tab another window
-/// holds now, open or closed: back is somewhere this window can go, not a reason to take a tab
-/// from another window or ask for a closed one back.
+/// before it. A pane that has gone since is passed over, and so is one hidden since and one whose
+/// tab another window holds now, open or closed: back is somewhere this window can go, not a
+/// reason to bring back a pane somebody hid, take a tab from another window or ask for a closed
+/// one back.
 ///
 /// The step and the keyboard's move are one, under one hold of the session. Let go between them,
 /// a publish could record the pane the keyboard was still on as somewhere it went, and a refusal

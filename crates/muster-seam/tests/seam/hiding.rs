@@ -8,8 +8,9 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    AttentionChanged, ClosePane, Event, FocusPane, HidePane, OpenWindow, QuietPane, ReadWindow,
-    Request, Response, RosterChanged, ShowPane, SplitPane, Startup, event, request, response,
+    AttentionChanged, ClosePane, Event, FocusHistory, FocusPane, HidePane, OpenWindow, QuietPane,
+    ReadWindow, Request, Response, RosterChanged, ShowPane, SplitPane, Startup, event, request,
+    response,
 };
 use muster_daemon_proto::{Side, input_event};
 use muster_harness::requests::{beside, create, in_new_tab, make, snapshot, until_text};
@@ -124,6 +125,41 @@ fn focusing_a_hidden_pane_brings_it_back() {
         || hidden().is_empty() && keyboard().as_deref() == Some("p2"),
         || format!("hidden: {:?}, keyboard on {:?}", hidden(), keyboard()),
     );
+}
+
+/// Back steps over a pane hidden since the keyboard left it, rather than failing on it or bringing
+/// it back: hiding it said not to show it, and back is only a way around the window.
+#[test]
+fn back_steps_over_a_pane_hidden_since() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    open_window(&daemon);
+    let start = keyboard().expect("the window opened onto a pane");
+    let other = if start == "p1" { "p2" } else { "p1" };
+    for pane in [other, start.as_str()] {
+        assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+            pane_id: pane.to_string(),
+            ..FocusPane::default()
+        })));
+        until(
+            "the keyboard to move",
+            || keyboard().as_deref() == Some(pane),
+            || format!("the keyboard is on {:?}", keyboard()),
+        );
+    }
+    assert_ok(&answer(request::Payload::HidePane(HidePane {
+        pane_id: other.to_string(),
+        ..HidePane::default()
+    })));
+    until("the pane to be hidden", || hidden() == [other], || format!("hidden: {:?}", hidden()));
+
+    match answer(request::Payload::FocusHistory(FocusHistory { forward: false })).payload {
+        Some(response::Payload::Went(went)) => {
+            assert_eq!(went.pane_id, start, "back did not step over the hidden pane");
+        }
+        other => panic!("going back answered {other:?}"),
+    }
+    assert_eq!(hidden(), [other], "going back brought the hidden pane back");
 }
 
 /// A pane made hidden and quiet from the start is the headless agent: no window takes its tab,
