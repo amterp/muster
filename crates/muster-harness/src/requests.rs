@@ -38,6 +38,18 @@ pub fn in_new_tab(tab: &str) -> proto::Placement {
         r#where: Some(placement::Where::NewTab(placement::NewTab {
             tab: tab.to_string(),
             label: None,
+            hidden: false,
+        })),
+    }
+}
+
+/// A tab of its own that no view shows.
+pub fn in_new_hidden_tab(tab: &str) -> proto::Placement {
+    proto::Placement {
+        r#where: Some(placement::Where::NewTab(placement::NewTab {
+            tab: tab.to_string(),
+            label: None,
+            hidden: true,
         })),
     }
 }

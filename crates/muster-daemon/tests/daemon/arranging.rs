@@ -114,6 +114,72 @@ fn moving_a_pane_out_announces_the_tab_it_left_and_then_where_it_went() {
     expect(&mut control, moved("a", in_new_tab("t2")), proto::Outcome::Refused);
 }
 
+/// A hidden tab is an ordinary tab that says so: a pane moves into one and out again as into any
+/// other, and the flag is the tab's from the moment it is made.
+#[test]
+fn a_pane_moves_into_a_hidden_tab_and_out_again() {
+    let (_daemon, mut control) = two_panes();
+    let hidden = |control: &mut Control, tab: &str| {
+        snapshot(control).tabs.into_iter().find(|held| held.tab == tab).map(|held| held.hidden)
+    };
+    let asked = expect(&mut control, moved("b", in_new_hidden_tab("t2")), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_changed:t1", "tab_opened:t2"]);
+    let Some(proto::event::Event::TabOpened(opened)) = &asked.events[1].event else {
+        panic!("a move announced {:?}", names(&asked.events));
+    };
+    assert!(opened.tab.as_ref().unwrap().hidden, "the tab is announced hidden");
+    assert_eq!(hidden(&mut control, "t2"), Some(true));
+    assert_eq!(hidden(&mut control, "t1"), Some(false));
+
+    // A pane made beside a hidden one is in its hidden tab.
+    make(&mut control, create("c", beside("b", Side::Down)));
+    assert_eq!(tab_shape(&mut control, "t2"), "[b/c 0.50]");
+
+    let asked = expect(&mut control, moved("b", in_new_tab("t3")), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_changed:t2", "tab_opened:t3"]);
+    assert_eq!(hidden(&mut control, "t3"), Some(false));
+    expect(&mut control, moved("c", in_new_tab("t4")), proto::Outcome::Done);
+    assert_eq!(hidden(&mut control, "t2"), None, "its last pane leaving closes a hidden tab");
+}
+
+#[test]
+fn a_pane_can_start_in_a_hidden_tab_and_quiet() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    expect(&mut control, subscribe_request(), proto::Outcome::Done);
+    let asked = expect(
+        &mut control,
+        create_request(pane_request::Create {
+            quiet: true,
+            ..create("a", in_new_hidden_tab("t1"))
+        }),
+        proto::Outcome::Done,
+    );
+    assert_eq!(names(&asked.events), ["pane_opened:a", "tab_opened:t1"]);
+    let held = snapshot(&mut control);
+    assert!(held.tabs[0].hidden);
+    assert!(held.panes[0].quiet);
+}
+
+fn quiet(name: &str, quiet: bool) -> proto::request::Service {
+    pane(pane_request::Request::Quiet(pane_request::Quiet { pane: name.to_string(), quiet }))
+}
+
+#[test]
+fn making_a_pane_quiet_announces_its_record() {
+    let (_daemon, mut control) = two_panes();
+    let asked = expect(&mut control, quiet("a", true), proto::Outcome::Done);
+    let Some(proto::event::Event::PaneChanged(changed)) = &asked.events[0].event else {
+        panic!("quieting announced {:?}", names(&asked.events));
+    };
+    assert!(changed.pane.as_ref().unwrap().quiet);
+    expect(&mut control, quiet("a", true), proto::Outcome::AlreadySo);
+    expect(&mut control, quiet("b", false), proto::Outcome::AlreadySo);
+    expect(&mut control, quiet("a", false), proto::Outcome::Done);
+    assert!(snapshot(&mut control).panes.iter().all(|record| !record.quiet));
+    expect(&mut control, quiet("z", true), proto::Outcome::NotThere);
+}
+
 #[test]
 fn a_ratio_is_set_by_the_path_to_its_split() {
     let (_daemon, mut control) = two_panes();

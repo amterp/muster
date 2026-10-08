@@ -73,7 +73,7 @@ impl Daemon {
         let create = pane_request::Create {
             pane: pane.clone(),
             placement: Some(proto::Placement {
-                r#where: Some(placement::Where::NewTab(placement::NewTab { tab, label: None })),
+                r#where: Some(placement::Where::NewTab(placement::NewTab { tab, label: None, hidden: false })),
             }),
             grid: Some(GRID),
             command: Some(command.to_string()),

@@ -430,6 +430,8 @@ struct Tab {
     label: proto::Label,
     root: Node,
     zoomed: Option<String>,
+    /// No view shows it (`proto::Tab::hidden`). Set only when the tab is made.
+    hidden: bool,
 }
 
 impl Tab {
@@ -439,6 +441,7 @@ impl Tab {
             label: Some(self.label.clone()),
             root: Some(node_record(&self.root)),
             zoomed: self.zoomed.clone(),
+            hidden: self.hidden,
         }
     }
 }
@@ -966,6 +969,7 @@ pub(crate) struct Starting {
     pane: String,
     label: Option<String>,
     command: Option<String>,
+    quiet: bool,
     target: Target,
     grid: Grid,
     cwd: PathBuf,
@@ -991,7 +995,7 @@ impl Starting {
 #[derive(Debug)]
 enum Target {
     Beside { pane: String, side: tree::Side, ratio: f32 },
-    NewTab { name: String, label: proto::Label },
+    NewTab { name: String, label: proto::Label, hidden: bool },
 }
 
 impl Session {
@@ -1053,6 +1057,7 @@ impl Session {
                 P::Report(report) => self.report(report),
                 P::Seen(seen) => self.seen(&seen.panes),
                 P::Compact(compact) => self.compact(&compact),
+                P::Quiet(quiet) => self.quiet(&quiet),
                 P::Read(read) => match self.pane_index(&read.pane) {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
                     Some(index) => {
@@ -1252,6 +1257,7 @@ impl Session {
             pane: create.pane,
             label: create.label,
             command: create.command,
+            quiet: create.quiet,
             target,
             grid,
             cwd,
@@ -1341,6 +1347,7 @@ impl Session {
             label: starting.label,
             cwd: starting.cwd.display().to_string(),
             command: starting.command,
+            quiet: starting.quiet,
             ..proto::Pane::default()
         };
         if let Err(reply) = self.open(record, starting.grid, master, child, program) {
@@ -1443,7 +1450,11 @@ impl Session {
                         new_tab.tab
                     )));
                 }
-                Ok(Target::NewTab { name: new_tab.tab, label: new_tab.label.unwrap_or_default() })
+                Ok(Target::NewTab {
+                    name: new_tab.tab,
+                    label: new_tab.label.unwrap_or_default(),
+                    hidden: new_tab.hidden,
+                })
             }
         }
     }
@@ -1457,8 +1468,9 @@ impl Session {
                 let record = self.tabs[index].record();
                 self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
             }
-            Target::NewTab { name, label } => {
-                let tab = Tab { name, label, root: Node::Pane(pane.to_string()), zoomed: None };
+            Target::NewTab { name, label, hidden } => {
+                let tab =
+                    Tab { name, label, root: Node::Pane(pane.to_string()), zoomed: None, hidden };
                 let record = tab.record();
                 self.tabs.push(tab);
                 self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
@@ -2088,6 +2100,20 @@ impl Session {
         Reply::done()
     }
 
+    fn quiet(&mut self, quiet: &pane_request::Quiet) -> Reply {
+        let Some(index) = self.pane_index(&quiet.pane) else {
+            return Reply::not_there(format!("no pane {} on this daemon", quiet.pane));
+        };
+        let record = &mut self.panes[index].record;
+        if record.quiet == quiet.quiet {
+            return Reply::already();
+        }
+        record.quiet = quiet.quiet;
+        let record = record.clone();
+        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        Reply::done()
+    }
+
     // -----------------------------------------------------------------------------------------
     // Tabs
 
@@ -2464,6 +2490,7 @@ impl Session {
                     label: tab.label.clone(),
                     zoomed: tab.zoomed.clone(),
                     root: tab.root.clone(),
+                    hidden: tab.hidden,
                 })
                 .collect(),
             panes: self
@@ -2475,6 +2502,7 @@ impl Session {
                     cwd: PathBuf::from(&pane.record.cwd),
                     grid: pane.io.grid(),
                     resume: pane.resume.clone(),
+                    quiet: pane.record.quiet,
                 })
                 .collect(),
         }
@@ -2580,6 +2608,7 @@ impl Session {
                 label: pane.saved.label,
                 cwd: cwd.display().to_string(),
                 command: resume.as_ref().map(|resume| resume.command.join(" ")),
+                quiet: pane.saved.quiet,
                 ..proto::Pane::default()
             };
             if self.open(record, pane.saved.grid, master, child, program).is_ok() {
@@ -2622,7 +2651,7 @@ impl Session {
             return;
         };
         let zoomed = tab.zoomed.filter(|pane| root.contains(pane));
-        let tab = Tab { name: tab.name, label: tab.label, root, zoomed };
+        let tab = Tab { name: tab.name, label: tab.label, root, zoomed, hidden: tab.hidden };
         let record = tab.record();
         self.tabs.push(tab);
         self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
@@ -2851,6 +2880,7 @@ impl Session {
                 label: tab.label,
                 root: tab.root,
                 zoomed: tab.zoomed,
+                hidden: tab.hidden,
             });
         }
         Ok(())
@@ -3189,6 +3219,7 @@ mod tests {
                 first: Box::new(Node::Pane(panes[0].to_string())),
                 second: Box::new(Node::Pane(panes[1].to_string())),
             },
+            hidden: false,
         };
         let tabs = [tab("t1", ["p1", "p2"]), tab("t2", ["p3", "p4"])];
         assert_eq!(in_no_tab(["p1", "p4"].into_iter(), &tabs), None);

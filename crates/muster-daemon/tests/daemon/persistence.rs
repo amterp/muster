@@ -117,7 +117,8 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
         &mut control,
         pane_request::Create {
             cwd: Some(second.display().to_string()),
-            ..create("p3", in_new_tab("t2"))
+            quiet: true,
+            ..create("p3", in_new_hidden_tab("t2"))
         },
     );
     let zoom = pane_request::Zoom { pane: "p2".to_string(), zoomed: true };
@@ -167,7 +168,8 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
         tabs.sort_by(|one, other| one.tab.cmp(&other.tab));
         tabs
     };
-    assert_eq!(by_name(&after), by_name(&before), "tabs, trees, ratios, zoom and labels");
+    assert_eq!(by_name(&after), by_name(&before), "tabs, trees, ratios, zoom, labels, hiding");
+    assert!(record(&after, "p3").quiet && !record(&after, "p1").quiet, "which pane is quiet");
     for name in ["p1", "p2", "p3"] {
         let (was, is) = (record(&before, name), record(&after, name));
         assert_eq!((&is.label, &is.cwd), (&was.label, &was.cwd), "{name}'s label and directory");

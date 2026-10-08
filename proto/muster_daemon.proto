@@ -243,6 +243,17 @@ message PaneRequest {
     Seen seen = 10;
     // Since 1.3.
     Compact compact = 11;
+    // Since 1.5.
+    Quiet quiet = 12;
+  }
+
+  // Sets whether the pane is quiet: whether a view raises anything for the person about it.
+  // A view still shows its state; what it leaves out is every banner and every ask. The daemon
+  // only keeps the fact, writes it down and hands it to every view. ALREADY_SO when the pane
+  // already is as asked. Since 1.5.
+  message Quiet {
+    string pane = 1;
+    bool quiet = 2;
   }
 
   // Somebody has seen these panes: a window with the keyboard shows them. Clears each one's
@@ -284,6 +295,8 @@ message PaneRequest {
     // Run through the pane's shell, which the pane drops back to when it exits.
     optional string command = 6;
     optional string label = 7;
+    // Starts it quiet (`Pane.quiet`). Since 1.5.
+    bool quiet = 8;
   }
 
   // Hangs the pane up: SIGHUP to its process groups, then the PTY closed.
@@ -407,6 +420,8 @@ message Placement {
   message NewTab {
     string tab = 1;
     Label label = 2;
+    // Makes the tab hidden (`Tab.hidden`). Since 1.5.
+    bool hidden = 3;
   }
 }
 
@@ -1238,6 +1253,9 @@ message Pane {
   // since. Absent while it reads, and whenever the daemon cannot tell. A view shows a pane whose
   // agent this holds as stuck.
   UnreadInput unread_input = 15;
+  // A view raises nothing for the person about this pane: no banner, and no ask. Set when the
+  // pane is made or with `PaneRequest.Quiet`, and written to the state file. Since 1.5.
+  bool quiet = 16;
 }
 
 // Input a pane's program has left unread (`Pane.unread_input`), as it stood when the daemon
@@ -1299,6 +1317,10 @@ message Tab {
   Label label = 2;
   Node root = 3;
   optional string zoomed = 4;
+  // No view shows the tab or its panes, which go on running; a view lists them apart, to be
+  // brought back. Set only when the tab is made (`Placement.NewTab.hidden`): bringing a pane
+  // back moves it into a tab that is not. Written to the state file. Since 1.5.
+  bool hidden = 5;
 }
 
 // A tab's name, as a person gave it. Every daemon holding part of a grouped tab stores it, and

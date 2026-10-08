@@ -142,6 +142,7 @@ impl DaemonBackend {
             env: self.environment.clone().into_iter().collect(),
             command: run,
             label: name,
+            quiet: false,
         }))
         .map_err(|refusal| match refusal {
             Refusal::Unanswered { detail, .. } => {
@@ -163,6 +164,7 @@ impl DaemonBackend {
             None => placement::Where::NewTab(placement::NewTab {
                 tab: tab.to_string(),
                 label: Some(proto::Label::default()),
+                hidden: false,
             }),
         }
     }
@@ -176,6 +178,7 @@ impl DaemonBackend {
                 let placement = placement::Where::NewTab(placement::NewTab {
                     tab: tab.to_string(),
                     label: Some(label),
+                    hidden: false,
                 });
                 (placement, Some(tab))
             }
@@ -217,6 +220,7 @@ impl BackendChannel for DaemonBackend {
                 let placement = placement::Where::NewTab(placement::NewTab {
                     tab: tab.to_string(),
                     label: Some(proto::Label::default()),
+                    hidden: false,
                 });
                 let created = self.create(placement, cwd, run, name)?;
                 Ok(Outcome { created: Some(created), created_tab: Some(tab) })
@@ -228,6 +232,7 @@ impl BackendChannel for DaemonBackend {
                 let placement = placement::Where::NewTab(placement::NewTab {
                     tab: tab.to_string(),
                     label: Some(proto::Label::default()),
+                    hidden: false,
                 });
                 let created = self.create(placement, cwd, run, name)?;
                 Ok(Outcome { created: Some(created), created_tab: None })

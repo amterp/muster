@@ -1,6 +1,6 @@
-//! What a daemon restart needs, kept on disk (MIP-3 section 2): the shape of every tab, each
-//! pane's name and directory, the command that starts its agent's session again, and the
-//! settings an app last gave. Never a title, an agent's state or facts, or whether a process is
+//! What a daemon restart needs, kept on disk (MIP-3 section 2): the shape of every tab and
+//! whether it is hidden, each pane's name, directory and whether it is quiet, the command that
+//! starts its agent's session again, and the settings an app last gave. Never a title, an agent's state or facts, or whether a process is
 //! alive: those are observations, and a restarted daemon observes them afresh. The resume
 //! command is not one: it is built from the session id the agent's harness reported and the
 //! arguments the agent was started with, both of which a restarted daemon could never learn.
@@ -66,6 +66,8 @@ pub(crate) struct Tab {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) zoomed: Option<String>,
     pub(crate) root: Node,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) hidden: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -80,6 +82,8 @@ pub(crate) struct Pane {
     /// What starts its agent's session again, when its agent reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) resume: Option<Resume>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) quiet: bool,
 }
 
 /// The command that starts a pane's agent session again after a restart: the agent's manifest's
@@ -633,6 +637,7 @@ mod tests {
             cwd: PathBuf::from("/tmp"),
             grid: Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 },
             resume: None,
+            quiet: false,
         }
     }
 
@@ -654,6 +659,7 @@ mod tests {
                     first: Box::new(Node::Pane("p1".to_string())),
                     second: Box::new(Node::Pane("p2".to_string())),
                 },
+                hidden: false,
             }],
             panes: vec![Pane { label: Some("A".to_string()), ..pane("p1") }, pane("p2")],
         }
@@ -790,7 +796,7 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 6] = [
+    const FIXTURES: [(&str, &[&str]); 7] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
@@ -798,6 +804,8 @@ mod tests {
         ("state-v1-compact-at.json", &["compact_at"]),
         // Also the first to hold a pane's resume.
         ("state-v1-resume-agents.json", &["resume_agents"]),
+        // No setting: the first to hold a hidden tab and a quiet pane.
+        ("state-v1-hidden-quiet.json", &[]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -819,6 +827,7 @@ mod tests {
             cwd: PathBuf::from("/tmp"),
             grid,
             resume: None,
+            quiet: false,
         };
         let split = |axis, ratio, first: &str, second: &str| Node::Split {
             axis,
@@ -858,12 +867,14 @@ mod tests {
                     label: proto::Label { text: Some("work".to_string()), generation: 2 },
                     zoomed: Some("p2".to_string()),
                     root: split(Axis::Columns, 0.3, "p1", "p2"),
+                    hidden: false,
                 },
                 Tab {
                     name: "t2".to_string(),
                     label: proto::Label { text: None, generation: 1 },
                     zoomed: None,
                     root: split(Axis::Rows, 0.6, "p3", "p4"),
+                    hidden: false,
                 },
             ],
             panes: vec![

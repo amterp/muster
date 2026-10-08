@@ -17,6 +17,10 @@ pub const PROTOCOL: Version = Version { major: 1, minor: 5 };
 /// field and would write the send's Return without them, so a client asks before sending any.
 pub const KEYS_IN_A_SEND: u32 = 4;
 
+/// The first minor whose daemon keeps a tab hidden and a pane quiet. An older one drops both
+/// fields, making a hidden pane visible and a quiet one ask, so a client asks before sending any.
+pub const HIDDEN_AND_QUIET: u32 = 5;
+
 /// Whether two ends speaking these versions can talk.
 pub fn compatible(ours: &Version, theirs: &Version) -> bool {
     ours.major == theirs.major
