@@ -179,6 +179,87 @@
         ]
       },
       "expect": { "raised": [], "cleared": [] }
+    },
+    {
+      "name": "a pane whose program stopped reading is warned about by its program, with nothing to offer",
+      "why": "The cause the window can be told rather than guess. Its daemon measured input the pane's program has left unread, so the pane and its bridge are fine and a reattach would paint the same frozen screen; the sentence names the program instead, and what frees it is done to that program. The warning is the same problem, keyed the same way, so it clears the way any other does when the pane paints.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          {
+            "typed": "local/p1w3r07bsd"
+          },
+          {
+            "stoppedReading": "local/p1w3r07bsd",
+            "program": "codex",
+            "bytes": 2817
+          },
+          {
+            "tick": 10000
+          },
+          {
+            "tick": 60000
+          },
+          {
+            "painted": "local/p1w3r07bsd"
+          }
+        ],
+        "remedies": true
+      },
+      "expect": {
+        "raised": [
+          "pane:local/p1w3r07bsd:painting"
+        ],
+        "cleared": [
+          {
+            "key": "pane:local/p1w3r07bsd:painting",
+            "because": "painted"
+          }
+        ],
+        "remedies": [
+          null
+        ]
+      }
+    },
+    {
+      "name": "a warning is said again when its cause becomes known, and again when it goes",
+      "why": "The window's deadline and the daemon's can land either way round: a pane warned about as a bridge that wedged is then found to have a program that stopped reading, and that program may read again while the pane still has nothing new to paint. Each time the warning is said again in the words of what is now true, with the remedy that fits it, rather than left standing in the old words.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          {
+            "typed": "local/p1w3r07bsd"
+          },
+          {
+            "tick": 10000
+          },
+          {
+            "stoppedReading": "local/p1w3r07bsd",
+            "program": "codex",
+            "bytes": 12
+          },
+          {
+            "tick": 1000
+          },
+          {
+            "readingAgain": "local/p1w3r07bsd"
+          }
+        ],
+        "remedies": true
+      },
+      "expect": {
+        "raised": [
+          "pane:local/p1w3r07bsd:painting",
+          "pane:local/p1w3r07bsd:painting",
+          "pane:local/p1w3r07bsd:painting"
+        ],
+        "cleared": [],
+        "remedies": [
+          "reattach local/p1w3r07bsd",
+          null,
+          "reattach local/p1w3r07bsd"
+        ]
+      }
     }
   ]
 }

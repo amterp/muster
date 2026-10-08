@@ -30,6 +30,12 @@
 //! problem naming itself; accusing each of its eight panes as well is the nagging that keying a
 //! problem by its condition exists to end.
 //!
+//! **Naming the program when its daemon says it stopped reading.** The one cause the window can be
+//! told rather than guess: the pane's daemon measured input its program has left unread. Then the
+//! pane and its bridge are fine, and a Reattach would change nothing, so the warning says which
+//! program, and offers none (GitHub issue #1). A warning raised before the daemon said so is said
+//! again in those words once it does, and in the bridge's once the program reads.
+//!
 //! Pure - no clock, no sockets, no processes. Time arrives as a number, so every rule here is
 //! driven by a recorded case.
 
@@ -88,6 +94,15 @@ impl Cleared {
     }
 }
 
+/// A pane's program that has stopped reading its input, as its daemon named it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reader {
+    pub program: String,
+    pub pid: i32,
+    /// What it had left unread when its daemon called it stopped.
+    pub bytes: u32,
+}
+
 /// Every pane that owes output, and everything that decides whether owing it is worth saying.
 #[derive(Debug, Default)]
 pub struct Painting {
@@ -98,12 +113,17 @@ pub struct Painting {
     /// clock restarted by each keystroke is a deadline nobody ever reaches.
     asked: BTreeMap<PaneKey, u64>,
 
-    /// Which panes have already been reported, so that clearing knows what to take back.
+    /// Which panes have already been reported, so that clearing knows what to take back, and
+    /// the program each was reported as having stopped reading, if it was.
     ///
     /// Held here rather than by the caller because it is the other half of the same rule: a pane
     /// is reported once and cleared once, and splitting the two across a lock boundary is how a
-    /// stale error outlives the pane it was about.
-    reported: BTreeSet<PaneKey>,
+    /// stale error outlives the pane it was about. The cause is kept so that a pane whose cause
+    /// became known, or went, is said again rather than left in the words of the old one.
+    reported: BTreeMap<PaneKey, Option<Reader>>,
+
+    /// Panes whose daemon says their program has stopped reading its input.
+    not_reading: BTreeMap<PaneKey, Reader>,
 
     /// Why a reported pane stopped owing output since the last reading, for the clear that
     /// takes its problem back. Written wherever `asked` loses a pane, because that is the one
@@ -125,7 +145,8 @@ impl Painting {
     pub const fn new() -> Painting {
         Painting {
             asked: BTreeMap::new(),
-            reported: BTreeSet::new(),
+            reported: BTreeMap::new(),
+            not_reading: BTreeMap::new(),
             settled: BTreeMap::new(),
             away: BTreeSet::new(),
             visible: None,
@@ -175,7 +196,7 @@ impl Painting {
     /// and it stays until the pane paints: a warning that cleared on a tab switch read exactly
     /// like a pane that had painted, about a bridge that was still wedged.
     pub fn showing(&mut self, visible: BTreeSet<PaneKey>) {
-        self.asked.retain(|pane, _| visible.contains(pane) || self.reported.contains(pane));
+        self.asked.retain(|pane, _| visible.contains(pane) || self.reported.contains_key(pane));
         self.visible = Some(visible);
     }
 
@@ -198,6 +219,19 @@ impl Painting {
         }
     }
 
+    /// Whether the pane's program has stopped reading its input, as its daemon says: the reader
+    /// that stopped, or `None` once it reads again or its daemon cannot say.
+    ///
+    /// Answers whether a reported pane's warning now owes different words, so a caller holding a
+    /// clock knows to wake for it.
+    pub fn stopped_reading(&mut self, pane: &PaneKey, reader: Option<Reader>) -> bool {
+        let before = match reader {
+            Some(reader) => self.not_reading.insert(pane.clone(), reader),
+            None => self.not_reading.remove(pane),
+        };
+        self.reported.contains_key(pane) && before.as_ref() != self.not_reading.get(pane)
+    }
+
     /// The pane is gone, so nothing is owed about it.
     ///
     /// Nothing is returned, and the problem is taken back by the next [`Painting::reconcile`]:
@@ -206,6 +240,7 @@ impl Painting {
     /// which is what lets a caller hold this while holding whatever it was already holding.
     pub fn closed(&mut self, pane: &PaneKey) {
         self.asked.remove(pane);
+        self.not_reading.remove(pane);
         self.settle(pane, Cleared::Closed);
     }
 
@@ -225,18 +260,34 @@ impl Painting {
                 .collect()
         };
 
+        let causes: BTreeMap<PaneKey, Option<Reader>> = overdue
+            .into_iter()
+            .map(|pane| {
+                let cause = self.not_reading.get(&pane).cloned();
+                (pane, cause)
+            })
+            .collect();
         let reported = Reported {
-            raise: overdue
-                .difference(&self.reported)
-                // Always safe to offer: the pane is one this window is drawing, so the bridge a
-                // reattach replaces is this window's own, and the agent behind it is untouched.
-                .map(|pane| {
-                    (key(pane), stopped(pane, deadline), Some(Remedy::Reattach(pane.clone())))
+            raise: causes
+                .iter()
+                // New, or said before in the words of another cause.
+                .filter(|(pane, cause)| self.reported.get(*pane) != Some(*cause))
+                .map(|(pane, cause)| match cause {
+                    // Nothing to offer: the pane and its bridge are fine, and only something
+                    // done to the program frees it.
+                    Some(reader) => (key(pane), not_reading(pane, deadline, reader), None),
+                    // Always safe to offer: the pane is one this window is drawing, so the
+                    // bridge a reattach replaces is this window's own, and the agent behind it is
+                    // untouched.
+                    None => {
+                        (key(pane), stopped(pane, deadline), Some(Remedy::Reattach(pane.clone())))
+                    }
                 })
                 .collect(),
             clear: self
                 .reported
-                .difference(&overdue)
+                .keys()
+                .filter(|pane| !causes.contains_key(*pane))
                 .map(|pane| {
                     // Every other way out of `overdue` settles first, so this is a deadline of
                     // zero.
@@ -246,7 +297,7 @@ impl Painting {
                 .collect(),
         };
         self.settled.clear();
-        self.reported = overdue;
+        self.reported = causes;
         reported
     }
 
@@ -271,7 +322,10 @@ impl Painting {
                 if waited < deadline {
                     Some(deadline - waited)
                 } else {
-                    (!self.reported.contains(pane)).then_some(0)
+                    let said = self.reported.get(pane);
+                    // Owed a reading too when its warning's cause has changed since it was said.
+                    (said.is_none_or(|cause| cause.as_ref() != self.not_reading.get(pane)))
+                        .then_some(0)
                 }
             })
             .min()
@@ -280,7 +334,7 @@ impl Painting {
     /// Records why a reported pane stopped owing output. A pane nobody was told about has
     /// nothing to take back, so nothing is kept for it.
     fn settle(&mut self, pane: &PaneKey, why: Cleared) {
-        if self.reported.contains(pane) {
+        if self.reported.contains_key(pane) {
             self.settled.insert(pane.clone(), why);
         }
     }
@@ -288,7 +342,7 @@ impl Painting {
     /// Whether this pane's silence would be worth saying anything about.
     fn counts(&self, pane: &PaneKey) -> bool {
         let drawn = self.visible.as_ref().is_none_or(|visible| visible.contains(pane));
-        (drawn || self.reported.contains(pane)) && !self.away.contains(&pane.daemon)
+        (drawn || self.reported.contains_key(pane)) && !self.away.contains(&pane.daemon)
     }
 }
 
@@ -335,5 +389,25 @@ pub fn stopped(pane: &PaneKey, deadline: u64) -> String {
          {reattach} starts a new bridge and leaves the agent alone. A pane that is fine says \
          this too if what is running in it turned echo off - a password prompt - and takes it \
          back the moment anything paints."
+    )
+}
+
+/// What to tell somebody whose pane has painted nothing because its program stopped reading.
+///
+/// The one cause the window is told rather than left to guess, so the sentence says it and
+/// clears the bridge and the daemon, which [`stopped`] has to implicate. It offers no reattach:
+/// a new bridge would paint the same frozen screen. What frees the pane is done to its program,
+/// and only the person knows whether interrupting it costs them anything.
+pub fn not_reading(pane: &PaneKey, deadline: u64, reader: &Reader) -> String {
+    let waited = describe(deadline);
+    let Reader { program, pid, bytes } = reader;
+    let bytes = if *bytes == 1 { "1 byte".to_string() } else { format!("{bytes} bytes") };
+    format!(
+        "Input reached the pane {pane} over {waited} ago and nothing has painted since, because \
+         its program, {program} (pid {pid}), has stopped reading its input: it has left {bytes} \
+         unread. The pane, its bridge and its daemon are fine, so a reattach would change \
+         nothing. Interrupting the program, or ending it and resuming its session, frees it; \
+         this goes the moment it reads again. Its daemon's log carries `daemon.pane.unread_input` \
+         from when it stopped."
     )
 }

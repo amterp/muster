@@ -9,7 +9,7 @@ use conformance::{CaseError, Conformance, fields};
 use muster_core::PaneKey;
 use muster_core::composition::DaemonId;
 use muster_core::mirror::backend::PaneId;
-use muster_core::painting::Painting;
+use muster_core::painting::{Painting, Reader};
 use serde_json::{Value, json};
 
 use crate::support::remedy;
@@ -37,6 +37,19 @@ fn pane_painting_conformance() {
                 painting.painted(&pane_key(pane)?);
             } else if let Some(pane) = step.get("closed").and_then(Value::as_str) {
                 painting.closed(&pane_key(pane)?);
+            } else if let Some(pane) = step.get("stoppedReading").and_then(Value::as_str) {
+                let reader = Reader {
+                    program: step.get("program").and_then(Value::as_str).unwrap_or("").to_string(),
+                    pid: 4242,
+                    bytes: step
+                        .get("bytes")
+                        .and_then(Value::as_u64)
+                        .and_then(|bytes| u32::try_from(bytes).ok())
+                        .unwrap_or_default(),
+                };
+                painting.stopped_reading(&pane_key(pane)?, Some(reader));
+            } else if let Some(pane) = step.get("readingAgain").and_then(Value::as_str) {
+                painting.stopped_reading(&pane_key(pane)?, None);
             } else if let Some(daemon) = step.get("away").and_then(Value::as_str) {
                 painting.daemon_away(&DaemonId::new(daemon), true);
             } else if let Some(daemon) = step.get("back").and_then(Value::as_str) {
@@ -79,6 +92,8 @@ fn pane_painting_conformance() {
             ("cleared", Some(Value::Array(cleared))),
             // Only where a case asks, so the cases about something else need not spell it.
             ("remedy", given.get("remedy").is_some().then(|| json!(remedies.last()))),
+            // Every raise's, in order, for a case about a warning said again in other words.
+            ("remedies", given.get("remedies").is_some().then(|| json!(remedies))),
         ]))
     });
 
@@ -101,6 +116,26 @@ fn pane_key(spelled: &str) -> Result<PaneKey, CaseError> {
         CaseError::new(format!("`{spelled}` is not a pane key - it wants daemon/pane"))
     })?;
     Ok(PaneKey::new(&DaemonId::new(daemon), &PaneId::new(pane)))
+}
+
+/// A pane whose program stopped reading is told so by name, and is not told to reattach: the
+/// bridge is fine, and a sentence blaming it sent somebody looking for a wedge that was never
+/// there (GitHub issue #1).
+#[test]
+fn a_pane_whose_program_stopped_reading_names_the_program_and_not_the_bridge() {
+    let pane = pane_key("local/p1w3r07bsd").expect("a pane key");
+    let reader = Reader { program: "codex".to_string(), pid: 4242, bytes: 2817 };
+    let told = muster_core::painting::not_reading(&pane, 10_000 * PER_MILLI, &reader);
+
+    assert!(
+        told.contains("codex (pid 4242), has stopped reading its input")
+            && told.contains("2817 bytes"),
+        "the sentence should name the program and what it left: {told}"
+    );
+    assert!(
+        !told.contains("pane reattach") && !told.contains("has wedged"),
+        "the bridge is fine, so the sentence may not send anybody to it: {told}"
+    );
 }
 
 /// The sentence's remedy keeps the agent.

@@ -1617,6 +1617,17 @@ impl Session {
         mirror.pane(&pane.pane)?.agent.clone()
     }
 
+    /// The program a pane's daemon says has stopped reading its input, if one has.
+    fn not_reading(&self, pane: &PaneKey) -> Option<muster_core::painting::Reader> {
+        let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
+        let unread = mirror.pane(&pane.pane)?.unread_input.as_ref()?;
+        Some(muster_core::painting::Reader {
+            program: unread.program.clone(),
+            pid: unread.pid,
+            bytes: unread.bytes,
+        })
+    }
+
     /// Whether a pane's daemon says its agent finished and nobody has seen it since.
     fn finished_unseen(&self, pane: &PaneKey) -> bool {
         self.backends.get(&pane.daemon).is_some_and(|backend| {
@@ -4998,6 +5009,14 @@ fn report(daemon: &DaemonId, change: &Change) {
             pane_id: pane.to_string(),
             text: text.clone(),
         })));
+    }
+
+    // What the painting watch words a silent pane's warning by. Recorded and nothing more, as
+    // every call into the watch is (`watchdog`, its lock rule).
+    if let Change::AgentDescribed(pane) | Change::PaneAdded(pane) = change {
+        let key = PaneKey::new(daemon, pane);
+        let reader = poison::lock(&SESSION, "session").not_reading(&key);
+        watchdog::stopped_reading(&key, reader);
     }
 
     // Recorded before anything is announced, because it is what the announcement depends on.

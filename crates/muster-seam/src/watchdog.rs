@@ -39,7 +39,7 @@ use muster_core::PaneKey;
 use muster_core::composition::DaemonId;
 use muster_core::diagnostics::{clock, log, poison};
 use muster_core::fields;
-use muster_core::painting::Painting;
+use muster_core::painting::{Painting, Reader};
 use muster_core::problems::Severity;
 use muster_core::respawn::Ended;
 use muster_core::typeable::{Ask, Waiting};
@@ -244,6 +244,15 @@ pub(crate) fn typed(pane: &PaneKey) {
 /// nothing that changes what the clock owes, nothing to wake anybody for.
 pub(crate) fn painted(pane: &PaneKey) {
     let news = poison::lock(&PAINTING, "painting").painted(pane);
+    if news {
+        KNOCK.notify_all();
+    }
+}
+
+/// Whether a pane's program has stopped reading its input, as its daemon says, so that a silence
+/// it explains is not blamed on the pane's bridge.
+pub(crate) fn stopped_reading(pane: &PaneKey, reader: Option<Reader>) {
+    let news = poison::lock(&PAINTING, "painting").stopped_reading(pane, reader);
     if news {
         KNOCK.notify_all();
     }
