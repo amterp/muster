@@ -460,3 +460,7 @@ enum rather than a second meaning for the same field.
   `~/.muster/state/holding/tabs.toml`, beside the names and written the same way. A window keeps its
   tabs while closed, lists only its own, carries a request about another window's tab to that
   window, and hands a tab over by `muster tab move`, a menu or a drag.
+- 2026-10-07 **`hidden` now names something else.** Where this document says a pane is marked
+  `(hidden)`, it means a pane whose tab is not on screen, which `muster window` now marks
+  `(off screen)`. A hidden pane is one taken out of every window with `muster pane hide`, which
+  this MIP did not have.

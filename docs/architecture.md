@@ -307,7 +307,7 @@ resting rendering of a list of words, the row already prints the state, and the 
 a dot has to be some colour in order to exist.
 
 **The legend is a default, and the window's half of it is a person's to change.** `[colors]`
-carries the six agent states and the focus ring (`configuration.md`), and only the window
+carries the seven agent states and the focus ring (`configuration.md`), and only the window
 honours them: the CLI keeps the terminal's fixed sixteen. That answers the question a
 configurable legend raises, which is what "one legend" can still mean once anybody can repaint
 it. `muster window` reads the same on every machine - which for an agent parsing it is a feature

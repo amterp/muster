@@ -1,8 +1,8 @@
 /// What the agent in a pane is doing.
 ///
-/// Five, not four. `Unknown` is a state an agent can genuinely be in - a pane whose
-/// harness we cannot classify - and it renders as itself. An agent we failed to read is
-/// not an agent that finished.
+/// `Unknown` is a state an agent can genuinely be in - a pane whose harness we cannot
+/// classify - and it renders as itself. An agent we failed to read is not an agent that
+/// finished.
 ///
 /// `Done` is never a daemon's agent state. It is an agent that finished while nobody looked:
 /// the daemon holds the finish on the pane's record, and a window paints it `done` until

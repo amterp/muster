@@ -23,9 +23,9 @@ in a pane of its own, your agents keep running, and the app opens again when it 
 ## What it is
 
 Split a window into panes, put a coding agent in each, and read the whole lot at a glance. Every
-agent's state - working, blocked on you, waiting on its own build, done, idle - sits on its row in
-the agent list down the side, and a pane whose agent wants noticing carries it on its own edge too.
-Fifteen agents is something you read rather than something you click through.
+agent's state - working, blocked on you, waiting on its own build, stuck, done, idle - sits on its
+row in the agent list down the side, and a pane whose agent wants noticing carries it on its own
+edge too. Fifteen agents is something you read rather than something you click through.
 
 It is a real terminal underneath: every pane is a
 [libghostty](https://github.com/ghostty-org/ghostty) surface, the same engine Ghostty renders with,

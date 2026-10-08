@@ -401,7 +401,7 @@ nothing else distinguishing it - so a Claude pane reads flat until you give bold
 own. Omitting it is the behaviour every terminal has by default.
 
 **The colours Muster invented are yours too, and only in the window.** `agent_working` and its
-four siblings are what a pane's edge and its row's dot are painted in; `focus_ring` is the thin
+six siblings are what a pane's edge and its row's dot are painted in; `focus_ring` is the thin
 inner ring saying which pane the keyboard feeds. Each is optional on its own - fixing the one row
 you cannot see is not adopting a theme - and leaving one out gives you the colour Muster ships.
 

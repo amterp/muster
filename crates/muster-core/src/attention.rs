@@ -1,6 +1,6 @@
 //! Which agents have been seen, and which are still waiting to be.
 //!
-//! Four of the five agent states are the daemon's word and arrive as themselves. `done` is
+//! Four of the eight agent states are the daemon's word and arrive as themselves. `done` is
 //! `idle` on a pane nobody has looked at since its agent finished, and the two halves of that
 //! have different owners. The daemon knows when an agent finished, and holds it on the pane's
 //! record as `finished_unseen` for as long as it runs, so a window opened after the finish still
