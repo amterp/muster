@@ -1026,8 +1026,8 @@ construction the core gives everything else. The command, its namespace and its 
 the next command all read - so a rename is one edit.
 
 **The other is a window's questions about panes when no window answers.** `muster window` and the pane verbs whose
-answer the daemon holds - reading, typing into and waiting on a pane, and making, naming, hiding and closing one on
-this machine - ask the same daemon when `$MUSTER_SOCKET` names a window that is not there, or none is listening: on
+answer the daemon holds - reading, typing into, waiting on and compacting a pane, and making, naming, hiding, showing,
+quieting and closing one on this machine, as `docs/cli/overview.md` lists them - ask the same daemon when `$MUSTER_SOCKET` names a window that is not there, or none is listening: on
 an SSH devenv nothing forwards a window to, or in a pane whose window has quit with no other window of that Muster
 open. A window that takes the connection and does not answer what it is showing within two seconds (ten for a verb
 the daemon cannot answer instead) counts as not there, because a devenv's forward of a sleeping laptop does exactly that; nothing but that question was sent to it,

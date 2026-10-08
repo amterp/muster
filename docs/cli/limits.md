@@ -67,7 +67,7 @@ default home: a Muster running under a `MUSTER_HOME` of its own comes back witho
 
 ## A pane restored after a daemon restart has to ask which window holds it
 
-A daemon that restarts brings each pane back under its name, with a fresh shell, and gives it
+A daemon that restarts brings each pane back under its id, with a fresh shell, and gives it
 `$MUSTER_PANE` but not `$MUSTER_SOCKET`: that names an app, and the app that asked for the pane
 may be long gone. So `muster` run inside a restored pane knows which pane it is and not which app
 to tell. It asks every app it finds - the ones in Muster's state directory, and on an SSH machine
@@ -213,9 +213,9 @@ Retrying a 4 is how a pane receives the same instruction twice, and it has: an a
 agents got one timeout on a message that had arrived, resent, and left the receiving harness with
 six copies of one instruction to reconcile.
 
-A `pane new` or `tab new` that exits 4 may still have made its pane. The window names a pane in
-the request that makes it, so a pane that was made has its name from the start: the exit 4
-message says that name, under `--json` as the error's `pane`, `muster window` lists the pane
+A `pane new` or `tab new` that exits 4 may still have made its pane. The window mints a pane's id
+in the request that makes it, so a pane that was made has its id from the start: the exit 4
+message says that id, under `--json` as the error's `pane`, `muster window` lists the pane
 under it, and the pane has the same one in its own `$MUSTER_PANE`. So a caller can look for the
 pane, or end it with `muster pane close`, rather than make a second one.
 
@@ -244,11 +244,11 @@ which is a directory on this machine. So `--cwd ../other` beside `--daemon deven
 rather than resolved: the pane is going somewhere this command cannot see the filesystem of, and
 often somewhere running another operating system. Give that machine's own absolute path.
 
-The gap this leaves is `--pane`, which addresses a pane by name and does not say which machine
-holds it - working that out would cost a round trip before the request. So a relative `--cwd`
-beside a `--pane` that lives on a devenv is resolved against a local directory the far machine
-has never had, and the daemon refuses to start a pane in a directory it cannot use, so the pane
-is not made. Name the directory absolutely whenever the pane is not on this machine.
+The gap this leaves is `--pane`, which addresses a pane by its id or name and does not say which
+machine holds it - working that out would cost a round trip before the request. So a relative
+`--cwd` beside a `--pane` that lives on a devenv is resolved against a local directory the far
+machine has never had, and the daemon refuses to start a pane in a directory it cannot use, so the
+pane is not made. Name the directory absolutely whenever the pane is not on this machine.
 
 A path is tidied lexically, so `..` steps are worked out without asking the filesystem. That
 matches what a shell's own `cd ..` does, and differs from `realpath` where a symlink is in the
@@ -314,7 +314,7 @@ last one did. It also does not restart an agent: a pane whose program exited is 
 process, not a dead bridge, and a fresh bridge draws exactly the same thing.
 
 A pane no machine this window follows holds is refused rather than counted, because there is no
-request on its way that could make the name right a moment later.
+request on its way that could make the id right a moment later.
 
 ## A closed window comes back by name, as the latest, or through one of its tabs
 
@@ -429,8 +429,8 @@ a pane that changed during the gap is heard as one change, stamped with the mome
 back, and anything it did in between - a finish followed by new work - is not heard at all. If the
 window quits, a watch ends with exit 3.
 
-`pane new` and `tab new` print a pane's name once the window has heard of the pane, so the next
-command can name it. A wait on a name no pane has is refused at once.
+`pane new` and `tab new` print a pane's id once the window has heard of the pane, so the next
+command can name it. A wait on an id or name no pane has is refused at once.
 
 A wait on `--context` is met only by what an agent's adapter reports. A harness with no adapter
 never reports its context, and Muster cannot tell that apart from one that has not reported yet, so

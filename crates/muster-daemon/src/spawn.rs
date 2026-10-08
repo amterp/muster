@@ -263,7 +263,6 @@ fn shell_features(cursor: Option<&proto::Cursor>, shell: &proto::Shell) -> Strin
     features.join(",")
 }
 
-/// The settings a pane's environment follows.
 /// Which pane an environment is for: its id, and what it is called.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Which<'a> {
@@ -271,6 +270,7 @@ pub(crate) struct Which<'a> {
     pub(crate) name: &'a str,
 }
 
+/// The settings a pane's environment follows.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Settings<'a> {
     pub(crate) shell: &'a proto::Shell,

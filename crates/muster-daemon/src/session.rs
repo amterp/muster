@@ -3050,8 +3050,6 @@ fn scrollback(settings: &proto::Settings) -> usize {
         .map_or(screen::DEFAULT_SCROLLBACK, |bytes| usize::try_from(bytes).unwrap_or(usize::MAX))
 }
 
-/// Muster's names are minted as short ASCII words (`p1w3r07bsd`). The daemon holds any name to
-/// that shape, since it becomes an environment variable's value and, later, a line in a file.
 /// The name somebody gave a pane, as its record reads it (`proto::Pane::name`): blank is none.
 fn given_name(label: Option<&str>) -> Option<&str> {
     label.map(str::trim).filter(|label| !label.is_empty())
@@ -3065,6 +3063,8 @@ fn name_held(name: &str, holder: &str) -> Reply {
     ))
 }
 
+/// Muster's names are minted as short ASCII words (`p1w3r07bsd`). The daemon holds any name to
+/// that shape, since it becomes an environment variable's value and, later, a line in a file.
 pub(crate) fn valid_name(what: &str, name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > 64 || !name.bytes().all(|byte| byte.is_ascii_graphic()) {
         return Err(format!(
@@ -3158,10 +3158,6 @@ fn unreadable_warning(pane: &str, agent: Option<&str>) {
     );
 }
 
-/// Whether a pane's agent has finished something nobody has seen, once its detection goes from
-/// `before` to `after`. An agent that was working or waiting on you has finished when it goes
-/// idle or leaves the pane, which is how a crash or a one-shot run ends; working or waiting
-/// again is new work, which a view shows as that instead. An idle agent leaving changes nothing.
 /// Sets `field` to `value`, saying whether that changed it.
 fn replaced<T: PartialEq>(field: &mut T, value: T) -> bool {
     if *field == value {
@@ -3171,6 +3167,10 @@ fn replaced<T: PartialEq>(field: &mut T, value: T) -> bool {
     true
 }
 
+/// Whether a pane's agent has finished something nobody has seen, once its detection goes from
+/// `before` to `after`. An agent that was working or waiting on you has finished when it goes
+/// idle or leaves the pane, which is how a crash or a one-shot run ends; working or waiting
+/// again is new work, which a view shows as that instead. An idle agent leaving changes nothing.
 fn finished_unseen(
     before: (Option<&str>, proto::AgentState),
     after: (Option<&str>, proto::AgentState),

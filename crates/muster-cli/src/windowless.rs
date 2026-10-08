@@ -857,7 +857,6 @@ fn panes_of(node: Option<&daemon_proto::Node>, into: &mut Vec<String>) {
     }
 }
 
-/// The last part of a directory, which is what a window calls a pane nobody named.
 /// What to call a pane in a row: the name somebody gave it, or its word and its directory, as a
 /// window's row reads (`muster_core::roster::pane_label`) less the harness, which only a window's
 /// detection names here.
@@ -873,6 +872,7 @@ fn label_of(pane: &daemon_proto::Pane) -> String {
     }
 }
 
+/// The last part of a directory, which is what a window calls a pane nobody named.
 fn directory_name(cwd: &str) -> String {
     cwd.trim_end_matches('/').rsplit('/').next().unwrap_or_default().to_string()
 }

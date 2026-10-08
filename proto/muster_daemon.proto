@@ -1265,7 +1265,6 @@ message Pane {
   // no two live panes on one daemon share a name, so a name says which pane it is on this
   // machine. A drawn word is never typed into the agent's session, as a label is. Kept for the
   // pane's life and written to the state file; free for another pane once this one closes.
-  // Absent from a daemon before 1.5.
   optional string word = 17;
 }
 
