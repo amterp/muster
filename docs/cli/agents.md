@@ -60,6 +60,12 @@ because nothing the agent does reaches the window until the daemon is back. It e
 rather than sitting out `--timeout`, since 5 would say the agent is still working and nobody can
 tell. Waiting changes nothing, so run it again once `muster window` shows that daemon `connected`.
 
+A wait on a pane that is or goes `stuck` ends refused, with exit 1, saying which program stopped
+reading its input and how much it left unread: it gets nowhere until the program reads again, and
+nothing a wait does can make it. That is true of a wait started on a pane already stuck, so to
+hear it read again, look at `muster window` rather than waiting. `--until stuck` waits for a pane
+to get stuck instead, and is answered by it.
+
 `--until` is a condition rather than an event, so a pane already there answers at once. After
 handing an idle agent work, wait for it to start before waiting for it to stop:
 

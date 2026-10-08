@@ -4,9 +4,10 @@ One name per concept; docs and code use these terms. Alphabetical.
 
 - **adapter** - the module translating the Muster vocabulary to one concrete backend; nothing backend-shaped escapes
   it.
-- **agent state** - working / blocked / waiting / idle / done / unknown, per pane. Daemon-detected, except `done`: a
-  finish the daemon holds as `finished_unseen`, which a window paints until it is seen; and `waiting`: an idle agent
-  whose facts say what it ended its turn to wait on.
+- **agent state** - working / blocked / stuck / waiting / idle / done / unknown, per pane. Daemon-detected, except
+  `done`: a finish the daemon holds as `finished_unseen`, which a window paints until it is seen; `waiting`: an idle
+  agent whose facts say what it ended its turn to wait on; and `stuck`: an agent whose program the daemon measured has
+  stopped reading its input (`unread_input` on the pane's record).
 - **backend** - the daemon system that owns sessions: `muster-daemon`, Muster's own since it replaced herdr (MIP-3).
 - **backend session** - one live connection to one daemon.
 - **bridge** - the subprocess a surface runs to deliver a pane channel; output only.
@@ -51,6 +52,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   mutates; it requests.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
   authoritative.
+- **`@muster`** - Muster itself as the author of a message in a group, telling whoever posted what waits on a stalled
+  member why it has not answered. Reserved like `@human`; never a participant, never addressed.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.
 - **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
 - **pane name** - what Muster calls a pane: `p1w3r07bsd`, minted by Muster rather than borrowed from the backend,
@@ -75,6 +78,9 @@ One name per concept; docs and code use these terms. Alphabetical.
   `/resume` lists. Kept in step with what the pane is called (its label, set by `pane rename` or `--name`), both
   ways, as far as the harness allows (MIP-5, section 10).
 - **shell** - the per-OS native layer: windows, chrome, key capture, surfaces. Owns nothing.
+- **stall** - a group held up on a member: a message by somebody else has waited unread for 2 minutes on an agent in a
+  pane that is not working. Its daemon records it as `msg.group.stalled`, and wakes the member again or has `@muster`
+  tell the posters why, once (MIP-4, section 16).
 - **surface** - one libghostty terminal view rendering one pane channel; disposable.
 - **tab** - a named set of panes a window shows together. Muster's own unit, and the one thing here that is not a
   daemon's: a tab holding panes on one machine is one backend tab and comes back after a daemon restart like

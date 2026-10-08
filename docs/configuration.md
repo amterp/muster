@@ -64,8 +64,9 @@ selection_foreground = "#c0caf5"
 bold = "#e5c07b"              # bold text; omit and it keeps whatever colour it already had
 divider = "#4a4a4a"            # the line between two regions; omit for the platform's
 focus_ring = "#bb9af7"         # which pane has the keyboard; omit to follow the macOS accent
-agent_working = "#7aa2f7"      # the six agent states, on a pane's edge and its row's dot
+agent_working = "#7aa2f7"      # the seven agent states, on a pane's edge and its row's dot
 agent_blocked = "#ff9e64"      # each optional on its own; omit for the one Muster ships
+agent_stuck = "#ff79c6"        # its program has stopped reading its input
 agent_waiting = "#7c7fd8"      # idle, and waiting on work it started itself
 agent_done = "#9ece6a"
 agent_idle = "#565f89"
@@ -85,10 +86,11 @@ blink = true                   # omit to let the program in the pane decide
 
 [notifications]
 blocked = true                 # an agent waiting on you
+stuck = true                   # an agent whose program has stopped reading its input
 programs = true                # a program in a pane asking to notify you (OSC 9, OSC 777)
 messages = true                # a message for you from an agent (`muster docs msg`)
 done = true                    # an agent that finished while nobody was looking
-muted = false                  # silences all four, without forgetting which you wanted
+muted = false                  # silences all five, without forgetting which you wanted
 ```
 
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
@@ -427,9 +429,11 @@ from a Ghostty config if you had one, which is why the whole of `[colors]` is ne
 a rename. If you configured Muster's appearance through Ghostty, that stops working and this
 is where it moves to. `docs/architecture.md` says what the loan cost and why it went.
 
-**`[notifications]` is what interrupts you, and both states are on.** `blocked` is an agent
+**`[notifications]` is what interrupts you, and all three states are on.** `blocked` is an agent
 waiting on you; `done` is an agent that finished while nobody was looking, which is what
 Muster's `done` already means - the state and the notification are asking the same question.
+`stuck` is an agent whose program has stopped reading its input, which only somebody can free:
+it has its own key so that turning it off leaves `blocked` alone.
 Activating one takes you to the pane that raised it, including a pane no split is showing.
 
 A pane you are already looking at never notifies. That is what its border is for, and a
@@ -459,9 +463,9 @@ A bell is never a banner, whatever this says: shells ring for a completion that 
 so a bell marks the pane's row until you look, and bounces the Dock once if Muster is behind
 another app.
 
-`muted = true` is the quiet path for somebody running fifteen agents, and it is a third key
-rather than setting the other two to `false` so that going quiet for an afternoon does not
-cost you the two answers underneath it. Saving the file is enough: what a mute silences comes
+`muted = true` is the quiet path for somebody running fifteen agents, and it is a key of its own
+rather than setting the others to `false` so that going quiet for an afternoon does not cost you
+the answers underneath it. Saving the file is enough: what a mute silences comes
 off your screen at the moment you write it. Switching one back on does not bring back what it
 silenced, which is deliberate - a notification is about the moment an agent started waiting,
 and one that has been waiting ten minutes is already on its row.

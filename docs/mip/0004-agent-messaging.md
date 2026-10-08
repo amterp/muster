@@ -938,6 +938,44 @@ observation, `docs/observations/claude-code-<version>.md`, recorded from a real 
 transcripts in `corpus/`, and the adapter is tested against a socket that behaves as that
 recording shows. Cross-machine cases join the `--ssh` tier.
 
+### 16. Agents that stop reading, and groups held up on a member
+
+Added 2026-10-07, from GitHub issue #1 and the owner's note on groups that lock up. A Codex pane
+stopped reading its terminal after a turn; `msg post` said `woke: <name> (idle)`, the ring sat
+unread in the terminal, and the director that posted ended its turn waiting for an answer that
+could never come.
+
+**An agent whose program has stopped reading is not rung.** Its daemon puts `unread_input` on the
+pane's record once input has waited unread 5 s from a program that was seen reading
+(`docs/architecture.md`, the vocabulary), and presence reads it as the activity `stuck`. A wake for
+it waits until the program reads again, and the post says `rung once it reads its input`. A ring
+typed just before the program stopped is not counted taken: an empty prompt with input still
+unread in the terminal keeps the ring, and once the agent reads as stuck the ring ends, so the next
+post rings again.
+
+**A group is held up on a member** when, on the member's own daemon, a message by anybody but
+Muster waits unread on an agent in a pane there that is not working, for 2 minutes since the later
+of the message and the agent last being seen at work. Members outside panes and the human are not
+judged: nothing says whether they are working, and the human is notified already. The daemon then,
+once per stall:
+
+- records `msg.group.stalled` in its log, with every member of the group and what each is doing;
+- wakes the member once more, if its last wake never landed and its agent could take one. This is
+  not the third wake section 5 rules out: that one is for an agent that was reached and went on
+  with something else, and this is for one nothing reached;
+- otherwise, or if that wake does not move it within another 2 minutes, tells whoever posted what
+  waits why it has not answered, in a message in the group from `@muster`.
+
+`@muster` is reserved like `@human`: it is an author and never a participant, is never addressed,
+is held to no policy and no guard, and its messages never count toward a stall, so none of this
+rings anybody in a loop. It posts only where the group is kept; a replica's stall is recorded, and
+`msg.group.untold` says nobody was told.
+
+**Members waiting on each other with everything read are not watched.** Every member idle with
+nothing unread is also what a finished group looks like, and an expectation of a reply is not
+something Muster can observe. The lock-ups seen so far reduce to the case above: the member waited
+on had a message unread, or never delivered.
+
 ## Delivery
 
 Each stage lands after MIP-3's cut-over, is sized for a round by two agents, and leaves the suite
@@ -1199,3 +1237,6 @@ bind.
   home; a member removed from a group reads what came before its removal; `join` lists the
   groups a name is in; and the laptop's person deletes, pauses and resumes a group kept on a
   linked machine, carried to its home. A group's row in the sidebar leaves or deletes it.
+- 2026-10-07 Protocol 1.5: an agent whose program has stopped reading is `stuck`, not rung until
+  it reads, and a ring it never read ends; a group held up on a member is recorded, the member
+  woken once more or the posters told why by `@muster`, once (section 16).

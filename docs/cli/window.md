@@ -15,11 +15,12 @@ out what it did.
       this machine · started by Muster · 4 panes in ~/src/muster · #4a90d9
       /Users/you/.muster/daemon/release.sock
 
-After a pane's label come what its agent says about itself and anything else worth a glance:
-how full its context is, its sub-agents, `(cannot read the screen)` when Muster's rules have
+After a pane's label come what its agent says about itself and anything else worth a glance: a
+program that has stopped reading its input, `(codex has not read 2817 bytes of input)`, on any
+pane; how full its context is, its sub-agents, `(cannot read the screen)` when Muster's rules have
 stopped reading the agent, `(adapter not reporting)` when the agent's harness has an adapter that
-is not installed or not running (`muster docs harnesses`), `(bell)` for a bell nobody has looked at since, and a program's own
-progress, `(40% done)` or `(progress failed)`. A waiting agent's second line is what it waits on.
+is not installed or not running (`muster docs harnesses`), `(bell)` for a bell nobody has looked
+at since, and a program's own progress, `(40% done)` or `(progress failed)`. A waiting agent's second line is what it waits on.
 The model and the cost are in `--json`.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
@@ -151,7 +152,7 @@ One entry per pane every followed daemon holds, on screen or not.
   failing that its directory and the harness detected in it.
 - `given_name` - the name somebody gave it, empty when nobody has.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
-- `state` - `working`, `blocked`, `waiting`, `idle`, `done` or `unknown`.
+- `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done` or `unknown`.
 - `reported` - whether the state is the agent's own report rather than what Muster read off its
   screen.
 - `unreadable` - whether Muster's rules have stopped reading this agent's screen. Its state is
@@ -172,6 +173,9 @@ One entry per pane every followed daemon holds, on screen or not.
   `null` until there is something to say: no agent, or one that has not yet ended a turn - Codex
   reports nothing until it is first prompted, so a fresh agent is not called silent. An agent
   that changes or leaves takes it with it.
+- `unread_input` - the pane's program has stopped reading its input: `{"bytes", "since",
+  "program", "pid"}`, what waits unread when it stopped, since when, and the program holding the
+  terminal. `null` while it reads. Set on any pane; on an agent's, the state is `stuck`.
 - `since` - when the agent last changed state, in seconds since the epoch to the millisecond, so
   `now - .since` in jq is how long it has been in it. Two reads that say `working` with the same
   `since` are one turn; a different `since` is a finish and a new turn in between. Looking at a
@@ -330,12 +334,20 @@ the agent ends a later turn without saying it again, or somebody prompts it. `un
 the ordinary answer for a pane running a plain shell, and also for a pane whose harness could
 not be read: an agent Muster failed to read is not an agent that finished.
 
+`stuck` is an agent whose program has stopped reading its input: having been seen to read, it has
+left what was sent to it unread for 5 seconds and read nothing since. Its screen still shows what
+it showed before it stopped, so it would otherwise read as whatever it was doing then. It lasts
+until the program reads again; interrupting it, or ending it and resuming its session, frees it.
+`unread_input` says which program and what it left. A program that has not read anything yet, an
+agent still starting, is never called stuck.
+
 `done` is an agent that finished while nobody was looking. The daemon keeps the finish, so a
 window opened later still says `done`, and it lasts until a window that has the keyboard shows
 the pane - which clears it for every window - or until the agent works, waits on somebody, or
 says it is waiting on its own work. A daemon that restarts forgets it, so a script should not expect a `done` to outlive one.
 
-The state column is coloured: `working` cyan, `blocked` yellow, `done` green, `waiting` blue. `idle` and
+The state column is coloured: `working` cyan, `blocked` yellow, `stuck` magenta, `done` green,
+`waiting` blue. `idle` and
 `unknown` are dimmed, because they are the resting answer and the row already prints the word. It is the same legend the window itself paints, where `blocked` is orange - the sixteen
 colours a terminal has hold no orange, and yellow is the nearest slot.
 

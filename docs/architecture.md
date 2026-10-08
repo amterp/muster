@@ -223,11 +223,22 @@ the history its bridge was replayed on attaching, and everything since, on which
 full-screen program it reaches that program's screen and none of the history under it. A pane's text read by the CLI
 or an agent comes from the daemon instead, and has a reach of its own (`cli/limits.md`).
 
-Agent states are working / blocked / waiting / idle / done / **unknown** - six; unknown renders as itself, never as
-success. State is daemon truth, but two of the six are computed in the window, so the vocabulary has to carry what
-they are computed from. `waiting` is the other: an idle agent that said, through the daemon's `report --waiting`, that
-it ended its turn to wait on work it started itself. It has not finished and nobody is holding it up, so it is neither
-idle nor done, and a caller waiting for `idle` is not answered by it.
+Agent states are working / blocked / stuck / waiting / idle / done / **unknown** - seven; unknown renders as itself,
+never as success. State is daemon truth, but three of the seven are presented by the window from facts the daemon
+holds, so the vocabulary has to carry those facts. `waiting` is an idle agent that said, through the daemon's `report
+--waiting`, that it ended its turn to wait on work it started itself. It has not finished and nobody is holding it up,
+so it is neither idle nor done, and a caller waiting for `idle` is not answered by it.
+
+`stuck` is an agent whose program has stopped reading its input (GitHub issue #1). The program's screen keeps what it
+painted before it stopped, so detection reads on as if nothing had happened; what gives it away is input left in its
+terminal. The daemon counts that with `FIONREAD` on the terminal's slave, opened for a moment by name and closed
+again, since a slave held open would keep the master from reading EOF when the pane's program ends. It looks only
+while input was written in the last few seconds or something waits, at most once a second, so a quiet pane costs no
+system calls. A program is called stopped once input has waited 5 s with nothing read, and only if it has been seen
+reading since it took the terminal: a count that went down, or nothing left of input written since the last look.
+An agent still starting has read nothing yet, and input sent as it was launched waits for it legitimately. The daemon
+puts `unread_input` on the pane's record, with the program and what it left, and the core lays `stuck` over whatever
+state an agent pane has while that holds. A pane running no agent gets the fact and no state.
 
 `done` is an agent that finished while nobody looked, and its two halves have different owners. **The daemon holds the
 finish; the window decides the look.** muster-daemon reports four states and never `done`, and marks a pane's record
@@ -248,8 +259,8 @@ refuses, as it refuses every change partway through a handoff, is taken back the
 until the next look reports it again. It is not sent again at once, since a daemon still handing over would refuse
 that too.
 
-**One legend, and the window holds it.** working cyan, blocked orange, waiting indigo, done green, idle grey, and
-unknown a fainter grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
+**One legend, and the window holds it.** working cyan, blocked orange, stuck pink, waiting indigo, done green, idle
+grey, and unknown a fainter grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
 reads borders and dots all day and reads `muster window` when something has already gone strangely, so the surface
 with the smaller audience is the one that moves. The two did disagree once, working and done inverted between them,
 and what it cost was not a wrong pixel - it was somebody learning that the colours could not be trusted, in the one
@@ -265,6 +276,10 @@ busy-but-not-waiting state should be while blocked is the loud one.
 nobody, so it must not read as blocked; it has not finished, so it must not read as idle grey or done green; and it is
 not working either. Indigo sits apart from all three and from the accent ring's blue by weight. The CLI spells it
 blue, the nearest of the sixteen, and blue's poor legibility matters less on a row nobody has to find.
+
+**Stuck is pink because red is taken.** A stuck agent needs somebody as much as a blocked one, so it has to be loud,
+and red would be loudest; but red is the full end of the context ring, kept off every state so that a nearly full
+ring never reads as an agent asking for something. The CLI spells pink magenta.
 
 **The two rings differ in kind, not only in hue.** The outer ring is the agent's state, at full weight on all four
 edges; the focus ring is thinner and sits inside it with a gap. That is not a decoration: the focus ring follows
@@ -504,9 +519,10 @@ changes, and a publish happens on every event. Activating a notification dispatc
 ordinary focus intent through the one action path - which may change composition first, because the pane that asked
 may not be visible in any window. Surfacing the hidden is part of the feature, and the core owns it.
 
-**Two states ask, and they ask the same question from opposite ends.** `blocked` is an agent that has stopped and
-wants an answer; `done` is an agent that has stopped and nobody has noticed. So both notify by default, both can be
-switched off on their own, and one key silences both without forgetting which of them you wanted
+**Three states ask.** Two ask the same question from opposite ends: `blocked` is an agent that has stopped and wants
+an answer, and `done` is an agent that has stopped and nobody has noticed. `stuck` is an agent that cannot go on until
+somebody frees its program, and asks after `blocked`, whose answer is a keystroke. So all three notify by default,
+each can be switched off on its own, and one key silences them all without forgetting which you wanted
 (`configuration.md`, `[notifications]`). A quiet path is in the first version rather than a later one because
 everything notifying is the same as nothing notifying, and somebody running fifteen agents finds that out on their
 first afternoon.
@@ -959,6 +975,15 @@ of its own: a person's shell there is the laptop's human, which may post in and 
 and waits only at home, and an agent's `@human` there means the laptop's. A window takes what waits for the human
 only from the daemon on its own machine, and the guard never holds the human's post on either machine.
 
+**A stuck agent is not rung, and a group held up on a member is said so, once.** A wake for an agent whose program
+has stopped reading waits until it reads, and a ring it stopped before taking ends rather than being counted woken.
+Each daemon also watches its own members in panes: a message by somebody else that has waited unread for 2 minutes
+on an agent that is not working holds the group up. The daemon records the group as it stood (`msg.group.stalled`),
+then wakes the member once more if its last wake never landed, and otherwise tells whoever posted what waits why,
+once, in a message from `@muster`. That name is reserved like `@human`, is never addressed, and its messages never
+count toward a stall, so nothing rings in a loop. Members waiting on each other with everything read are not
+watched: that is also what a finished group looks like (MIP-4, section 16).
+
 **Messaging is one of two request paths that do not run through the core.** Messaging has to work with no window
 open, and the core lives in the app, so `muster msg` dials the daemon itself: `$MUSTER_DAEMON_SOCKET`, which every pane has,
 or else this install's daemon. A window that shows messages will send the same requests, which is parity by the same
@@ -1109,7 +1134,9 @@ drawing the pane, and only while its daemon is answering. The first guard is abo
 already raised stays when its pane leaves the screen, and goes only when the pane paints, closes, or its machine goes
 away - so a warning that went away means one of those happened, not that somebody looked elsewhere (kan a_2LWqtPd8E).
 It is a warning rather than an error - it may clear by itself, and a program that turned echo off for a password looks
-exactly like this until it paints again.
+exactly like this until it paints again. When the pane's daemon says its program has stopped reading, the warning
+names that program and offers no reattach, since the pane and its bridge are fine; a warning raised before the daemon
+knew is said again in those words.
 
 **How the app finds out a bridge has died is Muster's own business, not the renderer's.** libghostty offers a
 `close_surface` callback and it does not arrive: a dead pane sits on libghostty's own "Process exited. Press any

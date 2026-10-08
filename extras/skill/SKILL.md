@@ -61,7 +61,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   there. A pane already idle answers at once, so after handing an idle agent work, wait
   `--until working` first. `waiting` is not `idle`: add it to hear of an agent waiting on its own
   build, and give `--timeout`. `--context 80` also ends the wait once the agent's context is that
-  full.
+  full. A wait on an agent that goes `stuck` exits 1: its program has stopped reading its input,
+  and only somebody interrupting or restarting it frees it.
 - **Read a finished agent's report with `muster pane read --pane X --turn`**: what it printed
   since it last went to work, without the turn before or your brief. Do not guess `--rows`.
 - **Check that your own adapter reports** before relying on what it gives: your state, your

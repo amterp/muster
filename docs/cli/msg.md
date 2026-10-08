@@ -240,12 +240,15 @@ reason.
     rung once its prompt is empty: lexer (idle)
     rung once it is not blocked: scout (blocked)
     rung once an agent is found: p2w3r07bsd
+    rung once it reads its input: worker (stuck)
     not woken: scout (gone), p3w3r07bsd (no agent in its pane), @human (notified when a window opens)
 
 "woke" means the wake was handed over - rung, or sent to the session - not that it was read. A
 ring still to come says what it waits for: the agent to be idle, an urgent post's agent to be
-out of its dialog, a draft left in its prompt to be sent or cleared, or an agent to start in a
-pane opened under 30 seconds ago. An urgent post's first line says so: `posted #42 to review,
+out of its dialog, a draft left in its prompt to be sent or cleared, a `stuck` agent's program to
+read its input again, or an agent to start in a pane opened under 30 seconds ago. A ring typed
+into an agent whose program then stops reading is not counted as having woken it: the ring ends,
+and the next post rings again. An urgent post's first line says so: `posted #42 to review,
 urgent`. A pane with no
 agent past that, or whose agent's prompt cannot be read, is not woken.
 
@@ -254,8 +257,22 @@ resumed or a machine can be reached, or the human - is still kept, and exits 6: 
 to tell is not there to hear it, and no answer is coming. With `--json` the same answer is lists
 of names under `woke`, `deferred`, `already_woken`, `waiting`, `gone`, `no_agent`, `no_doorbell`,
 `paused` and `unreachable`, what each agent in a pane is doing under
-`doing`, what each deferred ring waits for under `until`: `idle`, `unblocked`, `prompt` or
-`agent`, and whether the post was urgent under `urgent`.
+`doing`, what each deferred ring waits for under `until`: `idle`, `unblocked`, `prompt`,
+`reading` or `agent`, and whether the post was urgent under `urgent`.
+
+**A group held up on a member is said so, once.** When a message by somebody else has waited
+unread for 2 minutes on an agent in a pane that is not working, its daemon records the stall in
+its log (`msg.group.stalled`, with every member and what each is doing). If the agent's last wake
+never landed, it is woken once more. Otherwise, or if that does not move it either, whoever posted
+what waits is told why, in the group, by `@muster`:
+
+    @muster: worker has not read #4, from director, 2 minutes after it was posted: its program, codex, has stopped reading its input and left 2817 bytes unread, so nothing reaches it until somebody interrupts it, or ends it and resumes its session. Muster says this once; `muster window` shows its pane, p2w3r07bsd.
+
+That message wakes whoever it is for as any message does, so a director that ended its turn to
+wait hears why no answer is coming. `@muster` is never a member and cannot be addressed, and what
+it posts never counts as a stall itself. It posts only in a group kept on its own machine; a stall
+in a group kept elsewhere is in the log alone. Members waiting on each other with everything read
+are not watched, since that is also what a finished group looks like.
 
 ## Reading, and the guard
 
