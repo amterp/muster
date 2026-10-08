@@ -286,6 +286,53 @@ looking.
 share of the window, and `regions[].layout` says how the tab splits - `muster docs window` has
 both.
 
+## Out of sight
+
+An agent that runs helpers it talks to over `muster msg` can keep them out of the window, and out
+of the notifications:
+
+    W=$(muster pane new --hidden --quiet --run claude --name '🤖 worker')
+
+`--hidden` makes the pane in a tab of its own that no window shows, on the machine of the pane it
+was split from. Nothing draws it, and its agent runs as any other does: `pane send`, `pane read`,
+`pane wait`, `pane compact` and `muster msg` reach it by name. `muster window` lists it after the
+window's own tabs, under `hidden`, and the agent list has it under a Hidden caption. A pane made
+beside a hidden one with `pane new` is in that hidden tab too, so a hidden agent's own helpers are
+hidden with it. `--hidden` takes no side and no `--focus`, since it is not a split and nothing
+shows it.
+
+A pane already open is hidden and brought back by name:
+
+    muster pane hide --pane p1w3r0ab2n
+    muster pane show --pane p1w3r0ab2n --focus
+
+`pane hide` with no `--pane` hides the pane it runs in. If that was the last pane of its tab the
+tab closes, and its name with it; the pane keeps its own. `pane show` brings the pane back into a
+tab of its own in this window, after the others, rather than where it was, which may have been
+rearranged or closed since; `pane move` takes it anywhere from there. The keyboard goes to it only
+with `--focus`. Going to a hidden pane any other way - its row, a notification, the chord to
+whatever is asking, `muster focus` - brings it back first. Hiding a hidden pane changes nothing
+and exits 0, and so does showing one that is not hidden, which with `--focus` goes to it.
+
+Hidden is its daemon's fact, not a window's, so a hidden pane stays hidden across the app quitting,
+another window opening and the daemon restarting, and a devenv's hidden pane is hidden in every
+window attached to that devenv.
+
+`--quiet`, or later
+
+    muster pane quiet --pane p1w3r0ab2n
+    muster pane quiet --pane p1w3r0ab2n --off
+
+makes a pane raise nothing for you: no notification when it blocks or finishes or its program asks,
+and nothing for the chord to whatever is asking to land on. Its state still shows on its border,
+its row and in `muster window`, which marks it `(quiet)`. A message its agent addresses to you
+still notifies, because addressing you was the agent's choice. Quiet and hidden are independent: a
+hidden pane that is not quiet still notifies, and going to it brings it back.
+
+The window has both too: Hide Pane and Quiet Pane in a pane's right-click menu, an agent row's,
+and the Pane menu, on the `hide_pane` and `quiet_pane` actions, which ship with no chord. A hidden
+pane's row offers Show Pane.
+
 ## A pane that has gone dark
 
 A pane draws what a bridge feeds it, and a bridge dies with the connection carrying it. Muster

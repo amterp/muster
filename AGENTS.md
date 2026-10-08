@@ -15,7 +15,8 @@ first nine and one to whichever is asking for you, states an agent reports itsel
 renaming, which names the agent's session in its harness too
 and follows a session renamed there, trading two agents' places by dragging a row, dragging a pane by its
 handle onto another pane's edge, right-click menus on a pane, a tab and an agent row, including a split onto any
-attached machine, a focus history the mouse's back and forward buttons walk across tabs, configuration that reloads when
+attached machine, hiding a pane from every window with its agent running and bringing it back from a list, a pane
+made quiet so that nothing about it interrupts you, a focus history the mouse's back and forward buttons walk across tabs, configuration that reloads when
 you save it, a CLI that drives the window from inside a pane on either machine and presses keys at another agent's
 dialog, a notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH
 machine in the same window - where one tab can hold a

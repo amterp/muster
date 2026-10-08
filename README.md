@@ -47,6 +47,9 @@ you to that pane, including one no split is showing. `cmd+shift+a` goes there wi
 click, to whichever agent has waited longest, the blocked ones first, in whichever window it is. A pane you
 are already looking at stays quiet; that is what its border is for. Both are switchable, and one
 line in your config mutes the lot, which silences the notifications and leaves `cmd+shift+a`.
+A pane can also be made quiet on its own, and hidden from every window with its agent still
+running, which suits the helpers an agent runs and talks to itself: a Hidden list in the sidebar
+shows what they are doing and brings any of them back.
 
 **Names you write, and titles you don't.** Name a pane and the name sticks, emoji and all, because
 the daemon writes it down rather than the app. An agent that sets a terminal title gets a second

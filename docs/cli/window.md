@@ -8,8 +8,12 @@ out what it did.
       ▸ 1  p1w3r07bsd  unknown   2h  ~/src/muster
         2  p1w3r0ab2n  working  12m  🤖 A · reading AGENTS.md  64% context  2 sub-agents
     tab 2  t1w3r0h4kp  the build
-        3  p1w3r0cd4x  blocked  40m  🤖 B  (hidden)
-        4  p1w3r0ef6y  waiting   8m  🤖 C · on the full gate  31% context  (hidden)
+        3  p1w3r0cd4x  blocked  40m  🤖 B  (off screen)
+        4  p1w3r0ef6y  waiting   8m  🤖 C · on the full gate  31% context  (off screen)
+
+    hidden
+    tab    t1w3r0k5mq
+           p1w3r0gh8z  working   3m  🤖 worker  (quiet)
 
     local  connected
       this machine · started by Muster · 4 panes in ~/src/muster · #4a90d9
@@ -20,7 +24,8 @@ program that has stopped reading its input, `(codex has not read 2817 bytes of i
 pane; how full its context is, its sub-agents, `(cannot read the screen)` when Muster's rules have
 stopped reading the agent, `(adapter not reporting)` when the agent's harness has an adapter that
 is not installed or not running (`muster docs harnesses`), `(bell)` for a bell nobody has looked
-at since, and a program's own progress, `(40% done)` or `(progress failed)`. A waiting agent's second line is what it waits on.
+at since, a program's own progress, `(40% done)` or `(progress failed)`, and `(quiet)` for a pane
+that raises nothing for you. A waiting agent's second line is what it waits on.
 The model and the cost are in `--json`.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
@@ -28,9 +33,15 @@ shows one. The machines follow rather than heading the list, because a tab can h
 than one - so a pane's row says which machine it is on, and only while more than one is attached.
 
 Beside each state is how long the pane has been in it, in the largest whole unit: `45s`, `12m`,
-`3h`, `2d`. `▸` marks the pane the window's keyboard is on. `(hidden)` means the pane exists and the window
+`3h`, `2d`. `▸` marks the pane the window's keyboard is on. `(off screen)` means the pane exists and the window
 is not showing it, which is ordinary: a tab that is not on screen still holds its panes, and they
 are still running.
+
+Hidden panes follow the window's own tabs, under `hidden`: panes somebody took out of every window
+with `muster pane hide` or made with `pane new --hidden` (`muster docs agents`, "Out of sight").
+No window holds their tabs, so they have no places and no keyboard, and every window lists the
+same ones. In `--json` they are `hidden[]`, in the shape `other_windows[].tabs[]` takes, and not in
+`panes[]`. Every pane there and in `panes[]` carries `quiet`.
 
 `--json` answers the same thing as one flat list of panes, which is what filtering wants:
 
@@ -49,7 +60,7 @@ When no window answers, this machine's daemon does (`muster docs overview`, "Wit
       this machine · already running · 2 panes in /home/you/src/muster
       /home/you/.muster/daemon/release.sock
 
-The same rows, less what only a window has: no places, no `▸`, no `(hidden)`, and no time in a
+The same rows, less what only a window has: no places, no `▸`, no `(off screen)`, and no time in a
 state, which a window counts from when it first saw the pane. `done` is still a finish nobody has
 seen, as the daemon records it. In `--json`, `answered_by` is `"daemon"`; `name`, `keyboard`,
 `showing` and every `since` and `rect` are null; `regions` is empty; every `place` is 0 and every
@@ -64,7 +75,7 @@ agents are still running. Those rows carry no numbers, because the numbers are t
 
     window-2 (closed)
     tab    t1w3r0mn2q  the other build
-            p1w3r0pq7r  blocked  2h  🤖 C  (hidden)
+            p1w3r0pq7r  blocked  2h  🤖 C  (off screen)
 
 The tab names there work from here: a request naming one is answered by the window that holds it,
 and `muster tab focus` on a closed window's tab reopens that window onto it, as `muster window

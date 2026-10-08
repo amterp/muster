@@ -6,9 +6,9 @@
 quit and the same Muster is running again - relaunched - `muster` asks the new app instead, on
 this machine and on an SSH machine alike, and the app answers from whichever window holds the
 pane. With no app running at all, the pane's own daemon answers what it can in the window's
-place: `muster window`, `pane read`, `pane send`, `pane wait` and `pane compact` work on that
-machine's own panes (`muster docs overview`, "With no window"), and everything else waits for a
-window.
+place: `muster window`, `pane read`, `pane send`, `pane wait`, `pane compact`, `pane hide`, `pane
+show` and `pane quiet` work on that machine's own panes (`muster docs overview`, "With no
+window"), and everything else waits for a window.
 
 On an SSH machine, a pane made by Muster 0.10.1 cannot tell one Muster's windows there from
 another's, so with two installs forwarding to that machine its `muster` may reach the other's

@@ -468,6 +468,12 @@ codegen - a surface that cannot express an action is a missing message, visible 
   zoomed region holding the keyboard fills the whole tab, its other machines' regions covered rather than closed.
   Following the daemon there would let another window decide what this one paints, and would leave ⌘2 inside a zoomed
   tab typing into a pane nobody can see.
+- **A hidden tab is its daemon's, and no window holds it.** Hiding a pane moves it into a tab of its own that its
+  daemon holds as hidden (`muster docs agents`, "Out of sight"), so every pane is still in exactly one tab and
+  nothing the daemon restores or hands over changes. No window takes a hidden tab or opens a region onto one
+  (`Composition::reconcile`); the roster lists hidden tabs apart, the same in every window, and showing a pane is a
+  move into a new tab the asking window takes before it asks, as it takes any tab it makes. Every part of a tab is
+  made hidden or not alike, so a pane split from a hidden one onto another machine is hidden there too.
 - **A pane is shown once a tree places it.** The daemon announces a pane as opened before the change to the tab that
   places it, so for a moment a pane belongs to no tab. The mirror holds it aside rather than showing it, and adds it
   when a tree names it (`mirror/state.rs`), because everything that draws or lists a pane does so by its tab.
@@ -545,6 +551,15 @@ does not: a message to the human waits for the next window rather than being his
 transcript, a pane running `muster msg log --follow`, found by the command it runs or made in a new tab. Going
 there is the human reading the group, so the daemon is told, and the banner comes down when it says nothing waits.
 A transcript somebody is reading in a focused window reads what arrives there, as a pane on screen raises nothing.
+
+**A quiet pane asks for nobody.** Quiet is a flag on the pane that its daemon keeps, set when the pane is made or
+later (`muster docs agents`, "Out of sight"), for an agent's helpers that the agent watches over messaging. Such a
+pane takes no part in the unread set: no banner, and nothing for the chord to whatever asks to go to. That is more
+than a mute does, which keeps panes asking without banners; a person who made a pane quiet has said it is somebody
+else's to watch. Its state still paints, `done` included, because seen-ness is untouched. Made quiet, a pane takes
+down a banner it had; let ask again, it asks silently for the state it is in, as a pane met at launch does. A message
+its agent addresses to the human still notifies, since that banner is the group's and addressing the human was the
+agent's choice.
 
 **A pane the window is focused on and showing raises nothing.** That is what the border is for, and it costs no new
 rule: seen-ness is already computed for exactly that pane, and a finish there is reported seen rather than announced.

@@ -46,6 +46,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **harness adapter** - everything that supplies a harness's capabilities: its detection manifest, its hooks and
   plugin files in `extras/<harness>/`, its recordings and observations, and its live tier (MIP-5). Data and files,
   not daemon code; not the backend's **adapter** above.
+- **hidden** - a pane no window shows, in a tab its daemon holds as hidden. Listed apart, and brought back into a
+  tab of its own. Not the same as **off screen**.
 - **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
   lists only the tabs it holds; the record is `~/.muster/state/<install>/holding/tabs.toml`, which the app keeps.
 - **intent** - a requested mutation sent to a daemon (split, close, resize, zoom, input, spawn). Muster never
@@ -54,6 +56,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   authoritative.
 - **`@muster`** - Muster itself as the author of a message in a group, telling whoever posted what waits on a stalled
   member why it has not answered. Reserved like `@human`; never a participant, never addressed.
+- **off screen** - a pane in a tab this window holds and is not showing, or behind a zoom. Ordinary, and one click
+  away.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.
 - **pane channel** - the output stream feeding one surface: the program's own bytes, passed through by the daemon.
 - **pane name** - what Muster calls a pane: `p1w3r07bsd`, minted by Muster rather than borrowed from the backend,
@@ -65,11 +69,14 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **policy** - a group's four rules, enforced by the group's home daemon: whom an unaddressed post wakes (`ring`), whom each
   author may address (`allow`), who may change the group (`membership`), and whether it is `paused`, holding every
   wake but the human's (MIP-4, section 8).
+- **quiet** - a pane that raises nothing for the person: no banner and no ask. Its state still shows. Its daemon
+  keeps the flag.
 - **region** - the part of a Muster tab that one machine holds, as it sits on screen: that machine's pane tree,
   and how wide it is. One for every tab until somebody groups two.
 - **roster** - every tab the window holds with its panes under it, ordered and labelled by the core, each row saying
   whether the window is showing it. Beside them, the machines - because a machine holding no panes contributes no
-  tabs and would otherwise vanish. What the view is to the screen, this is to the session.
+  tabs and would otherwise vanish - and, apart, the hidden tabs no window holds. What the view is to the screen,
+  this is to the session.
 - **seam** - an injected boundary the core is tested and swapped at. Two exist: backend and renderer.
 - **seen-ness** - whether anybody has looked at a pane since its agent finished; distinguishes idle from done. A pane
   is seen when it is on screen in a window holding the OS's focus. No daemon can see a window, so the window decides
