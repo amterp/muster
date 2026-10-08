@@ -392,7 +392,9 @@ public final class MusterWindow: NSObject {
   /// One Dock bounce per bell nobody heard, as Terminal and Ghostty do for a bell in the
   /// background: informational, so it stops by itself rather than until Muster is clicked. Never
   /// for a quiet pane, whose bell only marks its row, a mark seen by looking.
-  nonisolated static func bellBouncesDock(rang: Bool, rangBefore: Bool, appActive: Bool, quiet: Bool) -> Bool {
+  nonisolated static func bellBouncesDock(
+    rang: Bool, rangBefore: Bool, appActive: Bool, quiet: Bool
+  ) -> Bool {
     rang && !rangBefore && !appActive && !quiet
   }
 

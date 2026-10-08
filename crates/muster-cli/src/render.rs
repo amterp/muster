@@ -1680,8 +1680,7 @@ mod tests {
     #[test]
     fn a_hidden_pane_carries_what_its_agent_is_doing() {
         use muster_proto::{
-            AgentFacts, PaneStateChanged, RosterChanged, RosterPane, RosterTab, UnreadInput,
-            Window,
+            AgentFacts, PaneStateChanged, RosterChanged, RosterPane, RosterTab, UnreadInput, Window,
         };
         let window = Window {
             roster: Some(RosterChanged {
