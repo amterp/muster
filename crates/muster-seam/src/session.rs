@@ -1411,9 +1411,14 @@ impl Session {
     ///
     /// Says whether it took anything.
     fn settle_holding(&mut self, daemon: &DaemonId) -> bool {
+        // A hidden tab is no window's, so none takes it and the record never names it.
         let described: Vec<TabId> = {
             let Some(backend) = self.backends.get(daemon) else { return false };
-            poison::lock(&backend.mirror, "mirror").tabs().map(|tab| tab.id.clone()).collect()
+            poison::lock(&backend.mirror, "mirror")
+                .tabs()
+                .filter(|tab| !tab.hidden)
+                .map(|tab| tab.id.clone())
+                .collect()
         };
         // Here rather than at each place a daemon is attached or let go, because every one of
         // them reconciles next. Compared first, so the ordinary reconcile writes nothing.

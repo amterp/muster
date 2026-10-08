@@ -657,11 +657,14 @@ public enum SidebarModel {
   /// that already holds the pane would mean nothing at all.
   ///
   /// Dropping a row on itself is legal and does nothing, which is what an accidental drag is.
+  ///
+  /// A hidden pane's row is not one either: landing beside it would hide the pane dropped, which
+  /// nobody dragging a row means.
   public static func canArrange(_ pane: PaneKey, onto row: Row) -> Bool {
     if row.isTab {
       return true
     }
-    guard let target = row.pane else { return false }
+    guard let target = row.pane, !row.hidden else { return false }
     return target.daemon == pane.daemon
   }
 

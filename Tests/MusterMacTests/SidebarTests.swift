@@ -509,6 +509,7 @@ struct SidebarTests {
     #expect(!rows[0].hidden)
     #expect(roster.panes.map(\.key.pane) == ["w1:p1"], "a hidden pane is drawn by nothing")
     #expect(SidebarModel.draggedTab(of: hidden, in: rows) == nil)
+    #expect(!SidebarModel.canArrange(PaneKey(daemon: "local", pane: "w1:p1"), onto: hidden))
 
     let none = SidebarModel.rows(roster: base, agents: [:])
     #expect(!none.contains { $0.kind == .hidden }, "no caption over no hidden panes")
