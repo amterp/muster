@@ -160,12 +160,10 @@ fn start_again(daemon: &DaemonId, start: &StartAgain, mirror: &Arc<Mutex<Mirror>
     let mut attempts = reconnect::Attempts::new();
     while still_gone(daemon, mirror) {
         match start.ensure_running() {
-            Ok(launch::Reached::Started) => {
-                started(daemon, start.host(), mirror);
+            Ok(reached) => {
+                answered(daemon, start.host(), mirror, reached);
                 return;
             }
-            // Something answers, and the follower is already dialing it.
-            Ok(launch::Reached::Adopted) => return,
             Err(NotStarted::Unknowable(why)) => {
                 let retry = attempts.failed();
                 if retry.logged {
@@ -219,17 +217,28 @@ fn still_gone(daemon: &DaemonId, mirror: &Arc<Mutex<Mirror>>) -> bool {
         && poison::lock(mirror, "mirror").health() != Health::Connected
 }
 
-fn started(daemon: &DaemonId, host: &str, mirror: &Arc<Mutex<Mirror>>) {
-    log::info(
-        "daemon.started_again",
-        fields! {
-            "daemon" => daemon.to_string(),
-            "host" => host,
-            "impact" => "every process in its panes is new: they come back from its saved \
-                         state, and an agent comes back in its session only where its harness \
-                         reported one",
-        },
-    );
+/// A daemon answers again, started by this attempt or by somebody else - `muster msg` starts
+/// one too. Either way the follower is told to dial it now: it may be part-way through a
+/// reconnect backoff of half a minute, and the panes would read unreachable for all of it.
+fn answered(daemon: &DaemonId, host: &str, mirror: &Arc<Mutex<Mirror>>, reached: launch::Reached) {
+    let started = reached == launch::Reached::Started;
+    if started {
+        log::info(
+            "daemon.started_again",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "host" => host,
+                "impact" => "every process in its panes is new: they come back from its saved \
+                             state, and an agent comes back in its session only where its \
+                             harness reported one",
+            },
+        );
+    } else {
+        log::info(
+            "daemon.start_again.adopted",
+            fields! { "daemon" => daemon.to_string(), "host" => host },
+        );
+    }
     let mut session = poison::lock(&SESSION, "session");
     let Some(backend) =
         session.backends.get_mut(daemon).filter(|backend| Arc::ptr_eq(&backend.mirror, mirror))
@@ -238,6 +247,8 @@ fn started(daemon: &DaemonId, host: &str, mirror: &Arc<Mutex<Mirror>>) {
     };
     // Muster's now, whoever started the one before: `muster window` says so, which is what
     // tells somebody deciding whether to end it that this window made it.
-    backend.started = true;
+    if started {
+        backend.started = true;
+    }
     backend.follower.retry_now();
 }
