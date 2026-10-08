@@ -413,7 +413,7 @@ pub fn follow(
     let mut may_start = Some(MayStart { environment, json });
     loop {
         let answer = ask(&socket, &request, may_start.take())?;
-        let Some((entries, human)) = render_entries(&answer)? else { return Ok(()) };
+        let Some((entries, shown)) = render_entries(&answer)? else { return Ok(()) };
         let Some(Asked::Log(log)) = request.request.as_mut() else {
             unreachable!("only a log is followed")
         };
@@ -434,7 +434,7 @@ pub fn follow(
                 .collect();
             lines.join("\n")
         } else {
-            entries_text(&entries, false, false, &human)
+            entries_text(&entries, false, false, &shown)
         };
         // The reader went away - the pane closed, `| head` had enough. Nobody is left to tell.
         if !text.is_empty() && writeln!(out, "{text}").and_then(|()| out.flush()).is_err() {
@@ -445,9 +445,7 @@ pub fn follow(
 
 /// A log's entries, or why there are none.
 /// A followed log's entries, with what the answer calls the human.
-fn render_entries(
-    answer: &proto::Answer,
-) -> Result<Option<(msg_answer::Entries, String)>, Trouble> {
+fn render_entries(answer: &proto::Answer) -> Result<Option<(msg_answer::Entries, Shown)>, Trouble> {
     let Some(proto::answer::Detail::Msg(msg)) = &answer.detail else {
         return Err(Trouble::Refused(format!(
             "the muster-daemon answered with nothing to show: {}",
@@ -458,7 +456,7 @@ fn render_entries(
         return Err(Trouble::Refused(answer.reason.clone()));
     }
     Ok(match &msg.answer {
-        Some(Answer::Entries(entries)) => Some((entries.clone(), msg.human_name.clone())),
+        Some(Answer::Entries(entries)) => Some((entries.clone(), Shown::of(msg))),
         _ => None,
     })
 }
@@ -741,12 +739,13 @@ fn render(
         });
     }
     let Some(said) = &msg.answer else { return Ok(String::new()) };
+    let shown = Shown::of(msg);
     Ok(match said {
-        Answer::Joined(joined) => joined_text(joined, json),
+        Answer::Joined(joined) => joined_text(joined, json, &shown),
         Answer::Left(left) => left_text(left, json),
         Answer::Posted(posted) => {
             let urgent = matches!(&request.request, Some(Asked::Post(post)) if post.urgent);
-            return posted_text(posted, urgent, json);
+            return posted_text(posted, urgent, json, &shown);
         }
         Answer::Entries(entries) => {
             let reading = matches!(request.request, Some(Asked::Read(_)));
@@ -760,13 +759,13 @@ fn render(
             if if_unread && !any_message && !json {
                 return Ok(String::new());
             }
-            entries_text(entries, reading && !if_unread, json, &msg.human_name)
+            entries_text(entries, reading && !if_unread, json, &shown)
         }
-        Answer::Members(members) => members_text(members, json, &msg.human_name),
+        Answer::Members(members) => members_text(members, json, &shown),
         Answer::Changed(changed) => changed_text(request, changed, json),
         Answer::Resumed(resumed) => {
             // Resuming is heard or not by the members, not by whoever resumed it.
-            let text = match posted_text(resumed, false, json) {
+            let text = match posted_text(resumed, false, json, &shown) {
                 Ok(text) | Err(Trouble::Unheard(text)) => text,
                 Err(other) => return Err(other),
             };
@@ -889,23 +888,23 @@ fn groups_text(groups: &msg_answer::Groups, json: bool) -> String {
         .join("\n")
 }
 
-fn joined_text(joined: &msg_answer::Joined, json: bool) -> String {
+fn joined_text(joined: &msg_answer::Joined, json: bool, shown: &Shown) -> String {
     if json {
-        return serde_json::json!({
+        let mut value = serde_json::json!({
             "name": joined.name,
             "group": joined.group,
             "created": joined.created,
             "took_over": joined.took_over,
             "groups": joined.groups,
-        })
-        .to_string();
+        });
+        shown.add_to(&mut value);
+        return value.to_string();
     }
+    let name = shown.name(&joined.name);
     let mut text = match &joined.group {
-        Some(group) if joined.created => {
-            format!("created {group} and joined it as {}", joined.name)
-        }
-        Some(group) => format!("joined {group} as {}", joined.name),
-        None => format!("taking part as {}", joined.name),
+        Some(group) if joined.created => format!("created {group} and joined it as {name}"),
+        Some(group) => format!("joined {group} as {name}"),
+        None => format!("taking part as {name}"),
     };
     let others: Vec<&str> = joined
         .groups
@@ -950,19 +949,54 @@ fn is_human(name: &str) -> bool {
     name.strip_prefix(spelling::HUMAN).is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
 }
 
-/// A participant as text shows it: the human by the name the app set beside its address, so a
-/// reader knows who it is and a model still knows what to put in `--to` (MIP-4, section 10).
-fn shown(name: &str, human: &str) -> String {
-    if human.is_empty() || !is_human(name) {
-        return name.to_string();
+/// How an answer shows a participant: the human by the name the app set beside its address
+/// (MIP-4, section 10), and an agent named after its pane by what the pane is called beside the
+/// pane's id. The address stays in both, so a reader knows who it is and a model still knows what
+/// to put in `--to` - the id, which reaches that pane even once another goes by its name.
+#[derive(Debug, Clone, Default)]
+struct Shown {
+    human: String,
+    called: BTreeMap<String, String>,
+}
+
+impl Shown {
+    fn of(msg: &proto::MsgAnswer) -> Shown {
+        Shown {
+            human: msg.human_name.clone(),
+            called: msg.called.iter().map(|(id, name)| (id.clone(), name.clone())).collect(),
+        }
     }
-    format!("{human} ({name})")
+
+    fn name(&self, name: &str) -> String {
+        if !self.human.is_empty() && is_human(name) {
+            return format!("{} ({name})", self.human);
+        }
+        match self.called.get(name) {
+            Some(called) => format!("{called} ({name})"),
+            None => name.to_string(),
+        }
+    }
+
+    /// What `--json` adds beside the names it leaves as they are.
+    fn add_to(&self, value: &mut serde_json::Value) {
+        if !self.human.is_empty() {
+            value["human_name"] = self.human.clone().into();
+        }
+        if !self.called.is_empty() {
+            value["called"] = serde_json::json!(self.called);
+        }
+    }
 }
 
 /// What a post did for each participant it was for. Nobody live heard it - nobody woken, to be
 /// rung, already woken, held for a resume or a link, or the human - is [`Trouble::Unheard`],
 /// printed the same way.
-fn posted_text(posted: &msg_answer::Posted, urgent: bool, json: bool) -> Result<String, Trouble> {
+fn posted_text(
+    posted: &msg_answer::Posted,
+    urgent: bool,
+    json: bool,
+    shown: &Shown,
+) -> Result<String, Trouble> {
     use msg_answer::Reach;
     let named = |wanted: Reach| -> Vec<&msg_answer::Reached> {
         posted.reached.iter().filter(|reached| reached.reach() == wanted).collect()
@@ -994,7 +1028,7 @@ fn posted_text(posted: &msg_answer::Posted, urgent: bool, json: bool) -> Result<
             .iter()
             .map(|reached| (reached.name.clone(), until_key(reached.until()).into()))
             .collect();
-        serde_json::json!({
+        let mut value = serde_json::json!({
             "group": posted.group,
             "seq": posted.seq,
             "urgent": urgent,
@@ -1009,16 +1043,19 @@ fn posted_text(posted: &msg_answer::Posted, urgent: bool, json: bool) -> Result<
             "unreachable": listed(&unreachable),
             "doing": doing,
             "until": until,
-        })
-        .to_string()
+        });
+        shown.add_to(&mut value);
+        value.to_string()
     } else {
+        // A pane's id goes in with what else is said of it: `otter (p1, idle)`.
         let with = |reached: &msg_answer::Reached, also: Option<&str>| {
-            let said: Vec<&str> = activity(reached.activity()).into_iter().chain(also).collect();
-            if said.is_empty() {
-                reached.name.clone()
-            } else {
-                format!("{} ({})", reached.name, said.join(", "))
-            }
+            let (name, id) = match shown.called.get(&reached.name) {
+                Some(called) => (called.clone(), Some(reached.name.as_str())),
+                None => (shown.name(&reached.name), None),
+            };
+            let said: Vec<&str> =
+                id.into_iter().chain(activity(reached.activity())).chain(also).collect();
+            if said.is_empty() { name } else { format!("{name} ({})", said.join(", ")) }
         };
         let urgently = if urgent { ", urgent" } else { "" };
         let mut lines = vec![format!("posted #{} to {}{urgently}", posted.seq, posted.group)];
@@ -1109,7 +1146,7 @@ fn entries_text(
     entries: &msg_answer::Entries,
     say_when_empty: bool,
     json: bool,
-    human: &str,
+    shown: &Shown,
 ) -> String {
     if json {
         let groups: Vec<_> = entries
@@ -1125,9 +1162,7 @@ fn entries_text(
             })
             .collect();
         let mut value = serde_json::json!({ "groups": groups });
-        if !human.is_empty() {
-            value["human_name"] = human.into();
-        }
+        shown.add_to(&mut value);
         return value.to_string();
     }
     let mut blocks = Vec::new();
@@ -1141,11 +1176,11 @@ fn entries_text(
                         String::new()
                     } else {
                         let to: Vec<String> =
-                            message.to.iter().map(|name| shown(name, human)).collect();
+                            message.to.iter().map(|name| shown.name(name)).collect();
                         format!(" -> {}", to.join(", "))
                     };
                     let urgent = if message.urgent { ", urgent" } else { "" };
-                    let author = shown(&message.author, human);
+                    let author = shown.name(&message.author);
                     let head = format!("--- {name} #{seq} | {author}{to}{urgent} ---");
                     format!(
                         "{head}\n{}\n--- end {name} #{seq} | {author} ---",
@@ -1153,17 +1188,17 @@ fn entries_text(
                     )
                 }
                 Some(What::Created(by)) => {
-                    format!("--- {name} #{seq} | created by {} ---", shown(by, human))
+                    format!("--- {name} #{seq} | created by {} ---", shown.name(by))
                 }
                 Some(What::Joined(who)) => {
-                    format!("--- {name} #{seq} | {} joined ---", shown(who, human))
+                    format!("--- {name} #{seq} | {} joined ---", shown.name(who))
                 }
                 Some(What::Left(who)) => {
-                    format!("--- {name} #{seq} | {} left ---", shown(who, human))
+                    format!("--- {name} #{seq} | {} left ---", shown.name(who))
                 }
                 Some(What::Changed(changed)) => format!(
                     "--- {name} #{seq} | {} {} ---",
-                    shown(&changed.by, human),
+                    shown.name(&changed.by),
                     change_text(changed)
                 ),
                 None => continue,
@@ -1218,7 +1253,7 @@ fn entry_json(entry: &msg_answer::Entry) -> serde_json::Value {
     value
 }
 
-fn members_text(members: &msg_answer::Members, json: bool, human: &str) -> String {
+fn members_text(members: &msg_answer::Members, json: bool, shown: &Shown) -> String {
     let liveness = |member: &msg_answer::Member| match member.liveness() {
         msg_answer::Liveness::Alive => "alive",
         msg_answer::Liveness::Gone => "gone",
@@ -1241,9 +1276,7 @@ fn members_text(members: &msg_answer::Members, json: bool, human: &str) -> Strin
             })
             .collect();
         let mut value = serde_json::json!({ "members": members });
-        if !human.is_empty() {
-            value["human_name"] = human.into();
-        }
+        shown.add_to(&mut value);
         return value.to_string();
     }
     if members.members.is_empty() {
@@ -1258,7 +1291,7 @@ fn members_text(members: &msg_answer::Members, json: bool, human: &str) -> Strin
         })
         .collect();
     let names: Vec<String> =
-        members.members.iter().map(|member| shown(&member.name, human)).collect();
+        members.members.iter().map(|member| shown.name(&member.name)).collect();
     let width = names.iter().map(String::len).max().unwrap_or(0);
     let state_width = states.iter().map(String::len).max().unwrap_or(0);
     members
@@ -1306,16 +1339,20 @@ mod tests {
             took_over,
             groups: groups.iter().map(ToString::to_string).collect(),
         };
-        assert_eq!(joined_text(&joined(false, &["review"]), false), "joined review as director");
         assert_eq!(
-            joined_text(&joined(false, &["alpha", "review"]), false),
+            joined_text(&joined(false, &["review"]), false, &Shown::default()),
+            "joined review as director"
+        );
+        assert_eq!(
+            joined_text(&joined(false, &["alpha", "review"]), false, &Shown::default()),
             "joined review as director; also in alpha"
         );
         assert_eq!(
-            joined_text(&joined(true, &["review"]), false),
+            joined_text(&joined(true, &["review"]), false, &Shown::default()),
             "joined review as director (taken over from a session that had gone)"
         );
-        let took_over = joined_text(&joined(true, &["alpha", "demo", "review"]), false);
+        let took_over =
+            joined_text(&joined(true, &["alpha", "demo", "review"]), false, &Shown::default());
         assert!(
             took_over.starts_with(
                 "joined review as director, taken over from a session that had gone, with its \
@@ -1406,11 +1443,12 @@ mod tests {
             }],
         };
         assert_eq!(
-            posted_text(&posted, true, false).unwrap(),
+            posted_text(&posted, true, false, &Shown::default()).unwrap(),
             "posted #9 to review, urgent\nrung once it is not blocked: critic (blocked)"
         );
         let json: serde_json::Value =
-            serde_json::from_str(&posted_text(&posted, true, true).unwrap()).unwrap();
+            serde_json::from_str(&posted_text(&posted, true, true, &Shown::default()).unwrap())
+                .unwrap();
         assert_eq!(json["urgent"], true);
         assert_eq!(json["until"]["critic"], "unblocked");
     }
@@ -1430,11 +1468,12 @@ mod tests {
             }],
         };
         assert_eq!(
-            posted_text(&posted, false, false).unwrap(),
+            posted_text(&posted, false, false, &Shown::default()).unwrap(),
             "posted #4 to review\nrung once it reads its input: worker (stuck)"
         );
         let json: serde_json::Value =
-            serde_json::from_str(&posted_text(&posted, false, true).unwrap()).unwrap();
+            serde_json::from_str(&posted_text(&posted, false, true, &Shown::default()).unwrap())
+                .unwrap();
         assert_eq!(json["doing"]["worker"], "stuck");
         assert_eq!(json["until"]["worker"], "reading");
     }
@@ -1461,13 +1500,19 @@ mod tests {
             }],
         };
         assert_eq!(
-            entries_text(&entries, true, false, "Alex"),
+            entries_text(
+                &entries,
+                true,
+                false,
+                &Shown { human: "Alex".to_string(), ..Shown::default() }
+            ),
             "--- review #2 | Alex (@human) joined ---\n\
              --- review #3 | Alex (@human) -> builder, Alex (@human@lap) ---\ngo\n\
              --- end review #3 | Alex (@human) ---"
         );
         assert!(
-            entries_text(&entries, true, false, "").starts_with("--- review #2 | @human joined")
+            entries_text(&entries, true, false, &Shown::default())
+                .starts_with("--- review #2 | @human joined")
         );
 
         let member = |name: &str, liveness| msg_answer::Member {
@@ -1483,9 +1528,45 @@ mod tests {
             ],
         };
         assert_eq!(
-            members_text(&members, false, "Alex"),
+            members_text(&members, false, &Shown { human: "Alex".to_string(), ..Shown::default() }),
             "Alex (@human)  human  review\nbuilder        gone   review"
         );
+    }
+
+    /// An agent known by its pane is shown by what the pane is called, beside the pane's id, which
+    /// stays what `--to` takes: once the pane closes, another may go by its name.
+    #[test]
+    fn an_agent_in_a_pane_is_shown_by_its_panes_name_beside_its_id() {
+        let message = msg_answer::Message {
+            author: "p29te12q4t".to_string(),
+            to: vec!["integrator".to_string()],
+            body: "done".to_string(),
+            urgent: false,
+        };
+        let entries = msg_answer::Entries {
+            groups: vec![msg_answer::GroupEntries {
+                group: "integrator+otter".to_string(),
+                entries: vec![msg_answer::Entry {
+                    seq: 4,
+                    at_ms: 0,
+                    what: Some(What::Message(message)),
+                }],
+                behind: None,
+            }],
+        };
+        let shown = Shown {
+            called: BTreeMap::from([("p29te12q4t".to_string(), "otter".to_string())]),
+            ..Shown::default()
+        };
+        assert_eq!(
+            entries_text(&entries, true, false, &shown),
+            "--- integrator+otter #4 | otter (p29te12q4t) -> integrator ---\ndone\n\
+             --- end integrator+otter #4 | otter (p29te12q4t) ---"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&entries_text(&entries, true, true, &shown)).unwrap();
+        assert_eq!(json["called"]["p29te12q4t"], "otter", "{json}");
+        assert_eq!(json["groups"][0]["entries"][0]["author"], "p29te12q4t", "{json}");
     }
 
     #[test]
@@ -1508,7 +1589,7 @@ mod tests {
             }],
         };
         assert_eq!(
-            entries_text(&entries, true, false, ""),
+            entries_text(&entries, true, false, &Shown::default()),
             "--- review #4 | director -> builder, urgent ---\nstop\n--- end review #4 | director ---"
         );
     }
@@ -1593,7 +1674,8 @@ mod tests {
             seq: 7,
             reached: vec![unreachable("critic@devenv"), unreachable("@human@lap")],
         };
-        let text = posted_text(&posted, false, false).expect("heard once the link returns");
+        let text = posted_text(&posted, false, false, &Shown::default())
+            .expect("heard once the link returns");
         assert_eq!(
             text,
             "posted #7 to review\nnot woken: critic@devenv (its machine cannot be reached; it \
@@ -1611,7 +1693,7 @@ mod tests {
             }],
         };
         assert_eq!(
-            entries_text(&entries, true, false, ""),
+            entries_text(&entries, true, false, &Shown::default()),
             "nothing unread\nlap cannot be reached now, so review@lap may be missing messages \
              posted since"
         );

@@ -46,6 +46,11 @@ pub struct Participant {
     pub inbox: Option<Inbox>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pane: Option<String>,
+    /// What its pane is called (`otter`), for a participant named after its pane: what it is
+    /// shown as, while the pane is open and after it closes, when another pane may go by the
+    /// name. Its name stays the pane's id, which is never reused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub called: Option<String>,
     /// A wake failed to reach it. It keeps its name and cursors until it joins again.
     #[serde(default)]
     pub gone: bool,
@@ -83,6 +88,7 @@ impl Participant {
             name: name.to_string(),
             inbox: None,
             pane: None,
+            called: None,
             gone: false,
             cursors: BTreeMap::new(),
             woken: BTreeSet::new(),
@@ -128,6 +134,17 @@ pub trait Presence {
     /// once (MIP-4, section 14). Its wakes wait until an agent there can take them.
     fn has_pane(&self, pane: &str) -> bool {
         self.agent_in(pane)
+    }
+
+    /// What the open pane `pane` is called: the name somebody gave it, or the word its daemon
+    /// drew (`otter`).
+    fn name_of(&self, _pane: &str) -> Option<String> {
+        None
+    }
+
+    /// The open pane called `name`, which a post may address by that name as by its id.
+    fn pane_named(&self, _name: &str) -> Option<String> {
+        None
     }
 
     /// Whether a window is attending, which is what wakes the human (MIP-4, section 10).
@@ -1507,7 +1524,13 @@ impl<S: Store> Messaging<S> {
     ) -> Result<Vec<String>, Refusal> {
         let mut addressees: Vec<String> = Vec::new();
         for name in to {
-            check_addressee(name)?;
+            // A pane's name means that pane, as its id does, and is matched before the syntax of
+            // a participant's name is asked of it: somebody may have named a pane `🤖 A`.
+            let pane = (name != HUMAN).then(|| presence.pane_named(name)).flatten();
+            if pane.is_none() {
+                check_addressee(name)?;
+            }
+            let name = pane.as_ref().unwrap_or(name);
             let name = self.addressee(name, author, found, group, presence)?;
             if name == author {
                 return Err(Refusal::AddressedSelf);
@@ -1598,9 +1621,40 @@ impl<S: Store> Messaging<S> {
         let mut participant = Participant::named(name);
         if name != HUMAN {
             participant.pane = Some(name.to_string());
+            participant.called = presence.name_of(name);
         }
         self.participants.insert(name.to_string(), participant);
         true
+    }
+
+    /// What each participant named after its pane is called, refreshed from the panes open now,
+    /// for an answer to show it by: `otter` rather than `p29te12q4t`. A pane closed since keeps
+    /// the name it last had here, which another pane may go by by now.
+    pub fn called(&mut self, presence: &dyn Presence) -> BTreeMap<String, String> {
+        let mut changed = false;
+        for participant in self.participants.values_mut() {
+            let Some(pane) = participant.pane.as_deref().filter(|pane| *pane == participant.name)
+            else {
+                continue;
+            };
+            if let Some(now) = presence.name_of(pane)
+                && participant.called.as_ref() != Some(&now)
+            {
+                participant.called = Some(now);
+                changed = true;
+            }
+        }
+        if changed {
+            // Only a name to show by: one not written down is refreshed at the next request.
+            let _ = self.save();
+        }
+        self.participants
+            .values()
+            .filter_map(|participant| {
+                let called = participant.called.as_ref()?;
+                (called != &participant.name).then(|| (participant.name.clone(), called.clone()))
+            })
+            .collect()
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1742,6 +1796,16 @@ impl<S: Store> Messaging<S> {
                 self.adopt(&name, caller);
             }
             return Ok((name, false));
+        }
+        // An agent in a pane is the pane's participant, named after the pane and shown by what
+        // the pane is called, so `pane new --name` names it here too. A pane's id is never
+        // reused, so whoever held this name before was this pane's.
+        if let Some(pane) = &caller.pane {
+            self.adopt(pane, caller);
+            if let Some(participant) = self.participants.get_mut(pane) {
+                participant.called = presence.name_of(pane).or(participant.called.take());
+            }
+            return Ok((pane.clone(), false));
         }
         let base = default_name(caller.directory.as_deref());
         let name = self.free_name(&base, presence);
@@ -2092,7 +2156,19 @@ impl<S: Store> Messaging<S> {
     /// `-2`, `-3`, ... that is free. A group by the name holding only some of them is theirs: one
     /// of them left it.
     fn pair_name(&self, everyone: &[&str]) -> Result<String, Refusal> {
-        let base = pair_group(everyone);
+        // A participant named after its pane by what the pane is called, when that is a name a
+        // group's may hold: `muster-integrator+otter` rather than `+p29te12q4t`.
+        let shown: Vec<&str> = everyone
+            .iter()
+            .map(|name| {
+                self.participants
+                    .get(*name)
+                    .and_then(|participant| participant.called.as_deref())
+                    .filter(|called| check_participant(called).is_ok())
+                    .unwrap_or(name)
+            })
+            .collect();
+        let base = pair_group(&shown);
         if check_group(&base).is_err() {
             return Err(Refusal::PairTooLong { group: base });
         }

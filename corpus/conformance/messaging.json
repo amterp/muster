@@ -1437,6 +1437,78 @@
         "director deleted council (5 entries); let go @human,builder,director",
         ""
       ] }
+    },
+    {
+      "name": "a pane is addressed by its name as by its id",
+      "why": "Every pane goes by a short name - one somebody gave it, or a word its daemon drew - and a post may name it by that: the agent there is the pane's participant, as `--to` its id would make it. A group made for the pair is named by what the pane is called, which says who is in it where the id would not.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
+        {"session": "i", "do": "join", "name": "integrator"},
+        {"session": "i", "do": "post", "to": ["otter"], "body": "brief"},
+        {"session": "s1", "do": "read", "pane": "p1"},
+        {"do": "called"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "integrator registered",
+        "integrator posted #4 to integrator+otter; woke p1 [integrator+otter #4-4 x1 to-you:1 from integrator] rung p1",
+        "p1 read integrator+otter: #4 integrator->p1: brief",
+        "called p1=otter"
+      ] }
+    },
+    {
+      "name": "an agent in a pane that never named itself is its pane",
+      "why": "Naming a pane names the agent in it here too, with no `join --name`: an agent in a pane that runs a command before anything addressed it is the pane's participant, shown by what the pane is called, rather than one named after its directory, which every agent in a worktree shares.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "builder"},
+        {"session": "s1", "do": "read", "pane": "p1", "directory": "/src/muster-5"},
+        {"session": "s2", "do": "read", "directory": "/src/muster-5"},
+        {"do": "who"},
+        {"do": "called"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "p1 read nothing",
+        "muster-5 read nothing",
+        "muster-5 alive, p1 alive (idle)",
+        "called p1=builder"
+      ] }
+    },
+    {
+      "name": "a closed pane's agent keeps the name it had, and the next pane by that name is another",
+      "why": "A pane's name is free once the pane closes, so the log keeps the pane's id, which is never reused, and shows it by the name the pane last had. A post to the name then reaches whichever pane holds it now, in a group of its own.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
+        {"session": "i", "do": "join", "name": "integrator"},
+        {"session": "i", "do": "post", "to": ["otter"], "body": "first"},
+        {"do": "pane", "pane": "p1", "state": "closed"},
+        {"do": "agent", "pane": "p2", "state": "idle", "called": "otter"},
+        {"session": "i", "do": "post", "to": ["otter"], "body": "second"},
+        {"do": "called"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "integrator registered",
+        "integrator posted #4 to integrator+otter; woke p1 [integrator+otter #4-4 x1 to-you:1 from integrator] rung p1",
+        "p1 closed",
+        "p2 idle",
+        "integrator posted #4 to integrator+otter-2; woke p2 [integrator+otter-2 #4-4 x1 to-you:1 from integrator] rung p2",
+        "called p1=otter, p2=otter"
+      ] }
+    },
+    {
+      "name": "a pane named in words a participant's name cannot hold is still addressed by them",
+      "why": "Somebody may name a pane `🤖 A`, and `--to` takes it as it takes the pane's id. A group's name cannot hold it, so the pair's group is named by the id instead.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "🤖 A"},
+        {"session": "i", "do": "join", "name": "integrator"},
+        {"session": "i", "do": "post", "to": ["🤖 A"], "body": "brief"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "integrator registered",
+        "integrator posted #4 to integrator+p1; woke p1 [integrator+p1 #4-4 x1 to-you:1 from integrator] rung p1"
+      ] }
     }
   ]
 }

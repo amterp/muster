@@ -21,6 +21,8 @@ struct Sessions {
     agents: RefCell<BTreeSet<String>>,
     /// Panes open on each machine.
     panes: RefCell<BTreeMap<String, Side>>,
+    /// What panes are called, where a test said.
+    names: RefCell<BTreeMap<String, String>>,
     /// The machine whose daemon is asking, which [`Wire::split`] sets.
     asking: Cell<Option<Side>>,
 }
@@ -40,6 +42,17 @@ impl Presence for Sessions {
 
     fn has_pane(&self, pane: &str) -> bool {
         self.panes.borrow().get(pane).is_some_and(|side| Some(*side) == self.asking.get())
+    }
+
+    fn name_of(&self, pane: &str) -> Option<String> {
+        self.names.borrow().get(pane).filter(|_| self.has_pane(pane)).cloned()
+    }
+
+    fn pane_named(&self, name: &str) -> Option<String> {
+        let names = self.names.borrow();
+        let mut called =
+            names.iter().filter(|(pane, called)| *called == name && self.has_pane(pane));
+        called.next().map(|(pane, _)| pane.clone())
     }
 }
 
@@ -598,6 +611,23 @@ fn a_post_to_a_pane_on_another_machine_rings_it_there() {
 
     let refused = wire.post(Side::Laptop, &builder, None, &["nobody"], "anyone?");
     assert_eq!(refused.unwrap_err(), Refusal::NoSuchParticipant { name: "nobody".to_string() });
+}
+
+/// A pane on another machine is addressed by its name too, bare or with its machine: the other
+/// machine answers for the name, as it does for the pane's id.
+#[test]
+fn a_post_to_a_pane_on_another_machine_by_its_name_rings_it_there() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Devenv, "p2dev");
+    wire.sessions.names.borrow_mut().insert("p2dev".to_string(), "otter".to_string());
+    let builder = session("builder");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+
+    for to in ["otter@devenv", "otter"] {
+        let posted = wire.post(Side::Laptop, &builder, None, &[to], "carry on").unwrap();
+        assert_eq!(woke(&posted), vec![("p2dev@devenv", Reach::Woken)], "{to}");
+        wire.read(Side::Devenv, &in_pane("p2dev"), None);
+    }
 }
 
 /// A pane on another machine is still an address once the agent in it has joined under a name

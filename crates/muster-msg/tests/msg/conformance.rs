@@ -23,6 +23,8 @@ struct Sessions {
     unreadable: RefCell<BTreeSet<String>>,
     /// Open panes with no agent, and whether each is new.
     open: RefCell<BTreeMap<String, bool>>,
+    /// What each pane is called, when a step said.
+    names: RefCell<BTreeMap<String, String>>,
     /// Whether a window is attending, which wakes the human.
     attended: Cell<bool>,
 }
@@ -54,6 +56,14 @@ impl Presence for Sessions {
 
     fn has_pane(&self, pane: &str) -> bool {
         self.agent_in(pane) || self.open.borrow().contains_key(pane)
+    }
+
+    fn name_of(&self, pane: &str) -> Option<String> {
+        self.names.borrow().get(pane).cloned()
+    }
+
+    fn pane_named(&self, name: &str) -> Option<String> {
+        self.names.borrow().iter().find(|(_, called)| *called == name).map(|(pane, _)| pane.clone())
     }
 
     fn attended(&self) -> bool {
@@ -338,9 +348,23 @@ fn pane(sessions: &Sessions, step: &Value) -> String {
     match text("state") {
         "new" => sessions.open.borrow_mut().insert(pane.clone(), true),
         "old" => sessions.open.borrow_mut().insert(pane.clone(), false),
+        // The pane itself is gone, with its agent and its name, which another may take.
+        "closed" => {
+            sessions.agents.borrow_mut().remove(&pane);
+            sessions.names.borrow_mut().remove(&pane);
+            sessions.open.borrow_mut().remove(&pane)
+        }
         _ => sessions.open.borrow_mut().remove(&pane),
     };
+    called(sessions, &pane, step);
     format!("{pane} {}", text("state"))
+}
+
+/// A step's `called`, what its pane goes by from then on.
+fn called(sessions: &Sessions, pane: &str, step: &Value) {
+    if let Some(called) = step.get("called").and_then(Value::as_str) {
+        sessions.names.borrow_mut().insert(pane.to_string(), called.to_string());
+    }
 }
 
 /// Says what a pane's agent is doing, or with `gone` that the pane has none. `unreadable` makes
@@ -364,6 +388,7 @@ fn agent(sessions: &Sessions, step: &Value) -> String {
         Some(state) => sessions.agents.borrow_mut().insert(pane.clone(), state),
         None => sessions.agents.borrow_mut().remove(&pane),
     };
+    called(sessions, &pane, step);
     format!("{pane} {}", text("state"))
 }
 
@@ -598,6 +623,12 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
         }
         "agent" => Ok(agent(sessions, step)),
         "pane" => Ok(pane(sessions, step)),
+        "called" => {
+            let called = service.called(sessions);
+            let each: Vec<String> =
+                called.iter().map(|(name, called)| format!("{name}={called}")).collect();
+            Ok(format!("called {}", each.join(", ")))
+        }
         "idle" => Ok(idle(service, sessions, text("name").unwrap_or_default(), now)),
         "attend" => Ok(attend(sessions, text("state") != Some("off"))),
         "restart" => Ok(restart(service)),

@@ -225,6 +225,7 @@ mod tests {
             name: "critic".to_string(),
             inbox: None,
             pane: None,
+            called: None,
             gone: false,
             cursors: std::collections::BTreeMap::default(),
             woken: std::collections::BTreeSet::default(),

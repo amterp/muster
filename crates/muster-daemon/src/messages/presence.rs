@@ -68,6 +68,8 @@ const AGENT_TO_COME: Duration = Duration::from_secs(30);
 pub(crate) struct Panes {
     agents: HashMap<String, Seen>,
     open: HashMap<String, bool>,
+    /// What each open pane is called, by its name.
+    names: HashMap<String, String>,
     /// Whether a window is attending, which wakes the human.
     attended: bool,
 }
@@ -110,13 +112,17 @@ impl Panes {
                     io: io.clone(),
                 }
             });
-            (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME)
+            let name = record.name().map(str::to_string);
+            (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME, name)
         });
         let mut panes = Panes { attended: session.attended(), ..Panes::default() };
         drop(session);
-        for (pane, seen, young) in read {
+        for (pane, seen, young, name) in read {
             if let Some(seen) = seen {
                 panes.agents.insert(pane.clone(), seen);
+            }
+            if let Some(name) = name {
+                panes.names.insert(pane.clone(), name);
             }
             panes.open.insert(pane, young);
         }
@@ -177,6 +183,20 @@ impl Presence for Panes {
 
     fn has_pane(&self, pane: &str) -> bool {
         self.open.contains_key(pane)
+    }
+
+    fn name_of(&self, pane: &str) -> Option<String> {
+        self.names.get(pane).cloned()
+    }
+
+    /// Only one pane, since the daemon gives no two live panes one name; a state file from before
+    /// it did can bring two back, and then the name means neither.
+    fn pane_named(&self, name: &str) -> Option<String> {
+        let mut called = self.names.iter().filter(|(_, called)| *called == name);
+        match (called.next(), called.next()) {
+            (Some((pane, _)), None) => Some(pane.clone()),
+            _ => None,
+        }
     }
 
     fn doorbell(&self, pane: &str) -> Ringable {

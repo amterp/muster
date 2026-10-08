@@ -98,6 +98,20 @@ impl Agent {
         );
     }
 
+    /// The group the doorbell's tests post to `pane` in: `integrator` and the word the pane was
+    /// drawn, named as a pair's group is, in order.
+    fn pair(&self, pane: &str) -> String {
+        let word = snapshot(&mut self.daemon.connect())
+            .panes
+            .into_iter()
+            .find(|record| record.pane == pane)
+            .and_then(|record| record.word)
+            .unwrap_or_else(|| panic!("{pane} has no word"));
+        let mut pair = ["integrator".to_string(), word];
+        pair.sort();
+        pair.join("+")
+    }
+
     fn until_shows(&mut self, text: &str) {
         until_text(&mut self.control, "p1", text);
     }
@@ -223,9 +237,10 @@ fn a_blocked_agent_is_never_rung_and_is_rung_once_it_is_idle() {
     let rung = agent.rung();
     assert_eq!(
         rung,
-        [
-            "[muster] integrator+p1: 1 new (#4), 1 to you, from integrator. Read: muster msg read --group integrator+p1"
-        ]
+        [format!(
+            "[muster] {0}: 1 new (#4), 1 to you, from integrator. Read: muster msg read --group {0}",
+            agent.pair("p1")
+        )]
     );
 }
 
@@ -283,7 +298,7 @@ fn a_pane_addressed_before_its_agent_is_found_is_rung_once_it_is() {
 
     agent.daemon.run_agent("p1");
     let rung = agent.until_rung(1);
-    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+    assert!(rung[0].starts_with(&format!("[muster] {0}: 1 new", agent.pair("p1"))), "{rung:?}");
 }
 
 /// Claude Code is found, and read as idle, before it reads its terminal as its prompt does: what
@@ -296,7 +311,7 @@ fn a_ring_typed_while_the_agent_starts_is_sent_by_a_later_return() {
     agent.post("p1", "a brief");
 
     let rung = agent.until_rung(1);
-    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+    assert!(rung[0].starts_with(&format!("[muster] {0}: 1 new", agent.pair("p1"))), "{rung:?}");
 }
 
 /// A Return pressed again is a Return typed at the agent, under the ring's own guards, checked
@@ -382,7 +397,7 @@ fn a_prompt_with_something_half_typed_in_it_is_not_rung() {
 
     agent.type_in("", true);
     let rung = agent.until_rung(1);
-    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+    assert!(rung[0].starts_with(&format!("[muster] {0}: 1 new", agent.pair("p1"))), "{rung:?}");
     assert!(agent.heard().contains(&"half typed".to_string()), "{:?}", agent.heard());
 }
 
@@ -422,7 +437,7 @@ fn a_prompt_showing_a_faint_suggestion_is_empty() {
     agent.daemon.run_agent_with_a_suggestion("p1");
     agent.post("p1", "a brief");
     let rung = agent.until_rung(1);
-    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+    assert!(rung[0].starts_with(&format!("[muster] {0}: 1 new", agent.pair("p1"))), "{rung:?}");
 }
 
 /// An agent that exits leaves its shell's prompt in the pane, and a ring waiting for it is not
@@ -450,7 +465,7 @@ fn a_daemon_that_took_over_rings_a_wake_still_unread() {
     let answer = agent.daemon.replace(None);
     assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
     let rung = agent.until_rung(2);
-    assert!(rung[1].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+    assert!(rung[1].starts_with(&format!("[muster] {0}: 1 new", agent.pair("p1"))), "{rung:?}");
 }
 
 /// A paused group's posts ring nobody, and resuming it rings its agent once for everything it
@@ -461,13 +476,13 @@ fn a_paused_group_rings_nobody_and_resuming_it_rings_once() {
     agent.post("p1", "one");
     agent.until_rung(1);
 
-    agent.pausing("integrator+p1", true);
+    agent.pausing(&agent.pair("p1"), true);
     let posted = agent.post("p1", "two");
     assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Paused);
     std::thread::sleep(QUIET + Duration::from_secs(2));
     assert_eq!(agent.rung().len(), 1, "rung while paused: {:?}", agent.rung());
 
-    agent.pausing("integrator+p1", false);
+    agent.pausing(&agent.pair("p1"), false);
     let rung = agent.until_rung(2);
     assert!(rung[1].contains("2 new"), "{rung:?}");
     std::thread::sleep(QUIET + Duration::from_secs(1));
@@ -555,9 +570,10 @@ fn an_urgent_post_rings_an_agent_at_work_and_an_ordinary_one_waits_for_idle() {
     let rung = agent.until_rung(1);
     assert_eq!(
         rung,
-        [
-            "[muster] integrator+p1: 2 new (#4-5), 1 urgent, 2 to you, from integrator. Read it now, before you go on: muster msg read --group integrator+p1"
-        ]
+        [format!(
+            "[muster] {0}: 2 new (#4-5), 1 urgent, 2 to you, from integrator. Read it now, before you go on: muster msg read --group {0}",
+            agent.pair("p1")
+        )]
     );
     std::thread::sleep(ANSWER + QUIET + Duration::from_secs(1));
     assert_eq!(agent.rung().len(), 1, "rung again: {:?}", agent.heard());
@@ -614,7 +630,7 @@ fn a_dialog_opened_over_an_urgent_ring_before_its_return_is_never_answered() {
     std::thread::sleep(QUIET);
 
     agent.post_urgently("p1", "now");
-    agent.until_shows("PROBE-PROMPT> [muster] integrator+p1");
+    agent.until_shows(&format!("PROBE-PROMPT> [muster] {0}", agent.pair("p1")));
     agent.daemon.block_agent_unasked();
     agent.until_shows("PROBE-STATE:BLOCKED");
     std::thread::sleep(ANSWER * 2);
@@ -633,7 +649,7 @@ fn an_idle_agent_whose_screen_keeps_moving_is_still_rung() {
 
     agent.post("p1", "hello");
     let rung = agent.until_rung(1);
-    assert!(rung[0].starts_with("[muster] integrator+p1"), "{rung:?}");
+    assert!(rung[0].starts_with(&format!("[muster] {0}", agent.pair("p1"))), "{rung:?}");
     agent.type_in("still", true);
 }
 
@@ -648,7 +664,7 @@ fn a_ring_left_unsent_in_a_pane_that_keeps_moving_is_pressed_again() {
 
     agent.post("p1", "hello");
     let rung = agent.until_rung(1);
-    assert!(rung[0].starts_with("[muster] integrator+p1"), "{rung:?}");
+    assert!(rung[0].starts_with(&format!("[muster] {0}", agent.pair("p1"))), "{rung:?}");
 }
 
 /// A ring typed at work has its Return about a second later, once the screen shows it: the
@@ -661,7 +677,7 @@ fn an_urgent_ring_at_work_is_returned_about_a_second_after_it_is_typed() {
     std::thread::sleep(QUIET);
 
     agent.post_urgently("p1", "now");
-    agent.until_shows("PROBE-PROMPT> [muster] integrator+p1");
+    agent.until_shows(&format!("PROBE-PROMPT> [muster] {0}", agent.pair("p1")));
     let shown = Instant::now();
     agent.until_rung(1);
     let took = shown.elapsed();
@@ -678,7 +694,7 @@ fn an_urgent_ring_a_long_dialog_covered_is_sent_once_the_dialog_closes() {
     std::thread::sleep(QUIET);
 
     agent.post_urgently("p1", "now");
-    agent.until_shows("PROBE-PROMPT> [muster] integrator+p1");
+    agent.until_shows(&format!("PROBE-PROMPT> [muster] {0}", agent.pair("p1")));
     agent.daemon.block_agent_unasked();
     agent.daemon.until_agent("p1", proto::AgentState::Blocked);
     // Past six Returns' worth of looks, five seconds apart.
@@ -764,9 +780,10 @@ fn a_session_with_its_id_reported_is_woken_by_its_command_without_typing() {
     });
     assert_eq!(
         woken,
-        [
-            "019a-s1|[muster] integrator+p1: 1 new (#4), 1 to you, from integrator. Read: muster msg read --group integrator+p1"
-        ]
+        [format!(
+            "019a-s1|[muster] {0}: 1 new (#4), 1 to you, from integrator. Read: muster msg read --group {0}",
+            agent.pair("p1")
+        )]
     );
     std::thread::sleep(QUIET + Duration::from_secs(1));
     assert_eq!(agent.rung(), Vec::<String>::new(), "the wake was typed as well");
@@ -858,7 +875,7 @@ fn a_slow_wake_command_holds_no_other_panes_ring() {
     let started = Instant::now();
     agent.post("p2", "another");
     until_some("p2 to be rung", || {
-        agent.rung().iter().any(|rung| rung.contains("integrator+p2")).then_some(())
+        agent.rung().iter().any(|rung| rung.contains(&agent.pair("p2"))).then_some(())
     });
     let waited = started.elapsed();
     assert!(waited < Duration::from_secs(3), "p2 was rung {waited:?} after p1's command started");
@@ -936,7 +953,7 @@ fn an_agent_that_stopped_reading_is_rung_once_it_reads_again() {
     assert_eq!(agent.rung(), Vec::<String>::new(), "a pane that is not reading was rung");
 
     let rung = agent.until_rung(1);
-    assert!(rung[0].starts_with("[muster] integrator+p1: 1 new"), "{rung:?}");
+    assert!(rung[0].starts_with(&format!("[muster] {0}: 1 new", agent.pair("p1"))), "{rung:?}");
 }
 
 /// A ring typed into an agent whose program then stops reading is not taken, and not pressed

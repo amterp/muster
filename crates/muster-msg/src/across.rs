@@ -1150,6 +1150,9 @@ impl<S: Store> Messaging<S> {
         if let Some(holder) = self.by_pane(name) {
             return Some(holder);
         }
+        if let Some(pane) = presence.pane_named(name) {
+            return Some(self.by_pane(&pane).unwrap_or(pane));
+        }
         let named = self.participants.contains_key(name) || presence.has_pane(name);
         named.then(|| name.to_string())
     }

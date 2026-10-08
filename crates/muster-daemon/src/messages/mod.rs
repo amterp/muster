@@ -325,6 +325,8 @@ pub(crate) fn handle(
         return peer::hold(shared, &peer.name, &peer.socket, hung_up);
     }
     let panes = Panes::of(shared);
+    // Before the request too, so that a pair group it makes is named by what panes are called now.
+    shared.messages().service.called(&panes);
     let carriable = carry::may_carry(&shared.messages().service, &caller, &asked, &panes);
     let kept = carriable.then(|| asked.clone());
     let reply = respond(shared, &caller, asked, hung_up, &panes);
@@ -344,7 +346,17 @@ pub(crate) fn handle(
             }
         },
     };
-    naming_the_human(shared, reply)
+    let reply = naming_the_human(shared, reply);
+    naming_the_panes(shared, reply, &panes)
+}
+
+/// The answer, saying what each participant named after its pane is called, for it to be shown
+/// by: `otter` rather than `p29te12q4t` alone. After the request, which may have made one.
+fn naming_the_panes(shared: &Shared, mut reply: Reply, panes: &Panes) -> Reply {
+    if let Some(Detail::Msg(answer)) = reply.detail.as_deref_mut() {
+        answer.called = shared.messages().service.called(panes).into_iter().collect();
+    }
+    reply
 }
 
 /// The answer, saying what to call the human where it is shown (MIP-4, section 10). Read from

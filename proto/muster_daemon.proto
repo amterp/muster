@@ -736,6 +736,10 @@ message MsgAnswer {
   // Since 1.3. What to call the human where an answer shows it, as SetHumanName set it; empty
   // when nothing did.
   string human_name = 3;
+  // Since 1.5. What each participant named after its pane (`p29te12q4t`) is called (`otter`):
+  // the pane's name now, or the last this machine saw once the pane has closed. For an answer to
+  // show it by, beside the id, which stays the address.
+  map<string, string> called = 4;
   oneof answer {
     Joined joined = 10;
     Left left = 11;

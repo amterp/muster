@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use muster_daemon_proto::{self as proto, messaging, session_request};
 use muster_harness::requests::{
-    beside, close_request, create, expect, in_new_tab, make, session, until_text,
+    beside, close_request, create, expect, in_new_tab, make, session, snapshot, until_text,
 };
 use muster_harness::{Daemon, Input};
 use serde_json::Value;
@@ -375,23 +375,33 @@ fn agents_in_panes() -> Daemon {
 #[test]
 fn a_post_to_agents_in_panes_says_when_each_is_rung() {
     let daemon = agents_in_panes();
+    // Each pane's agent is shown by the word its pane was drawn, beside the pane's id.
+    let words = words(&daemon);
+    let (p1, p2, p3, p4) = (&words["p1"], &words["p2"], &words["p3"], &words["p4"]);
+    let mut pair = ["lead", p1, p2, p3, p4];
+    pair.sort_unstable();
+    let pair = pair.join("+");
     let to_all = ["msg", "--as", "lead", "post", "--to", "p1,p2,p3,p4"];
     assert_eq!(
         ok(&muster(&daemon, &[&to_all[..], &["a", "brief"]].concat())),
-        "posted #7 to lead+p1+p2+p3+p4\n\
-         woke: p1 (idle)\n\
-         rung once idle: p2 (working)\n\
-         rung once its prompt is empty: p3 (idle)\n\
-         rung once an agent is found: p4"
+        format!(
+            "posted #7 to {pair}\n\
+             woke: {p1} (p1, idle)\n\
+             rung once idle: {p2} (p2, working)\n\
+             rung once its prompt is empty: {p3} (p3, idle)\n\
+             rung once an agent is found: {p4} (p4)"
+        )
     );
-    assert_eq!(
-        ok(&muster(&daemon, &["msg", "--as", "lead", "who"])),
-        "lead  gone             lead+p1+p2+p3+p4\n\
-         p1    alive (idle)     lead+p1+p2+p3+p4\n\
-         p2    alive (working)  lead+p1+p2+p3+p4\n\
-         p3    alive (idle)     lead+p1+p2+p3+p4\n\
-         p4    gone             lead+p1+p2+p3+p4"
-    );
+    let shown: Vec<String> =
+        ["p1", "p2", "p3", "p4"].iter().map(|pane| format!("{} ({pane})", words[*pane])).collect();
+    let width = shown.iter().map(String::len).max().unwrap_or_default();
+    let mut who = vec![format!("{:<width$}  {:<15}  {pair}", "lead", "gone")];
+    for (name, state) in
+        shown.iter().zip(["alive (idle)", "alive (working)", "alive (idle)", "gone"])
+    {
+        who.push(format!("{name:<width$}  {state:<15}  {pair}"));
+    }
+    assert_eq!(ok(&muster(&daemon, &["msg", "--as", "lead", "who"])), who.join("\n"));
 
     let json = ["msg", "--json", "--as", "other", "post", "--to", "p2,p3,p4", "another"];
     let posted: Value = serde_json::from_str(&ok(&muster(&daemon, &json))).unwrap();
@@ -408,10 +418,21 @@ fn a_post_to_agents_in_panes_says_when_each_is_rung() {
 
     assert_eq!(
         ok(&muster(&daemon, &[&to_all[..], &["more"]].concat())),
-        "posted #8 to lead+p1+p2+p3+p4\n\
-         woke: p1 (idle, already woken), p2 (working, already woken), \
-         p3 (idle, already woken), p4 (already woken)"
+        format!(
+            "posted #8 to {pair}\n\
+             woke: {p1} (p1, idle, already woken), {p2} (p2, working, already woken), \
+             {p3} (p3, idle, already woken), {p4} (p4, already woken)"
+        )
     );
+}
+
+/// What each pane is called: the word its daemon drew, since nothing here names one.
+fn words(daemon: &Daemon) -> std::collections::BTreeMap<String, String> {
+    snapshot(&mut daemon.connect())
+        .panes
+        .into_iter()
+        .filter_map(|pane| Some((pane.pane.clone(), pane.word?)))
+        .collect()
 }
 
 /// The human is heard: whoever reads the post there is the person at the keyboard.
@@ -472,7 +493,9 @@ fn a_followed_log_prints_each_entry_as_it_lands_across_a_handover() {
     let _ = following.wait();
 }
 
-/// An agent whose pane has closed can be woken by nothing, so a post to it alone is unheard.
+/// An agent whose pane has closed can be woken by nothing, so a post to it alone is unheard. It is
+/// shown by the name its pane had, which is free for another pane by now, beside the pane's id,
+/// which still reaches it.
 #[test]
 fn a_post_to_an_agent_whose_pane_closed_is_unheard() {
     let daemon = Daemon::start_detecting();
@@ -480,11 +503,13 @@ fn a_post_to_an_agent_whose_pane_closed_is_unheard() {
     make(&mut control, create("p1", in_new_tab("t1")));
     make(&mut control, create("p2", beside("p1", proto::Side::Right)));
     daemon.run_agent("p1");
-    ok(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", "p1", "a", "brief"]));
+    let word = words(&daemon)["p1"].clone();
+    let pair = if word.as_str() < "lead" { format!("{word}+lead") } else { format!("lead+{word}") };
+    ok(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", &word, "a", "brief"]));
     expect(&mut control, close_request("p1"), proto::Outcome::Done);
     assert_eq!(
         unheard(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", "p1", "more"])),
-        "posted #5 to lead+p1\nnot woken: p1 (no agent in its pane)"
+        format!("posted #5 to {pair}\nnot woken: {word} (p1, no agent in its pane)")
     );
 }
 
