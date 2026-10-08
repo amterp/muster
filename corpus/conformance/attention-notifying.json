@@ -1522,6 +1522,29 @@
       }
     },
     {
+      "name": "a quiet pane whose program stops reading asks for nobody",
+      "why": "Stuck asks for somebody like blocked does, and a quiet pane's asks are its maker's to see, so being stuck raises no banner either. It still shows as stuck on its row.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "quiet": "local/w1:p2"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "stuck"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
       "name": "making a pane quiet takes down what it was asking",
       "why": "A banner standing for a pane the person has just said not to be told about would be the interruption they asked to be spared, arriving anyway.",
       "given": {
