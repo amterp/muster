@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "watch-a-real-brew",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791427727332,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-07 with Upgrade Muster (menu item and muster upgrade). Untested against a real release: whether the first upgrade raises 'Muster Sessions wants to control Muster' (brew quits the app by Apple Event, charged to the daemon's helper app), and whether Homebrew's own reopen (since 2026-05) plus Muster's trailing open land on one app showing the upgrade tab. Run it once after 0.15.0 is out, and correct docs/cli/limits.md ('An upgrade has to be allowed to quit Muster') with what was seen.",
+  "id": "a_2dmxtBIBI",
+  "position": "b0f",
+  "title": "Watch a real brew upgrade of Muster from a pane, and record what macOS asks",
+  "type": "chore",
+  "updated_at_millis": 1791427727332,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791427727332}
+  ]
+}
