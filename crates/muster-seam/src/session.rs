@@ -37,6 +37,7 @@ use muster_core::message_groups::{self, MessageGroup};
 use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restart, Restored};
 use muster_core::names::Minter;
+use muster_core::pane_address::{self, Address, Candidate};
 use muster_core::pane_focus::PaneFocus;
 use muster_core::pane_text::{PaneText, Scope};
 use muster_core::problems::Severity;
@@ -3848,6 +3849,44 @@ pub(crate) fn pane_in_part(window: WindowId, daemon: &DaemonId, tab: &TabId) -> 
 pub(crate) fn focused_pane(window: WindowId) -> Option<PaneId> {
     let session = poison::lock(&SESSION, "session");
     session.windows[window].composition.focused_region()?.pane.clone()
+}
+
+/// Puts each pane's id in place of a name somebody typed for it (`otter`, `otter@devenv`), among
+/// every pane on every machine this app follows, before anything else reads the request.
+///
+/// Text that is already an id, or that no pane answers to, is left as it was, so every refusal
+/// for an unknown pane still says what it did. Refused only when a name means more than one pane.
+pub(crate) fn address_panes(payload: &mut request::Payload) -> Result<(), String> {
+    address(&mut crate::proto::typed_panes(payload))
+}
+
+/// [`address_panes`], for panes typed anywhere else.
+pub(crate) fn address(typed: &mut [&mut String]) -> Result<(), String> {
+    if typed.iter().all(|pane| pane.is_empty()) {
+        return Ok(());
+    }
+    let session = poison::lock(&SESSION, "session");
+    let mut held: Vec<(String, String, String)> = Vec::new();
+    for (daemon, backend) in &session.backends {
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        held.extend(mirror.panes().filter_map(|pane| {
+            let name = muster_core::roster::pane_name(pane)?;
+            Some((pane.id.to_string(), name.to_string(), daemon.to_string()))
+        }));
+    }
+    drop(session);
+    let candidates: Vec<Candidate<'_>> = held
+        .iter()
+        .map(|(pane, name, machine)| Candidate { pane, name: Some(name), machine })
+        .collect();
+    for pane in typed.iter_mut() {
+        match pane_address::resolve(pane, &candidates) {
+            Address::Pane(id) => **pane = id,
+            Address::AsTyped => {}
+            Address::Ambiguous(why) => return Err(why),
+        }
+    }
+    Ok(())
 }
 
 /// Which daemon holds the pane Muster calls this, if any followed one does.

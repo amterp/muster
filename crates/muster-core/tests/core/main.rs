@@ -16,6 +16,7 @@ mod keymap;
 mod log_record;
 mod mirror;
 mod names;
+mod pane_address;
 mod pane_input;
 mod pane_painting;
 mod poison;

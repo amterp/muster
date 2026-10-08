@@ -530,6 +530,8 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         compactable: true,
         cwd: "/tmp".to_string(),
         name: None,
+        // Every pane goes by a word until it is named, and the row is composed around it.
+        word: Some("otter".to_string()),
         title: Some("first working build".to_string()),
         command: Some("claude".to_string()),
         facts: AgentFacts {

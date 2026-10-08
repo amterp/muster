@@ -23,6 +23,7 @@ pub mod message_groups;
 pub mod mirror;
 pub mod names;
 pub mod painting;
+pub mod pane_address;
 pub mod pane_focus;
 pub mod pane_text;
 pub mod problems;

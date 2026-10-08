@@ -1083,6 +1083,7 @@ fn unplaced_tab_json(
         "given_name": tab.given_name,
         "panes": tab.panes.iter().map(|pane| json!({
             "pane": pane.pane_id,
+            "name": (!pane.name.is_empty()).then_some(&pane.name),
             "daemon": pane.daemon_id,
             "label": pane.label,
             "state": states.get(pane.pane_id.as_str())
@@ -1115,6 +1116,9 @@ fn window_json(window: &Window, others: Others) -> Value {
         for pane in &tab.panes {
             panes.push(json!({
                 "pane": pane.pane_id,
+                // What `--pane` and `--to` take besides the id; null only from a daemon before
+                // words, for a pane nobody named.
+                "name": (!pane.name.is_empty()).then_some(&pane.name),
                 "place": pane.place,
                 "daemon": pane.daemon_id,
                 "tab": tab.tab_id,

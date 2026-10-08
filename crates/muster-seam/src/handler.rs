@@ -74,7 +74,12 @@ fn nothing_was_asked() -> Response {
     )
 }
 
-fn handle(request: Request) -> Response {
+fn handle(mut request: Request) -> Response {
+    if let Some(payload) = request.payload.as_mut()
+        && let Err(ambiguous) = session::address_panes(payload)
+    {
+        return Response::failure(ambiguous);
+    }
     // Which window this is about, before anything else: the chord below is that window's, and
     // so is every answer that means "this window". A request about the whole app is about none,
     // and is not held up behind the session's lock to find one: the shell logs through here from

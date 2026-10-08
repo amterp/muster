@@ -143,6 +143,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         compactable: record.agent_compacts,
         cwd: record.cwd,
         name: record.label,
+        word: record.word,
         title: Some(record.title).filter(|title| !title.is_empty()),
         command: record.command,
         facts: AgentFacts {

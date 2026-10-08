@@ -555,12 +555,23 @@ fn holds(window: &muster_proto::Window, subject: Names<'_>) -> bool {
     let mut tabs = window
         .roster
         .iter()
-        .flat_map(|roster| &roster.tabs)
+        .flat_map(|roster| roster.tabs.iter().chain(&roster.hidden))
         .chain(window.windows.iter().flat_map(|other| &other.tabs));
     tabs.any(|tab| match subject {
         Names::Tab(id) => tab.tab_id == id,
-        Names::Pane(id) => tab.panes.iter().any(|pane| pane.pane_id == id),
+        Names::Pane(typed) => tab.panes.iter().any(|pane| answers_to(pane, typed)),
     })
+}
+
+/// Whether a pane answers to what somebody typed for it: its id, its name, or its name and the
+/// machine holding it (`otter@devenv`). Which pane among several is the window's to settle.
+fn answers_to(pane: &muster_proto::RosterPane, typed: &str) -> bool {
+    pane.pane_id == typed
+        || (!pane.name.is_empty()
+            && (pane.name == typed
+                || typed
+                    .rsplit_once('@')
+                    .is_some_and(|(name, machine)| pane.name == name && pane.daemon_id == machine)))
 }
 
 /// Why no window answered, as [`Trouble::NoWindow`] - or, when a socket refused this process,
@@ -903,6 +914,31 @@ mod tests {
         assert!(holds(&window, Names::Pane("p2")));
         assert!(holds(&window, Names::Tab("t2")));
         assert!(!holds(&window, Names::Pane("p1")));
+    }
+
+    #[test]
+    fn of_several_windows_the_one_holding_a_pane_by_its_name_is_asked() {
+        let named = |path: &str, name: &str, daemon: &str| {
+            let mut window = live(path, &["p1"]);
+            if let Ok(Response { payload: Some(response::Payload::Window(held)) }) =
+                &mut window.answer
+                && let Some(roster) = held.roster.as_mut()
+            {
+                let pane = &mut roster.tabs[0].panes[0];
+                pane.pane_id = format!("p-{path}");
+                pane.name = name.to_string();
+                pane.daemon_id = daemon.to_string();
+            }
+            window
+        };
+        let both = || vec![named("a", "otter", "local"), named("b", "maple", "devenv")];
+        assert_eq!(chosen(both(), Some(Names::Pane("maple")), false), Ok("b".to_string()));
+        assert_eq!(chosen(both(), Some(Names::Pane("maple@devenv")), false), Ok("b".to_string()));
+        assert_eq!(
+            chosen(both(), Some(Names::Pane("maple@local")), false),
+            Err(vec!["a".to_string(), "b".to_string()]),
+            "a name on a machine that has no pane by it"
+        );
     }
 
     #[test]

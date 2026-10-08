@@ -2657,6 +2657,12 @@ message RosterPane {
 
   // Whether nothing about it is raised for the person (QuietPane), as its daemon says.
   bool quiet = 12;
+
+  // What to type to reach this pane, wherever a pane id is taken: the name somebody gave it, or
+  // the word its daemon drew (`otter`). Empty only for a pane nobody named on a daemon from
+  // before words. Unique on its machine, and not across machines, where `otter@devenv` says
+  // which.
+  string name = 13;
 }
 
 // Everything this window is showing, as one message.

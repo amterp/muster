@@ -129,6 +129,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     .unwrap();
     assert_eq!((&last["rows"], &last["truncated"]), (&json!(1), &json!(true)), "{last}");
 
+    panes_are_reached_by_their_words(&here);
     a_wait_ends_when_the_agent_gets_there(&here);
     a_wait_on_context_ends_when_the_agent_says_it(&here);
     a_compaction_is_asked_of_the_daemon(&here);
@@ -146,6 +147,33 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     // A shell, whose agent never went to work: the daemon was asked for the turn, and said so.
     let refused = refused_with(&here.muster(&["pane", "read", "--pane", "p1", "--turn"]), 1);
     assert!(refused.contains("no turn has started"), "{refused}");
+}
+
+/// Every pane goes by a word its daemon drew until somebody names it, and with no window the CLI
+/// reads that word against the daemon's own panes wherever it takes a pane's id.
+fn panes_are_reached_by_their_words(here: &Here) {
+    let held = snapshot(&mut here.daemon.connect());
+    let word = |pane: &str| {
+        held.panes
+            .iter()
+            .find(|record| record.pane == pane)
+            .and_then(|record| record.word.clone())
+            .unwrap_or_else(|| panic!("{pane} has no word"))
+    };
+    let (p1, p2) = (word("p1"), word("p2"));
+
+    ok(&here.muster(&["pane", "send", "--pane", &p1, "--enter", "--confirm", "echo by-word"]));
+    until_text(&mut here.daemon.connect(), "p1", "by-word\n");
+    let read = ok(&here.muster(&["pane", "read", "--pane", &p1]));
+    assert!(read.contains("echo by-word"), "{read}");
+    let waited = ok(&here.muster(&["pane", "wait", "--pane", &p2, "--until", "idle,done"]));
+    assert!(waited.starts_with("p2  "), "the wait answers for the pane by its id: {waited}");
+
+    let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).unwrap();
+    let row = listed["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!("p2"));
+    let row = row.unwrap_or_else(|| panic!("p2 is listed: {listed}"));
+    assert_eq!(row["name"], json!(p2), "{listed}");
+    assert!(row["label"].as_str().is_some_and(|label| label.starts_with(&p2)), "{listed}");
 }
 
 /// With no window, `--layout` draws each tab from the daemon's own tree, places each pane in it as

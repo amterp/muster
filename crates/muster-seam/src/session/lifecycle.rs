@@ -8,7 +8,7 @@
 
 use super::{
     ATTACHES, BTreeSet, BackendIntent, Daemon, DaemonId, Event, Health, Implicitly, Keyboard,
-    Lifecycle, PaneId, Refusal, SESSION, Sent, ShutWindow, TabId, Window, WindowId,
+    Lifecycle, PaneId, Refusal, SESSION, Sent, ShutWindow, TabId, Window, WindowId, address,
     announce_presentation, arrangement_path, daemon_holding, daemon_holding_tab, event, ffi,
     fields, focus, focus_tab, follow_implicitly_if_nothing_else, has_spoken,
     local_daemon_to_fill_from, log, mint_tab, move_tab, poison, publish,
@@ -245,10 +245,13 @@ pub(crate) fn set_show(show: &str) {
 pub(super) fn show_what_was_asked_for(window: WindowId) {
     let Some(show) = poison::lock(&SESSION, "session").windows[window].show.take() else { return };
     let tab = TabId::new(&show);
+    let mut pane = show.clone();
     let went = if daemon_holding_tab(&tab).is_some() {
         focus_tab(window, &tab)
+    } else if let Err(ambiguous) = address(&mut [&mut pane]) {
+        Err(ambiguous)
     } else {
-        let pane = PaneId::new(&show);
+        let pane = PaneId::new(&pane);
         match daemon_holding(&pane) {
             Some(daemon) => focus(window, &daemon, &pane).map_err(|refusal| refusal.to_string()),
             None => Err(format!("no daemon holds a pane or tab called {show}")),

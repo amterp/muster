@@ -89,6 +89,9 @@ pub struct Pane {
     /// What a person called this pane, if anybody has. Durable identity: the daemon writes it
     /// down, so it comes back after a daemon restart.
     pub name: Option<String>,
+    /// The word its daemon drew for it (`otter`), which it goes by while nobody has named it.
+    /// No two live panes on one daemon go by one name. None from a daemon before words.
+    pub word: Option<String>,
     /// What the program in the pane last called itself. Volatile status: a restart loses it,
     /// because the process that would set it again is new.
     pub title: Option<String>,

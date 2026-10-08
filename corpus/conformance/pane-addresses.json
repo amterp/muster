@@ -1,0 +1,127 @@
+{
+  "concept": "paneAddress.resolve",
+  "source": "authored",
+  "citation": "kan a_2ditnGlQz",
+  "why": "Every pane has a short name - the name somebody gave it, or a word its daemon drew - that is taken wherever its id is. An id is unique across machines and never reused; a name is unique only among one daemon's live panes, so two machines can each have one, and `name@machine` then says which. The window and the CLI with no window both read typed text through this, so a pane is reached the same way whichever answers. Text that means no pane goes on as typed, which keeps every refusal for an unknown pane what it was and still reaches a pane made a moment ago by its id.",
+  "cases": [
+    {
+      "name": "an id is the pane it names",
+      "why": "Ids stay the permanent address, and come first: a script holding one must reach that pane whatever anything is called.",
+      "given": {
+        "typed": "p1w3r07bsd",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "otter", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "as typed" }
+    },
+    {
+      "name": "a name is the pane called it",
+      "why": "The point of a name: what you read off a row is what you type.",
+      "given": {
+        "typed": "otter",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "otter", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "maple", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "p1w3r07bsd" }
+    },
+    {
+      "name": "a name somebody gave is matched whole, spaces and all",
+      "why": "A given name can be anything, and it is still an address.",
+      "given": {
+        "typed": "🤖 A",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "🤖 A", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "p1w3r07bsd" }
+    },
+    {
+      "name": "a name is matched exactly, not by its case or a prefix of it",
+      "why": "A name that matched loosely would one day match the wrong pane. Completion is what saves typing, not guessing.",
+      "given": {
+        "typed": "Ott",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "otter", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "as typed" }
+    },
+    {
+      "name": "two machines with the same name are told apart by the machine",
+      "why": "Each daemon draws its own words, so a laptop and a devenv can both have an otter; the machine is the name `muster window` prints beside the pane.",
+      "given": {
+        "typed": "otter@devenv",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "otter", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "otter", "machine": "devenv" }
+        ]
+      },
+      "expect": { "address": "p2w3r07bsd" }
+    },
+    {
+      "name": "a name two machines share is refused rather than guessed",
+      "why": "Picking one would send keystrokes to whichever came first; the refusal lists each so the next attempt can say which.",
+      "given": {
+        "typed": "otter",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "otter", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "otter", "machine": "devenv" }
+        ]
+      },
+      "expect": {
+        "refused": "2 panes are called \"otter\": otter@local (p1w3r07bsd), otter@devenv (p2w3r07bsd). Say which by its id, or as name@machine when they are on different machines; `muster window` lists them"
+      }
+    },
+    {
+      "name": "a name with an @ in it is matched whole before it is split",
+      "why": "Nothing stops somebody naming a pane `me@work`, and that pane must still answer to it.",
+      "given": {
+        "typed": "me@work",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "me@work", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "me", "machine": "work" }
+        ]
+      },
+      "expect": { "address": "p1w3r07bsd" }
+    },
+    {
+      "name": "a name on a machine that has no pane by it is no pane",
+      "why": "The machine is part of the address: an otter elsewhere is not the otter asked for.",
+      "given": {
+        "typed": "otter@devenv",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "otter", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "as typed" }
+    },
+    {
+      "name": "text nothing answers to goes on as typed",
+      "why": "Whatever refuses an unknown pane goes on saying so in its own words, and a pane made a moment ago, which nothing has heard of yet, is still reached by its id.",
+      "given": {
+        "typed": "p9w3r07bsd",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "otter", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "as typed" }
+    },
+    {
+      "name": "two panes on one machine sharing a name are refused too",
+      "why": "A daemon refuses to give two live panes one name, but a state file written before it did can bring two back; they are listed with their ids, which is the only thing that tells them apart.",
+      "given": {
+        "typed": "builder",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "builder", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "builder", "machine": "local" }
+        ]
+      },
+      "expect": {
+        "refused": "2 panes are called \"builder\": builder@local (p1w3r07bsd), builder@local (p2w3r07bsd). Say which by its id, or as name@machine when they are on different machines; `muster window` lists them"
+      }
+    }
+  ]
+}

@@ -266,13 +266,14 @@ fn described(key: &str, value: Option<&str>) -> String {
 /// without counting rows back up to the heading it belongs to.
 fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
     format!(
-        "{} place={} tab={} label={:?}{}{} {}{}",
+        "{} place={} tab={} label={:?}{}{}{} {}{}",
         pane.key,
         pane.place,
         tab.id,
         pane.label,
         described("subtitle", pane.subtitle.as_deref()),
         described("given-name", pane.given_name.as_deref()),
+        described("name", pane.name.as_deref()),
         if pane.on_screen { "on-screen" } else { "off-screen" },
         if pane.quiet { " quiet" } else { "" }
     )

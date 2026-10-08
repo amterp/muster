@@ -71,6 +71,37 @@ fn a_hidden_pane_leaves_the_window_and_comes_back_in_a_tab_of_its_own() {
     );
 }
 
+/// A hidden pane keeps the word its daemon drew, and is brought back by it: nothing shows its id
+/// while it is hidden except the list, and the word is the name that list leads with.
+#[test]
+fn a_hidden_pane_is_shown_by_its_word() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    open_window(&daemon);
+    let word = snapshot(&mut daemon.connect())
+        .panes
+        .into_iter()
+        .find(|pane| pane.pane == "p2")
+        .and_then(|pane| pane.word)
+        .expect("p2 was drawn a word");
+    assert_ok(&answer(request::Payload::HidePane(HidePane {
+        pane_id: word.clone(),
+        ..HidePane::default()
+    })));
+    until("p2 to be hidden", || hidden() == ["p2"], || format!("hidden: {:?}", hidden()));
+
+    assert_ok(&answer(request::Payload::ShowPane(ShowPane {
+        pane_id: word,
+        take_focus: true,
+        ..ShowPane::default()
+    })));
+    until(
+        "p2 to be back, with the keyboard",
+        || hidden().is_empty() && keyboard().as_deref() == Some("p2"),
+        || format!("hidden: {:?}, keyboard on {:?}", hidden(), keyboard()),
+    );
+}
+
 /// Going to a hidden pane - a banner, the chord to whatever asks, a click on its row - brings it
 /// back first, since nothing can show it where it is.
 #[test]

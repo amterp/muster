@@ -252,6 +252,57 @@ fn every_verb_that_names_a_pane_acts_on_that_panes_machine() {
     a_tab_is_made_on_the_named_machine(laptop, devenv, &on_laptop);
 }
 
+/// A pane is reached by its name wherever its id is, on whichever machine holds it. A name is
+/// unique on one machine and not across them, so two machines can share one, and a request by
+/// that name alone is refused - naming each pane as `name@machine` - until it says which.
+#[test]
+fn a_pane_is_reached_by_its_name_and_a_shared_name_by_its_machine() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+    put_the_keyboard_back(&on_devenv);
+
+    let rename = |pane: &str| {
+        assert_ok(&answer(request::Payload::RenamePane(RenamePane {
+            pane_id: pane.to_string(),
+            name: "twin".to_string(),
+            ..RenamePane::default()
+        })));
+    };
+    rename(ON_LAPTOP);
+    rename(ON_DEVENV);
+    until(
+        "both panes to be called twin, each on its own machine",
+        || {
+            label(&laptop, &on_laptop) == "twin"
+                && label(&devenv, &on_devenv) == "twin"
+                && rows().iter().filter(|(_, name, _)| name == "twin").count() == 2
+        },
+        || format!("the list holds {:?}", rows()),
+    );
+
+    let refused = refusal(request::Payload::FocusPane(FocusPane {
+        daemon_id: String::new(),
+        pane_id: "twin".to_string(),
+    }));
+    assert!(
+        refused.contains(&format!("twin@laptop ({on_laptop})"))
+            && refused.contains(&format!("twin@devenv ({on_devenv})")),
+        "the refusal names each: {refused}"
+    );
+
+    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+        daemon_id: String::new(),
+        pane_id: "twin@laptop".to_string(),
+    })));
+    until(
+        "the keyboard to reach the laptop's twin",
+        || keyboard() == Some(("laptop".to_string(), on_laptop.clone())),
+        || format!("the keyboard is on {:?}", keyboard()),
+    );
+}
+
 /// `muster focus`. First, because a focus that reached the wrong machine would leave every
 /// check after it staged against a keyboard that is not where this test thinks it is.
 fn a_focus_moves_the_keyboard_to_the_named_machine(on_laptop: &str, on_devenv: &str) {

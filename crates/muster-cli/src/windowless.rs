@@ -20,6 +20,7 @@ use muster_core::composition::{Rect, ViewNode, ViewPane, places_in};
 use muster_core::harnesses;
 use muster_core::mirror::backend::{Adapter, PaneId, SplitAxis};
 use muster_core::names::{Mint, Minter};
+use muster_core::pane_address::{self, Address, Candidate};
 use muster_core::pane_text::{self, PaneText, Scope};
 use muster_core::{AgentState, Until};
 use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection};
@@ -61,6 +62,13 @@ pub enum Answered {
 /// Answers `request` from this machine's daemon.
 pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<Answered, Trouble> {
     let socket = daemon::socket_or_refusal(environment)?;
+    let mut request = request.clone();
+    if let Some(payload) = request.payload.as_mut() {
+        let mut typed = muster_proto::typed_panes(payload);
+        if typed.iter().any(|pane| !pane.is_empty()) {
+            addressed(&mut typed, &snapshot(&socket)?)?;
+        }
+    }
     let respond = |response| Ok(Answered::Response(Box::new(response)));
     match &request.payload {
         Some(request::Payload::ReadWindow(read)) => {
@@ -115,6 +123,26 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
                 .to_string(),
         )),
     }
+}
+
+/// Puts each pane's id in place of a name typed for it (`otter`), among the panes this daemon
+/// holds, the way a window does (`muster_core::pane_address`). The machine in `otter@<machine>`
+/// is this one's host name, which is what `muster window` says with no window.
+fn addressed(typed: &mut [&mut String], snapshot: &daemon_proto::Snapshot) -> Result<(), Trouble> {
+    let machine = this_machine();
+    let candidates: Vec<Candidate<'_>> = snapshot
+        .panes
+        .iter()
+        .map(|pane| Candidate { pane: &pane.pane, name: pane.name(), machine: &machine })
+        .collect();
+    for pane in typed.iter_mut() {
+        match pane_address::resolve(pane, &candidates) {
+            Address::Pane(id) => **pane = id,
+            Address::AsTyped => {}
+            Address::Ambiguous(why) => return Err(Trouble::Refused(why)),
+        }
+    }
+    Ok(())
 }
 
 /// A pane's name, or a refusal for the pane a window's keyboard is on, which there is none of.
@@ -469,7 +497,7 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         state: state_of(pane).as_str().to_string(),
         // The daemon does not say since when, and a window says when it first saw a pane.
         since_ms: 0,
-        label: pane.label.clone().unwrap_or_else(|| directory_name(&pane.cwd)),
+        label: label_of(pane),
         reported: pane.state_reported,
         unreadable: pane.screen_unreadable,
         facts: said.then(|| muster_proto::AgentFacts {
@@ -530,13 +558,16 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
                 .into_iter()
                 .map(|pane| {
                     let record = records.get(pane.as_str());
-                    let label = record.and_then(|record| record.label.clone());
                     muster_proto::RosterPane {
                         daemon_id: machine.clone(),
-                        label: label.clone().unwrap_or_else(|| {
-                            record.map_or_else(String::new, |record| directory_name(&record.cwd))
-                        }),
-                        given_name: label.unwrap_or_default(),
+                        label: record.map_or_else(String::new, |record| label_of(record)),
+                        given_name: record
+                            .and_then(|record| record.label.clone())
+                            .unwrap_or_default(),
+                        name: record
+                            .and_then(|record| record.name())
+                            .map(str::to_string)
+                            .unwrap_or_default(),
                         subtitle: record.map_or_else(String::new, |record| record.title.clone()),
                         quiet: record.is_some_and(|record| record.quiet),
                         pane_id: pane,
@@ -701,6 +732,21 @@ fn panes_of(node: Option<&daemon_proto::Node>, into: &mut Vec<String>) {
 }
 
 /// The last part of a directory, which is what a window calls a pane nobody named.
+/// What to call a pane in a row: the name somebody gave it, or its word and its directory, as a
+/// window's row reads (`muster_core::roster::pane_label`) less the harness, which only a window's
+/// detection names here.
+fn label_of(pane: &daemon_proto::Pane) -> String {
+    let given = pane.label.as_deref().map(str::trim).filter(|label| !label.is_empty());
+    match (given, pane.word.as_deref().filter(|word| !word.is_empty())) {
+        (Some(given), _) => given.to_string(),
+        (None, Some(word)) => match directory_name(&pane.cwd) {
+            directory if directory.is_empty() => word.to_string(),
+            directory => format!("{word} · {directory}"),
+        },
+        (None, None) => directory_name(&pane.cwd),
+    }
+}
+
 fn directory_name(cwd: &str) -> String {
     cwd.trim_end_matches('/').rsplit('/').next().unwrap_or_default().to_string()
 }
@@ -774,10 +820,12 @@ pub fn follow(
             }
         }
     };
-    let panes = if watch.pane_ids.is_empty() {
+    let mut pane_ids = watch.pane_ids.clone();
+    addressed(&mut pane_ids.iter_mut().collect::<Vec<_>>(), &snapshot)?;
+    let panes = if pane_ids.is_empty() {
         None
     } else {
-        for named in &watch.pane_ids {
+        for named in &pane_ids {
             if !snapshot.panes.iter().any(|pane| &pane.pane == named) {
                 return Err(Trouble::Refused(format!(
                     "the muster-daemon at {} holds no pane called {named}, so there is nothing \
@@ -787,7 +835,7 @@ pub fn follow(
                 )));
             }
         }
-        Some(watch.pane_ids.iter().cloned().collect())
+        Some(pane_ids.into_iter().collect())
     };
     let mut watching = Watching {
         stream,

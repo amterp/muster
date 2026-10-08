@@ -103,6 +103,37 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
     }
 }
 
+/// Every pane a request names that somebody may have typed, which may be a pane's name (`otter`,
+/// `otter@devenv`) rather than its id, for the window to read before anything else does.
+///
+/// Here beside [`names`] for the same reason it is: a pane field this list missed would take an
+/// id and refuse a name, and nothing would say so. What a shell sends on its own - a keystroke,
+/// a click, a bridge - names a pane by the id it was handed, and is not listed, so the commonest
+/// requests by far pay one match for this and nothing more.
+pub fn typed_panes(payload: &mut request::Payload) -> Vec<&mut String> {
+    use request::Payload;
+    match payload {
+        Payload::ArrangePane(arrange) => vec![&mut arrange.pane_id, &mut arrange.onto_pane_id],
+        Payload::WatchPanes(watch) => watch.pane_ids.iter_mut().collect(),
+        Payload::FocusPane(focus) => vec![&mut focus.pane_id],
+        Payload::ClosePane(close) => vec![&mut close.pane_id],
+        Payload::SplitPane(split) => vec![&mut split.pane_id],
+        Payload::CreateTab(create) => vec![&mut create.pane_id],
+        Payload::ZoomPane(zoom) => vec![&mut zoom.pane_id],
+        Payload::ResizePane(resize) => vec![&mut resize.pane_id],
+        Payload::RenamePane(rename) => vec![&mut rename.pane_id],
+        Payload::CompactPane(compact) => vec![&mut compact.pane_id],
+        Payload::HidePane(hide) => vec![&mut hide.pane_id],
+        Payload::ShowPane(show) => vec![&mut show.pane_id],
+        Payload::QuietPane(quiet) => vec![&mut quiet.pane_id],
+        Payload::SendToPane(send) => vec![&mut send.pane_id],
+        Payload::ReadPane(read) => vec![&mut read.pane_id],
+        Payload::ReattachPane(reattach) => vec![&mut reattach.pane_id],
+        Payload::EqualizePanes(even) => vec![&mut even.pane_id],
+        _ => Vec::new(),
+    }
+}
+
 /// Whether any open window can carry out this request, because it says everything it is about.
 ///
 /// What lets the CLI, outside any pane and with several windows open, send a request to whichever

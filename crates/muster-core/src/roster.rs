@@ -214,6 +214,9 @@ pub struct RosterPane {
     /// rather than from `muster · claude`, which nobody typed. Absent means unnamed, which
     /// is what "has a name" is asked of without a sentinel.
     pub given_name: Option<String>,
+    /// What to type to reach this pane: the name somebody gave it, or the word its daemon drew.
+    /// Absent only for a pane nobody named on a daemon from before words.
+    pub name: Option<String>,
     /// Whether a region is showing it right now.
     ///
     /// Here rather than left to the shell to work out by comparing against the view: the two
@@ -538,6 +541,7 @@ impl Roster {
                             subtitle: pane_subtitle(pane, &label),
                             label,
                             given_name: given_name(pane.name.as_deref()),
+                            name: pane_name(pane).map(str::to_string),
                             on_screen: showing.contains(&key),
                             compactable: pane.compactable,
                             quiet: pane.quiet,
@@ -705,6 +709,7 @@ fn hidden_tabs<'a>(
                     subtitle: pane_subtitle(pane, &label),
                     label,
                     given_name: given_name(pane.name.as_deref()),
+                    name: pane_name(pane).map(str::to_string),
                     on_screen: false,
                     compactable: pane.compactable,
                     quiet: pane.quiet,
@@ -770,11 +775,32 @@ fn ordered_panes<'a>(mirror: &'a Mirror, tab: &'a TabId) -> Vec<&'a Pane> {
 ///
 /// Public because a notification names a pane too, and it has to be the same name. Building
 /// a whole roster to read one row would lock every attached daemon for a banner.
+///
+/// **A pane going by the word its daemon drew leads with the word**, because it is what you
+/// type to reach the pane, and keeps the directory and the harness after it, because a word
+/// says nothing about the work and those are what tell fifteen rows apart.
 pub fn pane_label(pane: &Pane) -> String {
     if let Some(name) = pane.name.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
         return name.to_string();
     }
-    format!("{}{}", pane_directory(pane), harness_suffix(pane))
+    match pane.word.as_deref().filter(|word| !word.is_empty()) {
+        Some(word) if pane.cwd.trim_end_matches('/').is_empty() => {
+            format!("{word}{}", harness_suffix(pane))
+        }
+        Some(word) => format!("{word} · {}{}", pane_directory(pane), harness_suffix(pane)),
+        None => format!("{}{}", pane_directory(pane), harness_suffix(pane)),
+    }
+}
+
+/// What a pane is called, as something to type: the name somebody gave it, or failing that the
+/// word its daemon drew. The daemon's own reading of a record (`muster_daemon_proto::Pane::name`)
+/// says the same, which it has to: a name is an address.
+pub fn pane_name(pane: &Pane) -> Option<&str> {
+    pane.name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .or_else(|| pane.word.as_deref().filter(|word| !word.is_empty()))
 }
 
 fn pane_directory(pane: &Pane) -> &str {

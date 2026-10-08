@@ -1692,10 +1692,167 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"\ud83d\udd25 payments spike\" subtitle=\"first working build\" given-name=\"\ud83d\udd25 payments spike\" off-screen"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"\ud83d\udd25 payments spike\" subtitle=\"first working build\" given-name=\"\ud83d\udd25 payments spike\" name=\"\ud83d\udd25 payments spike\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ]
+      }
+    },
+    {
+      "name": "a pane going by the word its daemon drew leads with it, then its directory and harness",
+      "why": "Every pane is drawn a word (`otter`) it goes by until somebody names it, and the word is what you type after `--pane` or `--to`, so it comes first. The directory and the harness stay behind it, because a word says nothing about the work and they are what tell fifteen rows apart. The word travels on its own as the pane's name, for whatever has to reach the pane by it; it is not a name somebody gave, so a rename still starts empty.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/Users/a/src/muster",
+                "agent": "claude",
+                "word": "otter"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "machines": [
+          "local connected 1 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"otter \u00b7 muster \u00b7 claude\" name=\"otter\" off-screen"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ]
+      }
+    },
+    {
+      "name": "a name somebody gave is what the pane goes by, and its word steps aside",
+      "why": "A pane has one name to type: the one a person gave it when there is one, and its word otherwise. Showing both would leave two addresses on a row and no way to tell which one works.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/Users/a/src/muster",
+                "agent": "claude",
+                "word": "otter",
+                "name": "builder"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "machines": [
+          "local connected 1 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"builder\" given-name=\"builder\" name=\"builder\" off-screen"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ]
+      }
+    },
+    {
+      "name": "a hidden pane goes by its word too",
+      "why": "A hidden pane is still a pane somebody may want to reach, and `muster pane show --pane <name>` is how they bring it back, so its row in the hidden list carries its name as any other row does.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "root": "w1:p2",
+                "hidden": true
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/src/alpha"
+              },
+              {
+                "id": "w1:p2",
+                "cwd": "/src/beta",
+                "word": "maple"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "machines": [
+          "local connected 2 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" off-screen"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ],
+        "hidden": [
+          "w1:t2 on=local place=0 label=\"\" off-screen",
+          "local/w1:p2 place=0 tab=w1:t2 label=\"maple \u00b7 beta\" name=\"maple\" off-screen"
         ]
       }
     },
@@ -1741,7 +1898,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" off-screen"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" name=\"payments spike\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
