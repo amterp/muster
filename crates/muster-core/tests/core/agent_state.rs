@@ -87,6 +87,8 @@ fn a_wait_on_context_is_met_by_a_report_at_least_that_full() {
     let context_alone = Until::parse(&[], Some(50.0)).unwrap();
     assert!(context_alone.is_wait());
     assert!(!context_alone.met(AgentState::Idle, Some(10.0)));
+    // What a pane said before its machine stopped answering is no report of the present.
+    assert!(!context_alone.met(AgentState::Unreachable, Some(85.0)));
     assert!(!Until::parse(&[], None).unwrap().is_wait());
 }
 

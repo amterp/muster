@@ -158,8 +158,13 @@ impl Until {
 
     /// Whether a pane in `state`, whose agent last said its context was `context_used` percent
     /// full, has got where this is waiting for. A pane whose agent never said is not there:
-    /// a harness without a report of its context cannot meet a wait on one.
+    /// a harness without a report of its context cannot meet a wait on one. Nor is an
+    /// unreachable pane, whatever its agent said before its machine stopped answering: that
+    /// context belongs to an agent that may be gone, and a caller compacting it would fail.
     pub fn met(&self, state: AgentState, context_used: Option<f32>) -> bool {
+        if state == AgentState::Unreachable {
+            return false;
+        }
         self.states.iter().any(|wanted| state.counts_as(*wanted))
             || self.context_at_least.zip(context_used).is_some_and(|(wanted, used)| used >= wanted)
     }
