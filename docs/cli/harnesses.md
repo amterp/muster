@@ -133,17 +133,18 @@ since Claude Code takes a statusline only from its settings.
     codex plugin add muster-codex@muster
     codex features disable daemon_auto_start
 
-Codex runs a hook only once you trust it, in `/hooks`. Left on, `daemon_auto_start` runs every
-Codex session's commands and hooks in one app-server that carries the first session's pane, and
-Muster refuses every report that comes through it (`muster docs limits`); `codex features enable
+Codex runs a hook only once you trust it, in `/hooks`. Left on, `daemon_auto_start` runs every Codex
+session's commands and hooks in one app-server that carries the first session's pane, and Muster
+refuses every report that comes through it (`muster docs limits`); `codex features enable
 daemon_auto_start` turns it back on, at the cost of those reports. An app-server already running
 still takes new sessions until `codex app-server daemon stop`, which install leaves to you because
 it ends the sessions running there. Codex installs a copy of the plugin, recorded against the
 resolved path of `<extras>`, so run the install again after updating Muster: it first removes a
 `muster` marketplace an earlier Muster install left, and leaves one added from anywhere else, such
-as a source checkout. Its sandbox refuses a command connecting to Muster's daemon, so a sandboxed Codex cannot
-run `muster msg read` or `post` itself unless its sandbox may use the network; the messaging hooks
-hand it what it is sent regardless. `extras/codex/README.md` has both, and the setting's cost.
+as a source checkout. Its sandbox refuses a command connecting to Muster's daemon, so a sandboxed
+Codex cannot run `muster msg read` or `post` itself unless its sandbox may use the network; the
+messaging hooks hand it what it is sent regardless. `extras/codex/README.md` has both, and the
+setting's cost.
 
 **OpenCode**: a plugin for its state, context and cost. OpenCode's `plugin` command installs npm
 modules rather than a file, so `muster harness install opencode` runs nothing and prints these:

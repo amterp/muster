@@ -1,0 +1,30 @@
+What Codex 0.160.0 records when Muster's adapters are added through a symlink, and when it refreshes
+its copy of the plugin.
+
+Recorded 2026-10-07 on macOS 26.4.1 / arm64, codex-cli 0.160.0, with CODEX_HOME and HOME scratch
+folders laid out as Muster's install leaves an SSH machine: <home>/.muster/daemon/0.14.0/extras, a
+copy of this checkout's extras/, and <home>/.muster/extras a symlink to it.
+
+    $ codex plugin marketplace add <home>/.muster/extras
+    Added marketplace `muster` from <home>/.muster/daemon/0.14.0/extras.          (exit 0)
+    $ codex plugin add muster-codex@muster
+    Installed plugin root: <CODEX_HOME>/plugins/cache/muster/muster-codex/local   (exit 0)
+config.toml then held:
+    [marketplaces.muster]  source_type = "local"  source = "<home>/.muster/daemon/0.14.0/extras"
+
+    $ codex plugin marketplace list --json
+    {"marketplaces": [{"name": "openai-api-curated", "root": "<CODEX_HOME>/.tmp/plugins"},
+     {"name": "muster", "root": "<home>/.muster/daemon/0.14.0/extras",
+      "marketplaceSource": {"sourceType": "local", "source": "<home>/.muster/daemon/0.14.0/extras"}}]}
+
+A file added to the source's codex/ afterwards was not in the cached copy after a session started
+and quit. Running `codex plugin add muster-codex@muster` again (exit 0) copied it.
+
+With the symlink repointed at <home>/.muster/daemon/0.15.0/extras:
+    $ codex plugin marketplace add <home>/.muster/extras
+    Error: marketplace 'muster' is already added from a different source; remove it before adding this source    (exit 1)
+    $ codex plugin marketplace remove muster
+    Removed marketplace `muster`.
+and the add then recorded <home>/.muster/daemon/0.15.0/extras.
+
+`codex plugin marketplace upgrade` refreshes "configured Git marketplace snapshots" only.

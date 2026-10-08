@@ -13,15 +13,22 @@ the session's environment, so they reach the daemon whatever sandbox the session
 ## Installing
 
 `muster harness install codex` installs it as a Codex plugin, from the adapters the running
-Muster carries. By hand, from this checkout:
+Muster carries, and turns off Codex's shared app-server (below). By hand, from this checkout:
 
 ```sh
 codex plugin marketplace add /path/to/muster/extras
 codex plugin add muster-codex@muster
+codex features disable daemon_auto_start
 ```
 
-Codex runs a hook only once it is trusted: review them in `/hooks` in a session. Or copy
-`hooks/hooks.json` to a trusted project's `.codex/hooks.json`, which is the same format.
+Codex runs a hook only once it is trusted: a session asks about new hooks before it starts,
+"Hooks need review", or review them in `/hooks`. Or copy `hooks/hooks.json` to a trusted
+project's `.codex/hooks.json`, which is the same format.
+
+Codex installs a copy of the plugin, and a session never refreshes it, so run the install again
+after updating Muster. Codex records the marketplace by its resolved path, which on an SSH machine
+is the version `~/.muster/extras` pointed at, so the install first removes a `muster` marketplace
+an earlier Muster install left; one added from anywhere else is left for you to remove.
 
 `extras/` holds Claude Code's plugin too. Codex reads `.agents/plugins/marketplace.json` before
 `.claude-plugin/marketplace.json`, so it is offered only `muster-codex`, and Claude Code only
@@ -88,6 +95,21 @@ between turns Codex is still rung by the doorbell, and the ring's turn is where 
 over what it was rung for. A hook's output reaches the model as `additionalContext`; exiting 2, as
 Claude Code's hooks do, would replace the tool call's result instead.
 
+## Codex's shared app-server
+
+With its defaults, Codex 0.160 runs the commands and hooks of every session on the machine in one
+`codex app-server` process. The first session starts it, every later one joins it, and it outlives
+the first session, so everything it runs carries the first session's `$MUSTER_PANE`. A hook's
+report, or the model's `report --waiting`, would name the wrong pane, so Muster refuses every
+report that comes through it, and says why.
+
+`codex features disable daemon_auto_start`, which the install runs, makes each session run its own
+commands and hooks again; `codex features enable daemon_auto_start` turns it back on. What needs
+the app-server, such as `codex agents`, does not run without it. An app-server already running
+still takes new sessions: `codex app-server daemon stop` ends it, and every session running in it,
+which is why the install leaves it to you. `codex --no-daemon` keeps a single session out of it.
+`docs/observations/codex-0.160.0.md` has what was measured.
+
 ## The sandbox
 
 Codex's `workspace-write` and `read-only` sandboxes refuse a command connecting to a Unix socket,
@@ -118,9 +140,11 @@ Start a nested one as `env -u MUSTER_DAEMON codex exec ...` and its hooks do not
 
 ## What was checked
 
-Codex 0.154.0: the hooks in a session's `.codex/hooks.json`, a turn, an approval, Esc mid-turn
-and a message queued at work, with what each hook fired; what a hook's output does; and how Codex
-counts its context (`docs/observations/codex-0.154.0.md`). `./dev --codex` checks, against
-whatever Codex is installed, that a pane with these hooks reads working and then idle from them
-and reports its context, that an urgent post reaches Codex at work, and that the messaging hooks
-hand a sandboxed Codex what it was sent.
+Codex 0.154.0: the hooks in a session's `.codex/hooks.json`, a turn, an approval, Esc mid-turn and a
+message queued at work, with what each hook fired; what a hook's output does; and how Codex counts
+its context (`docs/observations/codex-0.154.0.md`). Codex 0.160.0: where its app-server runs a
+session's commands and hooks, its dialogs before a session starts, and what it records for a
+marketplace added through a symlink (`docs/observations/codex-0.160.0.md`). `./dev --codex` checks,
+against whatever Codex is installed, that a pane with these hooks reads working and then idle from
+them and reports its context, that an urgent post reaches Codex at work, and that the messaging
+hooks hand a sandboxed Codex what it was sent.

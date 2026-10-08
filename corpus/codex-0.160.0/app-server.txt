@@ -1,0 +1,73 @@
+Where Codex 0.160.0 runs a session's commands and hooks, and what keeps it in the session.
+
+Recorded 2026-10-07 on macOS 26.4.1 / arm64, codex-cli 0.160.0 (Homebrew cask), in 100x30
+pseudo-terminals driven by scratch Python scripts. CODEX_HOME was an empty scratch folder per run,
+with a config.toml naming a model provider at http://127.0.0.1:9/v1 (so no login was asked and no
+turn reached a model) and a SessionStart and a UserPromptSubmit hook that wrote down their pid,
+$MUSTER_PANE and their ancestors. Each Codex was started as `codex` with nothing else on its
+command line, with MUSTER_PANE=paneA for the first and MUSTER_PANE=paneB for the second.
+<home> is the scratch CODEX_HOME. Pids are the run's.
+
+With the defaults, pane A's codex started a second process at launch:
+
+    56176  ppid 56173  pgid 56176  codex
+    56419  ppid 56176  pgid 56419  <home>/packages/app-server-daemon/releases/0.160.0-aarch64-apple-darwin/bin/codex app-server --listen unix:// --managed-daemon
+
+It is the codex binary, copied into CODEX_HOME, as a child of the first session in a session and
+process group of its own (sid = pgid = its pid). Its environment held MUSTER_PANE=paneA.
+
+Pane B's codex, started second, started no app-server of its own:
+
+    57064  ppid 56173  pgid 57064  codex
+
+A `!` shell command typed into pane B, and both sessions' hooks, ran as children of the app-server,
+all with pane A's MUSTER_PANE:
+
+    == bang-in-B       MUSTER_PANE=paneA  CODEX_THREAD_ID=<pane B's session id>
+    57522  ppid 56419  /bin/sh probe.sh bang-in-B
+    == SessionStart (pane B's)        MUSTER_PANE=paneA   ppid 56419
+    == UserPromptSubmit (pane B's)    MUSTER_PANE=paneA   ppid 56419
+    == SessionStart (pane A's)        MUSTER_PANE=paneA   ppid 56419
+    == UserPromptSubmit (pane A's)    MUSTER_PANE=paneA   ppid 56419
+
+The `!` command's environment named pane B's session in CODEX_THREAD_ID; the hooks' environment
+carried no session id (their input does). Closing pane A's codex (SIGTERM) left the app-server
+running, reparented to launchd, its environment still MUSTER_PANE=paneA:
+
+    56419  ppid 1  pgid 56419  .../bin/codex app-server --listen unix:// --managed-daemon
+
+The app-server outlived SIGTERM too. `codex app-server daemon stop` with the same CODEX_HOME ended it:
+    {"status":"stopped","backend":"pid","managedCodexVersion":"0.160.0",...}    (exit 0)
+
+The same two panes, with `[features] daemon_auto_start = false` in config.toml before either
+started: no app-server was started, and each pane's `!` command and hooks were children of its own
+codex with its own MUSTER_PANE:
+
+    == bang-in-B pid=59180         MUSTER_PANE=paneB
+    == SessionStart (pane B's)     MUSTER_PANE=paneB
+    == SessionStart (pane A's)     MUSTER_PANE=paneA
+
+With the setting added to config.toml only after pane A had started the app-server, pane B still
+joined it: its `!` command and hooks ran under the app-server with MUSTER_PANE=paneA.
+
+No app-server was started either when codex had a flag on its command line. With
+`codex --dangerously-bypass-hook-trust`, every hook and `!` command was a child of its own codex
+with its own MUSTER_PANE; with `codex -c model_provider=... -m dummy`, the process list showed no
+app-server (hooks were not traced in that run). The binary's
+strings name the reasons it records for its choice: incompatible_option, explicit_no_daemon,
+auto_start_disabled, existing_daemon, auto_start. `codex --help` lists
+    --no-daemon    Run without the shared background server, even if it is already running
+and the binary says "--no-daemon cannot be used with codex agents. The agents overview requires...".
+
+The setting is Codex's own to change:
+    $ codex features disable daemon_auto_start
+    Disabled feature `daemon_auto_start` in config.toml.          (exit 0, and again on a rerun)
+    config.toml then held:  [features] daemon_auto_start = false
+    $ codex features enable daemon_auto_start
+    Enabled feature `daemon_auto_start` in config.toml.           (daemon_auto_start = true)
+    $ codex features disable no_such_feature_xyz
+    Error: Unknown feature flag: no_such_feature_xyz              (exit 1)
+`codex features list` gives daemon_auto_start as "stable  true".
+
+A login screen (a CODEX_HOME with no provider and no login) started no app-server before it was
+answered.

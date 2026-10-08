@@ -1,0 +1,82 @@
+What Codex 0.160.0 shows before a session starts.
+
+Recorded 2026-10-07 on macOS 26.4.1 / arm64, codex-cli 0.160.0, in a 100x30 pseudo-terminal, by
+`tools/detection-capture.py --harness codex-startup`, `codex-update` and `codex-signin`, with
+CODEX_HOME in the capture folder and a model provider nothing listens at. The screens, rendered,
+are the "codex 0.160.0" cases in corpus/conformance/agent-detection-recorded.json. <folder> is the
+capture folder.
+
+A fresh git repository as the folder, a Stop hook in config.toml, `codex --no-daemon`:
+
+    Folder access
+    <folder>
+
+    Trust this folder? Codex can read, edit, and run files here, subject to your permission
+    settings. Folder settings can run code automatically, even without a model request. Continue
+    only if you trust these files. Your trust decision will be saved.
+
+  › 1. Trust and continue
+    2. Quit
+
+    enter continue · esc quit
+
+0.154.0's "Do you trust the contents of this directory?" is not in the 0.160.0 binary. The trust
+was written to <CODEX_HOME>/config.toml as [projects."<folder>"] trust_level = "trusted". A folder
+that is not a git repository was not asked about.
+
+Return on it, then:
+
+    Hooks need review
+    1 hook is new or changed.
+    Hooks can run outside the sandbox after you trust them.
+
+  › 1. Review hooks
+    2. Trust all and continue
+    3. Continue without trusting (hooks won't run)
+
+    enter confirm · esc skip
+
+With two hooks it said "2 hooks are new or changed." Down and Return ("Trust all and continue")
+ran the hooks from then on; Esc skipped to the composer, "› Ask Codex to do anything". Either
+dialog was drawn alone on the screen in the rendering, and the raw output also drew the composer's
+caret line above it; the dialogs mark the chosen option with the composer's caret, `› 1. ...`.
+
+With check_for_update_on_startup = true and <CODEX_HOME>/version.json saying 99.0.0 was released
+and checked just now:
+
+    Update available · 0.160.0 → 99.0.0
+    Release notes: https://github.com/openai/codex/releases/latest
+
+  › 1. Update now (runs `brew upgrade --cask codex`)
+    2. Skip
+    3. Skip until next version
+
+    enter continue · esc skip
+
+Esc skipped it, and left a banner above the composer:
+    ✨ Update available! 0.160.0 -> 99.0.0 / Run brew upgrade --cask codex to update. / See full
+    release notes: ...
+With no version.json, a first launch fetched the latest version (0.161.0 that day) and showed only
+the banner; the second showed the dialog. 0.154.0's dialog ended "Press enter to continue"; the
+0.160.0 binary has no such string.
+
+A CODEX_HOME with no provider and no login:
+
+    Welcome to Codex, OpenAI's command-line coding agent
+
+    Sign in with ChatGPT to use Codex as part of your paid plan
+    or connect an API key for usage-based billing
+
+  > 1. Sign in with ChatGPT
+       Usage included with Plus, Pro, Business, and Enterprise plans
+
+    2. Sign in with Device Code
+       Sign in from another device with a one-time code
+
+    3. Provide your own API key
+       Pay for what you use
+
+    Press enter to continue
+
+The binary also holds "Try new model" beside "Use existing model", which none of these runs
+brought up.
