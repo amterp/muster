@@ -34,6 +34,26 @@ impl Home {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
+    /// A `codex` that writes its arguments down as [`Home::harness`]'s does, lists `listing` as
+    /// its marketplaces when asked for them as JSON, and runs `features` for `features disable`.
+    fn codex(&self, listing: &str, features: &str) {
+        let script = format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\ncase \"$*\" in\n\
+             'plugin marketplace list --json') printf '%s\\n' '{listing}'; exit 0 ;;\n\
+             'features disable daemon_auto_start') {features} ;;\n\
+             esac\necho \"codex said $1\"\n",
+            self.ran("codex").display()
+        );
+        let path = self.0.join("bin/codex");
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    /// What `codex plugin marketplace list --json` prints with `muster` registered at `root`.
+    fn listing(root: &Path) -> String {
+        format!(r#"{{"marketplaces": [{{"name": "muster", "root": "{}"}}]}}"#, root.display())
+    }
+
     fn ran(&self, name: &str) -> PathBuf {
         self.0.join(format!("{name}.ran"))
     }
@@ -100,14 +120,19 @@ fn a_dry_run_prints_what_would_run_and_runs_nothing() {
     home.harness("codex", 0);
     let ran = home.muster(&["harness", "install", "codex", "--dry-run"]);
     assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
-    assert!(home.asked("codex").is_empty(), "a dry run ran {:?}", home.asked("codex"));
+    assert_eq!(
+        home.asked("codex"),
+        ["plugin marketplace list --json"],
+        "a dry run ran more than the question of what is registered"
+    );
     let said = text(&ran.stdout);
     let commands: Vec<&str> = said.lines().filter(|line| !line.starts_with('#')).collect();
     assert_eq!(
         commands,
         [
             format!("codex plugin marketplace add {}", home.extras().display()),
-            "codex plugin add muster-codex@muster".to_string()
+            "codex plugin add muster-codex@muster".to_string(),
+            "codex features disable daemon_auto_start".to_string()
         ],
         "every line that is not a comment is a command, so the answer pastes into a shell: {said}"
     );
@@ -119,10 +144,63 @@ fn a_command_that_fails_stops_the_install_and_says_what_is_left() {
     home.harness("codex", 1);
     let ran = home.muster(&["harness", "install", "codex"]);
     assert_eq!(ran.status.code(), Some(1));
-    assert_eq!(home.asked("codex").len(), 1, "nothing ran after the failure");
+    assert_eq!(
+        home.asked("codex"),
+        [
+            "plugin marketplace list --json",
+            &format!("plugin marketplace add {}", home.extras().display())
+        ],
+        "nothing ran after the failure"
+    );
     let said = text(&ran.stderr);
     assert!(said.contains("codex plugin marketplace remove muster"), "{said}");
     assert!(said.contains("codex plugin add muster-codex@muster"), "what is left: {said}");
+}
+
+/// After an update, Codex holds `muster` at the earlier version's resolved path, and refuses to add
+/// the new one beside it, so an install replaces it.
+#[test]
+fn codex_is_installed_again_over_an_earlier_musters_marketplace() {
+    let home = Home::new("stale");
+    let earlier = home.0.join("home/.muster/daemon/0.13.0/extras");
+    home.codex(&Home::listing(&earlier), "exit 0");
+    let ran = home.muster(&["harness", "install", "codex"]);
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert_eq!(
+        home.asked("codex"),
+        [
+            "plugin marketplace list --json".to_string(),
+            "plugin marketplace remove muster".to_string(),
+            format!("plugin marketplace add {}", home.extras().display()),
+            "plugin add muster-codex@muster".to_string(),
+            "features disable daemon_auto_start".to_string(),
+        ]
+    );
+    assert!(text(&ran.stdout).contains("run this again after updating Muster"));
+}
+
+/// One added from anywhere else is somebody's choice: the add is left to fail, saying so.
+#[test]
+fn a_marketplace_added_from_a_checkout_is_left_alone() {
+    let home = Home::new("checkout");
+    let checkout = home.0.join("src/muster/extras");
+    std::fs::create_dir_all(&checkout).unwrap();
+    home.codex(&Home::listing(&checkout.canonicalize().unwrap()), "exit 0");
+    let ran = home.muster(&["harness", "install", "codex", "--dry-run"]);
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert!(!text(&ran.stdout).contains("remove"), "{}", text(&ran.stdout));
+}
+
+/// A Codex that has no `daemon_auto_start` has no shared app-server, so refusing the flag is done.
+#[test]
+fn a_codex_without_the_app_server_setting_is_installed_all_the_same() {
+    let home = Home::new("old-codex");
+    let unknown = "echo 'Error: Unknown feature flag: daemon_auto_start' >&2; exit 1";
+    home.codex(r#"{"marketplaces": []}"#, unknown);
+    let ran = home.muster(&["harness", "install", "codex"]);
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert_eq!(home.asked("codex").last().unwrap(), "features disable daemon_auto_start");
+    assert!(text(&ran.stdout).contains("no shared app-server"), "{}", text(&ran.stdout));
 }
 
 #[test]

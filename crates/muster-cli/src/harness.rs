@@ -22,14 +22,67 @@ use crate::render::shell_word;
 /// what is left for the person afterwards, a line each.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plan {
-    pub commands: Vec<Vec<String>>,
+    pub commands: Vec<Step>,
     pub then: Vec<String>,
+}
+
+/// One of a harness's own commands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Step {
+    pub words: Vec<String>,
+    /// A failure that still leaves the command's work done: what the harness says on stderr, and
+    /// what that means for the person.
+    pub done_if_said: Option<(&'static str, &'static str)>,
+}
+
+impl Step {
+    fn of(words: &[&str]) -> Step {
+        Step { words: words.iter().map(ToString::to_string).collect(), done_if_said: None }
+    }
 }
 
 impl Plan {
     fn printed(&self) -> Vec<String> {
-        self.commands.iter().map(|command| line(command)).collect()
+        self.commands.iter().map(|command| line(&command.words)).collect()
     }
+}
+
+/// Where Codex has a `muster` marketplace registered, by the path it resolved when it was added.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Registered(pub PathBuf);
+
+/// The root of the `muster` marketplace in what `codex plugin marketplace list --json` printed,
+/// or None when there is none, or the listing is not one this knows how to read.
+pub fn registered_in(listing: &str) -> Option<Registered> {
+    let listing: serde_json::Value = serde_json::from_str(listing).ok()?;
+    let muster =
+        listing["marketplaces"].as_array()?.iter().find(|entry| entry["name"] == "muster")?;
+    Some(Registered(PathBuf::from(muster["root"].as_str()?)))
+}
+
+/// Whether a `muster` marketplace Codex has registered is one an earlier Muster install left,
+/// which installing from `extras` should replace: a different path from `extras` that has gone, or
+/// that is where Muster keeps a version's adapters - under `<muster home>/daemon/`, or inside an
+/// app bundle. Codex records a marketplace by its resolved path, so `~/.muster/extras` registers
+/// as the version it pointed at, and once Muster is updated Codex refuses to add the new one
+/// beside it. A marketplace added from anywhere else, such as a checkout of Muster's source, is
+/// somebody's choice and is not this install's to replace.
+pub fn stale_registration(
+    registered: &Registered,
+    extras: &Path,
+    muster_home: Option<&Path>,
+) -> bool {
+    let root = &registered.0;
+    let ours = extras.canonicalize().unwrap_or_else(|_| extras.to_path_buf());
+    if *root == ours || root == extras {
+        return false;
+    }
+    let versions = muster_home.map(|home| home.join("daemon"));
+    let under_versions = versions.is_some_and(|versions| {
+        root.starts_with(&versions)
+            || versions.canonicalize().is_ok_and(|real| root.starts_with(real))
+    });
+    !root.exists() || under_versions || root.ends_with("Contents/Resources/extras")
 }
 
 /// The harness a person typed, or a refusal naming the ones there are.
@@ -44,16 +97,16 @@ pub fn harness(name: &str) -> Result<Harness, String> {
     })
 }
 
-/// What installing `harness`'s adapter from `extras` takes.
-pub fn plan(harness: Harness, extras: &Path) -> Plan {
+/// What installing `harness`'s adapter from `extras` takes. `replace` says the `muster`
+/// marketplace Codex has registered is a stale one to remove first ([`stale_registration`]).
+pub fn plan(harness: Harness, extras: &Path, replace: bool) -> Plan {
     let readme = shell_word(&extras.join(harness.dir).join("README.md").display().to_string());
-    let words = |words: &[&str]| words.iter().map(ToString::to_string).collect::<Vec<_>>();
     let extras_path = extras.display().to_string();
     match harness.kind {
         Kind::ClaudeCode => Plan {
             commands: vec![
-                words(&["claude", "plugin", "marketplace", "add", &extras_path]),
-                words(&["claude", "plugin", "install", "muster@muster"]),
+                Step::of(&["claude", "plugin", "marketplace", "add", &extras_path]),
+                Step::of(&["claude", "plugin", "install", "muster@muster"]),
             ],
             then: vec![
                 "Claude Code takes a statusline only from its settings, which Muster does not \
@@ -72,14 +125,38 @@ pub fn plan(harness: Harness, extras: &Path) -> Plan {
             ],
         },
         Kind::Codex => Plan {
-            commands: vec![
-                words(&["codex", "plugin", "marketplace", "add", &extras_path]),
-                words(&["codex", "plugin", "add", "muster-codex@muster"]),
-            ],
+            commands: replace
+                .then(|| Step::of(&["codex", "plugin", "marketplace", "remove", "muster"]))
+                .into_iter()
+                .chain([
+                    Step::of(&["codex", "plugin", "marketplace", "add", &extras_path]),
+                    Step::of(&["codex", "plugin", "add", "muster-codex@muster"]),
+                    // Last, so that a Codex too old to know the flag has its plugin already.
+                    Step {
+                        done_if_said: Some((
+                            "Unknown feature flag",
+                            "This Codex has no daemon_auto_start, and so no shared app-server to \
+                             turn off.",
+                        )),
+                        ..Step::of(&["codex", "features", "disable", "daemon_auto_start"])
+                    },
+                ])
+                .collect(),
             then: vec![
                 "Codex runs a hook only once you trust it: review them in /hooks in a session."
                     .to_string(),
                 "Sessions already running take the plugin up when they restart.".to_string(),
+                "daemon_auto_start is now off, so each Codex session runs its own commands and \
+                 hooks. Left on, Codex runs every session's in one shared app-server that carries \
+                 the first session's pane, and Muster refuses the reports that come through it. \
+                 `codex agents` needs that server; `codex features enable daemon_auto_start` \
+                 turns it back on."
+                    .to_string(),
+                "An app-server already running still takes new sessions until `codex app-server \
+                 daemon stop`, which ends the sessions running in it."
+                    .to_string(),
+                "Codex keeps its own copy of the plugin, so run this again after updating Muster."
+                    .to_string(),
                 format!("{readme} has the messaging hooks and what its sandbox needs."),
             ],
         },
@@ -144,7 +221,12 @@ pub fn install(
     errors: &mut impl Write,
 ) -> Result<(), Trouble> {
     let extras = extras(environment, std::env::current_exe().ok())?;
-    let plan = plan(harness, &extras);
+    let replace = harness.kind == Kind::Codex
+        && codex_registration(environment).is_some_and(|registered| {
+            let home = muster_home(environment).map(PathBuf::from);
+            stale_registration(&registered, &extras, home.as_deref())
+        });
+    let plan = plan(harness, &extras, replace);
     let printed = |out: &mut dyn Write, ran: bool| {
         let _ = if json {
             writeln!(
@@ -174,7 +256,8 @@ pub fn install(
         printed(out, false);
         return Ok(());
     }
-    for (done, command) in plan.commands.iter().enumerate() {
+    for (done, step) in plan.commands.iter().enumerate() {
+        let command = &step.words;
         if !json {
             let _ = writeln!(out, "$ {}", line(command));
         }
@@ -205,10 +288,17 @@ pub fn install(
                 ))
             })?;
         let _ = if json { errors.write_all(&ran.stdout) } else { out.write_all(&ran.stdout) };
+        let said = String::from_utf8_lossy(&ran.stderr);
+        if let Some((_, meaning)) =
+            step.done_if_said.filter(|(text, _)| !ran.status.success() && said.contains(text))
+        {
+            let _ = if json { writeln!(errors, "{meaning}") } else { writeln!(out, "{meaning}") };
+            continue;
+        }
         let _ = errors.write_all(&ran.stderr);
         if !ran.status.success() {
             return Err(Trouble::Refused(format!(
-                "`{}` failed ({}), so {}'s adapter is not installed; what it said is above. If it \
+                "`{}` failed ({}), so installing {}'s adapter stopped there; what it said is above. If it \
                  says a `muster` marketplace is already added from somewhere else, such as a \
                  checkout of Muster's source, `{} plugin marketplace remove muster` makes room \
                  for this one. Then run what is left:\n  {}",
@@ -222,6 +312,15 @@ pub fn install(
     }
     printed(out, true);
     Ok(())
+}
+
+/// Where Codex has a `muster` marketplace registered, by asking it. None when it has none, or
+/// cannot be asked, or answers in a way this cannot read: an older Codex has no `--json` there.
+fn codex_registration(environment: &BTreeMap<String, String>) -> Option<Registered> {
+    let mut listing = Command::new("codex");
+    listing.args(["plugin", "marketplace", "list", "--json"]).env_clear().envs(environment);
+    let listed = run_within(&mut listing, PATIENCE).ok()??;
+    registered_in(&String::from_utf8_lossy(&listed.stdout))
 }
 
 /// How long one of a harness's install commands may take. A local plugin installs in a second or
@@ -286,9 +385,52 @@ mod tests {
         );
     }
 
+    /// What `codex plugin marketplace list --json` printed for Codex 0.160.0, a stale install's
+    /// `muster` among its marketplaces (`corpus/codex-0.160.0/marketplace.txt`).
+    #[test]
+    fn the_muster_marketplace_is_read_out_of_codexs_listing() {
+        let listing = r#"{"marketplaces": [
+            {"name": "openai-api-curated", "root": "/home/me/.codex/.tmp/plugins"},
+            {"name": "muster", "root": "/home/me/.muster/daemon/0.14.0/extras",
+             "marketplaceSource": {"sourceType": "local",
+                                   "source": "/home/me/.muster/daemon/0.14.0/extras"}}]}"#;
+        assert_eq!(
+            registered_in(listing),
+            Some(Registered(PathBuf::from("/home/me/.muster/daemon/0.14.0/extras")))
+        );
+        assert_eq!(registered_in(r#"{"marketplaces": []}"#), None);
+        assert_eq!(registered_in("MARKETPLACE  ROOT\nmuster  /somewhere"), None, "not JSON");
+    }
+
+    #[test]
+    fn only_a_muster_installs_own_marketplace_is_replaced() {
+        let root = std::env::temp_dir().join(format!("muster-stale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let home = root.join(".muster");
+        let (old, new) = (home.join("daemon/0.14.0/extras"), home.join("daemon/0.15.0/extras"));
+        let checkout = root.join("src/muster/extras");
+        for directory in [&old, &new, &checkout] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        let linked = home.join("extras");
+        std::os::unix::fs::symlink(&new, &linked).unwrap();
+        let new = new.canonicalize().unwrap();
+        let stale = |registered: &Path| {
+            stale_registration(&Registered(registered.to_path_buf()), &linked, Some(&home))
+        };
+
+        assert!(stale(&old.canonicalize().unwrap()), "an earlier version's adapters");
+        assert!(!stale(&new), "the version the link points at is what installing adds again");
+        assert!(stale(&root.join("gone/extras")), "a path that has gone");
+        assert!(stale(Path::new("/Volumes/Old/Muster.app/Contents/Resources/extras")));
+        assert!(!stale(&checkout.canonicalize().unwrap()), "somebody's checkout");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test]
     fn the_statusline_path_is_one_shell_word_inside_its_json() {
-        let plan = plan(harnesses::WITH_ADAPTERS[0], Path::new("/Users/Jo Smith/.muster/extras"));
+        let plan =
+            plan(harnesses::WITH_ADAPTERS[0], Path::new("/Users/Jo Smith/.muster/extras"), false);
         assert!(
             plan.then.iter().any(|line| line.contains(
                 r#""command": "'/Users/Jo Smith/.muster/extras/claude-code/statusline.sh'""#
