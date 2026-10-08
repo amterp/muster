@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "restart-a-stuck",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791426126169,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-07 with the stuck state (GitHub issue #1 part 2). The notice for a program that stopped reading its input now names the program and offers no Reattach, since reattaching cannot help. The way out is interrupting the program, or ending it and resuming its session - but Muster has no request that restarts an agent in place, and adding one is destructive enough to need its own decision: what it kills, whether it resumes the session with the flags it ran with (the daemon-restart resume path already knows how), and what it asks first.",
+  "id": "a_2dmIEdCn6",
+  "position": "b0d",
+  "title": "🔁 Restart a stuck agent from its notice",
+  "type": "feature",
+  "updated_at_millis": 1791426126169,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791426126169}
+  ]
+}

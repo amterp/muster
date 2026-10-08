@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-wait-cannot",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791426126634,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-07 with the stuck state. pane wait ends refused when its pane goes stuck (unless --until stuck), including a wait started on a pane already stuck, so the only way to see one recover is polling muster window. If a director wants to wait for recovery, --until could take something like 'reading'.",
+  "id": "a_2dmIFLTi2",
+  "position": "b0u",
+  "title": "A pane wait cannot wait for a stuck pane to recover",
+  "type": "enhancement",
+  "updated_at_millis": 1791426126634,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791426126634}
+  ]
+}
