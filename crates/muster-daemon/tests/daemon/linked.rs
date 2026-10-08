@@ -271,6 +271,37 @@ fn a_cut_link_refuses_posts_across_at_once_and_local_groups_still_post() {
     assert_eq!(caught_up, [format!("{there} builder@{host}: while you were away")]);
 }
 
+/// A link whose far end has stopped answering without closing - a laptop asleep, its ssh
+/// connection to the devenv stalled rather than dropped - refuses a change to a group kept there
+/// as unanswered once its patience runs out, rather than at once as a cut link does: the change
+/// may have landed.
+#[test]
+fn a_link_to_a_machine_that_stopped_answering_refuses_as_unanswered() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+    join(&mut far_control, &named("critic"), "critic", "review");
+
+    let signal = |signal: &str| {
+        let pid = near.pid().to_string();
+        let sent = std::process::Command::new("kill").args([signal, &pid]).status();
+        assert!(sent.is_ok_and(|status| status.success()), "kill {signal} {pid}");
+    };
+    signal("-STOP");
+    let started = Instant::now();
+    let leave = Asked::Leave(msg_request::Leave { group: Some("review".to_string()) });
+    let refused = far_control.ask(msg(&named("critic"), leave));
+    let waited = started.elapsed();
+    signal("-CONT");
+    assert_eq!(msg_answer(&refused).refusal, "unanswered", "{}", refused.answer.reason);
+    assert!(
+        (Duration::from_secs(4)..Duration::from_secs(15)).contains(&waited),
+        "refused once a call's patience ran out, not at once: {waited:?}"
+    );
+}
+
 /// A daemon that restarts or hands over holds a group kept on another machine from its first
 /// answer: empty, and saying it may be behind, until the link returns and the refetch brings
 /// what was posted meanwhile. Replicas are not kept, and before this the group did not exist
