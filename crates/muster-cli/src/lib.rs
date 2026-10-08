@@ -466,20 +466,25 @@ fn context_unsaid(
             Err(_) => None,
         }
     };
-    let panes = match window {
-        Some(windowless::Answered::Window { window, .. }) => window.panes,
+    let window = match window {
+        Some(windowless::Answered::Window { window, .. }) => *window,
         Some(windowless::Answered::Response(response)) => match response.payload {
-            Some(muster_proto::response::Payload::Window(window)) => window.panes,
+            Some(muster_proto::response::Payload::Window(window)) => window,
             _ => return Vec::new(),
         },
         None => return Vec::new(),
     };
+    let candidates = dial::panes_held(&window);
     watch
         .pane_ids
         .iter()
-        .filter_map(|named| {
-            panes.iter().find(|pane| {
-                &pane.pane_id == named
+        .filter_map(|typed| {
+            let id = match muster_core::pane_address::resolve(typed, &candidates) {
+                muster_core::pane_address::Address::Pane(id) => id,
+                _ => typed.clone(),
+            };
+            window.panes.iter().find(|pane| {
+                pane.pane_id == id
                     && pane.facts.as_ref().is_none_or(|facts| facts.context_used.is_none())
             })
         })

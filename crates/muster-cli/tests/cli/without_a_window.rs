@@ -153,15 +153,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
 /// Every pane goes by a word its daemon drew until somebody names it, and with no window the CLI
 /// reads that word against the daemon's own panes wherever it takes a pane's id.
 fn panes_are_reached_by_their_words(here: &Here) {
-    let held = snapshot(&mut here.daemon.connect());
-    let word = |pane: &str| {
-        held.panes
-            .iter()
-            .find(|record| record.pane == pane)
-            .and_then(|record| record.word.clone())
-            .unwrap_or_else(|| panic!("{pane} has no word"))
-    };
-    let (p1, p2) = (word("p1"), word("p2"));
+    let (p1, p2) = (word_of(here, "p1"), word_of(here, "p2"));
 
     ok(&here.muster(&["pane", "send", "--pane", &p1, "--enter", "--confirm", "echo by-word"]));
     until_text(&mut here.daemon.connect(), "p1", "by-word\n");
@@ -175,6 +167,13 @@ fn panes_are_reached_by_their_words(here: &Here) {
     let row = row.unwrap_or_else(|| panic!("p2 is listed: {listed}"));
     assert_eq!(row["name"], json!(p2), "{listed}");
     assert!(row["label"].as_str().is_some_and(|label| label.starts_with(&p2)), "{listed}");
+}
+
+/// The word `pane`'s daemon drew it.
+fn word_of(here: &Here, pane: &str) -> String {
+    let held = snapshot(&mut here.daemon.connect());
+    let record = held.panes.into_iter().find(|record| record.pane == pane);
+    record.and_then(|record| record.word).unwrap_or_else(|| panic!("{pane} has no word"))
 }
 
 /// With no window, `--layout` draws each tab from the daemon's own tree, places each pane in it as
@@ -235,6 +234,14 @@ fn a_wait_on_context_ends_when_the_agent_says_it(here: &Here) {
          that ended a turn without reporting is one whose adapter is missing:\n{complaint}"
     );
     assert!(complaint.contains("not at 80% context within 1s"), "{complaint}");
+    let by_word = word_of(here, "p2");
+    let ran =
+        here.muster(&["pane", "wait", "--pane", &by_word, "--context", "80", "--timeout", "1"]);
+    let complaint = refused_with(&ran, 5);
+    assert!(
+        complaint.contains("p2's adapter is not reporting"),
+        "the pane named by its word has the same advice as by its id:\n{complaint}"
+    );
 
     let wait =
         here.spawned(&["pane", "wait", "--pane", "p2", "--context", "80", "--timeout", "60"]);
