@@ -433,13 +433,7 @@ impl Attention {
         if self.seen(pane) {
             return finished && self.reported.insert(pane.clone());
         }
-        if state == AgentState::Blocked {
-            self.ask_silently(pane, Alert::Blocked);
-        } else if state == AgentState::Stuck {
-            self.ask_silently(pane, Alert::Stuck);
-        } else if finished {
-            self.ask_silently(pane, Alert::Done);
-        }
+        self.ask_silently_for(pane, state, finished);
         false
     }
 
@@ -500,13 +494,20 @@ impl Attention {
             return self.quiet.insert(pane.clone()).then(|| self.withdraw(pane)).flatten();
         }
         if self.quiet.remove(pane) && !self.seen(pane) {
-            if state == AgentState::Blocked {
-                self.ask_silently(pane, Alert::Blocked);
-            } else if finished {
-                self.ask_silently(pane, Alert::Done);
-            }
+            self.ask_silently_for(pane, state, finished);
         }
         None
+    }
+
+    /// Asks, without a banner, for whatever a pane that Muster did not watch get there is in.
+    fn ask_silently_for(&mut self, pane: &PaneKey, state: AgentState, finished: bool) {
+        if state == AgentState::Blocked {
+            self.ask_silently(pane, Alert::Blocked);
+        } else if state == AgentState::Stuck {
+            self.ask_silently(pane, Alert::Stuck);
+        } else if finished {
+            self.ask_silently(pane, Alert::Done);
+        }
     }
 
     /// A program in the pane rang the bell. Returns whether that marked the pane, which it does

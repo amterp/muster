@@ -1610,6 +1610,35 @@
       }
     },
     {
+      "name": "a pane no longer quiet asks for being stuck too",
+      "why": "Stuck asks for somebody as blocked does, so a pane that stopped reading while it was quiet asks once it is not, silently for the same reason.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "quiet": "local/w1:p2"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "stuck"
+          },
+          {
+            "quiet": "local/w1:p2",
+            "on": false
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": [
+          "local/w1:p2 stuck"
+        ]
+      }
+    },
+    {
       "name": "a quiet pane's program asks for nobody either",
       "why": "Quiet is about the pane, not about which of its states is speaking: a program's own notification is a banner like any other.",
       "given": {
