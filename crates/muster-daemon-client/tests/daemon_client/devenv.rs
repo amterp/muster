@@ -15,7 +15,7 @@ use muster_daemon_client::remote::{Installed, ensure_running};
 use muster_daemon_proto as proto;
 use muster_harness::requests::*;
 use muster_harness::{Control, DAEMON_DATA, Input, built_linux_daemons, until_some};
-use muster_ssh::{Forward, Tunnel, remote_environment};
+use muster_ssh::{Forward, Reverse, Tunnel, remote_environment};
 
 /// Where the container is and how to reach it, from `./dev --ssh`.
 fn devenv() -> (String, Vec<String>) {
@@ -39,6 +39,7 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
     let installed = Installed::on(&far).expect("the container has a HOME");
     let environment = for_far_daemon(&far);
     let temporary = std::env::temp_dir();
+    let laptop = Laptop::asleep(&temporary.join("muster-devenv-window.sock"));
     let tunnel = Tunnel::open(
         Forward {
             host,
@@ -46,7 +47,10 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
             control_path: temporary.join("muster-devenv-client.ctl").to_string_lossy().into(),
             local_socket: temporary.join("muster-devenv-client.sock").to_string_lossy().into(),
             remote_socket: installed.socket.to_string_lossy().into(),
-            reverse: None,
+            reverse: Some(Reverse {
+                remote_path: FAR_WINDOW.into(),
+                local_path: laptop.socket.to_string_lossy().into(),
+            }),
         },
         Arc::new(|_| {}),
     )
@@ -103,6 +107,7 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
     make(&mut control, create("p4", in_new_tab("t4")));
     until_text(&mut control, "p4", "$");
     its_panes_are_driven_over_there_with_no_window(&tunnel, &installed);
+    with_the_laptop_asleep_quit_and_gone(&tunnel, &installed, &laptop);
 
     let (reached, adopted) =
         ensure_running(&tunnel.remote(), &installed, &carried, local, &environment).unwrap();
@@ -202,4 +207,98 @@ fn agents_message_each_other_over_there(tunnel: &Tunnel, installed: &Installed) 
     // 6 rather than 0 because a, a name given with --as, has no session to wake: the post was
     // kept, and exits saying nobody live heard it.
     assert!(said.contains("posted=6"), "reading cleared the way: {said}");
+}
+
+/// Where the window answers over there: the path a laptop's Muster forwards its own socket to,
+/// which every pane on the devenv is told as `$MUSTER_SOCKET`.
+const FAR_WINDOW: &str = "/tmp/muster-devenv-window/window.sock";
+
+/// The laptop's end of the window's forward: a socket that takes every connection and never
+/// answers, which is what ssh on the devenv reaches while the laptop sleeps.
+struct Laptop {
+    socket: std::path::PathBuf,
+}
+
+impl Laptop {
+    fn asleep(socket: &Path) -> Laptop {
+        let _ = std::fs::remove_file(socket);
+        let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
+        std::thread::spawn(move || {
+            // Held, not read: each connection stays open and nothing ever comes back.
+            let mut held = Vec::new();
+            for stream in listener.incoming() {
+                held.push(stream);
+            }
+        });
+        Laptop { socket: socket.to_path_buf() }
+    }
+
+    /// The window has quit with the laptop awake and the forward still up: ssh over there
+    /// takes the connection, finds nothing listening here, and closes it.
+    fn quit(&self) {
+        std::fs::remove_file(&self.socket).unwrap();
+    }
+}
+
+/// What an orchestrating agent on the devenv gets from `muster` while the laptop holding its
+/// window sleeps, after the window quits, and once the forward is gone too: every verb it
+/// spawns, drives and retires workers with is answered by the devenv's own daemon, and none
+/// waits on the laptop longer than the two seconds a silent window is given.
+fn with_the_laptop_asleep_quit_and_gone(tunnel: &Tunnel, installed: &Installed, laptop: &Laptop) {
+    let muster = muster_ssh::quoted(&installed.commands.join("muster").to_string_lossy());
+    let window = muster_ssh::quoted(FAR_WINDOW);
+    // One line per command, `@@ <state> <verb> exit=<code> ms=<took>`, and what it said on
+    // stderr after a failure, so a run that fails shows every verb's fate at once.
+    let script = |state: &str| {
+        format!(
+            "M={muster}; export MUSTER_SOCKET={window}; S={state}; E=$(mktemp); \
+             run() {{ v=$1; shift; s=$(date +%s%N); OUT=$(\"$@\" 2>$E); c=$?; \
+               echo \"@@ $S $v exit=$c ms=$(( ($(date +%s%N) - s) / 1000000 ))\"; \
+               [ $c -eq 0 ] || sed 's/^/   /' $E; }}; \
+             run window $M window; \
+             run new $M pane new --pane p4 --down --name worker-$S; NEW=$OUT; \
+             run new-hidden $M pane new --pane p4 --hidden; HIDDEN=$OUT; \
+             run rename $M pane rename --pane \"$NEW\" renamed-$S; \
+             run send $M pane send --pane p4 --enter --confirm \"echo sent-$S\"; \
+             run read $M pane read --pane p4 --rows 3; \
+             run close $M pane close --pane \"$NEW\"; \
+             run close-hidden $M pane close --pane \"$HIDDEN\"; \
+             run msg-join $M msg --as lead-$S join --group crew-$S; \
+             run msg-read $M msg --as lead-$S read --group crew-$S; \
+             rm -f $E"
+        )
+    };
+    // Asleep is the one state that costs a command anything: the two seconds a window is given
+    // to answer before the daemon answers instead. Quit and gone are refused by the socket.
+    let states: [(&str, u64, &dyn Fn()); 3] = [
+        ("asleep", 8_000, &|| {}),
+        ("quit", 4_000, &|| laptop.quit()),
+        ("gone", 4_000, &|| {
+            tunnel.remote().shell(&format!("rm -f {window}")).unwrap();
+        }),
+    ];
+    for (state, within_ms, become_so) in states {
+        become_so();
+        let said = tunnel.remote().shell(&script(state)).unwrap();
+        eprintln!("{said}");
+        let outcomes: Vec<(&str, i32, u64)> = said
+            .lines()
+            .filter_map(|line| line.strip_prefix(&format!("@@ {state} ")))
+            .filter_map(|rest| {
+                let mut words = rest.split_whitespace();
+                let verb = words.next()?;
+                let code = words.next()?.strip_prefix("exit=")?.parse().ok()?;
+                let took = words.next()?.strip_prefix("ms=")?.parse().ok()?;
+                Some((verb, code, took))
+            })
+            .collect();
+        assert_eq!(outcomes.len(), 10, "every verb ran with the laptop {state}:\n{said}");
+        for (verb, code, took) in outcomes {
+            assert!(
+                code == 0 && took < within_ms,
+                "with the laptop {state}, `{verb}` exited {code} after {took} ms, where the \
+                 devenv's daemon should have answered within {within_ms} ms:\n{said}"
+            );
+        }
+    }
 }

@@ -139,6 +139,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     keys_are_pressed_without_a_window(&here);
     a_wait_on_an_agent_that_stops_reading_is_refused(&here);
     hiding_and_quiet_are_asked_of_the_daemon(&here);
+    panes_are_made_renamed_and_closed_by_the_daemon(&here);
 
     let refused = refused_with(&here.muster(&["pane", "read"]), 1);
     assert!(refused.contains("--pane"), "with no window there is no keyboard's pane:\n{refused}");
@@ -306,6 +307,63 @@ fn hiding_and_quiet_are_asked_of_the_daemon(here: &Here) {
     ok(&here.muster(&["pane", "show", "--pane", "p2"]));
 }
 
+/// A pane is made, named and closed with no window, by the daemon holding the panes, which is what
+/// lets an agent on a devenv start and retire workers while the laptop holding its window is gone.
+fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
+    let mut control = here.daemon.connect();
+    // The pane is told the window the caller was, so it drives that window once one is back.
+    let told = format!("test \"$MUSTER_SOCKET\" = '{}' && echo window-told", here.window);
+    let made = ok(&here
+        .muster(&["pane", "new", "--pane", "p1", "--down", "--name", "worker", "--run", &told]));
+    until_text(&mut control, &made, "window-told");
+    let held = snapshot(&mut control);
+    let record = held.panes.iter().find(|pane| pane.pane == made);
+    let record = record.unwrap_or_else(|| panic!("the daemon holds no {made}: {held:?}"));
+    assert_eq!(record.label.as_deref(), Some("worker"));
+    let tab = held.tabs.iter().find(|tab| tab_shape_holds(tab, &made)).expect("made in a tab");
+    assert!(
+        tab.tab == "t1" && tab_shape_holds(tab, "p1") && !tab.hidden,
+        "a split of p1 lands in p1's tab: {tab:?}"
+    );
+
+    let hidden = ok(&here.muster(&["pane", "new", "--pane", "p1", "--hidden"]));
+    let held = snapshot(&mut control);
+    let tab = held.tabs.iter().find(|tab| tab_shape_holds(tab, &hidden)).expect("made in a tab");
+    assert!(tab.hidden && !tab_shape_holds(tab, "p1"), "a hidden tab of its own: {tab:?}");
+
+    // Outside every pane, with no pane named, there is no keyboard's pane to split.
+    let alone: Value = serde_json::from_str(&ok(&here.muster(&["--json", "pane", "new"]))).unwrap();
+    let alone = alone["pane"].as_str().unwrap_or_else(|| panic!("a pane: {alone}")).to_string();
+    let held = snapshot(&mut control);
+    let tab = held.tabs.iter().find(|tab| tab_shape_holds(tab, &alone)).expect("made in a tab");
+    assert!(tab.tab != "t1" && !tab.hidden, "a tab of its own, shown: {tab:?}");
+
+    ok(&here.muster(&["pane", "rename", "--pane", "worker", "  lead  "]));
+    let label = |control: &mut _| {
+        snapshot(control)
+            .panes
+            .into_iter()
+            .find(|pane| pane.pane == made)
+            .and_then(|pane| pane.label)
+    };
+    assert_eq!(label(&mut control).as_deref(), Some("lead"), "renamed, trimmed, by its name");
+    ok(&here.muster(&["pane", "rename", "--pane", &made, ""]));
+    assert_eq!(label(&mut control), None, "a blank name takes the name away");
+
+    for pane in [&made, &hidden, &alone] {
+        ok(&here.muster(&["pane", "close", "--pane", pane]));
+    }
+    let left = snapshot(&mut control);
+    assert!(
+        !left.panes.iter().any(|pane| [&made, &hidden, &alone].contains(&&pane.pane)),
+        "all three closed: {left:?}"
+    );
+    let refused = refused_with(&here.muster(&["pane", "close", "--pane", "p9nobody"]), 1);
+    assert!(refused.contains("no pane called p9nobody"), "{refused}");
+    let refused = refused_with(&here.muster(&["pane", "rename", "--pane", "p9nobody", "x"]), 1);
+    assert!(refused.contains("no pane called p9nobody"), "{refused}");
+}
+
 fn tab_shape_holds(tab: &proto::Tab, pane: &str) -> bool {
     fn holds(node: &proto::Node, pane: &str) -> bool {
         match node.node.as_ref() {
@@ -437,11 +495,14 @@ fn only_a_missing_window_is_answered_by_the_daemon() {
     let mut control = here.daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
 
-    let refused = refused_with(&here.muster(&["pane", "new"]), 3);
+    let refused = refused_with(&here.muster(&["tab", "new"]), 3);
     assert!(
-        refused.contains("pane send") && refused.contains("still work"),
+        refused.contains("pane verbs") && refused.contains("still work"),
         "a verb only a window can carry out says what works without one:\n{refused}"
     );
+    // Which machine a window calls `elsewhere` is the window's to know.
+    let refused = refused_with(&here.muster(&["pane", "new", "--daemon", "elsewhere"]), 3);
+    assert!(refused.contains("still work"), "{refused}");
 
     let named = here.muster(&["--socket", &here.window, "pane", "read", "--pane", "p1"]);
     let refused = refused_with(&named, 3);
@@ -492,7 +553,16 @@ fn a_window_that_never_answers_is_answered_for_by_the_daemon() {
     let listed = ok(&here.muster(&["window"]));
     assert!(listed.starts_with("no window answered; the muster-daemon at"), "{listed}");
 
-    let refused = refused_with(&here.muster(&["pane", "new"]), 3);
+    let started = std::time::Instant::now();
+    let made = ok(&here.muster(&["pane", "new", "--pane", "p1"]));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(8),
+        "a pane made while the window sleeps waited {:?}",
+        started.elapsed()
+    );
+    ok(&here.muster(&["pane", "close", "--pane", &made]));
+
+    let refused = refused_with(&here.muster(&["tab", "new"]), 3);
     assert!(
         refused.contains("did not answer") && refused.contains("still work"),
         "a verb only a window carries out does not say the window was silent:\n{refused}"

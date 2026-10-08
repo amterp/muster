@@ -40,8 +40,9 @@ const ALIVE_WITHIN: Duration = Duration::from_secs(2);
 /// How long a window has to answer that when no daemon could carry the command instead.
 ///
 /// Passing a window over buys a command something only when the daemon can answer it. One only a
-/// window can carry out - making a pane, a tab, a rename - would fail either way, so a window
-/// slowed by a loaded machine gets longer to answer than a sleeping laptop's forward is worth.
+/// window can carry out - a tab, a zoom, a pane put on another machine - would fail either way,
+/// so a window slowed by a loaded machine gets longer to answer than a sleeping laptop's forward
+/// is worth.
 const ALONE_WITHIN: Duration = Duration::from_secs(10);
 
 /// Sends one request to a window and hands back what it said.

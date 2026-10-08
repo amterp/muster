@@ -27,26 +27,36 @@ use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection};
 use muster_proto::{Request, Response, request, response};
 
 use crate::dial::Ended;
-use crate::{Trouble, daemon};
+use crate::{Trouble, daemon, environment};
 
 /// How long a request to the daemon may take to be answered.
 const PATIENCE: Duration = Duration::from_mins(1);
 
 /// Whether this is a request the daemon can answer without a window.
+///
+/// A pane is made here only on this machine: which machine a window's `--daemon` name means is
+/// the window's to know.
 pub fn can_answer(request: &Request) -> bool {
-    matches!(
-        request.payload,
-        Some(
-            request::Payload::ReadWindow(_)
-                | request::Payload::ReadPane(_)
-                | request::Payload::SendToPane(_)
-                | request::Payload::WatchPanes(_)
-                | request::Payload::CompactPane(_)
-                | request::Payload::HidePane(_)
-                | request::Payload::ShowPane(_)
-                | request::Payload::QuietPane(_)
-        )
-    )
+    match &request.payload {
+        Some(request::Payload::SplitPane(split)) => {
+            split.daemon_id.is_empty() && split.new_pane_daemon_id.is_empty()
+        }
+        payload => matches!(
+            payload,
+            Some(
+                request::Payload::ReadWindow(_)
+                    | request::Payload::ReadPane(_)
+                    | request::Payload::SendToPane(_)
+                    | request::Payload::WatchPanes(_)
+                    | request::Payload::CompactPane(_)
+                    | request::Payload::HidePane(_)
+                    | request::Payload::ShowPane(_)
+                    | request::Payload::QuietPane(_)
+                    | request::Payload::RenamePane(_)
+                    | request::Payload::ClosePane(_)
+            )
+        ),
+    }
 }
 
 /// What a request not answered by a window came to.
@@ -117,6 +127,17 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
             let pane = named(&quiet.pane_id, "made quiet")?;
             respond(quiet_pane(&socket, pane, quiet.quiet)?)
         }
+        Some(request::Payload::RenamePane(rename)) => {
+            let pane = named(&rename.pane_id, "renamed")?;
+            respond(rename_pane(&socket, pane, &rename.name)?)
+        }
+        Some(request::Payload::ClosePane(close)) => {
+            let pane = named(&close.pane_id, "closed")?;
+            respond(close_pane(&socket, pane)?)
+        }
+        Some(request::Payload::SplitPane(split)) => {
+            respond(make_pane(&socket, split, environment)?)
+        }
         _ => Err(Trouble::Refused(
             "this asks something only a window can answer, and no window answered. That is a bug \
              in muster: nothing else should have been sent here."
@@ -158,6 +179,23 @@ fn named<'a>(pane: &'a str, done: &str) -> Result<&'a str, Trouble> {
 
 fn failure(reason: String) -> Response {
     Response { payload: Some(response::Payload::Failure(muster_proto::Failure { reason })) }
+}
+
+fn ok() -> Response {
+    Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) }
+}
+
+/// The refusal for a pane this daemon does not hold, saying what was not `done` to it.
+fn not_held(socket: &Path, pane: &str, done: &str) -> Response {
+    failure(format!(
+        "the muster-daemon at {} holds no pane called {pane}, so nothing was {done}. `muster \
+         window` lists the panes this machine has.",
+        socket.display()
+    ))
+}
+
+fn pane_service(request: daemon_proto::pane_request::Request) -> daemon_proto::request::Service {
+    daemon_proto::request::Service::Pane(daemon_proto::PaneRequest { request: Some(request) })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -307,13 +345,7 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
     // is refused here, as the window refuses it, rather than reported sent.
     match snapshot(socket) {
         Ok(snapshot) if snapshot.panes.iter().any(|held| held.pane == pane) => {}
-        Ok(_) => {
-            return failure(format!(
-                "the muster-daemon at {} holds no pane called {pane}, so nothing was sent. \
-                 `muster window` lists the panes this machine has.",
-                socket.display()
-            ));
-        }
+        Ok(_) => return not_held(socket, pane, "sent"),
         Err(trouble) => return failure(trouble.detail().to_string()),
     }
     let read = |rows| read_pane(socket, pane, Scope::Newest(rows)).map(|read| read.text);
@@ -351,10 +383,10 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
         return failure(trouble.detail().to_string());
     }
     if !send.confirm {
-        return Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) };
+        return ok();
     }
     match pane_text::confirm(pane, &send.text, &before, read) {
-        Ok(()) => Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) },
+        Ok(()) => ok(),
         Err(refusal) => failure(refusal),
     }
 }
@@ -364,22 +396,13 @@ fn compact_pane(socket: &Path, pane: &str, focus: &str) -> Result<Response, Trou
     let focus = Some(focus.trim().to_string()).filter(|focus| !focus.is_empty());
     let answer = asked(
         socket,
-        daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
-            request: Some(daemon_proto::pane_request::Request::Compact(
-                daemon_proto::pane_request::Compact { pane: pane.to_string(), focus },
-            )),
-        }),
+        pane_service(daemon_proto::pane_request::Request::Compact(
+            daemon_proto::pane_request::Compact { pane: pane.to_string(), focus },
+        )),
     )?;
     Ok(match answer.outcome() {
-        daemon_proto::Outcome::Done | daemon_proto::Outcome::AlreadySo => {
-            Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) }
-        }
-        daemon_proto::Outcome::NotThere => failure(format!(
-            "the muster-daemon at {} holds no pane called {pane}, so nothing was compacted. \
-             `muster window` lists the panes this machine has.",
-            socket.display()
-        )),
-        _ => failure(answer.reason),
+        daemon_proto::Outcome::NotThere => not_held(socket, pane, "compacted"),
+        _ => changed(answer),
     })
 }
 
@@ -392,15 +415,10 @@ fn move_hiding(socket: &Path, pane: &str, hidden: bool) -> Result<Response, Trou
         panes_of(tab.root.as_ref(), &mut panes);
         panes.iter().any(|held| held == pane)
     }) else {
-        return Ok(failure(format!(
-            "the muster-daemon at {} holds no pane called {pane}, so nothing was {}. `muster \
-             window` lists the panes this machine has.",
-            socket.display(),
-            if hidden { "hidden" } else { "shown" }
-        )));
+        return Ok(not_held(socket, pane, if hidden { "hidden" } else { "shown" }));
     };
     if tab.hidden == hidden {
-        return Ok(Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) });
+        return Ok(ok());
     }
     let tab = Minter::new(Mint::Drawn).tab().to_string();
     let placement = daemon_proto::Placement {
@@ -412,14 +430,10 @@ fn move_hiding(socket: &Path, pane: &str, hidden: bool) -> Result<Response, Trou
     };
     let answer = asked_of_one_that_hides(
         socket,
-        daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
-            request: Some(daemon_proto::pane_request::Request::Move(
-                daemon_proto::pane_request::Move {
-                    pane: pane.to_string(),
-                    placement: Some(placement),
-                },
-            )),
-        }),
+        pane_service(daemon_proto::pane_request::Request::Move(daemon_proto::pane_request::Move {
+            pane: pane.to_string(),
+            placement: Some(placement),
+        })),
         if hidden { "hide a pane" } else { "show a hidden pane" },
     )?;
     Ok(changed(answer))
@@ -433,29 +447,134 @@ fn quiet_pane(socket: &Path, pane: &str, quiet: Option<bool>) -> Result<Response
     };
     let answer = asked_of_one_that_hides(
         socket,
-        daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
-            request: Some(daemon_proto::pane_request::Request::Quiet(
-                daemon_proto::pane_request::Quiet { pane: pane.to_string(), quiet },
-            )),
-        }),
+        pane_service(daemon_proto::pane_request::Request::Quiet(
+            daemon_proto::pane_request::Quiet { pane: pane.to_string(), quiet },
+        )),
         "make a pane quiet",
     )?;
     Ok(match answer.outcome() {
-        daemon_proto::Outcome::NotThere => failure(format!(
-            "the muster-daemon at {} holds no pane called {pane}, so nothing was changed. \
-             `muster window` lists the panes this machine has.",
-            socket.display()
-        )),
+        daemon_proto::Outcome::NotThere => not_held(socket, pane, "changed"),
         _ => changed(answer),
+    })
+}
+
+/// Calls a pane something, or with a blank name takes its name away, as a window's rename does.
+fn rename_pane(socket: &Path, pane: &str, name: &str) -> Result<Response, Trouble> {
+    let label = Some(name.trim().to_string()).filter(|name| !name.is_empty());
+    let answer = asked(
+        socket,
+        pane_service(daemon_proto::pane_request::Request::Rename(
+            daemon_proto::pane_request::Rename { pane: pane.to_string(), label },
+        )),
+    )?;
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::NotThere => not_held(socket, pane, "renamed"),
+        _ => changed(answer),
+    })
+}
+
+fn close_pane(socket: &Path, pane: &str) -> Result<Response, Trouble> {
+    let answer = asked(
+        socket,
+        pane_service(daemon_proto::pane_request::Request::Close(
+            daemon_proto::pane_request::Close { pane: pane.to_string() },
+        )),
+    )?;
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::NotThere => not_held(socket, pane, "closed"),
+        _ => changed(answer),
+    })
+}
+
+/// Makes a pane as a window's `pane new` does, by the rules that need nothing but this daemon:
+/// beside the pane named, or with `--hidden` in a hidden tab of its own that starts where that
+/// pane is. With no pane named there is no keyboard's pane to split, so it gets a tab of its own,
+/// as a window showing nothing gives one; a tab no window holds joins the next that opens. The
+/// keyboard `--focus` asks for is a window's, so with none it asks nothing.
+///
+/// The pane is told the caller's `$MUSTER_SOCKET`, as a window tells the panes it makes its own,
+/// so that it drives the window once one is back.
+fn make_pane(
+    socket: &Path,
+    split: &muster_proto::SplitPane,
+    environment: &BTreeMap<String, String>,
+) -> Result<Response, Trouble> {
+    let said = |text: &str| (!text.is_empty()).then(|| text.to_string());
+    let side = match split.side.as_str() {
+        "left" => daemon_proto::Side::Left,
+        "right" => daemon_proto::Side::Right,
+        "up" => daemon_proto::Side::Up,
+        "down" => daemon_proto::Side::Down,
+        _ => {
+            return Ok(failure(format!(
+                "there is no side called {:?}, so nothing was made. They are left, right, up \
+                 and down, and the CLI only sends those, so this is a bug in muster.",
+                split.side
+            )));
+        }
+    };
+    let beside = said(&split.pane_id);
+    let mut cwd = said(&split.cwd);
+    let placement = match &beside {
+        Some(pane) if !split.hidden => {
+            daemon_proto::placement::Where::Beside(daemon_proto::placement::Beside {
+                pane: pane.clone(),
+                side: side.into(),
+                ratio: (split.ratio > 0.0).then_some(split.ratio),
+            })
+        }
+        _ => {
+            if let Some(pane) = &beside {
+                let held = snapshot(socket)?;
+                let Some(held) = held.panes.iter().find(|held| &held.pane == pane) else {
+                    return Ok(not_held(socket, pane, "made"));
+                };
+                cwd = cwd.or_else(|| said(&held.cwd));
+            }
+            daemon_proto::placement::Where::NewTab(daemon_proto::placement::NewTab {
+                tab: Minter::new(Mint::Drawn).tab().to_string(),
+                label: Some(daemon_proto::Label::default()),
+                hidden: split.hidden,
+            })
+        }
+    };
+    let made = Minter::new(Mint::Drawn).pane().to_string();
+    let window = environment
+        .get(environment::WINDOW_SOCKET)
+        .filter(|window| !window.is_empty())
+        .map(|window| (environment::WINDOW_SOCKET.to_string(), window.clone()));
+    let create = pane_service(daemon_proto::pane_request::Request::Create(
+        daemon_proto::pane_request::Create {
+            pane: made.clone(),
+            placement: Some(daemon_proto::Placement { r#where: Some(placement) }),
+            grid: None,
+            cwd,
+            env: window.into_iter().collect(),
+            command: said(&split.run),
+            label: said(&split.name),
+            quiet: split.quiet,
+        },
+    ));
+    let answer = match (split.hidden, split.quiet) {
+        (true, _) => asked_of_one_that_hides(socket, create, "make a hidden pane")?,
+        (false, true) => asked_of_one_that_hides(socket, create, "make a quiet pane")?,
+        (false, false) => asked(socket, create)?,
+    };
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::Done => Response {
+            payload: Some(response::Payload::Made(muster_proto::Made { pane_id: made })),
+        },
+        daemon_proto::Outcome::NotThere => {
+            not_held(socket, beside.as_deref().unwrap_or_default(), "made")
+        }
+        _ => failure(answer.reason),
     })
 }
 
 /// A daemon's answer to a change, as the window's own answer.
 fn changed(answer: daemon_proto::Answer) -> Response {
     match answer.outcome() {
-        daemon_proto::Outcome::Done | daemon_proto::Outcome::AlreadySo => {
-            Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) }
-        }
+        daemon_proto::Outcome::Done | daemon_proto::Outcome::AlreadySo => ok(),
         _ => failure(answer.reason),
     }
 }
@@ -1041,6 +1160,25 @@ mod tests {
             });
         }
         pane
+    }
+
+    /// A pane is made with no window only on this machine: a window knows which machine its
+    /// `--daemon` names, and nothing here does.
+    #[test]
+    fn a_pane_is_made_without_a_window_only_on_this_machine() {
+        let asking = |split: muster_proto::SplitPane| {
+            can_answer(&Request::new(request::Payload::SplitPane(split)))
+        };
+        assert!(asking(muster_proto::SplitPane { pane_id: "p1".into(), ..Default::default() }));
+        assert!(!asking(muster_proto::SplitPane {
+            pane_id: "p1".into(),
+            new_pane_daemon_id: "devenv".into(),
+            ..Default::default()
+        }));
+        assert!(!asking(muster_proto::SplitPane {
+            daemon_id: "devenv".into(),
+            ..Default::default()
+        }));
     }
 
     /// The words a window paints, from a daemon's record with nobody having looked at it.
