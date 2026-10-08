@@ -508,7 +508,9 @@ pub(super) fn reopen_what_was_left(window: WindowId) {
 /// answer `a_2I6h18OU6` settled on, now that `muster pane new --daemon <id>` and the machines at
 /// the foot of the agent list are both ways back in. The rule this replaces gave every attached
 /// machine a column and refilled it the moment it emptied, so somebody finished with a devenv
-/// for the afternoon got a fresh ssh shell every time they closed one.
+/// for the afternoon got a fresh ssh shell every time they closed one. Hiding a window's last
+/// pane is the one exception: it puts the pane away rather than finishing with the machine, so
+/// the window asks once more (`Window::hiding`).
 ///
 /// Nothing is asked of a machine still restoring what it held before it last stopped. Its tabs
 /// are on their way, and a tab asked for now would be one more beside them; it is asked once
@@ -545,7 +547,9 @@ pub(super) fn open_a_tab_if_the_window_is_empty(window: WindowId) {
     // afterwards would ask two or three times over.
     {
         let mut session = poison::lock(&SESSION, "session");
-        if !session.windows[window].tabs_asked_of.insert(daemon.clone()) {
+        let held = &mut session.windows[window];
+        let hid_its_last = std::mem::take(&mut held.hiding);
+        if !held.tabs_asked_of.insert(daemon.clone()) && !hid_its_last {
             return;
         }
     }

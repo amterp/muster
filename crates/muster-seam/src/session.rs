@@ -931,6 +931,12 @@ pub(crate) struct Window {
     /// version of the same reason: a rule that retried a refusal would retry it forever.
     tabs_asked_of: BTreeSet<DaemonId>,
 
+    /// Set while a pane this window shows is being hidden, so that if hiding it leaves the
+    /// window showing nothing, the window asks for a tab even of a machine in `tabs_asked_of`.
+    /// Hiding a pane is putting it away rather than being finished with the machine, which is
+    /// the case that set is about.
+    hiding: bool,
+
     /// The arrangement this window opened from, kept while `awaiting` is not empty.
     left: Option<Saved>,
 
@@ -1080,6 +1086,7 @@ impl Default for Window {
             name: crate::holding::first_unnamed(),
             composition: Composition::default(),
             tabs_asked_of: BTreeSet::new(),
+            hiding: false,
             left: None,
             awaiting: BTreeSet::new(),
             presentation: Presentation::default(),
@@ -3339,16 +3346,39 @@ pub(crate) fn move_pane_to_new_tab(
 ///
 /// Its tab rather than a flag on the pane, so that every pane is still in exactly one tab and
 /// the daemon's restore and handover need nothing new; the tab it leaves closes if the pane was
-/// its last, as any move out of a tab does.
+/// its last, as any move out of a tab does. A window that leaves showing nothing opens a fresh
+/// tab.
 pub(crate) fn hide_pane(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
     if is_hidden(daemon, pane) {
         return Ok(());
     }
+    let showing: Vec<WindowId> = {
+        let mut session = poison::lock(&SESSION, "session");
+        let showing: Vec<WindowId> = session
+            .windows
+            .opened()
+            .into_iter()
+            .filter(|shown| session.region_holding(*shown, daemon, pane).is_some())
+            .collect();
+        for shown in &showing {
+            session.windows[*shown].hiding = true;
+        }
+        showing
+    };
     let intent = BackendIntent::MovePane {
         pane: pane.clone(),
         to: MoveDestination::NewTab { tab: mint_tab(), name: None, hidden: true },
     };
-    submit(window, daemon, &intent, Keyboard::StaysPut).map(drop)
+    let hidden = submit(window, daemon, &intent, Keyboard::StaysPut).map(drop);
+    // The daemon's events have reached the mirror by now, and may already have settled each
+    // window on another thread; settling again finds the window full or the flag spent.
+    for shown in showing {
+        if hidden.is_ok() {
+            settle_what_the_window_shows(shown);
+        }
+        poison::lock(&SESSION, "session").windows[shown].hiding = false;
+    }
+    hidden
 }
 
 /// Brings a hidden pane back into this window, in a tab of its own after its others, and puts

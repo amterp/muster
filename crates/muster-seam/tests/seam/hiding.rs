@@ -127,6 +127,40 @@ fn focusing_a_hidden_pane_brings_it_back() {
     );
 }
 
+/// Hiding the only pane a window shows leaves it a fresh tab rather than a blank window - even
+/// in a window whose machine already gave it its first tab, which closing a last pane would not
+/// ask again.
+#[test]
+fn hiding_a_windows_last_pane_opens_a_fresh_tab() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    open_window(&daemon);
+    let first = keyboard().expect("an empty machine's window opened onto a tab of its own");
+
+    assert_ok(&answer(request::Payload::HidePane(HidePane {
+        pane_id: first.clone(),
+        ..HidePane::default()
+    })));
+    until(
+        "the window to open a fresh tab beside the hidden pane",
+        || {
+            hidden() == [first.as_str()]
+                && tabs() == 1
+                && keyboard().is_some_and(|pane| pane != first)
+                && rows().len() == 1
+        },
+        || {
+            format!(
+                "the window lists {:?} in {} tabs, hides {:?}, and has the keyboard on {:?}",
+                rows(),
+                tabs(),
+                hidden(),
+                keyboard()
+            )
+        },
+    );
+}
+
 /// Back steps over a pane hidden since the keyboard left it, rather than failing on it or bringing
 /// it back: hiding it said not to show it, and back is only a way around the window.
 #[test]
