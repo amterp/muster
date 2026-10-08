@@ -41,7 +41,8 @@ Hidden panes follow the window's own tabs, under `hidden`: panes somebody took o
 with `muster pane hide` or made with `pane new --hidden` (`muster docs agents`, "Out of sight").
 No window holds their tabs, so they have no places and no keyboard, and every window lists the
 same ones. In `--json` they are `hidden[]`, in the shape `other_windows[].tabs[]` takes, and not in
-`panes[]`. Every pane there and in `panes[]` carries `quiet`.
+`panes[]`. Every pane there says what its agent is doing in the fields a pane in `panes[]` does -
+`state`, `since`, `facts`, `unread_input` and the rest - and carries `quiet`.
 
 `--json` answers the same thing as one flat list of panes, which is what filtering wants:
 

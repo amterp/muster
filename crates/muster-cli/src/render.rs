@@ -1074,10 +1074,6 @@ fn since_json(since_ms: i64) -> Value {
     if since_ms == 0 { Value::Null } else { json!(since_ms as f64 / 1000.0) }
 }
 
-/// A window as a program reads it: one flat list of panes, each carrying where it sits.
-///
-/// Flat because that is what filtering wants - "every blocked pane" is one pass here and a nested
-/// walk on the wire shape - and each pane names its daemon and its tab so nothing is lost by it.
 /// A tab this window neither places nor draws - another window's, or a hidden one - with its
 /// panes and what each is doing.
 fn unplaced_tab_json(
@@ -1089,21 +1085,50 @@ fn unplaced_tab_json(
         "daemons": tab.daemon_ids,
         "label": tab.label,
         "given_name": tab.given_name,
-        "panes": tab.panes.iter().map(|pane| json!({
+        "panes": tab.panes.iter().map(|pane| with_agent(json!({
             "pane": pane.pane_id,
             "name": (!pane.name.is_empty()).then_some(&pane.name),
             "daemon": pane.daemon_id,
             "label": pane.label,
-            "state": states.get(pane.pane_id.as_str())
-                .map_or("unknown", |agent| agent.state.as_str()),
-            "last_state": states.get(pane.pane_id.as_str())
-                .map(|agent| agent.last_state.as_str())
-                .filter(|last| !last.is_empty()),
             "quiet": pane.quiet,
-        })).collect::<Vec<Value>>(),
+        }), states.get(pane.pane_id.as_str()).copied())).collect::<Vec<Value>>(),
     })
 }
 
+/// A pane's row with what its agent is doing added, the same fields wherever the pane is listed:
+/// a script that reads `unread_input` off a pane in this window reads it off a hidden one too.
+fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) -> Value {
+    let said = json!({
+        "state": agent.map_or("unknown", |agent| agent.state.as_str()),
+        "last_state": agent.map(|agent| agent.last_state.as_str()).filter(|last| !last.is_empty()),
+        "since": agent.map_or(Value::Null, |agent| since_json(agent.since_ms)),
+        "reported": agent.is_some_and(|agent| agent.reported),
+        "unreadable": agent.is_some_and(|agent| agent.unreadable),
+        "facts": agent.and_then(|agent| agent.facts.as_ref()).map_or(Value::Null, facts_json),
+        "progress": agent.and_then(|agent| agent.progress.as_ref()).map_or(Value::Null, |progress| {
+            json!({ "state": progress.state, "percent": progress.percent })
+        }),
+        "rang": agent.is_some_and(|agent| agent.rang),
+        "adapter": agent.map(|agent| agent.adapter.as_str()).filter(|adapter| !adapter.is_empty()),
+        "unread_input": agent.and_then(|agent| agent.unread_input.as_ref()).map_or(Value::Null, |unread| {
+            json!({
+                "bytes": unread.bytes,
+                "since": since_json(unread.since_ms),
+                "program": unread.program,
+                "pid": unread.pid,
+            })
+        }),
+    });
+    if let (Value::Object(row_fields), Value::Object(said)) = (&mut row, said) {
+        row_fields.extend(said);
+    }
+    row
+}
+
+/// A window as a program reads it: one flat list of panes, each carrying where it sits.
+///
+/// Flat because that is what filtering wants - "every blocked pane" is one pass here and a nested
+/// walk on the wire shape - and each pane names its daemon and its tab so nothing is lost by it.
 fn window_json(window: &Window, others: Others) -> Value {
     let keyboard = keyboard_pane(window);
     let states = states(window);
@@ -1125,7 +1150,7 @@ fn window_json(window: &Window, others: Others) -> Value {
             "on_screen": tab.on_screen,
         }));
         for pane in &tab.panes {
-            panes.push(json!({
+            panes.push(with_agent(json!({
                 "pane": pane.pane_id,
                 // What `--pane` and `--to` take besides the id; null only from a daemon before
                 // words, for a pane nobody named.
@@ -1136,25 +1161,6 @@ fn window_json(window: &Window, others: Others) -> Value {
                 "label": pane.label,
                 "given_name": pane.given_name,
                 "subtitle": pane.subtitle,
-                "state": states.get(pane.pane_id.as_str()).map_or("unknown", |agent| agent.state.as_str()),
-                "last_state": states.get(pane.pane_id.as_str()).map(|agent| agent.last_state.as_str()).filter(|last| !last.is_empty()),
-                "since": states.get(pane.pane_id.as_str()).map_or(Value::Null, |agent| since_json(agent.since_ms)),
-                "reported": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.reported),
-                "unreadable": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.unreadable),
-                "facts": states.get(pane.pane_id.as_str()).and_then(|agent| agent.facts.as_ref()).map_or(Value::Null, facts_json),
-                "progress": states.get(pane.pane_id.as_str()).and_then(|agent| agent.progress.as_ref()).map_or(Value::Null, |progress| {
-                    json!({ "state": progress.state, "percent": progress.percent })
-                }),
-                "rang": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.rang),
-                "adapter": states.get(pane.pane_id.as_str()).map(|agent| agent.adapter.as_str()).filter(|adapter| !adapter.is_empty()),
-                "unread_input": states.get(pane.pane_id.as_str()).and_then(|agent| agent.unread_input.as_ref()).map_or(Value::Null, |unread| {
-                    json!({
-                        "bytes": unread.bytes,
-                        "since": since_json(unread.since_ms),
-                        "program": unread.program,
-                        "pid": unread.pid,
-                    })
-                }),
                 "quiet": pane.quiet,
                 "on_screen": pane.on_screen,
                 "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
@@ -1162,7 +1168,7 @@ fn window_json(window: &Window, others: Others) -> Value {
                 // `on_screen` above cannot say different things: a rectangle of no size is a
                 // place, and a pane behind a zoom or in a background tab has none.
                 "rect": places.get(pane.pane_id.as_str()).copied().map_or(Value::Null, rect_json),
-            }));
+            }), states.get(pane.pane_id.as_str()).copied()));
         }
     }
 
@@ -1667,6 +1673,45 @@ mod tests {
         assert!(row("p1").contains("stuck"), "{text}");
         assert!(row("p1").contains("(codex has not read 2817 bytes of input)"), "{text}");
         assert!(!row("p2").contains("has not read"), "{text}");
+    }
+
+    /// A hidden pane's row in `--json` says what its agent is doing in the same fields a row in
+    /// the window does, so one filter reads both.
+    #[test]
+    fn a_hidden_pane_carries_what_its_agent_is_doing() {
+        use muster_proto::{
+            AgentFacts, PaneStateChanged, RosterChanged, RosterPane, RosterTab, UnreadInput,
+            Window,
+        };
+        let window = Window {
+            roster: Some(RosterChanged {
+                hidden: vec![RosterTab {
+                    tab_id: "t9".to_string(),
+                    panes: vec![RosterPane { pane_id: "p9".to_string(), ..RosterPane::default() }],
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            panes: vec![PaneStateChanged {
+                pane_id: "p9".to_string(),
+                state: "stuck".to_string(),
+                since_ms: 1_700_000_000_000,
+                facts: Some(AgentFacts { context_used: Some(0.4), ..AgentFacts::default() }),
+                unread_input: Some(UnreadInput {
+                    bytes: 12,
+                    program: "codex".to_string(),
+                    ..UnreadInput::default()
+                }),
+                ..PaneStateChanged::default()
+            }],
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        let hidden = &json["hidden"][0]["panes"][0];
+        assert_eq!(hidden["state"], "stuck", "{json}");
+        assert_eq!(hidden["since"], 1_700_000_000.0, "{json}");
+        assert_eq!(hidden["unread_input"]["program"], "codex", "{json}");
+        assert!(hidden["facts"]["context_used"].as_f64().is_some_and(|used| used > 0.39), "{json}");
     }
 
     /// A pane whose daemon the window cannot reach says what it read before, and nothing that
