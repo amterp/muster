@@ -180,6 +180,8 @@ pub(crate) enum Reported {
     },
     /// What the program says with XTSHIFTESCAPE, for the pane's record.
     ShiftCapture(Option<bool>),
+    /// The pane's program has stopped reading its input, or is no longer called stopped.
+    UnreadInput(Option<proto::UnreadInput>),
     /// Answered once every report queued before it has been applied ([`Reports::settle`]).
     Settled(Settle),
 }

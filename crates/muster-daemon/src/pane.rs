@@ -36,6 +36,7 @@ use crate::screen::{Cleared, Screen, Settled};
 use crate::session::Turn;
 use crate::session_name::SessionName;
 use crate::stream::{self, Bridge, Refusal, Written};
+use crate::unread::{self, Unread};
 use crate::writer::{self, Encoding, Input, OwnedKey, Writer};
 
 /// Told when a pane's process has ended, with the pane's serial and, when this daemon saw the
@@ -197,6 +198,9 @@ struct Typed {
     someones_text: Option<Instant>,
     /// Whether the last input was a chore of the daemon's own (`Input::Chore`).
     chore: bool,
+    /// How many writes of typed input have ended a line, which a terminal reading line by line
+    /// passes on whole ([`crate::unread`]).
+    lines: u64,
 }
 
 /// How soon after a chore of the daemon's own the agent going to work is taken for the chore's
@@ -344,6 +348,16 @@ impl PaneIo {
     fn chores_turn(&self, now: Instant) -> bool {
         let typed = poison::lock(&self.typed, "daemon.pane.typed");
         typed.chore && typed.input.is_some_and(|at| now.saturating_duration_since(at) < CHORE_TURN)
+    }
+
+    /// Typed input holding a Return, or a newline, is about to be written.
+    pub(crate) fn wrote_line(&self) {
+        poison::lock(&self.typed, "daemon.pane.typed").lines += 1;
+    }
+
+    /// How many writes of typed input have ended a line.
+    pub(crate) fn lines_written(&self) -> u64 {
+        poison::lock(&self.typed, "daemon.pane.typed").lines
     }
 
     pub(crate) fn input_at(&self) -> Option<Instant> {
@@ -879,6 +893,7 @@ impl Pane {
             .map_err(failed)?;
 
         let reader = Reader {
+            pane: pane.clone(),
             io: Arc::clone(&io),
             wake: wake_read,
             ended: (!child).then(|| Arc::clone(watching.ended)),
@@ -894,6 +909,12 @@ impl Pane {
             detection,
             detecting: Arc::clone(watching.detecting),
             unsent: None,
+            unread: if record.unread_input.is_some() {
+                Unread::stopped(unread::stuck_after(), io.foreground_group(), Instant::now())
+            } else {
+                Unread::new(unread::stuck_after())
+            },
+            unread_unsent: None,
         };
         std::thread::Builder::new()
             .name(format!("read {pane}"))
@@ -1032,6 +1053,8 @@ fn first_published(carried: Option<&proto::handoff::Detection>) -> proto::AgentS
 }
 
 struct Reader {
+    /// The pane's name, for what its reader logs.
+    pane: String,
     io: Arc<PaneIo>,
     wake: OwnedFd,
     /// Told when the PTY closes, for a pane with no child to wait for.
@@ -1045,6 +1068,10 @@ struct Reader {
     unsent: Option<Reported>,
     /// The agent state detection last published.
     published: proto::AgentState,
+    /// Whether the pane's program has stopped reading its input.
+    unread: Unread,
+    /// What [`Reader::look_at_input`] published that the queue dropped, to send again.
+    unread_unsent: Option<Reported>,
 }
 
 impl Reader {
@@ -1108,6 +1135,8 @@ impl Reader {
             if now >= self.detection.due() {
                 self.detect(now);
             }
+            // Ridden on detection's ticks, which come at least twice a second.
+            self.look_at_input(now);
             if watched[0].revents == 0 {
                 continue;
             }
@@ -1161,6 +1190,26 @@ impl Reader {
         publish_agent(&self.reports, self.io.serial, published, &mut self.unsent);
     }
 
+    /// Looks at what the pane's program has left unread, when that is worth a look, and
+    /// publishes it having stopped reading or read again.
+    fn look_at_input(&mut self, now: Instant) {
+        let input_at = self.io.input_at();
+        let change = if self.unread.due(input_at, now) {
+            let look = unread::Look {
+                group: self.io.foreground_group(),
+                queued: pty::queued(self.io.master.as_fd()).ok(),
+                lines: self.io.lines_written(),
+            };
+            self.unread.looked(look, input_at, now).map(|change| (change, look.group))
+        } else {
+            None
+        };
+        let published = change.map(|(change, group)| {
+            Reported::UnreadInput(said_unread(&self.pane, change, group, now))
+        });
+        publish_agent(&self.reports, self.io.serial, published, &mut self.unread_unsent);
+    }
+
     /// Publishes the directory the pane's program is in: the kernel's word for a shell that
     /// does not say, or again what a shell that does said last, if the queue dropped it.
     fn check_directory(&mut self) {
@@ -1173,6 +1222,62 @@ impl Reader {
             self.heard.moved_to(directory, self.io.serial, &self.reports);
         }
     }
+}
+
+/// What the pane's record says of a change in its program's reading, logged as it is said.
+fn said_unread(
+    pane: &str,
+    change: unread::Change,
+    group: Option<i32>,
+    now: Instant,
+) -> Option<proto::UnreadInput> {
+    match change {
+        unread::Change::Stopped { bytes, since } => {
+            let (program, pid) = group.and_then(leader).unwrap_or_default();
+            let waited = now.saturating_duration_since(since);
+            log::warn(
+                "daemon.pane.unread_input",
+                fields! {
+                    "pane" => pane,
+                    "bytes" => bytes,
+                    "program" => program,
+                    "pid" => pid,
+                    "unread_ms" => waited.as_millis(),
+                    "impact" => "the pane's program is not reading what is typed or sent to it, \
+                                 so it paints nothing in answer; its agent reads as stuck, and \
+                                 messages for it wait until it reads",
+                    "check" => "whether the program is hung or waiting on something of its own: \
+                                interrupting it, or ending it and resuming its session, are the \
+                                ways out",
+                },
+            );
+            let since_ms = std::time::SystemTime::now()
+                .checked_sub(waited)
+                .and_then(|since| since.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX));
+            Some(proto::UnreadInput { bytes, since_ms, program, pid })
+        }
+        unread::Change::Cleared { stopped_for, why } => {
+            log::info(
+                "daemon.pane.reading_again",
+                fields! {
+                    "pane" => pane,
+                    "stopped_ms" => stopped_for.as_millis(),
+                    "why" => why.as_str(),
+                },
+            );
+            None
+        }
+    }
+}
+
+/// The program leading a process group, as its own `argv[0]` names it, else as the kernel does,
+/// and its pid.
+fn leader(group: i32) -> Option<(String, i32)> {
+    use muster_detect::Processes;
+    let job = muster_detect::System.leader(u32::try_from(group).ok()?)?;
+    let leader = job.processes.into_iter().find(|process| process.pid == job.group)?;
+    Some((leader.argv0.unwrap_or(leader.name), i32::try_from(leader.pid).ok()?))
 }
 
 /// Sends what detection just published, or else what the queue last dropped. The detector counts

@@ -1854,36 +1854,38 @@ impl Session {
         let name = self.panes[index].record.pane.clone();
         let pane = &mut self.panes[index];
         let record = &mut pane.record;
-        match report.what {
-            Reported::Title(title) => {
-                if record.title != title {
-                    record.title = title;
-                    let record = record.clone();
-                    self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
-                }
-            }
+        // What sets one field of the record, and is news only when it changes it.
+        let set = match report.what {
+            Reported::Title(title) => Ok(replaced(&mut record.title, title)),
             Reported::Cwd(directory) => {
-                let cwd = directory.display().to_string();
-                if record.cwd != cwd {
-                    record.cwd = cwd;
+                Ok(replaced(&mut record.cwd, directory.display().to_string()))
+            }
+            Reported::ShiftCapture(capture) => Ok(replaced(&mut record.shift_capture, capture)),
+            Reported::UnreadInput(unread) => Ok(replaced(&mut record.unread_input, unread)),
+            what => Err(what),
+        };
+        let what = match set {
+            Ok(changed) => {
+                if changed {
                     let record = record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
                 }
+                return;
             }
+            Err(what) => what,
+        };
+        match what {
+            // Set above; and a settle is answered by the publisher, never applied here.
+            Reported::Title(_)
+            | Reported::Cwd(_)
+            | Reported::ShiftCapture(_)
+            | Reported::UnreadInput(_)
+            | Reported::Settled(_) => {}
             Reported::Shown(effect) => {
                 self.emit(Payload::PaneEffect(proto::PaneEffect {
                     pane: name,
                     effect: Some(effect),
                 }));
-            }
-            // Answered by the publisher, never applied here.
-            Reported::Settled(_) => {}
-            Reported::ShiftCapture(capture) => {
-                if record.shift_capture != capture {
-                    record.shift_capture = capture;
-                    let record = record.clone();
-                    self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
-                }
             }
             Reported::PasteHeld(text) => {
                 self.emit(Payload::PasteHeld(proto::PasteHeld { pane: name, text }));
@@ -3019,6 +3021,15 @@ fn unreadable_warning(pane: &str, agent: Option<&str>) {
 /// `before` to `after`. An agent that was working or waiting on you has finished when it goes
 /// idle or leaves the pane, which is how a crash or a one-shot run ends; working or waiting
 /// again is new work, which a view shows as that instead. An idle agent leaving changes nothing.
+/// Sets `field` to `value`, saying whether that changed it.
+fn replaced<T: PartialEq>(field: &mut T, value: T) -> bool {
+    if *field == value {
+        return false;
+    }
+    *field = value;
+    true
+}
+
 fn finished_unseen(
     before: (Option<&str>, proto::AgentState),
     after: (Option<&str>, proto::AgentState),

@@ -386,6 +386,12 @@ impl Writer {
                 io.wrote_input(Instant::now(), someones, chore);
             }
         };
+        if typed
+            && bytes.iter().any(|&byte| byte == b'\r' || byte == b'\n')
+            && let Some(io) = self.io.upgrade()
+        {
+            io.wrote_line();
+        }
         wrote_input();
         if let Err(error) = write_all(master, wake, &bytes, wrote_input) {
             if error.kind() != io::ErrorKind::BrokenPipe {

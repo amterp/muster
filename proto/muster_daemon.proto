@@ -1229,6 +1229,25 @@ message Pane {
   // agent reports or ends a turn without having reported, and again when the agent changes or
   // leaves. Since 1.3.
   Adapter adapter = 14;
+  // Since 1.5. The program in the foreground of the pane's terminal has stopped reading it:
+  // having been seen to read, it has left input unread for several seconds and read nothing
+  // since. Absent while it reads, and whenever the daemon cannot tell. A view shows a pane whose
+  // agent this holds as stuck.
+  UnreadInput unread_input = 15;
+}
+
+// Input a pane's program has left unread (`Pane.unread_input`), as it stood when the daemon
+// first called it stopped. Not updated while it stays stopped.
+message UnreadInput {
+  // Bytes waiting in the terminal for the program to read: whole lines only, when the terminal
+  // is line by line.
+  uint32 bytes = 1;
+  // Since when, in milliseconds since the Unix epoch, by the daemon's clock.
+  uint64 since_ms = 2;
+  // The foreground process group's leader: the program, as its own argv[0] names it, else as
+  // the kernel does.
+  string program = 3;
+  int32 pid = 4;
 }
 
 // Whether a pane's agent reports itself (`PaneRequest.Report`).

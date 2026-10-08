@@ -158,6 +158,81 @@ pub(crate) fn foreground_group(master: BorrowedFd<'_>) -> Option<i32> {
     (group > 0).then_some(group)
 }
 
+/// What a pane's terminal holds for its program to read: how many bytes, and whether the
+/// terminal is line by line, in which case only whole lines count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Queued {
+    pub(crate) bytes: u32,
+    pub(crate) canonical: bool,
+}
+
+/// Reads what the pane's program has not yet read, by opening the terminal's slave side for a
+/// moment. Only the slave says it: the master's queue is the program's output.
+///
+/// Opened and closed each time, never kept: the reader learns a pane has ended from the master
+/// reading EOF, which comes only once every descriptor of the slave is closed.
+pub(crate) fn queued(master: BorrowedFd<'_>) -> io::Result<Queued> {
+    let name = slave_name(master)?;
+    // SAFETY: `name` is a NUL-terminated path. O_NOCTTY keeps the terminal from becoming this
+    // process's controlling terminal; O_NONBLOCK keeps a slow open from holding the reader.
+    let fd = unsafe {
+        libc::open(
+            name.as_ptr(),
+            libc::O_RDWR | libc::O_NOCTTY | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
+    if fd == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: open succeeded, so this function owns the descriptor, and closes it on return.
+    let slave = unsafe { OwnedFd::from_raw_fd(fd) };
+    let mut bytes: libc::c_int = 0;
+    // SAFETY: FIONREAD writes one int, which outlives the call. `as _` as for TIOCSCTTY.
+    #[allow(clippy::cast_lossless)]
+    if unsafe { libc::ioctl(slave.as_raw_fd(), libc::FIONREAD as _, &raw mut bytes) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut modes = std::mem::MaybeUninit::<libc::termios>::uninit();
+    // SAFETY: tcgetattr fills the termios it is given. The slave's, not the master's: on Linux
+    // the master has modes of its own.
+    if unsafe { libc::tcgetattr(slave.as_raw_fd(), modes.as_mut_ptr()) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: tcgetattr succeeded and filled it.
+    let modes = unsafe { modes.assume_init() };
+    Ok(Queued {
+        bytes: u32::try_from(bytes).unwrap_or(0),
+        canonical: modes.c_lflag & libc::ICANON != 0,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn slave_name(master: BorrowedFd<'_>) -> io::Result<std::ffi::CString> {
+    let mut buffer = [0 as libc::c_char; 128];
+    // SAFETY: the buffer is as long as said, and ptsname_r NUL-terminates what it writes.
+    let named = unsafe { libc::ptsname_r(master.as_raw_fd(), buffer.as_mut_ptr(), buffer.len()) };
+    if named != 0 {
+        return Err(io::Error::from_raw_os_error(named));
+    }
+    // SAFETY: ptsname_r succeeded, so the buffer holds a NUL-terminated name.
+    Ok(unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()) }.to_owned())
+}
+
+#[cfg(target_vendor = "apple")]
+fn slave_name(master: BorrowedFd<'_>) -> io::Result<std::ffi::CString> {
+    // TIOCPTYGNAME's buffer is 128 bytes, as its number encodes.
+    let mut buffer = [0 as libc::c_char; 128];
+    // SAFETY: TIOCPTYGNAME writes at most 128 bytes, NUL-terminated, into the buffer.
+    #[allow(clippy::cast_lossless)]
+    if unsafe { libc::ioctl(master.as_raw_fd(), libc::TIOCPTYGNAME as _, buffer.as_mut_ptr()) }
+        == -1
+    {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the ioctl succeeded, so the buffer holds a NUL-terminated name.
+    Ok(unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()) }.to_owned())
+}
+
 /// The session the terminal belongs to, which is its leader's pid, or None once that leader has
 /// gone and the terminal belongs to no session.
 pub(crate) fn session_of(master: BorrowedFd<'_>) -> Option<i32> {

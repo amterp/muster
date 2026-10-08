@@ -34,6 +34,7 @@ mod spawn;
 mod ssh;
 mod stream;
 mod tree;
+mod unread;
 mod writer;
 
 use std::fs::File;
