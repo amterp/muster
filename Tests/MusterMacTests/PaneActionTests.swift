@@ -582,6 +582,14 @@ struct AppMenuTests {
     #expect(MusterWindow.textBeingEdited(by: nil) == nil, "nothing has the keyboard")
   }
 
+  @Test("a bell bounces the Dock once, in the background, and never for a quiet pane")
+  func aBellBouncesTheDock() {
+    #expect(MusterWindow.bellBouncesDock(rang: true, rangBefore: false, appActive: false, quiet: false))
+    #expect(!MusterWindow.bellBouncesDock(rang: true, rangBefore: true, appActive: false, quiet: false))
+    #expect(!MusterWindow.bellBouncesDock(rang: true, rangBefore: false, appActive: true, quiet: false))
+    #expect(!MusterWindow.bellBouncesDock(rang: true, rangBefore: false, appActive: false, quiet: true))
+  }
+
   @MainActor
   @Test("a rename sends the name, and an empty one asks for the name to be taken away")
   func renamingSendsWhatWasTyped() {

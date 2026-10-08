@@ -380,12 +380,20 @@ public final class MusterWindow: NSObject {
     // painted, so the tab somebody switches back to is right on its first frame rather than
     // on the agent's next transition.
     surfaces.chrome(for: pane)?.apply(paneID: pane.pane, state: agent.state)
-    // One Dock bounce per bell nobody heard, as Terminal and Ghostty do for a bell in the
-    // background: informational, so it stops by itself rather than until Muster is clicked.
-    if agent.rang && !rangBefore && !NSApp.isActive {
+    if Self.bellBouncesDock(
+      rang: agent.rang, rangBefore: rangBefore, appActive: NSApp.isActive,
+      quiet: namedPane(pane)?.quiet ?? false)
+    {
       NSApp.requestUserAttention(.informationalRequest)
     }
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
+  }
+
+  /// One Dock bounce per bell nobody heard, as Terminal and Ghostty do for a bell in the
+  /// background: informational, so it stops by itself rather than until Muster is clicked. Never
+  /// for a quiet pane, whose bell only marks its row, a mark seen by looking.
+  nonisolated static func bellBouncesDock(rang: Bool, rangBefore: Bool, appActive: Bool, quiet: Bool) -> Bool {
+    rang && !rangBefore && !appActive && !quiet
   }
 
   /// Everything the daemons hold, whether or not this window is showing it.

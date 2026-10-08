@@ -340,7 +340,8 @@ message ShowPane {
 }
 
 // Makes a pane quiet - nothing about it is raised for the person, no banner and no ask, while
-// its state still shows - or lets it ask again. The pane's daemon keeps it, so every window
+// its state still shows - or lets it ask again. A quiet pane's bell still marks its row, a mark
+// seen only by looking, and never bounces the Dock. The pane's daemon keeps it, so every window
 // agrees and it outlives a restart.
 message QuietPane {
   string daemon_id = 1;

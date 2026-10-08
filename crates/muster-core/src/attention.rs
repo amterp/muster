@@ -511,7 +511,8 @@ impl Attention {
     }
 
     /// A program in the pane rang the bell. Returns whether that marked the pane, which it does
-    /// unless somebody is looking at it or it is marked already.
+    /// unless somebody is looking at it or it is marked already. A quiet pane is marked too: the
+    /// mark is seen only by looking, and the shell leaves a quiet pane's bell off the Dock.
     pub fn bell(&mut self, pane: &PaneKey) -> bool {
         !self.seen(pane) && self.rang.insert(pane.clone())
     }
