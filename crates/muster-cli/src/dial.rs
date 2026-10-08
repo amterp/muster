@@ -17,6 +17,7 @@ use std::io::{ErrorKind, Read};
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
+use muster_core::pane_address::{self, Address, Candidate};
 use muster_proto::frame::{LARGEST_MESSAGE, read_frame, write_frame};
 use muster_proto::{Names, ReadWindow, Request, Response, request, response};
 use prost::Message;
@@ -553,26 +554,38 @@ fn subject(request: &Request) -> Option<Names<'_>> {
 /// Whether a window's app holds a tab or pane, in this window or in any other of its windows,
 /// open or closed: a closed window's tabs are still its, and its agents still running.
 fn holds(window: &muster_proto::Window, subject: Names<'_>) -> bool {
-    let mut tabs = window
+    match subject {
+        Names::Tab(id) => tabs(window).any(|tab| tab.tab_id == id),
+        Names::Pane(typed) => {
+            let candidates = panes_held(window);
+            match pane_address::resolve(typed, &candidates) {
+                Address::AsTyped => candidates.iter().any(|candidate| candidate.pane == typed),
+                // Several of its panes go by the name: the window refuses it, saying which.
+                Address::Pane(_) | Address::Ambiguous(_) => true,
+            }
+        }
+    }
+}
+
+/// Every tab a window's app holds, in this window or any other of its windows, open or closed.
+fn tabs(window: &muster_proto::Window) -> impl Iterator<Item = &muster_proto::RosterTab> {
+    window
         .roster
         .iter()
         .flat_map(|roster| roster.tabs.iter().chain(&roster.hidden))
-        .chain(window.windows.iter().flat_map(|other| &other.tabs));
-    tabs.any(|tab| match subject {
-        Names::Tab(id) => tab.tab_id == id,
-        Names::Pane(typed) => tab.panes.iter().any(|pane| answers_to(pane, typed)),
-    })
+        .chain(window.windows.iter().flat_map(|other| &other.tabs))
 }
 
-/// Whether a pane answers to what somebody typed for it: its id, its name, or its name and the
-/// machine holding it (`otter@devenv`). Which pane among several is the window's to settle.
-fn answers_to(pane: &muster_proto::RosterPane, typed: &str) -> bool {
-    pane.pane_id == typed
-        || (!pane.name.is_empty()
-            && (pane.name == typed
-                || typed
-                    .rsplit_once('@')
-                    .is_some_and(|(name, machine)| pane.name == name && pane.daemon_id == machine)))
+/// Every pane a window's app holds, for reading a pane somebody typed against.
+pub(crate) fn panes_held(window: &muster_proto::Window) -> Vec<Candidate<'_>> {
+    tabs(window)
+        .flat_map(|tab| &tab.panes)
+        .map(|pane| Candidate {
+            pane: &pane.pane_id,
+            name: Some(pane.name.as_str()).filter(|name| !name.is_empty()),
+            machine: &pane.daemon_id,
+        })
+        .collect()
 }
 
 /// Why no window answered, as [`Trouble::NoWindow`] - or, when a socket refused this process,
