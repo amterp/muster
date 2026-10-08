@@ -667,3 +667,47 @@ fn next_json(lines: &Receiver<String>, what: &str) -> Value {
     serde_json::from_str(&line)
         .unwrap_or_else(|error| panic!("a watch line under --json is not JSON ({error}): {line:?}"))
 }
+
+/// A daemon that takes a request to make a pane and hangs up may have made it, under the id the
+/// CLI minted and sent: the CLI says which, as a window does, rather than invite a second one.
+#[test]
+fn a_pane_new_the_daemon_never_answers_names_the_pane_it_may_have_made() {
+    use std::os::unix::net::UnixListener;
+    let root = std::env::temp_dir().join(format!("muster-hangs-up-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("home/state")).unwrap();
+    let socket = root.join("daemon.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            let _ = proto::connection::receive::<proto::Hello>(&mut stream);
+            let welcome =
+                proto::Welcome { protocol: Some(proto::version::PROTOCOL), ..Default::default() };
+            let answer =
+                proto::HelloAnswer { answer: Some(proto::hello_answer::Answer::Welcome(welcome)) };
+            let _ = proto::connection::send(&mut stream, &answer);
+            // Takes the request, then hangs up without a word.
+            let _ = proto::connection::receive::<proto::Request>(&mut stream);
+        }
+    });
+
+    let made = Command::new(env!("CARGO_BIN_EXE_muster"))
+        .args(["--json", "pane", "new"])
+        .env_clear()
+        .env("HOME", root.join("home"))
+        .env("MUSTER_HOME", root.join("home"))
+        .env("MUSTER_SOCKET", root.join("quit.sock"))
+        .env("MUSTER_DAEMON_SOCKET", &socket)
+        .stdin(Stdio::null())
+        .output()
+        .expect("the muster binary runs");
+    let error: Value = serde_json::from_str(&complained(&made)).unwrap();
+    assert_eq!(made.status.code(), Some(4), "{error}");
+    let pane = error["pane"].as_str().unwrap_or_else(|| panic!("names the pane: {error}"));
+    let said = error["error"].as_str().unwrap_or_default();
+    assert!(
+        said.contains(&format!("make pane {pane}")) && said.contains("may make a second one"),
+        "{said}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

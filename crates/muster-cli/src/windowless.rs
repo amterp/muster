@@ -518,6 +518,9 @@ fn make_pane(
             )));
         }
     };
+    if split.hidden && split.take_focus {
+        return Ok(failure(muster_core::making::HIDDEN_AND_FOCUSED.to_string()));
+    }
     let beside = said(&split.pane_id);
     let mut cwd = said(&split.cwd);
     let placement = match &beside {
@@ -561,10 +564,19 @@ fn make_pane(
         },
     ));
     let answer = match (split.hidden, split.quiet) {
-        (true, _) => asked_of_one_that_hides(socket, create, "make a hidden pane")?,
-        (false, true) => asked_of_one_that_hides(socket, create, "make a quiet pane")?,
-        (false, false) => asked(socket, create)?,
+        (true, _) => asked_of_one_that_hides(socket, create, "make a hidden pane"),
+        (false, true) => asked_of_one_that_hides(socket, create, "make a quiet pane"),
+        (false, false) => asked(socket, create),
     };
+    // The id was minted here and sent with the request, so a daemon that took it and hung up
+    // may have made exactly that pane: say which, as the window does, rather than invite a retry.
+    let answer = answer.map_err(|trouble| match trouble {
+        Trouble::Unanswered(detail) => Trouble::MayHaveMade {
+            reason: muster_core::making::may_have_made(&made, detail.trim_end_matches('.')),
+            pane: made.clone(),
+        },
+        trouble => trouble,
+    })?;
     Ok(match answer.outcome() {
         daemon_proto::Outcome::Done => Response {
             payload: Some(response::Payload::Made(muster_proto::Made { pane_id: made })),
@@ -1179,6 +1191,23 @@ mod tests {
             daemon_id: "devenv".into(),
             ..Default::default()
         }));
+    }
+
+    /// A pane cannot be made hidden and take the keyboard, refused in the window's words before
+    /// any daemon is asked: the socket here does not exist.
+    #[test]
+    fn a_pane_made_hidden_and_focused_is_refused_as_a_window_refuses_it() {
+        let split = muster_proto::SplitPane {
+            side: "down".into(),
+            hidden: true,
+            take_focus: true,
+            ..Default::default()
+        };
+        let made = make_pane(Path::new("/nonexistent/daemon.sock"), &split, &BTreeMap::new());
+        let Ok(Response { payload: Some(response::Payload::Failure(failure)) }) = made else {
+            panic!("refused: {made:?}");
+        };
+        assert_eq!(failure.reason, muster_core::making::HIDDEN_AND_FOCUSED);
     }
 
     /// The words a window paints, from a daemon's record with nobody having looked at it.

@@ -1105,7 +1105,7 @@ fn held_elsewhere(pane: &PaneId, holder: &DaemonId, named: &str) -> Response {
 /// pressing the key means is "where I already am", which the mirror already knows.
 fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
     if create.hidden && create.take_focus {
-        return Response::failure(HIDDEN_AND_FOCUSED);
+        return Response::failure(muster_core::making::HIDDEN_AND_FOCUSED);
     }
     let making = Making::of(&create.cwd, &create.run, &create.name, create.quiet);
     let keyboard = if create.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
@@ -1138,11 +1138,6 @@ fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
     };
     open_a_tab(window, &target.daemon, target.pane.as_ref(), keyboard, making, create.hidden)
 }
-
-/// Why a pane made hidden cannot also take the keyboard.
-const HIDDEN_AND_FOCUSED: &str = "a pane cannot be made hidden and take the keyboard: no window \
-     shows a hidden pane, so there would be nothing for the keyboard to be on. Nothing was made. \
-     Make it hidden, or make it with the keyboard and hide it later.";
 
 /// What a request making a pane asks of the pane itself, beyond where it goes.
 struct Making {
@@ -1836,12 +1831,8 @@ fn unanswered(detail: &str, made: Option<&PaneId>) -> Response {
              holds now, and `muster pane read` what a pane has on it."
         ));
     };
-    let mut response = Response::unanswered(format!(
-        "the daemon was asked to make pane {pane} and never said what came of it ({detail}), so \
-         it may well exist and be running what it was asked to run. If it does, `muster window` \
-         lists it under that name once the daemon's own event arrives, and `muster pane close \
-         --pane {pane}` ends it. Asking again may make a second one."
-    ));
+    let mut response =
+        Response::unanswered(muster_core::making::may_have_made(&pane.to_string(), detail));
     if let Some(response::Payload::Unanswered(unanswered)) = response.payload.as_mut() {
         unanswered.pane_id = pane.to_string();
     }
@@ -2128,7 +2119,7 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
         ));
     };
     if split.hidden && split.take_focus {
-        return Response::failure(HIDDEN_AND_FOCUSED);
+        return Response::failure(muster_core::making::HIDDEN_AND_FOCUSED);
     }
     let keyboard = if split.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
     // Empty is the daemon's own rule rather than this process's directory, and for a split

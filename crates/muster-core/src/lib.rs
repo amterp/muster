@@ -19,6 +19,7 @@ pub mod font;
 pub mod harnesses;
 pub mod input;
 pub mod intent;
+pub mod making;
 pub mod message_groups;
 pub mod mirror;
 pub mod names;
