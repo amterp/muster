@@ -596,9 +596,11 @@ machine. Older means a lower version number, and 0.10.1 is the first release who
 muster-daemon, so the first handoff between releases is from 0.10.1 to 0.11.0. The first
 time, or when that directory holds another build, Muster copies its own daemon there over the same
 ssh connection; nothing is downloaded. Linux on x86_64 or aarch64 and macOS on Apple silicon are the
-machines it carries a daemon for, and the run log says so for any other. Naming a `socket` in a
-`[[daemon]]` block still attaches whatever is listening at it, on either machine, and never asks it
-to hand over - that is how you ask for somebody else's daemon on purpose.
+machines it carries a daemon for, and the run log says so for any other. A daemon Muster would
+start this way that stops answering - a devenv that rebooted, a daemon that was killed - is started
+again by the open window, and its panes come back from what it saved. Naming a `socket` in a
+`[[daemon]]` block still attaches whatever is listening at it, on either machine, never asks it to
+hand over, and never starts it again - that is how you ask for somebody else's daemon on purpose.
 
 **A machine that is slow or away does not hold the window closed.** Muster waits a second for the
 daemons the file names, opens the window without any that have not answered by then, and their

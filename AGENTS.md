@@ -22,7 +22,8 @@ you save it, a CLI that drives the window from inside a pane on either machine a
 dialog, a notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH
 machine in the same window - where one tab can hold a
 laptop pane beside a devenv pane - several windows that each hold their own tabs and hand them to each other, a newer
-Muster taking over an older daemon's panes with their agents still running, agents posting messages to each other and
+Muster taking over an older daemon's panes with their agents still running, a machine whose daemon died shown as
+`unreachable` on every pane and its daemon started again, agents posting messages to each other and
 being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to
 both, a group held up on a member noticed and told why once, a message for you raising a notification that opens
 the conversation, the groups you are in listed in the sidebar with what is unread in each and left or deleted from a

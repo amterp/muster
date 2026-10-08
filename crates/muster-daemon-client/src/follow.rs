@@ -96,6 +96,10 @@ pub struct Connection {
     /// the follower answers by opening another. Guarded by `ended`'s lock, so the follower
     /// cannot miss the wake.
     input_closed: AtomicBool,
+    /// Set when the daemon is known to be answering again, so the follower dials now rather than
+    /// at the end of a backoff that may have reached thirty seconds. Guarded by `ended`'s lock,
+    /// for the reason `input_closed` is.
+    retry_now: AtomicBool,
     wake: Condvar,
     /// How many snapshots the mirror has been rebuilt from, for a caller waiting on the first.
     snapshots: Mutex<u64>,
@@ -183,6 +187,14 @@ impl Follower {
 
     pub fn connection(&self) -> Arc<Connection> {
         Arc::clone(&self.connection)
+    }
+
+    /// Dials the daemon now, if the follower is waiting to try it again: something has just
+    /// started it, and its panes should not wait out the backoff to come back.
+    pub fn retry_now(&self) {
+        let _ended = lock(&self.connection.ended);
+        self.connection.retry_now.store(true, Ordering::Relaxed);
+        self.connection.wake.notify_all();
     }
 
     /// Tells the daemon a window with the keyboard is showing these panes, and says whether it
@@ -542,9 +554,10 @@ fn wait_for_end(connection: &Connection) -> Woke {
 
 fn sleep_unless_stopping(connection: &Connection, wait: Duration) {
     let ended = lock(&connection.ended);
-    let _ = connection
-        .wake
-        .wait_timeout_while(ended, wait, |_| !connection.stopping.load(Ordering::Relaxed));
+    let _ = connection.wake.wait_timeout_while(ended, wait, |_| {
+        !connection.stopping.load(Ordering::Relaxed)
+            && !connection.retry_now.swap(false, Ordering::Relaxed)
+    });
 }
 
 /// Sends each setting that differs from `previous`, or every one when there is none, and hands

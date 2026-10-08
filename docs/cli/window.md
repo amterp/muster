@@ -437,7 +437,8 @@ attached has none yet, and with nothing attached at all the plain answer says so
 - `socket` is the path this window reaches it on. Over SSH that is the near end of the forward
   rather than the path over there, because it is the one you could dial from here.
 - `started_by_muster` says whether this window started the daemon or attached to one that was
-  already answering. The second is ordinary and is the one worth knowing: a Muster launched
+  already answering. A daemon Muster manages that stops answering is started again by the
+  window, and is then `true`. The second is ordinary and is the one worth knowing: a Muster launched
   today adopts a daemon started yesterday if it is still answering, so what is in it may
   predate the window.
 - `panes` and `directories` say how much it holds and where.

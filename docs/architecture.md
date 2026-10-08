@@ -1098,6 +1098,12 @@ Health is per-connection *and* per-channel, and it is state, not an error path:
   recovery is a fresh snapshot. The two recover independently.
 - **disconnected**: render the labeled last mirror; reconnect resyncs everything.
 
+A daemon Muster manages - its own on this machine, or the one it installs on an ssh host - that stops answering is
+started again by the window, on the reconnect backoff, without a relaunch. Each attempt asks first: a daemon that
+answers is adopted, and one that holds its socket without answering is wedged rather than gone and is never started
+over, which is the case "stale" above describes. A socket named in the config is somebody's own daemon and is only
+ever dialed. The started daemon restores its panes from its saved state, and the restart is reported as any other.
+
 A daemon that has not answered by the time the window opens is the same case from the other end. The window waits
 one second for the daemons its config names, each attached on a thread of its own, and opens without the rest; a
 daemon that arrives later is reconciled into the open window like any first snapshot, and one that cannot be reached
@@ -1205,7 +1211,7 @@ and because the layer that can honestly answer each is different.
 | Muster quits or crashes | nothing | nobody needs to; the daemon owns the PTYs, and holds the panes' permissions with them |
 | the connection drops (VPN, lid, SSH) | nothing; the view goes stale and resyncs | the degradation model above |
 | the daemon restarts | every process; scrollback; titles | the daemon restores its tabs, names and directories; the window says what was lost |
-| the machine reboots | the same, plus the daemon must come back | as above |
+| the machine reboots | the same, plus the daemon must come back | the window starts a daemon it manages again once it stops answering; then as above |
 | the machine is gone | local work only | remote daemons keep running |
 
 **A tab that spans two machines is written down on both, so no tab depends on a file of Muster's.** A tab holding a

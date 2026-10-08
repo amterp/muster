@@ -68,6 +68,7 @@ use crate::{command, convert, ffi, watchdog};
 pub(crate) mod attaching;
 pub(crate) mod lifecycle;
 pub(crate) mod problems;
+mod starting_again;
 
 use attaching::{
     APPLIED_DAEMONS, ATTACH_ENDED, ATTACHES, FIRST_SNAPSHOT, Implicitly, SET_GRACE, Unattached,
@@ -239,6 +240,9 @@ struct Reached {
     handover: Option<Handover>,
     /// Where this window answers on that daemon's machine, for a daemon on another one.
     far_window: Option<String>,
+    /// How to start it again once it has gone, for a daemon Muster manages; `None` for a
+    /// socket somebody named, which is theirs.
+    start_again: Option<starting_again::StartAgain>,
 }
 
 /// An older daemon's panes, to be handed to this build's daemon once the window follows it.
@@ -587,48 +591,28 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, Unattached> 
             started: false,
             handover: None,
             far_window: None,
+            start_again: None,
         }),
         Endpoint::Local { socket_path: None } => {
-            let inherited: BTreeMap<String, String> = std::env::vars().collect();
-            let home =
-                install::muster_home(|name| inherited.get(name).cloned()).ok_or_else(|| {
-                    Unattached::Lasting(
-                        "Muster cannot work out where its daemon's socket goes, because nothing \
-                         in the environment says where home is - neither MUSTER_HOME nor HOME. \
-                         This window will render nothing. Give the daemon a `socket` in the \
-                         config file to say outright."
-                            .to_string(),
-                    )
-                })?;
-            let socket = install::socket_path(&home);
-            let binary = runnable_daemon_binary()?;
-            let given = environment::for_daemon(
-                &inherited,
-                platform_locale().as_deref(),
-                commands_path().as_deref(),
-            );
-            let data = poison::lock(&startup::DAEMON_DATA, "daemon-data").clone();
-            let (reached, welcome) = launch::ensure_running(&launch::Launch {
-                binary: binary.as_ref(),
-                data: data.as_deref().map(Path::new),
-                socket: &socket,
-                environment: &given,
-                impact: "this window has no session behind it",
-            })?;
-            let handover = (reached == launch::Reached::Adopted)
+            let here = start_here("this window has no session behind it")?;
+            let handover = (here.reached == launch::Reached::Adopted)
                 .then(|| {
-                    handover_for(daemon, &welcome, binary.clone().into(), data.map(Into::into))
+                    handover_for(
+                        daemon,
+                        &here.welcome,
+                        here.binary.into(),
+                        here.data.map(Into::into),
+                    )
                 })
                 .flatten();
-            let socket_path = socket.display().to_string();
-            // Written down only when Muster started it. An adopted daemon belongs to whoever
-            // started it, and offering it in Muster's own census would be offering somebody a
-            // process to end on Muster's word.
-            let started = reached == launch::Reached::Started;
-            if started && let Some(directory) = daemon_records_path() {
-                records::started(&directory, &socket_path);
-            }
-            Ok(Reached { socket_path, tunnel: None, started, handover, far_window: None })
+            Ok(Reached {
+                socket_path: here.socket_path,
+                tunnel: None,
+                started: here.reached == launch::Reached::Started,
+                handover,
+                far_window: None,
+                start_again: Some(starting_again::StartAgain::Here),
+            })
         }
         // Somebody's own daemon on another machine: forwarded as asked for, and left alone.
         Endpoint::Ssh { host, options, socket_path: Some(path) } => {
@@ -641,6 +625,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, Unattached> 
                 started: false,
                 handover: None,
                 far_window,
+                start_again: None,
             })
         }
         // The arrangement the local arm has, one machine further away: whatever is installed
@@ -662,17 +647,19 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, Unattached> 
             let back = window_over_there(&remote_socket);
             let far_window = back.as_ref().map(|back| back.remote_path.clone());
             let tunnel = open_tunnel(daemon, host, options, remote_socket, back)?;
-            let local = PathBuf::from(tunnel.local_socket_path());
-            let carried = carried();
-            let (reached, welcome) = remote::ensure_running(
-                &tunnel.remote(),
-                &installed,
-                &carried,
-                &local,
-                &environment::for_far_daemon(&far),
-            )?;
+            let there = starting_again::There {
+                host: host.clone(),
+                remote: tunnel.remote(),
+                installed,
+                carried: carried(),
+                environment: environment::for_far_daemon(&far),
+                local: PathBuf::from(tunnel.local_socket_path()),
+            };
+            let (reached, welcome) = there.ensure_running()?;
             let handover = (reached == launch::Reached::Adopted)
-                .then(|| remote_handover(daemon, &welcome, &tunnel, &installed, &carried))
+                .then(|| {
+                    remote_handover(daemon, &welcome, &tunnel, &there.installed, &there.carried)
+                })
                 .flatten();
             Ok(Reached {
                 socket_path: tunnel.local_socket_path().to_string(),
@@ -680,9 +667,59 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, Unattached> 
                 started: reached == launch::Reached::Started,
                 handover,
                 far_window,
+                start_again: Some(starting_again::StartAgain::There(Box::new(there))),
             })
         }
     }
+}
+
+/// This machine's daemon as `reach` found it: answering already, or started.
+struct StartedHere {
+    reached: launch::Reached,
+    welcome: muster_daemon_proto::Welcome,
+    socket_path: String,
+    binary: String,
+    data: Option<String>,
+}
+
+/// Finds Muster's own daemon on this machine answering, or starts it: what attaching it does,
+/// and what starting it again does once it has gone. `impact` is what a failure costs, for the
+/// sentence that reports one.
+fn start_here(impact: &str) -> Result<StartedHere, Unattached> {
+    let inherited: BTreeMap<String, String> = std::env::vars().collect();
+    let home = install::muster_home(|name| inherited.get(name).cloned()).ok_or_else(|| {
+        Unattached::Lasting(
+            "Muster cannot work out where its daemon's socket goes, because nothing in the \
+             environment says where home is - neither MUSTER_HOME nor HOME. This window will \
+             render nothing. Give the daemon a `socket` in the config file to say outright."
+                .to_string(),
+        )
+    })?;
+    let socket = install::socket_path(&home);
+    let binary = runnable_daemon_binary()?;
+    let given = environment::for_daemon(
+        &inherited,
+        platform_locale().as_deref(),
+        commands_path().as_deref(),
+    );
+    let data = poison::lock(&startup::DAEMON_DATA, "daemon-data").clone();
+    let (reached, welcome) = launch::ensure_running(&launch::Launch {
+        binary: binary.as_ref(),
+        data: data.as_deref().map(Path::new),
+        socket: &socket,
+        environment: &given,
+        impact,
+    })?;
+    let socket_path = socket.display().to_string();
+    // Written down only when Muster started it. An adopted daemon belongs to whoever started it,
+    // and offering it in Muster's own census would be offering somebody a process to end on
+    // Muster's word.
+    if reached == launch::Reached::Started
+        && let Some(directory) = daemon_records_path()
+    {
+        records::started(&directory, &socket_path);
+    }
+    Ok(StartedHere { reached, welcome, socket_path, binary, data })
 }
 
 /// Where a daemon's tunnel puts its ends.
@@ -783,6 +820,8 @@ struct Backend {
     input: Arc<dyn InputSink>,
     /// Held because dropping it hangs up and stops following.
     follower: Follower,
+    /// How to start it again once it has gone, for a daemon Muster manages.
+    start_again: Option<starting_again::StartAgain>,
 }
 
 /// Everything this process holds open, and the windows it holds it for.
@@ -1326,6 +1365,7 @@ impl Session {
                 channel,
                 input,
                 follower,
+                start_again: reached.start_again,
             },
         );
         Ok(Some(connection))
@@ -5988,6 +6028,9 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
             announce_state(pane);
         }
         announce_asking();
+        if health != Health::Connected {
+            starting_again::gone(daemon);
+        }
     }
 }
 
