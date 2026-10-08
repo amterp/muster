@@ -961,8 +961,9 @@ extension MusterWindow {
   /// read only to start the field off with the name this pane already has, and a window whose
   /// roster has not caught up asks for a name from empty rather than refusing.
   @objc public func renamePane(_ sender: Any?) {
-    askToName(subject: "pane", current: namedPane(keyboardKey)?.givenName ?? "") { name in
-      Core.renamePane(name: name)
+    askToName(subject: "pane", current: namedPane(keyboardKey)?.givenName ?? "") {
+      [weak self] name in
+      if let why = Core.renamePane(name: name) { self?.tell(PaneRefusal.rename, why) }
     }
   }
 
@@ -973,12 +974,17 @@ extension MusterWindow {
 
   /// Hides the pane the keyboard is on.
   @objc public func hidePane(_ sender: Any?) {
-    Core.hidePane()
+    if let why = Core.hidePane() { tell(PaneRefusal.hide, why) }
   }
 
   /// Makes the pane the keyboard is on quiet, or lets it notify again.
   @objc public func quietPane(_ sender: Any?) {
-    Core.quietPane()
+    if let why = Core.quietPane() { tell(PaneRefusal.quiet, why) }
+  }
+
+  /// Shows a request the core refused, whose reason would otherwise reach only stderr.
+  func tell(_ heading: String, _ reason: String) {
+    ConfirmSheet.tell(on: window, heading: heading, body: reason)
   }
 
   /// Names the tab the keyboard's pane is in, having asked what to call it.
@@ -1065,8 +1071,10 @@ extension MusterWindow {
   /// Names a pane, having asked what to call it - the pane named rather than the keyboard's,
   /// for a row double-clicked or a menu opened on a pane somebody is not typing into.
   func rename(pane: PaneKey) {
-    askToName(subject: "pane", current: namedPane(pane)?.givenName ?? "") { name in
-      Core.renamePane(name: name, daemonID: pane.daemon, paneID: pane.pane)
+    askToName(subject: "pane", current: namedPane(pane)?.givenName ?? "") { [weak self] name in
+      if let why = Core.renamePane(name: name, daemonID: pane.daemon, paneID: pane.pane) {
+        self?.tell(PaneRefusal.rename, why)
+      }
     }
   }
 
@@ -1084,7 +1092,8 @@ extension MusterWindow {
       pane, surface: surfaces.chrome(for: pane)?.surface,
       machines: speaking { Core.machines() }.map(\.daemon),
       canCompact: namedPane(pane)?.compactable ?? false, quiet: namedPane(pane)?.quiet ?? false,
-      window: name, rename: { [weak self] in self?.rename(pane: $0) })
+      window: name, rename: { [weak self] in self?.rename(pane: $0) },
+      refused: { [weak self] in self?.tell($0, $1) })
   }
 
   /// A right-clicked row's menu. A machine's row has none: clicking it already makes a tab
@@ -1094,13 +1103,15 @@ extension MusterWindow {
     case .pane where row.hidden:
       guard let pane = row.pane else { return nil }
       return ContextMenus.hiddenRow(
-        pane, quiet: row.quiet, window: name, rename: { [weak self] in self?.rename(pane: $0) })
+        pane, quiet: row.quiet, window: name, rename: { [weak self] in self?.rename(pane: $0) },
+        refused: { [weak self] in self?.tell($0, $1) })
     case .pane:
       guard let pane = row.pane else { return nil }
       return ContextMenus.agentRow(
         pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
         quiet: row.quiet, window: name,
-        rename: { [weak self] in self?.rename(pane: $0) })
+        rename: { [weak self] in self?.rename(pane: $0) },
+        refused: { [weak self] in self?.tell($0, $1) })
     case .tab:
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
       return ContextMenus.tab(

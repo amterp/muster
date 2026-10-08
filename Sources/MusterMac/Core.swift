@@ -516,18 +516,22 @@ public enum Core {
     send(request)
   }
 
-  /// Calls a pane what somebody wants to call it.
+  /// Calls a pane what somebody wants to call it, and answers why not if it was refused - a name
+  /// another pane on that machine already holds, most often.
   ///
-  /// An empty name takes the name away, leaving the pane called after its directory again -
+  /// An empty name takes the name away, leaving the pane going by the word its daemon drew -
   /// one spelling for "no name" rather than two that draw the same.
-  public static func renamePane(name: String, daemonID: String = "", paneID: String = "") {
+  @discardableResult
+  public static func renamePane(name: String, daemonID: String = "", paneID: String = "")
+    -> String?
+  {
     var rename = Muster_RenamePane()
     rename.daemonID = daemonID
     rename.paneID = paneID
     rename.name = name
     var request = Muster_Request()
     request.renamePane = rename
-    send(request)
+    return refusal(send(request))
   }
 
   /// Compacts the context of the agent in a pane, at its next idle, empty prompt. No focus: the
@@ -543,35 +547,38 @@ public enum Core {
 
   /// Takes a pane out of every window into the hidden list, its agent still running. Naming no
   /// pane means the keyboard's.
-  public static func hidePane(daemonID: String = "", paneID: String = "") {
+  @discardableResult
+  public static func hidePane(daemonID: String = "", paneID: String = "") -> String? {
     var hide = Muster_HidePane()
     hide.daemonID = daemonID
     hide.paneID = paneID
     var request = Muster_Request()
     request.hidePane = hide
-    send(request)
+    return refusal(send(request))
   }
 
   /// Brings a hidden pane back into this window, in a tab of its own, with the keyboard on it.
-  public static func showPane(daemonID: String, paneID: String) {
+  @discardableResult
+  public static func showPane(daemonID: String, paneID: String) -> String? {
     var show = Muster_ShowPane()
     show.daemonID = daemonID
     show.paneID = paneID
     show.takeFocus = true
     var request = Muster_Request()
     request.showPane = show
-    send(request)
+    return refusal(send(request))
   }
 
   /// Makes a pane quiet if it is not and lets it notify if it is, as a menu item means. Naming
   /// no pane means the keyboard's.
-  public static func quietPane(daemonID: String = "", paneID: String = "") {
+  @discardableResult
+  public static func quietPane(daemonID: String = "", paneID: String = "") -> String? {
     var quiet = Muster_QuietPane()
     quiet.daemonID = daemonID
     quiet.paneID = paneID
     var request = Muster_Request()
     request.quietPane = quiet
-    send(request)
+    return refusal(send(request))
   }
 
   /// Calls a tab what somebody wants to call it.
@@ -1012,8 +1019,7 @@ public enum Core {
   public static func upgradeMuster() -> String? {
     var request = Muster_Request()
     request.upgradeMuster = Muster_UpgradeMuster()
-    guard case .failure(let failure) = send(request) else { return nil }
-    return failure.reason
+    return refusal(send(request))
   }
 
   /// Takes the human out of a group, which takes it off the sidebar: `muster msg leave --group G`
@@ -1038,6 +1044,13 @@ public enum Core {
     var request = Muster_Request()
     request.deleteGroup = delete
     return !isRefused(send(request))
+  }
+
+  /// The core's reason for refusing a request, for a window to show the person who asked. No
+  /// answer at all is not a refusal: the request may still have happened.
+  private static func refusal(_ payload: Muster_Response.OneOf_Payload?) -> String? {
+    guard case .failure(let failure) = payload else { return nil }
+    return failure.reason
   }
 
   /// A refusal, or no answer at all. An unanswered request may still have happened, so it is not

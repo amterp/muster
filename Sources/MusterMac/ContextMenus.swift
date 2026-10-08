@@ -251,13 +251,26 @@ final class ContextMenuTarget: NSObject {
 /// Every item names its subject - the pane or tab that was right-clicked - rather than leaving
 /// the core to read "the one with the keyboard", so nothing depends on where the keyboard is by
 /// the time somebody picks.
+/// What a refused pane request did not do, as the heading over the core's reason.
+public enum PaneRefusal {
+  public static let rename = "The pane was not renamed"
+  public static let hide = "The pane was not hidden"
+  public static let show = "The pane was not shown"
+  public static let quiet = "The pane’s notifications did not change"
+}
+
 @MainActor
 public enum ContextMenus {
+  /// Shows the person a request the core refused, with a heading saying what did not happen.
+  /// A menu item that silently changed nothing would leave its reason only on stderr.
+  public typealias Refused = @MainActor (_ heading: String, _ reason: String) -> Void
+
   /// A pane's menu. `surface` is the one that was right-clicked, for Copy and Paste, and is nil
   /// only in a test that has none.
   public static func pane(
     _ pane: PaneKey, surface: SurfaceView?, machines: [String], canCompact: Bool = false,
-    quiet: Bool = false, window: String = "", rename: @escaping @MainActor (PaneKey) -> Void
+    quiet: Bool = false, window: String = "", rename: @escaping @MainActor (PaneKey) -> Void,
+    refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     let pasteboard = surface?.pasteboard ?? .general
     let entries = ContextMenuModel.pane(
@@ -270,7 +283,8 @@ public enum ContextMenus {
       case .splitOnto(let machine):
         Core.split(
           side: "right", daemonID: pane.daemon, paneID: pane.pane, newPaneDaemonID: machine)
-      default: perform(choice, on: pane, pasteboard: pasteboard, rename: rename)
+      default:
+        perform(choice, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
       }
     }
   }
@@ -278,25 +292,25 @@ public enum ContextMenus {
   public static func agentRow(
     _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, quiet: Bool = false,
     pasteboard: NSPasteboard = .general, window: String = "",
-    rename: @escaping @MainActor (PaneKey) -> Void
+    rename: @escaping @MainActor (PaneKey) -> Void, refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
       ContextMenuModel.agentRow(onScreen: onScreen, canCompact: canCompact, quiet: quiet),
       subject: subject(pane), window: window
     ) {
-      perform($0, on: pane, pasteboard: pasteboard, rename: rename)
+      perform($0, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
     }
   }
 
   /// A hidden pane's row.
   public static func hiddenRow(
     _ pane: PaneKey, quiet: Bool, pasteboard: NSPasteboard = .general, window: String = "",
-    rename: @escaping @MainActor (PaneKey) -> Void
+    rename: @escaping @MainActor (PaneKey) -> Void, refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
       ContextMenuModel.hiddenRow(quiet: quiet), subject: subject(pane), window: window
     ) {
-      perform($0, on: pane, pasteboard: pasteboard, rename: rename)
+      perform($0, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
     }
   }
 
@@ -346,7 +360,7 @@ public enum ContextMenus {
 
   private static func perform(
     _ choice: ContextChoice, on pane: PaneKey, pasteboard: NSPasteboard,
-    rename: @MainActor (PaneKey) -> Void
+    rename: @MainActor (PaneKey) -> Void, refused: Refused
   ) {
     switch choice {
     case .action(let name) where name.hasPrefix("split_"):
@@ -357,9 +371,18 @@ public enum ContextMenus {
     case .action("move_pane_to_new_tab"): Core.movePaneToNewTab(pane)
     case .action("rename_pane"): rename(pane)
     case .action("compact_pane"): Core.compactPane(daemonID: pane.daemon, paneID: pane.pane)
-    case .action("hide_pane"): Core.hidePane(daemonID: pane.daemon, paneID: pane.pane)
-    case .action("quiet_pane"): Core.quietPane(daemonID: pane.daemon, paneID: pane.pane)
-    case .showPane: Core.showPane(daemonID: pane.daemon, paneID: pane.pane)
+    case .action("hide_pane"):
+      if let why = Core.hidePane(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.hide, why)
+      }
+    case .action("quiet_pane"):
+      if let why = Core.quietPane(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.quiet, why)
+      }
+    case .showPane:
+      if let why = Core.showPane(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.show, why)
+      }
     case .action("close_pane"): Core.closePane(daemonID: pane.daemon, paneID: pane.pane)
     case .copyPaneID: copy(pane.pane, "pane", to: pasteboard)
     default: unhandled(choice, menu: "pane")

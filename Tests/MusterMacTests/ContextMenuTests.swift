@@ -306,6 +306,27 @@ struct ContextMenuTests {
     #expect(shown.allSatisfy { $0.daemonID == "laptop" && $0.takeFocus })
   }
 
+  /// A pick the core refuses is shown to whoever picked it, with the core's reason: a menu that
+  /// closed and changed nothing would leave that reason only on stderr.
+  @Test("a refused pick hands the window the core's reason")
+  func aRefusedPickIsShown() {
+    _ = seam(
+      RecordingDispatcher { request in
+        guard case .hidePane = request.payload else { return nil }
+        var failure = Muster_Failure()
+        failure.reason = "this daemon is too old to hide a pane"
+        return .failure(failure)
+      })
+    var told: [String] = []
+    let menu = ContextMenus.agentRow(
+      laptopPane, onScreen: true, rename: { _ in }, refused: { told.append("\($0): \($1)") })
+
+    choose("Quiet Pane", in: menu)
+    #expect(told.isEmpty, "a pick the core took was reported as refused")
+    choose("Hide Pane", in: menu)
+    #expect(told == ["The pane was not hidden: this daemon is too old to hide a pane"])
+  }
+
   /// Leaving is what takes a group off the list for the human; deleting it ends it for everyone,
   /// so the menu hands that to the window to ask first rather than sending it.
   @Test("a group row leaves the group it names, and asks before deleting it")
