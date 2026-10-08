@@ -169,7 +169,8 @@ One entry per pane every followed daemon holds, on screen or not.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
 - `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done`, `unknown` or `unreachable`.
 - `last_state` - what the pane read before its machine stopped answering, while `state` is
-  `unreachable`; `null` otherwise. Every other field is from then too.
+  `unreachable`; `null` otherwise. Such a pane leaves out `facts`, `progress`, `unread_input`,
+  `rang` and `reported`, which would read as the present, and the fields it keeps are from then.
 - `reported` - whether the state is the agent's own report rather than what Muster read off its
   screen.
 - `unreadable` - whether Muster's rules have stopped reading this agent's screen. Its state is
@@ -360,9 +361,10 @@ agent still starting, is never called stuck.
 
 `unreachable` is a pane on a machine the window cannot reach: a dropped VPN, or a devenv that
 rebooted and took its agents with it. What its daemon last said is a guess about the present, so
-it is kept apart, in `last_state`, where `select(.state == "blocked")` and `pane wait --until idle`
-do not find it. `since` is when the machine stopped answering. The row says `(was blocked)` and
-drops its other notes, and the pane asks for nobody until its machine answers again.
+it is kept apart, in `last_state`, where `select(.state == "blocked")`, `pane wait --until idle`
+and `pane wait --context-at-least` do not find it, and `--json` leaves out what the agent last said
+about itself. `since` is when the machine stopped answering. The row says `(was blocked)` and
+drops its title and other notes, and the pane asks for nobody until its machine answers again.
 
 `done` is an agent that finished while nobody was looking. The daemon keeps the finish, so a
 window opened later still says `done`, and it lasts until a window that has the keyboard shows

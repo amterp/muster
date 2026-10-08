@@ -834,9 +834,11 @@ fn pane_line(
     );
     let waiting = agent.and_then(|agent| agent.facts.as_ref()).map(|facts| facts.waiting.as_str());
     // What it waits on says more than its title while it waits, and the two would crowd a line.
+    // An unreachable pane shows neither: its title is the last one its daemon had, and would read
+    // as what the pane is doing now.
     match waiting.filter(|waiting| state == "waiting" && !waiting.is_empty()) {
         Some(waiting) => line.push_str(&styled(&format!(" · on {waiting}"), QUIET)),
-        None if !pane.subtitle.is_empty() => {
+        None if !pane.subtitle.is_empty() && state != "unreachable" => {
             line.push_str(&styled(&format!(" · {}", pane.subtitle), QUIET));
         }
         None => {}
@@ -862,9 +864,10 @@ fn pane_line(
     line
 }
 
-/// What else is worth a glance about a pane's agent, each a few words - or for a pane whose
-/// daemon cannot be reached, only what it read before: a program that has stopped reading, how full its context is, its sub-agents, whether its screen can be read, an
-/// adapter that could report and does not, a bell nobody heard, and a program's progress.
+/// What else is worth a glance about a pane's agent, each a few words: a program that has
+/// stopped reading, how full its context is, its sub-agents, whether its screen can be read, an
+/// adapter that could report and does not, a bell nobody heard, and a program's progress. For a
+/// pane whose daemon cannot be reached, only what it read before.
 ///
 /// The model and the cost are left to `--json`: they change what somebody does next less often
 /// than they would lengthen every line.
@@ -1097,6 +1100,11 @@ fn unplaced_tab_json(
 
 /// A pane's row with what its agent is doing added, the same fields wherever the pane is listed:
 /// a script that reads `unread_input` off a pane in this window reads it off a hidden one too.
+///
+/// An unreachable pane leaves out every field that would read as the present - its facts, its
+/// progress, its unread input, a bell and whether it reports - so a filter such as
+/// `.facts.context_used > 80` does not find an agent that may be gone. `last_state` says what it
+/// was.
 fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) -> Value {
     let said = json!({
         "state": agent.map_or("unknown", |agent| agent.state.as_str()),
@@ -1119,7 +1127,12 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
             })
         }),
     });
-    if let (Value::Object(row_fields), Value::Object(said)) = (&mut row, said) {
+    if let (Value::Object(row_fields), Value::Object(mut said)) = (&mut row, said) {
+        if agent.is_some_and(|agent| agent.state == "unreachable") {
+            for stale in ["facts", "progress", "unread_input", "rang", "reported"] {
+                said.remove(stale);
+            }
+        }
         row_fields.extend(said);
     }
     row
@@ -1728,6 +1741,7 @@ mod tests {
                     panes: ["p1", "p2"]
                         .map(|pane| RosterPane {
                             pane_id: pane.to_string(),
+                            subtitle: "✳ Compacting".to_string(),
                             ..RosterPane::default()
                         })
                         .to_vec(),
@@ -1741,6 +1755,8 @@ mod tests {
                     state: "unreachable".to_string(),
                     last_state: "blocked".to_string(),
                     facts: Some(AgentFacts { context_used: Some(41.0), ..AgentFacts::default() }),
+                    rang: true,
+                    reported: true,
                     ..PaneStateChanged::default()
                 },
                 PaneStateChanged {
@@ -1755,11 +1771,17 @@ mod tests {
         assert_eq!(json["panes"][0]["state"], "unreachable", "{json}");
         assert_eq!(json["panes"][0]["last_state"], "blocked", "{json}");
         assert!(json["panes"][1]["last_state"].is_null(), "{json}");
+        for stale in ["facts", "progress", "unread_input", "rang", "reported"] {
+            assert!(json["panes"][0].get(stale).is_none(), "{stale} read as current: {json}");
+            assert!(json["panes"][1].get(stale).is_some(), "a live pane lost {stale}: {json}");
+        }
         let text = window_text(&window, 0, Others::All, false);
         let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
         assert!(row("p1").contains("unreachable"), "{text}");
         assert!(row("p1").contains("(was blocked)"), "{text}");
         assert!(!row("p1").contains("context"), "a dead pane's context read as current: {text}");
+        assert!(!row("p1").contains("Compacting"), "a dead pane's title read as current: {text}");
+        assert!(row("p2").contains("Compacting"), "a live pane lost its title: {text}");
         assert!(!row("p2").contains("was"), "{text}");
         assert_eq!(
             agent_style("unreachable"),
